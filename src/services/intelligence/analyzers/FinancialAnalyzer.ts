@@ -1,0 +1,262 @@
+// CellHub Intelligence — Financial Analyzer
+import type { Sale, Repair } from '@/store/types';
+import { Insight, FinancialMetrics } from '../types';
+import { getDaysAgo, getMonthBoundaries } from '../utils/dateHelpers';
+
+export interface ExpenseCategory {
+  name: string;
+  amount: number;
+  isFixed: boolean;
+}
+
+export class FinancialAnalyzer {
+  private sales: Sale[];
+  private repairs: Repair[];
+  private expenses: ExpenseCategory[];
+  private storeId?: string;
+  private lang: string;
+
+  constructor(
+    sales: Sale[],
+    repairs: Repair[],
+    expenses: ExpenseCategory[] = [],
+    storeId?: string,
+    lang: string = 'en'
+  ) {
+    this.sales = sales;
+    this.repairs = repairs;
+    this.expenses = expenses;
+    this.storeId = storeId;
+    this.lang = lang;
+  }
+
+  filterByStore<T extends { storeId?: string }>(items: T[]): T[] {
+    if (!this.storeId) return items;
+    return items.filter(item => (item as any).storeId === this.storeId);
+  }
+
+  getMetrics(window?: { start: Date; end: Date }): FinancialMetrics {
+    const salesFiltered = this.filterByStore(
+      window
+        ? this.sales.filter(s => {
+            const created = new Date(s.createdAt as string);
+            return created >= window.start && created <= window.end;
+          })
+        : this.sales
+    );
+
+    const repairsFiltered = this.filterByStore(
+      window
+        ? this.repairs.filter(r => {
+            const created = new Date(r.createdAt as string);
+            return created >= window.start && created <= window.end;
+          })
+        : this.repairs
+    );
+
+    const revenue = salesFiltered.reduce((sum, s) => sum + (s.total || 0), 0);
+    const repairRevenue = repairsFiltered.reduce((sum, r) => sum + (r.total || r.estimatedCost || 0), 0);
+    const grossRevenue = revenue + repairRevenue;
+
+    let totalCOGS = 0;
+    for (const sale of salesFiltered) {
+      for (const item of sale.items || []) {
+        const cost = (item as any).cost || 0;
+        totalCOGS += cost * item.qty;
+      }
+    }
+    for (const repair of repairsFiltered) {
+      totalCOGS += repair.laborCost || 0;
+      for (const part of repair.parts || []) {
+        totalCOGS += (part.cost || 0) * part.qty;
+      }
+    }
+
+    const grossMargin = grossRevenue > 0 
+      ? ((grossRevenue - totalCOGS) / grossRevenue) * 100 
+      : 0;
+
+    const totalExpenses = this.expenses.reduce((sum, e) => sum + e.amount, 0);
+    const expenseRatio = grossRevenue > 0 
+      ? (totalExpenses / grossRevenue) * 100 
+      : 0;
+
+    const cbeCollected = repairsFiltered.reduce((sum, r) => sum + (r.depositAmount || 0), 0);
+
+    const cardFees = revenue * 0.029 + salesFiltered.length * 0.30;
+    const creditCardFees = Math.round(cardFees);
+
+    const cashFlowByDay: Record<string, number> = {};
+    for (let i = 29; i >= 0; i--) {
+      const day = getDaysAgo(i);
+      const dayStr = day.toISOString().split('T')[0];
+      const daySales = salesFiltered.filter(s => {
+        const d = new Date(s.createdAt as string);
+        return d.toISOString().split('T')[0] === dayStr;
+      });
+      cashFlowByDay[dayStr] = daySales.reduce((sum, s) => sum + (s.total || 0), 0);
+    }
+
+    return {
+      grossMargin: Math.round(grossMargin * 100) / 100,
+      expenseRatio: Math.round(expenseRatio * 100) / 100,
+      cbeCollected,
+      creditCardFees,
+      cashFlowByDay,
+    };
+  }
+
+  getProfitabilityByCategory(): Record<string, { revenue: number; cost: number; profit: number }> {
+    const result: Record<string, { revenue: number; cost: number; profit: number }> = {};
+
+    for (const sale of this.filterByStore(this.sales)) {
+      for (const item of sale.items || []) {
+        const cat = item.category || 'unknown';
+        if (!result[cat]) result[cat] = { revenue: 0, cost: 0, profit: 0 };
+        result[cat].revenue += (item.price || 0) * item.qty;
+        result[cat].cost += ((item as any).cost || 0) * item.qty;
+      }
+    }
+
+    for (const cat of Object.keys(result)) {
+      result[cat].profit = result[cat].revenue - result[cat].cost;
+    }
+
+    return result;
+  }
+
+  getDailyCashFlow(days: number = 30): { date: string; inflow: number; outflow: number; net: number }[] {
+    const result: { date: string; inflow: number; outflow: number; net: number }[] = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const day = getDaysAgo(i);
+      const dayStr = day.toISOString().split('T')[0];
+
+      const daySales = this.sales.filter(s => {
+        const d = new Date(s.createdAt as string);
+        return d.toISOString().split('T')[0] === dayStr;
+      });
+
+      const inflow = daySales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const outflow = 0;
+      const net = inflow - outflow;
+
+      result.push({ date: dayStr, inflow, outflow, net });
+    }
+
+    return result;
+  }
+
+  getExpenseBreakdown(): Record<string, number> {
+    const breakdown: Record<string, number> = {};
+    for (const expense of this.expenses) {
+      breakdown[expense.name] = (breakdown[expense.name] || 0) + expense.amount;
+    }
+    return breakdown;
+  }
+
+  getMonthlyRevenue(): { month: string; revenue: number }[] {
+    const result: { month: string; revenue: number }[] = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = monthDate.toISOString().slice(0, 7);
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+
+      const monthSales = this.sales.filter(s => {
+        const created = new Date(s.createdAt as string);
+        return created >= monthDate && created < nextMonth;
+      });
+
+      const revenue = monthSales.reduce((sum, s) => sum + (s.total || 0), 0);
+      result.push({ month: monthStr, revenue });
+    }
+
+    return result;
+  }
+
+  generateInsights(window?: { start: Date; end: Date }): Insight[] {
+    const insights: Insight[] = [];
+    const metrics = this.getMetrics(window);
+    const profitability = this.getProfitabilityByCategory();
+
+    if (metrics.grossMargin < 20) {
+      insights.push({
+        id: 'financial-margin-low',
+        category: 'financial',
+        severity: 'critical',
+        title: 'Low Gross Margin',
+        titleEs: 'Margen Bruto Bajo',
+        description: `Gross margin is ${metrics.grossMargin.toFixed(1)}%. Review pricing and COGS.`,
+        descriptionEs: `El margen bruto es ${metrics.grossMargin.toFixed(1)}%. Revisa precios y COGS.`,
+        metric: metrics.grossMargin,
+        metricLabel: this.lang === 'es' ? 'Margen bruto (%)' : 'Gross margin (%)',
+        actionLabel: this.lang === 'es' ? 'Ver Reporte' : 'View Report',
+        actionRoute: 'reports',
+        confidence: 0.9,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    }
+
+    if (metrics.expenseRatio > 80) {
+      insights.push({
+        id: 'financial-expense-high',
+        category: 'financial',
+        severity: 'warning',
+        title: 'High Expense Ratio',
+        titleEs: 'Ratio de Gastos Alto',
+        description: `Expenses are ${metrics.expenseRatio.toFixed(1)}% of revenue.`,
+        descriptionEs: `Los gastos son ${metrics.expenseRatio.toFixed(1)}% de los ingresos.`,
+        metric: metrics.expenseRatio,
+        metricLabel: this.lang === 'es' ? 'Ratio de gastos (%)' : 'Expense ratio (%)',
+        actionLabel: this.lang === 'es' ? 'Ver Reporte' : 'View Report',
+        actionRoute: 'reports',
+        confidence: 0.85,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    }
+
+    const lowestCategory = Object.entries(profitability)
+      .sort((a, b) => a[1].profit - b[1].profit)[0];
+    if (lowestCategory && lowestCategory[1].profit < 0) {
+      insights.push({
+        id: 'financial-loss-category',
+        category: 'financial',
+        severity: 'critical',
+        title: 'Loss-Making Category',
+        titleEs: 'Categoría con Pérdidas',
+        description: `${lowestCategory[0]} category is losing money.`,
+        descriptionEs: `La categoría ${lowestCategory[0]} está perdiendo dinero.`,
+        metric: lowestCategory[1].profit,
+        metricLabel: this.lang === 'es' ? 'Pérdida' : 'Loss',
+        actionLabel: this.lang === 'es' ? 'Ver Reporte' : 'View Report',
+        actionRoute: 'reports',
+        confidence: 0.9,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    }
+
+    if (metrics.cbeCollected > 0) {
+      insights.push({
+        id: 'financial-cbe',
+        category: 'financial',
+        severity: 'info',
+        title: 'CBE Deposits Collected',
+        titleEs: 'Depósitos CBE Recaudados',
+        description: `$${(metrics.cbeCollected / 100).toFixed(2)} in repair deposits.`,
+        descriptionEs: `$${(metrics.cbeCollected / 100).toFixed(2)} en depósitos de reparaciones.`,
+        metric: metrics.cbeCollected,
+        metricLabel: this.lang === 'es' ? 'Depósitos CBE' : 'CBE deposits',
+        confidence: 0.95,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      });
+    }
+
+    return insights;
+  }
+}

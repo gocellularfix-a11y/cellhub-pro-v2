@@ -1,0 +1,17 @@
+﻿node_modules/
+.gitnexus/
+.claude/
+dist/
+dist-renderer/
+dist-electron/
+.env
+.env.local
+*.env
+*.env.local
+service-account.json
+push-to-firebase.js
+AGENTS.md
+*.tar.gz
+*.exe
+*.blockmap
+cellhub-v2-FINAL-apr17-2012.json
