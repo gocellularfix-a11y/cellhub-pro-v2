@@ -500,6 +500,20 @@ export default function POSModule() {
         const ri = updatedRepairs.findIndex((r) => r.id === repairId);
         if (ri < 0) continue;
         const repair = updatedRepairs[ri];
+
+        // r-new-7: defensive sanity check — overpayment detection.
+        // The cart consolidation invariant in RepairModule should prevent
+        // overpayment, but log if it ever fires. 1 cent tolerance for rounding
+        // drift in mixed-tax carts.
+        const expectedBalance = repair.balance || 0;
+        if (paidCents > expectedBalance + 1) {
+          console.warn(
+            `[repair-reconcile] Overpayment on repair ${repairId}:`,
+            `paid ${paidCents} cents, balance was ${expectedBalance} cents.`,
+            `Diff: ${paidCents - expectedBalance} cents (possible stale cart).`,
+          );
+        }
+
         const newDeposit = (repair.depositAmount || 0) + paidCents;
         const newBalance = Math.max(0, (repair.balance || 0) - paidCents);
         updatedRepairs[ri] = {

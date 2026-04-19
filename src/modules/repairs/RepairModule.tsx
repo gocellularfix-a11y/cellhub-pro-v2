@@ -7,7 +7,7 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { reverseTaxFromPayment } from '@/utils/depositTax';
+import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
@@ -54,6 +54,7 @@ export default function RepairModule() {
   const [editRepair, setEditRepair] = useState<Repair | null>(null);
   const [depositModalRepair, setDepositModalRepair] = useState<Repair | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Repair | null>(null);
+  const [isConsolidating, setIsConsolidating] = useState(false);
 
   // ── Stale-closure guard: ref-based mirror of repairs so back-to-back
   // setRepairs calls (modal save + collectBalance) don't pisarse mutually.
@@ -108,16 +109,21 @@ export default function RepairModule() {
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [repairs, filterStatus, search]);
 
-  // r-new-1: map of pending deposit per repairId — items in cart not yet checked out.
+  // r-new-5 + r-new-6: pending per repair, TAX-INCLUSIVE (what cashier will
+  // actually charge at register), not the pre-tax base stored in cart.price.
+  // Matches what the customer perceives they "paid" on the printed ticket.
   const pendingByRepairId = useMemo(() => {
     const map = new Map<string, number>();
+    const taxRate = settings.taxRate || 0.0925;
     for (const item of cart) {
       if (!item.repairId) continue;
+      const itemBaseCents = (item.price || 0) * (item.qty || 1);
+      const fwd = forwardTaxFromBase(itemBaseCents, taxRate, !!item.taxable);
       const prev = map.get(item.repairId) || 0;
-      map.set(item.repairId, prev + (item.price || 0) * (item.qty || 1));
+      map.set(item.repairId, prev + fwd.totalCents);
     }
     return map;
-  }, [cart]);
+  }, [cart, settings.taxRate]);
 
   // ── Stats ───────────────────────────────────────────────
 
@@ -191,6 +197,62 @@ export default function RepairModule() {
     const html = `<!DOCTYPE html><html><head><title>Repair ${safe(repair.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, lang, printHtml]);
+
+  // r-new-5: consolidation helper — ensures the invariant "one repair has at most
+  // one cart item at any time". Called by: deposit-at-create (handleSave CREATE),
+  // collectBalance, and DepositModal onConfirm. All 3 entry points must go through
+  // this helper so the invariant holds even under rapid clicks / stale state.
+  //
+  // `additionalCents` is TAX-INCLUSIVE (what the cashier intends to collect).
+  // Existing items in the cart for this repair are summed (forward-taxed to
+  // tax-inclusive) then combined with `additionalCents`. Result is a single cart
+  // item with pre-tax base = reverse-tax(combined), so POS ends up charging
+  // exactly `combinedCents` at the register.
+  const consolidateCartForRepair = useCallback((params: {
+    repairId: string;
+    additionalCents: number;
+    deviceLabel: string;
+    ticketNumber?: string;
+    isTaxable: boolean;
+  }): { combinedCents: number } => {
+    const { repairId, additionalCents, deviceLabel, ticketNumber, isTaxable } = params;
+    const taxRate = settings.taxRate || 0.0925;
+
+    // Sum any existing items for this repair (tax-inclusive cents)
+    const existingItems = cartRef.current.filter((c) => c.repairId === repairId);
+    let combinedCents = additionalCents;
+    for (const existing of existingItems) {
+      const existingBase = (existing.price || 0) * (existing.qty || 1);
+      const existingFwd = forwardTaxFromBase(existingBase, taxRate, !!existing.taxable);
+      combinedCents += existingFwd.totalCents;
+    }
+
+    // Reverse-tax the combined tax-inclusive amount back to the pre-tax base
+    // that the cart item should store (cart items are stored as pre-tax; POS
+    // adds tax when it calculates totals for the sale).
+    const split = reverseTaxFromPayment(combinedCents, taxRate, isTaxable);
+
+    const consolidatedItem: CartItem = {
+      id: generateId(),
+      name: `${deviceLabel} — ${lang === 'es' ? 'Reparación' : 'Repair'}`,
+      category: 'service',
+      price: split.baseCents,
+      qty: 1,
+      taxable: isTaxable,
+      cbeEligible: false,
+      repairId,
+      notes: ticketNumber || repairId.slice(-6).toUpperCase(),
+    };
+
+    const nextCart = [
+      ...cartRef.current.filter((c) => c.repairId !== repairId),
+      consolidatedItem,
+    ];
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    return { combinedCents };
+  }, [settings.taxRate, lang, setCart]);
 
   // ── Save handler ────────────────────────────────────────
 
@@ -388,22 +450,17 @@ export default function RepairModule() {
         // NOT from newRepair — newRepair was persisted with depositAmount=0.
         const depositAmt = rd.depositAmount || 0;
         if (depositAmt > 0) {
-          // Option B: reverse-tax deposit so cart base + tax = exactly $deposit
           const isTaxable = !!(newRepair as any).taxable;
-          const repairTaxRate = settings.taxRate || 0.0925;
-          const split = reverseTaxFromPayment(depositAmt, repairTaxRate, isTaxable);
-          const depositItem: CartItem = {
-            id: generateId(),
-            name: `${deviceLabel} — ${lang === 'es' ? 'Depósito Reparación' : 'Repair Deposit'}`.trim(),
-            category: 'service',
-            price: split.baseCents,
-            qty: 1,
-            taxable: isTaxable,
-            cbeEligible: false,
+          // r-new-5: go through consolidation helper. On CREATE there are
+          // never pre-existing cart items for a just-generated repairId, but
+          // using the helper keeps all cart-add paths identical.
+          consolidateCartForRepair({
             repairId: newRepair.id,
-            notes: `Ticket: ${ticketNum}`,
-          };
-          setCart([...cartRef.current, depositItem]);
+            additionalCents: depositAmt,
+            deviceLabel,
+            ticketNumber: ticketNum,
+            isTaxable,
+          });
           toast(
             lang === 'es'
               ? `Reparación creada. Depósito ${formatCurrency(depositAmt)} agregado al carrito.`
@@ -435,7 +492,7 @@ export default function RepairModule() {
       setEditRepair(null);
     },
     [editRepair, customers, settings, currentEmployee, cart, lang, L,
-     setRepairs, setCustomers, setCart, toast, printRepairTicket],
+     setRepairs, setCustomers, setCart, toast, printRepairTicket, consolidateCartForRepair],
   );
 
   // ── Cancel repair with deposit disposal ────────────────────
@@ -556,26 +613,22 @@ export default function RepairModule() {
       if (!repair.balance || repair.balance <= 0) return;
 
       const isTaxable = !!(repair as any).taxable;
-      const repairTaxRate = settings.taxRate || 0.0925;
-      const split = reverseTaxFromPayment(repair.balance, repairTaxRate, isTaxable);
-      const balanceItem: CartItem = {
-        id: generateId(),
-        name: `${repair.device} — ${lang === 'es' ? 'Balance Reparación' : 'Repair Balance'}`,
-        category: 'service',
-        price: split.baseCents,
-        qty: 1,
-        taxable: isTaxable,
-        cbeEligible: false,
+      const { combinedCents } = consolidateCartForRepair({
         repairId: repair.id,
-        notes: `Balance for ${repair.customerName}`,
-      };
+        additionalCents: repair.balance,
+        deviceLabel: [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '',
+        ticketNumber: (repair as any).ticketNumber,
+        isTaxable,
+      });
 
-      setCart([...cartRef.current, balanceItem]);
-      toast(lang === 'es'
-        ? `Balance ${formatCurrency(repair.balance)} agregado al carrito`
-        : `Balance ${formatCurrency(repair.balance)} added to cart`, 'info');
+      toast(
+        lang === 'es'
+          ? `$${(combinedCents / 100).toFixed(2)} en carrito para este ticket`
+          : `$${(combinedCents / 100).toFixed(2)} in cart for this ticket`,
+        'info',
+      );
     },
-    [setCart, settings, toast],
+    [consolidateCartForRepair, toast, lang],
   );
 
   // ── Render ──────────────────────────────────────────────
@@ -687,37 +740,42 @@ export default function RepairModule() {
           taxRate={settings.taxRate || 0.0925}
           taxable={!!(depositModalRepair as any).taxable}
           existingDeposit={(depositModalRepair.depositAmount || 0) / 100}
+          pendingInCart={(pendingByRepairId.get(depositModalRepair.id) || 0) / 100}
           mode={depositModalRepair.balance > 0 ? 'balance' : 'deposit'}
           lang={lang}
           onClose={() => setDepositModalRepair(null)}
           onConfirm={({ depositAmt }) => {
-            const r = depositModalRepair;
-            const amtCents = Math.round(depositAmt * 100);
-            const isTaxable = !!(r as any).taxable;
-            const repairTaxRate = settings.taxRate || 0.0925;
-            const split = reverseTaxFromPayment(amtCents, repairTaxRate, isTaxable);
-            const cartItem: CartItem = {
-              id: generateId(),
-              name: r.balance > 0
-                ? `${r.device} — ${lang === 'es' ? 'Balance Reparación' : 'Repair Balance'}`
-                : `${r.device} — ${lang === 'es' ? 'Depósito Reparación' : 'Repair Deposit'}`,
-              category: 'service',
-              price: split.baseCents,
-              qty: 1,
-              taxable: isTaxable,
-              cbeEligible: false,
-              repairId: r.id,
-              notes: `${r.id.slice(-6).toUpperCase()}`,
-            };
-            setCart([...cart, cartItem]);
-            // r-pkg-b1: DO NOT update repair balance here. The POS checkout
-            // handler (POSModule.tsx §4a) reads repair.balance from state and
-            // applies the deduction + persist when the sale completes. If we
-            // also deducted here, it would double-deduct. The balance stays
-            // visually unchanged until checkout — that's correct because the
-            // money hasn't been collected yet.
-            setDepositModalRepair(null);
-            toast(lang === 'es' ? `$${depositAmt.toFixed(2)} agregado al carrito` : `$${depositAmt.toFixed(2)} added to cart`, 'success');
+            // r-new-5 race guard: prevent double-firing onConfirm if the user
+            // rapidly clicks the confirm button or state is stale. The helper
+            // itself is idempotent (filter + filter always produces the right
+            // cart) but we avoid any toast/close double-fire.
+            if (isConsolidating) return;
+            setIsConsolidating(true);
+
+            try {
+              const r = depositModalRepair;
+              const newAmtCents = Math.round(depositAmt * 100);
+              const isTaxable = !!(r as any).taxable;
+
+              const { combinedCents } = consolidateCartForRepair({
+                repairId: r.id,
+                additionalCents: newAmtCents,
+                deviceLabel: [(r as any).brand, (r as any).model].filter(Boolean).join(' ') || r.device || '',
+                ticketNumber: (r as any).ticketNumber,
+                isTaxable,
+              });
+
+              setDepositModalRepair(null);
+              toast(
+                lang === 'es'
+                  ? `$${(combinedCents / 100).toFixed(2)} en carrito para este ticket`
+                  : `$${(combinedCents / 100).toFixed(2)} in cart for this ticket`,
+                'success',
+              );
+            } finally {
+              // Reset guard on next tick so future confirmations work.
+              setTimeout(() => setIsConsolidating(false), 100);
+            }
           }}
         />
       )}

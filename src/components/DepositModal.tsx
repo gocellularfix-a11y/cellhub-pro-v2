@@ -26,6 +26,7 @@ interface DepositModalProps {
   taxRate: number;         // e.g. 0.0925
   taxable: boolean;
   existingDeposit?: number; // dollars already paid
+  pendingInCart?: number;    // NEW — tax-inclusive dollars already in cart for this entity (not yet checked out)
   mode?: 'deposit' | 'balance';
   onConfirm: (result: {
     depositAmt: number;
@@ -45,6 +46,7 @@ export default function DepositModal({
   taxRate,
   taxable,
   existingDeposit = 0,
+  pendingInCart = 0,   // NEW
   mode = 'deposit',
   onConfirm,
   onClose,
@@ -64,10 +66,13 @@ export default function DepositModal({
   const _taxAmt     = totals.taxCents / 100;
   const _totalOwed  = totals.totalWithTaxCents / 100;
   const _alreadyPaid = existingDeposit;
-  const _remainingDue = totals.balanceCents / 100;
+  // r-new-5: subtract pending cart amount to prevent double-collection.
+  // `pendingInCart` is tax-inclusive dollars — when cashier completes POS
+  // those become real depositAmount. From user POV they're "already paid".
+  const _remainingDue = Math.max(0, (totals.balanceCents / 100) - pendingInCart);
 
   const [depositInput, setDepositInput] = useState(
-    mode === 'balance' ? _remainingDue.toFixed(2) : ''
+    mode === 'balance' && _remainingDue > 0 ? _remainingDue.toFixed(2) : ''
   );
   const depositMode = 'round' as const;
 
@@ -89,7 +94,7 @@ export default function DepositModal({
     registerTotal = fwd.totalCents / 100;
   }
 
-  const newBalanceDue = rc(Math.max(0, _totalOwed - _alreadyPaid - registerTotal));
+  const newBalanceDue = rc(Math.max(0, _totalOwed - _alreadyPaid - pendingInCart - registerTotal));
   const isValid = registerTotal > 0 && registerTotal <= _remainingDue + 0.01;
 
   const rowStyle: React.CSSProperties = {
@@ -159,6 +164,19 @@ export default function DepositModal({
                 <div style={totalRowStyle}>
                   <span>{es ? 'Saldo pendiente' : 'Remaining balance'}</span>
                   <span style={{ color: '#f59e0b' }}>{fc(_remainingDue)}</span>
+                </div>
+              </>
+            )}
+            {pendingInCart > 0 && (
+              <>
+                <div style={rowStyle}>
+                  <span style={{ color: '#94a3b8' }}>🛒 {es ? 'En carrito (por cobrar)' : 'In cart (pending collection)'}</span>
+                  <span style={{ color: '#fb923c' }}>− {fc(pendingInCart)}</span>
+                </div>
+                <div style={dividerStyle} />
+                <div style={totalRowStyle}>
+                  <span>{es ? 'Aún por cobrar' : 'Still to collect'}</span>
+                  <span style={{ color: _remainingDue > 0 ? '#f59e0b' : '#10b981' }}>{fc(_remainingDue)}</span>
                 </div>
               </>
             )}
