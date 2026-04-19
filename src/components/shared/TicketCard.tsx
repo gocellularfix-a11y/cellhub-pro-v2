@@ -19,6 +19,7 @@ interface TicketCardProps {
   balance: number;        // cents
   createdAt: string;
   priority?: string;
+  pendingCents?: number;  // cents — items in cart with this entity's id, not yet checked out
   onClick: () => void;
   onCollectBalance?: () => void;
   onWhatsApp?: () => void;
@@ -40,6 +41,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   balance,
   createdAt,
   priority,
+  pendingCents = 0,
   onClick,
   onCollectBalance,
   onWhatsApp,
@@ -96,6 +98,11 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
           {balance > 0 && (
             <p className="text-xs text-amber-400">
               {L.balance || 'Balance'}: {formatCurrency(balance)}
+            </p>
+          )}
+          {pendingCents > 0 && (
+            <p className="text-xs" style={{ color: '#fb923c' }}>
+              🛒 {formatCurrency(pendingCents)} {L.inCart || 'in cart'}
             </p>
           )}
           <p className="text-xs text-slate-600 mt-1">{formatDate(createdAt)}</p>

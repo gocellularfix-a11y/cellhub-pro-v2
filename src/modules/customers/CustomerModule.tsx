@@ -533,12 +533,13 @@ export default function CustomerModule() {
                 <th className="text-right">{lang === 'es' ? 'TOTAL GASTADO' : 'TOTAL SPENT'}</th>
                 <th className="text-center">{lang === 'es' ? 'VISITAS' : 'VISITS'}</th>
                 <th>{lang === 'es' ? 'ÚLTIMA VISITA' : 'LAST VISIT'}</th>
+                <th className="text-right">{lang === 'es' ? 'CRÉDITO' : 'CREDIT'}</th>
                 <th className="text-right">{lang === 'es' ? 'ACCIONES' : 'ACTIONS'}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-slate-500">{lang === 'es' ? 'No se encontraron clientes' : 'No customers found'}</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-slate-500">{lang === 'es' ? 'No se encontraron clientes' : 'No customers found'}</td></tr>
               ) : (
                 filtered.map((c) => (
                   <tr key={c.id}
@@ -578,6 +579,15 @@ export default function CustomerModule() {
                       })()}
                     </td>
                     <td className="text-sm text-slate-400">{customerStats.get(c.id)?.lastVisit || '—'}</td>
+                    <td className="text-right">
+                      {(c.storeCredit || 0) > 0 ? (
+                        <span className="text-blue-400 font-semibold" title={lang === 'es' ? 'Crédito disponible' : 'Available credit'}>
+                          {formatCurrency(c.storeCredit || 0)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
+                    </td>
                     <td className="text-right">
                       <div className="flex gap-2 justify-end">
                         <button

@@ -108,6 +108,17 @@ export default function RepairModule() {
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [repairs, filterStatus, search]);
 
+  // r-new-1: map of pending deposit per repairId — items in cart not yet checked out.
+  const pendingByRepairId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of cart) {
+      if (!item.repairId) continue;
+      const prev = map.get(item.repairId) || 0;
+      map.set(item.repairId, prev + (item.price || 0) * (item.qty || 1));
+    }
+    return map;
+  }, [cart]);
+
   // ── Stats ───────────────────────────────────────────────
 
   // FIX Bug 3: normalize status to lowercase so 'complete', 'cancelled', 'ready' etc. are caught
@@ -160,8 +171,10 @@ export default function RepairModule() {
       lines.push(`${es ? 'NOTAS' : 'NOTES'}: ${safe(repair.notes)}`);
     }
     lines.push('----------------------------------------');
+    const partsCents = (repair.subtotal || 0) - (repair.laborCost || 0);
+    if (partsCents > 0) lines.push(`${es ? 'REFACCIONES' : 'PARTS'}: ${money(partsCents)}`);
+    if (repair.laborCost) lines.push(`${es ? 'MANO DE OBRA' : 'LABOR'}: ${money(repair.laborCost)}`);
     lines.push(`SUBTOTAL: ${money(repair.subtotal || 0)}`);
-    if (repair.laborCost) lines.push(`${es ? 'LABOR' : 'LABOR'}: ${money(repair.laborCost)}`);
     if (repair.taxable && repair.taxAmount > 0) {
       lines.push(`${es ? 'IMPUESTO' : 'TAX'} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}`);
     }
@@ -237,7 +250,7 @@ export default function RepairModule() {
         // Recalculate balance from the new total so price changes (parts/labor)
         // still update balance = total - depositAmount correctly.
         const spread = { ...editRepair, ...repairData } as Repair;
-        const lockedDeposit = editRepair.depositAmount || 0;
+        const lockedDeposit = editRepair.depositAmount || (editRepair as any).deposit || 0;
         const newTotal = (spread as any).total || spread.estimatedCost || 0;
         const lockedBalance = Math.max(0, newTotal - lockedDeposit);
         const updated: Repair = {
@@ -511,6 +524,7 @@ export default function RepairModule() {
       cancellationNote: choice.note || '',
       cancelledAt: now,
       depositAmount: 0,
+      deposit: 0,                // r-new-4: zero legacy field — TicketCard falls back to .deposit
       balance: 0,
       updatedAt: now,
     } as unknown as Repair;
@@ -614,6 +628,7 @@ export default function RepairModule() {
               total={(repair as any).total || repair.estimatedCost || 0}
               deposit={(repair as any).depositAmount || (repair as any).deposit || 0}
               balance={repair.balance || 0}
+              pendingCents={pendingByRepairId.get(repair.id) || 0}
               createdAt={repair.createdAt as string}
               priority={repair.priority}
               onClick={() => { setEditRepair(repair); setShowModal(true); }}

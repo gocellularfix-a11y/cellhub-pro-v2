@@ -153,6 +153,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   const [form, setForm] = useState({
     firstName:           r?.firstName || (r?.customerName?.split(' ')[0] || ''),
     lastName:            r?.lastName  || (r?.customerName?.split(' ').slice(1).join(' ') || ''),
+    ticketNumber:       (r as any)?.ticketNumber || '',   // r-new-3: preserve ticket number for print
     customerPhone:       r?.customerPhone || '',
     deviceType:          r?.deviceType || 'Phone',
     brand:               r?.brand || r?.device || '',
@@ -315,15 +316,19 @@ export default function RepairModal({ repair, customers, inventory, settings, al
       payload.notes ? '----------------------------------------' : '',
       payload.notes ? 'NOTES:' : '', payload.notes ? fmt(payload.notes) : '',
       '----------------------------------------',
-      ...(!notesOnly ? [
-        `SUBTOTAL: ${money(payload.subtotal)}`,
-        `LABOR: ${money(payload.laborCost)}`,
-        ...(payload.taxable && payload.taxAmount > 0 ? [`TAX (${((payload.taxRate || 0) * 100).toFixed(2)}%): ${money(payload.taxAmount)}`] : []),
-        `TOTAL: ${money(payload.total)}`,
-        `DEPOSIT: ${money(payload.depositAmount)}`,
-        `BALANCE: ${money(payload.balance)}`,
-        '----------------------------------------',
-      ] : []),
+      ...(() => {
+        const partsCents = (payload.subtotal || 0) - (payload.laborCost || 0);
+        const lines = [];
+        if (partsCents > 0) lines.push(`PARTS: ${money(partsCents)}`);
+        if (payload.laborCost) lines.push(`LABOR: ${money(payload.laborCost)}`);
+        lines.push(`SUBTOTAL: ${money(payload.subtotal)}`);
+        if (payload.taxable && payload.taxAmount > 0) lines.push(`TAX (${((payload.taxRate || 0) * 100).toFixed(2)}%): ${money(payload.taxAmount)}`);
+        lines.push(`TOTAL: ${money(payload.total)}`);
+        lines.push(`DEPOSIT: ${money(payload.depositAmount)}`);
+        lines.push(`BALANCE: ${money(payload.balance)}`);
+        lines.push('----------------------------------------');
+        return lines;
+      })(),
     ].filter(Boolean);
     const content = lines.join('\n');
     // Build self-contained HTML for the ticket

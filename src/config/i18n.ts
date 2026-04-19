@@ -10,6 +10,7 @@ const LABELS: Record<Lang, Record<string, LabelValue>> = {
   en: {
     "dashboard": "Dashboard",
     "intelligence": "Intelligence",
+    "inCart": "in cart",
     "quickActions": "Quick actions",
     "inventory": "Inventory",
     "repairs": "Repairs",
@@ -1133,6 +1134,7 @@ const LABELS: Record<Lang, Record<string, LabelValue>> = {
   es: {
     "dashboard": "Tablero",
     "intelligence": "Inteligencia",
+    "inCart": "en carrito",
     "quickActions": "Acciones rápidas",
     "inventory": "Inventario",
     "repairs": "Reparaciones",
