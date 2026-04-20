@@ -6,14 +6,14 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type React from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
-import { Modal, AutocompleteInput } from '@/components/ui';
+import { Modal, AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, remove } from '@/services/persist';
 import DepositModal from '@/components/DepositModal';
-import { calcDepositTotals, reverseTaxFromPayment } from '@/utils/depositTax';
+import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
@@ -23,7 +23,8 @@ import TicketCard from '@/components/shared/TicketCard';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
-import type { SpecialOrder, CartItem, Customer } from '@/store/types';
+import type { SpecialOrder, CartItem, Customer, Sale } from '@/store/types';
+import CancelSpecialOrderModal from './CancelSpecialOrderModal';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -38,8 +39,8 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function SpecialOrdersModule() {
   const {
-    state: { specialOrders, customers, settings, currentEmployee, cart, lang, globalSearchTerm },
-    setSpecialOrders, setCustomers, setCart, dispatch,
+    state: { specialOrders, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    setSpecialOrders, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
   const { toast } = useToast();
@@ -53,6 +54,10 @@ export default function SpecialOrdersModule() {
   const [editOrder, setEditOrder] = useState<SpecialOrder | null>(null);
   const [form, setForm] = useState<Partial<SpecialOrder>>({});
   const [depositModalOrder, setDepositModalOrder] = useState<SpecialOrder | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<SpecialOrder | null>(null);
+  const [isConsolidating, setIsConsolidating] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<SpecialOrder | null>(null);
+  const [completeConfirm, setCompleteConfirm] = useState<SpecialOrder | null>(null);
 
   // Refs to avoid stale closures in handlers (multi-station Firestore sync).
   // Setters from context don't accept function updaters, so we track the latest
@@ -60,9 +65,11 @@ export default function SpecialOrdersModule() {
   const specialOrdersRef = useRef(specialOrders);
   const customersRef = useRef(customers);
   const cartRef = useRef(cart);
+  const salesRef = useRef(sales);
   useEffect(() => { specialOrdersRef.current = specialOrders; }, [specialOrders]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { cartRef.current = cart; }, [cart]);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
 
   // Consume cross-module search term once on mount
   useEffect(() => {
@@ -74,6 +81,67 @@ export default function SpecialOrdersModule() {
   }, []);
 
   const normalizeStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
+
+  // r-new-1 + r-new-6 port from Repairs Round 2/3: pending per SO, tax-inclusive.
+  // Matches what customer perceives they've "paid" from the ticket — the forward-
+  // tax converts cart.price (pre-tax base) into the register total.
+  const pendingBySpecialOrderId = useMemo(() => {
+    const map = new Map<string, number>();
+    const taxRate = settings.taxRate || 0.0925;
+    for (const item of cart) {
+      if (!item.specialOrderId) continue;
+      const itemBaseCents = (item.price || 0) * (item.qty || 1);
+      const fwd = forwardTaxFromBase(itemBaseCents, taxRate, !!item.taxable);
+      const prev = map.get(item.specialOrderId) || 0;
+      map.set(item.specialOrderId, prev + fwd.totalCents);
+    }
+    return map;
+  }, [cart, settings.taxRate]);
+
+  // r-new-5 port: ensures invariant "one SO has at most one cart item at any time".
+  // Called by: deposit-at-create (handleSave CREATE), DepositModal onConfirm,
+  // handleCompleteConfirmed. `additionalCents` is TAX-INCLUSIVE. Combines with any
+  // existing cart items for this SO (forward-taxed), then reverse-taxes the total
+  // to a single new cart item.
+  const consolidateCartForSpecialOrder = useCallback((params: {
+    specialOrderId: string;
+    additionalCents: number;
+    itemDescription: string;
+    isTaxable: boolean;
+  }): { combinedCents: number } => {
+    const { specialOrderId, additionalCents, itemDescription, isTaxable } = params;
+    const taxRate = settings.taxRate || 0.0925;
+
+    const existingItems = cartRef.current.filter((c) => c.specialOrderId === specialOrderId);
+    let combinedCents = additionalCents;
+    for (const existing of existingItems) {
+      const existingBase = (existing.price || 0) * (existing.qty || 1);
+      const existingFwd = forwardTaxFromBase(existingBase, taxRate, !!existing.taxable);
+      combinedCents += existingFwd.totalCents;
+    }
+
+    const split = reverseTaxFromPayment(combinedCents, taxRate, isTaxable);
+    const consolidatedItem: CartItem = {
+      id: generateId(),
+      name: `${lang === 'es' ? 'Pedido Especial' : 'Special Order'} — ${itemDescription}`,
+      category: 'service',
+      price: split.baseCents,
+      qty: 1,
+      taxable: isTaxable,
+      cbeEligible: false,
+      specialOrderId,
+      notes: specialOrderId.slice(-6).toUpperCase(),
+    };
+
+    const nextCart = [
+      ...cartRef.current.filter((c) => c.specialOrderId !== specialOrderId),
+      consolidatedItem,
+    ];
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    return { combinedCents };
+  }, [settings.taxRate, lang, setCart]);
 
   const translateStatus = useCallback(
     (s: string) => {
@@ -182,9 +250,23 @@ export default function SpecialOrdersModule() {
     }
 
     if (editOrder) {
+      // r-deposit-integrity-1 EDIT guard: never overwrite depositAmount from form.
+      // The form field `deposit` was parsed but we IGNORE it here — entity's
+      // committed depositAmount is the source of truth. Recalculate balance from
+      // the (possibly updated) price minus the locked deposit.
+      const spread = { ...editOrder, ...form, customerName, cost, price } as SpecialOrder;
+      const lockedDeposit = editOrder.depositAmount || 0;
+      const newPrice = (spread as any).price || 0;
+      const newTaxRate = settings.taxRate || 0.0925;
+      const newTaxable = !!(spread as any).taxable;
+      const newTaxAmt = newTaxable ? Math.round(newPrice * newTaxRate) : 0;
+      const newTotalWithTax = newPrice + newTaxAmt;
+      const lockedBalance = Math.max(0, newTotalWithTax - lockedDeposit);
+
       const updated: SpecialOrder = {
-        ...editOrder, ...form, customerName, balance,
-        cost, price, depositAmount: deposit,
+        ...spread,
+        depositAmount: lockedDeposit,
+        balance: lockedBalance,
         updatedAt: new Date().toISOString(),
       } as SpecialOrder;
       const nextOrders = specialOrdersRef.current.map((o) => (o.id === editOrder.id ? updated : o));
@@ -233,33 +315,274 @@ export default function SpecialOrdersModule() {
       }
 
       if (deposit > 0) {
-        // Reverse-tax via shared helper: deposit cash is tax-inclusive,
-        // split into pre-tax base + tax so cart adds tax and ends at exactly $deposit.
-        const split = reverseTaxFromPayment(deposit, taxRate, taxable);
-        const item: CartItem = {
-          id: generateId(), name: `Special Order Deposit - ${form.itemDescription}`,
-          category: 'service', price: split.baseCents, qty: 1,
-          taxable, cbeEligible: false, specialOrderId: newOrder.id,
-          notes: `For ${customerName}`,
-        };
-        const nextCart = [...cartRef.current, item];
-        cartRef.current = nextCart;
-        setCart(nextCart);
-        toast('Deposit added to cart', 'info');
+        // r-new-5 port: go through consolidation helper (invariant: 1 cart
+        // item per SO). On CREATE there are never pre-existing items for
+        // a just-generated SO id, but this keeps all add-paths identical.
+        consolidateCartForSpecialOrder({
+          specialOrderId: newOrder.id,
+          additionalCents: deposit,
+          itemDescription: form.itemDescription || 'Item',
+          isTaxable: taxable,
+        });
+
+        // r-new-cust-pos port from Round 4: auto-propagate customer to POS.
+        // On CREATE, newOrder.customerId may not be set yet (auto-created
+        // customer path). Fall back to phone-tail match against the working
+        // customer list we already built above.
+        let custId = (newOrder as any).customerId as string | undefined;
+        if (!custId && form.customerPhone) {
+          const phoneTail = (form.customerPhone || '').replace(/\D/g, '').slice(-10);
+          if (phoneTail) {
+            const matched = workingCustomers.find((c) => {
+              const cTail = (c.phone || '').replace(/\D/g, '').slice(-10);
+              return cTail && cTail === phoneTail;
+            });
+            if (matched) custId = matched.id;
+          }
+        }
+        if (custId) {
+          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+        }
+
+        toast(
+          lang === 'es'
+            ? `Pedido creado. Depósito ${formatCurrency(deposit)} agregado al carrito.`
+            : `Special order created. Deposit ${formatCurrency(deposit)} added to cart.`,
+          'info',
+        );
+      } else {
+        toast(L.specialOrderCreated || 'Special order created!', 'success');
       }
-      toast(L.specialOrderCreated || 'Special order created!', 'success');
     }
 
     setShowModal(false);
     setEditOrder(null);
   }, [form, editOrder, settings, currentEmployee, lang, L,
-      setSpecialOrders, setCustomers, setCart, toast]);
+      setSpecialOrders, setCustomers, setCart, toast,
+      consolidateCartForSpecialOrder, dispatch]);
 
   // NOTE: `collectBalance` was removed as dead code — the TicketCard's
   // onCollectBalance handler opens the DepositModal directly via
   // setDepositModalOrder, which has its own payment flow with proper
   // user-input validation. The old collectBalance function bypassed that
   // flow and marked orders as picked_up unconditionally.
+
+  // r-new-4 port from Repairs Round 1: cancel with deposit disposition.
+  // Before this, cancelling left depositAmount intact — ghost revenue with
+  // no record of what happened to the money. Every cancellation now forces
+  // a disposition choice (store_credit / cash / forfeit).
+  const handleCancelSpecialOrder = useCallback((order: SpecialOrder, choice: {
+    method: 'store_credit' | 'cash' | 'forfeit';
+    note: string;
+  }) => {
+    const depositCents = order.depositAmount || 0;
+    const now = new Date().toISOString();
+
+    // 1. Customer side effects
+    if (choice.method === 'store_credit' && depositCents > 0) {
+      const phoneTail = (order.customerPhone || '').replace(/\D/g, '').slice(-10);
+      const matched = customersRef.current.find((c) => {
+        if ((order as any).customerId && c.id === (order as any).customerId) return true;
+        if (phoneTail) {
+          const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
+          if (cPhone && cPhone === phoneTail) return true;
+        }
+        return false;
+      });
+      if (matched) {
+        const updatedCustomer = {
+          ...matched,
+          storeCredit: (matched.storeCredit || 0) + depositCents,
+        };
+        const nextCustomers = customersRef.current.map((c) =>
+          c.id === matched.id ? updatedCustomer : c
+        );
+        customersRef.current = nextCustomers;
+        setCustomers(nextCustomers);
+        persist.customer(updatedCustomer.id, updatedCustomer as unknown as Record<string, unknown>);
+      } else {
+        toast(
+          lang === 'es'
+            ? '⚠️ No se identificó al cliente. Aplica crédito manualmente.'
+            : '⚠️ Customer not matched. Apply credit manually.',
+          'warning',
+        );
+      }
+    } else if (choice.method === 'cash' && depositCents > 0) {
+      const refundSale: Sale = {
+        id: generateId(),
+        storeId: (order as any).storeId,
+        invoiceNumber: `REFUND-${order.id.slice(-6).toUpperCase()}`,
+        customerId: (order as any).customerId,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        items: [{
+          id: generateId(),
+          name: `${order.itemDescription || 'Special Order'} — ${lang === 'es' ? 'Reembolso cancelación' : 'Cancellation refund'}`,
+          category: 'service' as any,
+          price: -depositCents,
+          qty: 1,
+          taxable: false,
+          cbeEligible: false,
+          specialOrderId: order.id,
+        }],
+        subtotal: -depositCents,
+        taxAmount: 0,
+        cbeTotal: 0,
+        total: -depositCents,
+        paymentMethod: 'Cash' as any,
+        status: 'voided',
+        employeeId: currentEmployee?.id,
+        employeeName: currentEmployee?.name,
+        notes: `Special order cancelled — cash refund for order ${order.id.slice(-6).toUpperCase()}`,
+        refundReason: 'Special order cancelled',
+        createdAt: now,
+      };
+      const nextSales = [...salesRef.current, refundSale];
+      salesRef.current = nextSales;
+      setSales(nextSales);
+      persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
+    }
+
+    // 2. Update SO entity
+    const updated = {
+      ...order,
+      status: 'cancelled',
+      depositRefundMethod: choice.method,
+      depositRefundAmount: depositCents,
+      cancellationNote: choice.note || '',
+      cancelledAt: now,
+      depositAmount: 0,
+      balance: 0,
+      updatedAt: now,
+    } as unknown as SpecialOrder;
+    const nextOrders = specialOrdersRef.current.map((o) => o.id === order.id ? updated : o);
+    specialOrdersRef.current = nextOrders;
+    setSpecialOrders(nextOrders);
+    persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+
+    const msg = {
+      store_credit: lang === 'es'
+        ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
+        : `Cancelled. $${(depositCents/100).toFixed(2)} store credit added.`,
+      cash: lang === 'es'
+        ? `Cancelado. Reembolso $${(depositCents/100).toFixed(2)} registrado.`
+        : `Cancelled. $${(depositCents/100).toFixed(2)} cash refund recorded.`,
+      forfeit: lang === 'es'
+        ? 'Cancelado. Depósito retenido.'
+        : 'Cancelled. Deposit forfeited.',
+    }[choice.method];
+    toast(msg, 'success');
+    setCancelTarget(null);
+  }, [lang, setCustomers, setSales, setSpecialOrders, toast, currentEmployee]);
+
+  const handleComplete = useCallback((order: SpecialOrder) => {
+    const balance = order.balance || 0;
+    const deposit = order.depositAmount || 0;
+
+    if (balance === 0 && deposit === 0) {
+      const updated: SpecialOrder = { ...order, status: 'picked_up' as any, updatedAt: new Date().toISOString() };
+      const next = specialOrdersRef.current.map((o) => o.id === order.id ? updated : o);
+      specialOrdersRef.current = next;
+      setSpecialOrders(next);
+      persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+      toast(lang === 'es' ? 'Pedido completado' : 'Order completed', 'success');
+      return;
+    }
+    setCompleteConfirm(order);
+  }, [setSpecialOrders, toast, lang]);
+
+  const handleCompleteConfirmed = useCallback(() => {
+    const order = completeConfirm;
+    if (!order) return;
+
+    if ((order.balance || 0) > 0) {
+      const isTaxable = !!(order as any).taxable;
+      consolidateCartForSpecialOrder({
+        specialOrderId: order.id,
+        additionalCents: order.balance,
+        itemDescription: order.itemDescription || 'Item',
+        isTaxable,
+      });
+      let custId = (order as any).customerId as string | undefined;
+      if (!custId && order.customerPhone) {
+        const phoneTail = (order.customerPhone || '').replace(/\D/g, '').slice(-10);
+        if (phoneTail) {
+          const matched = customersRef.current.find((c) => {
+            const cTail = (c.phone || '').replace(/\D/g, '').slice(-10);
+            return cTail && cTail === phoneTail;
+          });
+          if (matched) custId = matched.id;
+        }
+      }
+      if (custId) {
+        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+      }
+    }
+
+    const updated: SpecialOrder = { ...order, status: 'picked_up' as any, updatedAt: new Date().toISOString() };
+    const next = specialOrdersRef.current.map((o) => o.id === order.id ? updated : o);
+    specialOrdersRef.current = next;
+    setSpecialOrders(next);
+    persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+
+    setCompleteConfirm(null);
+    toast(
+      (order.balance || 0) > 0
+        ? (lang === 'es' ? 'Balance agregado al carrito. Ve a POS.' : 'Balance added to cart. Go to POS.')
+        : (lang === 'es' ? 'Pedido completado' : 'Order completed'),
+      'success',
+    );
+  }, [completeConfirm, consolidateCartForSpecialOrder, setSpecialOrders, dispatch, toast, lang]);
+
+  const handleSMS = useCallback((_order: SpecialOrder) => {
+    // TODO: wire SMS send once an SO-specific template is agreed.
+    // Placeholder toast keeps the button interactive without inventing copy.
+    toast(
+      lang === 'es'
+        ? 'SMS no implementado aún para pedidos especiales'
+        : 'SMS not yet wired for special orders',
+      'info',
+    );
+  }, [lang, toast]);
+
+  const handleDeleteConfirmed = useCallback(() => {
+    if (!deleteConfirm) return;
+
+    // GUARD 1: prevent delete if SO has pending cart items.
+    const hasPendingCart = cartRef.current.some((item) => item.specialOrderId === deleteConfirm.id);
+    if (hasPendingCart) {
+      toast(
+        lang === 'es'
+          ? 'No se puede eliminar: hay items de este pedido en el carrito. Limpia el carrito primero.'
+          : 'Cannot delete: this order has items in cart. Clear the cart first.',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    // GUARD 2: prevent delete of paid/completed SOs.
+    const hasDeposit = (deleteConfirm.depositAmount || 0) > 0;
+    const isCompleted = ['picked_up', 'received', 'ready'].includes(normalizeStatus(deleteConfirm.status));
+    if (hasDeposit || isCompleted) {
+      toast(
+        lang === 'es'
+          ? 'No se puede eliminar pedidos pagados o recibidos. Usa "Cancelar" para reembolsar.'
+          : 'Cannot delete paid or received orders. Use "Cancel" to refund.',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    const next = specialOrdersRef.current.filter((o) => o.id !== deleteConfirm.id);
+    specialOrdersRef.current = next;
+    setSpecialOrders(next);
+    remove.specialOrder(deleteConfirm.id);
+    setDeleteConfirm(null);
+    toast(lang === 'es' ? 'Pedido eliminado' : 'Order deleted', 'success');
+  }, [deleteConfirm, setSpecialOrders, toast, lang]);
 
   return (
     <>
@@ -308,6 +631,7 @@ export default function SpecialOrdersModule() {
               total={o.price || (o as any).totalPrice || (o as any).total}
               deposit={o.depositAmount}
               balance={o.balance}
+              pendingCents={pendingBySpecialOrderId.get(o.id) || 0}
               createdAt={o.createdAt as string}
               onClick={() => openEdit(o)}
               onCollectBalance={o.balance > 0 ? () => setDepositModalOrder(o) : undefined}
@@ -325,6 +649,27 @@ export default function SpecialOrdersModule() {
                   lang as 'en' | 'es',
                 )
               ) : undefined}
+              onDeposit={
+                !['cancelled', 'picked_up'].includes(normalizeStatus(o.status)) && (o.balance || 0) > 0
+                  ? () => setDepositModalOrder(o)
+                  : undefined
+              }
+              onComplete={() => handleComplete(o)}
+              completeLabel={
+                normalizeStatus(o.status) === 'cancelled'
+                  ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
+                  : normalizeStatus(o.status) === 'picked_up'
+                  ? (lang === 'es' ? '✓ Entregado' : '✓ Picked up')
+                  : (o.balance || 0) > 0
+                  ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(o.balance)}` : `Complete / Collect ${formatCurrency(o.balance)}`)
+                  : (lang === 'es' ? 'Marcar entregado' : 'Mark picked up')
+              }
+              completeDisabled={['cancelled', 'picked_up'].includes(normalizeStatus(o.status))}
+              completeVariant={normalizeStatus(o.status) === 'picked_up' ? 'green' : 'amber'}
+              onPrint={undefined /* TODO: wire printOrderTicket when SO ticket format is designed */}
+              onSMS={() => handleSMS(o)}
+              onDelete={() => setDeleteConfirm(o)}
+              smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && o.customerPhone)}
               lang={lang}
               L={L}
             />
@@ -354,6 +699,11 @@ export default function SpecialOrdersModule() {
           customers={customers}
           settings={settings}
           onSave={handleSave}
+          onRequestCancel={(o) => {
+            setShowModal(false);
+            setEditOrder(null);
+            setCancelTarget(o);
+          }}
           onClose={() => { setShowModal(false); setEditOrder(null); }}
           lang={lang}
           L={L}
@@ -367,35 +717,98 @@ export default function SpecialOrdersModule() {
           taxRate={settings.taxRate || 0.0925}
           taxable={!!(depositModalOrder as any).taxable}
           existingDeposit={(depositModalOrder.depositAmount || 0) / 100}
+          pendingInCart={(pendingBySpecialOrderId.get(depositModalOrder.id) || 0) / 100}
           mode="balance"
           lang={lang}
           onClose={() => setDepositModalOrder(null)}
           onConfirm={({ depositAmt }) => {
-            const o = depositModalOrder;
-            const amtCents = Math.round(depositAmt * 100);
-            const taxable = !!(o as any).taxable;
-            const taxRate = settings.taxRate || 0.0925;
-            const split = reverseTaxFromPayment(amtCents, taxRate, taxable);
-            const cartItem: CartItem = {
-              id: generateId(),
-              name: `${lang === 'es' ? 'Pago Pedido' : 'Special Order Payment'} — ${o.itemDescription || 'Item'}`,
-              category: 'service',
-              price: split.baseCents,
-              qty: 1, taxable, cbeEligible: false,
-              specialOrderId: o.id,
-              notes: o.id.slice(-6).toUpperCase(),
-            };
-            const nextCart = [...cartRef.current, cartItem];
-            cartRef.current = nextCart;
-            setCart(nextCart);
-            // r-pkg-b1: DO NOT update specialOrder balance/depositAmount here.
-            // The POS checkout handler (POSModule.tsx §4b) reads the order from
-            // state and applies deduction + persist when the sale completes.
-            // Premature persist here caused double-deduction and false revenue
-            // if the user cancelled checkout.
-            setDepositModalOrder(null);
-            toast(lang === 'es' ? `$${depositAmt.toFixed(2)} agregado al carrito` : `$${depositAmt.toFixed(2)} added to cart`, 'success');
+            // r-new-5 race guard port
+            if (isConsolidating) return;
+            setIsConsolidating(true);
+            try {
+              const o = depositModalOrder;
+              const newAmtCents = Math.round(depositAmt * 100);
+              const taxable = !!(o as any).taxable;
+
+              const { combinedCents } = consolidateCartForSpecialOrder({
+                specialOrderId: o.id,
+                additionalCents: newAmtCents,
+                itemDescription: o.itemDescription || 'Item',
+                isTaxable: taxable,
+              });
+
+              // r-new-cust-pos port: auto-propagate customer to POS.
+              let custId = (o as any).customerId as string | undefined;
+              if (!custId && o.customerPhone) {
+                const phoneTail = (o.customerPhone || '').replace(/\D/g, '').slice(-10);
+                if (phoneTail) {
+                  const matched = customersRef.current.find((c) => {
+                    const cTail = (c.phone || '').replace(/\D/g, '').slice(-10);
+                    return cTail && cTail === phoneTail;
+                  });
+                  if (matched) custId = matched.id;
+                }
+              }
+              if (custId) {
+                dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+              }
+
+              setDepositModalOrder(null);
+              toast(
+                lang === 'es'
+                  ? `$${(combinedCents / 100).toFixed(2)} en carrito para este pedido`
+                  : `$${(combinedCents / 100).toFixed(2)} in cart for this order`,
+                'success',
+              );
+            } finally {
+              setTimeout(() => setIsConsolidating(false), 100);
+            }
           }}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelSpecialOrderModal
+          specialOrder={cancelTarget}
+          customerHasPhone={!!cancelTarget.customerPhone}
+          customerName={cancelTarget.customerName}
+          lang={lang}
+          onConfirm={(choice) => handleCancelSpecialOrder(cancelTarget, choice)}
+          onClose={() => setCancelTarget(null)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Eliminar pedido' : 'Delete order'}
+          message={lang === 'es'
+            ? '¿Eliminar este pedido? Esta acción no se puede deshacer.'
+            : 'Delete this order? This cannot be undone.'}
+          variant="danger"
+          confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {completeConfirm && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Completar pedido' : 'Complete order'}
+          message={
+            (completeConfirm.balance || 0) > 0
+              ? (lang === 'es'
+                  ? `¿Marcar entregado y cobrar saldo de ${formatCurrency(completeConfirm.balance)}?`
+                  : `Mark picked up and collect balance of ${formatCurrency(completeConfirm.balance)}?`)
+              : (lang === 'es' ? '¿Marcar como entregado?' : 'Mark as picked up?')
+          }
+          variant="warning"
+          confirmLabel={lang === 'es' ? 'Confirmar' : 'Confirm'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={handleCompleteConfirmed}
+          onCancel={() => setCompleteConfirm(null)}
         />
       )}
     </>
@@ -411,6 +824,7 @@ interface SpecialOrderModalProps {
   customers: Customer[];
   settings: import('@/store/types').StoreSettings;
   onSave: () => void;
+  onRequestCancel?: (order: SpecialOrder) => void;
   onClose: () => void;
   lang: string;
   L: Record<string, any>;
@@ -419,7 +833,7 @@ interface SpecialOrderModalProps {
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onClose, lang, L }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L }: SpecialOrderModalProps) {
   const es = lang === 'es';
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
 
@@ -610,18 +1024,24 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
             </div>
             <div>
               <label className="label">💰 {es ? 'Depósito ($)' : 'Deposit ($)'}</label>
-              <input
-                className="input" type="number" step="0.01" min="0"
-                value={form.depositAmount as any}
-                onChange={(e) => upd('depositAmount', e.target.value)}
-                placeholder="0.00" style={{ color: '#10b981', fontWeight: 700 }}
-              />
-              {/* r-pkg-b2: warn when editing deposit on existing order */}
-              {editOrder && parseFloat(form.depositAmount as any || '0') > 0 && (
-                <p style={{ fontSize: '0.68rem', color: '#f59e0b', marginTop: '0.35rem' }}>
-                  ⚠️ {es
-                    ? 'Cambiar el depósito aquí NO procesa un pago. Usa "Cobrar Balance" para registrar pagos por el POS.'
-                    : 'Changing the deposit here does NOT process a payment. Use "Collect Balance" to record payments through the POS.'}
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input" type="number" step="0.01" min="0"
+                  value={form.depositAmount as any}
+                  onChange={(e) => upd('depositAmount', e.target.value)}
+                  disabled={!!editOrder}
+                  placeholder="0.00"
+                  style={{ color: '#10b981', fontWeight: 700, opacity: editOrder ? 0.6 : 1 }}
+                />
+                {editOrder && (
+                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    🔒
+                  </span>
+                )}
+              </div>
+              {editOrder && (
+                <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  {es ? 'Depósito bloqueado — se cobra solo vía POS' : 'Deposit locked — collected via POS'}
                 </p>
               )}
             </div>
@@ -704,8 +1124,20 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem' }}>
+        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>{L.cancel || 'Cancel'}</button>
+          {/* r-new-4 port: Cancel Order with disposition. Only shown when editing
+              an SO that has a deposit — unpaid orders can be deleted directly. */}
+          {editOrder && (editOrder.depositAmount || 0) > 0 && onRequestCancel && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ flex: 1, color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
+              onClick={() => onRequestCancel(editOrder)}
+            >
+              ❌ {es ? 'Cancelar Pedido' : 'Cancel Order'}
+            </button>
+          )}
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={onSave}>💾 {L.save || 'Save'}</button>
         </div>
       </div>
