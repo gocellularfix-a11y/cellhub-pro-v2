@@ -5,7 +5,7 @@
 import { useState, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
-import { Modal } from '@/components/ui';
+import { Modal, ConfirmDialog } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
 import { exportBackup, importBackup } from '@/services/storage';
 import { persistSettings } from '@/services/persist';
@@ -14,6 +14,7 @@ import { isWeakPin } from '@/utils/pinHash';
 import { isElectron, getElectronAPI } from '@/utils/platform';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
+import FirebaseSetupModal from './FirebaseSetupModal';
 
 const SECTIONS = [
   { id: 'store',       icon: '🏪',  label: 'Store Info' },
@@ -326,6 +327,11 @@ export default function SettingsModule() {
     onConfirm: () => void;
   } | null>(null);
   const [confirmInput, setConfirmInput] = useState('');
+
+  // r-new-7: cloud sync opt-in toggle target ('on' | 'off' | null)
+  const [cloudToggleTarget, setCloudToggleTarget] = useState<'on' | 'off' | null>(null);
+  const [showFirebaseSetup, setShowFirebaseSetup] = useState(false);
+  const [showRestartPrompt, setShowRestartPrompt] = useState<'enabled' | 'disabled' | null>(null);
 
   const requireConfirm = (opts: typeof confirmModal) => {
     setConfirmInput('');
@@ -1460,6 +1466,71 @@ export default function SettingsModule() {
                 {L.backupRestoreTitle || 'Backup & Restore'}
               </h2>
 
+              {/* r-new-7: Cloud Sync (Firebase) — opt-in with guided setup. */}
+              <div style={{ border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(255,255,255,0.03)', borderRadius: '0.75rem', padding: '1.25rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginTop: 0, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  ☁️ {lang === 'es' ? 'Sincronización en la Nube' : 'Cloud Sync'}
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 500,
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '0.3rem',
+                    background: 'rgba(139, 92, 246, 0.15)',
+                    color: '#a78bfa',
+                  }}>
+                    {lang === 'es' ? 'Avanzado' : 'Advanced'}
+                  </span>
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '1rem', lineHeight: 1.5 }}>
+                  {lang === 'es'
+                    ? 'Respalda tus datos en Firebase (Google Cloud) y sincronízalos entre múltiples dispositivos de tu negocio. Opcional — la app funciona completamente offline sin esto.'
+                    : 'Back up your data to Firebase (Google Cloud) and sync across multiple devices for your business. Optional — the app works fully offline without this.'}
+                </p>
+
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  cursor: 'pointer',
+                  padding: '0.75rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderRadius: '0.5rem',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!!(settings as any).cloudSyncEnabled}
+                    onChange={(e) => setCloudToggleTarget(e.target.checked ? 'on' : 'off')}
+                    style={{ width: '1.1rem', height: '1.1rem', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 500 }}>
+                      {lang === 'es' ? 'Activar sincronización con Firebase' : 'Enable Firebase cloud sync'}
+                    </div>
+                    {(settings as any).cloudSyncEnabled ? (
+                      <div style={{ fontSize: '0.78rem', color: '#10b981', marginTop: '0.2rem' }}>
+                        ✓ {lang === 'es' ? 'Activo — cambios se respaldan en la nube' : 'Active — changes back up to the cloud'}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: '0.2rem' }}>
+                        {lang === 'es' ? 'Desactivado — datos solo guardados localmente' : 'Disabled — data stored locally only'}
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                {(settings as any).cloudSyncEnabled && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <button
+                      onClick={() => setShowFirebaseSetup(true)}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      {lang === 'es' ? 'Cambiar configuración de Firebase' : 'Change Firebase config'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* ── Storage Usage Indicator ── */}
               {(() => {
                 // r-settings-1 B-11: appointments added (was missing from scan).
@@ -1747,6 +1818,84 @@ export default function SettingsModule() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* r-new-7: Cloud sync enable — check config, open wizard if missing */}
+      {cloudToggleTarget === 'on' && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Activar sincronización en la nube' : 'Enable cloud sync'}
+          message={lang === 'es'
+            ? 'La app iniciará la sincronización con Firebase. Si no has configurado Firebase, te guiaremos en el proceso. Deberás reiniciar la app para completar.'
+            : 'The app will start syncing with Firebase. If you haven\'t configured Firebase yet, we\'ll walk you through it. You will need to restart to complete.'}
+          variant="warning"
+          confirmLabel={lang === 'es' ? 'Continuar' : 'Continue'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={() => {
+            const hasConfig = !!localStorage.getItem('cellhub_firebase_config');
+            if (!hasConfig) {
+              setShowFirebaseSetup(true);
+              setCloudToggleTarget(null);
+            } else {
+              setSettings({ cloudSyncEnabled: true } as any);
+              persistSettings({ cloudSyncEnabled: true } as Record<string, unknown>);
+              setCloudToggleTarget(null);
+              setShowRestartPrompt('enabled');
+            }
+          }}
+          onCancel={() => setCloudToggleTarget(null)}
+        />
+      )}
+
+      {/* r-new-7: Cloud sync disable confirmation */}
+      {cloudToggleTarget === 'off' && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Desactivar sincronización en la nube' : 'Disable cloud sync'}
+          message={lang === 'es'
+            ? 'Tus datos locales no se pierden. Cambios nuevos no se respaldarán en Firebase hasta reactivar. Deberás reiniciar la app.'
+            : 'Your local data is preserved. New changes won\'t back up to Firebase until re-enabled. You will need to restart the app.'}
+          variant="warning"
+          confirmLabel={lang === 'es' ? 'Desactivar' : 'Disable'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={() => {
+            setSettings({ cloudSyncEnabled: false } as any);
+            persistSettings({ cloudSyncEnabled: false } as Record<string, unknown>);
+            setCloudToggleTarget(null);
+            setShowRestartPrompt('disabled');
+          }}
+          onCancel={() => setCloudToggleTarget(null)}
+        />
+      )}
+
+      {/* r-new-7: Firebase Setup Modal (guided wizard) */}
+      {showFirebaseSetup && (
+        <FirebaseSetupModal
+          lang={lang}
+          onClose={() => setShowFirebaseSetup(false)}
+          onComplete={() => {
+            setSettings({ cloudSyncEnabled: true } as any);
+            persistSettings({ cloudSyncEnabled: true } as Record<string, unknown>);
+            setShowFirebaseSetup(false);
+            setShowRestartPrompt('enabled');
+          }}
+        />
+      )}
+
+      {/* r-new-7: Restart prompt after enabling/disabling cloud sync */}
+      {showRestartPrompt && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Reiniciar la app' : 'Restart the app'}
+          message={lang === 'es'
+            ? `Sincronización ${showRestartPrompt === 'enabled' ? 'activada' : 'desactivada'}. Reinicia la app para aplicar los cambios.`
+            : `Cloud sync ${showRestartPrompt}. Restart the app to apply the changes.`}
+          variant="default"
+          confirmLabel="OK"
+          cancelLabel={lang === 'es' ? 'Cerrar' : 'Close'}
+          onConfirm={() => setShowRestartPrompt(null)}
+          onCancel={() => setShowRestartPrompt(null)}
+        />
       )}
     </div>
   );

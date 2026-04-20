@@ -73,22 +73,27 @@ export default function App() {
   }, [loading]);
 
   // ── Boot ────────────────────────────────────────────────
-  // Firebase is OPTIONAL. If no config, the app runs fully
-  // offline using localStorage. The Setup Wizard always runs
-  // on first launch regardless of Firebase availability.
+  // r-new-7: Firebase is OPT-IN. Default = localStorage-only.
+  // User enables via Settings → Cloud Sync toggle, then restarts the app.
+  // The Setup Wizard always runs on first launch regardless of cloud mode.
 
   useEffect(() => {
     let cancelled = false;
 
     function boot() {
       try {
-        const firestore = initFirebase(); // returns null if no config
+        // Read cloudSyncEnabled directly from localStorage — the settings
+        // slice in React state hasn't hydrated yet at boot time.
+        const persistedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+        const cloudSyncEnabled = persistedSettings.cloudSyncEnabled === true;
 
-        if (cancelled) return;
-
-        if (firestore) {
-          setDb(firestore);
-          setFirestoreInstance(firestore);
+        if (cloudSyncEnabled) {
+          const firestore = initFirebase(); // returns null if no config
+          if (cancelled) return;
+          if (firestore) {
+            setDb(firestore);
+            setFirestoreInstance(firestore);
+          }
         }
         // Whether or not Firebase is available, check if setup was done
         const setupDone = localStorage.getItem('cellhub_setup_complete');

@@ -24,6 +24,11 @@ export interface Timestamp {
 // ── Settings ──────────────────────────────────────────────
 
 export interface StoreSettings {
+  // r-new-7: Firebase cloud sync opt-in. Default false. When true, App.tsx
+  // calls initFirebase() on boot and useFirestoreSync connects. When false
+  // (or undefined), app runs localStorage-only.
+  cloudSyncEnabled?: boolean;
+
   // Store info
   storeName: string;
   storeAddress: string;
