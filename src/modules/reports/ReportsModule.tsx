@@ -22,7 +22,7 @@ import { SearchInput } from '@/components/ui';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
-import type { Sale, SaleItem, Repair, Unlock } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder } from '@/store/types';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -194,7 +194,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, inventory, customers, settings, lang, globalSearchTerm },
+    state: { sales, repairs, unlocks, specialOrders, inventory, customers, settings, lang, globalSearchTerm },
     dispatch,
   } = useApp();
 
@@ -211,6 +211,7 @@ export default function ReportsModule() {
   const safeSales: Sale[] = Array.isArray(sales) ? sales : [];
   const safeRepairs: Repair[] = Array.isArray(repairs) ? repairs : [];
   const safeUnlocks: Unlock[] = Array.isArray(unlocks) ? unlocks : [];
+  const safeSpecialOrders: SpecialOrder[] = Array.isArray(specialOrders) ? specialOrders : [];
 
   // ── State ─────────────────────────────────────────────────
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly' | 'range' | 'returning'>('daily');
@@ -350,6 +351,106 @@ export default function ReportsModule() {
     filteredUnlocks.filter((u) => isUnlockCompleted(u) && !unlocksAlreadyInSales.has(u.id)),
     [filteredUnlocks, unlocksAlreadyInSales]
   );
+
+  // ── r-new-8: Cancellations in period ─────────────────────
+  // Rows sourced from entity state (SO/Repair/Unlock) using the cancellation
+  // metadata fields introduced in Rounds 1/5/6: depositRefundMethod,
+  // depositRefundAmount, cancellationNote, cancelledAt. Voided sales from
+  // the cash refund path are NOT used here — entity state is the source of
+  // truth for disposition context (customer, reason, method).
+  type CancellationRow = {
+    id: string;
+    type: 'special_order' | 'repair' | 'unlock';
+    typeLabel: string;
+    reference: string;
+    customerName: string;
+    itemDescription: string;
+    refundAmountCents: number;
+    refundMethod: 'store_credit' | 'cash' | 'forfeit' | 'unknown';
+    cancelledAt: unknown;
+    cancellationNote: string;
+  };
+
+  const cancellationsInPeriod = useMemo(() => {
+    const rows: CancellationRow[] = [];
+
+    for (const so of safeSpecialOrders) {
+      const status = String(so.status || '').toLowerCase();
+      if (status !== 'cancelled') continue;
+      const cancelledAt = (so as any).cancelledAt || so.updatedAt;
+      if (!inRange(cancelledAt)) continue;
+      rows.push({
+        id: so.id,
+        type: 'special_order',
+        typeLabel: es ? 'Pedido Especial' : 'Special Order',
+        reference: so.id.slice(-8).toUpperCase(),
+        customerName: so.customerName || (es ? 'Sin nombre' : 'No name'),
+        itemDescription: so.itemDescription || '',
+        refundAmountCents: (so as any).depositRefundAmount || 0,
+        refundMethod: (so as any).depositRefundMethod || 'unknown',
+        cancelledAt,
+        cancellationNote: (so as any).cancellationNote || '',
+      });
+    }
+
+    for (const r of safeRepairs) {
+      const status = String(r.status || '').toLowerCase();
+      if (status !== 'cancelled') continue;
+      const cancelledAt = (r as any).cancelledAt || r.updatedAt;
+      if (!inRange(cancelledAt)) continue;
+      rows.push({
+        id: r.id,
+        type: 'repair',
+        typeLabel: es ? 'Reparación' : 'Repair',
+        reference: ((r as any).ticketNumber || r.id.slice(-8)).toString().toUpperCase(),
+        customerName: r.customerName || (es ? 'Sin nombre' : 'No name'),
+        itemDescription: [r.device, r.issue].filter(Boolean).join(' — '),
+        refundAmountCents: (r as any).depositRefundAmount || 0,
+        refundMethod: (r as any).depositRefundMethod || 'unknown',
+        cancelledAt,
+        cancellationNote: (r as any).cancellationNote || '',
+      });
+    }
+
+    for (const u of safeUnlocks) {
+      const status = String(u.status || '').toLowerCase();
+      if (status !== 'cancelled') continue;
+      const cancelledAt = (u as any).cancelledAt || u.updatedAt;
+      if (!inRange(cancelledAt)) continue;
+      rows.push({
+        id: u.id,
+        type: 'unlock',
+        typeLabel: es ? 'Desbloqueo' : 'Unlock',
+        reference: u.id.slice(-8).toUpperCase(),
+        customerName: u.customerName || (es ? 'Sin nombre' : 'No name'),
+        itemDescription: `${u.device || ''} ${u.carrier ? `(${u.carrier})` : ''}`.trim(),
+        refundAmountCents: (u as any).depositRefundAmount || 0,
+        refundMethod: (u as any).depositRefundMethod || 'unknown',
+        cancelledAt,
+        cancellationNote: (u as any).cancellationNote || '',
+      });
+    }
+
+    rows.sort((a, b) => {
+      const da = toDateSafe(a.cancelledAt)?.getTime() || 0;
+      const db = toDateSafe(b.cancelledAt)?.getTime() || 0;
+      return db - da;
+    });
+
+    return rows;
+  }, [safeSpecialOrders, safeRepairs, safeUnlocks, inRange, es]);
+
+  const cancellationTotals = useMemo(() => {
+    let storeCredit = 0;
+    let cash = 0;
+    let forfeit = 0;
+    for (const c of cancellationsInPeriod) {
+      if (c.refundMethod === 'store_credit') storeCredit += c.refundAmountCents;
+      else if (c.refundMethod === 'cash') cash += c.refundAmountCents;
+      else if (c.refundMethod === 'forfeit') forfeit += c.refundAmountCents;
+    }
+    return { storeCredit, cash, forfeit, count: cancellationsInPeriod.length };
+  }, [cancellationsInPeriod]);
 
   // ============================================================
   //  CORE STATS — single loop, all cents, single source of truth
@@ -1208,6 +1309,118 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                     <span style={{ fontWeight: 700, color: '#a5b4fc' }}>{formatCurrency(item.revenueCents)}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── r-new-8: Cancellations (SO / Repair / Unlock) ── */}
+          {cancellationsInPeriod.length > 0 && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(239, 68, 68, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fca5a5' }}>
+                  ❌ {es ? 'Cancelaciones' : 'Cancellations'}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>
+                  {cancellationsInPeriod.length} {es ? 'cancelaciones' : 'cancellations'}
+                </span>
+              </div>
+
+              {/* Summary row */}
+              <div style={{
+                padding: '0.75rem 1rem',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                display: 'flex',
+                gap: '1.5rem',
+                fontSize: '0.82rem',
+                flexWrap: 'wrap',
+              }}>
+                {cancellationTotals.storeCredit > 0 && (
+                  <div>
+                    <span style={{ color: '#9ca3af' }}>💳 {es ? 'Crédito tienda' : 'Store credit'}: </span>
+                    <span style={{ fontWeight: 700, color: '#60a5fa' }}>{formatCurrency(cancellationTotals.storeCredit)}</span>
+                  </div>
+                )}
+                {cancellationTotals.cash > 0 && (
+                  <div>
+                    <span style={{ color: '#9ca3af' }}>💵 {es ? 'Efectivo' : 'Cash refund'}: </span>
+                    <span style={{ fontWeight: 700, color: '#fbbf24' }}>{formatCurrency(cancellationTotals.cash)}</span>
+                  </div>
+                )}
+                {cancellationTotals.forfeit > 0 && (
+                  <div>
+                    <span style={{ color: '#9ca3af' }}>💰 {es ? 'Retenido' : 'Forfeit'}: </span>
+                    <span style={{ fontWeight: 700, color: '#a3e635' }}>{formatCurrency(cancellationTotals.forfeit)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Rows */}
+              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'rgba(15, 23, 42, 0.95)' }}>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      {[
+                        es ? 'Tipo' : 'Type',
+                        es ? 'Ref.' : 'Ref.',
+                        es ? 'Cliente' : 'Customer',
+                        es ? 'Artículo' : 'Item',
+                        es ? 'Método' : 'Method',
+                        es ? 'Monto' : 'Amount',
+                        es ? 'Fecha' : 'Date',
+                      ].map((h) => (
+                        <th key={h} style={{
+                          textAlign: h === (es ? 'Monto' : 'Amount') ? 'right' : 'left',
+                          padding: '0.5rem 0.75rem',
+                          color: '#9ca3af',
+                          fontSize: '0.66rem',
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cancellationsInPeriod.map((c) => {
+                      const methodLabel = ({
+                        store_credit: { text: es ? 'Crédito' : 'Credit', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.15)' },
+                        cash: { text: es ? 'Efectivo' : 'Cash', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+                        forfeit: { text: es ? 'Retenido' : 'Forfeit', color: '#a3e635', bg: 'rgba(163, 230, 53, 0.15)' },
+                        unknown: { text: es ? 'Desconocido' : 'Unknown', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)' },
+                      } as const)[c.refundMethod] || { text: '?', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)' };
+
+                      const dateStr = toDateSafe(c.cancelledAt)?.toLocaleString(es ? 'es-MX' : 'en-US', {
+                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                      }) || '';
+
+                      return (
+                        <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#d1d5db' }}>{c.typeLabel}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.72rem', color: '#a5b4fc' }}>{c.reference}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#e5e7eb' }}>{c.customerName}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#9ca3af', fontSize: '0.74rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.itemDescription}>
+                            {c.itemDescription}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>
+                            <span style={{
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '0.3rem',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: methodLabel.bg,
+                              color: methodLabel.color,
+                            }}>
+                              {methodLabel.text}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: c.refundMethod === 'forfeit' ? '#a3e635' : '#fca5a5' }}>
+                            {c.refundMethod === 'forfeit' ? '+' : '-'}{formatCurrency(c.refundAmountCents)}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#9ca3af', fontSize: '0.72rem' }}>{dateStr}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

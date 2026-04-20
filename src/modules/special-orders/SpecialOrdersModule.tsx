@@ -1047,6 +1047,22 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
             </div>
           </div>
 
+          {/* r-new-8: hint for already-delivered orders — redirect to Returns module */}
+          {editOrder && editOrder.status === 'picked_up' && (
+            <div style={{
+              padding: '0.75rem',
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              borderRadius: '0.5rem',
+              fontSize: '0.82rem',
+              color: '#93c5fd',
+            }}>
+              ℹ️ {es
+                ? 'Pedido ya entregado. Para devoluciones, usa el módulo Returns.'
+                : 'Order already delivered. For refunds, use the Returns module.'}
+            </div>
+          )}
+
           {/* Taxable toggle */}
           <div>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -1127,8 +1143,13 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>{L.cancel || 'Cancel'}</button>
           {/* r-new-4 port: Cancel Order with disposition. Only shown when editing
-              an SO that has a deposit — unpaid orders can be deleted directly. */}
-          {editOrder && (editOrder.depositAmount || 0) > 0 && onRequestCancel && (
+              an SO that has a deposit — unpaid orders can be deleted directly.
+              r-new-8: also hidden on terminal statuses (picked_up / cancelled) —
+              post-delivery refunds must go through the Returns module. */}
+          {editOrder
+            && (editOrder.depositAmount || 0) > 0
+            && !['picked_up', 'cancelled', 'Cancelled'].includes(editOrder.status)
+            && onRequestCancel && (
             <button
               type="button"
               className="btn btn-secondary"
