@@ -130,79 +130,120 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
             </p>
           )}
           <p className="text-xs text-slate-600 mt-1">{formatDate(createdAt)}</p>
-          {onDeposit && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDeposit(); }}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.82rem' }}
-              title={L.deposit || 'Deposit'}
-            >
-              + {L.deposit || 'Deposit'}
-            </button>
-          )}
-          {onComplete && (
-            <button
-              onClick={(e) => { e.stopPropagation(); if (!completeDisabled) onComplete(); }}
-              disabled={completeDisabled}
-              style={{
-                fontSize: '0.82rem',
-                padding: '0.5rem 0.75rem',
-                borderRadius: '0.5rem',
-                border: '1px solid',
-                cursor: completeDisabled ? 'not-allowed' : 'pointer',
-                opacity: completeDisabled ? 0.6 : 1,
-                background: completeVariant === 'green' ? 'rgba(16,185,129,0.2)'
-                          : completeVariant === 'amber' ? 'rgba(245,158,11,0.15)'
-                          : 'rgba(255,255,255,0.05)',
-                color: completeVariant === 'green' ? '#10b981'
-                     : completeVariant === 'amber' ? '#f59e0b'
-                     : '#9ca3af',
-                borderColor: completeVariant === 'green' ? 'rgba(16,185,129,0.4)'
-                           : completeVariant === 'amber' ? 'rgba(245,158,11,0.4)'
-                           : 'rgba(255,255,255,0.1)',
-              }}
-            >
-              {completeLabel || (L.complete || 'Complete')}
-            </button>
-          )}
-          {balance > 0 && onCollectBalance && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onCollectBalance(); }}
-              className="btn btn-success btn-sm mt-2 text-xs"
-            >
-              💰 {L.collectBalance || 'Collect'}
-            </button>
-          )}
-          {onWhatsApp && customerPhone && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onWhatsApp(); }}
-              className="btn btn-sm mt-1 text-xs"
-              style={{ background: 'rgba(37,211,102,0.15)', color: '#25d366', border: '1px solid rgba(37,211,102,0.3)', width: '100%' }}
-              title={`WhatsApp ${customerPhone}`}
-            >
-              📱 WhatsApp
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
-            {onPrint && (
-              <button onClick={(e) => { e.stopPropagation(); onPrint(); }}
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '0.4rem 0.6rem' }}
-                      title={L.print || 'Print'}>🖨</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: 160, marginTop: '0.5rem' }}>
+            {/* Primary buttons with labels */}
+            {onDeposit && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeposit(); }}
+                className="btn btn-secondary btn-sm"
+                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
+                title={L.deposit || 'Deposit'}
+              >
+                + {L.deposit || 'Deposit'}
+              </button>
             )}
-            {onSMS && (
-              <button onClick={(e) => { e.stopPropagation(); if (smsAvailable) onSMS(); }}
-                      className="btn btn-secondary btn-sm"
-                      disabled={!smsAvailable}
-                      style={{ padding: '0.4rem 0.6rem', opacity: smsAvailable ? 1 : 0.4 }}
-                      title="SMS">💬</button>
+
+            {onComplete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (!completeDisabled) onComplete(); }}
+                disabled={completeDisabled}
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  fontSize: '0.82rem',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid',
+                  cursor: completeDisabled ? 'not-allowed' : 'pointer',
+                  opacity: completeDisabled ? 0.6 : 1,
+                  background: completeVariant === 'green' ? 'rgba(16,185,129,0.2)'
+                            : completeVariant === 'amber' ? 'rgba(245,158,11,0.15)'
+                            : 'rgba(255,255,255,0.05)',
+                  color: completeVariant === 'green' ? '#10b981'
+                       : completeVariant === 'amber' ? '#f59e0b'
+                       : '#9ca3af',
+                  borderColor: completeVariant === 'green' ? 'rgba(16,185,129,0.4)'
+                             : completeVariant === 'amber' ? 'rgba(245,158,11,0.4)'
+                             : 'rgba(255,255,255,0.1)',
+                }}
+              >
+                {completeLabel || (L.complete || 'Complete')}
+              </button>
             )}
-            {onDelete && (
-              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                      style={{ padding: '0.4rem 0.6rem', borderRadius: '0.5rem',
-                               background: 'rgba(239,68,68,0.15)', color: '#ef4444',
-                               border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer' }}
-                      title={L.delete || 'Delete'}>🗑</button>
+
+            {/* Legacy Collect (used by other modules that don't pass onComplete) */}
+            {onCollectBalance && !onComplete && balance > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onCollectBalance(); }}
+                className="btn btn-success btn-sm"
+                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
+              >
+                💰 {L.collectBalance || 'Collect'}
+              </button>
+            )}
+
+            {/* Secondary icon row */}
+            {(onPrint || onSMS || (onWhatsApp && customerPhone) || onDelete) && (
+              <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.5rem' }}>
+                {onPrint && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onPrint(); }}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(255,255,255,0.05)', color: '#e5e7eb',
+                      border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
+                    }}
+                    title={L.print || 'Print'}
+                  >🖨</button>
+                )}
+
+                {onSMS && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (smsAvailable) onSMS(); }}
+                    disabled={!smsAvailable}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(255,255,255,0.05)', color: '#e5e7eb',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      cursor: smsAvailable ? 'pointer' : 'not-allowed',
+                      opacity: smsAvailable ? 1 : 0.4,
+                    }}
+                    title="SMS"
+                  >💬</button>
+                )}
+
+                {onWhatsApp && customerPhone && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onWhatsApp(); }}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(37,211,102,0.15)', color: '#25d366',
+                      border: '1px solid rgba(37,211,102,0.35)', cursor: 'pointer',
+                    }}
+                    title={`WhatsApp ${customerPhone}`}
+                  >📱</button>
+                )}
+
+                {onDelete && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(239,68,68,0.15)', color: '#ef4444',
+                      border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer',
+                    }}
+                    title={L.delete || 'Delete'}
+                  >🗑</button>
+                )}
+              </div>
             )}
           </div>
         </div>
