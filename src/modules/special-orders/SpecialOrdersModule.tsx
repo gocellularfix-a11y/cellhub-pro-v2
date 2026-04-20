@@ -438,7 +438,31 @@ export default function SpecialOrdersModule() {
         refundReason: 'Special order cancelled',
         createdAt: now,
       };
-      const nextSales = [...salesRef.current, refundSale];
+      // r9-1: Mark original sale(s) containing this SO as refunded so Reports
+      //       excludes them from Gross/Cash/Profit. Voided refund sale remains
+      //       as audit trail.
+      const originalSales = salesRef.current.filter((s: Sale) =>
+        (s.items || []).some((item: any) => item.specialOrderId === order.id)
+        && s.status !== 'voided'
+        && s.status !== 'refunded'
+      );
+      const markedSales = originalSales.map((s: Sale) => ({
+        ...s,
+        status: 'refunded' as Sale['status'],
+        refundedAt: now,
+        refundReason: `SO Cancel: ${choice.note || 'no note'}`,
+        refundMethod: 'cash',
+      }));
+      for (const ms of markedSales) {
+        persist.sale(ms.id, ms as unknown as Record<string, unknown>);
+      }
+
+      // Build next sales array: replace originals with marked versions + add refund audit record
+      const salesWithMarked = salesRef.current.map((s: Sale) => {
+        const marked = markedSales.find((m: any) => m.id === s.id);
+        return marked || s;
+      });
+      const nextSales = [...salesWithMarked, refundSale];
       salesRef.current = nextSales;
       setSales(nextSales);
       persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);

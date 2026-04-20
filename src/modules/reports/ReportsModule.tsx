@@ -23,6 +23,7 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder } from '@/store/types';
+import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -194,7 +195,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, inventory, customers, settings, lang, globalSearchTerm },
+    state: { sales, repairs, unlocks, specialOrders, inventory, customers, settings, lang, globalSearchTerm, currentEmployee },
     dispatch,
   } = useApp();
 
@@ -1367,8 +1368,9 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                         es ? 'Método' : 'Method',
                         es ? 'Monto' : 'Amount',
                         es ? 'Fecha' : 'Date',
-                      ].map((h) => (
-                        <th key={h} style={{
+                        '',
+                      ].map((h, i) => (
+                        <th key={h + i} style={{
                           textAlign: h === (es ? 'Monto' : 'Amount') ? 'right' : 'left',
                           padding: '0.5rem 0.75rem',
                           color: '#9ca3af',
@@ -1416,6 +1418,32 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                             {c.refundMethod === 'forfeit' ? '+' : '-'}{formatCurrency(c.refundAmountCents)}
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#9ca3af', fontSize: '0.72rem' }}>{dateStr}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => {
+                                const html = buildCancellationReceiptHtml(
+                                  { ...c, cancelledAt: typeof c.cancelledAt === 'string' ? c.cancelledAt : (toDateSafe(c.cancelledAt)?.toISOString() || new Date().toISOString()) },
+                                  settings,
+                                  lang,
+                                  currentEmployee?.name,
+                                );
+                                const printer = localStorage.getItem('receiptModal.lastPrinter') || ((settings as any).detectedPrinters as string[] | undefined)?.[0];
+                                printHtml(html, { silent: true, printer, pageSize: '4x6', copies: 1 });
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                color: '#9ca3af',
+                                cursor: 'pointer',
+                                padding: '0.3rem 0.5rem',
+                                borderRadius: '0.3rem',
+                                fontSize: '0.85rem',
+                              }}
+                              title={es ? 'Imprimir recibo' : 'Print receipt'}
+                            >
+                              🖨
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1526,8 +1554,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                             <span style={{ padding: '0.1rem 0.5rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', textTransform: 'capitalize' }}>{sale.paymentMethod}</span>
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.75rem' }}>{sale.employeeName || '—'}</td>
-                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: isVoided ? '#ef4444' : '#22c55e' }}>
-                            {isVoided ? '—' : formatCurrency(sale.total)}
+                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: (isVoided || isRefunded) ? '#f87171' : '#22c55e' }}>
+                            {(isVoided || isRefunded) ? `-${formatCurrency(Math.abs(sale.total || 0))}` : formatCurrency(sale.total)}
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(sale.createdAt)}</td>
                           <td style={{ padding: '0.5rem 0.5rem', textAlign: 'right' }}>
