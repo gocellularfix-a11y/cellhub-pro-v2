@@ -281,38 +281,62 @@ export default function ReturnsModule() {
   const processReturn = useCallback(() => {
     if (selectedCount === 0) { toast(es ? 'Selecciona al menos un artículo.' : 'Select at least one item.', 'warning'); return; }
 
-    // Round 19: multi-station safe return number — ts8 + rand4 to avoid collision
-    // between stations syncing through Firestore. Old slice(-6) collided per-station
-    // every ~16 minutes and instantly across stations.
+    // Multi-station safe return number (ts8 + rand4).
     const rtnTs8  = Date.now().toString().slice(-8);
     const rtnRand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const returnNumber = `RTN-${rtnTs8}-${rtnRand}`;
+    const nowIso = new Date().toISOString();
+
+    // Phase 1: build return items with dual-write (canonical cents + legacy dollars).
+    // SaleItem.price is already cents; no conversion math here, just multiply.
+    const returnItems: CustomerReturnItem[] = Object.entries(selectedItems).map(([id, sel]) => {
+      const item = returnableItems.find((i) => i.id === id);
+      const priceCents    = item?.price || 0;
+      const subtotalCents = priceCents * sel.qty;
+      const taxCents      = item?.taxable ? Math.round(subtotalCents * taxRate) : 0;
+      const totalCents    = subtotalCents + taxCents;
+      return {
+        id: item?.id,
+        name: item?.name || 'Unknown',
+        qty: sel.qty,
+        // canonical cents
+        priceCents, subtotalCents, taxCents, totalCents,
+        // legacy dollars (deprecated — kept for Reports/Dashboard compat)
+        price: priceCents / 100,
+        subtotal: subtotalCents / 100,
+        tax: taxCents / 100,
+        total: totalCents / 100,
+      };
+    });
+
+    const subtotalCents = returnItems.reduce((s, i) => s + i.subtotalCents, 0);
+    const taxCentsTotal = returnItems.reduce((s, i) => s + i.taxCents, 0);
+    const totalCents    = subtotalCents + taxCentsTotal;
+
     const returnRecord: CustomerReturn = {
       id: generateId(),
-      returnNumber: `RTN-${rtnTs8}-${rtnRand}`,
+      returnNumber,
       originalInvoice: foundSale?.invoiceNumber || 'N/A',
       originalSaleId: foundSale?.id || null,
       customerName: foundSale?.customerName || (es ? 'Sin factura' : 'No invoice'),
       customerPhone: foundSale?.customerPhone || '',
       employeeName: currentEmployee?.name || '',
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
       reason, resolution, notes,
-      items: Object.entries(selectedItems).map(([id, sel]): CustomerReturnItem => {
-        const item = returnableItems.find((i) => i.id === id);
-        const sub = ((item?.price || 0) / 100) * sel.qty;
-        const tax = item?.taxable ? rc(sub * taxRate) : 0;
-        return { id: item?.id, name: item?.name || 'Unknown', price: (item?.price || 0) / 100, qty: sel.qty, subtotal: sub, tax, total: sub + tax };
-      }),
-      subtotal: rc(returnSubtotal),
-      taxRefunded: rc(returnTax),
-      total: returnTotal,
+      items: returnItems,
+      // canonical cents
+      subtotalCents, taxCents: taxCentsTotal, totalCents,
+      // legacy dollars (deprecated — kept for Reports/Dashboard compat)
+      subtotal: subtotalCents / 100,
+      taxRefunded: taxCentsTotal / 100,
+      total: totalCents / 100,
     };
 
-    // Track sales updates cumulatively so step 3 sees step 1's change.
-    // Round 19: read from salesRef.current (anti stale-closure)
-    let nextSales: Sale[] = salesRef.current;
-    // 1. Mark items returned in sale
+    // Phase 2: update foundSale.items (returnedQty / fullyReturned / hasReturn).
+    // Hold commit — R9-1 may add status='refunded' before we persist.
+    let updatedSale: Sale | null = null;
     if (foundSale) {
-      const updatedSale = {
+      updatedSale = {
         ...foundSale,
         items: foundSale.items.map((item) => {
           const sel = selectedItems[item.id];
@@ -320,16 +344,12 @@ export default function ReturnsModule() {
           const returnedQty = (item.returnedQty || 0) + sel.qty;
           return { ...item, returnedQty, fullyReturned: returnedQty >= item.qty };
         }),
-        hasReturn: true, lastReturnAt: new Date().toISOString(),
-      };
-      nextSales = salesRef.current.map((s) => s.id === foundSale.id ? updatedSale as Sale : s);
-      salesRef.current = nextSales;
-      setSales(nextSales);
-      persist.sale(updatedSale.id, updatedSale as unknown as Record<string, unknown>);
+        hasReturn: true,
+        lastReturnAt: nowIso,
+      } as Sale;
     }
 
-    // 2. Restore inventory — atomic batch write so a partial failure can't leave stock inconsistent
-    // Round 19: read from inventoryRef.current (anti stale-closure)
+    // Phase 3: restore inventory (atomic batch write).
     const updatedInv = inventoryRef.current.map((invItem) => {
       const entry = Object.entries(selectedItems).find(([id]) => {
         const si = foundSale?.items.find((i) => i.id === id);
@@ -341,7 +361,6 @@ export default function ReturnsModule() {
     });
     inventoryRef.current = updatedInv;
     setInventory(updatedInv);
-    // Only write items that actually changed (had returned qty added)
     const changedInvItems = updatedInv.filter((invItem) =>
       Object.entries(selectedItems).some(([id]) => {
         const si = foundSale?.items.find((i) => i.id === id);
@@ -356,55 +375,45 @@ export default function ReturnsModule() {
       })));
     }
 
-    // 3. Record negative sale for reports
-    // Round 19 fix: paymentMethod uses 'Cash'/'Card' (not 'Cash Refund'/'Card Refund')
-    // so Reports can match it in cashCents/cardCents drawer reconciliation. The
-    // "this is a refund" identity is already encoded in isRefund:true + negative
-    // total. Old code's distinct PM strings caused refunds to be silently dropped
-    // from drawer totals, breaking reconciliation.
+    // Phase 4: build refund sale (only if cash/card). Hold commit — R9-1 may
+    // attach linkedRefunds before we persist.
+    // paymentMethod = 'Cash'/'Card' so Reports drawer reconciliation finds it;
+    // the "is refund" identity is encoded via isRefund:true + negative total.
+    let refundSale: any = null;
     if (resolution === 'cash' || resolution === 'card') {
-      const refundSale: any = {
+      refundSale = {
         id: generateId(),
-        invoiceNumber: `REF-${returnRecord.returnNumber}`,
+        invoiceNumber: `REF-${returnNumber}`,
         customerName: returnRecord.customerName,
         customerPhone: returnRecord.customerPhone,
         employeeName: currentEmployee?.name || '',
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
         paymentMethod: resolution === 'cash' ? 'Cash' : 'Card',
         isRefund: true,
         status: 'completed',
         refundFor: foundSale?.invoiceNumber || '',
-        returnNumber: returnRecord.returnNumber,
-        items: returnRecord.items.map((i) => ({ ...i, price: -Math.round(i.price * 100) })),
-        subtotal: -Math.round(returnSubtotal * 100),
-        taxAmount: -Math.round(returnTax * 100),
-        // r-pkg-b4 fix B6: fee fields must be present (even as 0) so Reports
-        // aggregations don't produce NaN when summing across sales + refunds.
+        returnNumber,
+        items: returnItems.map((i) => ({ ...i, price: -i.priceCents })),
+        subtotal: -subtotalCents,
+        taxAmount: -taxCentsTotal,
+        // Fee fields present (even as 0) so Reports aggregations don't NaN.
         cbeTotal: 0,
         screenFeeTotal: 0,
         creditCardFee: 0,
         salesTax: 0,
         utilityTax: 0,
         mobileSurcharge: 0,
-        total: -Math.round(returnTotal * 100),
+        total: -totalCents,
       };
-      const refundedSales = [refundSale, ...nextSales];
-      salesRef.current = refundedSales;
-      setSales(refundedSales);
-      persist.sale(refundSale.id, refundSale);
     }
 
-    // 4. Exchange → negative cart item
-    // Round 19: read from cartRef.current (anti scanner-race intra-station).
-    // Cart is NOT synced via Firestore (verified in AppProvider) so this is only
-    // an intra-station race, but the scanner-race fix in POSModule (round 11)
-    // established this as the canonical pattern.
-    if (resolution === 'exchange' && returnTotal > 0) {
+    // Phase 5: exchange → negative cart item.
+    if (resolution === 'exchange' && totalCents > 0) {
       const exchangeItem: CartItem = {
         id: generateId(),
-        name: `🔄 ${es ? 'Crédito Cambio' : 'Exchange Credit'} — ${returnRecord.returnNumber}`,
+        name: `🔄 ${es ? 'Crédito Cambio' : 'Exchange Credit'} — ${returnNumber}`,
         category: 'service',
-        price: -Math.round(returnTotal * 100),
+        price: -totalCents,
         qty: 1, taxable: false, cbeEligible: false,
         notes: `${es ? 'Cambio de' : 'Exchange from'} ${returnRecord.originalInvoice}`,
       };
@@ -414,31 +423,22 @@ export default function ReturnsModule() {
       setActiveTab('pos');
     }
 
-    // 5. Store credit
-    // Round 19 fixes:
-    //   - BUG: rc() applied to cents int → divided storeCredit by 100. $50 refund
-    //     became $0.50 credit. rc() is dollars-only; use direct int math here.
-    //   - BUG: fuzzy phone endsWith both ways matched the wrong customer (and
-    //     '' endsWith '' matched ALL customers when phone was missing). Now we
-    //     prefer exact customerId match from the sale, fallback to exact tail-10
-    //     digit phone match (requires both sides to have ≥10 digits).
-    //   - Read from customersRef.current to avoid stale-closure clobber.
-    if (resolution === 'store_credit' && returnTotal > 0) {
-      const refundCents = Math.round(returnTotal * 100);
+    // Phase 6: store credit.
+    // Prefer exact customerId match; fallback to exact tail-10 phone match.
+    if (resolution === 'store_credit' && totalCents > 0) {
+      const refundCents = totalCents;
       const saleCustomerId = foundSale?.customerId;
       const rPhoneRaw = (foundSale?.customerPhone || '').replace(/\D/g, '');
       const rTail = rPhoneRaw.length >= 10 ? rPhoneRaw.slice(-10) : '';
 
       let matched = false;
       const updatedCustomers = customersRef.current.map((c) => {
-        // Prefer exact customerId match (most precise)
         if (saleCustomerId && c.id === saleCustomerId) {
           matched = true;
           const updated = { ...c, storeCredit: (c.storeCredit || 0) + refundCents };
           persist.customer(updated.id, updated as unknown as Record<string, unknown>);
           return updated;
         }
-        // Fallback: exact tail-10 phone match (only if sale has no customerId)
         if (!saleCustomerId && rTail) {
           const cPhone = (c.phone || '').replace(/\D/g, '');
           if (cPhone.length >= 10 && cPhone.slice(-10) === rTail) {
@@ -455,7 +455,6 @@ export default function ReturnsModule() {
         customersRef.current = updatedCustomers;
         setCustomers(updatedCustomers);
       } else {
-        // No customer matched — warn the cashier so they can manually credit
         toast(
           es ? '⚠️ No se pudo identificar al cliente — registra el crédito manualmente'
              : '⚠️ Could not identify customer — credit must be applied manually',
@@ -464,20 +463,17 @@ export default function ReturnsModule() {
       }
     }
 
-    // r-pkg-b3: persist via Firestore (dual-writes to localStorage automatically)
-    // and update state via ref-safe pattern.
-    const history = [returnRecord, ...customerReturnsRef.current];
-    customerReturnsRef.current = history;
-    setReturnHistory(history);
-    persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+    // Phase 7: R9-1 linked cancellation.
+    // For each linked entity (repair/unlock/SO/layaway) cancel with canonical
+    // schema of its source module. If resolution is cash/card, capture depositCents
+    // into linkedRefunds[] so the refund sale cross-refs the cancelled entities.
+    const linkedRefunds: { type: string; id: string; depositCents: number }[] = [];
+    const skippedAlreadyDone: string[] = [];
+    let cancelledCount = 0;
+    const refundMethodForEntity: 'cash' | 'store_credit' =
+      (resolution === 'cash' || resolution === 'card') ? 'cash' : 'store_credit';
+    const cancellationNote = `Return ${returnNumber}: ${notes || reason}`;
 
-    // Round 19 OPCIÓN A: Update linked source records (repair / unlock / SO / layaway)
-    // Old behavior: forced `balance: 0` which regalaba el servicio al cliente — the
-    // record stayed active but appeared "fully paid" without a real payment.
-    // New behavior: CANCEL the entire record (status='cancelled', depositAmount=0,
-    // balance=0). Exception: if already complete/picked_up (cliente ya se lo llevó),
-    // skip — those are warranty refunds and need manual handling from the source
-    // module. All reads come from refs to avoid stale-closure clobber.
     if (foundSale) {
       const returnedItemIds = new Set(Object.keys(selectedItems));
       const linkedItems = foundSale.items.filter((i) =>
@@ -486,10 +482,9 @@ export default function ReturnsModule() {
       );
 
       if (linkedItems.length > 0) {
-        const skippedAlreadyDone: string[] = [];
-
-        // Repairs — capitalized 'Cancelled' to match RepairModule actual data casing
-        const repairIds = new Set(linkedItems.map((i) => i.repairId).filter(Boolean));
+        // Repairs — 'Cancelled' capitalized (RepairModule schema). Clear the
+        // legacy `deposit` field too so TicketCard doesn't fall back to stale data.
+        const repairIds = new Set(linkedItems.map((i) => i.repairId).filter(Boolean) as string[]);
         if (repairIds.size > 0) {
           const updatedRepairs = repairsRef.current.map((r) => {
             if (!repairIds.has(r.id)) return r;
@@ -498,22 +493,32 @@ export default function ReturnsModule() {
               skippedAlreadyDone.push(`Repair ${r.id.slice(-6)}`);
               return r;
             }
+            const depositCents = (r as any).depositAmount || (r as any).deposit || 0;
+            if ((resolution === 'cash' || resolution === 'card') && depositCents > 0) {
+              linkedRefunds.push({ type: 'repair', id: r.id, depositCents });
+            }
             const updated = {
               ...r,
               status: 'Cancelled',
               depositAmount: 0,
+              deposit: 0,
               balance: 0,
-              updatedAt: new Date().toISOString(),
+              depositRefundMethod: refundMethodForEntity,
+              depositRefundAmount: depositCents,
+              cancellationNote,
+              cancelledAt: nowIso,
+              updatedAt: nowIso,
             };
             persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+            cancelledCount++;
             return updated;
           });
           repairsRef.current = updatedRepairs;
           setRepairs(updatedRepairs);
         }
 
-        // Unlocks — capitalized 'Cancelled' to match UnlockModule actual data casing
-        const unlockIds = new Set(linkedItems.map((i) => i.unlockId).filter(Boolean));
+        // Unlocks — 'Cancelled' capitalized (UnlockModule schema).
+        const unlockIds = new Set(linkedItems.map((i) => i.unlockId).filter(Boolean) as string[]);
         if (unlockIds.size > 0) {
           const updatedUnlocks = unlocksRef.current.map((u) => {
             if (!unlockIds.has(u.id)) return u;
@@ -522,22 +527,31 @@ export default function ReturnsModule() {
               skippedAlreadyDone.push(`Unlock ${u.id.slice(-6)}`);
               return u;
             }
+            const depositCents = (u as any).depositAmount || 0;
+            if ((resolution === 'cash' || resolution === 'card') && depositCents > 0) {
+              linkedRefunds.push({ type: 'unlock', id: u.id, depositCents });
+            }
             const updated = {
               ...u,
               status: 'Cancelled',
               depositAmount: 0,
               balance: 0,
-              updatedAt: new Date().toISOString(),
+              depositRefundMethod: refundMethodForEntity,
+              depositRefundAmount: depositCents,
+              cancellationNote,
+              cancelledAt: nowIso,
+              updatedAt: nowIso,
             };
             persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
+            cancelledCount++;
             return updated;
           });
           unlocksRef.current = updatedUnlocks;
           setUnlocks(updatedUnlocks);
         }
 
-        // Special Orders — lowercase 'cancelled' (SpecialOrdersModule schema)
-        const soIds = new Set(linkedItems.map((i) => i.specialOrderId).filter(Boolean));
+        // Special Orders — 'cancelled' lowercase (SpecialOrdersModule schema).
+        const soIds = new Set(linkedItems.map((i) => i.specialOrderId).filter(Boolean) as string[]);
         if (soIds.size > 0) {
           const updatedSOs = specialOrdersRef.current.map((o) => {
             if (!soIds.has(o.id)) return o;
@@ -546,22 +560,31 @@ export default function ReturnsModule() {
               skippedAlreadyDone.push(`SO ${o.id.slice(-6)}`);
               return o;
             }
+            const depositCents = (o as any).depositAmount || 0;
+            if ((resolution === 'cash' || resolution === 'card') && depositCents > 0) {
+              linkedRefunds.push({ type: 'specialOrder', id: o.id, depositCents });
+            }
             const updated = {
               ...o,
               status: 'cancelled',
               depositAmount: 0,
               balance: 0,
-              updatedAt: new Date().toISOString(),
+              depositRefundMethod: refundMethodForEntity,
+              depositRefundAmount: depositCents,
+              cancellationNote,
+              cancelledAt: nowIso,
+              updatedAt: nowIso,
             };
             persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+            cancelledCount++;
             return updated;
           });
           specialOrdersRef.current = updatedSOs;
           setSpecialOrders(updatedSOs);
         }
 
-        // Layaways — lowercase 'cancelled' (LayawayModule schema)
-        const layawayIds = new Set(linkedItems.map((i) => i.layawayId).filter(Boolean));
+        // Layaways — 'cancelled' lowercase; uses paidAmount (not depositAmount).
+        const layawayIds = new Set(linkedItems.map((i) => i.layawayId).filter(Boolean) as string[]);
         if (layawayIds.size > 0) {
           const updatedLayaways = layawaysRef.current.map((l) => {
             if (!layawayIds.has(l.id)) return l;
@@ -570,44 +593,87 @@ export default function ReturnsModule() {
               skippedAlreadyDone.push(`Layaway ${l.id.slice(-6)}`);
               return l;
             }
+            const depositCents = (l as any).paidAmount || 0;
+            if ((resolution === 'cash' || resolution === 'card') && depositCents > 0) {
+              linkedRefunds.push({ type: 'layaway', id: l.id, depositCents });
+            }
             const updated = {
               ...l,
               status: 'cancelled',
-              depositAmount: 0,
+              paidAmount: 0,
               balance: 0,
-              updatedAt: new Date().toISOString(),
+              depositRefundMethod: refundMethodForEntity,
+              depositRefundAmount: depositCents,
+              cancellationNote,
+              cancelledAt: nowIso,
+              updatedAt: nowIso,
             };
             persist.layaway(updated.id, updated as unknown as Record<string, unknown>);
+            cancelledCount++;
             return updated;
           });
           layawaysRef.current = updatedLayaways;
           setLayaways(updatedLayaways);
         }
-
-        // If any linked records were skipped because already done, warn the cashier
-        if (skippedAlreadyDone.length > 0) {
-          toast(
-            es
-              ? `⚠️ Estos registros ya estaban completados, NO se cancelaron: ${skippedAlreadyDone.join(', ')}. Manéjalos manualmente.`
-              : `⚠️ These records were already complete and were NOT cancelled: ${skippedAlreadyDone.join(', ')}. Handle them manually.`,
-            'warning'
-          );
-        }
       }
     }
 
-    toast(
-      `${es ? 'Devolución' : 'Return'} ${returnRecord.returnNumber} ${es ? 'procesada' : 'processed'} — ${fc(Math.round(returnTotal * 100))}`,
-      'success'
-    );
+    // Phase 8: attach linkedRefunds to refund sale + mark original sale 'refunded'.
+    if (refundSale && linkedRefunds.length > 0) {
+      refundSale.linkedRefunds = linkedRefunds;
+    }
+    if (linkedRefunds.length > 0 && updatedSale && (resolution === 'cash' || resolution === 'card')) {
+      updatedSale = {
+        ...updatedSale,
+        status: 'refunded' as Sale['status'],
+        refundedAt: nowIso,
+        refundReason: `Return ${returnNumber} — linked entity cancellation`,
+        refundMethod: resolution === 'cash' ? 'cash' : 'card',
+      } as Sale;
+    }
+
+    // Phase 9: commit foundSale (with returnedQty and possibly refunded status).
+    if (updatedSale && foundSale) {
+      const nextSales = salesRef.current.map((s) => s.id === foundSale.id ? updatedSale as Sale : s);
+      salesRef.current = nextSales;
+      setSales(nextSales);
+      persist.sale(updatedSale.id, updatedSale as unknown as Record<string, unknown>);
+    }
+    // Phase 9b: commit refund sale (with linkedRefunds if any).
+    if (refundSale) {
+      const refundedSales = [refundSale, ...salesRef.current];
+      salesRef.current = refundedSales;
+      setSales(refundedSales);
+      persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
+    }
+
+    // Phase 10: persist return record.
+    const history = [returnRecord, ...customerReturnsRef.current];
+    customerReturnsRef.current = history;
+    setReturnHistory(history);
+    persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+
+    // Toasts
+    if (skippedAlreadyDone.length > 0) {
+      toast(
+        es
+          ? `⚠️ Estos registros ya estaban completados, NO se cancelaron: ${skippedAlreadyDone.join(', ')}. Manéjalos manualmente.`
+          : `⚠️ These records were already complete and were NOT cancelled: ${skippedAlreadyDone.join(', ')}. Handle them manually.`,
+        'warning'
+      );
+    }
+    const mainMsg = `${es ? 'Devolución' : 'Return'} ${returnNumber} ${es ? 'procesada' : 'processed'} — ${fc(totalCents)}`;
+    const linkedMsg = cancelledCount > 0
+      ? ` · ${cancelledCount} ${es ? 'registros linkeados cancelados' : 'linked records cancelled'}`
+      : '';
+    toast(mainMsg + linkedMsg, 'success');
+
     setReturnSuccess(returnRecord);
     resetSearch();
-  // Round 19: state arrays removed from deps because the handler now reads from
-  // refs (anti stale-closure pattern). Setters, memos, and props remain.
-  }, [selectedItems, foundSale, returnableItems, returnTotal, returnSubtotal, returnTax, resolution, reason, notes,
-      currentEmployee, lang, es,
+  }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
+      currentEmployee, taxRate, es,
       setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
-      toast, returnHistory]);
+      setReturnHistory, toast]);
 
   // ── Print return receipt ───────────────────────────────────
   // Round 19 fixes:
@@ -628,9 +694,9 @@ export default function ReturnsModule() {
       `${es ? 'Motivo' : 'Reason'}: ${rec.reason}`,
       `${es ? 'Resolución' : 'Resolution'}: ${rec.resolution}`,
       '--------------------------------',
-      ...(rec.items || []).map((i: any) => `${i.name} x${i.qty}  $${(i.total || 0).toFixed(2)}`),
+      ...(rec.items || []).map((i: any) => `${i.name} x${i.qty}  $${((i.totalCents || 0) / 100).toFixed(2)}`),
       '--------------------------------',
-      `${es ? 'TOTAL DEVUELTO' : 'TOTAL RETURNED'}: $${(rec.total || 0).toFixed(2)}`,
+      `${es ? 'TOTAL DEVUELTO' : 'TOTAL RETURNED'}: $${((rec.totalCents || 0) / 100).toFixed(2)}`,
       '', es ? 'Gracias por su preferencia' : 'Thank you for your business',
     ].filter(Boolean);
     const html = `<!DOCTYPE html><html><head><title>Return</title><style>body{font-family:monospace;font-size:12px;width:3in;margin:0;padding:8px}pre{white-space:pre-wrap}</style></head><body><pre>${escHtml(lines.join('\n'))}</pre></body></html>`;
@@ -661,12 +727,16 @@ export default function ReturnsModule() {
     // Round 19: multi-station safe vendor return number (same pattern as RTN above)
     const vndTs8  = Date.now().toString().slice(-8);
     const vndRand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const vendorCostCents = (vendorItem.cost || 0) * vendorQty;
     const rec: VendorReturn = {
       id: generateId(), returnNumber: `VND-${vndTs8}-${vndRand}`,
       productId: vendorItem.id, productName: vendorItem.name,
       sku: vendorItem.sku || '', supplier: vendorItem.supplier || (es ? 'Desconocido' : 'Unknown'),
       qty: vendorQty, cost: vendorItem.cost || 0,
-      totalValue: rc((vendorItem.cost || 0) * vendorQty / 100),
+      // canonical cents
+      totalValueCents: vendorCostCents,
+      // legacy dollars (deprecated — kept for backward compat)
+      totalValue: vendorCostCents / 100,
       reason: vendorReason, resolution: vendorResolution, notes: vendorNotes,
       employeeName: currentEmployee?.name || '', createdAt: new Date().toISOString(),
     };
@@ -723,7 +793,7 @@ export default function ReturnsModule() {
               ✅ {es ? 'Devolución procesada' : 'Return processed'}: {returnSuccess.returnNumber}
             </div>
             <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-              {fc(Math.round(returnSuccess.total * 100))} —{' '}
+              {fc(returnSuccess.totalCents || 0)} —{' '}
               {returnSuccess.resolution === 'cash' ? (es ? 'Reembolso efectivo' : 'Cash refund') :
                returnSuccess.resolution === 'card' ? (es ? 'Reembolso tarjeta' : 'Card refund') :
                returnSuccess.resolution === 'store_credit' ? (es ? 'Crédito en tienda' : 'Store credit') :
@@ -866,7 +936,7 @@ export default function ReturnsModule() {
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.customerName} · {r.originalInvoice}</div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 700, color: '#ef4444' }}>−${r.total?.toFixed(2)}</span>
+                        <span style={{ fontWeight: 700, color: '#ef4444' }}>−${((r.totalCents || 0) / 100).toFixed(2)}</span>
                         <button className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem' }}
                           onClick={() => printReturnReceipt(r)}>🖨️</button>
                       </div>
@@ -1145,7 +1215,7 @@ export default function ReturnsModule() {
                         <span style={{ fontSize: '0.78rem', color: '#64748b', marginLeft: '0.5rem' }}>{fd(r.createdAt)}</span>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.productName} · {r.supplier} · {r.qty} {es ? 'unidades' : 'units'}</div>
                       </div>
-                      <span style={{ fontWeight: 700, color: '#f87171' }}>${r.totalValue?.toFixed(2)}</span>
+                      <span style={{ fontWeight: 700, color: '#f87171' }}>${((r.totalValueCents || 0) / 100).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>

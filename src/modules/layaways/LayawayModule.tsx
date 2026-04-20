@@ -34,17 +34,18 @@ import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
-import { persist } from '@/services/persist';
+import { persist, remove } from '@/services/persist';
 import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import DepositModal from '@/components/DepositModal';
-import { calcDepositTotals, reverseTaxFromPayment } from '@/utils/depositTax';
+import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
-import type { Layaway, CartItem, Customer, InventoryItem } from '@/store/types';
+import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
+import CancelLayawayModal from './CancelLayawayModal';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -72,6 +73,7 @@ export default function LayawayModule() {
   const [showForm, setShowForm]           = useState(false);
   const [editLayaway, setEditLayaway]     = useState<Layaway | null>(null);
   const [cancelTarget, setCancelTarget]   = useState<Layaway | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Layaway | null>(null);
   const [depositTarget, setDepositTarget] = useState<Layaway | null>(null);
 
   // ── Stale-closure guards: ref-mirrors of layaways/inventory so back-to-back
@@ -82,6 +84,10 @@ export default function LayawayModule() {
   useEffect(() => { customersRef.current = customers; }, [customers]);
   const inventoryRef = useRef(inventory);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
+  const salesRef = useRef(sales);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
+  const cartRef = useRef(cart);
+  useEffect(() => { cartRef.current = cart; }, [cart]);
 
   // Consume cross-module search term once on mount
   useEffect(() => {
@@ -221,12 +227,13 @@ export default function LayawayModule() {
   const filtered = useMemo(() => {
     return layaways
       .filter((l) => {
+        const normalizedStatus = String(l.status || '').toLowerCase();
         const d = getDaysInfo(l.dueDate);
-        const isOverdue = l.status === 'active' && !!d?.overdue;
-        if (statusFilter === 'active')    return l.status === 'active' && !isOverdue;
+        const isOverdue = normalizedStatus === 'active' && !!d?.overdue;
+        if (statusFilter === 'active')    return normalizedStatus === 'active' && !isOverdue;
         if (statusFilter === 'overdue')   return isOverdue;
-        if (statusFilter === 'completed') return l.status === 'completed';
-        if (statusFilter === 'cancelled') return l.status === 'cancelled' || l.status === 'forfeited';
+        if (statusFilter === 'completed') return normalizedStatus === 'completed';
+        if (statusFilter === 'cancelled') return normalizedStatus === 'cancelled' || normalizedStatus === 'forfeited';
         return true;
       })
       .filter((l) => {
@@ -278,6 +285,51 @@ export default function LayawayModule() {
     setShowForm(true);
   };
 
+  // r-new-5 port: invariant "one layawayId has at most one cart item".
+  // Mirrors consolidateCartForRepair: forward-tax existing items, sum with
+  // `additionalCents` (tax-inclusive), reverse-tax the combined total to a
+  // single pre-tax cart entry, and replace all previous items for this layawayId.
+  const consolidateCartForLayaway = useCallback((params: {
+    layawayId: string;
+    additionalCents: number;
+    deviceLabel: string;
+    ticketNumber?: string;
+    isTaxable: boolean;
+  }): { combinedCents: number } => {
+    const { layawayId, additionalCents, deviceLabel, ticketNumber, isTaxable } = params;
+    const lTaxRate = settings.taxRate || 0.0925;
+
+    const existingItems = cartRef.current.filter((c) => c.layawayId === layawayId);
+    let combinedCents = additionalCents;
+    for (const existing of existingItems) {
+      const existingBase = (existing.price || 0) * (existing.qty || 1);
+      const existingFwd = forwardTaxFromBase(existingBase, lTaxRate, !!existing.taxable);
+      combinedCents += existingFwd.totalCents;
+    }
+
+    const split = reverseTaxFromPayment(combinedCents, lTaxRate, isTaxable);
+    const consolidatedItem: CartItem = {
+      id: generateId(),
+      name: `${deviceLabel} — ${es ? 'Apartado' : 'Layaway'}`,
+      category: 'service',
+      price: split.baseCents,
+      qty: 1,
+      taxable: isTaxable,
+      cbeEligible: false,
+      layawayId,
+      notes: ticketNumber || layawayId.slice(-6).toUpperCase(),
+    };
+
+    const nextCart = [
+      ...cartRef.current.filter((c) => c.layawayId !== layawayId),
+      consolidatedItem,
+    ];
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    return { combinedCents };
+  }, [settings.taxRate, es, setCart]);
+
   const handleSave = useCallback(() => {
     const fName = form.firstName.trim();
     const lName = form.lastName.trim();
@@ -304,11 +356,14 @@ export default function LayawayModule() {
     const taxCents      = _totals.taxCents;
     const balanceCents  = _totals.balanceCents;
 
-    // Auto-create customer — dedup by phone
+    // Auto-create customer — dedup by phone. Capture final customerId so we
+    // can write it to the layaway entity and dispatch SET_PENDING_POS_CUSTOMER.
+    let finalCustomerId: string | undefined;
     if (form.customerPhone) {
       const phone    = normalizePhone(form.customerPhone);
       const existing = customers.find((c) => normalizePhone(c.phone) === phone);
       if (existing) {
+        finalCustomerId = existing.id;
         if (existing.name.toLowerCase() !== customerName.toLowerCase()) {
           toast(
             es ? `Cliente existente encontrado: ${existing.name}` : `Existing customer found: ${existing.name}`,
@@ -326,6 +381,7 @@ export default function LayawayModule() {
         customersRef.current = nextCustomers;
         setCustomers(nextCustomers);
         persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
+        finalCustomerId = newCust.id;
       }
     }
 
@@ -350,6 +406,7 @@ export default function LayawayModule() {
       const updated: any = {
         ...editLayaway,
         firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
+        customerId: finalCustomerId || (editLayaway as any).customerId,
         inventoryId: form.inventoryId || undefined,
         itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
         itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -388,6 +445,7 @@ export default function LayawayModule() {
     const newLayaway: any = {
       id: generateId(), ticketNumber: ticket,
       firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
+      customerId: finalCustomerId || undefined,
       inventoryId: form.inventoryId || undefined,
       itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
       itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -419,24 +477,18 @@ export default function LayawayModule() {
     setLayaways(nextLayCreate);
     persist.layaway(newLayaway.id, newLayaway as unknown as Record<string, unknown>);
 
-    // Add deposit to cart — Option B:
-    // The deposit ($X) the customer pays already INCLUDES tax. We split it into
-    // pre-tax base + tax, push base into cart with taxable=true, and the POS
-    // applies tax on top so the final cart total equals exactly $X.
+    // Add deposit to cart via consolidation helper (invariant: 1 cart item per layaway).
     if (depositCents > 0) {
-      const split = reverseTaxFromPayment(depositCents, taxRate, form.taxable);
-      const cartItem: CartItem = {
-        id: generateId(),
-        name: `${es ? 'Apartado Depósito' : 'Layaway Deposit'} — ${form.itemDescription} (${ticket})`,
-        category: 'service',
-        price: split.baseCents,  // pre-tax base; POS will add tax to reach $X
-        qty: 1,
-        taxable: form.taxable,
-        cbeEligible: false,
+      consolidateCartForLayaway({
         layawayId: newLayaway.id,
-        notes: `${ticket} · ${customerName}`,
-      };
-      setCart([...cart, cartItem]);
+        additionalCents: depositCents,
+        deviceLabel: form.itemDescription,
+        ticketNumber: ticket,
+        isTaxable: form.taxable,
+      });
+      if (finalCustomerId) {
+        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: finalCustomerId });
+      }
       toast(es ? 'Depósito agregado al carrito' : 'Deposit added to cart', 'info');
     }
 
@@ -444,27 +496,39 @@ export default function LayawayModule() {
     toast(es ? 'Apartado creado' : 'Layaway created!', 'success');
     setShowForm(false); setForm(emptyForm());
   }, [form, subtotal, taxAmt, grandTotal, depositAmt, balanceAmt, editLayaway,
-      layaways, customers, inventory, settings, currentEmployee, cart, sales,
-      es, taxRate, setLayaways, setCustomers, setInventory, setCart, setSales, toast]);
+      layaways, customers, inventory, settings, currentEmployee, sales,
+      es, taxRate, setLayaways, setCustomers, setInventory, setCart, setSales, toast,
+      consolidateCartForLayaway, dispatch]);
 
   const handleCollectConfirm = useCallback((l: Layaway, paymentDollars: number) => {
     const paymentCents = Math.round(paymentDollars * 100);
-
-    // Reverse-tax the payment so cart base + tax = exactly what customer paid
     const isTaxable = !!(l as any).taxable;
-    const split = reverseTaxFromPayment(paymentCents, taxRate, isTaxable);
+    const deviceLabel = (l as any).itemDescription || l.items?.[0]?.name || '';
+    const ticketNumber = (l as any).ticketNumber || l.id.slice(-6).toUpperCase();
 
-    const cartItem: CartItem = {
-      id: generateId(),
-      name: `${es ? 'Apartado Balance' : 'Layaway Balance'} — ${(l as any).itemDescription || l.items?.[0]?.name || ''} (${(l as any).ticketNumber || ''})`,
-      category: 'service',
-      price: split.baseCents,
-      qty: 1,
-      taxable: isTaxable,
-      cbeEligible: false,
-      layawayId: l.id, notes: l.customerName,
-    };
-    setCart([...cart, cartItem]);
+    consolidateCartForLayaway({
+      layawayId: l.id,
+      additionalCents: paymentCents,
+      deviceLabel,
+      ticketNumber,
+      isTaxable,
+    });
+
+    // Propagate customer to POS (customerId first, phone-tail fallback).
+    let customerId = (l as any).customerId as string | undefined;
+    if (!customerId && l.customerPhone) {
+      const phoneTail = l.customerPhone.replace(/\D/g, '').slice(-10);
+      if (phoneTail) {
+        const matched = customersRef.current.find((c) => {
+          const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
+          return cPhone && cPhone === phoneTail;
+        });
+        if (matched) customerId = matched.id;
+      }
+    }
+    if (customerId) {
+      dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+    }
 
     // r-pkg-b1: DO NOT update layaway paidAmount/balance/status here.
     // The POS checkout handler (POSModule.tsx §4d) reads the layaway from
@@ -478,26 +542,188 @@ export default function LayawayModule() {
       `${formatCurrency(paymentCents)} ${es ? 'agregado al carrito' : 'added to cart'}`,
       'info',
     );
-  }, [cart, es, setCart, toast]);
+  }, [es, toast, consolidateCartForLayaway, dispatch]);
 
-  const handleCancel = useCallback((l: Layaway, keepDeposit: boolean) => {
+  // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
+  // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
+  // from Gross/Cash/Profit. A voided REFUND-* audit sale is also created.
+  const handleCancel = useCallback((l: Layaway, choice: {
+    method: 'store_credit' | 'cash' | 'forfeit';
+    note: string;
+  }) => {
+    const depositCents = l.paidAmount || 0;
+    const now = new Date().toISOString();
+
+    // Restore inventory reservation
     const invId = (l as any).inventoryId || l.items?.[0]?.inventoryId;
     if (invId) {
       const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
+      const updatedInv = nextInv.find((i: any) => i.id === invId);
       inventoryRef.current = nextInv;
       setInventory(nextInv);
+      if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
     }
+
+    if (choice.method === 'store_credit' && depositCents > 0) {
+      const phoneTail = (l.customerPhone || '').replace(/\D/g, '').slice(-10);
+      const matched = customersRef.current.find((c) => {
+        if ((l as any).customerId && c.id === (l as any).customerId) return true;
+        if (phoneTail) {
+          const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
+          if (cPhone && cPhone === phoneTail) return true;
+        }
+        return false;
+      });
+      if (matched) {
+        const updatedCustomer = {
+          ...matched,
+          storeCredit: (matched.storeCredit || 0) + depositCents,
+        };
+        const nextCustomers = customersRef.current.map((c) =>
+          c.id === matched.id ? updatedCustomer : c
+        );
+        customersRef.current = nextCustomers;
+        setCustomers(nextCustomers);
+        persist.customer(updatedCustomer.id, updatedCustomer as unknown as Record<string, unknown>);
+      } else {
+        toast(
+          es ? '⚠️ No se identificó al cliente. Aplica crédito manualmente.'
+             : '⚠️ Customer not matched. Apply credit manually.',
+          'warning',
+        );
+      }
+    } else if (choice.method === 'cash' && depositCents > 0) {
+      // R9-1: mark original sale(s) containing this layaway as refunded.
+      const originalSales = salesRef.current.filter((s: Sale) =>
+        (s.items || []).some((item: any) => item.layawayId === l.id)
+        && s.status !== 'voided'
+        && s.status !== 'refunded'
+      );
+      const markedSales = originalSales.map((s: Sale) => ({
+        ...s,
+        status: 'refunded' as Sale['status'],
+        refundedAt: now,
+        refundReason: `Layaway Cancel: ${choice.note || 'no note'}`,
+        refundMethod: 'cash',
+      }));
+      for (const ms of markedSales) {
+        persist.sale(ms.id, ms as unknown as Record<string, unknown>);
+      }
+
+      const refundSale: Sale = {
+        id: generateId(),
+        storeId: (l as any).storeId,
+        invoiceNumber: `REFUND-${((l as any).ticketNumber || l.id.slice(-6).toUpperCase())}`,
+        customerId: (l as any).customerId,
+        customerName: l.customerName,
+        customerPhone: l.customerPhone,
+        items: [{
+          id: generateId(),
+          name: `${(l as any).itemDescription || l.items?.[0]?.name || 'Layaway'} — ${es ? 'Reembolso cancelación' : 'Cancellation refund'}`,
+          category: 'service' as any,
+          price: -depositCents,
+          qty: 1,
+          taxable: false,
+          cbeEligible: false,
+          layawayId: l.id,
+        }],
+        subtotal: -depositCents,
+        taxAmount: 0,
+        cbeTotal: 0,
+        total: -depositCents,
+        paymentMethod: 'Cash' as any,
+        status: 'voided',
+        employeeId: currentEmployee?.id,
+        employeeName: currentEmployee?.name,
+        notes: `Layaway cancelled — cash refund for ${(l as any).ticketNumber || l.id.slice(-6).toUpperCase()}`,
+        refundReason: 'Layaway cancelled',
+        createdAt: now,
+      } as unknown as Sale;
+
+      const salesWithMarked = salesRef.current.map((s: Sale) => {
+        const marked = markedSales.find((m: any) => m.id === s.id);
+        return marked || s;
+      });
+      const nextSales = [...salesWithMarked, refundSale];
+      salesRef.current = nextSales;
+      setSales(nextSales);
+      persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
+    }
+
     const updated: any = {
-      ...l, status: 'cancelled', depositRefunded: !keepDeposit,
-      cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      ...l,
+      status: 'cancelled',
+      depositRefundMethod: choice.method,
+      depositRefundAmount: depositCents,
+      cancellationNote: choice.note || '',
+      cancelledAt: now,
+      paidAmount: 0,
+      balance: 0,
+      updatedAt: now,
     };
     const nextLayCancel = layawaysRef.current.map((x) => x.id === l.id ? updated : x);
     layawaysRef.current = nextLayCancel;
     setLayaways(nextLayCancel);
     persist.layaway(updated.id, updated as unknown as Record<string, unknown>);
+
+    const msg = {
+      store_credit: es
+        ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
+        : `Cancelled. $${(depositCents/100).toFixed(2)} store credit added.`,
+      cash: es
+        ? `Cancelado. Reembolso $${(depositCents/100).toFixed(2)} registrado.`
+        : `Cancelled. $${(depositCents/100).toFixed(2)} cash refund recorded.`,
+      forfeit: es ? 'Cancelado. Depósito retenido.' : 'Cancelled. Deposit forfeited.',
+    }[choice.method];
+    toast(msg, 'success');
     setCancelTarget(null);
-    toast(es ? 'Apartado cancelado' : 'Layaway cancelled', 'info');
-  }, [es, setLayaways, setInventory, toast]);
+  }, [es, setLayaways, setCustomers, setInventory, setSales, currentEmployee, toast]);
+
+  const handleDeleteConfirmed = useCallback(() => {
+    if (!deleteConfirm) return;
+
+    // GUARD 1: no deletar si hay items pendientes en carrito
+    const hasPendingCart = cartRef.current.some((item) => item.layawayId === deleteConfirm.id);
+    if (hasPendingCart) {
+      toast(
+        es ? 'No se puede eliminar: hay items en el carrito.'
+           : 'Cannot delete: has cart items.',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    // GUARD 2: no deletar si tiene depósito o está completado
+    const hasDeposit = ((deleteConfirm as any).paidAmount || 0) > 0;
+    const isCompleted = deleteConfirm.status === 'completed';
+    if (hasDeposit || isCompleted) {
+      toast(
+        es ? 'No se puede eliminar apartados pagados o completados. Usa "Cancelar".'
+           : 'Cannot delete paid or completed layaways. Use "Cancel".',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    // GUARD 3: restore inventory if reserved
+    const invId = (deleteConfirm as any).inventoryId || deleteConfirm.items?.[0]?.inventoryId;
+    if (invId) {
+      const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
+      const updatedInv = nextInv.find((i: any) => i.id === invId);
+      inventoryRef.current = nextInv;
+      setInventory(nextInv);
+      if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+    }
+
+    const next = layawaysRef.current.filter((x) => x.id !== deleteConfirm.id);
+    layawaysRef.current = next;
+    setLayaways(next);
+    remove.layaway(deleteConfirm.id);
+    setDeleteConfirm(null);
+    toast(es ? 'Apartado eliminado' : 'Layaway deleted', 'success');
+  }, [deleteConfirm, es, setLayaways, setInventory, toast]);
 
   const printLayawayTicket = useCallback((l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
@@ -681,7 +907,10 @@ export default function LayawayModule() {
                       {l.status === 'cancelled' && (
                         <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#6b7280' }}>
                           ✕ {es ? 'Cancelado' : 'Cancelled'}{r.cancelledAt ? ` — ${String(r.cancelledAt).slice(0,10)}` : ''}
-                          {r.depositRefunded ? ` — ${es ? 'Depósito reembolsado' : 'Deposit refunded'}` : ` — ${es ? 'Depósito retenido' : 'Deposit kept'}`}
+                          {r.depositRefundMethod === 'store_credit' && ` — ${es ? 'Crédito aplicado' : 'Store credit applied'}`}
+                          {r.depositRefundMethod === 'cash' && ` — ${es ? 'Reembolso efectivo' : 'Cash refunded'}`}
+                          {r.depositRefundMethod === 'forfeit' && ` — ${es ? 'Depósito retenido' : 'Deposit forfeited'}`}
+                          {!r.depositRefundMethod && r.depositRefunded !== undefined && (r.depositRefunded ? ` — ${es ? 'Depósito reembolsado' : 'Deposit refunded'}` : ` — ${es ? 'Depósito retenido' : 'Deposit kept'}`)}
                         </div>
                       )}
                       {l.status === 'completed' && (
@@ -732,6 +961,14 @@ export default function LayawayModule() {
                         <button className="btn btn-secondary btn-sm" onClick={() => openEdit(l)}>✏️ {es ? 'Editar' : 'Edit'}</button>
                         <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }} onClick={() => setCancelTarget(l)}>
                           ✕ {es ? 'Cancelar' : 'Cancel'}
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                          onClick={() => setDeleteConfirm(l)}
+                          title={es ? 'Eliminar (solo sin depósito)' : 'Delete (only if no deposit)'}
+                        >
+                          🗑️
                         </button>
                       </>
                     )}
@@ -1001,33 +1238,15 @@ export default function LayawayModule() {
         />
       )}
 
-      {/* CANCEL MODAL — keep or refund deposit */}
       {cancelTarget && (
-        <div className="modal-overlay" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 0.75rem', fontWeight: 700 }}>⚠️ {es ? 'Cancelar Apartado' : 'Cancel Layaway'}</h3>
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-              {(cancelTarget as any).ticketNumber || cancelTarget.id.slice(-6).toUpperCase()} — {(cancelTarget as any).itemDescription || cancelTarget.items?.[0]?.name}
-            </p>
-            <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              {es ? 'Depósito' : 'Deposit'}: ${((cancelTarget.paidAmount || 0) / 100).toFixed(2)}
-            </p>
-            <p style={{ color: '#e2e8f0', fontWeight: 600, marginBottom: '1rem' }}>
-              {es ? '¿Qué hacemos con el depósito?' : 'What happens to the deposit?'}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button className="btn btn-danger" onClick={() => handleCancel(cancelTarget, true)}>
-                💰 {es ? 'Quedarse con el depósito (forfeit)' : 'Keep deposit (forfeit)'}
-              </button>
-              <button className="btn btn-secondary" onClick={() => handleCancel(cancelTarget, false)}>
-                ↩️ {es ? 'Reembolsar al cliente' : 'Refund to customer'}
-              </button>
-              <button className="btn btn-ghost" onClick={() => setCancelTarget(null)}>
-                {es ? 'No cancelar' : 'Never mind'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CancelLayawayModal
+          layaway={cancelTarget}
+          customerHasPhone={!!cancelTarget.customerPhone}
+          customerName={cancelTarget.customerName}
+          lang={es ? 'es' : 'en'}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={(choice) => handleCancel(cancelTarget, choice)}
+        />
       )}
       <ConfirmDialog
         open={showImeiWarning}
@@ -1040,6 +1259,18 @@ export default function LayawayModule() {
         cancelLabel={es ? 'Cancelar' : 'Cancel'}
         onConfirm={() => { setShowImeiWarning(false); skipImeiCheckRef.current = true; handleSave(); }}
         onCancel={() => setShowImeiWarning(false)}
+      />
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title={es ? 'Eliminar Apartado' : 'Delete Layaway'}
+        message={deleteConfirm ? (es
+          ? `¿Eliminar apartado ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? Esta acción no se puede deshacer.`
+          : `Delete layaway ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? This cannot be undone.`) : ''}
+        variant="danger"
+        confirmLabel={es ? 'Eliminar' : 'Delete'}
+        cancelLabel={es ? 'Cancelar' : 'Cancel'}
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setDeleteConfirm(null)}
       />
     </>
   );

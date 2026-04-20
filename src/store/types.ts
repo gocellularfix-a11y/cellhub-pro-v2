@@ -551,6 +551,9 @@ export interface Sale {
   // Return tracking (written by ReturnsModule.processReturn)
   hasReturn?: boolean;
   lastReturnAt?: string;    // ISO timestamp of most recent return against this sale
+  // R9-1 linked cancellation cross-ref (written to refund sales when Returns cancels
+  // a linked repair/unlock/SO/layaway entity as part of processing a return).
+  linkedRefunds?: { type: string; id: string; depositCents: number }[];
   createdAt: Timestamp | Date | string;
 }
 
@@ -559,11 +562,21 @@ export interface Sale {
 export interface CustomerReturnItem {
   id?: string;
   name: string;
-  price: number;           // DOLLARS (legacy — will migrate to cents in hardening)
   qty: number;
-  subtotal: number;        // DOLLARS
-  tax: number;             // DOLLARS
-  total: number;           // DOLLARS
+  // ── Canonical cents fields (Round 9 migration) ──
+  priceCents: number;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  // ── Legacy dollars fields (kept for backward compat with Reports/Dashboard) ──
+  /** @deprecated use priceCents */
+  price?: number;
+  /** @deprecated use subtotalCents */
+  subtotal?: number;
+  /** @deprecated use taxCents */
+  tax?: number;
+  /** @deprecated use totalCents */
+  total?: number;
 }
 
 export interface CustomerReturn {
@@ -580,9 +593,17 @@ export interface CustomerReturn {
   resolution: string;            // cash | card | store_credit | exchange
   notes: string;
   items: CustomerReturnItem[];
-  subtotal: number;              // DOLLARS (legacy)
-  taxRefunded: number;           // DOLLARS (legacy)
-  total: number;                 // DOLLARS (legacy)
+  // ── Canonical cents fields (Round 9 migration) ──
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  // ── Legacy dollars fields (kept for backward compat with Reports/Dashboard) ──
+  /** @deprecated use subtotalCents */
+  subtotal?: number;
+  /** @deprecated use taxCents */
+  taxRefunded?: number;
+  /** @deprecated use totalCents */
+  total?: number;
 }
 
 // ── Vendor Return ────────────────────────────────────────
@@ -597,7 +618,10 @@ export interface VendorReturn {
   supplier: string;
   qty: number;
   cost: number;                  // cents (from InventoryItem.cost)
-  totalValue: number;            // DOLLARS (legacy — cost * qty / 100)
+  // ── Canonical cents field (Round 9 migration) ──
+  totalValueCents: number;       // cents: cost * qty
+  /** @deprecated use totalValueCents */
+  totalValue?: number;
   reason: string;                // defective | overstock | wrong_item | warranty
   resolution: string;            // credit | replacement | refund
   notes: string;
