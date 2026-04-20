@@ -926,6 +926,7 @@ export interface AppState {
   globalSearchTerm: string;
   pendingBarcodeInvoice: string;
   pendingPhonePaymentCustomerId: string;  // set by scanner when customer credential scanned → opens PhonePaymentModal pre-filled
+  pendingPosCustomer: string;             // set by RepairModule cart-add → POSModule picks up and sets selectedCustomer
   highlightRecordId: string;    // set by GlobalSearch navigate → consumed by list modules to flash+scroll
 }
 
@@ -983,6 +984,7 @@ export type AppAction =
   | { type: 'SET_GLOBAL_SEARCH'; payload: string }
   | { type: 'SET_PENDING_BARCODE_INVOICE'; payload: string }
   | { type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER'; payload: string }
+  | { type: 'SET_PENDING_POS_CUSTOMER'; payload: string }
   | { type: 'SET_HIGHLIGHT_RECORD'; payload: string }
   | { type: 'SET_CURRENT_STORE_ID'; payload: string }
   | { type: 'SET_CONSOLIDATED_VIEW'; payload: boolean }

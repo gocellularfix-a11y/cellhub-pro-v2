@@ -5,6 +5,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
@@ -55,6 +56,8 @@ export default function RepairModule() {
   const [depositModalRepair, setDepositModalRepair] = useState<Repair | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Repair | null>(null);
   const [isConsolidating, setIsConsolidating] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<Repair | null>(null);
+  const [completeConfirm, setCompleteConfirm] = useState<Repair | null>(null);
 
   // ── Stale-closure guard: ref-based mirror of repairs so back-to-back
   // setRepairs calls (modal save + collectBalance) don't pisarse mutually.
@@ -461,6 +464,9 @@ export default function RepairModule() {
             ticketNumber: ticketNum,
             isTaxable,
           });
+          if ((newRepair as any).customerId) {
+            dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (newRepair as any).customerId });
+          }
           toast(
             lang === 'es'
               ? `Reparación creada. Depósito ${formatCurrency(depositAmt)} agregado al carrito.`
@@ -620,6 +626,9 @@ export default function RepairModule() {
         ticketNumber: (repair as any).ticketNumber,
         isTaxable,
       });
+      if ((repair as any).customerId) {
+        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
+      }
 
       toast(
         lang === 'es'
@@ -628,8 +637,80 @@ export default function RepairModule() {
         'info',
       );
     },
-    [consolidateCartForRepair, toast, lang],
+    [consolidateCartForRepair, dispatch, toast, lang],
   );
+
+  const handleCompleteRequest = useCallback((repair: Repair) => {
+    const balance = repair.balance || 0;
+    const deposit = (repair as any).depositAmount || (repair as any).deposit || 0;
+    if (balance === 0 && deposit === 0) {
+      const updated: Repair = { ...repair, status: 'Complete' as any, updatedAt: new Date().toISOString() };
+      const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
+      repairsRef.current = next;
+      setRepairs(next);
+      persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+      toast(lang === 'es' ? 'Reparación completada' : 'Repair completed', 'success');
+      return;
+    }
+    setCompleteConfirm(repair);
+  }, [setRepairs, toast, lang]);
+
+  const handleCompleteConfirmed = useCallback(() => {
+    const repair = completeConfirm;
+    if (!repair) return;
+
+    if ((repair.balance || 0) > 0) {
+      const isTaxable = !!(repair as any).taxable;
+      consolidateCartForRepair({
+        repairId: repair.id,
+        additionalCents: repair.balance,
+        deviceLabel: [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '',
+        ticketNumber: (repair as any).ticketNumber,
+        isTaxable,
+      });
+      if ((repair as any).customerId) {
+        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
+      }
+    }
+
+    const updated: Repair = { ...repair, status: 'Complete' as any, updatedAt: new Date().toISOString() };
+    const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
+    repairsRef.current = next;
+    setRepairs(next);
+    persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+
+    setCompleteConfirm(null);
+    toast(
+      (repair.balance || 0) > 0
+        ? (lang === 'es' ? 'Balance agregado al carrito. Ve a POS.' : 'Balance added to cart. Go to POS.')
+        : (lang === 'es' ? 'Reparación completada' : 'Repair completed'),
+      'success',
+    );
+  }, [completeConfirm, consolidateCartForRepair, setRepairs, dispatch, toast, lang]);
+
+  const handleSMS = useCallback((repair: Repair) => {
+    if (!repair.customerPhone) return;
+    const store = settings.storeName || 'Go Cellular';
+    const name = repair.customerName?.split(' ')[0] || repair.customerName;
+    const device = [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '';
+    const ticket = (repair as any).ticketNumber || repair.id.slice(-6).toUpperCase();
+    const amount = formatCurrency(repair.balance || repair.total || 0);
+    const msg = lang === 'es'
+      ? `Hola ${name}, tu reparación ${ticket} está lista. Total: ${amount}. — ${store}`
+      : `Hi ${name}, your repair ${ticket} is ready for pickup. Total: ${amount}. — ${store}`;
+    sendSms(repair.customerPhone, msg, settings).catch(console.error);
+    toast(lang === 'es' ? 'SMS enviado' : 'SMS sent', 'success');
+  }, [settings, lang, toast]);
+
+  const handleDeleteConfirmed = useCallback(() => {
+    if (!deleteConfirm) return;
+    const next = repairsRef.current.filter((r) => r.id !== deleteConfirm.id);
+    repairsRef.current = next;
+    setRepairs(next);
+    remove.repair(deleteConfirm.id);
+    setDeleteConfirm(null);
+    toast(lang === 'es' ? 'Reparación eliminada' : 'Repair deleted', 'success');
+  }, [deleteConfirm, setRepairs, toast, lang]);
 
   // ── Render ──────────────────────────────────────────────
 
@@ -712,6 +793,25 @@ export default function RepairModule() {
                   )
                 );
               } : undefined}
+              onDeposit={!['Cancelled','cancelled','Complete','complete','picked_up'].includes(repair.status) && (repair.balance || 0) > 0
+                ? () => setDepositModalRepair(repair)
+                : undefined}
+              onComplete={() => handleCompleteRequest(repair)}
+              completeLabel={
+                ['Cancelled','cancelled'].includes(repair.status)
+                  ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
+                  : ['Complete','complete','picked_up'].includes(repair.status)
+                  ? (lang === 'es' ? '✓ Completado' : '✓ Completed')
+                  : (repair.balance || 0) > 0
+                  ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(repair.balance)}` : `Complete / Collect ${formatCurrency(repair.balance)}`)
+                  : (lang === 'es' ? 'Completar' : 'Complete')
+              }
+              completeDisabled={['Cancelled','cancelled','Complete','complete','picked_up'].includes(repair.status)}
+              completeVariant={['Complete','complete','picked_up'].includes(repair.status) ? 'green' : 'amber'}
+              onPrint={() => printRepairTicket(repair)}
+              onSMS={() => handleSMS(repair)}
+              onDelete={() => setDeleteConfirm(repair)}
+              smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && repair.customerPhone)}
               lang={lang}
               L={L}
             />
@@ -764,6 +864,9 @@ export default function RepairModule() {
                 ticketNumber: (r as any).ticketNumber,
                 isTaxable,
               });
+              if ((r as any).customerId) {
+                dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (r as any).customerId });
+              }
 
               setDepositModalRepair(null);
               toast(
@@ -808,6 +911,40 @@ export default function RepairModule() {
           lang={lang}
           onConfirm={(choice) => handleCancelRepair(cancelTarget, choice)}
           onClose={() => setCancelTarget(null)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Eliminar reparación' : 'Delete repair'}
+          message={lang === 'es'
+            ? `¿Eliminar ticket ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6)}? Esta acción no se puede deshacer.`
+            : `Delete ticket ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6)}? This cannot be undone.`}
+          variant="danger"
+          confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {completeConfirm && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Completar reparación' : 'Complete repair'}
+          message={
+            (completeConfirm.balance || 0) > 0
+              ? (lang === 'es'
+                  ? `¿Marcar completa y cobrar saldo de ${formatCurrency(completeConfirm.balance)}?`
+                  : `Mark as complete and collect balance of ${formatCurrency(completeConfirm.balance)}?`)
+              : (lang === 'es' ? '¿Marcar como completa?' : 'Mark as complete?')
+          }
+          variant="warning"
+          confirmLabel={lang === 'es' ? 'Confirmar' : 'Confirm'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={handleCompleteConfirmed}
+          onCancel={() => setCompleteConfirm(null)}
         />
       )}
     </>

@@ -39,6 +39,7 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
+      pendingPosCustomer,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
@@ -131,6 +132,19 @@ export default function POSModule() {
       setShowPhonePayment(true);
     }
   }, [pendingPhonePaymentCustomerId]);
+
+  // ── Auto-assign customer when repair/SO is added to cart ──
+  // RepairModule dispatches SET_PENDING_POS_CUSTOMER after consolidateCartForRepair.
+  // We pick it up here and set selectedCustomer so PaymentModal doesn't warn
+  // "pts will be lost — no customer assigned" (BUG #CUST-POS-1).
+  useEffect(() => {
+    if (!pendingPosCustomer) return;
+    const cust = customers.find((c) => c.id === pendingPosCustomer);
+    if (cust && (!selectedCustomer || selectedCustomer.id !== cust.id)) {
+      setSelectedCustomer(cust);
+    }
+    dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: '' });
+  }, [pendingPosCustomer, customers, selectedCustomer, dispatch]);
 
   // Last completed sale (for receipt)
   const [lastSale, setLastSale] = useState<Sale | null>(null);

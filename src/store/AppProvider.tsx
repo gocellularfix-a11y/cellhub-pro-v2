@@ -63,6 +63,7 @@ const initialState: AppState = {
   globalSearchTerm: '',
   pendingBarcodeInvoice: '',
   pendingPhonePaymentCustomerId: '',
+  pendingPosCustomer: '',
   highlightRecordId: '',  // set by global scanner → consumed by ReturnsModule
 };
 
@@ -127,6 +128,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, pendingBarcodeInvoice: action.payload };
     case 'SET_PENDING_PHONE_PAYMENT_CUSTOMER':
       return { ...state, pendingPhonePaymentCustomerId: action.payload };
+    case 'SET_PENDING_POS_CUSTOMER':
+      return { ...state, pendingPosCustomer: action.payload };
     case 'SET_HIGHLIGHT_RECORD':
       return { ...state, highlightRecordId: action.payload };
     case 'SET_CURRENT_STORE_ID':
