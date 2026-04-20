@@ -704,6 +704,40 @@ export default function RepairModule() {
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
+
+    // r-new-4 GUARD 1: prevent delete if repair has pending cart items.
+    // Deleting would leave orphan cart lines that still charge at POS but
+    // can't update any entity on reconciliation.
+    const hasPendingCart = cartRef.current.some((item) => item.repairId === deleteConfirm.id);
+    if (hasPendingCart) {
+      toast(
+        lang === 'es'
+          ? 'No se puede eliminar: hay items de este ticket en el carrito. Limpia el carrito primero.'
+          : 'Cannot delete: this ticket has items in cart. Clear the cart first.',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    // r-new-4 GUARD 2: prevent delete of paid/completed repairs.
+    // These have Sale records in the sales collection that reference repairId.
+    // Deleting the repair leaves dangling references and breaks reports.
+    // For paid repairs, the correct action is Cancel with refund, not Delete.
+    const hasDeposit = ((deleteConfirm as any).depositAmount || 0) > 0;
+    const isCompleted = ['Complete', 'complete', 'picked_up'].includes(deleteConfirm.status);
+    if (hasDeposit || isCompleted) {
+      toast(
+        lang === 'es'
+          ? 'No se puede eliminar reparaciones pagadas o completadas. Usa "Cancelar" para reembolsar.'
+          : 'Cannot delete paid or completed repairs. Use "Cancel" to refund.',
+        'error',
+      );
+      setDeleteConfirm(null);
+      return;
+    }
+
+    // Safe to delete (unpaid + not-completed + no cart items)
     const next = repairsRef.current.filter((r) => r.id !== deleteConfirm.id);
     repairsRef.current = next;
     setRepairs(next);
