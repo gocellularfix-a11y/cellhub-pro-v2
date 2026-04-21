@@ -338,9 +338,12 @@ export default function ReportsModule() {
 
   /** Returns whose original sale was in this period (gross→net adjustment view). */
   const returnsFromPeriodSales = useMemo(() => {
-    const periodSaleIds = new Set(filteredSales.map((s) => s.id));
+    // Round 10.2: match returns against ALL sales in period, not just countable.
+    // After R11 migration, original sales are marked refunded and get filtered
+    // out of filteredSales, but their returns still belong to this period.
+    const periodSaleIds = new Set(allFilteredSales.map((s) => s.id));
     return allReturns.filter((r) => r.originalSaleId && periodSaleIds.has(r.originalSaleId));
-  }, [allReturns, filteredSales]);
+  }, [allReturns, allFilteredSales]);
 
   // ── Repair-in-sale tracking (prevents double counting) ────
   /** IDs and ticket numbers of repairs that were paid through POS in this period. */
