@@ -178,7 +178,7 @@ export default function CancelLayawayModal({
             className="btn btn-secondary btn-sm"
             onClick={onClose}
             style={{ padding: '0.5rem 1rem' }}>
-            {es ? 'Nunca mind' : 'Never mind'}
+            {es ? 'Cancelar' : 'Never mind'}
           </button>
           <button
             type="button"

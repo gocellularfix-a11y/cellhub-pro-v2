@@ -425,6 +425,8 @@ export default function LayawayModule() {
       // Sync deposit change to linked sale item
       const oldDepositCents = editLayaway.paidAmount || 0;
       if (depositCents !== oldDepositCents && setSales) {
+        // Round 13 fix: persist each modified sale to avoid data loss on reload
+        const modifiedSales: typeof sales = [];
         setSales(sales.map((sale) => {
           const hasItem = (sale.items || []).some((it) => (it as any).layawayId === editLayaway.id);
           if (!hasItem) return sale;
@@ -432,8 +434,13 @@ export default function LayawayModule() {
             (it as any).layawayId !== editLayaway.id ? it : { ...it, price: depositCents }
           );
           const newTotal = updatedItems.reduce((s, it) => s + it.price * it.qty, 0);
-          return { ...sale, items: updatedItems, total: newTotal };
+          const nextSale = { ...sale, items: updatedItems, total: newTotal };
+          modifiedSales.push(nextSale);
+          return nextSale;
         }));
+        for (const ms of modifiedSales) {
+          persist.sale(ms.id, ms as unknown as Record<string, unknown>);
+        }
       }
 
       toast(es ? 'Apartado actualizado' : 'Layaway updated', 'success');
@@ -727,6 +734,17 @@ export default function LayawayModule() {
 
   const printLayawayTicket = useCallback((l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
+    // Round 13 fix: escape HTML for interpolations OUTSIDE the <pre> text block.
+    // Content inside <pre> is escaped inline at join time (see text.replace below).
+    const escHtml = (s: unknown): string => {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
     const moneyC = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     const storeName  = (settings.storeName  || 'Go Cellular').toUpperCase();
     const storeAddr  = settings.storeAddress || '';
@@ -808,7 +826,7 @@ export default function LayawayModule() {
     if (settings.storeWebsite) lines.push(settings.storeWebsite);
 
     const text = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Layaway ${safe(l.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Layaway ${escHtml(l.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, es, printHtml]);
 
@@ -1227,7 +1245,7 @@ export default function LayawayModule() {
         <DepositModal
           title={es ? `Apartado ${(depositTarget as any).ticketNumber || ''} — Cobrar` : `Layaway ${(depositTarget as any).ticketNumber || ''} — Collect`}
           itemLabel={(depositTarget as any).itemDescription || depositTarget.items?.[0]?.name || 'Layaway Item'}
-          itemPrice={(depositTarget.items?.[0]?.price || 0) / 100}
+          itemPrice={((depositTarget.items?.[0]?.price ?? depositTarget.totalPrice) || 0) / 100}
           taxRate={taxRate}
           taxable={(depositTarget as any).taxable || false}
           existingDeposit={(depositTarget.paidAmount || 0) / 100}
