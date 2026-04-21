@@ -642,12 +642,19 @@ export default function LayawayModule() {
         return false;
       });
       if (matched) {
-        // Round 15b M2: re-find the customer through customersRef immediately
-        // before mutating, so concurrent cancels on the same customer don't
-        // both read the pre-race storeCredit off a stale closure. Synchronous
-        // ref write before setCustomers guarantees the next handler sees the
-        // updated value. (App setter is dispatch-only — no functional updater
-        // overload available; ref-sync is the equivalent anti-stale path.)
+        // Round 15b/15b.1 M2: setCustomers is dispatch-only (no functional
+        // updater overload in AppProvider). This is the canonical local
+        // anti-stale fix and must not be changed without a full AppProvider
+        // refactor. CRITICAL invariants — do NOT remove or reorder:
+        //   1. Re-read via customersRef.current IMMEDIATELY before the
+        //      increment, not via a closure-captured customers value.
+        //   2. Write customersRef.current = nextCustomers BEFORE calling
+        //      setCustomers(nextCustomers) so a concurrent handler firing
+        //      between these two lines sees the updated credit.
+        //   3. persist.customer runs AFTER the ref sync, against the
+        //      synchronously-captured updatedCustomer.
+        // Any refactor that loses these three invariants reopens the
+        // concurrent-cancel store_credit race.
         const fresh = customersRef.current.find((c) => c.id === matched.id) || matched;
         const updatedCustomer = {
           ...fresh,
@@ -1384,8 +1391,11 @@ export default function LayawayModule() {
           ? `¿Eliminar apartado ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? Esta acción no se puede deshacer.`
           : `Delete layaway ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? This cannot be undone.`) : ''}
         variant="danger"
-        confirmLabel={isDeleting ? (es ? 'Eliminando...' : 'Deleting...') : (es ? 'Eliminar' : 'Delete')}
+        confirmLabel={es ? 'Eliminar' : 'Delete'}
         cancelLabel={es ? 'Cancelar' : 'Cancel'}
+        busy={isDeleting}
+        confirmClassName="min-w-[140px]"
+        confirmBusyLabel={es ? 'Eliminando...' : 'Deleting...'}
         onConfirm={handleDeleteConfirmed}
         onCancel={() => setDeleteConfirm(null)}
       />
