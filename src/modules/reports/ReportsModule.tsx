@@ -22,7 +22,7 @@ import { SearchInput } from '@/components/ui';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 
 // ── Constants & helpers ──────────────────────────────────────
@@ -77,6 +77,32 @@ function escHtml(s: unknown): string {
 /** Sale counts as revenue iff status is not voided/refunded outright. */
 function isCountableSale(s: Sale): boolean {
   return s.status !== 'voided' && s.status !== 'refunded';
+}
+
+/**
+ * Round 10: pseudo-items (deposit/balance placeholders from linked entity flows)
+ * inflate margin because they carry no cost. Excluded from margin numerator/
+ * denominator but still counted for revenue & quantity display.
+ */
+const PSEUDO_ITEM_PREFIXES = [
+  'layaway balance', 'layaway deposit',
+  'repair balance', 'repair deposit',
+  'so balance', 'so deposit',
+  'unlock balance', 'unlock deposit',
+];
+function isPseudoItem(item: SaleItem): boolean {
+  const n = String(item?.name || '').toLowerCase().trim();
+  if (!n) return false;
+  return PSEUDO_ITEM_PREFIXES.some((p) => n.startsWith(p));
+}
+
+/**
+ * Round 10: case-insensitive category bucketing. Previously 'Products' and
+ * 'products' would create separate rows and aggregation split across both,
+ * masking the real totals (e.g. two -$25 refunds rolled to a single -$20 row).
+ */
+function normalizeCategoryKey(raw: string): string {
+  return String(raw || '').trim().toLowerCase() || 'products';
 }
 
 /** Repair counts as completed revenue iff customer paid in full and picked up. */
@@ -195,7 +221,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, inventory, customers, settings, lang, globalSearchTerm, currentEmployee },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, lang, globalSearchTerm, currentEmployee },
     dispatch,
   } = useApp();
 
@@ -213,6 +239,7 @@ export default function ReportsModule() {
   const safeRepairs: Repair[] = Array.isArray(repairs) ? repairs : [];
   const safeUnlocks: Unlock[] = Array.isArray(unlocks) ? unlocks : [];
   const safeSpecialOrders: SpecialOrder[] = Array.isArray(specialOrders) ? specialOrders : [];
+  const safeLayaways: Layaway[] = Array.isArray(layaways) ? layaways : [];
 
   // ── State ─────────────────────────────────────────────────
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly' | 'range' | 'returning'>('daily');
@@ -468,14 +495,32 @@ export default function ReportsModule() {
     let cardCents = 0;
     let storeCreditCents = 0;
 
-    const categoryStats: Record<string, { quantity: number; revenueCents: number; costCents: number; profitCents: number }> = {};
+    // Round 10 fix 4: key is lowercase for case-insensitive bucketing; displayName
+    // preserves the first spelling seen (Title-cased standard names always win
+    // because we pass canonical literals like 'Products'/'Services'/'Repairs').
+    const categoryStats: Record<string, {
+      displayName: string;
+      quantity: number;
+      revenueCents: number;
+      costCents: number;
+      profitCents: number;
+      pseudoRevenueCents: number;  // Round 10 fix 3: revenue from pseudo-items (excluded from margin calc)
+      hasRealCostItem: boolean;    // true if any non-pseudo item contributed
+    }> = {};
     const employeeStats: Record<string, { transactions: number; revenueCents: number }> = {};
     const itemStats: Record<string, { quantity: number; revenueCents: number }> = {};
     const phonePaymentsByCarrier: Record<string, { count: number; totalCents: number; numbers: string[] }> = {};
 
     const ensureCat = (name: string) => {
-      if (!categoryStats[name]) categoryStats[name] = { quantity: 0, revenueCents: 0, costCents: 0, profitCents: 0 };
-      return categoryStats[name];
+      const key = normalizeCategoryKey(name);
+      if (!categoryStats[key]) {
+        categoryStats[key] = {
+          displayName: name || 'Products',
+          quantity: 0, revenueCents: 0, costCents: 0, profitCents: 0,
+          pseudoRevenueCents: 0, hasRealCostItem: false,
+        };
+      }
+      return categoryStats[key];
     };
 
     for (const sale of filteredSales) {
@@ -591,10 +636,18 @@ export default function ReportsModule() {
         const cat = ensureCat(catName);
         cat.quantity += qty;
         cat.revenueCents += revenueCents;
-        cat.costCents += costCents;
-        cat.profitCents += profitCents;
-        totalCostCents += costCents;
-        totalProfitCents += profitCents;
+        // Round 10 fix 3: pseudo-items (Layaway/Repair/SO/Unlock Deposit|Balance
+        // placeholder cart lines) contribute to revenue/qty display but must NOT
+        // distort margin — they carry no cost so they'd trivially hit 100% margin.
+        if (isPseudoItem(item)) {
+          cat.pseudoRevenueCents += revenueCents;
+        } else {
+          cat.costCents += costCents;
+          cat.profitCents += profitCents;
+          cat.hasRealCostItem = true;
+          totalCostCents += costCents;
+          totalProfitCents += profitCents;
+        }
       }
 
       // ── CC Fee (round 15+): top-level field on Sale, pass-through surcharge.
@@ -606,8 +659,9 @@ export default function ReportsModule() {
         const cat = ensureCat('CC Fees');
         cat.quantity += 1;
         cat.revenueCents += ccFee;
-        // costCents stays 0
+        // costCents stays 0 — 100% margin is real for CC fee pass-through.
         cat.profitCents += ccFee;
+        cat.hasRealCostItem = true;
         totalProfitCents += ccFee;
       }
     }
@@ -624,6 +678,7 @@ export default function ReportsModule() {
       cat.revenueCents += rev;
       cat.costCents += cost;
       cat.profitCents += profit;
+      cat.hasRealCostItem = true;
       totalCostCents += cost;
       totalProfitCents += profit;
     }
@@ -639,6 +694,7 @@ export default function ReportsModule() {
       cat.revenueCents += rev;
       cat.costCents += cost;
       cat.profitCents += profit;
+      cat.hasRealCostItem = true;
       totalCostCents += cost;
       totalProfitCents += profit;
       standaloneUnlockRevenueCents += rev;
@@ -663,14 +719,23 @@ export default function ReportsModule() {
 
     const categoriesByRevenue = Object.entries(categoryStats)
       .sort((a, b) => b[1].revenueCents - a[1].revenueCents)
-      .map(([name, s]) => ({
-        name,
-        quantity: s.quantity,
-        revenueCents: s.revenueCents,
-        costCents: s.costCents,
-        profitCents: s.profitCents,
-        marginPct: s.revenueCents > 0 ? (s.profitCents / s.revenueCents) * 100 : 0,
-      }));
+      .map(([, s]) => {
+        // Round 10 fix 3: exclude pseudo-item revenue from margin denominator
+        // (and profit numerator is already pseudo-free). If the category has no
+        // real-cost items at all, marginPct is null → rendered as "—".
+        const costBaseCents = s.revenueCents - s.pseudoRevenueCents;
+        const marginPct = s.hasRealCostItem && costBaseCents > 0
+          ? (s.profitCents / costBaseCents) * 100
+          : null;
+        return {
+          name: s.displayName,
+          quantity: s.quantity,
+          revenueCents: s.revenueCents,
+          costCents: s.costCents,
+          profitCents: s.profitCents,
+          marginPct,
+        };
+      });
 
     const topItems = Object.entries(itemStats)
       .sort((a, b) => b[1].revenueCents - a[1].revenueCents)
@@ -680,6 +745,14 @@ export default function ReportsModule() {
     const topEmployees = Object.entries(employeeStats)
       .sort((a, b) => b[1].revenueCents - a[1].revenueCents)
       .map(([name, d]) => ({ name, transactions: d.transactions, revenueCents: d.revenueCents }));
+
+    // Round 10 fix 2: bucketize transactions rather than lumping them as "txCount".
+    // - cleanSales: status!=='voided'/'refunded' AND total > 0 (real positive sales)
+    // - refundedOriginals: status==='refunded' (original sale that customer returned)
+    // - voided: status==='voided'
+    // - refundSales: countable sale with total < 0 (REF-* audit rows from returns)
+    const cleanSalesCount = filteredSales.filter((s) => (s.total || 0) > 0).length;
+    const refundSalesCount = filteredSales.filter((s) => (s.total || 0) < 0).length;
 
     return {
       grossRevenueCents,
@@ -696,6 +769,8 @@ export default function ReportsModule() {
       cardCents,
       storeCreditCents,
       txCount: filteredSales.length,
+      cleanSalesCount,
+      refundSalesCount,
       voidedCount: allFilteredSales.filter((s) => s.status === 'voided').length,
       refundedCount: allFilteredSales.filter((s) => s.status === 'refunded').length,
       repairCount: filteredRepairs.length,
@@ -707,6 +782,50 @@ export default function ReportsModule() {
       phonePaymentsByCarrier,
     };
   }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, inventory, settings, safeRepairs, safeUnlocks, es]);
+
+  // ── Round 10 fix 1: Cash tripartite (In / Out / Net) ──────
+  // Gross "Cash" previously equalled "Cash In" only, hiding real cash drawer
+  // outflows from returns + cancellation deposit refunds. Split into:
+  //   Cash In  = positive-total non-refunded sales paid cash (or split.cash)
+  //   Cash Out = customerReturn refunds (resolution='cash') + cancellations
+  //              across SO/Repair/Unlock/Layaway with depositRefundMethod='cash'
+  //   Net      = Cash In − Cash Out  (colored green/red in render)
+  const cashBreakdown = useMemo(() => {
+    let cashIn = 0;
+    for (const sale of allFilteredSales) {
+      if (sale.status === 'refunded' || sale.status === 'voided') continue;
+      if ((sale.total || 0) <= 0) continue;
+      const pm = String(sale.paymentMethod || '').toLowerCase();
+      if (pm === 'cash') cashIn += sale.total || 0;
+      else if (pm === 'split') cashIn += sale.splitPayment?.cash ?? 0;
+    }
+
+    let cashOut = 0;
+    // Customer returns refunded in cash during this period.
+    for (const r of returnsInPeriod) {
+      if (String(r.resolution || '').toLowerCase() === 'cash') {
+        cashOut += Math.abs(r.totalCents);
+      }
+    }
+    // Entity cancellations with cash deposit refund (SO/Repair/Unlock are already
+    // aggregated in cancellationsInPeriod; Layaways aren't in that list so iterate
+    // them separately here — intentional, this touches Cash Out math only, not
+    // the Cancellations table UI).
+    for (const c of cancellationsInPeriod) {
+      if (c.refundMethod === 'cash') cashOut += c.refundAmountCents;
+    }
+    for (const l of safeLayaways) {
+      const status = String(l.status || '').toLowerCase();
+      if (status !== 'cancelled') continue;
+      const cancelledAt = (l as any).cancelledAt || l.updatedAt;
+      if (!inRange(cancelledAt)) continue;
+      if ((l as any).depositRefundMethod === 'cash') {
+        cashOut += (l as any).depositRefundAmount || 0;
+      }
+    }
+
+    return { cashIn, cashOut, net: cashIn - cashOut };
+  }, [allFilteredSales, returnsInPeriod, cancellationsInPeriod, safeLayaways, inRange]);
 
   // ── Phone payment per-line rows (for portal report and detail table) ──
   const phonePaymentRows = useMemo(() => {
@@ -780,6 +899,7 @@ export default function ReportsModule() {
   // ── Drilldown items ───────────────────────────────────────
   const drilldownItems = useMemo(() => {
     if (!drilldownCategory) return null;
+    const wantKey = normalizeCategoryKey(drilldownCategory);
     const items: Array<{ name: string; qty: number; revenueCents: number; saleInvoice: string; date: unknown }> = [];
     for (const sale of filteredSales) {
       for (const item of (sale.items || [])) {
@@ -792,7 +912,8 @@ export default function ReportsModule() {
           : kind === 'cc_fee' ? 'CC Fees'
           : kind === 'service' ? 'Services'
           : (item.category || 'Products');
-        if (catGuess !== drilldownCategory) continue;
+        // Round 10 fix 4: compare on normalized key so case variants match.
+        if (normalizeCategoryKey(catGuess) !== wantKey) continue;
         items.push({
           name: item.name || '—',
           qty: item.qty || (item as any).quantity || 1,
@@ -893,7 +1014,7 @@ export default function ReportsModule() {
       .map(([c, d]) => `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td></tr>`)
       .join('');
     const catRows = stats.categoriesByRevenue
-      .map((c) => `<tr><td>${escHtml(c.name)}</td><td>${c.quantity}</td><td>${formatCurrency(c.revenueCents)}</td><td>${formatCurrency(c.profitCents)}</td><td>${c.marginPct.toFixed(1)}%</td></tr>`)
+      .map((c) => `<tr><td>${escHtml(c.name)}</td><td>${c.quantity}</td><td>${formatCurrency(c.revenueCents)}</td><td>${formatCurrency(c.profitCents)}</td><td>${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
       .join('');
     const empRows = stats.topEmployees
       .map((e) => `<tr><td>${escHtml(e.name)}</td><td>${e.transactions}</td><td>${formatCurrency(e.revenueCents)}</td></tr>`)
@@ -976,7 +1097,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         revenue: formatCurrency(c.revenueCents),
         cost: formatCurrency(c.costCents),
         profit: formatCurrency(c.profitCents),
-        margin: `${c.marginPct.toFixed(1)}%`,
+        margin: c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`,
       })),
       phonePaymentsByCarrier: Object.entries(stats.phonePaymentsByCarrier).map(([carrier, d]) => ({
         carrier, count: d.count, total: formatCurrency(d.totalCents),
@@ -1059,10 +1180,15 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             onChange={(e) => { setEndDate(e.target.value); setReportType('range'); }}
             style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }} />
         </div>
+        {/* Round 10 fix 2: transactions header now shows real buckets instead of a
+            single "4 transactions" lump that included refund sales as if they were
+            sales. Sale = clean positive, Refunded = original marked refunded,
+            Void = status voided, Refund = negative-total audit refund sale. */}
         <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#475569' }}>
-          {stats.txCount} {es ? 'transacciones' : 'transactions'}
+          {stats.cleanSalesCount} {stats.cleanSalesCount === 1 ? (es ? 'venta' : 'sale') : (es ? 'ventas' : 'sales')}
+          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} {es ? 'reembolsadas' : 'refunded'}</span>}
           {stats.voidedCount > 0 && <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>• {stats.voidedCount} void</span>}
-          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} refund</span>}
+          {stats.refundSalesCount > 0 && <span style={{ color: '#fb923c', marginLeft: '0.5rem' }}>• {stats.refundSalesCount} refund</span>}
         </div>
       </div>
 
@@ -1121,14 +1247,43 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         </>
       ) : (
         <>
-          {/* ── Stat cards: Gross / Returns / Net / Profit / Tax / Cash / Card ── */}
+          {/* ── Stat cards: Gross / Returns / Net / Profit / Tax / Cash (tripartite) / Card ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
-            {statCard(es ? 'Bruto' : 'Gross Revenue', stats.grossRevenueCents, `${stats.txCount} ${es ? 'ventas' : 'sales'}`, '#e2e8f0')}
+            {statCard(es ? 'Bruto' : 'Gross Revenue', stats.grossRevenueCents, `${stats.cleanSalesCount} ${stats.cleanSalesCount === 1 ? (es ? 'venta' : 'sale') : (es ? 'ventas' : 'sales')}`, '#e2e8f0')}
             {statCard(es ? 'Devoluciones' : 'Returns', stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${es ? 'devol.' : 'returns'}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
             {statCard(es ? 'Neto' : 'Net Revenue', stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${es ? 'retenido' : 'retained'}` : '—', '#22c55e')}
             {statCard(es ? 'Ganancia' : 'Profit', stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
             {statCard(es ? 'Impuesto' : 'Tax', stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
-            {statCard(es ? 'Efectivo' : 'Cash', stats.cashCents, '', '#f59e0b')}
+            {/* Round 10 fix 1: Cash tripartite (In / Out / Net) single card — amber chrome preserved. */}
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
+              <div style={{ fontSize: '0.72rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+                💵 {es ? 'Efectivo' : 'Cash'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{es ? 'Entra' : 'In'}</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fbbf24' }}>{formatCurrency(cashBreakdown.cashIn)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{es ? 'Sale' : 'Out'}</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: cashBreakdown.cashOut > 0 ? '#ef4444' : '#64748b' }}>
+                    {cashBreakdown.cashOut > 0 ? '-' : ''}{formatCurrency(cashBreakdown.cashOut)}
+                  </span>
+                </div>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                  paddingTop: '0.3rem', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '0.15rem',
+                }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#e2e8f0' }}>{es ? 'Neto' : 'Net'}</span>
+                  <span style={{
+                    fontSize: '1.05rem', fontWeight: 800,
+                    color: cashBreakdown.net >= 0 ? '#22c55e' : '#ef4444',
+                  }}>
+                    {cashBreakdown.net < 0 ? '-' : ''}{formatCurrency(Math.abs(cashBreakdown.net))}
+                  </span>
+                </div>
+              </div>
+            </div>
             {statCard(es ? 'Tarjeta' : 'Card', stats.cardCents, '', '#a78bfa')}
             {stats.storeCreditCents > 0 && statCard(es ? 'Crédito' : 'Store Credit', stats.storeCreditCents, '', '#c084fc')}
           </div>
@@ -1260,12 +1415,17 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>{formatCurrency(cat.revenueCents)}</div>
-                          <div style={{ fontSize: '0.68rem', color: cat.marginPct > 40 ? '#22c55e' : '#f59e0b' }}>{cat.marginPct.toFixed(1)}% margin</div>
+                          {/* Round 10 fix 3: null marginPct → all items in this category were pseudo-items. */}
+                          <div style={{ fontSize: '0.68rem', color: cat.marginPct === null ? '#64748b' : (cat.marginPct > 40 ? '#22c55e' : '#f59e0b') }}>
+                            {cat.marginPct === null ? '—' : `${cat.marginPct.toFixed(1)}% margin`}
+                          </div>
                         </div>
                       </div>
                       <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${(cat.revenueCents / maxRev) * 100}%`,
-                          background: cat.marginPct > 40 ? 'linear-gradient(90deg,#10b981,#22c55e)' : 'linear-gradient(90deg,#f59e0b,#fbbf24)' }} />
+                        <div style={{ height: '100%', width: `${(Math.abs(cat.revenueCents) / maxRev) * 100}%`,
+                          background: cat.marginPct === null
+                            ? 'linear-gradient(90deg,#475569,#64748b)'
+                            : (cat.marginPct > 40 ? 'linear-gradient(90deg,#10b981,#22c55e)' : 'linear-gradient(90deg,#f59e0b,#fbbf24)') }} />
                       </div>
                     </div>
                   ));
