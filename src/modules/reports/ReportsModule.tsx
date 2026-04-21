@@ -228,6 +228,9 @@ export default function ReportsModule() {
   const L = getLabels(lang);
   const es = lang === 'es';
   const { printHtml } = usePrint();
+  // Round 10.1 fix 4: grammatical singular/plural. n===1 → singular, else plural
+  // (0 uses plural in both EN/ES).
+  const pluralize = (n: number, singular: string, plural: string) => (n === 1 ? singular : plural);
 
   // r-global-search: useHighlightRecord wires the flash+scroll behavior when
   // a Sale row in the GlobalSearchBar dropdown is clicked from another module.
@@ -700,7 +703,14 @@ export default function ReportsModule() {
       standaloneUnlockRevenueCents += rev;
     }
 
-    const grossRevenueCents = filteredSales.reduce((s, sale) => s + (sale.total || 0), 0) + standaloneUnlockRevenueCents;
+    // Round 10.1 fix 2: Gross excludes status==='refunded' AND negative-total
+    // refund audit sales. Returns are subtracted separately via returnsFromPeriodSales,
+    // so including refund sales here would double-deduct.
+    const grossRevenueCents = allFilteredSales.reduce((s, sale) => {
+      if (sale.status === 'refunded' || sale.status === 'voided') return s;
+      const t = sale.total || 0;
+      return t > 0 ? s + t : s;
+    }, 0) + standaloneUnlockRevenueCents;
     const totalReturnsCents = returnsFromPeriodSales.reduce((s, r) => s + r.totalCents, 0);
     const netRevenueCents = grossRevenueCents - totalReturnsCents;
 
@@ -800,6 +810,35 @@ export default function ReportsModule() {
       else if (pm === 'split') cashIn += sale.splitPayment?.cash ?? 0;
     }
 
+    // Round 10.1 fix 1: R9-1 cash-out dedup. When a customerReturn with
+    // resolution='cash' is processed by ReturnsModule and cascades to cancel
+    // linked entities (repair/unlock/specialOrder/layaway), those entities end
+    // up with depositRefundMethod='cash' AND the refund sale carries a
+    // linkedRefunds[] ref back to each entity. The customerReturn is the
+    // authoritative source for that cash outflow, so we must skip the entity
+    // cancellation row to avoid double-counting.
+    // Match strictly by entity type+id from persisted linkedRefunds (no fuzzy
+    // matching on amount/name/timestamp). Dedup only against records already
+    // in the current period filter.
+    const dedupKey = (type: string, id: string) =>
+      `${String(type).toLowerCase().replace(/[_-]/g, '')}:${id}`;
+    const countedViaReturnKeys = new Set<string>();
+    const periodReturnNumbers = new Set(
+      returnsInPeriod
+        .filter((r) => String(r.resolution || '').toLowerCase() === 'cash')
+        .map((r) => r.returnNumber),
+    );
+    for (const sale of allFilteredSales) {
+      const linked = (sale as any).linkedRefunds as
+        | { type: string; id: string; depositCents: number }[]
+        | undefined;
+      if (!linked || linked.length === 0) continue;
+      const refReturnNumber = String((sale as any).returnNumber || '')
+        || String(sale.invoiceNumber || '').replace(/^REF-/i, '');
+      if (!periodReturnNumbers.has(refReturnNumber)) continue;
+      for (const ref of linked) countedViaReturnKeys.add(dedupKey(ref.type, ref.id));
+    }
+
     let cashOut = 0;
     // Customer returns refunded in cash during this period.
     for (const r of returnsInPeriod) {
@@ -807,21 +846,22 @@ export default function ReportsModule() {
         cashOut += Math.abs(r.totalCents);
       }
     }
-    // Entity cancellations with cash deposit refund (SO/Repair/Unlock are already
-    // aggregated in cancellationsInPeriod; Layaways aren't in that list so iterate
-    // them separately here — intentional, this touches Cash Out math only, not
-    // the Cancellations table UI).
+    // Entity cancellations with cash deposit refund (SO/Repair/Unlock are in
+    // cancellationsInPeriod; Layaways aren't, iterated separately). Skip any
+    // whose id is already represented by a counted customerReturn.
     for (const c of cancellationsInPeriod) {
-      if (c.refundMethod === 'cash') cashOut += c.refundAmountCents;
+      if (c.refundMethod !== 'cash') continue;
+      if (countedViaReturnKeys.has(dedupKey(c.type, c.id))) continue;
+      cashOut += c.refundAmountCents;
     }
     for (const l of safeLayaways) {
       const status = String(l.status || '').toLowerCase();
       if (status !== 'cancelled') continue;
       const cancelledAt = (l as any).cancelledAt || l.updatedAt;
       if (!inRange(cancelledAt)) continue;
-      if ((l as any).depositRefundMethod === 'cash') {
-        cashOut += (l as any).depositRefundAmount || 0;
-      }
+      if ((l as any).depositRefundMethod !== 'cash') continue;
+      if (countedViaReturnKeys.has(dedupKey('layaway', l.id))) continue;
+      cashOut += (l as any).depositRefundAmount || 0;
     }
 
     return { cashIn, cashOut, net: cashIn - cashOut };
@@ -1183,12 +1223,13 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         {/* Round 10 fix 2: transactions header now shows real buckets instead of a
             single "4 transactions" lump that included refund sales as if they were
             sales. Sale = clean positive, Refunded = original marked refunded,
-            Void = status voided, Refund = negative-total audit refund sale. */}
+            Void = status voided, Refund = negative-total audit refund sale.
+            Round 10.1 fix 4: singular/plural-correct labels. */}
         <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#475569' }}>
-          {stats.cleanSalesCount} {stats.cleanSalesCount === 1 ? (es ? 'venta' : 'sale') : (es ? 'ventas' : 'sales')}
-          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} {es ? 'reembolsadas' : 'refunded'}</span>}
-          {stats.voidedCount > 0 && <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>• {stats.voidedCount} void</span>}
-          {stats.refundSalesCount > 0 && <span style={{ color: '#fb923c', marginLeft: '0.5rem' }}>• {stats.refundSalesCount} refund</span>}
+          {stats.cleanSalesCount} {pluralize(stats.cleanSalesCount, es ? 'venta' : 'sale', es ? 'ventas' : 'sales')}
+          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} {pluralize(stats.refundedCount, es ? 'reembolsada' : 'refunded', es ? 'reembolsadas' : 'refunded')}</span>}
+          {stats.voidedCount > 0 && <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>• {stats.voidedCount} {pluralize(stats.voidedCount, es ? 'anulación' : 'void', es ? 'anulaciones' : 'voids')}</span>}
+          {stats.refundSalesCount > 0 && <span style={{ color: '#fb923c', marginLeft: '0.5rem' }}>• {stats.refundSalesCount} {pluralize(stats.refundSalesCount, es ? 'reembolso' : 'refund', es ? 'reembolsos' : 'refunds')}</span>}
         </div>
       </div>
 
@@ -1249,8 +1290,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         <>
           {/* ── Stat cards: Gross / Returns / Net / Profit / Tax / Cash (tripartite) / Card ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
-            {statCard(es ? 'Bruto' : 'Gross Revenue', stats.grossRevenueCents, `${stats.cleanSalesCount} ${stats.cleanSalesCount === 1 ? (es ? 'venta' : 'sale') : (es ? 'ventas' : 'sales')}`, '#e2e8f0')}
-            {statCard(es ? 'Devoluciones' : 'Returns', stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${es ? 'devol.' : 'returns'}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
+            {statCard(es ? 'Bruto' : 'Gross Revenue', stats.grossRevenueCents, `${stats.cleanSalesCount} ${pluralize(stats.cleanSalesCount, es ? 'venta' : 'sale', es ? 'ventas' : 'sales')}`, '#e2e8f0')}
+            {statCard(es ? 'Devoluciones' : 'Returns', stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${pluralize(returnsFromPeriodSales.length, es ? 'devolución' : 'return', es ? 'devoluciones' : 'returns')}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
             {statCard(es ? 'Neto' : 'Net Revenue', stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${es ? 'retenido' : 'retained'}` : '—', '#22c55e')}
             {statCard(es ? 'Ganancia' : 'Profit', stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
             {statCard(es ? 'Impuesto' : 'Tax', stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
@@ -1401,7 +1442,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               </div>
               <div style={{ padding: '0.75rem' }}>
                 {stats.categoriesByRevenue.length === 0 ? (
-                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{es ? 'Sin datos' : 'No data'}</p>
+                  // Round 10.1 fix 3: clearer empty-state copy; card chrome stays.
+                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{es ? 'Sin transacciones en este período' : 'No transactions in this period'}</p>
                 ) : (() => {
                   const maxRev = Math.max(...stats.categoriesByRevenue.map((c) => c.revenueCents), 1);
                   return stats.categoriesByRevenue.map((cat) => (
