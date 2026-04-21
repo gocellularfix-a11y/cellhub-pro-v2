@@ -390,7 +390,10 @@ export default function ReturnsModule() {
         createdAt: nowIso,
         paymentMethod: resolution === 'cash' ? 'Cash' : 'Card',
         isRefund: true,
-        status: 'completed',
+        // Round 11: refund sale is an audit record, not a real sale. 'voided'
+        // aligns with SO/Repair/Unlock/Layaway cancellation refund sales and
+        // keeps Reports Round 10.1 Gross math consistent (excluded via status).
+        status: 'voided',
         refundFor: foundSale?.invoiceNumber || '',
         returnNumber,
         items: returnItems.map((i) => ({ ...i, price: -i.priceCents })),
@@ -619,15 +622,26 @@ export default function ReturnsModule() {
     }
 
     // Phase 8: attach linkedRefunds to refund sale + mark original sale 'refunded'.
-    if (refundSale && linkedRefunds.length > 0) {
-      refundSale.linkedRefunds = linkedRefunds;
+    // Round 11: linear refunds (cash/card with no entity link) must also mark the
+    // original sale refunded and cross-ref the refund sale back to it — previously
+    // only linked-entity refunds did this, leaving linear refunds invisible to
+    // Reports Round 10.1 Gross-exclusion + R9-1 dedup logic.
+    if (refundSale) {
+      if (linkedRefunds.length > 0) {
+        refundSale.linkedRefunds = linkedRefunds;
+      } else if (updatedSale) {
+        refundSale.linkedRefunds = [{ type: 'sale', id: updatedSale.id, depositCents: totalCents }];
+      }
     }
-    if (linkedRefunds.length > 0 && updatedSale && (resolution === 'cash' || resolution === 'card')) {
+    if (updatedSale && (resolution === 'cash' || resolution === 'card')) {
+      const reason = linkedRefunds.length > 0
+        ? `Return ${returnNumber} — linked entity cancellation`
+        : `Return ${returnNumber}`;
       updatedSale = {
         ...updatedSale,
         status: 'refunded' as Sale['status'],
         refundedAt: nowIso,
-        refundReason: `Return ${returnNumber} — linked entity cancellation`,
+        refundReason: reason,
         refundMethod: resolution === 'cash' ? 'cash' : 'card',
       } as Sale;
     }
