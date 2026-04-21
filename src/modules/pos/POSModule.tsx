@@ -638,10 +638,29 @@ export default function POSModule() {
         const li = updatedLayaways.findIndex((l) => l.id === layawayId);
         if (li < 0) continue;
         const layaway = updatedLayaways[li];
+        // Round 15b H2: re-read status; abort if the layaway was cancelled or
+        // forfeited between cart-add and checkout commit.
+        const freshStatus = String(layaway.status || '').toLowerCase();
+        if (freshStatus === 'cancelled' || freshStatus === 'forfeited') {
+          toast(
+            lang === 'es'
+              ? 'Este apartado fue cancelado. No se puede completar la venta.'
+              : 'This layaway was cancelled. Cannot complete sale.',
+            'error',
+          );
+          return;
+        }
         const newPaid = (layaway.paidAmount || 0) + paidCents;
         const newBalance = Math.max(0, (layaway.balance || 0) - paidCents);
+        // Round 15b M4: write depositMethod on the FIRST payment only. Refund
+        // policy is refund-to-original-method, so we must lock the method in
+        // at first deposit and never overwrite on subsequent partials.
+        const depositMethodUpdate = layaway.depositMethod
+          ? {}
+          : { depositMethod: sale.paymentMethod };
         updatedLayaways[li] = {
           ...layaway,
+          ...depositMethodUpdate,
           paidAmount: newPaid,
           balance: newBalance,
           status: newBalance === 0 ? 'completed' : layaway.status,

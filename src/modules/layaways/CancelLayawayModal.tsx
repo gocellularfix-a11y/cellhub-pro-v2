@@ -31,9 +31,13 @@ export default function CancelLayawayModal({
 
   const [method, setMethod] = useState<'store_credit' | 'cash' | 'forfeit'>('store_credit');
   const [note, setNote] = useState('');
+  // Round 14: busy-state guard to prevent double-confirm.
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const handleConfirm = () => {
+    if (isConfirming) return;
     if (method === 'forfeit' && note.trim().length < 10) return;
+    setIsConfirming(true);
     onConfirm({ method, note: note.trim() });
   };
 
@@ -182,15 +186,16 @@ export default function CancelLayawayModal({
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary btn-sm min-w-[140px]"
             onClick={handleConfirm}
-            disabled={!isValid}
+            disabled={!isValid || isConfirming}
+            aria-busy={isConfirming}
             style={{
               padding: '0.5rem 1rem',
-              opacity: isValid ? 1 : 0.5,
-              cursor: isValid ? 'pointer' : 'not-allowed',
+              opacity: (isValid && !isConfirming) ? 1 : 0.5,
+              cursor: (isValid && !isConfirming) ? 'pointer' : 'not-allowed',
             }}>
-            {es ? 'Confirmar' : 'Confirm'}
+            {isConfirming ? (es ? 'Confirmando...' : 'Confirming...') : (es ? 'Confirmar' : 'Confirm')}
           </button>
         </div>
       </div>

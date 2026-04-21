@@ -780,6 +780,15 @@ export interface Layaway {
   dueDate?: string;
   createdAt: Timestamp | Date | string;
   updatedAt?: Timestamp | Date | string;
+  /**
+   * Round 15b M4: Payment method used for the FIRST deposit payment.
+   * Written by POSModule.handleCompleteSale on the first sale linked
+   * to this layaway via cart item meta.layawayId. Never overwritten
+   * on subsequent partial payments (refund policy: refund to original
+   * method). Optional — undefined on layaways created before Round 15b.
+   * Readers must fall back to 'Cash' with console.warn.
+   */
+  depositMethod?: string;
 }
 
 // ── Employee ──────────────────────────────────────────────

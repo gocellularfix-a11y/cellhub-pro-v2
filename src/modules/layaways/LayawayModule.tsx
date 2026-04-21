@@ -76,6 +76,7 @@ export default function LayawayModule() {
   const [deleteConfirm, setDeleteConfirm] = useState<Layaway | null>(null);
   const [depositTarget, setDepositTarget] = useState<Layaway | null>(null);
   const [isSaving, setIsSaving]           = useState(false);
+  const [isDeleting, setIsDeleting]       = useState(false);
 
   // ── Stale-closure guards: ref-mirrors of layaways/inventory so back-to-back
   // setLayaways/setInventory calls don't pisarse mutually within this module.
@@ -591,17 +592,43 @@ export default function LayawayModule() {
       setCancelTarget(null);
       return;
     }
+    // Round 15b H2: re-read from ref in case a concurrent POS checkout just
+    // marked this layaway completed. Abort rather than resetting paid/balance.
+    const fresh = layawaysRef.current.find((x) => x.id === l.id);
+    if (fresh && String(fresh.status || '').toLowerCase() === 'completed') {
+      toast(
+        es ? 'Este apartado se acaba de completar. No se puede cancelar.'
+           : 'This layaway was just completed. Cannot cancel.',
+        'error',
+      );
+      setCancelTarget(null);
+      return;
+    }
     const depositCents = l.paidAmount || 0;
     const now = new Date().toISOString();
 
     // Restore inventory reservation
-    const invId = (l as any).inventoryId || l.items?.[0]?.inventoryId;
-    if (invId) {
-      const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
-      const updatedInv = nextInv.find((i: any) => i.id === invId);
+    // Round 15b M3: loop over items for future multi-item layaway support.
+    // Today every layaway has exactly one item; loop is defensive.
+    const invIdsToRestore: Array<{ id: string; qty: number }> = [];
+    const topLevelInvId = (l as any).inventoryId;
+    if (topLevelInvId) invIdsToRestore.push({ id: topLevelInvId, qty: 1 });
+    for (const item of l.items || []) {
+      if (item.inventoryId && item.inventoryId !== topLevelInvId) {
+        invIdsToRestore.push({ id: item.inventoryId, qty: item.qty || 1 });
+      }
+    }
+    if (invIdsToRestore.length > 0) {
+      const nextInv = inventoryRef.current.map((i) => {
+        const match = invIdsToRestore.find((r) => r.id === i.id);
+        return match ? { ...i, qty: i.qty + match.qty } : i;
+      });
       inventoryRef.current = nextInv;
       setInventory(nextInv);
-      if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+      for (const r of invIdsToRestore) {
+        const updatedInv = nextInv.find((i: any) => i.id === r.id);
+        if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+      }
     }
 
     if (choice.method === 'store_credit' && depositCents > 0) {
@@ -615,9 +642,16 @@ export default function LayawayModule() {
         return false;
       });
       if (matched) {
+        // Round 15b M2: re-find the customer through customersRef immediately
+        // before mutating, so concurrent cancels on the same customer don't
+        // both read the pre-race storeCredit off a stale closure. Synchronous
+        // ref write before setCustomers guarantees the next handler sees the
+        // updated value. (App setter is dispatch-only — no functional updater
+        // overload available; ref-sync is the equivalent anti-stale path.)
+        const fresh = customersRef.current.find((c) => c.id === matched.id) || matched;
         const updatedCustomer = {
-          ...matched,
-          storeCredit: (matched.storeCredit || 0) + depositCents,
+          ...fresh,
+          storeCredit: (fresh.storeCredit || 0) + depositCents,
         };
         const nextCustomers = customersRef.current.map((c) =>
           c.id === matched.id ? updatedCustomer : c
@@ -633,6 +667,14 @@ export default function LayawayModule() {
         );
       }
     } else if (choice.method === 'cash' && depositCents > 0) {
+      // Round 15b M4: refund to the method used on the FIRST deposit. Fallback
+      // to 'Cash' for pre-R15b layaways with console.warn for observability.
+      const refundMethod = l.depositMethod || 'Cash';
+      if (!l.depositMethod) {
+        console.warn(
+          `[Layaway refund] No depositMethod on layaway ${l.id}; falling back to Cash. Expected for pre-R15b layaways.`
+        );
+      }
       // R9-1: mark original sale(s) containing this layaway as refunded.
       const originalSales = salesRef.current.filter((s: Sale) =>
         (s.items || []).some((item: any) => item.layawayId === l.id)
@@ -671,7 +713,7 @@ export default function LayawayModule() {
         taxAmount: 0,
         cbeTotal: 0,
         total: -depositCents,
-        paymentMethod: 'Cash' as any,
+        paymentMethod: refundMethod,
         status: 'voided',
         employeeId: currentEmployee?.id,
         employeeName: currentEmployee?.name,
@@ -724,49 +766,59 @@ export default function LayawayModule() {
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
+    if (isDeleting) return;
 
-    // GUARD 1: no deletar si hay items pendientes en carrito
-    const hasPendingCart = cartRef.current.some((item) => item.layawayId === deleteConfirm.id);
-    if (hasPendingCart) {
-      toast(
-        es ? 'No se puede eliminar: hay items en el carrito.'
-           : 'Cannot delete: has cart items.',
-        'error',
-      );
+    // Round 15b L5: try/finally so the button always unlocks on any throw.
+    setIsDeleting(true);
+    try {
+      // GUARD 1: no deletar si hay items pendientes en carrito
+      const hasPendingCart = cartRef.current.some((item) => item.layawayId === deleteConfirm.id);
+      if (hasPendingCart) {
+        toast(
+          es ? 'No se puede eliminar: hay items en el carrito.'
+             : 'Cannot delete: has cart items.',
+          'error',
+        );
+        setDeleteConfirm(null);
+        return;
+      }
+
+      // GUARD 2: no deletar si tiene depósito o está completado
+      const hasDeposit = ((deleteConfirm as any).paidAmount || 0) > 0;
+      const isCompleted = deleteConfirm.status === 'completed';
+      if (hasDeposit || isCompleted) {
+        toast(
+          es ? 'No se puede eliminar apartados pagados o completados. Usa "Cancelar".'
+             : 'Cannot delete paid or completed layaways. Use "Cancel".',
+          'error',
+        );
+        setDeleteConfirm(null);
+        return;
+      }
+
+      // GUARD 3: restore inventory if reserved
+      const invId = (deleteConfirm as any).inventoryId || deleteConfirm.items?.[0]?.inventoryId;
+      if (invId) {
+        const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
+        const updatedInv = nextInv.find((i: any) => i.id === invId);
+        inventoryRef.current = nextInv;
+        setInventory(nextInv);
+        if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+      }
+
+      const next = layawaysRef.current.filter((x) => x.id !== deleteConfirm.id);
+      layawaysRef.current = next;
+      setLayaways(next);
+      remove.layaway(deleteConfirm.id);
       setDeleteConfirm(null);
-      return;
+      toast(es ? 'Apartado eliminado' : 'Layaway deleted', 'success');
+    } catch (err) {
+      toast(es ? 'Error al eliminar el apartado' : 'Error deleting layaway', 'error');
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
     }
-
-    // GUARD 2: no deletar si tiene depósito o está completado
-    const hasDeposit = ((deleteConfirm as any).paidAmount || 0) > 0;
-    const isCompleted = deleteConfirm.status === 'completed';
-    if (hasDeposit || isCompleted) {
-      toast(
-        es ? 'No se puede eliminar apartados pagados o completados. Usa "Cancelar".'
-           : 'Cannot delete paid or completed layaways. Use "Cancel".',
-        'error',
-      );
-      setDeleteConfirm(null);
-      return;
-    }
-
-    // GUARD 3: restore inventory if reserved
-    const invId = (deleteConfirm as any).inventoryId || deleteConfirm.items?.[0]?.inventoryId;
-    if (invId) {
-      const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
-      const updatedInv = nextInv.find((i: any) => i.id === invId);
-      inventoryRef.current = nextInv;
-      setInventory(nextInv);
-      if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
-    }
-
-    const next = layawaysRef.current.filter((x) => x.id !== deleteConfirm.id);
-    layawaysRef.current = next;
-    setLayaways(next);
-    remove.layaway(deleteConfirm.id);
-    setDeleteConfirm(null);
-    toast(es ? 'Apartado eliminado' : 'Layaway deleted', 'success');
-  }, [deleteConfirm, es, setLayaways, setInventory, toast]);
+  }, [deleteConfirm, es, isDeleting, setLayaways, setInventory, toast]);
 
   const printLayawayTicket = useCallback((l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
@@ -1019,12 +1071,14 @@ export default function LayawayModule() {
                           ✕ {es ? 'Cancelar' : 'Cancel'}
                         </button>
                         <button
-                          className="btn btn-sm"
+                          className="btn btn-sm min-w-[140px]"
                           style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
                           onClick={() => setDeleteConfirm(l)}
+                          disabled={isDeleting}
+                          aria-busy={isDeleting}
                           title={es ? 'Eliminar (solo sin depósito)' : 'Delete (only if no deposit)'}
                         >
-                          🗑️
+                          🗑️ {isDeleting ? (es ? 'Eliminando...' : 'Deleting...') : (es ? 'Eliminar' : 'Delete')}
                         </button>
                       </>
                     )}
@@ -1272,7 +1326,7 @@ export default function LayawayModule() {
             </div>
             <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem' }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowForm(false)}>{es ? 'Cancelar' : 'Cancel'}</button>
-              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={isSaving}>💾 {isSaving ? (es ? 'Guardando...' : 'Saving...') : (es ? 'Guardar' : 'Save')}</button>
+              <button className="btn btn-primary min-w-[140px]" style={{ flex: 2 }} onClick={handleSave} disabled={isSaving} aria-busy={isSaving}>💾 {isSaving ? (es ? 'Guardando...' : 'Saving...') : (es ? 'Guardar' : 'Save')}</button>
             </div>
           </div>
         </div>
@@ -1330,7 +1384,7 @@ export default function LayawayModule() {
           ? `¿Eliminar apartado ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? Esta acción no se puede deshacer.`
           : `Delete layaway ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6).toUpperCase()}? This cannot be undone.`) : ''}
         variant="danger"
-        confirmLabel={es ? 'Eliminar' : 'Delete'}
+        confirmLabel={isDeleting ? (es ? 'Eliminando...' : 'Deleting...') : (es ? 'Eliminar' : 'Delete')}
         cancelLabel={es ? 'Cancelar' : 'Cancel'}
         onConfirm={handleDeleteConfirmed}
         onCancel={() => setDeleteConfirm(null)}
