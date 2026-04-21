@@ -75,6 +75,7 @@ export default function LayawayModule() {
   const [cancelTarget, setCancelTarget]   = useState<Layaway | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Layaway | null>(null);
   const [depositTarget, setDepositTarget] = useState<Layaway | null>(null);
+  const [isSaving, setIsSaving]           = useState(false);
 
   // ── Stale-closure guards: ref-mirrors of layaways/inventory so back-to-back
   // setLayaways/setInventory calls don't pisarse mutually within this module.
@@ -331,6 +332,9 @@ export default function LayawayModule() {
   }, [settings.taxRate, es, setCart]);
 
   const handleSave = useCallback(() => {
+    // Round 14: busy-state guard — short-circuit double-click; setIsSaving toggled
+    // around the mutation phase only (after validation returns).
+    if (isSaving) return;
     const fName = form.firstName.trim();
     const lName = form.lastName.trim();
     if (!fName) { toast(es ? 'Ingresa el nombre del cliente' : 'Enter customer first name', 'error'); return; }
@@ -349,6 +353,12 @@ export default function LayawayModule() {
     }
     skipImeiCheckRef.current = false;
 
+    setIsSaving(true);
+    // Round 15 C3: wrap the mutation phase in try/catch so a synchronous throw
+    // from persist.* / setState / consolidateCartForLayaway never leaves the
+    // button stuck at "Guardando...". Happy-path unlocks are still explicit
+    // (edit returns, create unlocks inside the print setTimeout — H1).
+    try {
     const customerName  = `${fName} ${lName}`.trim();
     // Use helper values directly — avoid cents→dollars→cents round-trip rounding risk
     const totalCents    = _totals.totalWithTaxCents;
@@ -444,6 +454,7 @@ export default function LayawayModule() {
       }
 
       toast(es ? 'Apartado actualizado' : 'Layaway updated', 'success');
+      setIsSaving(false);
       setShowForm(false); setEditLayaway(null); return;
     }
 
@@ -499,12 +510,19 @@ export default function LayawayModule() {
       toast(es ? 'Depósito agregado al carrito' : 'Deposit added to cart', 'info');
     }
 
-    setTimeout(() => printLayawayTicket(newLayaway), 300);
+    // Round 15 H1: defer the isSaving unlock until print fires so a fast
+    // double-click on Save can't queue a second CREATE in the 300ms window.
+    setTimeout(() => { printLayawayTicket(newLayaway); setIsSaving(false); }, 300);
     toast(es ? 'Apartado creado' : 'Layaway created!', 'success');
     setShowForm(false); setForm(emptyForm());
+    } catch (err) {
+      setIsSaving(false);
+      toast(es ? 'Error al guardar el apartado' : 'Error saving layaway', 'error');
+      console.error(err);
+    }
   }, [form, subtotal, taxAmt, grandTotal, depositAmt, balanceAmt, editLayaway,
       layaways, customers, inventory, settings, currentEmployee, sales,
-      es, taxRate, setLayaways, setCustomers, setInventory, setCart, setSales, toast,
+      es, taxRate, isSaving, setLayaways, setCustomers, setInventory, setCart, setSales, toast,
       consolidateCartForLayaway, dispatch]);
 
   const handleCollectConfirm = useCallback((l: Layaway, paymentDollars: number) => {
@@ -558,6 +576,21 @@ export default function LayawayModule() {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // Round 14: block invalid transitions BEFORE any mutation or side effect.
+    // Round 15 C2/M1: include 'forfeited' terminal state AND close the modal on
+    // early-return so CancelLayawayModal's isConfirming unlocks (otherwise the
+    // child modal stays frozen at "Confirmando...").
+    const normalizedStatus = String(l.status || '').toLowerCase();
+    if (normalizedStatus === 'completed') {
+      toast(es ? 'No se puede cancelar un apartado completado' : 'Cannot cancel a completed layaway', 'error');
+      setCancelTarget(null);
+      return;
+    }
+    if (normalizedStatus === 'cancelled' || normalizedStatus === 'forfeited') {
+      toast(es ? 'Este apartado ya está cancelado' : 'This layaway is already cancelled', 'error');
+      setCancelTarget(null);
+      return;
+    }
     const depositCents = l.paidAmount || 0;
     const now = new Date().toISOString();
 
@@ -645,6 +678,9 @@ export default function LayawayModule() {
         notes: `Layaway cancelled — cash refund for ${(l as any).ticketNumber || l.id.slice(-6).toUpperCase()}`,
         refundReason: 'Layaway cancelled',
         createdAt: now,
+        updatedAt: now,
+        // Round 14: R9-1 parity — attach linkedRefunds so Reports cash-out dedup works across customerReturns and entity cancellations
+        linkedRefunds: [{ type: 'layaway', id: l.id, depositCents }],
       } as unknown as Sale;
 
       const salesWithMarked = salesRef.current.map((s: Sale) => {
@@ -759,8 +795,9 @@ export default function LayawayModule() {
 
     const lines: string[] = [];
     lines.push(storeName);
-    if (storeAddr)  lines.push(storeAddr);
-    if (storePhone) lines.push(storePhone);
+    // Round 14: defense-in-depth HTML escape even inside pre content
+    if (storeAddr)  lines.push(escHtml(storeAddr));
+    if (storePhone) lines.push(escHtml(storePhone));
     lines.push('----------------------------------------');
     lines.push(es ? 'COMPROBANTE DE APARTADO' : 'LAYAWAY RECEIPT');
     lines.push(`TICKET: ${safe(l.ticketNumber)}`);
@@ -823,7 +860,8 @@ export default function LayawayModule() {
     lines.push('----------------------------------------');
     if (l.employeeName) lines.push(`${es ? 'ATENDIDO POR' : 'SERVED BY'}: ${safe(l.employeeName)}`);
     lines.push(es ? '¡Gracias por su preferencia!' : 'Thank you for your business!');
-    if (settings.storeWebsite) lines.push(settings.storeWebsite);
+    // Round 14: defense-in-depth HTML escape even inside pre content
+    if (settings.storeWebsite) lines.push(escHtml(settings.storeWebsite));
 
     const text = lines.filter(Boolean).join('\n');
     const html = `<!DOCTYPE html><html><head><title>Layaway ${escHtml(l.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
@@ -1234,18 +1272,24 @@ export default function LayawayModule() {
             </div>
             <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem' }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowForm(false)}>{es ? 'Cancelar' : 'Cancel'}</button>
-              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave}>💾 {es ? 'Guardar' : 'Save'}</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={isSaving}>💾 {isSaving ? (es ? 'Guardando...' : 'Saving...') : (es ? 'Guardar' : 'Save')}</button>
             </div>
           </div>
         </div>
       )}
 
       {/* COLLECT BALANCE MODAL */}
-      {depositTarget && (
+      {depositTarget && (() => {
+        // Round 14 fix: fall back to totalPrice when items[0].price is 0 or missing (Round 13 ?? only covered null/undefined)
+        // Round 15 C1: DepositModal adds tax on top of itemPrice. totalPrice is tax-inclusive,
+        // so subtract taxAmount when falling back to avoid double-counting tax in the display.
+        const firstItemPrice = depositTarget.items?.[0]?.price ?? 0;
+        const totalPreTax = Math.max(0, (depositTarget.totalPrice || 0) - ((depositTarget as any).taxAmount || 0));
+        return (
         <DepositModal
           title={es ? `Apartado ${(depositTarget as any).ticketNumber || ''} — Cobrar` : `Layaway ${(depositTarget as any).ticketNumber || ''} — Collect`}
           itemLabel={(depositTarget as any).itemDescription || depositTarget.items?.[0]?.name || 'Layaway Item'}
-          itemPrice={((depositTarget.items?.[0]?.price ?? depositTarget.totalPrice) || 0) / 100}
+          itemPrice={(firstItemPrice > 0 ? firstItemPrice : totalPreTax) / 100}
           taxRate={taxRate}
           taxable={(depositTarget as any).taxable || false}
           existingDeposit={(depositTarget.paidAmount || 0) / 100}
@@ -1254,7 +1298,8 @@ export default function LayawayModule() {
           onClose={() => setDepositTarget(null)}
           onConfirm={({ depositAmt: payAmt }) => handleCollectConfirm(depositTarget, payAmt)}
         />
-      )}
+        );
+      })()}
 
       {cancelTarget && (
         <CancelLayawayModal
