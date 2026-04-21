@@ -55,7 +55,7 @@ function generateTicket(): string {
 
 export default function LayawayModule() {
   const {
-    state: { layaways, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    state: { layaways, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setLayaways, setCustomers, setInventory, setCart, setSales, dispatch,
   } = useApp();
 
@@ -463,6 +463,9 @@ export default function LayawayModule() {
     const ticket = generateTicket();
     const newLayaway: any = {
       id: generateId(), ticketNumber: ticket,
+      // Round 16 H-v4b: multi-store — stamp storeId at creation so belongs(storeId)
+      // filters + R15b H2 fresh re-read guards don't orphan records across stores.
+      storeId: currentStoreId,
       firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
       customerId: finalCustomerId || undefined,
       inventoryId: form.inventoryId || undefined,
@@ -522,7 +525,7 @@ export default function LayawayModule() {
       console.error(err);
     }
   }, [form, subtotal, taxAmt, grandTotal, depositAmt, balanceAmt, editLayaway,
-      layaways, customers, inventory, settings, currentEmployee, sales,
+      layaways, customers, inventory, settings, currentEmployee, sales, currentStoreId,
       es, taxRate, isSaving, setLayaways, setCustomers, setInventory, setCart, setSales, toast,
       consolidateCartForLayaway, dispatch]);
 
@@ -594,8 +597,19 @@ export default function LayawayModule() {
     }
     // Round 15b H2: re-read from ref in case a concurrent POS checkout just
     // marked this layaway completed. Abort rather than resetting paid/balance.
+    // Round 16: also early-return if the layaway no longer exists in the ref
+    // (deleted in another tab/station mid-flow) — previously the guard fell
+    // through and cancel proceeded against the stale closure `l`.
     const fresh = layawaysRef.current.find((x) => x.id === l.id);
-    if (fresh && String(fresh.status || '').toLowerCase() === 'completed') {
+    if (!fresh) {
+      toast(
+        es ? 'Este apartado ya no existe.' : 'This layaway no longer exists.',
+        'error',
+      );
+      setCancelTarget(null);
+      return;
+    }
+    if (String(fresh.status || '').toLowerCase() === 'completed') {
       toast(
         es ? 'Este apartado se acaba de completar. No se puede cancelar.'
            : 'This layaway was just completed. Cannot cancel.',
@@ -610,9 +624,15 @@ export default function LayawayModule() {
     // Restore inventory reservation
     // Round 15b M3: loop over items for future multi-item layaway support.
     // Today every layaway has exactly one item; loop is defensive.
+    // Round 16 H-v4c: when the legacy top-level inventoryId matches items[0]
+    // (common today), prefer items[0].qty over the implicit 1 so multi-qty
+    // layaways restore the full reserved quantity instead of losing qty−1.
     const invIdsToRestore: Array<{ id: string; qty: number }> = [];
     const topLevelInvId = (l as any).inventoryId;
-    if (topLevelInvId) invIdsToRestore.push({ id: topLevelInvId, qty: 1 });
+    if (topLevelInvId) {
+      const matchedItem = (l.items || []).find((it) => it.inventoryId === topLevelInvId);
+      invIdsToRestore.push({ id: topLevelInvId, qty: matchedItem?.qty || 1 });
+    }
     for (const item of l.items || []) {
       if (item.inventoryId && item.inventoryId !== topLevelInvId) {
         invIdsToRestore.push({ id: item.inventoryId, qty: item.qty || 1 });
@@ -674,14 +694,17 @@ export default function LayawayModule() {
         );
       }
     } else if (choice.method === 'cash' && depositCents > 0) {
-      // Round 15b M4: refund to the method used on the FIRST deposit. Fallback
-      // to 'Cash' for pre-R15b layaways with console.warn for observability.
-      const refundMethod = l.depositMethod || 'Cash';
-      if (!l.depositMethod) {
-        console.warn(
-          `[Layaway refund] No depositMethod on layaway ${l.id}; falling back to Cash. Expected for pre-R15b layaways.`
-        );
-      }
+      // Round 16 C-v4: cash-branch refund ALWAYS writes paymentMethod='Cash'.
+      // Round 15b M4 originally used l.depositMethod here, but if the original
+      // deposit was 'store_credit' or 'split', the refundSale would carry that
+      // tag despite the cashier physically taking cash out of the drawer —
+      // breaking cash-out reporting + Reports cashBreakdown aggregation.
+      // The cash branch is literally a cash-drawer outflow; depositMethod is
+      // kept on the Layaway itself for future "refund-to-original" policy UX
+      // (e.g. suggesting the cashier pick the matching method) but does NOT
+      // override what actually happened at the drawer.
+      // This also transparently resolves the 'split' refund-shape gap: cash
+      // refunds of split deposits are now simple 'Cash' refundSales.
       // R9-1: mark original sale(s) containing this layaway as refunded.
       const originalSales = salesRef.current.filter((s: Sale) =>
         (s.items || []).some((item: any) => item.layawayId === l.id)
@@ -720,7 +743,7 @@ export default function LayawayModule() {
         taxAmount: 0,
         cbeTotal: 0,
         total: -depositCents,
-        paymentMethod: refundMethod,
+        paymentMethod: 'Cash',
         status: 'voided',
         employeeId: currentEmployee?.id,
         employeeName: currentEmployee?.name,
