@@ -9,9 +9,22 @@ interface ConfirmDialogProps {
   variant?: 'danger' | 'warning' | 'default';
   onConfirm: () => void;
   onCancel: () => void;
-  // Round 15b.1 F2: optional busy semantics for the confirm button.
+  /**
+   * When true, the confirm button is disabled, aria-busy=true, and
+   * displays `confirmBusyLabel` (or '...' if unset).
+   */
   busy?: boolean;
+  /**
+   * Additive className appended to the confirm button's base class.
+   * Use for layout overrides like `min-w-[140px]`. Does NOT replace
+   * the variant-driven base class.
+   */
   confirmClassName?: string;
+  /**
+   * Label to show on the confirm button when `busy=true`. If omitted,
+   * a neutral placeholder is used — callers are encouraged to pass
+   * a translated string (e.g. "Eliminando..." / "Deleting...").
+   */
   confirmBusyLabel?: string;
 }
 
@@ -35,7 +48,11 @@ export default function ConfirmDialog({
         ? 'btn btn-warning'
         : 'btn btn-primary';
   const finalBtnClass = confirmClassName ? `${btnClass} ${confirmClassName}` : btnClass;
-  const effectiveLabel = busy && confirmBusyLabel ? confirmBusyLabel : confirmLabel;
+  // Round 16.1 F2A: always give visual feedback when busy — if caller did not
+  // pass confirmBusyLabel, use a language-agnostic '...' so the disabled button
+  // doesn't look "dead" displaying the normal label. (No `lang` in scope here;
+  // callers are expected to pass a translated busy label.)
+  const effectiveLabel = busy ? (confirmBusyLabel ?? '...') : confirmLabel;
 
   return (
     <Modal

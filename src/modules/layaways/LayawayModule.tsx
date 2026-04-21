@@ -1101,14 +1101,14 @@ export default function LayawayModule() {
                           ✕ {es ? 'Cancelar' : 'Cancel'}
                         </button>
                         <button
-                          className="btn btn-sm min-w-[140px]"
+                          className="btn btn-sm"
                           style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
                           onClick={() => setDeleteConfirm(l)}
                           disabled={isDeleting}
                           aria-busy={isDeleting}
                           title={es ? 'Eliminar (solo sin depósito)' : 'Delete (only if no deposit)'}
                         >
-                          🗑️ {isDeleting ? (es ? 'Eliminando...' : 'Deleting...') : (es ? 'Eliminar' : 'Delete')}
+                          🗑️
                         </button>
                       </>
                     )}
