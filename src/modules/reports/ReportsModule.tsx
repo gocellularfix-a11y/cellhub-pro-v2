@@ -22,7 +22,7 @@ import { SearchInput } from '@/components/ui';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 
 // ── Constants & helpers ──────────────────────────────────────
@@ -94,6 +94,59 @@ function isPseudoItem(item: SaleItem): boolean {
   const n = String(item?.name || '').toLowerCase().trim();
   if (!n) return false;
   return PSEUDO_ITEM_PREFIXES.some((p) => n.startsWith(p));
+}
+
+/**
+ * Round 12: pseudo-item proportional cost inheritance.
+ * Pseudo-items (Layaway/SO/Repair/Unlock Deposit|Balance) carry no direct cost
+ * on the cart line, which previously forced them out of margin math entirely
+ * (Round 10 fix 3). These helpers let a pseudo-item inherit a proportional
+ * slice of the linked entity's real cost — only when reliable cost+price data
+ * exists. Any missing field returns 0 → caller preserves Round 10 behavior.
+ * Integer cents in / integer cents out; single final Math.round.
+ */
+function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[], paymentCents: number): number {
+  if (!entity || !paymentCents) return 0;
+  const denominator = entity.totalPrice || 0;
+  if (denominator <= 0) return 0;
+  let totalCostCents = 0;
+  for (const li of (entity.items || [])) {
+    if (!li.inventoryId) continue;
+    const inv = inventory.find((i) => i.id === li.inventoryId);
+    if (!inv) continue;
+    totalCostCents += (inv.cost || 0) * (li.qty || 1);
+  }
+  if (totalCostCents <= 0) return 0;
+  return Math.round(totalCostCents * (paymentCents / denominator));
+}
+
+function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: InventoryItem[], paymentCents: number): number {
+  if (!entity || !paymentCents) return 0;
+  const totalCostCents = entity.cost || 0;
+  const denominator = entity.price || 0;
+  if (totalCostCents <= 0 || denominator <= 0) return 0;
+  return Math.round(totalCostCents * (paymentCents / denominator));
+}
+
+function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], paymentCents: number): number {
+  if (!entity || !paymentCents) return 0;
+  const partsCost = (entity.parts || []).reduce(
+    (s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1),
+    0,
+  );
+  const laborCost = entity.laborCost || 0;
+  const totalCostCents = partsCost + laborCost;
+  const denominator = entity.total ?? entity.estimatedCost ?? 0;
+  if (totalCostCents <= 0 || denominator <= 0) return 0;
+  return Math.round(totalCostCents * (paymentCents / denominator));
+}
+
+function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
+  if (!entity || !paymentCents) return 0;
+  const cost = entity.cost || 0;
+  const denominator = entity.price || 0;
+  if (cost <= 0 || denominator <= 0) return 0;
+  return Math.round(cost * (paymentCents / denominator));
 }
 
 /**
@@ -645,8 +698,35 @@ export default function ReportsModule() {
         // Round 10 fix 3: pseudo-items (Layaway/Repair/SO/Unlock Deposit|Balance
         // placeholder cart lines) contribute to revenue/qty display but must NOT
         // distort margin — they carry no cost so they'd trivially hit 100% margin.
+        // Round 12: when the pseudo-item has an entity link AND that linked
+        // entity has reliable cost + price data, inherit a proportional slice of
+        // cost (payment / totalPrice * totalCost). Falls back to Round 10
+        // revenue-only behavior when the helper returns 0.
         if (isPseudoItem(item)) {
-          cat.pseudoRevenueCents += revenueCents;
+          let realCost = 0;
+          if (item.layawayId) {
+            const linked = safeLayaways.find((l) => l.id === item.layawayId);
+            if (linked) realCost = getLayawayProportionalCost(linked, inventory, revenueCents);
+          } else if (item.specialOrderId) {
+            const linked = safeSpecialOrders.find((o) => o.id === item.specialOrderId);
+            if (linked) realCost = getSpecialOrderProportionalCost(linked, inventory, revenueCents);
+          } else if (item.repairId) {
+            const linked = safeRepairs.find((r) => r.id === item.repairId);
+            if (linked) realCost = getRepairProportionalCost(linked, inventory, revenueCents);
+          } else if (item.unlockId) {
+            const linked = safeUnlocks.find((u) => u.id === item.unlockId);
+            if (linked) realCost = getUnlockProportionalCost(linked, inventory, revenueCents);
+          }
+          if (realCost > 0) {
+            const realProfit = revenueCents - realCost;
+            cat.costCents += realCost;
+            cat.profitCents += realProfit;
+            cat.hasRealCostItem = true;
+            totalCostCents += realCost;
+            totalProfitCents += realProfit;
+          } else {
+            cat.pseudoRevenueCents += revenueCents;
+          }
         } else {
           cat.costCents += costCents;
           cat.profitCents += profitCents;
@@ -794,7 +874,7 @@ export default function ReportsModule() {
       topEmployees,
       phonePaymentsByCarrier,
     };
-  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, inventory, settings, safeRepairs, safeUnlocks, es]);
+  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, es]);
 
   // ── Round 10 fix 1: Cash tripartite (In / Out / Net) ──────
   // Gross "Cash" previously equalled "Cash In" only, hiding real cash drawer
