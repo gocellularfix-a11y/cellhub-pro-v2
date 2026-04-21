@@ -781,6 +781,15 @@ export default function LayawayModule() {
     setLayaways(nextLayCancel);
     persist.layaway(updated.id, updated as unknown as Record<string, unknown>);
 
+    // Round 16.2: clear any orphan cart items for this cancelled layaway so the
+    // user can't accidentally checkout a pending balance against a cancelled
+    // record. POS already guards via R15b H2, but the cart should also be clean.
+    const cleanedCart = cartRef.current.filter((c) => c.layawayId !== l.id);
+    if (cleanedCart.length !== cartRef.current.length) {
+      cartRef.current = cleanedCart;
+      setCart(cleanedCart);
+    }
+
     const msg = {
       store_credit: es
         ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
@@ -792,7 +801,7 @@ export default function LayawayModule() {
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [es, setLayaways, setCustomers, setInventory, setSales, currentEmployee, toast]);
+  }, [es, setLayaways, setCustomers, setInventory, setSales, setCart, currentEmployee, toast]);
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -827,13 +836,40 @@ export default function LayawayModule() {
       }
 
       // GUARD 3: restore inventory if reserved
-      const invId = (deleteConfirm as any).inventoryId || deleteConfirm.items?.[0]?.inventoryId;
-      if (invId) {
-        const nextInv = inventoryRef.current.map((i) => i.id === invId ? { ...i, qty: i.qty + 1 } : i);
-        const updatedInv = nextInv.find((i: any) => i.id === invId);
+      // Round 16.2: mirror Round 16 H-v4c dedup so Delete and Cancel restore the
+      // same qty across multi-qty layaways (today every layaway is 1-item qty=1,
+      // but the logic stays consistent if multi-qty ever ships).
+      const invIdsToRestore: Array<{ id: string; qty: number }> = [];
+      const topLevelInvId = (deleteConfirm as any).inventoryId;
+      if (topLevelInvId) {
+        const matchedItem = (deleteConfirm.items || []).find((it) => it.inventoryId === topLevelInvId);
+        invIdsToRestore.push({ id: topLevelInvId, qty: matchedItem?.qty || 1 });
+      }
+      for (const item of deleteConfirm.items || []) {
+        if (item.inventoryId && item.inventoryId !== topLevelInvId) {
+          invIdsToRestore.push({ id: item.inventoryId, qty: item.qty || 1 });
+        }
+      }
+      if (invIdsToRestore.length > 0) {
+        const nextInv = inventoryRef.current.map((i) => {
+          const match = invIdsToRestore.find((r) => r.id === i.id);
+          return match ? { ...i, qty: i.qty + match.qty } : i;
+        });
         inventoryRef.current = nextInv;
         setInventory(nextInv);
-        if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+        for (const r of invIdsToRestore) {
+          const updatedInv = nextInv.find((i: any) => i.id === r.id);
+          if (updatedInv) persist.inventory(updatedInv.id, updatedInv as unknown as Record<string, unknown>);
+        }
+      }
+
+      // Round 16.2: clear any orphan cart items for this deleted layaway —
+      // matches the cancel-path hygiene. Delete is already gated against
+      // layaways with deposits, so this is defensive belt-and-suspenders.
+      const cleanedCart = cartRef.current.filter((c) => c.layawayId !== deleteConfirm.id);
+      if (cleanedCart.length !== cartRef.current.length) {
+        cartRef.current = cleanedCart;
+        setCart(cleanedCart);
       }
 
       const next = layawaysRef.current.filter((x) => x.id !== deleteConfirm.id);
@@ -848,7 +884,7 @@ export default function LayawayModule() {
     } finally {
       setIsDeleting(false);
     }
-  }, [deleteConfirm, es, isDeleting, setLayaways, setInventory, toast]);
+  }, [deleteConfirm, es, isDeleting, setLayaways, setInventory, setCart, toast]);
 
   const printLayawayTicket = useCallback((l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
