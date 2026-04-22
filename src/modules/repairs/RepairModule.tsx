@@ -248,8 +248,20 @@ export default function RepairModule() {
       lines.push(`${es ? 'IMPUESTO' : 'TAX'} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}`);
     }
     lines.push(`TOTAL: ${money(repair.total || 0)}`);
-    const displayDeposit = displayOverride?.depositAmount ?? (repair.depositAmount || 0);
-    const displayBalance = displayOverride?.balance ?? (repair.balance || 0);
+    // Round R-QF1: print the deposit intent captured at form save.
+    // depositAmount is $0 until POS checkout reconciles the cart sale
+    // (per r-deposit-integrity-1). depositAgreementAmount is the
+    // frozen-at-save intent value, never mutated by POS, so re-prints
+    // after creation but before checkout still show the correct deposit.
+    // Full Agreement + Payment Receipt split is a post-build round.
+    const displayDeposit = displayOverride?.depositAmount
+      ?? (repair.depositAmount || (repair as any).depositAgreementAmount || 0);
+    // When the fallback to depositAgreementAmount fires (pre-checkout),
+    // repair.balance still equals total (depositAmount=0) — recompute
+    // from total so DEPOSIT + BALANCE reconcile on the printed ticket.
+    const displayTotal = repair.total || repair.estimatedCost || 0;
+    const displayBalance = displayOverride?.balance
+      ?? Math.max(0, displayTotal - displayDeposit);
     lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(displayDeposit)}`);
     lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(displayBalance)}`);
     lines.push('----------------------------------------');
@@ -452,6 +464,9 @@ export default function RepairModule() {
         const now = new Date();
         const rd = repairData as any;
         const deviceLabel = [rd.brand, rd.model].filter(Boolean).join(' ') || rd.device || '';
+        // Round R-QF1: capture deposit intent early so it can be stamped
+        // on the entity for receipt re-prints. Value is cents.
+        const depositAmt = rd.depositAmount || 0;
 
         // Round R1 F3: collision check. ticketNumber is user-visible on
         // printed tickets and trackingToken is the public customer handle
@@ -538,6 +553,13 @@ export default function RepairModule() {
           // and no revenue ghost is created.
           depositAmount: 0,
           deposit: 0,
+          // Round R-QF1: L-QF1 analogue — "agreement" intent captured at
+          // form save, never mutated by POS. The r-deposit-integrity-1
+          // invariant keeps depositAmount=0 until POS checkout reconciles;
+          // this separate field powers the receipt DEPOSIT line on the
+          // initial auto-print AND subsequent re-prints from the ticket
+          // card. Post-build Agreement/Payment split round will formalize.
+          depositAgreementAmount: depositAmt,
           balance: rd.total || rd.estimatedCost || 0,
           // Notes
           techNotes: rd.notes || rd.techNotes || '',
@@ -558,9 +580,21 @@ export default function RepairModule() {
         setRepairs(next);
         persist.repair(newRepair.id, newRepair as unknown as Record<string, unknown>);
 
-        // r-deposit-integrity-1: read pending deposit from form data (rd),
-        // NOT from newRepair — newRepair was persisted with depositAmount=0.
-        const depositAmt = rd.depositAmount || 0;
+        // Round R-QF2: mirror Layaway cart auto-link so the cashier
+        // doesn't have to re-select the customer that the repair form
+        // already captured. Dispatch now uses the local matchedCustomerId
+        // (same pattern as Layaway's finalCustomerId) and fires on every
+        // new repair with a matched customer, not just deposit-bearing
+        // ones. Post-build unified round will formalize cart-customer
+        // linking across all deposit flows.
+        if (matchedCustomerId) {
+          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matchedCustomerId });
+        }
+
+        // r-deposit-integrity-1: pending deposit was read from form data (rd)
+        // earlier — newRepair is persisted with depositAmount=0 per the
+        // invariant. Round R-QF1 moved the declaration up so the intent
+        // can also be stamped as depositAgreementAmount on the entity.
         if (depositAmt > 0) {
           const isTaxable = !!(newRepair as any).taxable;
           // r-new-5: go through consolidation helper. On CREATE there are
@@ -573,9 +607,6 @@ export default function RepairModule() {
             ticketNumber: ticketNum,
             isTaxable,
           });
-          if ((newRepair as any).customerId) {
-            dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (newRepair as any).customerId });
-          }
           toast(
             lang === 'es'
               ? `Reparación creada. Depósito ${formatCurrency(depositAmt)} agregado al carrito.`
