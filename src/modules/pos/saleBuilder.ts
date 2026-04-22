@@ -143,6 +143,42 @@ export function buildSale(input: BuildSaleInput): Sale {
 }
 
 /**
+ * Compute total paid cents based on payment method and user inputs.
+ * Shared by both checkout paths (bypass + phone portal) — single source
+ * of truth for payment sufficiency guard (invariant I2).
+ *
+ * cashDollars and cardDollars are DOLLARS (matches Cart/POSModule state
+ * convention). Number() coercion is defensive against future accidental
+ * string inputs — cero costo runtime, protege código de dinero.
+ *
+ * Card fallback: if cardCents === 0 (user never edited the prefilled
+ * field or useEffect timing drift), treat as paying the full total —
+ * matches Cart.tsx auto-prefill semantics and avoids blocking valid
+ * checkouts with phantom "insufficient payment" toasts. The general
+ * guard still catches users who explicitly typed a lower amount
+ * (cardCents > 0 && cardCents < totalCents).
+ */
+export function computePaidCents(
+  method: string,
+  cashDollars: number,
+  cardDollars: number,
+  storeCreditCents: number,
+  totalCents: number,
+): number {
+  const cashCents = Math.round(Number(cashDollars || 0) * 100);
+  const cardCents = Math.round(Number(cardDollars || 0) * 100);
+  if (method === 'Cash') return cashCents;
+  if (method === 'Card') {
+    return cardCents > 0 ? cardCents : totalCents;
+  }
+  if (method === 'Split') return cashCents + cardCents;
+  if (method === 'Store Credit') {
+    return Math.min(storeCreditCents, totalCents);
+  }
+  return 0;
+}
+
+/**
  * Generate invoice number — timestamp-based to avoid Math.random collisions
  * in multi-station setups. Format: PREFIX-YYMMDD-HHMM-RAND4
  *

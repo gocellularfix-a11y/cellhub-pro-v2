@@ -340,8 +340,16 @@ export default function Cart({
                 key={method}
                 onClick={() => {
                   setPaymentMethod(method);
-                  // Auto-prefill amounts based on the chosen mode
-                  if (method === 'Cash') setCashAmount(Math.ceil(totals.total / 100) * 100 / 100); // round up to dollar in dollars
+                  // Auto-prefill amounts based on the chosen mode.
+                  // Round R-POS-PAY-DEDUPE F3: totals.total is cents-as-int
+                  // (confirmed in types.ts CartTotals). Prior expression
+                  // `Math.ceil(totals.total / 100) * 100 / 100` was a no-op
+                  // dollar round-up that happened to produce the correct
+                  // value by accident — replaced with the explicit form.
+                  if (method === 'Cash') {
+                    const totalCents = Number(totals.total || 0);
+                    setCashAmount(Math.ceil(totalCents / 100));
+                  }
                   if (method === 'Card') setCardAmount(totals.total / 100);
                   if (method === 'Split') {
                     // half/half default

@@ -1010,11 +1010,12 @@ export default function POSModule() {
         cart={cart}
         totals={totals}
         paymentMethod={paymentMethod}
+        cashAmount={cashAmount}
+        cardAmount={cardAmount}
         selectedCustomer={selectedCustomer}
         currentEmployee={currentEmployee}
         settings={settings}
         onComplete={handleCompleteSale}
-        onSelectCustomer={() => { setShowPayment(false); setShowCustomerSearch(true); }}
         lang={lang}
         L={L}
       />
