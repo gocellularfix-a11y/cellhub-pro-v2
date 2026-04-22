@@ -33,6 +33,8 @@ import type { Customer, Sale, InventoryItem, CartItem } from '@/store/types';
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { forwardTaxFromBase } from '@/utils/depositTax';
+import { sendSms } from '@/services/sms';
+import { buildSale, computePaidCents, buildReceiptSmsMessage } from './saleBuilder';
 
 export default function POSModule() {
   const {
@@ -699,6 +701,27 @@ export default function POSModule() {
         batchSave(layawayOps);
       }
 
+      // [I4] SMS receipt — SINGLE trigger location for both checkout paths
+      // (bypass + phone portal). Moved here from PaymentModal in F4. Fire
+      // and forget; SMS errors never block receipt display.
+      if (
+        sendSmsReceipt
+        && selectedCustomer?.phone
+        && settings.smsProvider
+        && settings.smsProvider !== 'none'
+      ) {
+        try {
+          const firstName = (selectedCustomer.name || '').split(' ')[0] || '';
+          const storeName = settings.storeName || 'GO CELLULAR';
+          const message = buildReceiptSmsMessage(sale, lang, firstName, storeName);
+          sendSms(selectedCustomer.phone, message, settings).catch((err) => {
+            console.warn('[SMS receipt] Failed:', err);
+          });
+        } catch (err) {
+          console.warn('[SMS receipt] Build error:', err);
+        }
+      }
+
       // 6. Clear cart and reset
       cartRef.current = [];
       setCart([]);
@@ -725,8 +748,97 @@ export default function POSModule() {
       setSales, setInventory, setCustomers,
       selectedCustomer, setRepairs, setSpecialOrders, setUnlocks, setLayaways,
       setCart, settings, toast, lang,
+      sendSmsReceipt,  // F4 I4: SMS trigger reads this
     ],
   );
+
+  // ── Cart Checkout — Round R-POS-PAY-DEDUPE F4 ──────────
+  //
+  // Single entry point for the "Complete Sale" button in the cart.
+  // Routes to one of two checkout paths based on cart contents:
+  //   - PATH A (bypass): cart has no external-portal items → build
+  //     the sale directly and call handleCompleteSale. NO secondary
+  //     modal. This fixes the original complaint (doble captura de
+  //     Cash Received) for ~95 % of sales.
+  //   - PATH B (phone portal): cart has phone_payment items with a
+  //     carrier → open PaymentModal slim to show the "¿portal done?"
+  //     warning that Jorge wants preserved. PaymentModal still calls
+  //     handleCompleteSale via onComplete — same single post-sale
+  //     layer for both paths (invariant I1).
+  //
+  // Both paths use buildSale + computePaidCents from saleBuilder.ts —
+  // zero drift in sale construction or payment guard (I3, I7).
+  const handleCartCheckout = useCallback(() => {
+    // [I6] Mismo discriminator que PaymentModal.tsx:60-64. Intencionalmente
+    // duplicado (no helper compartido) — refactor a saleBuilder en ticket
+    // post-round si se vuelve relevante.
+    const hasExternalPortal = cart.some(
+      (item) =>
+        item.category === 'phone_payment'
+        && typeof item.carrier === 'string'
+        && item.carrier.trim().length > 0,
+    );
+
+    if (hasExternalPortal) {
+      setShowPayment(true);
+      return;
+    }
+
+    // ── Bypass path ────────────────────────────────────
+    // Mirrors the guards from PaymentModal slim (employee + payment
+    // sufficiency) so behavior matches for non-phone sales.
+    if (!currentEmployee) {
+      toast(
+        lang === 'es'
+          ? 'Selecciona un empleado antes de completar la venta'
+          : 'Select an employee before completing the sale',
+        'error',
+      );
+      return;
+    }
+
+    // [I2] Guard de pago suficiente — mismo helper que PaymentModal.
+    const paidCents = computePaidCents(
+      paymentMethod,
+      cashAmount,
+      cardAmount,
+      selectedCustomer?.storeCredit ?? 0,
+      totals.total,
+    );
+    if (paidCents < totals.total) {
+      const shortBy = totals.total - paidCents;
+      toast(
+        lang === 'es'
+          ? `Pago insuficiente — falta $${(shortBy / 100).toFixed(2)}`
+          : `Insufficient payment — short by $${(shortBy / 100).toFixed(2)}`,
+        'error',
+      );
+      return;
+    }
+
+    // [I3, I7] Mismo BuildSaleInput shape que phone path. storeId se
+    // omite — currentStoreId no está en scope de POSModule (F0 Q3
+    // conservative; pre-existing behavior preserved).
+    const sale = buildSale({
+      cart,
+      totals,
+      paymentMethod,
+      cashAmount,
+      cardAmount,
+      selectedCustomer,
+      currentEmployee,
+      settings,
+    });
+
+    // [I1] Única capa post-sale — misma función que consume onComplete
+    // de PaymentModal (path B). Persist, inventory, customer, reconcile,
+    // SMS (I4), reset (I5), receipt — todo ahí.
+    handleCompleteSale(sale);
+  }, [
+    cart, totals, paymentMethod, cashAmount, cardAmount,
+    selectedCustomer, currentEmployee, settings, lang, toast,
+    handleCompleteSale,
+  ]);
 
   // ── Clear Cart ──────────────────────────────────────────
 
@@ -979,7 +1091,7 @@ export default function POSModule() {
             setCreditCardFeeOverride={setCreditCardFeeOverride}
             sendSmsReceipt={sendSmsReceipt}
             setSendSmsReceipt={setSendSmsReceipt}
-            onCheckout={() => setShowPayment(true)}
+            onCheckout={handleCartCheckout}
             onClearCart={() => setShowClearConfirm(true)}
             onSelectCustomer={() => setShowCustomerSearch(true)}
             settings={settings}

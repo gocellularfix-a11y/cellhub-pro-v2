@@ -12,6 +12,7 @@
 // ============================================================
 
 import { generateId } from '@/utils/dates';
+import { formatCurrency } from '@/utils/currency';
 import type { CartItem, Customer, Employee, Sale, StoreSettings } from '@/store/types';
 import type { CartTotals } from './types';
 
@@ -176,6 +177,35 @@ export function computePaidCents(
     return Math.min(storeCreditCents, totalCents);
   }
   return 0;
+}
+
+/**
+ * Build the SMS receipt message body for a completed Sale. Phone-payment
+ * sales get a payment-confirmation template; everything else gets a
+ * generic thank-you template. Moved out of PaymentModal in F4 so that
+ * handleCompleteSale can fire SMS once from a single location (I4).
+ */
+export function buildReceiptSmsMessage(
+  sale: Sale,
+  lang: string,
+  customerFirstName: string,
+  storeName: string,
+): string {
+  const es = lang === 'es';
+  const hasPhonePayment = sale.items.some((i) => i.category === 'phone_payment');
+
+  if (hasPhonePayment) {
+    const ppItem = sale.items.find((i) => i.category === 'phone_payment');
+    const carrier = ppItem?.carrier || '';
+    const phoneNum = ppItem?.phoneNumber || '';
+    return es
+      ? `¡Gracias por su pago ${customerFirstName}!\n${carrier} - ${phoneNum}\nMonto: ${formatCurrency(sale.total)}\nRecibo: ${sale.invoiceNumber}\n${storeName}`
+      : `Thanks for your payment ${customerFirstName}!\n${carrier} - ${phoneNum}\nAmount: ${formatCurrency(sale.total)}\nReceipt: ${sale.invoiceNumber}\n${storeName}`;
+  }
+
+  return es
+    ? `¡Gracias por su compra ${customerFirstName}!\nTotal: ${formatCurrency(sale.total)}\nRecibo: ${sale.invoiceNumber}\n¡Vuelva pronto! - ${storeName}`
+    : `Thanks for your purchase ${customerFirstName}!\nTotal: ${formatCurrency(sale.total)}\nReceipt: ${sale.invoiceNumber}\nCome back soon! - ${storeName}`;
 }
 
 /**
