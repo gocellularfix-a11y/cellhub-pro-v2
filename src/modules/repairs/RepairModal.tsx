@@ -25,6 +25,8 @@ import { usePrint } from '@/hooks/usePrint';
 import { normalizePhone } from '@/utils/normalize';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { usePinGate } from '@/hooks/usePinGate';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Repair, RepairPart, Customer, InventoryItem, StoreSettings } from '@/store/types';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions } from '@/utils/repairStatus';
@@ -191,6 +193,25 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   });
 
   const upd = (field: string, val: any) => setForm((f) => ({ ...f, [field]: val }));
+
+  // R-EDIT-AUDIT F3.1: lock money fields on completed tickets.
+  // totalPaid = what customer has paid so far (derived, not a stored field).
+  // Lock when fully paid AND at least one payment made,
+  // OR when ticket is already refunded (terminal, no more edits).
+  const totalPaid = (repair?.estimatedCost || 0) - (repair?.balance || 0);
+  const isLocked = !!repair && (
+    (repair.balance === 0 && totalPaid > 0)
+    || normalizeRepairStatus(repair.status) === 'refunded'
+  );
+
+  // R-EDIT-AUDIT F3.3: PIN gate for unlocking money fields post-completion.
+  const pin = usePinGate(settings?.adminPin);
+
+  // Wrap onClose so closing the modal (X, Cancel, etc.) clears the PIN unlock.
+  const handleClose = () => {
+    pin.resetLock();
+    onClose();
+  };
 
   // r-customer-picker-sweep: customer search state (showCustSearch, customerSearch,
   // custResults) was extracted into the CustomerSearchHeader component. The header
@@ -554,11 +575,32 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   const diagOptions = es ? DIAG_ES : DIAG_EN;
 
   return (
-    <Modal open onClose={onClose}
+    <Modal open onClose={handleClose}
       title={isEdit ? `✏️ ${es ? 'Editar Ticket' : 'Edit Ticket'} #${(r?.id || '').slice(-8).toUpperCase()}` : `🔧 ${es ? 'Nuevo Ticket de Reparación' : 'New Repair Ticket'}`}
       size="max-w-4xl"
     >
       <div style={{ maxHeight: '75vh', overflowY: 'auto', paddingRight: '2px', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+
+        {/* R-EDIT-AUDIT F3.3: banner when admin unlocks money fields post-completion. */}
+        {isLocked && pin.editUnlocked && (
+          <div style={{
+            background: 'rgba(251, 191, 36, 0.15)',
+            border: '1px solid rgba(251, 191, 36, 0.4)',
+            borderRadius: '0.5rem',
+            padding: '0.75rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.85rem',
+          }}>
+            <span>⚠️</span>
+            <span>
+              {es
+                ? 'Editando ticket completado. Los cambios se registrarán.'
+                : 'Editing completed ticket. Changes will be logged.'}
+            </span>
+          </div>
+        )}
 
         {/* ── Customer Info ─────────────────────────────────── */}
         {/* r-customer-picker-sweep: replaced inline header bar + dropdown
@@ -907,8 +949,35 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Mano de Obra ($)' : 'Labor Cost ($)'}</label>
-              <input type="number" className="input" value={form.laborCost || ''} onChange={(e) => upd('laborCost', parseFloat(e.target.value) || 0)} placeholder="0.00" step="0.01" min="0" />
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                {isLocked && !pin.editUnlocked && '🔒 '}{es ? 'Mano de Obra ($)' : 'Labor Cost ($)'}
+              </label>
+              {/* R-EDIT-AUDIT F3.2: lock icon on laborCost when ticket is completed. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  className="input"
+                  value={form.laborCost || ''}
+                  onChange={(e) => upd('laborCost', parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  disabled={isLocked && !pin.editUnlocked}
+                  style={isLocked && !pin.editUnlocked ? { opacity: 0.6 } : undefined}
+                />
+                {isLocked && !pin.editUnlocked && (
+                  <span
+                    onClick={pin.requestUnlock}
+                    style={{
+                      position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                      cursor: 'pointer', fontSize: '1rem',
+                    }}
+                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  >
+                    🔒
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -924,20 +993,33 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               <span>{es ? 'Subtotal:' : 'Subtotal:'}</span><span>${subtotal.toFixed(2)}</span>
             </div>
             {/* Tax toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '0.4rem' }}>
+            {/* R-EDIT-AUDIT F3.2: taxable is a money-impacting toggle — lock on completed tickets. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '0.4rem', opacity: isLocked && !pin.editUnlocked ? 0.6 : 1 }}>
               <input
                 type="checkbox"
                 id="repair-taxable"
                 checked={!!form.taxable}
                 onChange={(e) => upd('taxable', e.target.checked)}
-                style={{ cursor: 'pointer' }}
+                disabled={isLocked && !pin.editUnlocked}
+                style={{ cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}
               />
-              <label htmlFor="repair-taxable" style={{ fontSize: '0.78rem', color: '#cbd5e1', cursor: 'pointer' }}>
+              <label htmlFor="repair-taxable" style={{ fontSize: '0.78rem', color: '#cbd5e1', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}>
+                {isLocked && !pin.editUnlocked && '🔒 '}
                 {es ? `Aplicar impuesto (${(taxRate * 100).toFixed(2)}%)` : `Apply tax (${(taxRate * 100).toFixed(2)}%)`}
               </label>
-              <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: 'auto' }}>
-                {es ? 'Por defecto OFF' : 'Default OFF'}
-              </span>
+              {isLocked && !pin.editUnlocked ? (
+                <span
+                  onClick={pin.requestUnlock}
+                  style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
+                  title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                >
+                  🔒
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: 'auto' }}>
+                  {es ? 'Por defecto OFF' : 'Default OFF'}
+                </span>
+              )}
             </div>
             {form.taxable && taxCents > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.3rem', color: '#f59e0b' }}>
@@ -1113,7 +1195,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
                   const depositCents = (repair as any)?.depositAmount || 0;
                   if (repair && depositCents > 0 && onRequestCancel) {
-                    onClose();
+                    handleClose();
                     onRequestCancel(repair);
                   } else {
                     setStatusAndPrint(REPAIR_STATUS.CANCELLED);
@@ -1132,7 +1214,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 {balance > 0 && repair && onCollectBalance && (
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => {
                     onCollectBalance(repair);
-                    onClose();
+                    handleClose();
                   }}>
                     💰 ${balance.toFixed(2)} {es ? 'Cobrar' : 'Collect'}
                   </button>
@@ -1158,7 +1240,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
       {/* Footer */}
       <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <button type="button" onClick={onClose} className="btn btn-secondary" style={{ flex: 1 }}>{L.cancel || 'Cancel'}</button>
+        <button type="button" onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>{L.cancel || 'Cancel'}</button>
         {!isEdit && (
           <button type="button" onClick={() => {
             upd('firstName', ''); upd('lastName', ''); upd('customerPhone', '');
@@ -1172,6 +1254,14 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           ✓ {isEdit ? (L.save || 'Save') : (es ? 'Crear Ticket' : 'Create Ticket')}
         </button>
       </div>
+
+      {/* R-EDIT-AUDIT F3.3: admin PIN challenge for unlocking money fields. */}
+      <AdminPinGate
+        open={pin.showPinGate}
+        adminPin={settings?.adminPin || ''}
+        onSuccess={pin.handleSuccess}
+        onCancel={pin.handleCancel}
+      />
     </Modal>
   );
 }
