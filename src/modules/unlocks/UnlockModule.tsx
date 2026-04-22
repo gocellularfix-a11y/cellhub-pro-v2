@@ -27,7 +27,9 @@ import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Unlock, UnlockType, CartItem, Customer, Sale } from '@/store/types';
 import CancelUnlockModal from './CancelUnlockModal';
 
-const STATUSES = ['All', 'Received', 'Processing', 'Code Received', 'Completed', 'Cancelled', 'Failed'];
+// R-EDIT-AUDIT: added 'Refund Pending' (active) and 'Refunded' (done).
+// Normalized forms: refund_pending, refunded.
+const STATUSES = ['All', 'Received', 'Processing', 'Code Received', 'Completed', 'Cancelled', 'Failed', 'Refund Pending', 'Refunded'];
 
 const STATUS_BADGE: Record<string, string> = {
   'Received': 'badge-info',
@@ -36,6 +38,8 @@ const STATUS_BADGE: Record<string, string> = {
   'Completed': 'badge-success',
   'Cancelled': 'badge-danger',
   'Failed': 'badge-danger',
+  'Refund Pending': 'badge-warning',
+  'Refunded': 'badge-danger',
 };
 
 export default function UnlockModule() {
@@ -86,6 +90,8 @@ export default function UnlockModule() {
         All: L.all, Received: L.received, Processing: L.processing,
         'Code Received': L.codeReceived || 'Code Received',
         Completed: L.completed, Cancelled: L.cancelled, Failed: L.failed || 'Failed',
+        'Refund Pending': lang === 'es' ? 'Reembolso Pendiente' : 'Refund Pending',
+        'Refunded': lang === 'es' ? 'Reembolsado' : 'Refunded',
       };
       return map[s] || s;
     }, [L],
@@ -100,7 +106,8 @@ export default function UnlockModule() {
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [unlocks, filterStatus, search]);
 
-  const DONE_UNLOCK = ['completed', 'cancelled', 'failed'];
+  // R-EDIT-AUDIT: 'refunded' is terminal; 'refund_pending' stays active until Mark Refunded.
+  const DONE_UNLOCK = ['completed', 'cancelled', 'failed', 'refunded'];
   const activeCount = useMemo(
     () => unlocks.filter((u) => !DONE_UNLOCK.includes(normalizeStatus(u.status))).length,
     [unlocks],

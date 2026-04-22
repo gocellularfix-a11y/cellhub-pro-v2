@@ -163,8 +163,9 @@ export default function Dashboard() {
 
   const normStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
   // Round R2: canonical repair done-bucket (picked_up/cancelled); ready stays "active" here.
-  const DONE_REPAIRS: string[] = [REPAIR_STATUS.PICKED_UP, REPAIR_STATUS.CANCELLED];
-  const DONE_UNLOCKS = ['completed', 'cancelled', 'failed'];
+  // R-EDIT-AUDIT: 'refunded' is terminal; 'refund_pending' stays active until Mark Refunded.
+  const DONE_REPAIRS: string[] = [REPAIR_STATUS.PICKED_UP, REPAIR_STATUS.CANCELLED, REPAIR_STATUS.REFUNDED];
+  const DONE_UNLOCKS = ['completed', 'cancelled', 'failed', 'refunded'];
 
   const activeRepairs = useMemo(
     () => repairs.filter((r) => !DONE_REPAIRS.includes(normalizeRepairStatus(r.status))),

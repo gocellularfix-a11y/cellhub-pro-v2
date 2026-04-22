@@ -14,6 +14,8 @@ export const REPAIR_STATUS = {
   READY: 'ready',
   PICKED_UP: 'picked_up',
   CANCELLED: 'cancelled',
+  REFUND_PENDING: 'refund_pending',
+  REFUNDED: 'refunded',
 } as const;
 
 export type RepairStatusCanonical = typeof REPAIR_STATUS[keyof typeof REPAIR_STATUS];
@@ -32,6 +34,8 @@ const LEGACY_MAP: Record<string, RepairStatusCanonical> = {
   complete: REPAIR_STATUS.PICKED_UP,
   completed: REPAIR_STATUS.PICKED_UP,
   canceled: REPAIR_STATUS.CANCELLED,
+  refund_pending: REPAIR_STATUS.REFUND_PENDING,
+  refunded: REPAIR_STATUS.REFUNDED,
 };
 
 export function normalizeRepairStatus(s: unknown): string {
@@ -48,9 +52,13 @@ export const orderedRepairStatusOptions: RepairStatusCanonical[] = [
   REPAIR_STATUS.READY,
   REPAIR_STATUS.PICKED_UP,
   REPAIR_STATUS.CANCELLED,
+  REPAIR_STATUS.REFUND_PENDING,
+  REPAIR_STATUS.REFUNDED,
 ];
 
 export function isDoneRepairStatus(status: unknown): boolean {
   const n = normalizeRepairStatus(status);
-  return n === REPAIR_STATUS.PICKED_UP || n === REPAIR_STATUS.CANCELLED;
+  return n === REPAIR_STATUS.PICKED_UP
+    || n === REPAIR_STATUS.CANCELLED
+    || n === REPAIR_STATUS.REFUNDED;
 }

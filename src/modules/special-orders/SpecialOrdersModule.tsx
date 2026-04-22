@@ -166,9 +166,10 @@ export default function SpecialOrdersModule() {
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [specialOrders, filterStatus, search]);
 
-  // FIX Bug 6: normalize status; only picked_up and cancelled are "done"
+  // FIX Bug 6: normalize status; only picked_up, cancelled, and refunded are "done"
+  // R-EDIT-AUDIT: refund_pending stays active until Mark Refunded.
   // in_transit, received, ready are still active (order not yet delivered to customer)
-  const DONE_SO_STATUSES = ['picked_up', 'cancelled'];
+  const DONE_SO_STATUSES = ['picked_up', 'cancelled', 'refunded'];
   const activeCount = useMemo(
     () => specialOrders.filter((o) => !DONE_SO_STATUSES.includes(normalizeStatus(o.status))).length,
     [specialOrders],
@@ -855,7 +856,7 @@ interface SpecialOrderModalProps {
 }
 
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
-const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled'];
+const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
 function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L }: SpecialOrderModalProps) {
   const es = lang === 'es';

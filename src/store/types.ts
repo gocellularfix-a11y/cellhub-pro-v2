@@ -629,6 +629,34 @@ export interface VendorReturn {
   createdAt: string;             // ISO timestamp
 }
 
+// ── R-EDIT-AUDIT: shared audit fields for post-completion edit tracking ──
+
+export interface EditAuditFieldChange {
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+export interface EditAuditEntry {
+  editedAt: string;
+  editedBy: string;
+  pinUsedBy: string;
+  reason: 'additional_balance' | 'absorbed' | 'refund' | 'typo_correction';
+  fieldsChanged: EditAuditFieldChange[];
+  note?: string;
+  sideEffects?: {
+    balanceChange?: number;
+    statusChange?: { from: string; to: string };
+    refundOwedAmount?: number;
+    absorbedAmount?: number;
+  };
+}
+
+export interface EditAuditSnapshot {
+  capturedAt: string;
+  snapshot: Record<string, unknown>;
+}
+
 // ── Repair ────────────────────────────────────────────────
 
 export type RepairStatus = string; // 'received' | 'diagnosing' | 'waiting_parts' | 'in_progress' | 'ready' | 'picked_up' | 'cancelled'
@@ -675,6 +703,10 @@ export interface Repair {
   depositRefundMethod?: 'store_credit' | 'cash' | 'forfeit';
   depositRefundAmount?: number;
   cancellationNote?: string;
+  // R-EDIT-AUDIT: post-completion edit tracking
+  originalSnapshot?: EditAuditSnapshot;
+  editHistory?: EditAuditEntry[];
+  refundOwedAmount?: number;  // cents; set when reason='refund', cleared on Mark Refunded
 }
 
 // ── Unlock ────────────────────────────────────────────────
@@ -713,6 +745,10 @@ export interface Unlock {
   createdAt: Timestamp | Date | string;
   updatedAt?: Timestamp | Date | string;
   completedAt?: Timestamp | Date | string;
+  // R-EDIT-AUDIT: post-completion edit tracking
+  originalSnapshot?: EditAuditSnapshot;
+  editHistory?: EditAuditEntry[];
+  refundOwedAmount?: number;
 }
 
 // ── Special Order ─────────────────────────────────────────
@@ -740,6 +776,10 @@ export interface SpecialOrder {
   estimatedArrival?: string;
   createdAt: Timestamp | Date | string;
   updatedAt?: Timestamp | Date | string;
+  // R-EDIT-AUDIT: post-completion edit tracking
+  originalSnapshot?: EditAuditSnapshot;
+  editHistory?: EditAuditEntry[];
+  refundOwedAmount?: number;
 }
 
 // ── Layaway ───────────────────────────────────────────────
