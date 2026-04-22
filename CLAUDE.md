@@ -13,6 +13,22 @@ Ochoa (Go Cellular, Santa Barbara CA). El producto se está preparando para
 venta comercial pero primero va a correr en producción en Go Cellular como
 dogfooding.
 
+**Repo:** `https://github.com/gocellularfix-a11y/cellhub-pro-v2.git` (private)
+**Branch:** `main` (all work lands here)
+
+---
+
+## DUAL-TOOL WORKFLOW
+
+Jorge opera dos herramientas de IA simultáneamente:
+
+- **Web-chat Claude (auditor):** diseña fixes, revisa reports, escribe prompts, audita diffs. NO ejecuta código.
+- **Claude Code (reparador):** en-terminal agent en shop PC o laptop. Ejecuta los prompts del auditor.
+
+**Flow:** Auditor escribe prompt → Jorge lo pega al reparador → reparador ejecuta → Jorge pega output al auditor → auditor verifica → siguiente step.
+
+**Rule:** El reparador NUNCA procede al siguiente phase sin aprobación explícita del auditor.
+
 ---
 
 ## CANONICAL RULES — NO NEGOCIABLES
@@ -21,105 +37,118 @@ dogfooding.
 - **Money se almacena como cents (integer)**, NUNCA como float dollars
 - Ejemplo: `price: 1999` es $19.99, NO `price: 19.99`
 - Conversiones: `Math.round(dollars * 100)` para entrada, `(cents / 100).toFixed(2)` para display
+- **Tax calculation:** SIEMPRE usar `forwardTaxFromBase()` de `@/utils/depositTax`. Nunca math manual.
 
 ### User interaction
 - **NUNCA usar `alert()`, `confirm()`, o `prompt()`** — estos son browser APIs nativos que rompen la UX en Electron
-- Siempre usar React modals (hay un `<Modal>` component en `@/components/ui`)
-- Confirmation modals deben replacear cualquier `confirm()` usage
+- Siempre usar React modals, toast, ConfirmDialog
+- `<Modal>` component en `@/components/ui`
 
 ### Firebase / persistence
-- **Writes:** `serverTimestamp()`
+- **Firebase actualmente DESHABILITADO** — asumir localStorage-only durante dogfooding
+- **Writes:** `serverTimestamp()` (cuando Firebase esté activo)
 - **Reads:** `toDate()` para convertir Timestamps a JS Dates
-- Firebase es **opcional** — siempre debe haber localStorage fallback
-- Multi-station deploys requieren consistency via Firestore
+- **CRITICAL:** `localSaveRecord` OVERWRITES para non-settings collections. Callers DEBEN pasar el record completo: `persist.*(id, { ...entity, ...changes })`. NUNCA partial data.
+- Solo `settings` collection hace merge (r26 fix)
 
 ### Protected modules
 - **NUNCA tocar `src/store/`** sin permiso explícito de Jorge
-- Esto incluye: `src/store/types.ts`, `src/store/AppProvider.tsx`, reducers, etc.
+- Excepción: `src/store/types.ts` puede extenderse para nuevos fields (con permiso del auditor)
 - Si un fix requiere extender `StoreSettings` type, usar el **double-cast pattern**
-  en su lugar (ver abajo)
 
 ### Admin PIN gate
-- Módulos protegidos requieren Admin PIN gate (existing pattern)
-- PIN hashing: bcrypt via `@/utils/pinHash`
-- Weak PINs blacklist existe en `WEAK_PINS_LIST`, exported `isWeakPin()`
+- Módulos protegidos requieren Admin PIN gate
+- Componente existente: `src/components/shared/AdminPinGate.tsx`
+- Hook: `src/hooks/usePinGate.ts`
+- PIN hashing: bcrypt via `@/utils/pinHash` (exports: `isHashed`, `hashPin`, `comparePin`, `migrateLegacyPins`)
+- PIN storage: `settings.adminPin` (bcrypt hash)
 
 ### Bilingüal
 - **Todo UI-facing text debe soportar EN/ES**
 - Pattern: `lang === 'es' ? 'texto español' : 'english text'`
 - Labels de buttons, headers, toast messages, error messages — todos bilingües
 
+### Surgical edits only
+- **NUNCA rewrite completo de módulos** — solo cambios quirúrgicos
+- ASK antes de expandir scope
+- Si encuentras bugs fuera del scope del round, reporta al final — no fixes inline
+
 ---
 
 ## PATTERNS CANÓNICOS
 
-### Double-cast para new settings fields (lección de Round 2A.5)
-
-Cuando agregas un nuevo settings field que todavía no está en `StoreSettings` type,
-usa este pattern para READS:
+### Persist — full spread (CRITICAL)
 
 ```ts
-// CORRECTO
-const value = ((settings as any).newField as TargetType | undefined)?.[key];
+// CORRECTO — full entity spread
+persist.repair(id, { ...entity, ...changes } as unknown as Record<string, unknown>);
 
-// INCORRECTO — TypeScript rechaza porque el field access falla antes del cast
-const value = (settings.newField as TargetType | undefined)?.[key];
+// INCORRECTO — partial data = DATA LOSS
+persist.repair(id, { status: 'picked_up', updatedAt: now });
+// ↑ This overwrites the ENTIRE record with only status + updatedAt!
 ```
 
-Para WRITES:
+### Double-cast para new settings fields
 
 ```ts
+// READ
+const value = ((settings as any).newField as TargetType | undefined)?.[key];
+
+// WRITE
 setSettings({ newField: newValue } as any);
 persistSettings({ newField: newValue } as Record<string, unknown>);
 ```
 
-Esto se usa actualmente para: `paymentPortals`, `topUpCommissions`, `detectedPrinters`.
+### Taxable field access
 
-### useCallback declaration order (lección de Round 2B.2)
-
-**Los handlers que referencian `update` (o cualquier otra useCallback) deben
-declararse DESPUÉS** en el componente. TypeScript strict mode rechaza
-"use before declaration" incluso para closures.
+`taxable` is NOT in the Repair/Unlock/SpecialOrder interfaces. Always access via:
 
 ```ts
-// CORRECTO
-const update = useCallback(..., [setSettings]);
-const handleSomething = useCallback(() => { update(...); }, [update]);
-
-// INCORRECTO — TS2448/TS2454
-const handleSomething = useCallback(() => { update(...); }, [update]); // update no existe aún
-const update = useCallback(..., [setSettings]);
+const taxable = (entity as any).taxable ?? false;
 ```
 
-### Delta-only updates (regla r26 C4)
+### Anti-stale-closure pattern
 
-Nunca hacer spread de todo `settings` para hacer un update:
+Use refs (`repairsRef.current`, `cartRef.current`) when mutating inside async/setState chains:
 
 ```ts
-// INCORRECTO — closure stale, puede clobbear concurrent updates
-setSettings({ ...settings, foo: newValue });
+const fresh = repairsRef.current.find(r => r.id === id);
+// NOT: const fresh = repairs.find(r => r.id === id);  ← stale closure
+```
 
+### H2 cancel guard
+
+Before any mutation, re-read and check status:
+
+```ts
+const freshStatus = String(entity.status || '').toLowerCase();
+if (freshStatus === 'cancelled' || freshStatus === 'refunded') {
+  toast('Ticket cancelled/refunded. Cannot edit.', 'error');
+  return;
+}
+```
+
+### Delta-only settings updates (r26 C4)
+
+```ts
 // CORRECTO — solo el delta
 setSettings({ foo: newValue });
 persistSettings({ foo: newValue } as Record<string, unknown>);
+
+// INCORRECTO — stale closure risk
+setSettings({ ...settings, foo: newValue });
 ```
 
-### Hoisted helpers for field/toggle components
+### forwardTaxFromBase — canonical tax helper
 
-Los helpers como `<Field>`, `<Toggle>`, `<AdminPinField>`, `<UrlField>` viven
-HOISTED a module scope (no inline dentro del componente padre). Esto evita
-focus loss cuando el componente padre re-renderiza.
+```ts
+import { forwardTaxFromBase } from '@/utils/depositTax';
 
-### ID generation
+const fwd = forwardTaxFromBase(baseCents, taxRate, taxable);
+// fwd.baseCents, fwd.taxCents, fwd.totalCents
+```
 
-Pattern: `${prefix}-${timestamp8}-${random4}`
-
-Ejemplo: `topup_abc12345_def0`
-
-### escHtml para print HTML
-
-Cualquier interpolación de user data en print HTML strings (NO React JSX) debe
-pasar por `escHtml()` para evitar XSS en receipts/reports impresos.
+NEVER do manual tax math. This helper is the single source of truth.
 
 ### usePrint hook
 
@@ -130,119 +159,131 @@ printHtml(html, {
 });
 ```
 
----
+### escHtml for print HTML
 
-## WORKFLOW DE ROUNDS DE FIX
+Any user data interpolated in print HTML strings (NOT React JSX) must pass through `escHtml()` to prevent XSS.
 
-Cada round de fixes sigue esta estructura:
+### ID generation
 
-### 1. Baseline
-- El starting point es siempre el último tar `_final` validado
-- Por ejemplo: `cellhub-pro-v2_r-settings-2b1_final.tar.gz`
-- **Nunca arrancar de un tar non-final** o de un midpoint
-
-### 2. Pre-round verification
-```bash
-grep -c "patrón esperado del round anterior" path/to/file
-# Verificar que el baseline tiene los fixes previos
-```
-
-### 3. Dry-run antes de escribir fix prompt
-- Correr los str_replace en un working copy
-- Ejecutar `npx tsc --noEmit` para validar typecheck
-- Correr grep self-checks para validar cantidades esperadas
-- **Corregir expected counts en el prompt basado en dry-run real**, no en guesswork
-
-### 4. Self-checks obligatorios
-- Cada edit tiene grep counts esperados
-- Los counts son POST-dry-run (confirmados), no pre-guess
-- Patrón típico: 2 matches para "comment + element" de una misma feature
-
-### 5. Typecheck obligatorio
-```bash
-npm install --ignore-scripts
-npx tsc --noEmit
-# Ambos deben exit 0 con zero output
-```
-
-### 6. Diff sanity
-```bash
-diff -rq baseline/cellhub-pro-v2 dryrun/cellhub-pro-v2 | grep -v node_modules
-# Debe mostrar EXACTAMENTE los archivos esperados
-# Cero colaterales
-```
-
-### 7. File-replace vs str_replace (criterio de decisión)
-
-**Usa file-replace cuando:**
-- Es un refactor move-only donde la lógica no cambia
-- El diff literal sería >500 líneas de JSX en `str_replace` args
-- El archivo cambiado es 1 solo (no cross-file)
-- Ejemplo: Round 2B.1 carriers tab unification
-
-**Usa str_replace (tradicional) cuando:**
-- Hay lógica que cambia
-- Cross-file edits
-- <500 líneas de delta literal
-- Default para todo lo demás
-
-### 8. md5 verification para file-replace
-```bash
-md5sum path/to/replaced-file.tsx
-# Debe matchear exactamente el md5 del auditor dry-run
-```
-
-### 9. Repackaging final
-```bash
-# Solo después de validation completa
-tar -czf cellhub-pro-v2_r-XXX_final.tar.gz cellhub-pro-v2/
-```
+Pattern: `generateId()` from `@/utils/ids` — produces unique IDs.
 
 ---
 
-## BASELINE CHAIN
+## R-EDIT-AUDIT PATTERNS (April 2026)
 
-El baseline chain actual del proyecto (última versión al final):
+Post-completion edit tracking for Repairs, Unlocks, SpecialOrders.
 
-1. `cellhub-pro-v2_r29d1_with_assets.tar.gz` — pre-PATH B + placeholder icons
-2. `cellhub-pro-v2_r-pathB_final.tar.gz` — distribution unblockers
-3. `cellhub-pro-v2_r-settings-1_final.tar.gz` — settings security/bugs (12 fixes)
-4. `cellhub-pro-v2_r-settings-2a_final.tar.gz` — architecture/UX (5 fixes)
-5. `cellhub-pro-v2_r-settings-2a5_final.tar.gz` — top-up commission tracking
-6. `cellhub-pro-v2_r-settings-2b1_final.tar.gz` — carriers tab unification
-7. **`cellhub-pro-v2_r-settings-2b2_final.tar.gz`** — detected printers (next, pending)
+### Lock condition
 
-**Current working baseline: `cellhub-pro-v2_r-settings-2b1_final.tar.gz`**
+```ts
+const totalPaid = (entity.estimatedCost || entity.price || 0) - (entity.balance || 0);
+const isLocked = !!entity && (
+  (entity.balance === 0 && totalPaid > 0)
+  || normalizeStatus(entity.status) === 'refunded'
+);
+```
+
+### Audit save flow
+
+1. PIN gate → unlock money fields
+2. User edits → Save
+3. Stale check (`String(fresh.updatedAt) !== String(entity.updatedAt)`)
+4. H2 guard (cancelled/refunded abort)
+5. Edit history cap check (100 max, warning at 80)
+6. computeDiff (form vs fresh entity, NOT vs originalSnapshot)
+7. If money changed → ReasonSelectorModal (additional_balance / absorbed / refund)
+8. If info only → auto typo_correction
+9. Side effects per reason (forwardTaxFromBase for recalc)
+10. captureSnapshot on first edit (never overwrite)
+11. appendEditEntry to editHistory
+12. Persist full entity spread
+13. Auto-reprint corrected receipt (money reasons only)
+
+### Reason consequences
+
+| Reason | Status change | Balance | Side effect |
+|---|---|---|---|
+| additional_balance | → active (received/pending/ordered) | recalculated | ticket reopens |
+| absorbed | stays terminal | stays 0 | absorbedAmount logged |
+| refund | → refund_pending | stays 0 | refundOwedAmount set |
+| typo_correction | no change | no change | audit log only |
+
+### Mark Refunded flow
+
+Creates a negative-total sale with `status: 'completed'` so Reports subtracts from gross revenue. Original sales stay untouched (partial refund, not cancellation).
+
+### depositAmount invariant (r-deposit-integrity-1)
+
+`depositAmount` is managed EXCLUSIVELY by POS checkout and cancellation paths. The edit audit flow does NOT unlock depositAmount — it stays disabled with visual 🔒 only (no PIN override). This prevents bypassing the POS reconcile contract.
+
+### Shared infrastructure
+
+- `src/hooks/usePinGate.ts` — PIN gate state management
+- `src/services/editAudit.ts` — snapshot, diff, history helpers
+- `src/components/ReasonSelectorModal.tsx` — 3-option reason picker
+- `src/components/EditHistoryModal.tsx` — scrollable edit history viewer
+- `src/components/shared/AdminPinGate.tsx` — PIN entry modal (reused)
 
 ---
 
-## BACKLOG PRIORITIZADO (post-2B.2)
+## REPARADOR CLOSURE RULE
 
-1. **Deposit Integrity bug** — CRÍTICO, revenue leak en 14 sites (Codex P1)
-2. **Backup Completeness** — agregar returns/appointments/expenses a ALL_COLLECTIONS
-3. **Auto-Updater completion** — listener leak + enable download flow
-4. **Fake features hide** — autoBackup toggle, SMS twilio provider
-5. **Returns r25 migration** — foundation work (requires Jorge OK para src/store/)
-6. **Returns audit** — con ChatGPT 10-item checklist
-7. **Returns hardening round**
-8. **Printing hardening** — labels via IPC + bundle barcode/QR locally
-9. **Electron security** — path allowlist + sandbox + remove unused IPC
-10. **Final end-to-end sanity pass**
-11. **Switch Go Cellular monolith → v2 producción** (milestone)
-12. **Dogfooding phase**
-13. **Multi-store phase** (separate project post-dogfooding)
-14. **Commercial launch prep** (licensing, Windows packaging, data importers)
+Every round MUST include before delivery:
+
+1. **`./node_modules/.bin/tsc --noEmit`** output (MUST be EXIT=0)
+2. **`npm run build`** if the change touches runtime-critical paths (money/report/refund/POS)
+3. **grep validations** specific to the round
+4. **Flow verification** describing:
+   - What flow was tested
+   - What result was expected
+   - What result was obtained
+5. If something couldn't be tested, **state it explicitly**
+6. **NEVER present as validated if only reasoned**
+
+**Typecheck command:** Always use `./node_modules/.bin/tsc --noEmit` (local binary). NEVER use `npx tsc` — global TS 6.x conflicts.
+
+---
+
+## GIT WORKFLOW
+
+```powershell
+# Dev/test (home laptop or shop PC):
+cd cellhub-pro-v2
+git pull origin main
+npm install  # only if deps changed
+npm run dev  # Vite dev server, hot reload
+
+# Build .exe for production:
+npm run build
+npm run electron:build  # generates dist/
+
+# Commit pattern:
+git add <specific files>  # NEVER git add -A
+git commit -m "Round <MARKER>: <description>"
+git push origin main
+```
+
+### Commit naming convention
+
+```
+Round R-EDIT-AUDIT F1: shared infrastructure
+Round R-EDIT-AUDIT F2: type extensions
+Round R-EDIT-AUDIT F3.1-3: RepairModal lock UI
+Round R-EDIT-AUDIT F7-FIX-v2: partial refund
+```
+
+Preserve all existing markers. No retroactive renaming.
 
 ---
 
 ## JORGE COMMUNICATION PREFERENCES
 
-- **Idioma:** Español mexicano, NUNCA voseo (no "vos", "tenés", "preferís")
+- **Idioma:** Español mexicano / Spanglish, NUNCA voseo (no "vos", "tenés")
 - **Tono:** directo, action-oriented, minimal explanation unless asked
-- **Casual:** "compa", "órale", "dale", "sale"
-- Prefiere respuestas que vayan al grano sobre explicaciones largas
+- **Casual:** "compa", "órale", "dale", "sale", "simon", "wey"
+- Prefiere respuestas que vayan al grano
 - Pushback decisivo si algo no tiene sentido o scope creep
-- Tests todo el mismo
+- Tests todo él mismo en runtime
 
 ---
 
@@ -252,19 +293,12 @@ El baseline chain actual del proyecto (última versión al final):
 - ❌ Cambiar src/store/ sin permiso explícito
 - ❌ Usar alert/confirm/prompt
 - ❌ Hardcodear money como float
+- ❌ Persist con partial data (full spread obligatorio)
+- ❌ Math de tax manual (usar forwardTaxFromBase)
 - ❌ Instalar nuevas dependencies sin justificar
 - ❌ Refactors "mientras estoy aquí" fuera del scope del round
-- ❌ Fix prompts con expected grep counts no validados via dry-run
-- ❌ Declarar un round como `_final` sin typecheck + diff sanity + self-checks pasing
-- ❌ Delivery como archivos sueltos — siempre tar.gz completo del proyecto
-- ❌ Tocar the inner widget code de un block que se está moving-only
-
----
-
-## PROTIPS
-
-- **Siempre correr `npx tsc --noEmit` pre-entrega**, incluso si "parece obvio"
-- El dry-run catché 2 bugs reales en Rounds 2A.5 y 2B.2 que de otra forma hubieran llegado al reparador
-- Para refactors grandes move-only, el file-replace approach es más seguro que str_replace con 500+ líneas literales
-- md5 verification es bulletproof para file-replace — un solo check garantiza byte-identical
-- Los grep counts de "comment + element" patterns típicamente son 2, no 1 (el comment marker y el JSX element son matches separados)
+- ❌ Presentar como validado si solo fue razonado
+- ❌ Usar `npx tsc` (global TS 6.x conflict — usar `./node_modules/.bin/tsc`)
+- ❌ `git add -A` (siempre archivos específicos)
+- ❌ Proceder al siguiente phase sin aprobación del auditor
+- ❌ Asumir que uploads son de un source específico — siempre preguntar
