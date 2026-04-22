@@ -77,7 +77,11 @@ export default function RepairModule() {
   const repairsRef = useRef(repairs);
   useEffect(() => { repairsRef.current = repairs; }, [repairs]);
 
-  // Round R2: one-time localStorage/Firestore-safe delta sweep to canonical repair statuses.
+  // Round R2 + R2.1: one-time delta sweep to canonical repair statuses.
+  // Persists the FULL repair record because persist.ts localSaveRecord
+  // overwrites non-settings collections (only settings gets a merge per
+  // the r26 BLOCKER fix). Firestore merge:true makes this idempotent
+  // on the cloud side. Flag in settings prevents re-run across mounts.
   const hasRunSweepRef = useRef(false);
   useEffect(() => {
     if (hasRunSweepRef.current) return;
@@ -95,9 +99,12 @@ export default function RepairModule() {
       if (normalized && normalized !== r.status) {
         changed += 1;
         const nowIso = new Date().toISOString();
-        // Delta-only: persist ONLY the status + updatedAt. merge:true in persist
-        // ensures all other fields on the entity stay intact (localStorage and Firestore).
-        persist.repair(r.id, { status: normalized, updatedAt: nowIso });
+        // Round R2.1: pass full repair record — localSaveRecord in
+        // persist.ts OVERWRITES non-settings entries with the payload,
+        // so a delta payload would destroy every other field. Full-record
+        // spread aligns localStorage (overwrite with full) and Firestore
+        // (merge:true is idempotent on equal fields).
+        persist.repair(r.id, { ...r, status: normalized, updatedAt: nowIso } as unknown as Record<string, unknown>);
         return { ...r, status: normalized, updatedAt: nowIso } as Repair;
       }
       return r;
