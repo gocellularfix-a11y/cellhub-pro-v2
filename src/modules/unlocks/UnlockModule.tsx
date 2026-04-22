@@ -24,8 +24,18 @@ import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
-import type { Unlock, UnlockType, CartItem, Customer, Sale } from '@/store/types';
+import type { Unlock, UnlockType, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
 import CancelUnlockModal from './CancelUnlockModal';
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { usePinGate } from '@/hooks/usePinGate';
+import ReasonSelectorModal from '@/components/ReasonSelectorModal';
+import EditHistoryModal from '@/components/EditHistoryModal';
+import {
+  computeDiff, hasMoneyChanges, captureSnapshot, appendEditEntry,
+  checkEditHistoryStatus,
+  UNLOCK_MONEY_FIELDS, UNLOCK_ALL_FIELDS,
+  type FieldChange, type EditReason,
+} from '@/services/editAudit';
 
 // R-EDIT-AUDIT: added 'Refund Pending' (active) and 'Refunded' (done).
 // Normalized forms: refund_pending, refunded.
@@ -75,6 +85,20 @@ export default function UnlockModule() {
   const [deleteConfirm, setDeleteConfirm] = useState<Unlock | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<Unlock | null>(null);
 
+  // R-EDIT-AUDIT F4: post-completion edit tracking — PIN gate, reason prompt,
+  // edit-history viewer, print-choice dialog, Mark Refunded confirmation.
+  const [historyTarget, setHistoryTarget] = useState<Unlock | null>(null);
+  const [printChoiceTarget, setPrintChoiceTarget] = useState<Unlock | null>(null);
+  const [refundConfirmTarget, setRefundConfirmTarget] = useState<Unlock | null>(null);
+  const [showReasonSelector, setShowReasonSelector] = useState(false);
+  const [pendingAuditPayload, setPendingAuditPayload] = useState<{
+    baseUpdated: Unlock;
+    changes: FieldChange[];
+    fresh: Unlock;
+  } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const pin = usePinGate(settings?.adminPin);
+
   // Consume cross-module search term once on mount
   useEffect(() => {
     if (globalSearchTerm) {
@@ -112,6 +136,23 @@ export default function UnlockModule() {
     () => unlocks.filter((u) => !DONE_UNLOCK.includes(normalizeStatus(u.status))).length,
     [unlocks],
   );
+
+  // R-EDIT-AUDIT F4.1: lock money fields on completed tickets.
+  // totalPaid = what customer has paid so far (price - outstanding balance).
+  // Lock when fully paid AND at least one payment made, OR status=refunded.
+  const totalPaid = (editUnlock?.price || 0) - (editUnlock?.balance || 0);
+  const isLocked = !!editUnlock && (
+    (editUnlock.balance === 0 && totalPaid > 0)
+    || normalizeStatus(editUnlock.status) === 'refunded'
+  );
+
+  // Wrap the modal close so closing resets the PIN unlock state.
+  const handleClose = () => {
+    pin.resetLock();
+    setIsSaving(false);
+    setShowModal(false);
+    setEditUnlock(null);
+  };
 
   // ── Form state (inside modal) ───────────────────────────
 
@@ -231,20 +272,222 @@ export default function UnlockModule() {
     return { combinedCents };
   }, [settings.taxRate, lang, setCart]);
 
+  // R-EDIT-AUDIT F4.5: entity-based unlock print (entity already in cents).
+  // Parallel to the existing `printTicket` which reads from form state — this
+  // one takes a persisted Unlock plus optional "corrected" display override,
+  // so audit auto-reprints and the print-choice dialog can invoke it.
+  const printUnlockEntity = (unlock: Unlock, displayOverride?: {
+    corrected?: boolean;
+    originalSnapshot?: { capturedAt: string; snapshot: Record<string, unknown> };
+  }) => {
+    const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
+    const storeAddr = settings.storeAddress || '';
+    const storePhone = settings.storePhone || '';
+    const es = lang === 'es';
+    const fmt = (v: unknown) => v == null ? '' : String(v);
+    const money = (cents: unknown) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+    const typeLabel = (t?: string) => {
+      if (!t) return '';
+      return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[t] || t;
+    };
+
+    const corrected = !!displayOverride?.corrected;
+    const snap = displayOverride?.originalSnapshot?.snapshot;
+    const previously = (field: string): string => {
+      if (!corrected || !snap) return '';
+      const prior = snap[field];
+      const current = (unlock as any)[field];
+      if (prior == null || prior === '' || prior === current) return '';
+      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      return '';
+    };
+
+    const ticketNum = unlock.id.slice(-8).toUpperCase();
+    const lines: string[] = [];
+    lines.push(storeName);
+    if (storeAddr) lines.push(storeAddr);
+    if (storePhone) lines.push(storePhone);
+    lines.push('----------------------------------------');
+    if (corrected) {
+      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
+      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push('----------------------------------------');
+    }
+    lines.push(`UNLOCK TICKET: ${ticketNum}`);
+    lines.push(`STATUS: ${fmt(unlock.status)}`);
+    lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
+    lines.push('----------------------------------------');
+    lines.push(`${es ? 'CLIENTE' : 'CUSTOMER'}: ${fmt(unlock.customerName)}`);
+    if (unlock.customerPhone) lines.push(`${es ? 'TEL' : 'PHONE'}: ${fmt(unlock.customerPhone)}`);
+    lines.push('----------------------------------------');
+    lines.push(`${es ? 'DISPOSITIVO' : 'DEVICE'}: ${fmt(unlock.device)}`);
+    if (unlock.carrier) lines.push(`CARRIER: ${fmt(unlock.carrier)}`);
+    if (unlock.imei) lines.push(`IMEI: ${fmt(unlock.imei)}`);
+    if (unlock.unlockType) lines.push(`TYPE: ${typeLabel(unlock.unlockType as string)}`);
+    if (unlock.supplier) lines.push(`SUPPLIER: ${fmt(unlock.supplier)}`);
+    if (unlock.unlockCode) lines.push(`CODE: ${fmt(unlock.unlockCode)}`);
+    lines.push('----------------------------------------');
+    if (unlock.orderDate) lines.push(`ORDERED: ${fmt(unlock.orderDate)}`);
+    if (unlock.completionDate) lines.push(`COMPLETED: ${fmt(unlock.completionDate)}`);
+    lines.push('----------------------------------------');
+    lines.push(`PRICE: ${money(unlock.price || 0)}${previously('price')}`);
+    lines.push(`DEPOSIT: ${money(unlock.depositAmount || 0)}${previously('depositAmount')}`);
+    lines.push(`BALANCE: ${money(unlock.balance || 0)}${previously('balance')}`);
+    // R-EDIT-AUDIT F4.5: show refund owed on corrected receipt when reason='refund'.
+    if (corrected && ((unlock as any).refundOwedAmount || 0) > 0) {
+      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money((unlock as any).refundOwedAmount)}`);
+    }
+    lines.push('----------------------------------------');
+    if (unlock.notes) {
+      lines.push('NOTES:');
+      lines.push(fmt(unlock.notes));
+    }
+    const content = lines.filter(Boolean).join('\n');
+    const html = `<!DOCTYPE html><html><head><title>Unlock ${ticketNum}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
+    printHtml(html, {
+      silent: false,
+      printer: settings.detectedPrinters?.[0],
+    });
+  };
+
+  // R-EDIT-AUDIT F4.3-5: apply audit side-effects, append edit-history entry,
+  // persist full entity, trigger corrected receipt. Called for both the info-only
+  // typo_correction path (from handleSave) and the money-change path (from
+  // handleReasonSelected after the user picks a reason).
+  const applyAuditSave = (
+    baseUpdated: Unlock,
+    fresh: Unlock,
+    reason: EditReason,
+    changes: FieldChange[],
+    note: string,
+  ) => {
+    const taxRate = settings.taxRate ?? 0.0925;
+    const newTaxable = (baseUpdated as any).taxable ?? false;
+    const oldTaxable = (fresh as any).taxable ?? false;
+    const updated: Unlock = { ...baseUpdated };
+
+    // Defensive: strip audit fields from any incoming spread and re-seed from fresh.
+    delete (updated as any).editHistory;
+    delete (updated as any).originalSnapshot;
+    delete (updated as any).refundOwedAmount;
+    updated.editHistory = fresh.editHistory;
+    updated.originalSnapshot = fresh.originalSnapshot;
+    updated.refundOwedAmount = fresh.refundOwedAmount;
+
+    const sideEffects: EditAuditEntry['sideEffects'] = {};
+    switch (reason) {
+      case 'additional_balance': {
+        const fwd = forwardTaxFromBase(updated.price || 0, taxRate, newTaxable);
+        const newTotal = fwd.totalCents;
+        const alreadyPaid = fresh.depositAmount || 0;
+        const newBalance = Math.max(0, newTotal - alreadyPaid);
+        updated.balance = newBalance;
+        updated.status = 'Received'; // Reopen for collection.
+        sideEffects.balanceChange = newBalance - (fresh.balance || 0);
+        sideEffects.statusChange = { from: String(fresh.status), to: 'Received' };
+        break;
+      }
+      case 'absorbed': {
+        updated.balance = 0;
+        const oldFwd = forwardTaxFromBase(fresh.price || 0, taxRate, oldTaxable);
+        const newFwd = forwardTaxFromBase(updated.price || 0, taxRate, newTaxable);
+        sideEffects.absorbedAmount = Math.abs(newFwd.totalCents - oldFwd.totalCents);
+        break;
+      }
+      case 'refund': {
+        const oldFwd = forwardTaxFromBase(fresh.price || 0, taxRate, oldTaxable);
+        const newFwd = forwardTaxFromBase(updated.price || 0, taxRate, newTaxable);
+        const refundOwed = Math.max(0, oldFwd.totalCents - newFwd.totalCents);
+        updated.refundOwedAmount = refundOwed;
+        updated.status = 'Refund Pending';
+        updated.balance = 0;
+        sideEffects.refundOwedAmount = refundOwed;
+        sideEffects.statusChange = { from: String(fresh.status), to: 'Refund Pending' };
+        break;
+      }
+      case 'typo_correction':
+        break;
+    }
+
+    if (!updated.originalSnapshot) {
+      updated.originalSnapshot = captureSnapshot(fresh as unknown as Record<string, unknown>);
+    }
+
+    const now = new Date().toISOString();
+    updated.updatedAt = now;
+
+    const entry: EditAuditEntry = {
+      editedAt: now,
+      editedBy: currentEmployee?.name || 'Unknown',
+      // AdminPinGate validates a single shared adminPin — no per-admin identity.
+      pinUsedBy: currentEmployee?.name || 'Admin',
+      reason,
+      fieldsChanged: changes,
+      note: note || undefined,
+      sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
+    };
+    if (checkEditHistoryStatus(updated.editHistory) === 'full') {
+      toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+      setIsSaving(false);
+      return;
+    }
+    const newHistory = appendEditEntry(updated.editHistory, entry);
+    if (newHistory === null) {
+      toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+      setIsSaving(false);
+      return;
+    }
+    updated.editHistory = newHistory;
+
+    const nextUnlocks = unlocksRef.current.map((u) => (u.id === updated.id ? updated : u));
+    unlocksRef.current = nextUnlocks;
+    setUnlocks(nextUnlocks);
+    persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
+
+    if (reason !== 'typo_correction') {
+      printUnlockEntity(updated, {
+        corrected: true,
+        originalSnapshot: updated.originalSnapshot,
+      });
+    }
+
+    toast(
+      lang === 'es' ? 'Ticket actualizado con registro de auditoría.' : 'Ticket updated with audit trail.',
+      'success',
+    );
+    handleClose();
+  };
+
+  const handleReasonSelected = (reason: EditReason, note: string) => {
+    if (!pendingAuditPayload) return;
+    const { baseUpdated, changes, fresh } = pendingAuditPayload;
+    setShowReasonSelector(false);
+    setPendingAuditPayload(null);
+    applyAuditSave(baseUpdated, fresh, reason, changes, note);
+  };
+
   const handleSave = useCallback(() => {
+    // R-EDIT-AUDIT F4.3: double-submit guard. Prevents rapid clicks from
+    // creating duplicate editHistory entries. Reset in every early-return path.
+    if (isSaving) return;
+    setIsSaving(true);
+
     const firstName = (form.firstName as string || '').trim();
     const lastName  = (form.lastName  as string || '').trim();
     const customerName = `${firstName} ${lastName}`.trim();
     if (!customerName) {
       toast(lang === 'es' ? 'Nombre del cliente requerido' : 'Customer name required', 'error');
+      setIsSaving(false);
       return;
     }
     if (!form.customerPhone?.trim()) {
       toast(lang === 'es' ? 'Teléfono requerido' : 'Phone required', 'error');
+      setIsSaving(false);
       return;
     }
     if (!form.device?.trim()) {
       toast(lang === 'es' ? 'Dispositivo requerido' : 'Device required', 'error');
+      setIsSaving(false);
       return;
     }
 
@@ -261,6 +504,7 @@ export default function UnlockModule() {
 
     if (depositCents > _t.totalWithTaxCents + 1) {
       toast(lang === 'es' ? 'El depósito no puede exceder el total' : 'Deposit cannot exceed total', 'error');
+      setIsSaving(false);
       return;
     }
 
@@ -316,6 +560,113 @@ export default function UnlockModule() {
         completionDate,
         updatedAt: new Date().toISOString(),
       } as Unlock;
+
+      // R-EDIT-AUDIT F4.3: locked ticket → stale/H2/cap checks, diff, route to
+      // reason selector or info-only typo_correction. Don't persist here when
+      // locked; the audit-save path below handles it.
+      if (isLocked) {
+        const fresh = unlocksRef.current.find((u) => u.id === editUnlock.id);
+        if (!fresh) {
+          toast(lang === 'es' ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+          handleClose();
+          return;
+        }
+        const freshNorm = normalizeStatus(fresh.status);
+        if (freshNorm === 'cancelled' || freshNorm === 'refunded') {
+          toast(
+            lang === 'es' ? 'Ticket cancelado/reembolsado. No se puede editar.' : 'Ticket cancelled/refunded. Cannot edit.',
+            'error',
+          );
+          handleClose();
+          return;
+        }
+        if (fresh.updatedAt && editUnlock.updatedAt && String(fresh.updatedAt) !== String(editUnlock.updatedAt)) {
+          toast(
+            lang === 'es'
+              ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
+              : 'Ticket modified on another station. Reload and try again.',
+            'error',
+          );
+          handleClose();
+          return;
+        }
+        const historyStatus = checkEditHistoryStatus(fresh.editHistory);
+        if (historyStatus === 'full') {
+          toast(
+            lang === 'es' ? 'Historial de ediciones lleno (100). Contacta al administrador.' : 'Edit history full (100). Contact admin.',
+            'error',
+          );
+          setIsSaving(false);
+          return;
+        }
+        if (historyStatus === 'warning') {
+          toast(
+            lang === 'es'
+              ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
+              : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
+            'warning',
+          );
+        }
+
+        // Build reference (fresh entity, cents) + current (form → cents) for diff.
+        // depositAmount excluded: r-deposit-integrity-1 invariant keeps it read-only in form.
+        const reference: Record<string, unknown> = {
+          price: fresh.price ?? 0,
+          cost: fresh.cost ?? 0,
+          taxable: (fresh as any).taxable ?? false,
+          customerName: fresh.customerName ?? '',
+          customerPhone: fresh.customerPhone ?? '',
+          device: fresh.device ?? '',
+          imei: fresh.imei ?? '',
+          carrier: fresh.carrier ?? '',
+          targetCarrier: fresh.targetCarrier ?? '',
+          unlockType: fresh.unlockType ?? '',
+          unlockCode: fresh.unlockCode ?? '',
+          supplier: fresh.supplier ?? '',
+          orderDate: fresh.orderDate ?? '',
+          completionDate: fresh.completionDate ?? '',
+          notes: fresh.notes ?? '',
+          employeeName: fresh.employeeName ?? '',
+        };
+        const current: Record<string, unknown> = {
+          price: priceCents,
+          cost: costCents,
+          taxable,
+          customerName,
+          customerPhone: form.customerPhone ?? '',
+          device: form.device ?? '',
+          imei: normalizedImei,
+          carrier: form.carrier ?? '',
+          targetCarrier: form.targetCarrier ?? '',
+          unlockType: form.unlockType ?? '',
+          unlockCode: form.unlockCode ?? '',
+          supplier: form.supplier ?? '',
+          orderDate: form.orderDate ?? '',
+          completionDate: completionDate ?? '',
+          notes: form.notes ?? '',
+          employeeName: fresh.employeeName ?? '', // not in form — preserve reference
+        };
+
+        const fieldsToCheck = (UNLOCK_ALL_FIELDS as readonly string[]).filter((f) => f !== 'depositAmount');
+        const changes = computeDiff(reference, current, fieldsToCheck);
+        if (changes.length === 0) {
+          handleClose();
+          return;
+        }
+
+        const moneyChanged = hasMoneyChanges(changes, UNLOCK_MONEY_FIELDS as unknown as string[]);
+        if (moneyChanged) {
+          setPendingAuditPayload({ baseUpdated: updated, changes, fresh });
+          setShowReasonSelector(true);
+          // Leave isSaving=true; handleReasonSelected or the Cancel path reset it.
+          return;
+        }
+
+        // Info-only changes → save with typo_correction, no reason prompt.
+        applyAuditSave(updated, fresh, 'typo_correction', changes, '');
+        return;
+      }
+
       const nextUnlocks = unlocksRef.current.map((u) => (u.id === editUnlock.id ? updated : u));
       unlocksRef.current = nextUnlocks;
       setUnlocks(nextUnlocks);
@@ -390,8 +741,11 @@ export default function UnlockModule() {
 
     setShowModal(false);
     setEditUnlock(null);
+    setIsSaving(false);
   }, [form, editUnlock, customers, settings, currentEmployee, lang, L,
-      setUnlocks, setCustomers, setCart, toast, consolidateCartForUnlock, dispatch]);
+      setUnlocks, setCustomers, setCart, toast, consolidateCartForUnlock, dispatch,
+      // R-EDIT-AUDIT F4.3: audit deps — isLocked + isSaving guard reads, applyAuditSave closure.
+      isLocked, isSaving]);
 
   const collectBalance = useCallback((u: Unlock) => {
     if (!u.balance || u.balance <= 0) return;
@@ -785,12 +1139,66 @@ export default function UnlockModule() {
                   ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(u.balance)}` : `Complete / Collect ${formatCurrency(u.balance)}`)
                   : (lang === 'es' ? 'Marcar completado' : 'Mark completed')
               }
-              completeDisabled={['Cancelled', 'Completed'].includes(u.status)}
+              completeDisabled={['Cancelled', 'Completed', 'Refunded'].includes(u.status)}
               completeVariant={u.status === 'Completed' ? 'green' : 'amber'}
-              onPrint={undefined}
+              // R-EDIT-AUDIT F4.6: edited tickets route through the corrected/original
+              // print-choice dialog; unedited tickets print directly.
+              onPrint={() => {
+                if (u.editHistory && u.editHistory.length > 0) {
+                  setPrintChoiceTarget(u);
+                } else {
+                  printUnlockEntity(u);
+                }
+              }}
               onSMS={() => handleSMSButton(u)}
               onDelete={() => setDeleteConfirm(u)}
               smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && u.customerPhone)}
+              extraBadges={
+                <>
+                  {/* R-EDIT-AUDIT F4.6: edit-history count badge. */}
+                  {u.editHistory && u.editHistory.length > 0 && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryTarget(u);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        background: 'rgba(251, 191, 36, 0.15)',
+                        color: '#fbbf24',
+                      }}
+                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                    >
+                      🕐 {u.editHistory.length}
+                    </span>
+                  )}
+                  {/* R-EDIT-AUDIT F4.6: Mark Refunded button when in refund_pending state. */}
+                  {normalizeStatus(u.status) === 'refund_pending' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRefundConfirmTarget(u);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.72rem',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '0.3rem',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                    </button>
+                  )}
+                </>
+              }
               onWhatsApp={settings.waEnabled !== false && u.customerPhone ? () => openWhatsApp(
                 u.customerPhone,
                 buildWaMessage(
@@ -829,11 +1237,32 @@ export default function UnlockModule() {
       {/* Unlock Modal */}
       <Modal
         open={showModal}
-        onClose={() => { setShowModal(false); setEditUnlock(null); }}
+        onClose={handleClose}
         title={`🔓 ${editUnlock ? 'Edit Unlock' : 'New Unlock'}`}
         size="max-w-lg"
       >
         <div className="space-y-3">
+          {/* R-EDIT-AUDIT F4.2: banner when admin unlocks money fields post-completion. */}
+          {isLocked && pin.editUnlocked && (
+            <div style={{
+              background: 'rgba(251, 191, 36, 0.15)',
+              border: '1px solid rgba(251, 191, 36, 0.4)',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.85rem',
+            }}>
+              <span>⚠️</span>
+              <span>
+                {lang === 'es'
+                  ? 'Editando ticket completado. Los cambios se registrarán.'
+                  : 'Editing completed ticket. Changes will be logged.'}
+              </span>
+            </div>
+          )}
+
           {/* r-customer-picker-sweep: wrap customer inputs in shared
               CustomerSearchHeader. The 3 AutocompleteInputs below are kept
               as-is — they still provide per-field autocomplete on top of
@@ -941,12 +1370,53 @@ export default function UnlockModule() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">Price ($)</label>
-              <input type="number" value={form.price || ''} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className="input" step="0.01" />
+              <label className="text-xs text-slate-400 block mb-1">
+                {isLocked && !pin.editUnlocked && '🔒 '}Price ($)
+              </label>
+              {/* R-EDIT-AUDIT F4.2: lock price on completed tickets. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  value={form.price || ''}
+                  onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
+                  className="input"
+                  step="0.01"
+                  disabled={isLocked && !pin.editUnlocked}
+                  style={isLocked && !pin.editUnlocked ? { opacity: 0.6 } : undefined}
+                />
+                {isLocked && !pin.editUnlocked && (
+                  <span
+                    onClick={pin.requestUnlock}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
+                    title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  >🔒</span>
+                )}
+              </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">Cost ($)</label>
-              <input type="number" value={form.cost || ''} onChange={(e) => setForm({ ...form, cost: parseFloat(e.target.value) || 0 })} className="input" step="0.01" placeholder="Supplier cost" />
+              <label className="text-xs text-slate-400 block mb-1">
+                {isLocked && !pin.editUnlocked && '🔒 '}Cost ($)
+              </label>
+              {/* R-EDIT-AUDIT F4.2: lock cost on completed tickets. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  value={form.cost || ''}
+                  onChange={(e) => setForm({ ...form, cost: parseFloat(e.target.value) || 0 })}
+                  className="input"
+                  step="0.01"
+                  placeholder="Supplier cost"
+                  disabled={isLocked && !pin.editUnlocked}
+                  style={isLocked && !pin.editUnlocked ? { opacity: 0.6 } : undefined}
+                />
+                {isLocked && !pin.editUnlocked && (
+                  <span
+                    onClick={pin.requestUnlock}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
+                    title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  >🔒</span>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Deposit ($)</label>
@@ -1039,7 +1509,7 @@ export default function UnlockModule() {
             <div>
               <label className="text-xs text-slate-400 block mb-1">Status</label>
               <select value={form.status || 'Received'} onChange={(e) => setForm({ ...form, status: e.target.value as any })} className="select">
-                {['Received', 'Processing', 'Code Received', 'Completed', 'Cancelled', 'Failed'].map((s) => (
+                {['Received', 'Processing', 'Code Received', 'Completed', 'Cancelled', 'Failed', 'Refund Pending', 'Refunded'].map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -1051,20 +1521,31 @@ export default function UnlockModule() {
           </div>
 
           {/* Tax toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+          {/* R-EDIT-AUDIT F4.2: taxable is a money-impacting toggle — lock on completed tickets. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.08)', opacity: isLocked && !pin.editUnlocked ? 0.6 : 1 }}>
             <input
               type="checkbox"
               id="unlock-taxable"
               checked={!!(form as any).taxable}
               onChange={(e) => setForm({ ...form, taxable: e.target.checked } as any)}
-              style={{ cursor: 'pointer' }}
+              disabled={isLocked && !pin.editUnlocked}
+              style={{ cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}
             />
-            <label htmlFor="unlock-taxable" style={{ fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+            <label htmlFor="unlock-taxable" style={{ fontSize: '0.82rem', color: '#cbd5e1', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}>
+              {isLocked && !pin.editUnlocked && '🔒 '}
               {lang === 'es' ? `Aplicar impuesto (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)` : `Apply tax (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)`}
             </label>
-            <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto' }}>
-              {lang === 'es' ? 'Por defecto OFF' : 'Default OFF'}
-            </span>
+            {isLocked && !pin.editUnlocked ? (
+              <span
+                onClick={pin.requestUnlock}
+                style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
+                title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+              >🔒</span>
+            ) : (
+              <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto' }}>
+                {lang === 'es' ? 'Por defecto OFF' : 'Default OFF'}
+              </span>
+            )}
           </div>
 
           {/* Totals */}
@@ -1128,6 +1609,24 @@ export default function UnlockModule() {
           </button>
           <button onClick={handleSave} className="btn btn-primary flex-1">{editUnlock ? L.save : L.create}</button>
         </div>
+
+        {/* R-EDIT-AUDIT F4.2-3: reason selector + admin PIN challenge. */}
+        <ReasonSelectorModal
+          open={showReasonSelector}
+          lang={lang}
+          onSelect={(reason, note) => handleReasonSelected(reason, note)}
+          onCancel={() => {
+            setShowReasonSelector(false);
+            setPendingAuditPayload(null);
+            setIsSaving(false);
+          }}
+        />
+        <AdminPinGate
+          open={pin.showPinGate}
+          adminPin={settings?.adminPin || ''}
+          onSuccess={pin.handleSuccess}
+          onCancel={pin.handleCancel}
+        />
       </Modal>
 
       {/* COLLECT BALANCE MODAL */}
@@ -1227,6 +1726,101 @@ export default function UnlockModule() {
           cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
+        />
+      )}
+
+      {/* R-EDIT-AUDIT F4.6: edit history viewer. */}
+      {historyTarget && (
+        <EditHistoryModal
+          open
+          onClose={() => setHistoryTarget(null)}
+          lang={lang}
+          editHistory={historyTarget.editHistory || []}
+          originalSnapshot={historyTarget.originalSnapshot}
+        />
+      )}
+
+      {/* R-EDIT-AUDIT F4.6: corrected-vs-original print choice for edited tickets. */}
+      {printChoiceTarget && (
+        <Modal
+          open
+          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          onClose={() => setPrintChoiceTarget(null)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                printUnlockEntity(printChoiceTarget, {
+                  corrected: true,
+                  originalSnapshot: printChoiceTarget.originalSnapshot,
+                });
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  printUnlockEntity({
+                    ...printChoiceTarget,
+                    ...printChoiceTarget.originalSnapshot.snapshot,
+                  } as Unlock);
+                } else {
+                  printUnlockEntity(printChoiceTarget);
+                }
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => setPrintChoiceTarget(null)}
+            >
+              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* R-EDIT-AUDIT F4.6: confirm Mark Refunded → closes out refund_pending state. */}
+      {refundConfirmTarget && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
+          message={
+            lang === 'es'
+              ? `¿Confirmar que el reembolso de $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
+              : `Confirm that the $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
+          }
+          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={() => {
+            const target = refundConfirmTarget;
+            const now = new Date().toISOString();
+            const updated: Unlock = {
+              ...target,
+              status: 'Refunded',
+              refundOwedAmount: 0,
+              updatedAt: now,
+            };
+            const nextUnlocks = unlocksRef.current.map((u) => (u.id === updated.id ? updated : u));
+            unlocksRef.current = nextUnlocks;
+            setUnlocks(nextUnlocks);
+            persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
+            toast(
+              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
+              'success',
+            );
+            setRefundConfirmTarget(null);
+          }}
+          onCancel={() => setRefundConfirmTarget(null)}
         />
       )}
     </>
