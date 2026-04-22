@@ -830,25 +830,55 @@ export default function RepairModule() {
     if (!repair) return;
 
     if ((repair.balance || 0) > 0) {
-      const isTaxable = !!(repair as any).taxable;
-      consolidateCartForRepair({
-        repairId: repair.id,
-        additionalCents: repair.balance,
-        deviceLabel: [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '',
-        ticketNumber: (repair as any).ticketNumber,
-        isTaxable,
-      });
+      // Round R-POS-PARITY F2: consolidateCartForRepair is ADDITIVE
+      // (sums additionalCents + existing cart cents, both tax-inclusive).
+      // When "Complete / Collect $X" is clicked with a deposit already
+      // in the cart, passing the full balance double-counts (seen in
+      // runtime as the $159.25 ghost = $50 deposit + $109.25 balance).
+      // Mirror Layaway's "collect remaining" flow by passing the DELTA
+      // using the same forwardTaxFromBase conversion the helper uses
+      // internally so the math is bit-identical.
+      const taxRate = settings.taxRate ?? 0.0925;
+      const existingCents = cartRef.current
+        .filter((c) => c.repairId === repair.id)
+        .reduce((sum, c) => {
+          const base = (c.price || 0) * (c.qty || 1);
+          const fwd = forwardTaxFromBase(base, taxRate, !!c.taxable);
+          return sum + fwd.totalCents;
+        }, 0);
+      const deltaCents = Math.max(0, (repair.balance || 0) - existingCents);
+
+      if (deltaCents > 0) {
+        const isTaxable = !!(repair as any).taxable;
+        consolidateCartForRepair({
+          repairId: repair.id,
+          additionalCents: deltaCents,
+          deviceLabel: [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '',
+          ticketNumber: (repair as any).ticketNumber,
+          isTaxable,
+        });
+      }
+
       if ((repair as any).customerId) {
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
       }
     }
 
-    // Round R2: canonical snake_case on complete path (picked_up).
-    const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
-    const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
-    repairsRef.current = next;
-    setRepairs(next);
-    persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+    // Round R-POS-PARITY F1: delegate status transition to POS reconcile.
+    // POSModule.tsx:538 owns the newBalance === 0 → 'picked_up' rule. This
+    // handler only stamps picked_up when there is literally nothing left
+    // to collect (balance = 0), mirroring the fast-path in
+    // handleCompleteRequest. When balance > 0, POS reconcile will stamp
+    // picked_up once the final payment brings balance to 0 — no status
+    // mutation here.
+    if ((repair.balance || 0) === 0) {
+      // Round R2: canonical snake_case on complete path (picked_up).
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
+      const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
+      repairsRef.current = next;
+      setRepairs(next);
+      persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+    }
 
     setCompleteConfirm(null);
     toast(
@@ -857,7 +887,7 @@ export default function RepairModule() {
         : (lang === 'es' ? 'Reparación completada' : 'Repair completed'),
       'success',
     );
-  }, [completeConfirm, consolidateCartForRepair, setRepairs, dispatch, toast, lang]);
+  }, [completeConfirm, consolidateCartForRepair, setRepairs, dispatch, toast, lang, settings.taxRate]);
 
   const handleSMS = useCallback((repair: Repair) => {
     if (!repair.customerPhone) return;

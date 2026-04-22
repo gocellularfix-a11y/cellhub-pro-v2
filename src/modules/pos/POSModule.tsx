@@ -516,6 +516,23 @@ export default function POSModule() {
         if (ri < 0) continue;
         const repair = updatedRepairs[ri];
 
+        // Round R-POS-PARITY F3: H2 cancel guard (parity with Layaway
+        // line 644-653). Re-read fresh status; abort the entire handler
+        // if the repair was cancelled between cart-add and checkout
+        // commit. This prevents reconciling a payment onto a dead record.
+        // Repair has no 'forfeited' status (that's layaway-specific), so
+        // only 'cancelled' is checked.
+        const freshStatus = String(repair.status || '').toLowerCase();
+        if (freshStatus === 'cancelled') {
+          toast(
+            lang === 'es'
+              ? 'La reparación fue cancelada. El pago no se procesó.'
+              : 'Repair was cancelled. Payment was not processed.',
+            'error',
+          );
+          return;
+        }
+
         // r-new-7: defensive sanity check — overpayment detection.
         // The cart consolidation invariant in RepairModule should prevent
         // overpayment, but log if it ever fires. 1 cent tolerance for rounding
