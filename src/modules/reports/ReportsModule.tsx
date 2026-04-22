@@ -1841,7 +1841,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                             <span style={{ padding: '0.1rem 0.5rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: '#94a3b8', textTransform: 'capitalize' }}>{sale.paymentMethod}</span>
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.75rem' }}>{sale.employeeName || '—'}</td>
-                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: (isVoided || isRefunded) ? '#f87171' : '#22c55e' }}>
+                          {/* R-EDIT-AUDIT F7-COSMETIC: negative-total refund sales render red alongside voided/refunded. */}
+                          <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: ((sale.total || 0) < 0 || isVoided || isRefunded) ? '#ef4444' : '#22c55e' }}>
                             {(isVoided || isRefunded) ? `-${formatCurrency(Math.abs(sale.total || 0))}` : formatCurrency(sale.total)}
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(sale.createdAt)}</td>
