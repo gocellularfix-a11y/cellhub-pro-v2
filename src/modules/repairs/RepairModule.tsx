@@ -1460,8 +1460,7 @@ export default function RepairModule() {
           cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
           onConfirm={() => {
             const target = refundConfirmTarget;
-            // F7-FIX: double-refund guard. Rapid double-click or stale state
-            // could re-fire this handler; skip if already refunded.
+            // F7-FIX-v2: double-refund guard (rapid double-click or stale state).
             if (normalizeRepairStatus(target.status) === REPAIR_STATUS.REFUNDED) {
               setRefundConfirmTarget(null);
               return;
@@ -1483,40 +1482,18 @@ export default function RepairModule() {
             setRepairs(nextRepairs);
             persist.repair(updated.id, updated as unknown as Record<string, unknown>);
 
-            // 2. F7-FIX: mark original sale(s) containing this repair as refunded
-            //    so Reports excludes them from Gross/Cash/Profit. Mirrors the
-            //    r9-1 cancel-refund pattern (handleCancelRepair).
-            const originalSales = salesRef.current.filter((s: Sale) =>
-              (s.items || []).some((item: any) => item.repairId === updated.id)
-              && s.status !== 'voided'
-              && s.status !== 'refunded'
-            );
-            const markedSales = originalSales.map((s: Sale) => ({
-              ...s,
-              status: 'refunded' as Sale['status'],
-              refundedAt: now,
-              refundReason: 'Post-edit refund (Mark Refunded)',
-              refundMethod: 'cash',
-            }));
-            for (const ms of markedSales) {
-              persist.sale(ms.id, ms as unknown as Record<string, unknown>);
-            }
-
-            // 3. F7-FIX: create negative-total refund sale entry so cash-out is
-            //    tracked alongside the original sale's flip to refunded. Voided
-            //    so POS flows ignore it; Reports includes it as audit only.
-            let salesWithMarked = salesRef.current.map((s: Sale) => {
-              const marked = markedSales.find((m: Sale) => m.id === s.id);
-              return marked || s;
-            });
+            // 2. F7-FIX-v2: partial refund sale. status='completed' (NOT voided)
+            //    so Reports includes it with negative total, which subtracts from
+            //    gross revenue. Originals stay untouched — this is a PARTIAL
+            //    refund from a price edit, not a cancellation.
             if (refundAmountCents > 0) {
               const refundSale: Sale = {
                 id: generateId(),
                 storeId: (updated as any).storeId,
                 invoiceNumber: `REFUND-${updated.id.slice(-6).toUpperCase()}`,
                 customerId: (updated as any).customerId,
-                customerName: updated.customerName,
-                customerPhone: updated.customerPhone,
+                customerName: updated.customerName || 'Walk-in',
+                customerPhone: updated.customerPhone || '',
                 items: [{
                   id: generateId(),
                   name: `${updated.device || 'Repair'} — ${lang === 'es' ? 'Reembolso post-edición' : 'Post-edit refund'}`,
@@ -1532,18 +1509,18 @@ export default function RepairModule() {
                 cbeTotal: 0,
                 total: -refundAmountCents,
                 paymentMethod: 'Cash' as any,
-                status: 'voided',
+                status: 'completed',
                 employeeId: currentEmployee?.id,
                 employeeName: currentEmployee?.name,
-                notes: `Repair post-edit refund — ticket ${(updated as any).ticketNumber || updated.id.slice(-6).toUpperCase()}`,
+                notes: `Post-edit refund — Repair ${(updated as any).ticketNumber || updated.id.slice(-6).toUpperCase()}`,
                 refundReason: 'Post-edit refund',
                 createdAt: now,
               };
-              salesWithMarked = [...salesWithMarked, refundSale];
+              const nextSales = [...salesRef.current, refundSale];
+              salesRef.current = nextSales;
+              setSales(nextSales);
               persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
             }
-            salesRef.current = salesWithMarked;
-            setSales(salesWithMarked);
 
             toast(
               lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',

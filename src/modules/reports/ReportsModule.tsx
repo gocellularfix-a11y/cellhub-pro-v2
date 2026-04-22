@@ -792,7 +792,9 @@ export default function ReportsModule() {
     const grossRevenueCents = allFilteredSales.reduce((s, sale) => {
       if (sale.status === 'refunded' || sale.status === 'voided') return s;
       const t = sale.total || 0;
-      return t > 0 ? s + t : s;
+      // R-EDIT-AUDIT F7-FIX-v2: allow negative totals so post-edit refund
+      // sales (REFUND-* with status='completed') subtract from gross.
+      return s + t;
     }, 0) + standaloneUnlockRevenueCents;
     const totalReturnsCents = returnsFromPeriodSales.reduce((s, r) => s + r.totalCents, 0);
     const netRevenueCents = grossRevenueCents - totalReturnsCents;
