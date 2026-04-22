@@ -1159,7 +1159,15 @@ export default function SpecialOrdersModule() {
           cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
           onConfirm={() => {
             const target = refundConfirmTarget;
+            // F7-FIX: double-refund guard.
+            if (normalizeStatus(target.status) === 'refunded') {
+              setRefundConfirmTarget(null);
+              return;
+            }
             const now = new Date().toISOString();
+            const refundAmountCents = (target as any).refundOwedAmount || 0;
+
+            // 1. Mark ticket as refunded.
             const updated: SpecialOrder = {
               ...target,
               status: 'refunded',
@@ -1170,6 +1178,66 @@ export default function SpecialOrdersModule() {
             specialOrdersRef.current = nextOrders;
             setSpecialOrders(nextOrders);
             persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+
+            // 2. F7-FIX: mark original sale(s) containing this SO as refunded.
+            //    Mirrors the r9-1 cancel-refund pattern (handleCancelSpecialOrder).
+            const originalSales = salesRef.current.filter((s: Sale) =>
+              (s.items || []).some((item: any) => item.specialOrderId === updated.id)
+              && s.status !== 'voided'
+              && s.status !== 'refunded'
+            );
+            const markedSales = originalSales.map((s: Sale) => ({
+              ...s,
+              status: 'refunded' as Sale['status'],
+              refundedAt: now,
+              refundReason: 'Post-edit refund (Mark Refunded)',
+              refundMethod: 'cash',
+            }));
+            for (const ms of markedSales) {
+              persist.sale(ms.id, ms as unknown as Record<string, unknown>);
+            }
+
+            // 3. F7-FIX: create negative-total refund sale entry for cash-out audit.
+            let salesWithMarked = salesRef.current.map((s: Sale) => {
+              const marked = markedSales.find((m: Sale) => m.id === s.id);
+              return marked || s;
+            });
+            if (refundAmountCents > 0) {
+              const refundSale: Sale = {
+                id: generateId(),
+                storeId: (updated as any).storeId,
+                invoiceNumber: `REFUND-${updated.id.slice(-6).toUpperCase()}`,
+                customerId: (updated as any).customerId,
+                customerName: updated.customerName,
+                customerPhone: updated.customerPhone,
+                items: [{
+                  id: generateId(),
+                  name: `${updated.itemDescription || 'Special Order'} — ${lang === 'es' ? 'Reembolso post-edición' : 'Post-edit refund'}`,
+                  category: 'service' as any,
+                  price: -refundAmountCents,
+                  qty: 1,
+                  taxable: false,
+                  cbeEligible: false,
+                  specialOrderId: updated.id,
+                }],
+                subtotal: -refundAmountCents,
+                taxAmount: 0,
+                cbeTotal: 0,
+                total: -refundAmountCents,
+                paymentMethod: 'Cash' as any,
+                status: 'voided',
+                employeeId: currentEmployee?.id,
+                employeeName: currentEmployee?.name,
+                notes: `Special order post-edit refund — ${updated.id.slice(-6).toUpperCase()}`,
+                refundReason: 'Post-edit refund',
+                createdAt: now,
+              };
+              salesWithMarked = [...salesWithMarked, refundSale];
+              persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
+            }
+            salesRef.current = salesWithMarked;
+            setSales(salesWithMarked);
+
             toast(
               lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
               'success',
