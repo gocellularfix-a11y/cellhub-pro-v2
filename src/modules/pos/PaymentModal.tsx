@@ -6,9 +6,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { formatCurrency } from '@/utils/currency';
 import { sendSms } from '@/services/sms';
-import { generateId } from '@/utils/dates';
 import type { CartItem, Customer, Sale, Employee, StoreSettings } from '@/store/types';
 import type { CartTotals } from './types';
+import { buildSale } from './saleBuilder';
 
 interface PaymentModalProps {
   open: boolean;
@@ -101,85 +101,19 @@ export default function PaymentModal({
     setProcessing(true);
 
     try {
-      // Build the sale object
-      const now = new Date().toISOString();
-      const invoiceNum = generateInvoiceNumber(settings);
-
-      // Determine customer info
-      let customerName = 'Walk-in';
-      let customerId: string | undefined;
-      let customerPhone: string | undefined;
-
-      if (selectedCustomer) {
-        customerName = selectedCustomer.name;
-        customerId = selectedCustomer.id;
-        customerPhone = selectedCustomer.phone;
-      } else {
-        // Check if any phone payment item has a phone number
-        const ppItem = cart.find((i) => i.category === 'phone_payment' && i.phoneNumber);
-        if (ppItem) {
-          customerName = `${ppItem.carrier || ''} ${ppItem.phoneNumber || ''}`.trim();
-          customerPhone = ppItem.phoneNumber;
-        }
-      }
-
-      const storeCreditUsed =
-        paymentMethod === 'Store Credit' && selectedCustomer
-          ? Math.min(selectedCustomer.storeCredit || 0, totals.total)
-          : 0;
-
-      const sale: Sale = {
-        id: generateId(),
-        invoiceNumber: invoiceNum,
-        customerId,
-        customerName,
-        customerPhone,
-        items: cart.map((item) => ({
-          id: item.id,
-          inventoryId: item.inventoryId,
-          name: item.name,
-          sku: item.sku,
-          imei: item.imei,
-          category: item.category,
-          price: item.price,
-          originalPrice: item.originalPrice,
-          cost: item.cost,
-          qty: item.qty,
-          notes: item.notes,
-          taxable: item.taxable,
-          cbeEligible: item.cbeEligible,
-          screenFeeEligible: item.screenFeeEligible,
-          phoneNumber: item.phoneNumber,
-          carrier: item.carrier,
-          portal: item.portal,
-          repairId: item.repairId,
-          specialOrderId: item.specialOrderId,
-          unlockId: item.unlockId,
-          layawayId: item.layawayId,
-        })),
-        subtotal: totals.subtotal,
-        subtotalAfterDiscount: totals.subtotalAfterDiscount,
-        taxAmount: totals.salesTax + totals.utilityTax + totals.mobileSurcharge,
-        salesTax: totals.salesTax,
-        utilityTax: totals.utilityTax,
-        mobileSurcharge: totals.mobileSurcharge,
-        cbeTotal: totals.cbeFee,
-        screenFeeTotal: totals.screenFee,
-        creditCardFee: totals.creditCardFee > 0 ? totals.creditCardFee : undefined,
-        total: totals.total,
-        paymentMethod: paymentMethod as Sale['paymentMethod'],
-        splitPayment:
-          paymentMethod === 'Split'
-            ? { cash: Math.round(cashNum * 100), card: Math.round(cardNum * 100), storeCredit: 0 }
-            : undefined,
-        cashReceived: paymentMethod === 'Cash' ? cashCents : undefined,
-        changeDue: paymentMethod === 'Cash' ? changeDue : undefined,
-        status: 'completed',
-        employeeId: currentEmployee?.id,
-        employeeName: currentEmployee?.name,
-        notes: '',
-        createdAt: now,
-      };
+      // Round R-POS-PAY-DEDUPE F1: Sale construction extracted to
+      // saleBuilder.buildSale — single source of truth for both
+      // checkout paths (invariants I1, I3, I7).
+      const sale = buildSale({
+        cart,
+        totals,
+        paymentMethod,
+        cashAmount: cashNum,
+        cardAmount: cardNum,
+        selectedCustomer,
+        currentEmployee,
+        settings,
+      });
 
       onComplete(sale);
 
@@ -459,24 +393,3 @@ export default function PaymentModal({
   );
 }
 
-/** Generate invoice number — timestamp-based to avoid Math.random collisions
- *  in multi-station setups. Format: PREFIX-YYMMDD-HHMM-RAND4
- *  Two sales in the same minute on different stations: ~1/10000 collision.
- *  Two sales in the same minute on the same station: extremely rare.
- *  NOTE: ignores settings.invoiceCounterLength because Math.random was
- *  the source of the original duplicate-invoice bug (it was never a real counter). */
-function generateInvoiceNumber(settings: StoreSettings): string {
-  const prefix = settings.invoicePrefix || 'INV';
-  const includeDate = settings.invoiceIncludeDate !== false;
-
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(2);
-  const mo = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const rand = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-
-  const datePart = includeDate ? `${yy}${mo}${dd}` : '';
-  return `${prefix}-${datePart}${datePart ? '-' : ''}${hh}${mm}-${rand}`;
-}
