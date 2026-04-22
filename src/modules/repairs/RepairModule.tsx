@@ -619,7 +619,10 @@ export default function RepairModule() {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
-    const depositCents = repair.depositAmount || 0;
+    // Round R3-mini: legacy repairs may have { deposit: X, depositAmount: undefined }.
+    // Match the fallback pattern used in handleCompleteRequest, TicketCard display,
+    // and handleSave EDIT so legacy cancellations refund the actual amount paid.
+    const depositCents = repair.depositAmount || (repair as any).deposit || 0;
     const now = new Date().toISOString();
 
     // 1. Customer side effects (store credit or voided sale)
