@@ -481,6 +481,12 @@ export default function LayawayModule() {
       // POSModule.handleCompleteSale reconciles paidAmount + balance after
       // the sale is persisted.
       paidAmount: 0, balance: totalCents,
+      // Round L-QF1: freeze the deposit intent on the record so the
+      // auto-print receipt reads the agreed deposit. paidAmount stays 0
+      // (POS reconciles on checkout); depositAmount is the "agreement"
+      // value and is never mutated by POS. Post-build Agreement/Payment
+      // split round will formalize this.
+      depositAmount: depositCents,
       status: 'active', notes: form.notes,
       employeeName: form.employeeName || currentEmployee?.name || '',
       employeeId: currentEmployee?.id,
@@ -905,8 +911,13 @@ export default function LayawayModule() {
     const storePhone = settings.storePhone   || '';
     const taxRatePctLocal = ((settings.taxRate ?? 0.0925) * 100).toFixed(2);
     const totalCents    = l.totalPrice  || 0;
-    const paidCents     = l.paidAmount  || 0;
-    const balanceCents  = l.balance     ?? (totalCents - paidCents);
+    // Round L-QF1: receipt reflects the AGREEMENT state — depositAmount
+    // is the intent captured at Save (non-zero) while paidAmount is $0
+    // until POS checkout reconciles. Reading paidAmount made the
+    // auto-print show $0 even when the customer was about to pay $50.
+    // Fallback chain covers legacy records that only have paidAmount.
+    const paidCents     = (l as any).depositAmount ?? l.paidAmount ?? 0;
+    const balanceCents  = totalCents - paidCents;
     const taxCents      = l.taxAmount   || 0;
     const subtotalCents = totalCents - taxCents;
     const itemDesc = l.itemDescription || l.items?.[0]?.name || '';
