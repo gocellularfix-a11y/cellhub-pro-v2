@@ -23,6 +23,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui';
+import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { formatCurrency } from '@/utils/currency';
@@ -34,6 +35,14 @@ import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
 import type { CartItem, StoreSettings, Customer, Sale } from '@/store/types';
 import type { PhonePaymentLine } from './types';
+
+// Shared sanitization for phoneNumber — used in onChange, validation,
+// and CartItem construction. Defense in depth: trust nothing that
+// comes from state or input, always re-sanitize at boundaries.
+// Round R-PHONE-INPUT-VALIDATION: fixes 'AT&T -' truncated receipt bug
+// caused by normalizePhone silently returning '' for letter-only input.
+const sanitizePhone = (raw: unknown): string =>
+  String(raw || '').replace(/\D/g, '').slice(0, 10);
 
 // ── Carrier brand colors ──────────────────────────────────
 const CARRIER_COLORS: Record<string, string> = {
@@ -65,6 +74,7 @@ export default function PhonePaymentModal({
   open, onClose, settings, cart, setCart, customers, setCustomers, sales, lang, L,
 }: Props) {
   const es = lang === 'es';
+  const { toast } = useToast();
 
   // ── Tab ───────────────────────────────────────────────────
   const [modalTab, setModalTab] = useState<'payment' | 'activation'>('payment');
@@ -91,7 +101,7 @@ export default function PhonePaymentModal({
   // Auto-copy phone to clipboard when a valid 10-digit number is set
   // (from manual entry, customer selection, or known line toggle)
   const autoCopyPhone = useCallback((raw: string) => {
-    const digits = raw.replace(/\D/g, '');
+    const digits = sanitizePhone(raw);
     if (digits.length === 10) {
       navigator.clipboard.writeText(digits).then(() => {
         setCopiedPhone(digits);
@@ -411,15 +421,32 @@ export default function PhonePaymentModal({
         });
       });
     } else {
-      if (!phoneNumber.trim() || parseFloat(amount) <= 0) return [];
-      const phone = normalizePhone(phoneNumber);
+      // Round R-PHONE-INPUT-VALIDATION: validate 10-digit phone BEFORE build.
+      // Prior guard `!phoneNumber.trim()` let letter-only input through
+      // (e.g. "abcXYZ" truthy after trim), causing receipt to show
+      // "AT&T - " with empty phoneNumber. Sanitize + 10-digit check fixes it.
+      const digits = sanitizePhone(phoneNumber);
+      if (!digits || digits.length !== 10) {
+        toast(
+          es
+            ? 'El número de teléfono debe tener 10 dígitos'
+            : 'Phone number must be 10 digits',
+          'error',
+        );
+        return [];
+      }
+      if (parseFloat(amount) <= 0) return [];
       items.push({
         id: generateId(),
-        name: `${normalizedCarrier} - ${formatPhone(phone)}`,
+        name: `${normalizedCarrier} - ${formatPhone(digits)}`,
         category: 'phone_payment',
         price: Math.round(parseFloat(amount) * 100),
         qty: 1, taxable: false, cbeEligible: false,
-        carrier: normalizedCarrier, phoneNumber: phone,
+        carrier: normalizedCarrier,
+        // Re-sanitize at the persist boundary (defense in depth) — never
+        // trust raw state; guarantees the 10-digit phoneNumber shipped to
+        // cart → sale → receipt → SMS is identical to what validation saw.
+        phoneNumber: sanitizePhone(phoneNumber),
         notes: customerNote,
       });
     }
@@ -431,7 +458,7 @@ export default function PhonePaymentModal({
     // or the customer gets double-charged.
     return items;
   }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount,
-      firstName, lastName, breakdown, es]);
+      firstName, lastName, breakdown, es, toast]);
 
   // ── Add to Customers ─────────────────────────────────────
   // ── Open customer form (add new or edit existing) ────────
@@ -1303,10 +1330,14 @@ export default function PhonePaymentModal({
                     className="input"
                     style={{ textAlign: 'center', fontSize: '1.1rem', letterSpacing: '0.05em', paddingRight: '3rem' }}
                     placeholder="(555) 123-4567"
-                    value={phoneNumber}
+                    value={phoneNumber || ''}
+                    inputMode="numeric"
+                    maxLength={10}
+                    pattern="[0-9]*"
                     onChange={(e) => {
-                      setPhoneNumber(e.target.value);
-                      autoCopyPhone(e.target.value);
+                      const sanitized = sanitizePhone(e.target.value);
+                      setPhoneNumber(sanitized);
+                      autoCopyPhone(sanitized);
                     }}
                   />
                   {/* Auto-copied indicator */}
@@ -1314,10 +1345,10 @@ export default function PhonePaymentModal({
                     <span style={{
                       position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
                       fontSize: '0.75rem', fontWeight: 600,
-                      color: copiedPhone === phoneNumber.replace(/\D/g, '') ? '#22c55e' : '#475569',
+                      color: copiedPhone === sanitizePhone(phoneNumber) ? '#22c55e' : '#475569',
                       transition: 'all 0.2s', pointerEvents: 'none',
                     }}>
-                      {copiedPhone === phoneNumber.replace(/\D/g, '') ? '✓ Copied' : ''}
+                      {copiedPhone === sanitizePhone(phoneNumber) ? '✓ Copied' : ''}
                     </span>
                   )}
                 </div>
@@ -1338,8 +1369,11 @@ export default function PhonePaymentModal({
                 className="input"
                 style={{ flex: 1 }}
                 placeholder={es ? 'Número nuevo' : 'New number'}
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                value={phoneNumber || ''}
+                inputMode="numeric"
+                maxLength={10}
+                pattern="[0-9]*"
+                onChange={(e) => setPhoneNumber(sanitizePhone(e.target.value))}
               />
               <input
                 type="number"
