@@ -24,6 +24,8 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint } from '@/hooks/usePrint';
 import RepairModal, { type RepairAuditMeta } from './RepairModal';
 import CancelRepairModal from './CancelRepairModal';
+import EditHistoryModal from '@/components/EditHistoryModal';
+import { Modal } from '@/components/ui';
 import type { Repair, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
 import {
   appendEditEntry, captureSnapshot, checkEditHistoryStatus,
@@ -74,6 +76,10 @@ export default function RepairModule() {
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Repair | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<Repair | null>(null);
+  // R-EDIT-AUDIT F3.9-11: edit-history viewer, print-choice dialog, mark-refunded confirm.
+  const [historyTarget, setHistoryTarget] = useState<Repair | null>(null);
+  const [printChoiceTarget, setPrintChoiceTarget] = useState<Repair | null>(null);
+  const [refundConfirmTarget, setRefundConfirmTarget] = useState<Repair | null>(null);
 
   // ── Stale-closure guard: ref-based mirror of repairs so back-to-back
   // setRepairs calls (modal save + collectBalance) don't pisarse mutually.
@@ -1175,10 +1181,64 @@ export default function RepairModule() {
               }
               completeDisabled={isDoneRepairStatus(repair.status)}
               completeVariant={normalizeRepairStatus(repair.status) === REPAIR_STATUS.PICKED_UP ? 'green' : 'amber'}
-              onPrint={() => printRepairTicket(repair)}
+              onPrint={() => {
+                // R-EDIT-AUDIT F3.10: edited tickets trigger the corrected/original
+                // print choice; unedited tickets print directly as before.
+                if (repair.editHistory && repair.editHistory.length > 0) {
+                  setPrintChoiceTarget(repair);
+                } else {
+                  printRepairTicket(repair);
+                }
+              }}
               onSMS={() => handleSMS(repair)}
               onDelete={() => setDeleteConfirm(repair)}
               smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && repair.customerPhone)}
+              extraBadges={
+                <>
+                  {/* R-EDIT-AUDIT F3.9: edit-history count badge. */}
+                  {repair.editHistory && repair.editHistory.length > 0 && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryTarget(repair);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        background: 'rgba(251, 191, 36, 0.15)',
+                        color: '#fbbf24',
+                      }}
+                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                    >
+                      🕐 {repair.editHistory.length}
+                    </span>
+                  )}
+                  {/* R-EDIT-AUDIT F3.11: Mark Refunded button when in refund_pending state. */}
+                  {normalizeRepairStatus(repair.status) === 'refund_pending' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRefundConfirmTarget(repair);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.72rem',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '0.3rem',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                    </button>
+                  )}
+                </>
+              }
               lang={lang}
               L={L}
             />
@@ -1312,6 +1372,104 @@ export default function RepairModule() {
           cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
+        />
+      )}
+
+      {/* R-EDIT-AUDIT F3.9: edit history viewer. */}
+      {historyTarget && (
+        <EditHistoryModal
+          open
+          onClose={() => setHistoryTarget(null)}
+          lang={lang}
+          editHistory={historyTarget.editHistory || []}
+          originalSnapshot={historyTarget.originalSnapshot}
+        />
+      )}
+
+      {/* R-EDIT-AUDIT F3.10: corrected-vs-original print choice for edited tickets. */}
+      {printChoiceTarget && (
+        <Modal
+          open
+          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          onClose={() => setPrintChoiceTarget(null)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                printRepairTicket(printChoiceTarget, {
+                  corrected: true,
+                  originalSnapshot: printChoiceTarget.originalSnapshot,
+                });
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                // Print using original snapshot values overlayed on the current entity.
+                if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  printRepairTicket({
+                    ...printChoiceTarget,
+                    ...printChoiceTarget.originalSnapshot.snapshot,
+                  });
+                } else {
+                  printRepairTicket(printChoiceTarget);
+                }
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => setPrintChoiceTarget(null)}
+            >
+              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* R-EDIT-AUDIT F3.11: confirm Mark Refunded → closes out refund_pending state. */}
+      {refundConfirmTarget && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
+          message={
+            lang === 'es'
+              ? `¿Confirmar que el reembolso de $${((refundConfirmTarget.refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
+              : `Confirm that the $${((refundConfirmTarget.refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
+          }
+          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={() => {
+            const target = refundConfirmTarget;
+            const now = new Date().toISOString();
+            const updated: Repair = {
+              ...target,
+              status: REPAIR_STATUS.REFUNDED,
+              refundOwedAmount: 0,
+              updatedAt: now,
+            };
+            const nextRepairs = repairsRef.current.map((r) =>
+              r.id === updated.id ? updated : r,
+            );
+            repairsRef.current = nextRepairs;
+            setRepairs(nextRepairs);
+            persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+            toast(
+              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
+              'success',
+            );
+            setRefundConfirmTarget(null);
+          }}
+          onCancel={() => setRefundConfirmTarget(null)}
         />
       )}
     </>

@@ -4,7 +4,7 @@
 
 import { formatCurrency } from '@/utils/currency';
 import { formatDate } from '@/utils/dates';
-import { forwardRef } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 
 interface TicketCardProps {
   ticketNumber: string;
@@ -41,6 +41,11 @@ interface TicketCardProps {
 
   // NEW — SMS button enabled state
   smsAvailable?: boolean;
+
+  // R-EDIT-AUDIT: optional extra badges rendered alongside the status/priority
+  // badges (e.g. edit-history indicator). Caller is responsible for event
+  // handling; stopPropagation in onClick to prevent card click passthrough.
+  extraBadges?: ReactNode;
 }
 
 const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCard({
@@ -72,6 +77,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   completeDisabled,
   completeVariant = 'amber',
   smsAvailable = false,
+  extraBadges,
 }, ref) {
   return (
     <div
@@ -98,6 +104,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                 {priority}
               </span>
             )}
+            {extraBadges}
           </div>
           <p className="text-sm text-white font-medium">{customerName}</p>
           {customerPhone && (
