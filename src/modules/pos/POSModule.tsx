@@ -448,7 +448,8 @@ export default function POSModule() {
       //   (the inverse of reverseTaxFromPayment, which the modules used to push
       //   pre-tax base into the cart). Sum per entity, increment, recalc
       //   balance. If balance hits 0, mark as picked_up / completed.
-      const taxRateForReconcile = settings.taxRate || 0.0925;
+      // Round POS-T1: ?? not || so taxRate=0 (tax-exempt stores) stays 0.
+      const taxRateForReconcile = settings.taxRate ?? 0.0925;
 
       // r-deposit-integrity-1b P1: discount ratio reconstruction.
       //
@@ -823,7 +824,8 @@ export default function POSModule() {
       return (
         <QuickServicePanel
           lang={lang}
-          taxRate={settings.taxRate || 0.0925}
+          // Round POS-T1: ?? not || so taxRate=0 (tax-exempt stores) stays 0.
+          taxRate={settings.taxRate ?? 0.0925}
           onAddToCart={(item) => { setCart([...cart, item]); }}
           onBack={() => setActiveCategory(null)}
         />

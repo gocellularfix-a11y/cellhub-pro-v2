@@ -721,8 +721,8 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
               <StatCard label="Gross Sales" value={formatCurrency(caTax.totalRevenue)} sub={`${caTax.qSales.length} transactions`} />
               <StatCard label="Taxable Sales" value={formatCurrency(caTax.productRevenue)} sub="Before 9.25% tax" color="#60a5fa" />
-              <StatCard label="Tax Rate" value={`${((settings.taxRate || 0.0925)*100).toFixed(4)}%`} sub="CA Sales Tax" color="#a78bfa" />
-              <StatCard label="Tax to Remit" value={formatCurrency(caTax.productTax)} sub={`Sales tax ${((settings.taxRate || 0.0925)*100).toFixed(2)}% only`} color="#f87171" />
+              <StatCard label="Tax Rate" value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} sub="CA Sales Tax" color="#a78bfa" />
+              <StatCard label="Tax to Remit" value={formatCurrency(caTax.productTax)} sub={`Sales tax ${((settings.taxRate ?? 0.0925)*100).toFixed(2)}% only`} color="#f87171" />
             </div>
 
             {/* Transaction Breakdown table */}
@@ -807,7 +807,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             {/* California CDTFA Form Summary */}
             <Card title="📋 California CDTFA Form Summary">
               <Row label="Line 1 – Total Sales Subject to Tax:" value={formatCurrency(caTax.productRevenue)} bold />
-              <Row label="Line 2 – Tax Rate:" value={`${((settings.taxRate || 0.0925)*100).toFixed(4)}%`} />
+              <Row label="Line 2 – Tax Rate:" value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} />
               <Row label="Line 3 – Amount of Tax:" value={formatCurrency(caTax.productTax)} color="#f87171" bold />
               <InfoBox color="amber">
                 ℹ️ Reminder: This is your total tax collected for {selectedQuarter} {selectedYear}. File your return with California CDTFA by the due date (usually end of the month following the quarter).

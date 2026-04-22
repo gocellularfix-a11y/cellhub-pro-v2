@@ -87,7 +87,7 @@ export default function SpecialOrdersModule() {
   // tax converts cart.price (pre-tax base) into the register total.
   const pendingBySpecialOrderId = useMemo(() => {
     const map = new Map<string, number>();
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
     for (const item of cart) {
       if (!item.specialOrderId) continue;
       const itemBaseCents = (item.price || 0) * (item.qty || 1);
@@ -110,7 +110,7 @@ export default function SpecialOrdersModule() {
     isTaxable: boolean;
   }): { combinedCents: number } => {
     const { specialOrderId, additionalCents, itemDescription, isTaxable } = params;
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
 
     const existingItems = cartRef.current.filter((c) => c.specialOrderId === specialOrderId);
     let combinedCents = additionalCents;
@@ -210,7 +210,7 @@ export default function SpecialOrdersModule() {
     const deposit = Math.round((parseFloat(form.depositAmount as any) || 0) * 100);
     const cost = Math.round((parseFloat(form.cost as any) || 0) * 100);
     const taxable = !!(form as any).taxable;
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
     // Use shared helper for totals — single source of truth across modules
     const _t = calcDepositTotals(price, deposit, taxRate, taxable);
     const balance = _t.balanceCents;
@@ -257,7 +257,7 @@ export default function SpecialOrdersModule() {
       const spread = { ...editOrder, ...form, customerName, cost, price } as SpecialOrder;
       const lockedDeposit = editOrder.depositAmount || 0;
       const newPrice = (spread as any).price || 0;
-      const newTaxRate = settings.taxRate || 0.0925;
+      const newTaxRate = settings.taxRate ?? 0.0925;
       const newTaxable = !!(spread as any).taxable;
       const newTaxAmt = newTaxable ? Math.round(newPrice * newTaxRate) : 0;
       const newTotalWithTax = newPrice + newTaxAmt;
@@ -738,7 +738,7 @@ export default function SpecialOrdersModule() {
           title={lang === 'es' ? 'Cobrar Pedido Especial' : 'Collect Special Order Payment'}
           itemLabel={depositModalOrder.itemDescription || 'Special Order'}
           itemPrice={(depositModalOrder.price || 0) / 100}
-          taxRate={settings.taxRate || 0.0925}
+          taxRate={settings.taxRate ?? 0.0925}
           taxable={!!(depositModalOrder as any).taxable}
           existingDeposit={(depositModalOrder.depositAmount || 0) / 100}
           pendingInCart={(pendingBySpecialOrderId.get(depositModalOrder.id) || 0) / 100}
@@ -866,7 +866,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
   const costC = Math.round((parseFloat(form.cost as any) || 0) * 100);
   const depositC = Math.round((parseFloat(form.depositAmount as any) || 0) * 100);
   const taxable  = !!(form as any).taxable;
-  const taxRate  = settings.taxRate || 0.0925;
+  const taxRate  = settings.taxRate ?? 0.0925;
   const _formTotals = calcDepositTotals(priceC, depositC, taxRate, taxable);
   const taxC     = _formTotals.taxCents;
   const totalC   = _formTotals.totalWithTaxCents;

@@ -156,7 +156,7 @@ export function calculateCartTotals(
   const discountRatio = discountableAmount > 0 ? (discountableAmount - discountAmount) / discountableAmount : 1;
   const taxableAfterDiscount = toIntCents(taxableAmount * discountRatio);
 
-  const salesTax = toIntCents(taxableAfterDiscount * (settings.taxRate || 0.0925));
+  const salesTax = toIntCents(taxableAfterDiscount * (settings.taxRate ?? 0.0925));
 
   // Credit card fee — fixed dollar amount in cents.
   // New stores: creditCardFeeCents shadow key (e.g. 500 = $5.00).

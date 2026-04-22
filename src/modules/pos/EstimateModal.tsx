@@ -36,7 +36,7 @@ export default function EstimateModal({ open, onClose }: Props) {
   };
 
   const subtotal = parseFloat(amount) || 0;
-  const taxRate = settings.taxRate || 0.0925;
+  const taxRate = settings.taxRate ?? 0.0925;
   const taxRatePercent = (taxRate * 100).toFixed(2);
   const taxAmount = taxable ? subtotal * taxRate : 0;
   const total = subtotal + taxAmount;

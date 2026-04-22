@@ -62,7 +62,7 @@ export default function ReturnsModule() {
   const { printHtml } = usePrint();
   const L = getLabels(lang);
   const es = lang === 'es';
-  const taxRate = settings.taxRate || 0.0925;
+  const taxRate = settings.taxRate ?? 0.0925;
   // r-pkg-b4 fix B1: was reading nonexistent `returnDays` — `returnPolicyDays`
   // is the actual field on StoreSettings (types.ts L74).
   const RETURN_LIMIT_DAYS = settings.returnPolicyDays || 30;

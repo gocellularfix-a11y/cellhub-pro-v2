@@ -513,7 +513,7 @@ export default function SettingsModule() {
                 <h3 className="text-sm font-semibold text-white mb-3">📊 {lang === 'es' ? 'Ejemplos de Cálculo' : 'Tax Calculation Examples'}</h3>
                 <div className="space-y-3">
                   {(() => {
-                    const sr = settings.taxRate || 0.0925;
+                    const sr = settings.taxRate ?? 0.0925;
                     const ut = settings.utilityUsersTax || 0.055;
                     const ms = settings.mobileSurcharge || 0.41;
                     return (

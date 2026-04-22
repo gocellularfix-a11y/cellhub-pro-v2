@@ -170,7 +170,7 @@ export default function UnlockModule() {
   // r-new-6 port: pending per unlock, tax-inclusive (matches register total).
   const pendingByUnlockId = useMemo(() => {
     const map = new Map<string, number>();
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
     for (const item of cart) {
       if (!item.unlockId) continue;
       const itemBaseCents = (item.price || 0) * (item.qty || 1);
@@ -191,7 +191,7 @@ export default function UnlockModule() {
     isTaxable: boolean;
   }): { combinedCents: number } => {
     const { unlockId, additionalCents, device, isTaxable } = params;
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
 
     const existingItems = cartRef.current.filter((c) => c.unlockId === unlockId);
     let combinedCents = additionalCents;
@@ -248,7 +248,7 @@ export default function UnlockModule() {
     const costCents    = Math.round((form.cost || 0) * 100);
     const depositCents = Math.round((form.depositAmount || 0) * 100);
     const taxable = !!(form as any).taxable;
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
     const _t = calcDepositTotals(priceCents, depositCents, taxRate, taxable);
     const balance = _t.balanceCents;
 
@@ -1053,7 +1053,7 @@ export default function UnlockModule() {
               style={{ cursor: 'pointer' }}
             />
             <label htmlFor="unlock-taxable" style={{ fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              {lang === 'es' ? `Aplicar impuesto (${((settings.taxRate || 0.0925) * 100).toFixed(2)}%)` : `Apply tax (${((settings.taxRate || 0.0925) * 100).toFixed(2)}%)`}
+              {lang === 'es' ? `Aplicar impuesto (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)` : `Apply tax (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)`}
             </label>
             <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto' }}>
               {lang === 'es' ? 'Por defecto OFF' : 'Default OFF'}
@@ -1064,7 +1064,7 @@ export default function UnlockModule() {
           {(form.price || 0) > 0 && (() => {
             const previewPriceCents = Math.round((form.price || 0) * 100);
             const previewDepositCents = Math.round((form.depositAmount || 0) * 100);
-            const _t = calcDepositTotals(previewPriceCents, previewDepositCents, settings.taxRate || 0.0925, !!(form as any).taxable);
+            const _t = calcDepositTotals(previewPriceCents, previewDepositCents, settings.taxRate ?? 0.0925, !!(form as any).taxable);
             return (
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.75rem', padding: '0.875rem', fontSize: '0.85rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 700, padding: '0.2rem 0' }}>
@@ -1072,7 +1072,7 @@ export default function UnlockModule() {
               </div>
               {(form as any).taxable && _t.taxCents > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', padding: '0.2rem 0' }}>
-                  <span>+ Tax ({((settings.taxRate || 0.0925) * 100).toFixed(2)}%):</span><span>+{formatCurrency(_t.taxCents)}</span>
+                  <span>+ Tax ({((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%):</span><span>+{formatCurrency(_t.taxCents)}</span>
                 </div>
               )}
               {(form as any).taxable && _t.taxCents > 0 && (
@@ -1129,7 +1129,7 @@ export default function UnlockModule() {
           title={lang === 'es' ? `Desbloqueo ${depositModalUnlock.id.slice(-8).toUpperCase()} — Cobrar` : `Unlock ${depositModalUnlock.id.slice(-8).toUpperCase()} — Collect`}
           itemLabel={`${depositModalUnlock.device} (${depositModalUnlock.carrier}) — Unlock`}
           itemPrice={(depositModalUnlock.price || 0) / 100}
-          taxRate={settings.taxRate || 0.0925}
+          taxRate={settings.taxRate ?? 0.0925}
           taxable={!!(depositModalUnlock as any).taxable}
           existingDeposit={(depositModalUnlock.depositAmount || 0) / 100}
           pendingInCart={(pendingByUnlockId.get(depositModalUnlock.id) || 0) / 100}

@@ -100,7 +100,7 @@ export default function LayawayModule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const taxRate    = settings.taxRate || 0.0925;
+  const taxRate    = settings.taxRate ?? 0.0925;
   const taxRatePct = (taxRate * 100).toFixed(2);
 
   const emptyForm = () => ({
@@ -299,7 +299,7 @@ export default function LayawayModule() {
     isTaxable: boolean;
   }): { combinedCents: number } => {
     const { layawayId, additionalCents, deviceLabel, ticketNumber, isTaxable } = params;
-    const lTaxRate = settings.taxRate || 0.0925;
+    const lTaxRate = settings.taxRate ?? 0.0925;
 
     const existingItems = cartRef.current.filter((c) => c.layawayId === layawayId);
     let combinedCents = additionalCents;
@@ -903,7 +903,7 @@ export default function LayawayModule() {
     const storeName  = (settings.storeName  || 'Go Cellular').toUpperCase();
     const storeAddr  = settings.storeAddress || '';
     const storePhone = settings.storePhone   || '';
-    const taxRatePctLocal = ((settings.taxRate || 0.0925) * 100).toFixed(2);
+    const taxRatePctLocal = ((settings.taxRate ?? 0.0925) * 100).toFixed(2);
     const totalCents    = l.totalPrice  || 0;
     const paidCents     = l.paidAmount  || 0;
     const balanceCents  = l.balance     ?? (totalCents - paidCents);
@@ -935,7 +935,7 @@ export default function LayawayModule() {
       return cents < 0 ? `-$${str}` : `$${str}`;
     };
     const isTaxable = !!(l as any).taxable;
-    const effectiveRate = isTaxable ? (settings.taxRate || 0.0925) : 0;
+    const effectiveRate = isTaxable ? (settings.taxRate ?? 0.0925) : 0;
 
     lines.push('----------------------------------------');
     lines.push(`${es ? 'PRECIO ARTÍCULO' : 'ITEM PRICE'}:    ${fmtMoney(subtotalCents)}`);

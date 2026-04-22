@@ -397,7 +397,7 @@ CA TAX — ${qLabel} ${year}:
 ${carrierSummary.length > 0 ? `- Carrier portal breakdown (needs reconciliation against supplier portals):\n${carrierSummary.map((c) => `  · ${c}`).join('\n')}` : ''}
 
 STORE CONFIG:
-- Tax rate: ${((settings.taxRate || 0.0925) * 100).toFixed(2)}%
+- Tax rate: ${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%
 - Carriers supported: ${(settings.phoneCarriers || []).join(', ') || 'AT&T, T-Mobile, Verizon, Simple Mobile, Page Plus, H2O'}
 - SMS enabled: ${settings.smsProvider !== 'none' && settings.smsApiKey ? 'Yes' : 'No'}
 - Loyalty enabled: ${settings.loyaltyEnabled ? 'Yes' : 'No'}
