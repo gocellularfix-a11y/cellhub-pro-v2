@@ -1411,12 +1411,22 @@ export default function RepairModule() {
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => {
-                // Print using original snapshot values overlayed on the current entity.
+                // R-EDIT-AUDIT F6-FIX: explicit money-field mapping instead of
+                // raw snapshot spread. Prevents snapshot's id/createdAt/status/
+                // editHistory from clobbering the current entity — we only want
+                // the pre-edit money values for the "original" print.
                 if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  const snap = printChoiceTarget.originalSnapshot.snapshot;
                   printRepairTicket({
                     ...printChoiceTarget,
-                    ...printChoiceTarget.originalSnapshot.snapshot,
-                  });
+                    laborCost: snap.laborCost ?? printChoiceTarget.laborCost,
+                    estimatedCost: snap.estimatedCost ?? printChoiceTarget.estimatedCost,
+                    depositAmount: snap.depositAmount ?? printChoiceTarget.depositAmount,
+                    balance: snap.balance ?? printChoiceTarget.balance,
+                    total: snap.total ?? printChoiceTarget.total,
+                    subtotal: snap.subtotal ?? (printChoiceTarget as any).subtotal,
+                    taxAmount: snap.taxAmount ?? (printChoiceTarget as any).taxAmount,
+                  } as any);
                 } else {
                   printRepairTicket(printChoiceTarget);
                 }

@@ -225,6 +225,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   // Wrap onClose so closing the modal (X, Cancel, etc.) clears the PIN unlock.
   const handleClose = () => {
     pin.resetLock();
+    setIsSaving(false);
     onClose();
   };
 
@@ -573,8 +574,14 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     payload: Partial<Repair>;
     changes: FieldChange[];
   } | null>(null);
+  // R-EDIT-AUDIT F6-FIX: double-submit guard (parity with Unlocks/SO). Prevents
+  // rapid clicks on the info-only typo_correction path from creating duplicate
+  // editHistory entries. Reset in every early-return + handleClose + reason
+  // selector resolution paths.
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = () => {
+    if (isSaving) return;
     if (!validateForm()) return;
     const payload = buildPayload();
 
@@ -583,6 +590,8 @@ export default function RepairModal({ repair, customers, inventory, settings, al
       onSave(payload);
       return;
     }
+
+    setIsSaving(true);
 
     // R-EDIT-AUDIT F3.4: locked ticket — stale check + H2 guard against the
     // freshest repairs list we have access to (allRepairs prop, React state).
@@ -623,6 +632,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           : 'Edit history full (100). Contact admin.',
         'error',
       );
+      setIsSaving(false);
       return;
     }
     if (historyStatus === 'warning') {
@@ -686,6 +696,8 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     if (moneyChanged) {
       setPendingAuditPayload({ payload, changes });
       setShowReasonSelector(true);
+      // Keep isSaving=true until reason selector resolves (handled in
+      // handleReasonSelected / ReasonSelectorModal.onCancel).
       return;
     }
 
@@ -699,6 +711,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     const { payload, changes } = pendingAuditPayload;
     setShowReasonSelector(false);
     setPendingAuditPayload(null);
+    setIsSaving(false);
     onSave(payload, { reason, changes, note });
     handleClose();
   };
@@ -1409,6 +1422,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         onCancel={() => {
           setShowReasonSelector(false);
           setPendingAuditPayload(null);
+          setIsSaving(false);
         }}
       />
 

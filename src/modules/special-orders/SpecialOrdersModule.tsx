@@ -1111,10 +1111,20 @@ export default function SpecialOrdersModule() {
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => {
+                // R-EDIT-AUDIT F6-FIX: explicit money-field mapping instead of
+                // raw snapshot spread. Keeps id/createdAt/status/editHistory
+                // from the current entity; only pre-edit money values come
+                // from the snapshot.
                 if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  const snap = printChoiceTarget.originalSnapshot.snapshot;
                   printSpecialOrderEntity({
                     ...printChoiceTarget,
-                    ...printChoiceTarget.originalSnapshot.snapshot,
+                    price: (snap.price as number | undefined) ?? printChoiceTarget.price,
+                    cost: (snap.cost as number | undefined) ?? printChoiceTarget.cost,
+                    depositAmount: (snap.depositAmount as number | undefined) ?? printChoiceTarget.depositAmount,
+                    balance: (snap.balance as number | undefined) ?? printChoiceTarget.balance,
+                    total: (snap.total as number | undefined) ?? (printChoiceTarget as any).total,
+                    taxAmount: (snap.taxAmount as number | undefined) ?? (printChoiceTarget as any).taxAmount,
                   } as SpecialOrder);
                 } else {
                   printSpecialOrderEntity(printChoiceTarget);

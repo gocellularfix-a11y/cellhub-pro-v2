@@ -1765,10 +1765,18 @@ export default function UnlockModule() {
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => {
+                // R-EDIT-AUDIT F6-FIX: explicit money-field mapping instead of
+                // raw snapshot spread. Keeps id/createdAt/status/editHistory
+                // from the current entity; only pre-edit money values come
+                // from the snapshot.
                 if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  const snap = printChoiceTarget.originalSnapshot.snapshot;
                   printUnlockEntity({
                     ...printChoiceTarget,
-                    ...printChoiceTarget.originalSnapshot.snapshot,
+                    price: snap.price ?? printChoiceTarget.price,
+                    cost: snap.cost ?? printChoiceTarget.cost,
+                    depositAmount: snap.depositAmount ?? printChoiceTarget.depositAmount,
+                    balance: snap.balance ?? printChoiceTarget.balance,
                   } as Unlock);
                 } else {
                   printUnlockEntity(printChoiceTarget);
