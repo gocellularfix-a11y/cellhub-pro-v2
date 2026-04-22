@@ -33,6 +33,8 @@ interface CartProps {
   setAddCreditCardFee: (b: boolean) => void;
   creditCardFeeOverride: number | null;
   setCreditCardFeeOverride: (n: number | null) => void;
+  sendSmsReceipt: boolean;
+  setSendSmsReceipt: (b: boolean) => void;
   onCheckout: () => void;
   onClearCart: () => void;
   onSelectCustomer: () => void;
@@ -58,6 +60,8 @@ export default function Cart({
   setAddCreditCardFee,
   creditCardFeeOverride,
   setCreditCardFeeOverride,
+  sendSmsReceipt,
+  setSendSmsReceipt,
   onCheckout,
   onClearCart,
   onSelectCustomer,
@@ -647,6 +651,48 @@ export default function Cart({
           </div>
         )}
       </div>
+
+      {/* SMS Receipt checkbox — only when customer has a valid phone (>=10 digits).
+          Round R-POS-PAY-DEDUPE F2: moved from PaymentModal for bypass-path parity. */}
+      {selectedCustomer?.phone
+       && typeof selectedCustomer.phone === 'string'
+       && selectedCustomer.phone.replace(/\D/g, '').length >= 10 && (
+        <div className="px-4 py-3 border-t border-white/10">
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.7rem',
+              cursor: 'pointer',
+              userSelect: 'none',
+              padding: '0.75rem',
+              background: 'rgba(16,185,129,0.06)',
+              border: '1px solid rgba(16,185,129,0.25)',
+              borderRadius: '0.625rem',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={sendSmsReceipt}
+              onChange={(e) => setSendSmsReceipt(e.target.checked)}
+              style={{ width: '18px', height: '18px', marginTop: '0.1rem', cursor: 'pointer', flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#34d399' }}>
+                📱 {es ? 'Enviar Recibo por SMS' : 'Send SMS Receipt'}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                {es ? 'Enviar a' : 'Send to'} {selectedCustomer.name?.split(' ')[0]} — {selectedCustomer.phone}
+                {(!settings.smsProvider || settings.smsProvider === 'none') && (
+                  <div style={{ color: '#fbbf24', marginTop: '0.2rem' }}>
+                    ⚠️ {es ? 'SMS no configurado en Settings' : 'SMS not configured in Settings'}
+                  </div>
+                )}
+              </div>
+            </div>
+          </label>
+        </div>
+      )}
 
       {/* Checkout button */}
       <div className="p-4 border-t border-white/10">

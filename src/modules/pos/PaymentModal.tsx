@@ -285,42 +285,9 @@ export default function PaymentModal({
             </div>
           )}
 
-          {/* Loyalty points warning — shown when loyalty enabled but no customer */}
-          {settings.loyaltyEnabled && !selectedCustomer && (() => {
-            const pts = Math.floor(
-              cart.filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
-                  .reduce((s, i) => s + i.price * i.qty, 0) / 100
-            );
-            if (pts <= 0) return null;
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: '0.625rem', padding: '0.625rem 0.875rem',
-                background: 'rgba(251,191,36,0.08)',
-                border: '1px solid rgba(251,191,36,0.3)',
-                borderRadius: '0.625rem', marginBottom: '0.5rem',
-              }}>
-                <div style={{ fontSize: '0.78rem', color: '#fbbf24', lineHeight: 1.4 }}>
-                  🎁 <strong>{pts} {lang === 'es' ? 'puntos se perderán' : 'pts will be lost'}</strong>
-                  <span style={{ color: '#92400e', marginLeft: '0.3rem' }}>
-                    {lang === 'es' ? '— sin cliente asignado' : '— no customer assigned'}
-                  </span>
-                </div>
-                <button
-                  onClick={onSelectCustomer}
-                  style={{
-                    flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
-                    padding: '0.25rem 0.625rem', borderRadius: '999px',
-                    background: 'rgba(251,191,36,0.15)',
-                    border: '1px solid rgba(251,191,36,0.4)',
-                    color: '#fbbf24', cursor: 'pointer',
-                  }}
-                >
-                  {lang === 'es' ? 'Agregar Cliente' : 'Add Customer'}
-                </button>
-              </div>
-            );
-          })()}
+          {/* Loyalty nag removed in Round R-POS-PAY-DEDUPE F2 — Cart already
+              renders an equivalent inline pts badge + "Add customer" CTA
+              (Cart.tsx customer button section). Unified to one location. */}
 
           {/* SMS Receipt Option — only when customer has phone */}
           {selectedCustomer?.phone && (

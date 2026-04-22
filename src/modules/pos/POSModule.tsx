@@ -102,6 +102,9 @@ export default function POSModule() {
   const [creditCardFeeOverride, setCreditCardFeeOverride] = useState<number | null>(null);
   const [cashAmount, setCashAmount] = useState(0);
   const [cardAmount, setCardAmount] = useState(0);
+  // Round R-POS-PAY-DEDUPE F2: SMS-on-checkout toggle. Lives here so
+  // handleCompleteSale can read it (F4) and reset post-sale (I5).
+  const [sendSmsReceipt, setSendSmsReceipt] = useState(false);
 
   useEffect(() => {
     if (paymentMethod !== 'Card' && paymentMethod !== 'Split') {
@@ -704,6 +707,7 @@ export default function POSModule() {
       setCashAmount(0);
       setCardAmount(0);
       setAddCreditCardFee(false);
+      setSendSmsReceipt(false);
       setSelectedCustomer(null);
       setShowPayment(false);
 
@@ -973,6 +977,8 @@ export default function POSModule() {
             setAddCreditCardFee={setAddCreditCardFee}
             creditCardFeeOverride={creditCardFeeOverride}
             setCreditCardFeeOverride={setCreditCardFeeOverride}
+            sendSmsReceipt={sendSmsReceipt}
+            setSendSmsReceipt={setSendSmsReceipt}
             onCheckout={() => setShowPayment(true)}
             onClearCart={() => setShowClearConfirm(true)}
             onSelectCustomer={() => setShowCustomerSearch(true)}
