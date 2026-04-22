@@ -28,6 +28,18 @@ import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Repair, RepairPart, Customer, InventoryItem, StoreSettings } from '@/store/types';
 
+// Round R1 F1: full HTML escape (defense-in-depth,
+// matches ReportsModule canonical pattern).
+function escHtml(s: unknown): string {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 interface Props {
   repair: Repair | null;
   customers: Customer[];
@@ -232,7 +244,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   const laborCostCents = Math.round((parseFloat(String(form.laborCost)) || 0) * 100);
   const subtotalCents = partsTotalCents + laborCostCents;
   const depositCents = Math.round((parseFloat(String(form.deposit)) || 0) * 100);
-  const taxRate = settings.taxRate || 0.0925;
+  const taxRate = settings.taxRate ?? 0.0925;
   const _t = calcDepositTotals(subtotalCents, depositCents, taxRate, !!form.taxable);
   const taxCents = _t.taxCents;
   const totalCents = _t.totalWithTaxCents;
@@ -332,7 +344,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     ].filter(Boolean);
     const content = lines.join('\n');
     // Build self-contained HTML for the ticket
-    const html = `<!DOCTYPE html><html><head><title>Repair Ticket</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Repair Ticket ${escHtml(payload.ticketNumber || '')}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
     // r-print-audit: unified Chromium print dialog via usePrint hook
     printHtml(html, {
       silent: false,
@@ -355,18 +367,22 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     const fmtDate = (d: Date) => d.toLocaleDateString(es ? 'es-MX' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const money   = (v: number) => `$${(v / 100).toFixed(2)}`;
 
-    const ticketNum  = fmt(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || '');
-    const custName   = fmt(payload.customerName);
-    const device     = `${fmt(payload.brand)} ${fmt(payload.model)}`.trim();
-    const issue      = fmt(payload.issue);
-    const imei       = fmt(payload.imei);
-    const techNotes  = fmt(payload.notes);
-    const totalAmt   = money(payload.total || 0);
+    const ticketNum  = escHtml(fmt(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || ''));
+    const custName   = escHtml(fmt(payload.customerName));
+    const device     = escHtml(`${fmt(payload.brand)} ${fmt(payload.model)}`.trim());
+    const issue      = escHtml(fmt(payload.issue));
+    const imei       = escHtml(fmt(payload.imei));
+    const techNotes  = escHtml(fmt(payload.notes));
+    const totalAmt   = escHtml(money(payload.total || 0));
+    const storeNameUpperEsc = escHtml(storeName.toUpperCase());
+    const storeAddrEsc  = escHtml(storeAddr);
+    const storePhoneEsc = escHtml(storePhone);
+    const storeEmailEsc = escHtml(storeEmail);
 
-    const warrantyBody = settings.warrantyText ||
+    const warrantyBody = escHtml(settings.warrantyText ||
       (es
         ? `Esta garantía cubre defectos de mano de obra y piezas instaladas durante la reparación. No cubre daños físicos, daños por líquidos, software de terceros ni problemas no relacionados con la reparación original. Para hacer válida esta garantía, presente este documento en nuestra tienda.`
-        : `This warranty covers defects in workmanship and parts installed during the repair. It does not cover physical damage, liquid damage, third-party software, or issues unrelated to the original repair. To claim this warranty, present this document at our store.`);
+        : `This warranty covers defects in workmanship and parts installed during the repair. It does not cover physical damage, liquid damage, third-party software, or issues unrelated to the original repair. To claim this warranty, present this document at our store.`));
 
     const html = `<!DOCTYPE html>
 <html>
@@ -398,10 +414,10 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
   <!-- Store header -->
   <div class="center" style="margin-bottom:5px;border-bottom:2px solid #000;padding-bottom:5px">
-    <div class="bold" style="font-size:15px;letter-spacing:0.03em">${storeName.toUpperCase()}</div>
-    ${storeAddr  ? `<div style="font-size:9px">${storeAddr}</div>` : ''}
-    ${storePhone ? `<div style="font-size:9px">${storePhone}</div>` : ''}
-    ${storeEmail ? `<div style="font-size:9px">${storeEmail}</div>` : ''}
+    <div class="bold" style="font-size:15px;letter-spacing:0.03em">${storeNameUpperEsc}</div>
+    ${storeAddrEsc  ? `<div style="font-size:9px">${storeAddrEsc}</div>` : ''}
+    ${storePhoneEsc ? `<div style="font-size:9px">${storePhoneEsc}</div>` : ''}
+    ${storeEmailEsc ? `<div style="font-size:9px">${storeEmailEsc}</div>` : ''}
   </div>
 
   <!-- Title -->
@@ -482,7 +498,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   <!-- Footer -->
   <div class="center" style="font-size:8px;color:#666;margin-top:5px;border-top:1px dashed #ccc;padding-top:4px">
     ${es ? '¡Gracias por confiar en nosotros!' : 'Thank you for your business!'}
-    ${storePhone ? `<br>${es ? 'Preguntas' : 'Questions'}? ${storePhone}` : ''}
+    ${storePhoneEsc ? `<br>${es ? 'Preguntas' : 'Questions'}? ${storePhoneEsc}` : ''}
   </div>
 
 </body>
@@ -731,6 +747,24 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    // Round R1 F7: size + MIME guard. Protects shop PC memory
+                    // from malicious/oversized files before FileReader reads.
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast(
+                        es ? 'Imagen demasiado grande (máx 5MB)' : 'Image too large (max 5MB)',
+                        'error',
+                      );
+                      (e.target as HTMLInputElement).value = '';
+                      return;
+                    }
+                    if (!file.type.startsWith('image/')) {
+                      toast(
+                        es ? 'Archivo inválido. Solo imágenes.' : 'Invalid file. Images only.',
+                        'error',
+                      );
+                      (e.target as HTMLInputElement).value = '';
+                      return;
+                    }
                     // Resize + convert to base64 (max 800px wide)
                     const reader = new FileReader();
                     reader.onload = (ev) => {

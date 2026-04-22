@@ -25,6 +25,18 @@ import RepairModal from './RepairModal';
 import CancelRepairModal from './CancelRepairModal';
 import type { Repair, CartItem, Customer, Sale } from '@/store/types';
 
+// Round R1 F1: full HTML escape (defense-in-depth,
+// matches ReportsModule canonical pattern).
+function escHtml(s: unknown): string {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // FIX Bug 2: Added 'Waiting Parts' and 'Ready' so those tickets aren't invisible
 const STATUSES = ['All', 'Received', 'In Progress', 'Waiting Parts', 'Ready', 'Complete', 'Cancelled'];
 
@@ -117,7 +129,7 @@ export default function RepairModule() {
   // Matches what the customer perceives they "paid" on the printed ticket.
   const pendingByRepairId = useMemo(() => {
     const map = new Map<string, number>();
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
     for (const item of cart) {
       if (!item.repairId) continue;
       const itemBaseCents = (item.price || 0) * (item.qty || 1);
@@ -197,7 +209,7 @@ export default function RepairModule() {
     lines.push(es ? '¡Gracias por su preferencia!' : 'Thank you for your business!');
 
     const text = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Repair ${safe(repair.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Repair ${escHtml(repair.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, lang, printHtml]);
 
@@ -219,7 +231,7 @@ export default function RepairModule() {
     isTaxable: boolean;
   }): { combinedCents: number } => {
     const { repairId, additionalCents, deviceLabel, ticketNumber, isTaxable } = params;
-    const taxRate = settings.taxRate || 0.0925;
+    const taxRate = settings.taxRate ?? 0.0925;
 
     // Sum any existing items for this repair (tax-inclusive cents)
     const existingItems = cartRef.current.filter((c) => c.repairId === repairId);
@@ -261,6 +273,10 @@ export default function RepairModule() {
 
   const handleSave = useCallback(
     (repairData: Partial<Repair>) => {
+      // Round R1 F4: track matchedCustomerId so we can persist it on the repair
+      // entity. Previously customerId was never set → POS couldn't auto-link.
+      let matchedCustomerId: string | undefined;
+
       // Auto-create customer if new — dedup by phone
       if (repairData.customerName && repairData.customerPhone) {
         const phone = normalizePhone(repairData.customerPhone);
@@ -269,6 +285,7 @@ export default function RepairModule() {
         );
 
         if (existing) {
+          matchedCustomerId = existing.id;
           // Customer exists — notify if name differs
           if (existing.name.toLowerCase() !== repairData.customerName.toLowerCase()) {
             toast(
@@ -300,6 +317,7 @@ export default function RepairModule() {
           customersRef.current = nextCustomers;
           setCustomers(nextCustomers);
           persist.customer(newCustomer.id, newCustomer as unknown as Record<string, unknown>);
+          matchedCustomerId = newCustomer.id;
         }
       }
 
@@ -379,18 +397,55 @@ export default function RepairModule() {
       } else {
         // Create new — ticket number matching original format
         const now = new Date();
-        const ticketNum = (repairData as any).ticketNumber ||
-          `RPR-${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`;
         const rd = repairData as any;
         const deviceLabel = [rd.brand, rd.model].filter(Boolean).join(' ') || rd.device || '';
-        // Generate short random tracking token for public status page
-        const trackingToken = Math.random().toString(36).slice(2, 10).toUpperCase();
+
+        // Round R1 F3: collision check. ticketNumber is user-visible on
+        // printed tickets and trackingToken is the public customer handle
+        // — collisions would expose other repairs' status. Bounded retry
+        // so a pathological random seed can't livelock handleSave.
+        const genTicketNum = () =>
+          `RPR-${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`;
+        const genTrackingToken = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+
+        let ticketNum = rd.ticketNumber || genTicketNum();
+        if (!rd.ticketNumber) {
+          let ticketAttempts = 0;
+          while (repairsRef.current.some((r) => (r as any).ticketNumber === ticketNum)) {
+            ticketNum = genTicketNum();
+            if (++ticketAttempts > 10) {
+              toast(
+                lang === 'es'
+                  ? 'No se pudo generar ticket único. Reintente.'
+                  : 'Could not generate unique ticket. Retry.',
+                'error',
+              );
+              return;
+            }
+          }
+        }
+
+        let trackingToken = genTrackingToken();
+        let tokenAttempts = 0;
+        while (repairsRef.current.some((r) => (r as any).trackingToken === trackingToken)) {
+          trackingToken = genTrackingToken();
+          if (++tokenAttempts > 10) {
+            toast(
+              lang === 'es'
+                ? 'No se pudo generar token único. Reintente.'
+                : 'Could not generate unique token. Retry.',
+              'error',
+            );
+            return;
+          }
+        }
 
         const newRepair = {
           id: generateId(),
           ticketNumber: ticketNum,
           trackingToken,
           // Customer
+          customerId: matchedCustomerId,  // Round R1 F4: link repair to customer
           customerName: rd.customerName || '',
           customerPhone: rd.customerPhone || '',
           firstName: rd.firstName || '',
@@ -498,7 +553,8 @@ export default function RepairModule() {
       setEditRepair(null);
     },
     [editRepair, customers, settings, currentEmployee, cart, lang, L,
-     setRepairs, setCustomers, setCart, toast, printRepairTicket, consolidateCartForRepair],
+     setRepairs, setCustomers, setCart, toast, printRepairTicket, consolidateCartForRepair,
+     dispatch],  // Round R1 F5: missing dispatch dep (used for SET_PENDING_POS_CUSTOMER)
   );
 
   // ── Cancel repair with deposit disposal ────────────────────
@@ -895,7 +951,7 @@ export default function RepairModule() {
           title={lang === 'es' ? `Depósito — ${(depositModalRepair as any).ticketNumber || depositModalRepair.id.slice(-6).toUpperCase()}` : `Deposit — ${(depositModalRepair as any).ticketNumber || depositModalRepair.id.slice(-6).toUpperCase()}`}
           itemLabel={`${[(depositModalRepair as any).brand, (depositModalRepair as any).model].filter(Boolean).join(' ') || depositModalRepair.device} — ${depositModalRepair.issue || 'Repair'}`}
           itemPrice={((depositModalRepair as any).subtotal || depositModalRepair.estimatedCost || 0) / 100}
-          taxRate={settings.taxRate || 0.0925}
+          taxRate={settings.taxRate ?? 0.0925}
           taxable={!!(depositModalRepair as any).taxable}
           existingDeposit={(depositModalRepair.depositAmount || 0) / 100}
           pendingInCart={(pendingByRepairId.get(depositModalRepair.id) || 0) / 100}
