@@ -27,6 +27,12 @@ import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import AdminPinGate from '@/components/shared/AdminPinGate';
 import { usePinGate } from '@/hooks/usePinGate';
+import ReasonSelectorModal from '@/components/ReasonSelectorModal';
+import {
+  computeDiff, hasMoneyChanges, checkEditHistoryStatus,
+  REPAIR_MONEY_FIELDS, REPAIR_ALL_FIELDS,
+  type FieldChange, type EditReason,
+} from '@/services/editAudit';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Repair, RepairPart, Customer, InventoryItem, StoreSettings } from '@/store/types';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions } from '@/utils/repairStatus';
@@ -43,13 +49,22 @@ function escHtml(s: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+// R-EDIT-AUDIT: audit metadata passed alongside payload when saving a locked
+// ticket. RepairModule.handleSave uses this to apply side-effects + append
+// the edit history entry + trigger a corrected receipt.
+export interface RepairAuditMeta {
+  reason: EditReason;
+  changes: FieldChange[];
+  note?: string;
+}
+
 interface Props {
   repair: Repair | null;
   customers: Customer[];
   inventory: InventoryItem[];
   settings: StoreSettings;
   allRepairs?: Repair[];
-  onSave: (data: Partial<Repair>) => void;
+  onSave: (data: Partial<Repair>, auditMeta?: RepairAuditMeta) => void;
   onCollectBalance?: (repair: Repair) => void;
   onRequestCancel?: (repair: Repair) => void;
   onClose: () => void;
@@ -552,9 +567,140 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     return true;
   };
 
+  // R-EDIT-AUDIT F3.4-5: reason selector state for locked-ticket edits.
+  const [showReasonSelector, setShowReasonSelector] = useState(false);
+  const [pendingAuditPayload, setPendingAuditPayload] = useState<{
+    payload: Partial<Repair>;
+    changes: FieldChange[];
+  } | null>(null);
+
   const handleSubmit = () => {
     if (!validateForm()) return;
-    onSave(buildPayload());
+    const payload = buildPayload();
+
+    // Non-locked path (new ticket, or unlocked existing ticket): save as before.
+    if (!isLocked || !repair) {
+      onSave(payload);
+      return;
+    }
+
+    // R-EDIT-AUDIT F3.4: locked ticket — stale check + H2 guard against the
+    // freshest repairs list we have access to (allRepairs prop, React state).
+    const fresh = (allRepairs || []).find((r) => r.id === repair.id);
+    if (!fresh) {
+      toast(es ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+      handleClose();
+      return;
+    }
+    const freshNorm = normalizeRepairStatus(fresh.status);
+    if (freshNorm === REPAIR_STATUS.CANCELLED || freshNorm === 'refunded') {
+      toast(
+        es
+          ? 'Ticket cancelado/reembolsado. No se puede editar.'
+          : 'Ticket cancelled/refunded. Cannot edit.',
+        'error',
+      );
+      handleClose();
+      return;
+    }
+    if (fresh.updatedAt && repair.updatedAt && String(fresh.updatedAt) !== String(repair.updatedAt)) {
+      toast(
+        es
+          ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
+          : 'Ticket modified on another station. Reload and try again.',
+        'error',
+      );
+      handleClose();
+      return;
+    }
+
+    // Edit-history cap check
+    const historyStatus = checkEditHistoryStatus(fresh.editHistory);
+    if (historyStatus === 'full') {
+      toast(
+        es
+          ? 'Historial de ediciones lleno (100). Contacta al administrador.'
+          : 'Edit history full (100). Contact admin.',
+        'error',
+      );
+      return;
+    }
+    if (historyStatus === 'warning') {
+      toast(
+        es
+          ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
+          : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
+        'warning',
+      );
+    }
+
+    // R-EDIT-AUDIT F3.5: diff against FRESH entity (not originalSnapshot).
+    // Form stores dollars; entity stores cents — compare in cents.
+    // depositAmount is excluded because deposit input stays locked post-completion
+    // (r-deposit-integrity-1 invariant — managed only by POS/cancellation paths).
+    const reference: Record<string, unknown> = {
+      laborCost: fresh.laborCost ?? 0,
+      estimatedCost: fresh.estimatedCost ?? 0,
+      taxable: (fresh as any).taxable ?? false,
+      customerName: fresh.customerName ?? '',
+      customerPhone: fresh.customerPhone ?? '',
+      device: fresh.device ?? '',
+      deviceModel: fresh.deviceModel ?? '',
+      imei: fresh.imei ?? '',
+      issue: fresh.issue ?? '',
+      techNotes: fresh.techNotes ?? '',
+      priority: fresh.priority ?? '',
+      warranty: fresh.warranty ?? '',
+      estimatedCompletion: fresh.estimatedCompletion ?? '',
+      employeeName: fresh.employeeName ?? '',
+      notes: (fresh as any).notes ?? fresh.techNotes ?? '',
+    };
+    const current: Record<string, unknown> = {
+      laborCost: laborCostCents,
+      estimatedCost: totalCents,
+      taxable: !!form.taxable,
+      customerName: `${form.firstName} ${form.lastName}`.trim(),
+      customerPhone: form.customerPhone ?? '',
+      device: `${form.brand} ${form.model}`.trim(),
+      deviceModel: form.model ?? '',
+      imei: form.imei ?? '',
+      issue: form.issue ?? '',
+      techNotes: form.notes ?? '',
+      priority: form.priority ?? '',
+      warranty: form.warranty ?? '',
+      estimatedCompletion: form.estimatedCompletion ?? '',
+      employeeName: fresh.employeeName ?? '', // not in form — keep reference
+      notes: form.notes ?? '',
+    };
+
+    const fieldsToCheck = (REPAIR_ALL_FIELDS as readonly string[])
+      .filter((f) => f !== 'depositAmount');
+    const changes = computeDiff(reference, current, fieldsToCheck);
+
+    if (changes.length === 0) {
+      handleClose();
+      return;
+    }
+
+    const moneyChanged = hasMoneyChanges(changes, REPAIR_MONEY_FIELDS as unknown as string[]);
+    if (moneyChanged) {
+      setPendingAuditPayload({ payload, changes });
+      setShowReasonSelector(true);
+      return;
+    }
+
+    // Info-only: save as typo_correction, no reason prompt.
+    onSave(payload, { reason: 'typo_correction', changes, note: '' });
+    handleClose();
+  };
+
+  const handleReasonSelected = (reason: EditReason, note: string) => {
+    if (!pendingAuditPayload) return;
+    const { payload, changes } = pendingAuditPayload;
+    setShowReasonSelector(false);
+    setPendingAuditPayload(null);
+    onSave(payload, { reason, changes, note });
+    handleClose();
   };
 
   const setStatusAndPrint = (status: string) => {
@@ -1254,6 +1400,17 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           ✓ {isEdit ? (L.save || 'Save') : (es ? 'Crear Ticket' : 'Create Ticket')}
         </button>
       </div>
+
+      {/* R-EDIT-AUDIT F3.5: reason selector when locked-ticket money fields change. */}
+      <ReasonSelectorModal
+        open={showReasonSelector}
+        lang={lang}
+        onSelect={handleReasonSelected}
+        onCancel={() => {
+          setShowReasonSelector(false);
+          setPendingAuditPayload(null);
+        }}
+      />
 
       {/* R-EDIT-AUDIT F3.3: admin PIN challenge for unlocking money fields. */}
       <AdminPinGate

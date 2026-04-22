@@ -22,9 +22,12 @@ import TicketCard from '@/components/shared/TicketCard';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint } from '@/hooks/usePrint';
-import RepairModal from './RepairModal';
+import RepairModal, { type RepairAuditMeta } from './RepairModal';
 import CancelRepairModal from './CancelRepairModal';
-import type { Repair, CartItem, Customer, Sale } from '@/store/types';
+import type { Repair, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
+import {
+  appendEditEntry, captureSnapshot, checkEditHistoryStatus,
+} from '@/services/editAudit';
 
 // Round R1 F1: full HTML escape (defense-in-depth,
 // matches ReportsModule canonical pattern).
@@ -210,6 +213,9 @@ export default function RepairModule() {
   const printRepairTicket = useCallback((repair: any, displayOverride?: {
     depositAmount?: number;  // cents
     balance?: number;        // cents
+    // R-EDIT-AUDIT F3.8: corrected-receipt mode for edited tickets.
+    corrected?: boolean;
+    originalSnapshot?: { capturedAt: string; snapshot: Record<string, unknown> };
   }) => {
     const safe = (v: any) => v == null ? '' : String(v);
     const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -218,11 +224,29 @@ export default function RepairModule() {
     const storePhone = settings.storePhone || '';
     const es = lang === 'es';
 
+    // R-EDIT-AUDIT F3.8: annotate "previously: $X.XX" on money lines when the
+    // corrected-receipt flag is set and the snapshot has a different prior value.
+    const corrected = !!displayOverride?.corrected;
+    const snap = displayOverride?.originalSnapshot?.snapshot;
+    const previously = (field: string): string => {
+      if (!corrected || !snap) return '';
+      const prior = snap[field];
+      const current = (repair as any)[field];
+      if (prior == null || prior === '' || prior === current) return '';
+      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      return '';
+    };
+
     const lines: string[] = [];
     lines.push(storeName);
     if (storeAddr) lines.push(storeAddr);
     if (storePhone) lines.push(storePhone);
     lines.push('----------------------------------------');
+    if (corrected) {
+      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
+      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push('----------------------------------------');
+    }
     lines.push(es ? 'TICKET DE REPARACIÓN' : 'REPAIR TICKET');
     lines.push(`TICKET: ${safe(repair.ticketNumber)}`);
     lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
@@ -242,12 +266,12 @@ export default function RepairModule() {
     lines.push('----------------------------------------');
     const partsCents = (repair.subtotal || 0) - (repair.laborCost || 0);
     if (partsCents > 0) lines.push(`${es ? 'REFACCIONES' : 'PARTS'}: ${money(partsCents)}`);
-    if (repair.laborCost) lines.push(`${es ? 'MANO DE OBRA' : 'LABOR'}: ${money(repair.laborCost)}`);
-    lines.push(`SUBTOTAL: ${money(repair.subtotal || 0)}`);
+    if (repair.laborCost) lines.push(`${es ? 'MANO DE OBRA' : 'LABOR'}: ${money(repair.laborCost)}${previously('laborCost')}`);
+    lines.push(`SUBTOTAL: ${money(repair.subtotal || 0)}${previously('subtotal')}`);
     if (repair.taxable && repair.taxAmount > 0) {
-      lines.push(`${es ? 'IMPUESTO' : 'TAX'} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}`);
+      lines.push(`${es ? 'IMPUESTO' : 'TAX'} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}${previously('taxAmount')}`);
     }
-    lines.push(`TOTAL: ${money(repair.total || 0)}`);
+    lines.push(`TOTAL: ${money(repair.total || 0)}${previously('total')}`);
     // Round R-QF1: print the deposit intent captured at form save.
     // depositAmount is $0 until POS checkout reconciles the cart sale
     // (per r-deposit-integrity-1). depositAgreementAmount is the
@@ -262,8 +286,12 @@ export default function RepairModule() {
     const displayTotal = repair.total || repair.estimatedCost || 0;
     const displayBalance = displayOverride?.balance
       ?? Math.max(0, displayTotal - displayDeposit);
-    lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(displayDeposit)}`);
-    lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(displayBalance)}`);
+    lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(displayDeposit)}${previously('depositAmount')}`);
+    lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(displayBalance)}${previously('balance')}`);
+    // R-EDIT-AUDIT F3.8: show refund owed on corrected receipt when reason='refund'.
+    if (corrected && (repair.refundOwedAmount || 0) > 0) {
+      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money(repair.refundOwedAmount)}`);
+    }
     lines.push('----------------------------------------');
     if (repair.warranty) lines.push(`${es ? 'GARANTÍA' : 'WARRANTY'}: ${repair.warranty} ${es ? 'días' : 'days'}`);
     lines.push(es ? '¡Gracias por su preferencia!' : 'Thank you for your business!');
@@ -332,7 +360,10 @@ export default function RepairModule() {
   // ── Save handler ────────────────────────────────────────
 
   const handleSave = useCallback(
-    (repairData: Partial<Repair>) => {
+    // R-EDIT-AUDIT F3.6: auditMeta carries reason/changes/note when saving a
+    // locked (post-completion) ticket. When present, side-effects + edit-history
+    // are applied here; RepairModal does NOT touch audit fields directly.
+    (repairData: Partial<Repair>, auditMeta?: RepairAuditMeta) => {
       // Round R1 F4: track matchedCustomerId so we can persist it on the repair
       // entity. Previously customerId was never set → POS couldn't auto-link.
       let matchedCustomerId: string | undefined;
@@ -407,10 +438,108 @@ export default function RepairModule() {
           updatedAt: new Date().toISOString(),
         } as Repair;
 
+        // R-EDIT-AUDIT F3.6-7: when modal saved with audit metadata, layer
+        // side-effects + capture originalSnapshot + append edit-history entry.
+        // Read the truly-fresh entity from repairsRef to guard against background
+        // writes that may have landed between modal open and save (e.g. POS checkout).
+        if (auditMeta) {
+          const fresh = repairsRef.current.find((r) => r.id === editRepair.id) || editRepair;
+          const taxRate = settings.taxRate ?? 0.0925;
+          const newTaxable = (updated as any).taxable ?? false;
+          const oldTaxable = (fresh as any).taxable ?? false;
+
+          // Defensive: incoming payload must not overwrite audit fields; re-seed
+          // them from fresh entity so side-effects build on top of real state.
+          delete (updated as any).editHistory;
+          delete (updated as any).originalSnapshot;
+          delete (updated as any).refundOwedAmount;
+          updated.editHistory = fresh.editHistory;
+          updated.originalSnapshot = fresh.originalSnapshot;
+          updated.refundOwedAmount = fresh.refundOwedAmount;
+
+          const sideEffects: EditAuditEntry['sideEffects'] = {};
+          switch (auditMeta.reason) {
+            case 'additional_balance': {
+              const fwd = forwardTaxFromBase(updated.estimatedCost || 0, taxRate, newTaxable);
+              const newTotal = fwd.totalCents;
+              const alreadyPaid = fresh.depositAmount || 0;
+              const newBalance = Math.max(0, newTotal - alreadyPaid);
+              updated.balance = newBalance;
+              updated.status = REPAIR_STATUS.RECEIVED;
+              sideEffects.balanceChange = newBalance - (fresh.balance || 0);
+              sideEffects.statusChange = {
+                from: String(fresh.status),
+                to: REPAIR_STATUS.RECEIVED,
+              };
+              break;
+            }
+            case 'absorbed': {
+              updated.balance = 0;
+              const oldFwd = forwardTaxFromBase(fresh.estimatedCost || 0, taxRate, oldTaxable);
+              const newFwd = forwardTaxFromBase(updated.estimatedCost || 0, taxRate, newTaxable);
+              sideEffects.absorbedAmount = Math.abs(newFwd.totalCents - oldFwd.totalCents);
+              break;
+            }
+            case 'refund': {
+              const oldFwd = forwardTaxFromBase(fresh.estimatedCost || 0, taxRate, oldTaxable);
+              const newFwd = forwardTaxFromBase(updated.estimatedCost || 0, taxRate, newTaxable);
+              const refundOwed = Math.max(0, oldFwd.totalCents - newFwd.totalCents);
+              updated.refundOwedAmount = refundOwed;
+              updated.status = REPAIR_STATUS.REFUND_PENDING;
+              updated.balance = 0;
+              sideEffects.refundOwedAmount = refundOwed;
+              sideEffects.statusChange = {
+                from: String(fresh.status),
+                to: REPAIR_STATUS.REFUND_PENDING,
+              };
+              break;
+            }
+            case 'typo_correction':
+              break;
+          }
+
+          // Capture originalSnapshot on first edit — never overwrite.
+          if (!updated.originalSnapshot) {
+            updated.originalSnapshot = captureSnapshot(fresh as unknown as Record<string, unknown>);
+          }
+
+          const entry: EditAuditEntry = {
+            editedAt: updated.updatedAt as string,
+            editedBy: currentEmployee?.name || 'Unknown',
+            // AdminPinGate validates against a single shared adminPin with no
+            // identity attribution; use currentEmployee until per-employee PINs exist.
+            pinUsedBy: currentEmployee?.name || 'Admin',
+            reason: auditMeta.reason,
+            fieldsChanged: auditMeta.changes,
+            note: auditMeta.note || undefined,
+            sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
+          };
+          // checkEditHistoryStatus was already enforced in the modal, but re-check
+          // defensively in case of concurrent writes bumping history to cap.
+          if (checkEditHistoryStatus(updated.editHistory) === 'full') {
+            toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+            return;
+          }
+          const newHistory = appendEditEntry(updated.editHistory, entry);
+          if (newHistory === null) {
+            toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+            return;
+          }
+          updated.editHistory = newHistory;
+        }
+
         const next = repairsRef.current.map((r) => (r.id === editRepair.id ? updated : r));
         repairsRef.current = next;
         setRepairs(next);
         persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+
+        // R-EDIT-AUDIT F3.8: auto-reprint corrected receipt for money-impacting edits.
+        if (auditMeta && auditMeta.reason !== 'typo_correction') {
+          printRepairTicket(updated, {
+            corrected: true,
+            originalSnapshot: updated.originalSnapshot,
+          });
+        }
 
         // Proactive SMS on status changes (if customer has smsConsent or phone exists)
         const prevStatus = editRepair.status;
