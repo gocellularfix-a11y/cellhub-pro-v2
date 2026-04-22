@@ -27,6 +27,7 @@ import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Repair, RepairPart, Customer, InventoryItem, StoreSettings } from '@/store/types';
+import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions } from '@/utils/repairStatus';
 
 // Round R1 F1: full HTML escape (defense-in-depth,
 // matches ReportsModule canonical pattern).
@@ -175,7 +176,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     password:            r?.password || '',
     issue:               r?.issue || '',
     diagnosis:           r?.diagnosis || '',
-    status:              r?.status || 'Received',
+    status:              normalizeRepairStatus(r?.status) || REPAIR_STATUS.RECEIVED,
     priority:            r?.priority || 'Normal',
     parts:               (r?.parts || []) as any[],
     laborCost:           toDisplay(r?.laborCost),   // cents → dollars for display
@@ -810,7 +811,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                     <span style={{ color: '#94a3b8', marginLeft: '0.5rem' }}>— {r.customerName}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <span style={{ color: r.status === 'Complete' ? '#34d399' : r.status === 'Cancelled' ? '#f87171' : '#fbbf24', fontSize: '0.72rem' }}>{r.status}</span>
+                    <span style={{ color: normalizeRepairStatus(r.status) === REPAIR_STATUS.PICKED_UP ? '#34d399' : normalizeRepairStatus(r.status) === REPAIR_STATUS.CANCELLED ? '#f87171' : '#fbbf24', fontSize: '0.72rem' }}>{r.status}</span>
                     <span style={{ color: '#64748b', fontSize: '0.72rem' }}>{new Date(r.createdAt as string).toLocaleDateString()}</span>
                   </div>
                 </div>
@@ -976,8 +977,22 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>Status</label>
-            <select className="select" value={form.status} onChange={(e) => upd('status', e.target.value)}>
-              {['Received','In Progress','Waiting Parts','Ready','Complete','Cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
+            {/* Round R2: UI labels stay friendly; values persist as canonical snake_case. */}
+            <select className="select" value={normalizeRepairStatus(form.status) || REPAIR_STATUS.RECEIVED} onChange={(e) => upd('status', e.target.value)}>
+              {orderedRepairStatusOptions.map((s) => {
+                const label = (() => {
+                  switch (s) {
+                    case REPAIR_STATUS.RECEIVED:      return es ? 'Recibido' : 'Received';
+                    case REPAIR_STATUS.IN_PROGRESS:   return es ? 'En progreso' : 'In Progress';
+                    case REPAIR_STATUS.WAITING_PARTS: return es ? 'Esperando partes' : 'Waiting Parts';
+                    case REPAIR_STATUS.READY:         return es ? 'Listo' : 'Ready';
+                    case REPAIR_STATUS.PICKED_UP:     return es ? 'Completado' : 'Complete';
+                    case REPAIR_STATUS.CANCELLED:     return es ? 'Cancelado' : 'Cancelled';
+                    default: return s;
+                  }
+                })();
+                return <option key={s} value={s}>{label}</option>;
+              })}
             </select>
           </div>
           <div>
@@ -1082,17 +1097,18 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 ⚡ {es ? 'Acciones Rápidas' : 'Quick Actions'}
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {form.status !== 'Received' && form.status !== 'Complete' && (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStatusAndPrint('Received')}>
+                {/* Round R2: canonical snake_case comparisons; setStatusAndPrint persists canonical. */}
+                {normalizeRepairStatus(form.status) !== REPAIR_STATUS.RECEIVED && normalizeRepairStatus(form.status) !== REPAIR_STATUS.PICKED_UP && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStatusAndPrint(REPAIR_STATUS.RECEIVED)}>
                     📥 {es ? 'Recibido + Imprimir' : 'Received + Print'}
                   </button>
                 )}
                 <button type="button"
-                  className={`btn btn-sm ${form.status === 'Complete' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setStatusAndPrint('Complete')}
-                  disabled={form.status === 'Complete'}
-                  style={{ opacity: form.status === 'Complete' ? 0.7 : 1 }}>
-                  ✅ {form.status === 'Complete' ? (es ? '✓ Completado' : '✓ Completed') : (es ? 'Completado + Imprimir' : 'Complete + Print')}
+                  className={`btn btn-sm ${normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setStatusAndPrint(REPAIR_STATUS.PICKED_UP)}
+                  disabled={normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP}
+                  style={{ opacity: normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? 0.7 : 1 }}>
+                  ✅ {normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? (es ? '✓ Completado' : '✓ Completed') : (es ? 'Completado + Imprimir' : 'Complete + Print')}
                 </button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
                   const depositCents = (repair as any)?.depositAmount || 0;
@@ -1100,7 +1116,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                     onClose();
                     onRequestCancel(repair);
                   } else {
-                    setStatusAndPrint('Cancelled');
+                    setStatusAndPrint(REPAIR_STATUS.CANCELLED);
                   }
                 }}>
                   ❌ {es ? 'Cancelar + Imprimir' : 'Cancel + Print'}

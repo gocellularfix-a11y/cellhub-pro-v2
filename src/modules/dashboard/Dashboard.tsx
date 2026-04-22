@@ -18,6 +18,7 @@ import { isToday, toDate, formatDate } from '@/utils/dates';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { loadLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
+import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 
 /** Sale is countable for revenue if not voided/refunded. Handles legacy case variations. */
 function isSaleCountable(s: { status?: string }): boolean {
@@ -161,15 +162,16 @@ export default function Dashboard() {
   const profitMargin = todayProfitableSubtotal > 0 ? ((todayProfit / todayProfitableSubtotal) * 100).toFixed(1) : '0.0';
 
   const normStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
-  const DONE_REPAIRS = ['complete', 'picked_up', 'cancelled'];
+  // Round R2: canonical repair done-bucket (picked_up/cancelled); ready stays "active" here.
+  const DONE_REPAIRS: string[] = [REPAIR_STATUS.PICKED_UP, REPAIR_STATUS.CANCELLED];
   const DONE_UNLOCKS = ['completed', 'cancelled', 'failed'];
 
   const activeRepairs = useMemo(
-    () => repairs.filter((r) => !DONE_REPAIRS.includes(normStatus(r.status))),
+    () => repairs.filter((r) => !DONE_REPAIRS.includes(normalizeRepairStatus(r.status))),
     [repairs],
   );
   const readyRepairs = useMemo(
-    () => repairs.filter((r) => normStatus(r.status) === 'ready'),
+    () => repairs.filter((r) => normalizeRepairStatus(r.status) === REPAIR_STATUS.READY),
     [repairs],
   );
   const activeUnlocks = useMemo(
@@ -237,8 +239,9 @@ export default function Dashboard() {
 
   // Repairs ready but not picked up for 3+ days
   const abandonedRepairs = useMemo(() => repairs.filter((r) => {
-    const st = normStatus(r.status || '');
-    if (!['complete', 'ready'].includes(st)) return false;
+    // Round R2: canonical comparison — 'complete' folds into PICKED_UP via normalizer.
+    const st = normalizeRepairStatus(r.status || '');
+    if (st !== REPAIR_STATUS.PICKED_UP && st !== REPAIR_STATUS.READY) return false;
     const updated = r.updatedAt
       ? new Date(r.updatedAt as string).getTime()
       : new Date(r.createdAt as string).getTime();
@@ -249,7 +252,7 @@ export default function Dashboard() {
   // Recent activity
   const recentRepairs = useMemo(
     () => [...repairs]
-      .filter((r) => normStatus(r.status || '') !== 'cancelled')
+      .filter((r) => normalizeRepairStatus(r.status || '') !== REPAIR_STATUS.CANCELLED)
       .sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime()).slice(0, 5),
     [repairs],
   );
@@ -593,11 +596,13 @@ export default function Dashboard() {
                     <div style={{ fontWeight: 600, color: '#a5b4fc' }}>
                       {(repair as any).ticketNumber || repair.id.slice(-8).toUpperCase()}
                     </div>
-                    <span className={`badge ${
-                      repair.status === 'Complete' || repair.status === 'ready' ? 'badge-success' :
-                      repair.status === 'In Progress' || repair.status === 'in_progress' ? 'badge-warning' :
-                      'badge-info'
-                    }`}>
+                    {/* Round R2: canonical badge classification. */}
+                    <span className={`badge ${(() => {
+                      const s = normalizeRepairStatus(repair.status);
+                      if (s === REPAIR_STATUS.PICKED_UP || s === REPAIR_STATUS.READY) return 'badge-success';
+                      if (s === REPAIR_STATUS.IN_PROGRESS) return 'badge-warning';
+                      return 'badge-info';
+                    })()}`}>
                       {repair.status}
                     </span>
                   </div>

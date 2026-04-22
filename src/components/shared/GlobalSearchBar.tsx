@@ -23,6 +23,7 @@ import { useApp } from '@/store/AppProvider';
 import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 import { SearchInput } from '@/components/ui';
 
 // All collection keys searchable by this component. Modules pass one of these
@@ -372,11 +373,13 @@ export default function GlobalSearchBar({
                 primary={`${r.customerName} — ${r.device}`}
                 secondary={r.id.slice(-8).toUpperCase()}
                 badge={r.status}
-                badgeColor={
-                  r.status === 'ready' || r.status === 'Complete' ? 'rgba(34,197,94,0.3)' :
-                  r.status === 'in_progress' || r.status === 'In Progress' ? 'rgba(245,158,11,0.3)' :
-                  undefined
-                }
+                badgeColor={(() => {
+                  // Round R2: canonical repair status badge color.
+                  const s = normalizeRepairStatus(r.status);
+                  if (s === REPAIR_STATUS.READY || s === REPAIR_STATUS.PICKED_UP) return 'rgba(34,197,94,0.3)';
+                  if (s === REPAIR_STATUS.IN_PROGRESS) return 'rgba(245,158,11,0.3)';
+                  return undefined;
+                })()}
                 onClick={() => { goTo('repairs', r.customerName, r.id); clearSearch(); }}
               />
             ))}

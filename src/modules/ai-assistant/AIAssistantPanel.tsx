@@ -12,6 +12,7 @@ import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { isToday } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
+import { REPAIR_STATUS, normalizeRepairStatus, isDoneRepairStatus } from '@/utils/repairStatus';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -134,8 +135,12 @@ function buildSystemPrompt(state: ReturnType<typeof useApp>['state']): string {
     .reduce((sum, i) => sum + (i.cost || 0) * i.qty, 0);
 
   // ── Repairs + aging histogram (round 25 enrichment) ──
-  const pendingRepairs = repairs.filter((r) => !['Complete', 'complete', 'picked_up', 'cancelled', 'Cancelled'].includes(r.status || ''));
-  const readyRepairs = repairs.filter((r) => ['Complete', 'complete', 'ready'].includes(r.status || ''));
+  // Round R2: canonical repair status comparisons via helper.
+  const pendingRepairs = repairs.filter((r) => !isDoneRepairStatus(r.status || ''));
+  const readyRepairs = repairs.filter((r) => {
+    const s = normalizeRepairStatus(r.status || '');
+    return s === REPAIR_STATUS.PICKED_UP || s === REPAIR_STATUS.READY;
+  });
   const threeDaysAgo = now.getTime() - 3 * 24 * 60 * 60 * 1000;
   const fiveDaysAgo = now.getTime() - 5 * 24 * 60 * 60 * 1000;
   const tenDaysAgo = now.getTime() - 10 * 24 * 60 * 60 * 1000;
@@ -489,7 +494,11 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
   const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
 
   // 1. Ready repairs — highest priority
-  const readyRepairs = repairs.filter((r) => ['Complete', 'complete', 'ready'].includes(r.status || ''));
+  // Round R2: canonical repair status via helper.
+  const readyRepairs = repairs.filter((r) => {
+    const s = normalizeRepairStatus(r.status || '');
+    return s === REPAIR_STATUS.PICKED_UP || s === REPAIR_STATUS.READY;
+  });
   if (readyRepairs.length > 0) {
     insights.push({
       id: 'ready-repairs',
@@ -504,7 +513,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
   }
 
   // 2. Overdue repairs (no update in 3+ days)
-  const pendingRepairs = repairs.filter((r) => !['Complete', 'complete', 'picked_up', 'cancelled', 'Cancelled'].includes(r.status || ''));
+  // Round R2: canonical repair status via helper.
+  const pendingRepairs = repairs.filter((r) => !isDoneRepairStatus(r.status || ''));
   const overdueRepairs = pendingRepairs.filter((r) => {
     const updated = r.updatedAt ? new Date(r.updatedAt as string).getTime() : new Date(r.createdAt as string).getTime();
     return updated < threeDaysAgo;

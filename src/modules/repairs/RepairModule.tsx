@@ -12,7 +12,8 @@ import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
-import { persist, remove } from '@/services/persist';
+import { persist, persistSettings, remove } from '@/services/persist';
+import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
 import { sendSms } from '@/services/sms';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
@@ -37,16 +38,16 @@ function escHtml(s: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-// FIX Bug 2: Added 'Waiting Parts' and 'Ready' so those tickets aren't invisible
-const STATUSES = ['All', 'Received', 'In Progress', 'Waiting Parts', 'Ready', 'Complete', 'Cancelled'];
+// Round R2: canonical snake_case statuses + friendly "All" filter pseudo-value.
+const STATUSES = ['All', ...orderedRepairStatusOptions];
 
 const STATUS_BADGE: Record<string, string> = {
-  'Received': 'badge-info',
-  'In Progress': 'badge-warning',
-  'Waiting Parts': 'badge-warning',
-  'Ready': 'badge-success',
-  'Complete': 'badge-success',
-  'Cancelled': 'badge-danger',
+  [REPAIR_STATUS.RECEIVED]:      'badge-info',
+  [REPAIR_STATUS.IN_PROGRESS]:   'badge-warning',
+  [REPAIR_STATUS.WAITING_PARTS]: 'badge-warning',
+  [REPAIR_STATUS.READY]:         'badge-success',
+  [REPAIR_STATUS.PICKED_UP]:     'badge-success',
+  [REPAIR_STATUS.CANCELLED]:     'badge-danger',
 };
 
 export default function RepairModule() {
@@ -75,6 +76,42 @@ export default function RepairModule() {
   // setRepairs calls (modal save + collectBalance) don't pisarse mutually.
   const repairsRef = useRef(repairs);
   useEffect(() => { repairsRef.current = repairs; }, [repairs]);
+
+  // Round R2: one-time localStorage/Firestore-safe delta sweep to canonical repair statuses.
+  const hasRunSweepRef = useRef(false);
+  useEffect(() => {
+    if (hasRunSweepRef.current) return;
+    // Wait until settings has loaded (at least one key) before checking flag.
+    if (!settings || Object.keys(settings).length === 0) return;
+    hasRunSweepRef.current = true;
+
+    const sweepDone = (settings as unknown as { repairStatusSweepDone?: boolean }).repairStatusSweepDone;
+    if (sweepDone) return;
+
+    const current = repairsRef.current;
+    let changed = 0;
+    const next = current.map((r) => {
+      const normalized = normalizeRepairStatus(r.status);
+      if (normalized && normalized !== r.status) {
+        changed += 1;
+        const nowIso = new Date().toISOString();
+        // Delta-only: persist ONLY the status + updatedAt. merge:true in persist
+        // ensures all other fields on the entity stay intact (localStorage and Firestore).
+        persist.repair(r.id, { status: normalized, updatedAt: nowIso });
+        return { ...r, status: normalized, updatedAt: nowIso } as Repair;
+      }
+      return r;
+    });
+
+    if (changed > 0) {
+      repairsRef.current = next;
+      setRepairs(next);
+    }
+
+    // Always set the flag — even when n === 0 — so sweep stays one-time.
+    persistSettings({ repairStatusSweepDone: true } as Record<string, unknown>);
+    console.log(`[R2] Normalized ${changed} repairs from PascalCase to snake`);
+  }, [settings, setRepairs]);
   const customersRef = useRef(customers);
   const cartRef = useRef(cart);
   const salesRef = useRef(sales);
@@ -93,13 +130,17 @@ export default function RepairModule() {
 
   // ── Translated statuses ─────────────────────────────────
 
+  // Round R2: map canonical snake_case keys → i18n display labels.
   const translateStatus = useCallback(
     (status: string) => {
       const map: Record<string, string> = {
-        All: L.all, Received: L.received, 'In Progress': L.inProgress,
-        'Waiting Parts': L.waitingParts || 'Waiting Parts',
-        Ready: L.ready || 'Ready',
-        Complete: L.completed, Cancelled: L.cancelled,
+        All: L.all,
+        [REPAIR_STATUS.RECEIVED]:      L.received,
+        [REPAIR_STATUS.IN_PROGRESS]:   L.inProgress,
+        [REPAIR_STATUS.WAITING_PARTS]: L.waitingParts || 'Waiting Parts',
+        [REPAIR_STATUS.READY]:         L.ready || 'Ready',
+        [REPAIR_STATUS.PICKED_UP]:     L.completed,
+        [REPAIR_STATUS.CANCELLED]:     L.cancelled,
       };
       return map[status] || status;
     },
@@ -108,15 +149,12 @@ export default function RepairModule() {
 
   // ── Filtered list ───────────────────────────────────────
 
-  // FIX Bug 1: normalize both sides so each tab only matches its own status
-  // FIX Bug 2: 'Waiting Parts' and 'Ready' now have filter tabs so they're no longer invisible
-  const normalizeStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
-
+  // Round R2: route both sides through canonical normalizer.
   const filtered = useMemo(() => {
     return repairs
       .filter((r) => {
         if (filterStatus === 'All') return true;
-        return normalizeStatus(r.status) === normalizeStatus(filterStatus);
+        return normalizeRepairStatus(r.status) === normalizeRepairStatus(filterStatus);
       })
       .filter((r) =>
         matchesSearch(search, r.customerName, r.customerPhone, r.device, r.issue, r.id),
@@ -142,14 +180,17 @@ export default function RepairModule() {
 
   // ── Stats ───────────────────────────────────────────────
 
-  // FIX Bug 3: normalize status to lowercase so 'complete', 'cancelled', 'ready' etc. are caught
-  const DONE_STATUSES = ['complete', 'cancelled', 'picked_up', 'ready'];
+  // Round R2: canonical DONE buckets (picked_up covers legacy 'complete' via normalizer).
+  const DONE_STATUSES: string[] = [REPAIR_STATUS.PICKED_UP, REPAIR_STATUS.CANCELLED, REPAIR_STATUS.READY];
   const activeCount = useMemo(
-    () => repairs.filter((r) => !DONE_STATUSES.includes(normalizeStatus(r.status))).length,
+    () => repairs.filter((r) => !DONE_STATUSES.includes(normalizeRepairStatus(r.status))).length,
     [repairs],
   );
   const completeCount = useMemo(
-    () => repairs.filter((r) => ['complete', 'picked_up', 'ready'].includes(normalizeStatus(r.status))).length,
+    () => repairs.filter((r) => {
+      const n = normalizeRepairStatus(r.status);
+      return n === REPAIR_STATUS.PICKED_UP || n === REPAIR_STATUS.READY;
+    }).length,
     [repairs],
   );
 
@@ -338,6 +379,8 @@ export default function RepairModule() {
         const lockedBalance = Math.max(0, newTotal - lockedDeposit);
         const updated: Repair = {
           ...spread,
+          // Round R2: persist canonical snake_case repair status.
+          status: normalizeRepairStatus(spread.status) || REPAIR_STATUS.RECEIVED,
           depositAmount: lockedDeposit,
           balance: lockedBalance,
           id: editRepair.id,
@@ -364,25 +407,28 @@ export default function RepairModule() {
           const ticket = (updated as any).ticketNumber || updated.id.slice(-6).toUpperCase();
           let msg = '';
 
-          if (newStatus === 'Received' || newStatus === 'received') {
+          // Round R2: normalize once; cases are canonical only.
+          const canonicalNew = normalizeRepairStatus(newStatus);
+
+          if (canonicalNew === REPAIR_STATUS.RECEIVED) {
             if (settings.smsAutoRepairReady) {
               msg = lang === 'es'
                 ? `Hola ${name}, recibimos tu ${device}. Ticket #${ticket}. Te avisamos cuando esté listo. — ${store}`
                 : `Hi ${name}, we received your ${device}. Ticket #${ticket}. We'll text you when it's ready. — ${store}`;
             }
-          } else if (newStatus === 'In Progress' || newStatus === 'in_progress') {
+          } else if (canonicalNew === REPAIR_STATUS.IN_PROGRESS) {
             if (settings.smsAutoRepairReady) {
               msg = lang === 'es'
                 ? `Hola ${name}, tu ${device} está en reparación. Ticket #${ticket}. — ${store}`
                 : `Hi ${name}, we're working on your ${device}. Ticket #${ticket}. — ${store}`;
             }
-          } else if (newStatus === 'Complete' || newStatus === 'complete' || newStatus === 'ready') {
+          } else if (canonicalNew === REPAIR_STATUS.PICKED_UP || canonicalNew === REPAIR_STATUS.READY) {
             if (settings.smsAutoRepairReady) {
               msg = lang === 'es'
                 ? `Hola ${name}, tu reparación está lista. Pasa a recoger tu ${device}. Total: ${formatCurrency(updated.balance || 0)}. — ${store}`
                 : `Hi ${name}, your ${device} is ready for pickup! Total due: ${formatCurrency(updated.balance || 0)}. — ${store}`;
             }
-          } else if (newStatus === 'Cancelled' || newStatus === 'cancelled') {
+          } else if (canonicalNew === REPAIR_STATUS.CANCELLED) {
             if (settings.smsAutoRepairReady) {
               msg = lang === 'es'
                 ? `Hola ${name}, tu ticket #${ticket} fue cancelado. Llámanos si tienes preguntas. — ${store}`
@@ -462,7 +508,8 @@ export default function RepairModule() {
           // Repair
           issue: rd.issue || '',
           diagnosis: rd.diagnosis || '',
-          status: rd.status || 'Received',
+          // Round R2: persist canonical snake_case repair status.
+          status: normalizeRepairStatus(rd.status) || REPAIR_STATUS.RECEIVED,
           priority: rd.priority || 'Normal',
           // Financials (cents)
           parts: rd.parts || [],
@@ -661,7 +708,8 @@ export default function RepairModule() {
     // 2. Update repair entity
     const updated = {
       ...repair,
-      status: 'Cancelled',
+      // Round R2: canonical snake_case on cancel path.
+      status: REPAIR_STATUS.CANCELLED,
       depositRefundMethod: choice.method,
       depositRefundAmount: depositCents,
       cancellationNote: choice.note || '',
@@ -724,7 +772,8 @@ export default function RepairModule() {
     const balance = repair.balance || 0;
     const deposit = (repair as any).depositAmount || (repair as any).deposit || 0;
     if (balance === 0 && deposit === 0) {
-      const updated: Repair = { ...repair, status: 'Complete' as any, updatedAt: new Date().toISOString() };
+      // Round R2: canonical snake_case on complete path (picked_up).
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
       const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
       repairsRef.current = next;
       setRepairs(next);
@@ -753,7 +802,8 @@ export default function RepairModule() {
       }
     }
 
-    const updated: Repair = { ...repair, status: 'Complete' as any, updatedAt: new Date().toISOString() };
+    // Round R2: canonical snake_case on complete path (picked_up).
+    const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
     const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
     repairsRef.current = next;
     setRepairs(next);
@@ -805,7 +855,8 @@ export default function RepairModule() {
     // Deleting the repair leaves dangling references and breaks reports.
     // For paid repairs, the correct action is Cancel with refund, not Delete.
     const hasDeposit = ((deleteConfirm as any).depositAmount || 0) > 0;
-    const isCompleted = ['Complete', 'complete', 'picked_up'].includes(deleteConfirm.status);
+    // Round R2: canonical comparison via normalizer.
+    const isCompleted = normalizeRepairStatus(deleteConfirm.status) === REPAIR_STATUS.PICKED_UP;
     if (hasDeposit || isCompleted) {
       toast(
         lang === 'es'
@@ -872,7 +923,7 @@ export default function RepairModule() {
               device={[(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || ''}
               issue={repair.issue}
               status={repair.status}
-              statusBadgeClass={STATUS_BADGE[repair.status] || STATUS_BADGE[(repair.status || '').toLowerCase()] || 'badge-neutral'}
+              statusBadgeClass={STATUS_BADGE[normalizeRepairStatus(repair.status)] || 'badge-neutral'}
               total={(repair as any).total || repair.estimatedCost || 0}
               deposit={(repair as any).depositAmount || (repair as any).deposit || 0}
               balance={repair.balance || 0}
@@ -882,8 +933,10 @@ export default function RepairModule() {
               onClick={() => { setEditRepair(repair); setShowModal(true); }}
               onCollectBalance={repair.balance > 0 ? () => setDepositModalRepair(repair) : undefined}
               onWhatsApp={settings.waEnabled !== false && repair.customerPhone ? () => {
-                const tmplKey = ['Complete','complete','ready'].includes(repair.status) ? 'repairReady'
-                  : ['In Progress','in_progress'].includes(repair.status) ? 'repairInProgress'
+                // Round R2: canonical status checks for WA template selection.
+                const canonical = normalizeRepairStatus(repair.status);
+                const tmplKey = (canonical === REPAIR_STATUS.PICKED_UP || canonical === REPAIR_STATUS.READY) ? 'repairReady'
+                  : canonical === REPAIR_STATUS.IN_PROGRESS ? 'repairInProgress'
                   : repair.balance > 0 ? 'balanceDue'
                   : 'repairReceived';
                 const customTmpl = tmplKey === 'repairReady' ? settings.waTemplateRepairReady
@@ -907,21 +960,21 @@ export default function RepairModule() {
                   )
                 );
               } : undefined}
-              onDeposit={!['Cancelled','cancelled','Complete','complete','picked_up'].includes(repair.status) && (repair.balance || 0) > 0
+              onDeposit={!isDoneRepairStatus(repair.status) && (repair.balance || 0) > 0
                 ? () => setDepositModalRepair(repair)
                 : undefined}
               onComplete={() => handleCompleteRequest(repair)}
               completeLabel={
-                ['Cancelled','cancelled'].includes(repair.status)
+                normalizeRepairStatus(repair.status) === REPAIR_STATUS.CANCELLED
                   ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
-                  : ['Complete','complete','picked_up'].includes(repair.status)
+                  : normalizeRepairStatus(repair.status) === REPAIR_STATUS.PICKED_UP
                   ? (lang === 'es' ? '✓ Completado' : '✓ Completed')
                   : (repair.balance || 0) > 0
                   ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(repair.balance)}` : `Complete / Collect ${formatCurrency(repair.balance)}`)
                   : (lang === 'es' ? 'Completar' : 'Complete')
               }
-              completeDisabled={['Cancelled','cancelled','Complete','complete','picked_up'].includes(repair.status)}
-              completeVariant={['Complete','complete','picked_up'].includes(repair.status) ? 'green' : 'amber'}
+              completeDisabled={isDoneRepairStatus(repair.status)}
+              completeVariant={normalizeRepairStatus(repair.status) === REPAIR_STATUS.PICKED_UP ? 'green' : 'amber'}
               onPrint={() => printRepairTicket(repair)}
               onSMS={() => handleSMS(repair)}
               onDelete={() => setDeleteConfirm(repair)}
