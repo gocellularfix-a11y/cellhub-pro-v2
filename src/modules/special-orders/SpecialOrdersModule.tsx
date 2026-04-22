@@ -23,8 +23,19 @@ import TicketCard from '@/components/shared/TicketCard';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
-import type { SpecialOrder, CartItem, Customer, Sale } from '@/store/types';
+import type { SpecialOrder, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
 import CancelSpecialOrderModal from './CancelSpecialOrderModal';
+import { usePrint } from '@/hooks/usePrint';
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { usePinGate } from '@/hooks/usePinGate';
+import ReasonSelectorModal from '@/components/ReasonSelectorModal';
+import EditHistoryModal from '@/components/EditHistoryModal';
+import {
+  computeDiff, hasMoneyChanges, captureSnapshot, appendEditEntry,
+  checkEditHistoryStatus,
+  SPECIAL_ORDER_MONEY_FIELDS, SPECIAL_ORDER_ALL_FIELDS,
+  type FieldChange, type EditReason,
+} from '@/services/editAudit';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -35,6 +46,9 @@ const STATUS_BADGE: Record<string, string> = {
   'Picked Up': 'badge-neutral', picked_up: 'badge-neutral',
   Cancelled: 'badge-danger', cancelled: 'badge-danger',
   in_transit: 'badge-warning',
+  // R-EDIT-AUDIT F5: refund statuses badging.
+  refund_pending: 'badge-warning',
+  refunded: 'badge-danger',
 };
 
 export default function SpecialOrdersModule() {
@@ -45,6 +59,7 @@ export default function SpecialOrdersModule() {
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord();
+  const { printHtml } = usePrint();
   const L = getLabels(lang);
 
   const [search, setSearch] = useState(globalSearchTerm || '');
@@ -58,6 +73,12 @@ export default function SpecialOrdersModule() {
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<SpecialOrder | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<SpecialOrder | null>(null);
+
+  // R-EDIT-AUDIT F5: post-completion edit tracking — history viewer,
+  // print-choice dialog, Mark Refunded confirmation.
+  const [historyTarget, setHistoryTarget] = useState<SpecialOrder | null>(null);
+  const [printChoiceTarget, setPrintChoiceTarget] = useState<SpecialOrder | null>(null);
+  const [refundConfirmTarget, setRefundConfirmTarget] = useState<SpecialOrder | null>(null);
 
   // Refs to avoid stale closures in handlers (multi-station Firestore sync).
   // Setters from context don't accept function updaters, so we track the latest
@@ -199,7 +220,80 @@ export default function SpecialOrdersModule() {
     setShowModal(true);
   };
 
-  const handleSave = useCallback(() => {
+  // R-EDIT-AUDIT F5: entity-based SpecialOrder print. Accepts a persisted
+  // SpecialOrder plus optional "corrected" display override — used by auto-
+  // reprint after audit saves AND by the print-choice dialog on the card.
+  // (No pre-existing SO print function; card's onPrint was undefined.)
+  const printSpecialOrderEntity = useCallback((order: SpecialOrder, displayOverride?: {
+    corrected?: boolean;
+    originalSnapshot?: { capturedAt: string; snapshot: Record<string, unknown> };
+  }) => {
+    const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
+    const storeAddr = settings.storeAddress || '';
+    const storePhone = settings.storePhone || '';
+    const es = lang === 'es';
+    const fmt = (v: unknown) => v == null ? '' : String(v);
+    const money = (cents: unknown) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+
+    const corrected = !!displayOverride?.corrected;
+    const snap = displayOverride?.originalSnapshot?.snapshot;
+    const previously = (field: string): string => {
+      if (!corrected || !snap) return '';
+      const prior = snap[field];
+      const current = (order as any)[field];
+      if (prior == null || prior === '' || prior === current) return '';
+      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      return '';
+    };
+
+    const ticketNum = order.id.slice(-8).toUpperCase();
+    const lines: string[] = [];
+    lines.push(storeName);
+    if (storeAddr) lines.push(storeAddr);
+    if (storePhone) lines.push(storePhone);
+    lines.push('----------------------------------------');
+    if (corrected) {
+      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
+      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push('----------------------------------------');
+    }
+    lines.push(es ? 'PEDIDO ESPECIAL' : 'SPECIAL ORDER');
+    lines.push(`TICKET: ${ticketNum}`);
+    lines.push(`STATUS: ${fmt(order.status)}`);
+    lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
+    lines.push('----------------------------------------');
+    lines.push(`${es ? 'CLIENTE' : 'CUSTOMER'}: ${fmt(order.customerName)}`);
+    if (order.customerPhone) lines.push(`${es ? 'TEL' : 'PHONE'}: ${fmt(order.customerPhone)}`);
+    lines.push('----------------------------------------');
+    lines.push(`${es ? 'ARTÍCULO' : 'ITEM'}: ${fmt(order.itemDescription)}`);
+    if (order.supplier) lines.push(`${es ? 'PROVEEDOR' : 'SUPPLIER'}: ${fmt(order.supplier)}`);
+    if (order.estimatedArrival) lines.push(`${es ? 'LLEGADA EST' : 'EST. ARRIVAL'}: ${fmt(order.estimatedArrival)}`);
+    lines.push('----------------------------------------');
+    lines.push(`${es ? 'PRECIO' : 'PRICE'}: ${money(order.price || 0)}${previously('price')}`);
+    lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(order.depositAmount || 0)}${previously('depositAmount')}`);
+    lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(order.balance || 0)}${previously('balance')}`);
+    // R-EDIT-AUDIT F5: show refund owed on corrected receipt when reason='refund'.
+    if (corrected && ((order as any).refundOwedAmount || 0) > 0) {
+      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money((order as any).refundOwedAmount)}`);
+    }
+    lines.push('----------------------------------------');
+    if (order.notes) {
+      lines.push(`${es ? 'NOTAS' : 'NOTES'}: ${fmt(order.notes)}`);
+    }
+
+    const content = lines.filter(Boolean).join('\n');
+    const html = `<!DOCTYPE html><html><head><title>SO ${ticketNum}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></body></html>`;
+    printHtml(html, {
+      silent: false,
+      printer: settings.detectedPrinters?.[0],
+    });
+  }, [settings, lang, printHtml]);
+
+  const handleSave = useCallback((auditMeta?: {
+    reason: EditReason;
+    changes: FieldChange[];
+    note?: string;
+  }) => {
     const firstName = ((form as any).firstName || '').trim();
     const lastName  = ((form as any).lastName  || '').trim();
     const customerName = `${firstName} ${lastName}`.trim();
@@ -270,10 +364,97 @@ export default function SpecialOrdersModule() {
         balance: lockedBalance,
         updatedAt: new Date().toISOString(),
       } as SpecialOrder;
+
+      // R-EDIT-AUDIT F5: when audit metadata is present (from a locked-ticket
+      // edit), layer side-effects + capture originalSnapshot + append edit-
+      // history entry. Read the truly-fresh entity from specialOrdersRef so
+      // concurrent writes (POS checkout, etc.) don't get clobbered.
+      if (auditMeta) {
+        const fresh = specialOrdersRef.current.find((o) => o.id === editOrder.id) || editOrder;
+        const taxRateA = settings.taxRate ?? 0.0925;
+        const newTaxable = (updated as any).taxable ?? false;
+        const oldTaxable = (fresh as any).taxable ?? false;
+
+        // Defensive: any incoming payload spread must not clobber audit fields.
+        delete (updated as any).editHistory;
+        delete (updated as any).originalSnapshot;
+        delete (updated as any).refundOwedAmount;
+        updated.editHistory = fresh.editHistory;
+        updated.originalSnapshot = fresh.originalSnapshot;
+        updated.refundOwedAmount = fresh.refundOwedAmount;
+
+        const sideEffects: EditAuditEntry['sideEffects'] = {};
+        switch (auditMeta.reason) {
+          case 'additional_balance': {
+            const fwd = forwardTaxFromBase(updated.price || 0, taxRateA, newTaxable);
+            const newTotal = fwd.totalCents;
+            const alreadyPaid = fresh.depositAmount || 0;
+            const newBalance = Math.max(0, newTotal - alreadyPaid);
+            updated.balance = newBalance;
+            updated.status = 'ordered'; // Reopen to active flow.
+            sideEffects.balanceChange = newBalance - (fresh.balance || 0);
+            sideEffects.statusChange = { from: String(fresh.status), to: 'ordered' };
+            break;
+          }
+          case 'absorbed': {
+            updated.balance = 0;
+            const oldFwd = forwardTaxFromBase(fresh.price || 0, taxRateA, oldTaxable);
+            const newFwd = forwardTaxFromBase(updated.price || 0, taxRateA, newTaxable);
+            sideEffects.absorbedAmount = Math.abs(newFwd.totalCents - oldFwd.totalCents);
+            break;
+          }
+          case 'refund': {
+            const oldFwd = forwardTaxFromBase(fresh.price || 0, taxRateA, oldTaxable);
+            const newFwd = forwardTaxFromBase(updated.price || 0, taxRateA, newTaxable);
+            const refundOwed = Math.max(0, oldFwd.totalCents - newFwd.totalCents);
+            updated.refundOwedAmount = refundOwed;
+            updated.status = 'refund_pending';
+            updated.balance = 0;
+            sideEffects.refundOwedAmount = refundOwed;
+            sideEffects.statusChange = { from: String(fresh.status), to: 'refund_pending' };
+            break;
+          }
+          case 'typo_correction':
+            break;
+        }
+
+        if (!updated.originalSnapshot) {
+          updated.originalSnapshot = captureSnapshot(fresh as unknown as Record<string, unknown>);
+        }
+
+        const entry: EditAuditEntry = {
+          editedAt: updated.updatedAt as string,
+          editedBy: currentEmployee?.name || 'Unknown',
+          pinUsedBy: currentEmployee?.name || 'Admin',
+          reason: auditMeta.reason,
+          fieldsChanged: auditMeta.changes,
+          note: auditMeta.note || undefined,
+          sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
+        };
+        if (checkEditHistoryStatus(updated.editHistory) === 'full') {
+          toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+          return;
+        }
+        const newHistory = appendEditEntry(updated.editHistory, entry);
+        if (newHistory === null) {
+          toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+          return;
+        }
+        updated.editHistory = newHistory;
+      }
+
       const nextOrders = specialOrdersRef.current.map((o) => (o.id === editOrder.id ? updated : o));
       specialOrdersRef.current = nextOrders;
       setSpecialOrders(nextOrders);
       persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+
+      // R-EDIT-AUDIT F5: auto-reprint corrected receipt for money-impacting edits.
+      if (auditMeta && auditMeta.reason !== 'typo_correction') {
+        printSpecialOrderEntity(updated, {
+          corrected: true,
+          originalSnapshot: updated.originalSnapshot,
+        });
+      }
 
       // Commit customer changes if any (edit-path rarely creates customer, but
       // the autocreate logic above still runs when phone is filled in)
@@ -360,7 +541,9 @@ export default function SpecialOrdersModule() {
     setEditOrder(null);
   }, [form, editOrder, settings, currentEmployee, lang, L,
       setSpecialOrders, setCustomers, setCart, toast,
-      consolidateCartForSpecialOrder, dispatch]);
+      consolidateCartForSpecialOrder, dispatch,
+      // R-EDIT-AUDIT F5: audit reprint dep.
+      printSpecialOrderEntity]);
 
   // NOTE: `collectBalance` was removed as dead code — the TicketCard's
   // onCollectBalance handler opens the DepositModal directly via
@@ -689,12 +872,66 @@ export default function SpecialOrdersModule() {
                   ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(o.balance)}` : `Complete / Collect ${formatCurrency(o.balance)}`)
                   : (lang === 'es' ? 'Marcar entregado' : 'Mark picked up')
               }
-              completeDisabled={['cancelled', 'picked_up'].includes(normalizeStatus(o.status))}
+              completeDisabled={['cancelled', 'picked_up', 'refunded'].includes(normalizeStatus(o.status))}
               completeVariant={normalizeStatus(o.status) === 'picked_up' ? 'green' : 'amber'}
-              onPrint={undefined /* TODO: wire printOrderTicket when SO ticket format is designed */}
+              // R-EDIT-AUDIT F5: edited tickets route through the corrected/original
+              // print-choice dialog; unedited tickets print directly.
+              onPrint={() => {
+                if (o.editHistory && o.editHistory.length > 0) {
+                  setPrintChoiceTarget(o);
+                } else {
+                  printSpecialOrderEntity(o);
+                }
+              }}
               onSMS={() => handleSMS(o)}
               onDelete={() => setDeleteConfirm(o)}
               smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && o.customerPhone)}
+              extraBadges={
+                <>
+                  {/* R-EDIT-AUDIT F5: edit-history count badge. */}
+                  {o.editHistory && o.editHistory.length > 0 && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryTarget(o);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        background: 'rgba(251, 191, 36, 0.15)',
+                        color: '#fbbf24',
+                      }}
+                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                    >
+                      🕐 {o.editHistory.length}
+                    </span>
+                  )}
+                  {/* R-EDIT-AUDIT F5: Mark Refunded button when in refund_pending state. */}
+                  {normalizeStatus(o.status) === 'refund_pending' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRefundConfirmTarget(o);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '0.72rem',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '0.3rem',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                    </button>
+                  )}
+                </>
+              }
               lang={lang}
               L={L}
             />
@@ -732,6 +969,7 @@ export default function SpecialOrdersModule() {
           onClose={() => { setShowModal(false); setEditOrder(null); }}
           lang={lang}
           L={L}
+          allOrders={specialOrders}
         />
       )}
       {depositModalOrder && (
@@ -836,11 +1074,113 @@ export default function SpecialOrdersModule() {
           onCancel={() => setCompleteConfirm(null)}
         />
       )}
+
+      {/* R-EDIT-AUDIT F5: edit history viewer. */}
+      {historyTarget && (
+        <EditHistoryModal
+          open
+          onClose={() => setHistoryTarget(null)}
+          lang={lang}
+          editHistory={historyTarget.editHistory || []}
+          originalSnapshot={historyTarget.originalSnapshot}
+        />
+      )}
+
+      {/* R-EDIT-AUDIT F5: corrected-vs-original print choice for edited tickets. */}
+      {printChoiceTarget && (
+        <Modal
+          open
+          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          onClose={() => setPrintChoiceTarget(null)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                printSpecialOrderEntity(printChoiceTarget, {
+                  corrected: true,
+                  originalSnapshot: printChoiceTarget.originalSnapshot,
+                });
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                if (printChoiceTarget.originalSnapshot?.snapshot) {
+                  printSpecialOrderEntity({
+                    ...printChoiceTarget,
+                    ...printChoiceTarget.originalSnapshot.snapshot,
+                  } as SpecialOrder);
+                } else {
+                  printSpecialOrderEntity(printChoiceTarget);
+                }
+                setPrintChoiceTarget(null);
+              }}
+            >
+              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%' }}
+              onClick={() => setPrintChoiceTarget(null)}
+            >
+              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* R-EDIT-AUDIT F5: confirm Mark Refunded → closes out refund_pending state. */}
+      {refundConfirmTarget && (
+        <ConfirmDialog
+          open
+          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
+          message={
+            lang === 'es'
+              ? `¿Confirmar que el reembolso de $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
+              : `Confirm that the $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
+          }
+          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
+          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          onConfirm={() => {
+            const target = refundConfirmTarget;
+            const now = new Date().toISOString();
+            const updated: SpecialOrder = {
+              ...target,
+              status: 'refunded',
+              refundOwedAmount: 0,
+              updatedAt: now,
+            };
+            const nextOrders = specialOrdersRef.current.map((o) => (o.id === updated.id ? updated : o));
+            specialOrdersRef.current = nextOrders;
+            setSpecialOrders(nextOrders);
+            persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+            toast(
+              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
+              'success',
+            );
+            setRefundConfirmTarget(null);
+          }}
+          onCancel={() => setRefundConfirmTarget(null)}
+        />
+      )}
     </>
   );
 }
 
 // ── SpecialOrderModal ─────────────────────────────────────
+
+// R-EDIT-AUDIT F5: audit metadata for locked-ticket saves.
+interface SpecialOrderAuditMeta {
+  reason: EditReason;
+  changes: FieldChange[];
+  note?: string;
+}
 
 interface SpecialOrderModalProps {
   editOrder: SpecialOrder | null;
@@ -848,19 +1188,49 @@ interface SpecialOrderModalProps {
   setForm: (f: Partial<SpecialOrder>) => void;
   customers: Customer[];
   settings: import('@/store/types').StoreSettings;
-  onSave: () => void;
+  // R-EDIT-AUDIT F5: signature extended to accept optional audit metadata.
+  onSave: (auditMeta?: SpecialOrderAuditMeta) => void;
   onRequestCancel?: (order: SpecialOrder) => void;
   onClose: () => void;
   lang: string;
   L: Record<string, any>;
+  // R-EDIT-AUDIT F5: freshest orders list for stale check on locked edits.
+  allOrders: SpecialOrder[];
 }
 
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L, allOrders }: SpecialOrderModalProps) {
   const es = lang === 'es';
+  const { toast } = useToast();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
+
+  // R-EDIT-AUDIT F5: normalize helper matches the module's lowercase/snake convention.
+  const normalizeStatus = (s: string) => (s || '').toLowerCase().replace(/ /g, '_');
+
+  // R-EDIT-AUDIT F5.1: lock money fields on completed tickets.
+  // totalPaid = what customer has paid (price - outstanding balance).
+  const totalPaid = (editOrder?.price || 0) - (editOrder?.balance || 0);
+  const isLocked = !!editOrder && (
+    (editOrder.balance === 0 && totalPaid > 0)
+    || normalizeStatus(editOrder.status) === 'refunded'
+  );
+
+  // R-EDIT-AUDIT F5.2: PIN gate + reason selector state live inside the modal.
+  const pin = usePinGate(settings?.adminPin);
+  const [showReasonSelector, setShowReasonSelector] = useState(false);
+  const [pendingAuditPayload, setPendingAuditPayload] = useState<{ changes: FieldChange[] } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Wrap close so we reset the PIN unlock and saving guard.
+  const handleClose = () => {
+    pin.resetLock();
+    setIsSaving(false);
+    setShowReasonSelector(false);
+    setPendingAuditPayload(null);
+    onClose();
+  };
 
   // Dollar helpers for display (prices stored as dollar strings)
   const priceC = Math.round((parseFloat(form.price as any) || 0) * 100);
@@ -907,8 +1277,126 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
     [],
   );
 
+  // R-EDIT-AUDIT F5.3: handleSubmit wraps onSave with the locked-ticket flow.
+  // Non-locked path → plain onSave() (parent's handleSave with no auditMeta).
+  // Locked path → stale/H2/cap checks, diff form against fresh entity, and
+  // either open the reason selector (money change) or invoke onSave with
+  // typo_correction auditMeta (info-only change).
+  const handleSubmit = () => {
+    if (isSaving) return;
+
+    // Non-locked: delegate straight to parent.
+    if (!editOrder || !isLocked) {
+      onSave();
+      return;
+    }
+
+    setIsSaving(true);
+    const fresh = (allOrders || []).find((o) => o.id === editOrder.id);
+    if (!fresh) {
+      toast(es ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+      handleClose();
+      return;
+    }
+    const freshNorm = normalizeStatus(fresh.status);
+    if (freshNorm === 'cancelled' || freshNorm === 'refunded') {
+      toast(
+        es ? 'Ticket cancelado/reembolsado. No se puede editar.' : 'Ticket cancelled/refunded. Cannot edit.',
+        'error',
+      );
+      handleClose();
+      return;
+    }
+    if (fresh.updatedAt && editOrder.updatedAt && String(fresh.updatedAt) !== String(editOrder.updatedAt)) {
+      toast(
+        es
+          ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
+          : 'Ticket modified on another station. Reload and try again.',
+        'error',
+      );
+      handleClose();
+      return;
+    }
+
+    const historyStatus = checkEditHistoryStatus(fresh.editHistory);
+    if (historyStatus === 'full') {
+      toast(
+        es ? 'Historial de ediciones lleno (100). Contacta al administrador.' : 'Edit history full (100). Contact admin.',
+        'error',
+      );
+      setIsSaving(false);
+      return;
+    }
+    if (historyStatus === 'warning') {
+      toast(
+        es
+          ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
+          : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
+        'warning',
+      );
+    }
+
+    // Form stores money as dollar strings/numbers; convert to cents for diff.
+    const priceCents = Math.round((parseFloat(form.price as any) || 0) * 100);
+    const costCents = Math.round((parseFloat(form.cost as any) || 0) * 100);
+
+    const reference: Record<string, unknown> = {
+      price: fresh.price ?? 0,
+      cost: fresh.cost ?? 0,
+      taxable: (fresh as any).taxable ?? false,
+      customerName: fresh.customerName ?? '',
+      customerPhone: fresh.customerPhone ?? '',
+      itemDescription: fresh.itemDescription ?? '',
+      supplier: fresh.supplier ?? '',
+      estimatedArrival: fresh.estimatedArrival ?? '',
+      notes: fresh.notes ?? '',
+      employeeName: fresh.employeeName ?? '',
+    };
+    const customerName = `${((form as any).firstName || '').trim()} ${((form as any).lastName || '').trim()}`.trim();
+    const current: Record<string, unknown> = {
+      price: priceCents,
+      cost: costCents,
+      taxable: !!(form as any).taxable,
+      customerName,
+      customerPhone: form.customerPhone ?? '',
+      itemDescription: form.itemDescription ?? '',
+      supplier: form.supplier ?? '',
+      estimatedArrival: form.estimatedArrival ?? '',
+      notes: form.notes ?? '',
+      employeeName: fresh.employeeName ?? '', // not in form — keep reference value
+    };
+
+    const fieldsToCheck = (SPECIAL_ORDER_ALL_FIELDS as readonly string[]).filter((f) => f !== 'depositAmount');
+    const changes = computeDiff(reference, current, fieldsToCheck);
+    if (changes.length === 0) {
+      handleClose();
+      return;
+    }
+
+    const moneyChanged = hasMoneyChanges(changes, SPECIAL_ORDER_MONEY_FIELDS as unknown as string[]);
+    if (moneyChanged) {
+      setPendingAuditPayload({ changes });
+      setShowReasonSelector(true);
+      // Keep isSaving=true; resolution path (reason selected or cancel) resets it.
+      return;
+    }
+
+    // Info-only change → save as typo_correction, no reason prompt.
+    onSave({ reason: 'typo_correction', changes, note: '' });
+    handleClose();
+  };
+
+  const handleReasonSelected = (reason: EditReason, note: string) => {
+    if (!pendingAuditPayload) return;
+    const { changes } = pendingAuditPayload;
+    setShowReasonSelector(false);
+    setPendingAuditPayload(null);
+    onSave({ reason, changes, note });
+    handleClose();
+  };
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div
         className="modal-content"
         style={{ maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto' }}
@@ -919,11 +1407,32 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           <h3 style={{ margin: 0, fontWeight: 700 }}>
             📋 {editOrder ? (es ? 'Editar Pedido' : 'Edit Special Order') : (es ? 'Nuevo Pedido Especial' : 'New Special Order')}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={handleClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
         </div>
 
         {/* Body */}
         <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+
+          {/* R-EDIT-AUDIT F5.2: banner when admin unlocks money fields post-completion. */}
+          {isLocked && pin.editUnlocked && (
+            <div style={{
+              background: 'rgba(251, 191, 36, 0.15)',
+              border: '1px solid rgba(251, 191, 36, 0.4)',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.85rem',
+            }}>
+              <span>⚠️</span>
+              <span>
+                {es
+                  ? 'Editando ticket completado. Los cambios se registrarán.'
+                  : 'Editing completed ticket. Changes will be logged.'}
+              </span>
+            </div>
+          )}
 
           {/* Customer */}
           {/* r-customer-picker-sweep: wrap customer inputs in shared
@@ -1030,22 +1539,49 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           {/* Pricing */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label className="label">💵 {es ? 'Costo ($)' : 'Cost ($)'}</label>
-              <input
-                className="input" type="number" step="0.01" min="0"
-                value={form.cost as any}
-                onChange={(e) => upd('cost', e.target.value)}
-                placeholder="0.00"
-              />
+              <label className="label">
+                {isLocked && !pin.editUnlocked && '🔒 '}💵 {es ? 'Costo ($)' : 'Cost ($)'}
+              </label>
+              {/* R-EDIT-AUDIT F5.2: lock cost on completed tickets. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input" type="number" step="0.01" min="0"
+                  value={form.cost as any}
+                  onChange={(e) => upd('cost', e.target.value)}
+                  placeholder="0.00"
+                  disabled={isLocked && !pin.editUnlocked}
+                  style={isLocked && !pin.editUnlocked ? { opacity: 0.6 } : undefined}
+                />
+                {isLocked && !pin.editUnlocked && (
+                  <span
+                    onClick={pin.requestUnlock}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
+                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  >🔒</span>
+                )}
+              </div>
             </div>
             <div>
-              <label className="label">🏷️ {es ? 'Precio ($)' : 'Price ($)'} *</label>
-              <input
-                className="input" type="number" step="0.01" min="0"
-                value={form.price as any}
-                onChange={(e) => upd('price', e.target.value)}
-                placeholder="0.00" style={{ fontWeight: 700 }}
-              />
+              <label className="label">
+                {isLocked && !pin.editUnlocked && '🔒 '}🏷️ {es ? 'Precio ($)' : 'Price ($)'} *
+              </label>
+              {/* R-EDIT-AUDIT F5.2: lock price on completed tickets. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input" type="number" step="0.01" min="0"
+                  value={form.price as any}
+                  onChange={(e) => upd('price', e.target.value)}
+                  placeholder="0.00" style={{ fontWeight: 700, opacity: isLocked && !pin.editUnlocked ? 0.6 : 1 }}
+                  disabled={isLocked && !pin.editUnlocked}
+                />
+                {isLocked && !pin.editUnlocked && (
+                  <span
+                    onClick={pin.requestUnlock}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
+                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  >🔒</span>
+                )}
+              </div>
             </div>
             <div>
               <label className="label">💰 {es ? 'Depósito ($)' : 'Deposit ($)'}</label>
@@ -1089,15 +1625,27 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           )}
 
           {/* Taxable toggle */}
-          <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+          {/* R-EDIT-AUDIT F5.2: taxable is money-impacting — lock on completed tickets. */}
+          <div style={{ opacity: isLocked && !pin.editUnlocked ? 0.6 : 1 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}>
               <input
                 type="checkbox"
                 checked={taxable}
                 onChange={(e) => upd('taxable' as any, e.target.checked)}
-                style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+                disabled={isLocked && !pin.editUnlocked}
+                style={{ width: '1rem', height: '1rem', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}
               />
-              <span>🧾 {es ? `Cobrar impuestos (${(taxRate * 100).toFixed(2)}%)` : `Charge sales tax (${(taxRate * 100).toFixed(2)}%)`}</span>
+              <span>
+                {isLocked && !pin.editUnlocked && '🔒 '}
+                🧾 {es ? `Cobrar impuestos (${(taxRate * 100).toFixed(2)}%)` : `Charge sales tax (${(taxRate * 100).toFixed(2)}%)`}
+              </span>
+              {isLocked && !pin.editUnlocked && (
+                <span
+                  onClick={pin.requestUnlock}
+                  style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
+                  title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                >🔒</span>
+              )}
             </label>
           </div>
 
@@ -1166,7 +1714,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
         {/* Footer */}
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>{L.cancel || 'Cancel'}</button>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleClose}>{L.cancel || 'Cancel'}</button>
           {/* r-new-4 port: Cancel Order with disposition. Only shown when editing
               an SO that has a deposit — unpaid orders can be deleted directly.
               r-new-8: also hidden on terminal statuses (picked_up / cancelled) —
@@ -1179,13 +1727,34 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               type="button"
               className="btn btn-secondary"
               style={{ flex: 1, color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
-              onClick={() => onRequestCancel(editOrder)}
+              onClick={() => { handleClose(); onRequestCancel(editOrder); }}
             >
               ❌ {es ? 'Cancelar Pedido' : 'Cancel Order'}
             </button>
           )}
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={onSave}>💾 {L.save || 'Save'}</button>
+          {/* R-EDIT-AUDIT F5.3: save routes through handleSubmit to pick up the
+              locked-ticket audit flow. Explicit arrow avoids MouseEvent leaking
+              into onSave's optional auditMeta parameter. */}
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => handleSubmit()}>💾 {L.save || 'Save'}</button>
         </div>
+
+        {/* R-EDIT-AUDIT F5.2-3: reason selector + admin PIN challenge. */}
+        <ReasonSelectorModal
+          open={showReasonSelector}
+          lang={lang}
+          onSelect={(reason, note) => handleReasonSelected(reason, note)}
+          onCancel={() => {
+            setShowReasonSelector(false);
+            setPendingAuditPayload(null);
+            setIsSaving(false);
+          }}
+        />
+        <AdminPinGate
+          open={pin.showPinGate}
+          adminPin={settings?.adminPin || ''}
+          onSuccess={pin.handleSuccess}
+          onCancel={pin.handleCancel}
+        />
       </div>
     </div>
   );
