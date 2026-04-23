@@ -113,6 +113,10 @@ export interface StoreSettings {
   smsApiKey: string;
   smsApiSecret: string;
   smsFromNumber: string;
+  // R-SMS-PROVIDERS-EXPANSION: carrier provider credentials
+  smsAccountSid?: string;          // twilio Account SID, plivo Auth ID
+  smsAuthToken?: string;           // twilio Auth Token, plivo Auth Token
+  smsMessagingProfileId?: string;  // telnyx UUID
   smsTemplateRepairReady: string;
   smsTemplatePaymentReminder: string;
   smsTemplateOrderReady: string;
