@@ -1,6 +1,6 @@
 // CellHub Intelligence — Dashboard UI
 import { useMemo } from 'react';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard } from '@/services/intelligence';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, NlgSummary } from '@/services/intelligence';
 import { formatCurrency } from '@/utils/currency';
 
 interface IntelligenceDashboardProps {
@@ -10,6 +10,8 @@ interface IntelligenceDashboardProps {
   insights: Insight[];
   lang?: 'en' | 'es';
   onRefresh?: () => void;
+  // R-INTEL-NLG-F4: optional natural-language summary block rendered above KPIs.
+  nlgSummary?: NlgSummary | null;
 }
 
 export default function IntelligenceDashboard({
@@ -19,6 +21,7 @@ export default function IntelligenceDashboard({
   insights,
   lang = 'en',
   onRefresh,
+  nlgSummary,
 }: IntelligenceDashboardProps) {
   const getSeverityColor = (severity: Insight['severity']) => {
     switch (severity) {
@@ -47,8 +50,36 @@ export default function IntelligenceDashboard({
     return <span className={color}>{arrow} {Math.abs(percent).toFixed(1)}%</span>;
   };
 
+  // Tone-based accent classes for the NLG summary card.
+  const nlgToneClass = (tone: NlgSummary['tone'] | undefined) => {
+    switch (tone) {
+      case 'positive': return 'border-emerald-500/40 bg-emerald-500/5';
+      case 'warning': return 'border-amber-500/40 bg-amber-500/5';
+      case 'critical': return 'border-red-500/40 bg-red-500/5';
+      default: return 'border-surface-700 bg-surface-800';
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {nlgSummary && (
+        <div className={`rounded-lg p-4 border ${nlgToneClass(nlgSummary.tone)}`}>
+          <p className="text-sm font-medium text-slate-100 leading-relaxed">
+            {nlgSummary.headline}
+          </p>
+          {nlgSummary.bullets.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm text-slate-300">
+              {nlgSummary.bullets.map((b, idx) => (
+                <li key={idx} className="flex gap-2">
+                  <span className="text-slate-500">•</span>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {healthScore && (
         <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
           <div className="flex items-center justify-between">

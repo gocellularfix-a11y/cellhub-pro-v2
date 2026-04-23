@@ -5,7 +5,13 @@
 
 import { useMemo, useState, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { IntelligenceEngine, type EngineResult, type CustomerHistorySummary } from '@/services/intelligence';
+import {
+  IntelligenceEngine,
+  type EngineResult,
+  type CustomerHistorySummary,
+  summarizeDashboard,
+  summarizeCustomerHistory,
+} from '@/services/intelligence';
 import IntelligenceDashboard from '@/components/ui/IntelligenceDashboard';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -53,6 +59,12 @@ export default function IntelligenceModule() {
   }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, lang, currentStoreId, consolidatedView, refreshKey]);
 
   const result: EngineResult = useMemo(() => engine.analyze(), [engine]);
+
+  // R-INTEL-NLG-F4: natural-language summary derived from the analyzed result.
+  const nlgSummary = useMemo(
+    () => summarizeDashboard(result, lang === 'es' ? 'es' : 'en'),
+    [result, lang],
+  );
 
   const handleRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -150,6 +162,7 @@ export default function IntelligenceModule() {
         insights={result.insights}
         lang={lang === 'es' ? 'es' : 'en'}
         onRefresh={handleRefresh}
+        nlgSummary={nlgSummary}
       />
     </div>
   );
@@ -167,10 +180,20 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
 
   const lowCostCoverage = history.costCoverage < 0.5 && history.visitCount > 0;
 
+  // R-INTEL-NLG-F4: one-sentence narrative summary.
+  const summarySentence = summarizeCustomerHistory(history, es ? 'es' : 'en');
+
   return (
     <div className="space-y-4">
+      {/* Narrative summary */}
+      <div className="border-t border-surface-700 pt-3 pb-1">
+        <p className="text-sm text-slate-200 leading-relaxed bg-blue-500/5 border border-blue-500/20 rounded p-3">
+          💬 {summarySentence}
+        </p>
+      </div>
+
       {/* Header */}
-      <div className="border-t border-surface-700 pt-3">
+      <div>
         <div className="flex items-start justify-between">
           <div>
             <h4 className="text-xl font-bold text-slate-100">{history.customer.name}</h4>

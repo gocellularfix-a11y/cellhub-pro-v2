@@ -30,3 +30,10 @@ export {
   classifyRepairIssue,
   type RepairInventoryGap,
 } from './correlations';
+
+// R-INTEL-NLG-F4: natural-language summary helpers.
+export {
+  summarizeDashboard,
+  summarizeCustomerHistory,
+  type NlgSummary,
+} from './nlg';
