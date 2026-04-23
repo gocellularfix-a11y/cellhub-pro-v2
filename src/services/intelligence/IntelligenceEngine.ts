@@ -23,6 +23,7 @@ import type { RepairScore } from './scoring/RepairScorer';
 
 import { getDaysAgo } from './utils/dateHelpers';
 import { adaptSale, adaptCustomer, adaptInventory, adaptRepair } from './adapters/schemaAdapter';
+import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations';
 
 export interface EngineConfig {
   storeId?: string;
@@ -181,12 +182,17 @@ export class IntelligenceEngine {
     const customerInsights = this.customerAnalyzer.generateInsights(analysisWindow);
     const financialInsights = this.financialAnalyzer.generateInsights(analysisWindow);
 
+    // R-INTEL-CROSS-F3: cross-module correlation insights. Crosses the
+    // repair ↔ inventory boundary so can't live in a single analyzer.
+    const correlationInsights = this.generateCorrelationInsights();
+
     const allInsights: Insight[] = [
       ...salesInsights,
       ...inventoryInsights,
       ...repairInsights,
       ...customerInsights,
       ...financialInsights,
+      ...correlationInsights,
     ].sort((a, b) => {
       const severityOrder = { critical: 0, warning: 1, info: 2, opportunity: 3 };
       return severityOrder[a.severity] - severityOrder[b.severity];
@@ -377,6 +383,52 @@ export class IntelligenceEngine {
 
   refresh(): EngineResult {
     return this.analyze();
+  }
+
+  // R-INTEL-CROSS-F3: surface repair ↔ inventory gaps as insights.
+  // Emits up to 3 opportunity insights for repair types where related
+  // accessories are low-stocked → cross-sell opportunity.
+  private generateCorrelationInsights(): Insight[] {
+    const gaps = findRepairInventoryGaps(this.repairs, this.inventory, this.sales, 60, 5);
+    const insights: Insight[] = [];
+    const es = this.config.lang === 'es';
+
+    for (const g of gaps.slice(0, 3)) {
+      // Only emit if there's actual actionable data (low-stock related items).
+      if (g.lowStockRelatedItems.length === 0) continue;
+
+      const topModels = g.topDeviceModels.map(m => `${m.model} (${m.count})`).join(', ');
+      const lowStock = g.lowStockRelatedItems.map(i => `${i.name} (${i.qty})`).slice(0, 3).join(', ');
+
+      insights.push({
+        id: `correlation-repair-${g.repairType}`,
+        category: 'inventory',
+        severity: 'opportunity',
+        title: es
+          ? `Oportunidad: accesorios de ${g.repairType}`
+          : `Opportunity: ${g.repairType} accessories`,
+        titleEs: `Oportunidad: accesorios de ${g.repairType}`,
+        description: es
+          ? `${g.recentRepairCount} reparaciones de ${g.repairType} recientes${topModels ? ` (top: ${topModels})` : ''}. Stock bajo en accesorios relacionados: ${lowStock}. Considera cross-sell.`
+          : `${g.recentRepairCount} recent ${g.repairType} repairs${topModels ? ` (top: ${topModels})` : ''}. Low stock on related accessories: ${lowStock}. Consider cross-selling.`,
+        descriptionEs: `${g.recentRepairCount} reparaciones de ${g.repairType} recientes${topModels ? ` (top: ${topModels})` : ''}. Stock bajo en accesorios relacionados: ${lowStock}. Considera cross-sell.`,
+        metric: g.recentRepairCount,
+        metricLabel: es ? 'Reparaciones recientes' : 'Recent repairs',
+        actionLabel: es ? 'Ver Inventario' : 'View Inventory',
+        actionRoute: 'inventory',
+        confidence: g.confidence,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        data: { gap: g as unknown as Record<string, unknown> },
+      });
+    }
+
+    return insights;
+  }
+
+  // Expose correlations directly for UI/chat consumers.
+  getRepairInventoryGaps(): RepairInventoryGap[] {
+    return findRepairInventoryGaps(this.repairs, this.inventory, this.sales, 60, 5);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

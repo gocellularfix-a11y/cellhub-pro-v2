@@ -23,3 +23,10 @@ export * from './utils/dateHelpers';
 // Schema adapter — exported for direct use when needed (e.g. tests, debugging).
 // The IntelligenceEngine already applies the adapter internally on construction.
 export { adaptSale, adaptCustomer, adaptInventory, adaptRepair } from './adapters/schemaAdapter';
+
+// R-INTEL-CROSS-F3: cross-module correlation helpers.
+export {
+  findRepairInventoryGaps,
+  classifyRepairIssue,
+  type RepairInventoryGap,
+} from './correlations';
