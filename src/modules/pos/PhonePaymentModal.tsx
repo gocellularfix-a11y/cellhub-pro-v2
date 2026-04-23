@@ -44,6 +44,14 @@ import type { PhonePaymentLine } from './types';
 const sanitizePhone = (raw: unknown): string =>
   String(raw || '').replace(/\D/g, '').slice(0, 10);
 
+// Validation helper — 10-digit enforcement. Reusable across
+// buildCartItems (Boundary 1) and customer save (Boundary 2).
+// Single source of truth for "what counts as a valid phone" —
+// if the rule changes (e.g. disallow leading 0/1), update here.
+// Round R-PHONE-INPUT-VALIDATION-v2.
+const isValidPhone = (v: unknown): boolean =>
+  sanitizePhone(v).length === 10;
+
 // ── Carrier brand colors ──────────────────────────────────
 const CARRIER_COLORS: Record<string, string> = {
   'AT&T': '#00A8E0',
@@ -99,15 +107,15 @@ export default function PhonePaymentModal({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   // Auto-copy phone to clipboard when a valid 10-digit number is set
-  // (from manual entry, customer selection, or known line toggle)
+  // (from manual entry, customer selection, or known line toggle).
+  // v2: use isValidPhone helper so all 10-digit checks stay centralized.
   const autoCopyPhone = useCallback((raw: string) => {
+    if (!isValidPhone(raw)) return;
     const digits = sanitizePhone(raw);
-    if (digits.length === 10) {
-      navigator.clipboard.writeText(digits).then(() => {
-        setCopiedPhone(digits);
-        setTimeout(() => setCopiedPhone(null), 2000);
-      }).catch(() => {});
-    }
+    navigator.clipboard.writeText(digits).then(() => {
+      setCopiedPhone(digits);
+      setTimeout(() => setCopiedPhone(null), 2000);
+    }).catch(() => {});
   }, []);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -172,9 +180,10 @@ export default function PhonePaymentModal({
     setCustSearch(match.name || '');
     setFirstName(match.firstName || (match.name || '').split(' ')[0] || '');
     setLastName(match.lastName || (match.name || '').split(' ').slice(1).join(' ') || '');
-    // Primary phone
+    // Primary phone — v2 Boundary 3: sanitize on hydration (legacy customers
+    // may have corrupt phoneNumber from pre-v1 data). Silent strip, no toast.
     const primaryPhone = match.phone || (match as any).phones?.[0] || '';
-    if (primaryPhone) setPhoneNumber(primaryPhone);
+    if (primaryPhone) setPhoneNumber(sanitizePhone(primaryPhone));
     // Carrier: prefer carriers[0] aligned with primary phone, fallback to .carrier
     const carriers = (match as any).carriers;
     const primaryCarrier = Array.isArray(carriers) && carriers[0]
@@ -249,7 +258,8 @@ export default function PhonePaymentModal({
     const parts = c.name.trim().split(' ');
     setFirstName(c.firstName || parts[0] || '');
     setLastName(c.lastName || parts.slice(1).join(' ') || '');
-    setPhoneNumber(chosenPhone || c.phone || '');
+    // v2 Boundary 3: sanitize on customer selection.
+    setPhoneNumber(sanitizePhone(chosenPhone || c.phone || ''));
     const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
     if (primaryCarrier) setCarrier(primaryCarrier);
     const mp = (c as any).monthlyPayment;
@@ -424,9 +434,9 @@ export default function PhonePaymentModal({
       // Round R-PHONE-INPUT-VALIDATION: validate 10-digit phone BEFORE build.
       // Prior guard `!phoneNumber.trim()` let letter-only input through
       // (e.g. "abcXYZ" truthy after trim), causing receipt to show
-      // "AT&T - " with empty phoneNumber. Sanitize + 10-digit check fixes it.
-      const digits = sanitizePhone(phoneNumber);
-      if (!digits || digits.length !== 10) {
+      // "AT&T - " with empty phoneNumber.
+      // v2: refactored to use isValidPhone helper for DRY validation.
+      if (!isValidPhone(phoneNumber)) {
         toast(
           es
             ? 'El número de teléfono debe tener 10 dígitos'
@@ -435,6 +445,7 @@ export default function PhonePaymentModal({
         );
         return [];
       }
+      const digits = sanitizePhone(phoneNumber);
       if (parseFloat(amount) <= 0) return [];
       items.push({
         id: generateId(),
@@ -484,6 +495,24 @@ export default function PhonePaymentModal({
 
   // ── Save from customer form (create or update) ───────────
   const handleSaveCustomer = (data: Partial<Customer>) => {
+    // Round R-PHONE-INPUT-VALIDATION-v2 Boundary 2: block save when the
+    // phone about to be persisted is not a valid 10-digit number. The
+    // CustomerFormModal UI lives in @/modules/customers (external), so
+    // we validate here at the persistence boundary — data.phone is what
+    // the user typed in the external form, phoneNumber is the modal's
+    // own state (fallback when the form didn't supply one). Whichever
+    // value would be persisted must pass isValidPhone.
+    const phoneToPersist = data.phone || phoneNumber || '';
+    if (!isValidPhone(phoneToPersist)) {
+      toast(
+        es
+          ? 'El teléfono del cliente debe tener 10 dígitos'
+          : 'Customer phone must be 10 digits',
+        'error',
+      );
+      return;
+    }
+
     // Capture current amount BEFORE state updates so we can transfer it
     // to the auto-selected line. This prevents the user from losing the
     // amount they already typed in the modal before clicking "Add to Customers".
@@ -508,7 +537,9 @@ export default function PhonePaymentModal({
       setSelectedCustomer(updated);
       setCustSearch(updated.name);
       // Sync form fields with updated customer
-      if (data.phone) setPhoneNumber(data.phone);
+      // v2 Boundary 3: sanitize (defense in depth — even though Boundary 2
+      // already blocked bad phones pre-persist, preserves the invariant).
+      if (data.phone) setPhoneNumber(sanitizePhone(data.phone));
       if (data.firstName !== undefined) setFirstName(data.firstName || '');
       if (data.lastName !== undefined) setLastName(data.lastName || '');
     } else {
@@ -534,7 +565,8 @@ export default function PhonePaymentModal({
       persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
       setSelectedCustomer(newCust);
       setCustSearch(newCust.name);
-      setPhoneNumber(newCust.phone);
+      // v2 Boundary 3: sanitize (defense in depth).
+      setPhoneNumber(sanitizePhone(newCust.phone));
       setFirstName(newCust.firstName || '');
       setLastName(newCust.lastName || '');
     }
@@ -1335,9 +1367,8 @@ export default function PhonePaymentModal({
                     maxLength={10}
                     pattern="[0-9]*"
                     onChange={(e) => {
-                      const sanitized = sanitizePhone(e.target.value);
-                      setPhoneNumber(sanitized);
-                      autoCopyPhone(sanitized);
+                      setPhoneNumber(sanitizePhone(e.target.value));
+                      autoCopyPhone(e.target.value);
                     }}
                   />
                   {/* Auto-copied indicator */}
