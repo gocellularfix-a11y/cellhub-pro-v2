@@ -15,6 +15,7 @@ import { isElectron, getElectronAPI } from '@/utils/platform';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
+import { SMS_PROVIDERS, isLegacyProvider, type SmsProviderId } from '@/services/smsProviders';
 
 const SECTIONS = [
   { id: 'store',       icon: '🏪',  label: 'Store Info' },
@@ -238,6 +239,11 @@ export default function SettingsModule() {
   // the user picks a name from the dropdown, the array is reorganized so
   // that the chosen name becomes detectedPrinters[0].
   const [scanningPrinters, setScanningPrinters] = useState(false);
+
+  // R-SMS-SETTINGS-UI: placeholder flag for the "Configure SMS" wizard.
+  // Wizard component wiring arrives in R-SMS-WIZARD — this flag just
+  // toggles a stub banner for now.
+  const [smsWizardOpen, setSmsWizardOpen] = useState(false);
 
   const scanForPrinters = useCallback(async () => {
     if (!isElectron()) {
@@ -1239,20 +1245,155 @@ export default function SettingsModule() {
           {activeSection === 'sms' && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white mb-4">{L.smsNotifications || 'SMS Notifications'}</h2>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">SMS Provider</label>
-                <select value={settings.smsProvider} onChange={(e) => update('smsProvider', e.target.value)} className="select">
-                  <option value="none">Disabled</option>
-                  <option value="textbelt">Textbelt</option>
-                  {/* r-batch-a (2): Twilio removed — no implementation in
-                      src/services/. The setting type still accepts 'twilio'
-                      but selecting it did nothing. Re-add when a real
-                      Twilio sender is wired. */}
-                </select>
+
+              {/* R-SMS-SETTINGS-UI: status card + Configure button replaces
+                  the old dropdown + API Key pair. Wizard wiring deferred to
+                  R-SMS-WIZARD. smsApiSecret, smsFromNumber, and the 3
+                  auto-send toggles stay below (unchanged). */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>
+                  {lang === 'es' ? 'Proveedor de SMS' : 'SMS Provider'}
+                </label>
+
+                <div
+                  style={{
+                    padding: 14,
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    background: '#f9fafb',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    {(() => {
+                      const provider = (settings.smsProvider || 'none') as SmsProviderId;
+
+                      // State 1: Not configured
+                      if (provider === 'none') {
+                        return (
+                          <>
+                            <div style={{ fontWeight: 600, color: '#6b7280' }}>
+                              {lang === 'es' ? 'SMS no configurado' : 'SMS not configured'}
+                            </div>
+                            <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
+                              {lang === 'es'
+                                ? 'Escoge un proveedor para mandar recibos por SMS'
+                                : 'Pick a provider to send receipts via SMS'}
+                            </div>
+                          </>
+                        );
+                      }
+
+                      // State 2: Legacy provider (messagebird / nexmo)
+                      if (isLegacyProvider(provider)) {
+                        return (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontWeight: 700 }}>{provider}</span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  padding: '2px 8px',
+                                  borderRadius: 10,
+                                  background: '#fef3c7',
+                                  color: '#92400e',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⚠ {lang === 'es' ? 'Provider legacy' : 'Legacy provider'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                              {lang === 'es'
+                                ? 'Este proveedor no es soportado. Migra a Twilio, Telnyx, o Plivo.'
+                                : 'This provider is not supported. Migrate to Twilio, Telnyx, or Plivo.'}
+                            </div>
+                          </>
+                        );
+                      }
+
+                      // State 3: Supported provider configured
+                      const meta = SMS_PROVIDERS[provider as 'textbelt' | 'twilio' | 'telnyx' | 'plivo'];
+                      return (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>{meta?.name || provider}</span>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 8px',
+                                borderRadius: 10,
+                                background: '#d1fae5',
+                                color: '#065f46',
+                                fontWeight: 700,
+                              }}
+                            >
+                              ✓ {lang === 'es' ? 'Configurado' : 'Configured'}
+                            </span>
+                          </div>
+                          {meta && (
+                            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                              {lang === 'es' ? meta.tagline.es : meta.tagline.en}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <button
+                    onClick={() => setSmsWizardOpen(true)}
+                    className="btn"
+                    style={{ background: '#3b82f6', color: '#fff', fontWeight: 700 }}
+                  >
+                    {settings.smsProvider && settings.smsProvider !== 'none'
+                      ? lang === 'es'
+                        ? 'Cambiar / reconfigurar'
+                        : 'Change / reconfigure'
+                      : lang === 'es'
+                      ? 'Configurar SMS'
+                      : 'Configure SMS'}
+                  </button>
+                </div>
+
+                {/* Placeholder — R-SMS-WIZARD will render <SmsSetupWizard /> here */}
+                {smsWizardOpen && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 12,
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      color: '#92400e',
+                    }}
+                  >
+                    {lang === 'es'
+                      ? 'Wizard pendiente (R-SMS-WIZARD). Cierra este mensaje para continuar.'
+                      : 'Wizard pending (R-SMS-WIZARD). Dismiss to continue.'}
+                    <button
+                      onClick={() => setSmsWizardOpen(false)}
+                      style={{
+                        marginLeft: 8,
+                        background: 'none',
+                        border: 'none',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        color: '#92400e',
+                      }}
+                    >
+                      {lang === 'es' ? 'Cerrar' : 'Dismiss'}
+                    </button>
+                  </div>
+                )}
               </div>
+
               {settings.smsProvider !== 'none' && (
                 <>
-                  <Field settings={settings} update={update} label="API Key" settingsKey="smsApiKey" type="password" />
                   <Field settings={settings} update={update} label="API Secret" settingsKey="smsApiSecret" type="password" />
                   <Field settings={settings} update={update} label="From Number" settingsKey="smsFromNumber" placeholder="+1XXXXXXXXXX" />
                   <div className="border-t border-white/10 pt-4 space-y-2">
