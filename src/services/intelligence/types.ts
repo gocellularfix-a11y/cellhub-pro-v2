@@ -154,3 +154,45 @@ export interface CacheEntry<T> {
   data: T;
   expiresAt: number;
 }
+
+// R-INTEL-CUSTOMER-HISTORY: per-customer rollup for the lookup card
+// + future chat "historial de X" intent. Composes computeCustomerProfit
+// (src/utils/customerProfit.ts) with first/last visit, top items,
+// preferred payment, and linked-entity counts.
+export interface CustomerHistorySummary {
+  customer: {
+    id: string;
+    name: string;
+    phone?: string;
+    customerNumber?: string;
+    loyaltyPoints: number;
+    storeCredit: number;            // cents
+    carrier?: string;
+  };
+  // Financial rollup (from customerProfit helper) — all cents.
+  grossRevenue: number;
+  netRevenue: number;
+  totalRefunded: number;
+  profit: number;
+  margin: number;                   // percentage, e.g. 23.5
+  avgTicket: number;                // cents
+  visitCount: number;
+  avgDaysBetweenVisits: number | null;
+  costCoverage: number;             // 0..1 — fraction of sales with known cost
+  topCategoryByProfit: string | null;
+  topCategoryProfit: number;        // cents
+
+  firstVisit: Date | null;
+  lastVisit: Date | null;
+  topItems: Array<{ name: string; quantity: number; revenue: number }>;
+  preferredPaymentMethod: string | null;
+
+  linkedEntities: {
+    repairCount: number;
+    repairTotalValue: number;       // cents
+    specialOrderCount: number;
+    unlockCount: number;
+    layawayCount: number;
+    activeBalance: number;          // cents — sum of outstanding balances
+  };
+}

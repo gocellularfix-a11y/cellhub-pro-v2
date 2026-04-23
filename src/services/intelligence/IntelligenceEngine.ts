@@ -1,6 +1,7 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow } from './types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary } from './types';
+import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -51,12 +52,30 @@ const DEFAULT_CONFIG: EngineConfig = {
   cacheTimeoutMinutes: 15,
 };
 
+// Optional extras for features that cross the analyzer boundary
+// (e.g. per-customer rollups that need SpecialOrders/Unlocks/Layaways/Returns).
+// All default to [] so existing callers don't need changes.
+export interface EngineExtras {
+  specialOrders?: SpecialOrder[];
+  unlocks?: Unlock[];
+  layaways?: Layaway[];
+  customerReturns?: CustomerReturn[];
+}
+
 export class IntelligenceEngine {
   private sales: Sale[];
   private customers: Customer[];
   private inventory: InventoryItem[];
   private repairs: Repair[];
   private config: EngineConfig;
+
+  // R-INTEL-CUSTOMER-HISTORY: raw extras (no schema adapter) for
+  // per-customer rollups. These modules don't feed the main analyzers
+  // so they skip the adapter pipeline.
+  private specialOrders: SpecialOrder[];
+  private unlocks: Unlock[];
+  private layaways: Layaway[];
+  private customerReturns: CustomerReturn[];
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -77,7 +96,8 @@ export class IntelligenceEngine {
     customers: Customer[],
     inventory: InventoryItem[],
     repairs: Repair[],
-    config: Partial<EngineConfig> = {}
+    config: Partial<EngineConfig> = {},
+    extras: EngineExtras = {}
   ) {
     // Schema Adapter: normalize legacy/mixed production data to canonical v2
     // schema expected by the analyzers. See adapters/schemaAdapter.ts for
@@ -91,6 +111,11 @@ export class IntelligenceEngine {
     this.customers = adaptCustomer(customers as unknown as unknown[]);
     this.repairs = adaptRepair(repairs as unknown as unknown[]);
     this.config = { ...DEFAULT_CONFIG, ...config };
+
+    this.specialOrders = extras.specialOrders ?? [];
+    this.unlocks = extras.unlocks ?? [];
+    this.layaways = extras.layaways ?? [];
+    this.customerReturns = extras.customerReturns ?? [];
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -352,5 +377,115 @@ export class IntelligenceEngine {
 
   refresh(): EngineResult {
     return this.analyze();
+  }
+
+  // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer
+  // boundaries (combines sales/repairs/SOs/unlocks/layaways/returns)
+  // so lives on the engine rather than in any single analyzer.
+  //
+  // Returns null if the customer isn't found. Callers should handle the
+  // null case (e.g. disambiguate via fuzzy search before calling).
+  getCustomerHistory(customerId: string): CustomerHistorySummary | null {
+    const customer = this.customers.find(c => c.id === customerId);
+    if (!customer) return null;
+
+    const customerSales = this.sales.filter(s => s.customerId === customerId);
+
+    // Returns linked by customerId (if stored) or via originalSaleId fallback.
+    const saleIds = new Set(customerSales.map(s => s.id));
+    const returnsForCustomer = this.customerReturns.filter((r) => {
+      if ((r as { customerId?: string }).customerId === customerId) return true;
+      return r.originalSaleId ? saleIds.has(r.originalSaleId) : false;
+    });
+
+    const stats = computeCustomerProfit(customerSales, returnsForCustomer);
+
+    // First / last visit — min/max over non-voided sale timestamps.
+    const times = customerSales
+      .filter(s => s.status !== 'voided')
+      .map(s => new Date(s.createdAt as string).getTime())
+      .filter(t => !Number.isNaN(t))
+      .sort((a, b) => a - b);
+    const firstVisit = times.length > 0 ? new Date(times[0]) : null;
+    const lastVisit = times.length > 0 ? new Date(times[times.length - 1]) : null;
+
+    // Top items by revenue (top 5).
+    const itemMap: Record<string, { quantity: number; revenue: number }> = {};
+    for (const sale of customerSales) {
+      if (sale.status === 'voided') continue;
+      for (const item of sale.items || []) {
+        const key = item.name || 'Unknown';
+        itemMap[key] = {
+          quantity: (itemMap[key]?.quantity || 0) + (item.qty || 0),
+          revenue: (itemMap[key]?.revenue || 0) + ((item.price || 0) * (item.qty || 0)),
+        };
+      }
+    }
+    const topItems = Object.entries(itemMap)
+      .map(([name, d]) => ({ name, quantity: d.quantity, revenue: d.revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    // Preferred payment method — most frequent across non-voided sales.
+    const paymentCount: Record<string, number> = {};
+    for (const sale of customerSales) {
+      if (sale.status === 'voided') continue;
+      const pm = String(sale.paymentMethod || '').toLowerCase();
+      if (!pm) continue;
+      paymentCount[pm] = (paymentCount[pm] || 0) + 1;
+    }
+    const preferredPaymentMethod = Object.entries(paymentCount)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    // Linked entities — counts + active balance across all deposit modules.
+    const customerRepairs = this.repairs.filter(r => r.customerId === customerId);
+    const customerSOs = this.specialOrders.filter(o => o.customerId === customerId);
+    const customerUnlocks = this.unlocks.filter(u => u.customerId === customerId);
+    const customerLayaways = this.layaways.filter(l => l.customerId === customerId);
+
+    const repairTotalValue = customerRepairs.reduce(
+      (s, r) => s + (r.total || r.estimatedCost || 0),
+      0,
+    );
+    const activeBalance =
+      customerRepairs.reduce((s, r) => s + (r.balance || 0), 0) +
+      customerSOs.reduce((s, o) => s + (o.balance || 0), 0) +
+      customerUnlocks.reduce((s, u) => s + (u.balance || 0), 0) +
+      customerLayaways.reduce((s, l) => s + (l.balance || 0), 0);
+
+    return {
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        customerNumber: (customer as { customerNumber?: string }).customerNumber,
+        loyaltyPoints: customer.loyaltyPoints || 0,
+        storeCredit: customer.storeCredit || 0,
+        carrier: (customer as { carrier?: string }).carrier,
+      },
+      grossRevenue: stats.grossRevenue,
+      netRevenue: stats.netRevenue,
+      totalRefunded: stats.totalRefunded,
+      profit: stats.profit,
+      margin: stats.margin,
+      avgTicket: stats.avgTicket,
+      visitCount: stats.visitCount,
+      avgDaysBetweenVisits: stats.avgDaysBetweenVisits,
+      costCoverage: stats.costCoverage,
+      topCategoryByProfit: stats.topCategoryByProfit as string | null,
+      topCategoryProfit: stats.topCategoryProfit,
+      firstVisit,
+      lastVisit,
+      topItems,
+      preferredPaymentMethod,
+      linkedEntities: {
+        repairCount: customerRepairs.length,
+        repairTotalValue,
+        specialOrderCount: customerSOs.length,
+        unlockCount: customerUnlocks.length,
+        layawayCount: customerLayaways.length,
+        activeBalance,
+      },
+    };
   }
 }
