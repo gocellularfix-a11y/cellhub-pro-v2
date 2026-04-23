@@ -10,6 +10,7 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { openPrintWindow } from '@/hooks/usePrint';
 import { loadLocal, saveLocal } from '@/services/storage';
+import { escHtml } from '@/utils/escHtml';
 
 interface RMACompany {
   id: number;
@@ -111,8 +112,10 @@ export default function RMALabelModal({ open, onClose }: Props) {
       return;
     }
 
-    // Generate 4×6 label HTML for each entry
-    const senderAddr = `${settings.storeName || 'GO CELLULAR'}\n${settings.storeAddress || '516 N MILPAS ST'}\nSANTA BARBARA CA 93103`;
+    // Generate 4×6 label HTML for each entry.
+    // escHtml on settings + user fields prevents injected markup from
+    // breaking label structure or executing in the print window.
+    const senderAddr = `${escHtml(settings.storeName || 'GO CELLULAR')}\n${escHtml(settings.storeAddress || '516 N MILPAS ST')}\nSANTA BARBARA CA 93103`;
 
     const labelsHtml = validEntries.map((entry) => `
       <div class="label" style="width:4in;height:6in;border:2px solid #000;padding:0.3in;box-sizing:border-box;page-break-after:always;display:flex;flex-direction:column;justify-content:space-between;font-family:Arial,sans-serif;">
@@ -123,18 +126,18 @@ export default function RMALabelModal({ open, onClose }: Props) {
         <div style="border-top:2px solid #000;padding-top:0.2in;margin-top:0.15in;">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#666;margin-bottom:0.1in;">TO:</div>
           <div style="font-size:16px;font-weight:800;line-height:1.4;">
-            ${recipientName.toUpperCase()}<br/>
-            ${recipientAddress.toUpperCase()}<br/>
-            ${recipientCity.toUpperCase()}, ${recipientState.toUpperCase()} ${recipientZip}
+            ${escHtml(recipientName.toUpperCase())}<br/>
+            ${escHtml(recipientAddress.toUpperCase())}<br/>
+            ${escHtml(recipientCity.toUpperCase())}, ${escHtml(recipientState.toUpperCase())} ${escHtml(recipientZip)}
           </div>
         </div>
         <div style="border-top:2px dashed #000;padding-top:0.15in;margin-top:0.15in;display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;">RMA #:</div>
-            <div style="font-size:20px;font-weight:900;font-family:monospace;">${entry.rmaNumber}</div>
-            ${entry.notes ? `<div style="font-size:11px;color:#666;margin-top:0.05in;">${entry.notes}</div>` : ''}
+            <div style="font-size:20px;font-weight:900;font-family:monospace;">${escHtml(entry.rmaNumber)}</div>
+            ${entry.notes ? `<div style="font-size:11px;color:#666;margin-top:0.05in;">${escHtml(entry.notes)}</div>` : ''}
           </div>
-          ${entry.qrCode ? `<img src="${entry.qrCode}" style="width:1.2in;height:1.2in;object-fit:contain;border:1px solid #ccc;" />` : ''}
+          ${entry.qrCode ? `<img src="${escHtml(entry.qrCode)}" style="width:1.2in;height:1.2in;object-fit:contain;border:1px solid #ccc;" />` : ''}
         </div>
       </div>
     `).join('');

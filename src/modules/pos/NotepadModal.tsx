@@ -9,6 +9,7 @@ import { getLabels } from '@/config/i18n';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { usePrint } from '@/hooks/usePrint';
+import { escHtml } from '@/utils/escHtml';
 
 interface NotepadImage {
   id: number;
@@ -107,11 +108,11 @@ export default function NotepadModal({ open, onClose }: Props) {
         img { max-width: 100%; height: auto; display: block; margin: 0 auto; page-break-inside: avoid; }
       </style></head><body>
       <div class="header">
-        <h2>${settings.storeName || 'GO CELLULAR'}</h2>
-        <div>${settings.storeAddress || ''}</div>
-        ${settings.storePhone ? `<div>${settings.storePhone}</div>` : ''}
+        <h2>${escHtml(settings.storeName || 'GO CELLULAR')}</h2>
+        <div>${escHtml(settings.storeAddress || '')}</div>
+        ${settings.storePhone ? `<div>${escHtml(settings.storePhone)}</div>` : ''}
       </div>
-      ${text.trim() ? `<pre>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>` : ''}
+      ${text.trim() ? `<pre>${escHtml(text)}</pre>` : ''}
       ${imagesHtml}
     </body></html>`;
 

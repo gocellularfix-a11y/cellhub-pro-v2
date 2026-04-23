@@ -7,6 +7,8 @@
 
 import { useState } from 'react';
 import { generateId } from '@/utils/dates';
+import { formatCurrency, toCents } from '@/utils/currency';
+import { forwardTaxFromBase } from '@/utils/depositTax';
 import type { CartItem } from '@/store/types';
 
 interface QuickServicePanelProps {
@@ -31,10 +33,13 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
   const [taxable, setTaxable] = useState(false);
   const [description, setDescription] = useState('');
 
+  // Single source of truth for amount/tax math — matches cart behavior so the
+  // preview total below can never diverge from what POS will charge.
+  const subtotalCents = toCents(amount);
+  const fwd = forwardTaxFromBase(subtotalCents, taxRate, taxable);
+
   const handleAddToCart = () => {
-    const dollars = parseFloat(amount);
-    if (!dollars || dollars <= 0 || !selected) return;
-    const cents = Math.round(dollars * 100);
+    if (subtotalCents <= 0 || !selected) return;
     const cfg = SERVICE_CONFIG[selected];
     const label = es ? cfg.es : cfg.en;
 
@@ -42,7 +47,7 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
       id: generateId(),
       name: `${cfg.emoji} ${label}${description.trim() ? ` — ${description.trim()}` : ''}`,
       category: 'service',
-      price: cents,
+      price: subtotalCents,
       qty: 1,
       taxable,
       cbeEligible: false,
@@ -201,15 +206,15 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
             <label htmlFor="quick-service-tax" style={{ fontSize: '0.85rem', color: '#cbd5e1', cursor: 'pointer', flex: 1 }}>
               {es ? `Cobrar impuesto (${(taxRate * 100).toFixed(2)}%)` : `Charge sales tax (${(taxRate * 100).toFixed(2)}%)`}
             </label>
-            {taxable && parseFloat(amount) > 0 && (
+            {taxable && subtotalCents > 0 && (
               <span style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 600 }}>
-                +${(parseFloat(amount) * taxRate).toFixed(2)}
+                +{formatCurrency(fwd.taxCents)}
               </span>
             )}
           </div>
 
           {/* Total preview + Add to cart button */}
-          {parseFloat(amount) > 0 && (
+          {subtotalCents > 0 && (
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -224,24 +229,21 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
                 {es ? 'Total:' : 'Total:'}
               </span>
               <span style={{ color: '#10b981', fontSize: '1.25rem', fontWeight: 800 }}>
-                ${taxable
-                  ? (parseFloat(amount) * (1 + taxRate)).toFixed(2)
-                  : parseFloat(amount).toFixed(2)
-                }
+                {formatCurrency(fwd.totalCents)}
               </span>
             </div>
           )}
 
           <button
             onClick={handleAddToCart}
-            disabled={!parseFloat(amount) || parseFloat(amount) <= 0}
+            disabled={subtotalCents <= 0}
             className="btn btn-primary"
             style={{
               width: '100%',
               padding: '0.85rem',
               fontSize: '1rem',
               fontWeight: 700,
-              opacity: (!parseFloat(amount) || parseFloat(amount) <= 0) ? 0.4 : 1,
+              opacity: subtotalCents <= 0 ? 0.4 : 1,
             }}
           >
             🛒 {es ? 'Agregar al Carrito' : 'Add to Cart'}

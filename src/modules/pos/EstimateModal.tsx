@@ -6,7 +6,9 @@
 import { useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { getLabels } from '@/config/i18n';
-import { formatCurrency } from '@/utils/currency';
+import { formatCurrency, toCents } from '@/utils/currency';
+import { forwardTaxFromBase } from '@/utils/depositTax';
+import { escHtml } from '@/utils/escHtml';
 import { Modal } from '@/components/ui';
 import { usePrint } from '@/hooks/usePrint';
 
@@ -35,19 +37,14 @@ export default function EstimateModal({ open, onClose }: Props) {
     onClose();
   };
 
-  const subtotal = parseFloat(amount) || 0;
+  const subtotalCents = toCents(amount);
   const taxRate = settings.taxRate ?? 0.0925;
   const taxRatePercent = (taxRate * 100).toFixed(2);
-  const taxAmount = taxable ? subtotal * taxRate : 0;
-  const total = subtotal + taxAmount;
+  const fwd = forwardTaxFromBase(subtotalCents, taxRate, taxable);
 
   const handlePrint = () => {
     if (!description.trim()) return;
-    if (subtotal <= 0) return;
-
-    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c] as string));
+    if (subtotalCents <= 0) return;
 
     const now = new Date();
     const receiptNum = `EST-${now.toISOString().slice(2, 10).replace(/-/g, '')}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -66,21 +63,21 @@ export default function EstimateModal({ open, onClose }: Props) {
       .footer { text-align: center; margin-top: 0.2in; font-size: 12px; }
     </style></head><body>
       <div class="header">
-        <h2>${settings.storeName || 'GO CELLULAR'}</h2>
-        <div>${settings.storeAddress || ''}</div>
-        ${settings.storePhone ? `<div>${settings.storePhone}</div>` : ''}
+        <h2>${escHtml(settings.storeName || 'GO CELLULAR')}</h2>
+        <div>${escHtml(settings.storeAddress || '')}</div>
+        ${settings.storePhone ? `<div>${escHtml(settings.storePhone)}</div>` : ''}
       </div>
       <div class="row" style="font-size:16px;font-weight:700;justify-content:center"><span>*** ${es ? 'ESTIMADO' : 'ESTIMATE'} ***</span></div>
-      <div class="row"><span>${es ? 'ESTIMADO' : 'ESTIMATE'} #:</span><span>${receiptNum}</span></div>
+      <div class="row"><span>${es ? 'ESTIMADO' : 'ESTIMATE'} #:</span><span>${escHtml(receiptNum)}</span></div>
       <div class="row"><span>${es ? 'FECHA' : 'DATE'}:</span><span>${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
       <div class="line"></div>
-      <div class="row"><span style="flex:1">${esc(description)}</span></div>
-      ${notes ? `<div class="row" style="font-size:12px;color:#666"><span>${esc(notes)}</span></div>` : ''}
+      <div class="row"><span style="flex:1">${escHtml(description)}</span></div>
+      ${notes ? `<div class="row" style="font-size:12px;color:#666"><span>${escHtml(notes)}</span></div>` : ''}
       <div class="line"></div>
-      <div class="row"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
-      ${taxable ? `<div class="row"><span>Tax (${taxRatePercent}%):</span><span>$${taxAmount.toFixed(2)}</span></div>` : ''}
+      <div class="row"><span>Subtotal:</span><span>${formatCurrency(fwd.baseCents)}</span></div>
+      ${taxable ? `<div class="row"><span>Tax (${taxRatePercent}%):</span><span>${formatCurrency(fwd.taxCents)}</span></div>` : ''}
       <div class="line"></div>
-      <div class="row total"><span>TOTAL:</span><span>$${total.toFixed(2)}</span></div>
+      <div class="row total"><span>TOTAL:</span><span>${formatCurrency(fwd.totalCents)}</span></div>
       <div class="footer">
         <div class="line"></div>
         <div style="font-size:14px;font-weight:700;margin:0.1in 0">*** ${es ? 'ESTIMADO - NO ES RECIBO' : 'ESTIMATE - NOT A RECEIPT'} ***</div>
@@ -174,19 +171,19 @@ export default function EstimateModal({ open, onClose }: Props) {
       </div>
 
       {/* Total Preview */}
-      {subtotal > 0 && (
+      {subtotalCents > 0 && (
         <div style={{
           background: 'rgba(59, 130, 246, 0.08)', borderRadius: '1rem',
           padding: '1.25rem', marginBottom: '1rem',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
             <span style={{ color: '#94a3b8' }}>Subtotal:</span>
-            <span style={{ fontWeight: 600 }}>{formatCurrency(subtotal * 100)}</span>
+            <span style={{ fontWeight: 600 }}>{formatCurrency(fwd.baseCents)}</span>
           </div>
           {taxable && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
               <span style={{ color: '#94a3b8' }}>Tax ({taxRatePercent}%):</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(taxAmount * 100)}</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fwd.taxCents)}</span>
             </div>
           )}
           <div style={{
@@ -194,7 +191,7 @@ export default function EstimateModal({ open, onClose }: Props) {
             marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between',
           }}>
             <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#60a5fa' }}>TOTAL:</span>
-            <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(total * 100)}</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(fwd.totalCents)}</span>
           </div>
         </div>
       )}
@@ -208,7 +205,7 @@ export default function EstimateModal({ open, onClose }: Props) {
           onClick={handlePrint}
           className="btn btn-primary"
           style={{ flex: 1 }}
-          disabled={!description.trim() || subtotal <= 0}
+          disabled={!description.trim() || subtotalCents <= 0}
         >
           🖨️ {es ? 'Imprimir Estimado' : 'Print Estimate'}
         </button>

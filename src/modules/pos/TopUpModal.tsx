@@ -8,6 +8,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { Modal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
+import { generateId } from '@/utils/dates';
 import { updateNickname } from '@/utils/topUpHistory';
 import CustomerPicker from '@/components/shared/CustomerPicker';
 import { persist } from '@/services/persist';
@@ -228,7 +229,7 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
       const amountDollars = parseFloat(line.amount);
       const priceCents = Math.round(amountDollars * 100);
       return {
-        id: `topup_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: generateId(),
         name: `${provider} ${es ? 'Recarga' : 'Top-Up'}`,
         category: 'top_up',
         price: priceCents,

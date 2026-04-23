@@ -35,6 +35,19 @@ import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 
+// Case-insensitive category predicates — single source of truth so bundle
+// suggestion, search icon, and category filter all agree on what counts as
+// a phone/accessory regardless of how inventory was entered (e.g. "Phone"
+// vs "phone" vs "PHONES").
+const isPhoneCategory = (i: InventoryItem): boolean => {
+  const c = (i.category || '').toLowerCase();
+  return c === 'phone' || c === 'phones';
+};
+const isAccessoryCategory = (i: InventoryItem): boolean => {
+  const c = (i.category || '').toLowerCase();
+  return c === 'accessory' || c === 'accessories';
+};
+
 export default function POSModule() {
   const {
     state: {
@@ -190,11 +203,9 @@ export default function POSModule() {
 
     // Built-in categories
     const cat = (i: InventoryItem) => (i.category || '').toLowerCase();
-    const isPhone = (c: string) => c === 'phone' || c === 'phones';
-    const isAccessory = (c: string) => c === 'accessory' || c === 'accessories';
     const catMap: Record<string, (item: InventoryItem) => boolean> = {
-      accessories: (i) => isAccessory(cat(i)) && i.qty > 0,
-      cellphones: (i) => isPhone(cat(i)) && i.qty > 0,
+      accessories: (i) => isAccessoryCategory(i) && i.qty > 0,
+      cellphones: (i) => isPhoneCategory(i) && i.qty > 0,
       services: (i) => cat(i) === 'service',
       international: (i) => cat(i) === 'top_up',
     };
@@ -286,10 +297,10 @@ export default function POSModule() {
         setCart(next);
 
         // Bundle suggestion — when a phone is added, suggest accessories
-        if (item.category === 'phone' || item.category === 'phones' || item.category === 'Phone' || item.category === 'Phones') {
+        if (isPhoneCategory(item)) {
           const suggestions = inventory.filter(
             (i) =>
-              (i.category === 'accessory' || i.category === 'accessories' || i.category === 'Accessory' || i.category === 'Accessories') &&
+              isAccessoryCategory(i) &&
               i.qty > 0 &&
               !currentCart.some((c) => c.inventoryId === i.id) &&
               i.id !== item.id,
@@ -908,8 +919,7 @@ export default function POSModule() {
                   >
                     <div className="w-16 h-16 rounded-full bg-brand-500/10 border border-brand-500/20
                                   flex items-center justify-center text-2xl mb-2">
-                      {(item.category === 'phone' || item.category === 'phones' || item.category === 'Phone' || item.category === 'Phones') ? '📱' :
-                       (item.category === 'accessory' || item.category === 'accessories' || item.category === 'Accessory' || item.category === 'Accessories') ? '🎧' : '📦'}
+                      {isPhoneCategory(item) ? '📱' : isAccessoryCategory(item) ? '🎧' : '📦'}
                     </div>
                     <p className="text-sm font-bold text-white mb-1 line-clamp-2">{item.name}</p>
                     <p className="text-base font-bold text-emerald-400">

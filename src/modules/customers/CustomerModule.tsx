@@ -11,6 +11,7 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { computeCustomerProfit } from '@/utils/customerProfit';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
@@ -1141,19 +1142,24 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   settings: any;
 }) {
   const es = lang === 'es';
-  const grossSpent       = sales.reduce((s, x) => s + (x.total || 0), 0);
-  // NOTE: returns live in localStorage as dollars; sales live in store as cents.
-  // Convert refund amounts to cents before subtracting so the math is consistent.
-  // Round 18 fix: real field is `r.total` (verified vs ReturnsModule.tsx schema).
-  // Old code read `r.refundAmount || r.amount` which never existed → totalRefundedCents
-  // was always 0 → totalSpent ignored all refunds.
-  const totalRefundedCents = returns.reduce((s, r: any) => {
-    const amt = r.total || 0;
-    return s + Math.round(amt * 100);
-  }, 0);
-  const totalSpent       = Math.max(0, grossSpent - totalRefundedCents);
+  // Profit analytics — delegates refund math + per-line (price-cost)*qty
+  // aggregation to the pure helper. See src/utils/customerProfit.ts.
+  const stats = useMemo(
+    () => computeCustomerProfit(sales, returns),
+    [sales, returns],
+  );
+  const totalSpent = stats.netRevenue;
+
+  // PRESERVE: this multi-entity transaction counter aggregates across
+  // 7 different domains and must NOT be moved into the helper.
   const totalTransactions = sales.length + repairs.length + layaways.length +
     unlocks.length + specialOrders.length + returns.length + appointments.length;
+
+  // Category display label — titlecase enum key (e.g. "accessory" → "Accessory")
+  const categoryLabel = stats.topCategoryByProfit
+    ? stats.topCategoryByProfit.charAt(0).toUpperCase() + stats.topCategoryByProfit.slice(1)
+    : '—';
+  const coveragePct = Math.round(stats.costCoverage * 100);
 
   const Badge = ({ status }: { status: string }) => {
     const cls = ['complete','completed','ready','picked_up'].includes((status||'').toLowerCase())
@@ -1178,21 +1184,65 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
     <Modal open onClose={onClose} title={`📋 ${customer.name}`} size="max-w-2xl">
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
 
-        {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Summary stats — primary row */}
+        <div className="grid grid-cols-4 gap-2">
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Total Gastado' : 'Total Spent'}</p>
+            <p className="text-xs text-slate-400">{es ? 'Ingresos' : 'Revenue'}</p>
             <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalSpent)}</p>
           </div>
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Crédito en Tienda' : 'Store Credit'}</p>
-            <p className="text-lg font-bold text-blue-400">{formatCurrency(customer.storeCredit || 0)}</p>
+          <div
+            className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30 p-3 text-center"
+            title={coveragePct < 100
+              ? (es
+                  ? `Solo ${coveragePct}% de las ventas tienen costo registrado — ganancia real puede ser mayor`
+                  : `Only ${coveragePct}% of sales have cost data — actual profit may be higher`)
+              : undefined}
+          >
+            <p className="text-xs text-emerald-300">
+              {es ? 'Ganancia' : 'Profit'}
+              {coveragePct < 100 && <span className="ml-1 text-amber-400">*</span>}
+            </p>
+            <p className="text-lg font-bold text-emerald-300">{formatCurrency(stats.profit)}</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Total Transacciones' : 'Total Transactions'}</p>
+            <p className="text-xs text-slate-400">{es ? 'Margen' : 'Margin'}</p>
+            <p className="text-lg font-bold text-white">{stats.margin.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 text-center">
+            <p className="text-xs text-slate-400">{es ? 'Crédito' : 'Store Credit'}</p>
+            <p className="text-lg font-bold text-blue-400">{formatCurrency(customer.storeCredit || 0)}</p>
+          </div>
+        </div>
+
+        {/* Summary stats — analytics row */}
+        <div className="grid grid-cols-4 gap-2">
+          <div className="rounded-lg bg-white/5 p-3 text-center">
+            <p className="text-xs text-slate-400">{es ? 'Ticket Promedio' : 'Avg Ticket'}</p>
+            <p className="text-lg font-bold text-white">{formatCurrency(stats.avgTicket)}</p>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 text-center">
+            <p className="text-xs text-slate-400">{es ? 'Vuelve cada' : 'Returns every'}</p>
+            <p className="text-lg font-bold text-white">
+              {stats.avgDaysBetweenVisits !== null ? `${stats.avgDaysBetweenVisits}d` : '—'}
+            </p>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 text-center">
+            <p className="text-xs text-slate-400">{es ? 'Top Categoría' : 'Top Category'}</p>
+            <p className="text-lg font-bold text-white truncate" title={categoryLabel}>{categoryLabel}</p>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 text-center">
+            <p className="text-xs text-slate-400">{es ? 'Transacciones' : 'Transactions'}</p>
             <p className="text-lg font-bold text-white">{totalTransactions}</p>
           </div>
         </div>
+
+        {coveragePct < 100 && stats.visitCount > 0 && (
+          <div className="text-xs text-amber-400/80 text-center -mt-2">
+            {es
+              ? `* Ganancia calculada sobre ${coveragePct}% de ventas con costo registrado`
+              : `* Profit calculated from ${coveragePct}% of sales with cost data`}
+          </div>
+        )}
 
         {/* 💰 Sales */}
         <Section title={`💰 ${es ? 'Ventas' : 'Sales'}`} count={sales.length}>

@@ -647,9 +647,10 @@ export default function PhonePaymentModal({
     return Math.round(baseCents * rate);
   }, [actCarrier, actPlanPrice, settings.carrierCommissions]);
 
-  // Phone validation: must be at least 10 digits (US format)
-  const actPhoneDigits = actPhone.replace(/\D/g, '');
-  const actPhoneValid = actPhoneDigits.length >= 10;
+  // Phone validation — DRY with isValidPhone helper (same rule used in bill
+  // payment boundaries 1-3). sanitizePhone truncates to 10 digits, so 11+
+  // digit input is accepted as before (first 10 kept).
+  const actPhoneValid = isValidPhone(actPhone);
 
   const canAddActivation =
     !!actCarrier &&

@@ -8,6 +8,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { Modal } from '@/components/ui';
 import { usePrint } from '@/hooks/usePrint';
+import { escHtml } from '@/utils/escHtml';
 
 interface Props {
   open: boolean;
@@ -79,7 +80,7 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
       </style></head><body><img src="${image}" /></body></html>`;
       printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
     } else if (mode === 'text' && text.trim()) {
-      const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const escaped = escHtml(text);
       const html = `<!DOCTYPE html><html><head><title>Label</title><style>
         @page { size: 4in 6in; margin: 0; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
