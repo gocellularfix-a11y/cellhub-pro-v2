@@ -14,14 +14,14 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import JsBarcode from 'jsbarcode';
-import type { InventoryItem, Sale } from '@/store/types';
+import type { InventoryItem, Sale, PurchaseOrder } from '@/store/types';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
 
 export default function InventoryModule() {
   const {
-    state: { inventory, sales, settings, lang, cart, inventorySearchTerm },
+    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders },
     setInventory, setCart, dispatch,
   } = useApp();
 
@@ -496,6 +496,7 @@ export default function InventoryModule() {
           categories={categories.filter((c) => c !== 'All')}
           allInventory={inventory}
           allSales={sales}
+          allPurchaseOrders={purchaseOrders}
           fieldConfig={fieldConfig}
           onAddCategory={(newCat) => {
             toast(
@@ -549,6 +550,7 @@ function InventoryFormModal({
   categories,
   allInventory,
   allSales,
+  allPurchaseOrders,
   fieldConfig,
   onAddCategory,
   onSave,
@@ -561,6 +563,7 @@ function InventoryFormModal({
   categories: string[];
   allInventory: InventoryItem[];
   allSales: Sale[];
+  allPurchaseOrders: PurchaseOrder[];
   fieldConfig: import('@/store/types').InventoryFieldConfig;
   onAddCategory: (newCat: string) => void;
   onSave: (data: Partial<InventoryItem>, opts?: { skipMerge?: boolean }) => void;
@@ -683,6 +686,46 @@ function InventoryFormModal({
     matches.sort((a, b) => b.date.localeCompare(a.date));
     return matches.slice(0, 8);
   }, [form.name, allSales, es]);
+
+  // ── Purchase History from POs (v1 parity) ─────────────
+  // "Cuánto pagué la última vez que metí este modelo" — cross-references
+  // POItem.name with what the user is typing. Uses receivedAt when available
+  // (actual reception date), else createdAt. Unit cost from POItem.cost.
+  interface PurchaseHistoryEntry {
+    date: string;              // ISO
+    cost: number;              // cents — unit cost from vendor
+    qty: number;               // qtyReceived (or qtyOrdered if never received)
+    vendor: string;
+    poNumber: string;
+  }
+  const purchaseHistory: PurchaseHistoryEntry[] = useMemo(() => {
+    if (!form.name || form.name.trim().length < 3) return [];
+    const nameLower = form.name.trim().toLowerCase();
+    const matches: PurchaseHistoryEntry[] = [];
+    for (const po of allPurchaseOrders) {
+      if (!Array.isArray(po.items)) continue;
+      for (const poItem of po.items) {
+        if (!poItem.name) continue;
+        const itemLower = poItem.name.toLowerCase();
+        // Same forward-match rule as sales history for consistency.
+        if (itemLower.includes(nameLower)) {
+          const dateVal = po.receivedAt || po.createdAt;
+          const dateStr = typeof dateVal === 'string'
+            ? dateVal
+            : new Date(dateVal as unknown as string | Date).toISOString();
+          matches.push({
+            date: dateStr,
+            cost: poItem.cost || 0,
+            qty: poItem.qtyReceived || poItem.qtyOrdered || 0,
+            vendor: po.vendor || (es ? 'Proveedor' : 'Vendor'),
+            poNumber: po.poNumber || '',
+          });
+        }
+      }
+    }
+    matches.sort((a, b) => b.date.localeCompare(a.date));
+    return matches.slice(0, 8);
+  }, [form.name, allPurchaseOrders, es]);
 
   // ── Add Category inline ────────────────────────────────
   const [showAddCat, setShowAddCat] = useState(false);
@@ -934,7 +977,68 @@ function InventoryFormModal({
           )}
         </div>
 
-        {/* ── Price History panel ── */}
+        {/* ── Purchase History panel (v1 parity — what you PAID) ── */}
+        {purchaseHistory.length > 0 && (
+          <div style={{
+            background: 'rgba(251,146,60,0.07)',
+            border: '1px solid rgba(251,146,60,0.3)',
+            borderRadius: '0.5rem',
+            padding: '0.6rem 0.75rem',
+          }}>
+            <div style={{ fontSize: '0.72rem', color: '#fb923c', fontWeight: 700, marginBottom: '0.4rem' }}>
+              🛒 {es ? 'Historial de Compras' : 'Purchase History'} ({purchaseHistory.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '140px', overflowY: 'auto' }}>
+              {purchaseHistory.map((ph, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#cbd5e1', gap: '0.5rem' }}>
+                  <span style={{ color: '#64748b', minWidth: '5.5rem' }}>{ph.date.slice(0, 10)}</span>
+                  <span style={{ color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ph.vendor}{ph.poNumber ? ` · ${ph.poNumber}` : ''}
+                  </span>
+                  <span style={{ color: '#94a3b8', minWidth: '2.5rem', textAlign: 'right' }}>× {ph.qty}</span>
+                  <span style={{ fontWeight: 700, color: '#fdba74', minWidth: '4.5rem', textAlign: 'right' }}>{formatCurrency(ph.cost)}</span>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const costs = purchaseHistory.map((p) => p.cost);
+              const lastCost = purchaseHistory[0].cost;
+              const avg = costs.reduce((s, c) => s + c, 0) / costs.length;
+              const min = Math.min(...costs);
+              const max = Math.max(...costs);
+              return (
+                <>
+                  <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(251,146,60,0.25)', display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+                    <span style={{ color: '#64748b' }}>{es ? 'Último' : 'Last'}: <strong style={{ color: '#fdba74' }}>{formatCurrency(lastCost)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Prom' : 'Avg'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Mín' : 'Min'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Máx' : 'Max'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, cost: lastCost }))}
+                    style={{
+                      marginTop: '0.4rem',
+                      width: '100%',
+                      background: 'rgba(251,146,60,0.12)',
+                      border: '1px solid rgba(251,146,60,0.4)',
+                      color: '#fdba74',
+                      borderRadius: '0.4rem',
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    📋 {es ? `Usar último cost ${formatCurrency(lastCost)}` : `Use last cost ${formatCurrency(lastCost)}`}
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── Sales Price History panel ── */}
         {priceHistory.length > 0 && (
           <div style={{
             background: 'rgba(34,211,238,0.06)',
@@ -943,28 +1047,51 @@ function InventoryFormModal({
             padding: '0.6rem 0.75rem',
           }}>
             <div style={{ fontSize: '0.72rem', color: '#67e8f9', fontWeight: 700, marginBottom: '0.4rem' }}>
-              📊 {es ? 'Historial de Precios' : 'Price History'} ({priceHistory.length})
+              💰 {es ? 'Historial de Ventas' : 'Sales History'} ({priceHistory.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '140px', overflowY: 'auto' }}>
               {priceHistory.map((ph, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#cbd5e1' }}>
-                  <span style={{ color: '#64748b' }}>{ph.date.slice(0, 10)}</span>
-                  <span style={{ color: '#94a3b8', flex: 1, textAlign: 'center' }}>× {ph.qty}</span>
-                  <span style={{ fontWeight: 700, color: '#86efac' }}>{formatCurrency(ph.price)}</span>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#cbd5e1', gap: '0.5rem' }}>
+                  <span style={{ color: '#64748b', minWidth: '5.5rem' }}>{ph.date.slice(0, 10)}</span>
+                  <span style={{ color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ph.customerName}</span>
+                  <span style={{ color: '#94a3b8', minWidth: '2.5rem', textAlign: 'right' }}>× {ph.qty}</span>
+                  <span style={{ fontWeight: 700, color: '#86efac', minWidth: '4.5rem', textAlign: 'right' }}>{formatCurrency(ph.price)}</span>
                 </div>
               ))}
             </div>
             {(() => {
               const prices = priceHistory.map((p) => p.price);
+              const lastPrice = priceHistory[0].price;
               const avg = prices.reduce((s, p) => s + p, 0) / prices.length;
               const min = Math.min(...prices);
               const max = Math.max(...prices);
               return (
-                <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(34,211,238,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
-                  <span style={{ color: '#64748b' }}>{es ? 'Mín' : 'Min'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
-                  <span style={{ color: '#64748b' }}>{es ? 'Prom' : 'Avg'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
-                  <span style={{ color: '#64748b' }}>{es ? 'Máx' : 'Max'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
-                </div>
+                <>
+                  <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(34,211,238,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+                    <span style={{ color: '#64748b' }}>{es ? 'Último' : 'Last'}: <strong style={{ color: '#86efac' }}>{formatCurrency(lastPrice)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Prom' : 'Avg'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Mín' : 'Min'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{es ? 'Máx' : 'Max'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, price: lastPrice }))}
+                    style={{
+                      marginTop: '0.4rem',
+                      width: '100%',
+                      background: 'rgba(34,211,238,0.1)',
+                      border: '1px solid rgba(34,211,238,0.35)',
+                      color: '#86efac',
+                      borderRadius: '0.4rem',
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    📋 {es ? `Usar último precio ${formatCurrency(lastPrice)}` : `Use last price ${formatCurrency(lastPrice)}`}
+                  </button>
+                </>
               );
             })()}
           </div>
