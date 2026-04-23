@@ -18,6 +18,7 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
+import { escHtml } from '@/utils/escHtml';
 import type { Sale, StoreSettings, Customer } from '@/store/types';
 
 // r-batch-a (3a): JsBarcode and qrcode are now bundled via npm instead of
@@ -44,17 +45,6 @@ async function generateQrSvg(url: string): Promise<string> {
   } catch {
     return '';
   }
-}
-
-// Escape HTML to prevent XSS in printed receipt template string injection
-function escHtml(s: unknown): string {
-  if (s === null || s === undefined) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -99,6 +89,10 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   // R-PRINT-SMS-PARITY-F1: in-flight flag for the SMS button (disables +
   // dims while sendSms Promise is pending, prevents double-click).
   const [sending, setSending] = useState(false);
+  // Derived: SMS provider + API key must both be set to actually send.
+  // Button stays VISIBLE even when false (feature discovery) but goes
+  // disabled with a tooltip pointing to Settings.
+  const smsConfigured = settings.smsProvider !== 'none' && !!settings.smsApiKey;
 
   // ── Retroactive customer assignment state ─────────────────
   const [assignSearch, setAssignSearch] = useState('');
@@ -577,14 +571,12 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
         )}
         {/* R-PRINT-SMS-PARITY-F1: post-sale SMS send. Single entry point
             (replaces the pre-sale Cart checkbox — no double-send race).
-            Hidden (not disabled) when SMS not configured, consistent with
-            waEnabled=false pattern. */}
-        {settings.smsProvider !== 'none'
-          && settings.smsApiKey
-          && (sale?.customerPhone || assignedCustomer?.phone) && (
+            Always visible when a customer phone exists (feature discovery);
+            disabled with tooltip when SMS provider not configured. */}
+        {(sale?.customerPhone || assignedCustomer?.phone) && (
           <button
             onClick={async () => {
-              if (sending) return;
+              if (sending || !smsConfigured) return;
               const phone = sale?.customerPhone || assignedCustomer?.phone || '';
               const name = sale?.customerName || assignedCustomer?.name || '';
               const firstName = (name || '').split(' ')[0] || '';
@@ -612,14 +604,16 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                 setSending(false);
               }
             }}
-            disabled={sending}
+            disabled={!smsConfigured || sending}
+            title={!smsConfigured ? (es ? 'Configura SMS en Ajustes' : 'Configure SMS in Settings') : undefined}
             className="btn flex-1"
             style={{
               background: '#3b82f6',
               color: '#fff',
               fontWeight: 700,
               border: 'none',
-              opacity: sending ? 0.6 : 1,
+              opacity: (!smsConfigured || sending) ? 0.5 : 1,
+              cursor: !smsConfigured ? 'not-allowed' : 'pointer',
             }}
           >
             📱 {sending ? (es ? 'Enviando…' : 'Sending…') : 'SMS'}
