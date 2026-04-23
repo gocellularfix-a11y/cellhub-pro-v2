@@ -573,7 +573,15 @@ export default function ReportsModule() {
     // QPay, VidaPay, H2O) instead of by carrier brand. `numbers` uses Set
     // internally so repeated payments to the same phone don't inflate
     // the displayed list — we expose a unique count + sample.
-    const phonePaymentsByProvider: Record<string, { count: number; totalCents: number; numbers: Set<string> }> = {};
+    // profitCents accumulates per-line profit (revenue × commRate), so a
+    // single provider bucket can span multiple carriers with different
+    // commission rates — each line contributes its own correct profit.
+    const phonePaymentsByProvider: Record<string, {
+      count: number;
+      totalCents: number;
+      profitCents: number;
+      numbers: Set<string>;
+    }> = {};
     const activePortals = getActivePortals(settings);
     const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
 
@@ -657,9 +665,12 @@ export default function ReportsModule() {
           }
           if (!provider) provider = es ? '(Sin proveedor)' : '(No provider)';
 
-          if (!phonePaymentsByProvider[provider]) phonePaymentsByProvider[provider] = { count: 0, totalCents: 0, numbers: new Set() };
+          if (!phonePaymentsByProvider[provider]) {
+            phonePaymentsByProvider[provider] = { count: 0, totalCents: 0, profitCents: 0, numbers: new Set() };
+          }
           phonePaymentsByProvider[provider].count += qty;
           phonePaymentsByProvider[provider].totalCents += revenueCents;
+          phonePaymentsByProvider[provider].profitCents += profitCents;
           if (item.phoneNumber) phonePaymentsByProvider[provider].numbers.add(item.phoneNumber);
         } else if (kind === 'topup') {
           catName = 'Top-Ups';
@@ -1156,8 +1167,18 @@ export default function ReportsModule() {
     // formatCurrency output is safe (pure numeric), same for quantities and percentages.
     const ppRows = Object.entries(stats.phonePaymentsByProvider)
       .sort((a, b) => b[1].totalCents - a[1].totalCents)
-      .map(([c, d]) => `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td></tr>`)
+      .map(([c, d]) => {
+        const margin = d.totalCents > 0 ? (d.profitCents / d.totalCents) * 100 : 0;
+        return `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td><td>${formatCurrency(d.profitCents)}</td><td>${margin.toFixed(1)}%</td></tr>`;
+      })
       .join('');
+    const ppTotal = {
+      count: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.count, 0),
+      revenue: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.totalCents, 0),
+      profit: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.profitCents, 0),
+    };
+    const ppMargin = ppTotal.revenue > 0 ? (ppTotal.profit / ppTotal.revenue) * 100 : 0;
+    const ppTotalRow = `<tr class="total"><td>TOTAL</td><td>${ppTotal.count}</td><td>${formatCurrency(ppTotal.revenue)}</td><td>${formatCurrency(ppTotal.profit)}</td><td>${ppMargin.toFixed(1)}%</td></tr>`;
     const catRows = stats.categoriesByRevenue
       .map((c) => `<tr><td>${escHtml(c.name)}</td><td>${c.quantity}</td><td>${formatCurrency(c.revenueCents)}</td><td>${formatCurrency(c.profitCents)}</td><td>${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
       .join('');
@@ -1196,8 +1217,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
   <div><span style="color:#666">${es ? 'Tarjeta:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
 </div>
 <h2>${es ? 'Pagos por Proveedor' : 'Phone Payments by Provider'}</h2>
-<table><thead><tr><th>${es ? 'Proveedor' : 'Provider'}</th><th>${es ? 'Cant.' : 'Count'}</th><th>Total</th></tr></thead>
-<tbody>${ppRows}</tbody></table>
+<table><thead><tr><th>${es ? 'Proveedor' : 'Provider'}</th><th>${es ? 'Cant.' : 'Count'}</th><th>Total</th><th>${es ? 'Ganancia' : 'Profit'}</th><th>${es ? 'Margen' : 'Margin'}</th></tr></thead>
+<tbody>${ppRows}${ppTotalRow}</tbody></table>
 <h2>${es ? 'Ventas por Categoría' : 'Sales by Category'}</h2>
 <table><thead><tr><th>${es ? 'Categoría' : 'Category'}</th><th>Qty</th><th>${es ? 'Ingresos' : 'Revenue'}</th><th>${es ? 'Ganancia' : 'Profit'}</th><th>Margin</th></tr></thead>
 <tbody>${catRows}</tbody></table>
@@ -1248,6 +1269,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         provider,
         count: d.count,
         total: formatCurrency(d.totalCents),
+        profit: formatCurrency(d.profitCents),
+        marginPct: d.totalCents > 0 ? Number(((d.profitCents / d.totalCents) * 100).toFixed(2)) : 0,
         uniqueNumbers: d.numbers.size,
       })),
       employees: stats.topEmployees.map((e) => ({
@@ -1509,7 +1532,14 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    {[es ? 'Proveedor' : 'Provider', es ? 'Pagos' : 'Count', 'Total', es ? 'Números únicos' : 'Unique Numbers'].map((h) => (
+                    {[
+                      es ? 'Proveedor' : 'Provider',
+                      es ? 'Pagos' : 'Count',
+                      'Total',
+                      es ? 'Ganancia' : 'Profit',
+                      es ? 'Margen' : 'Margin',
+                      es ? 'Números únicos' : 'Unique Numbers',
+                    ].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
@@ -1521,11 +1551,20 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                       const uniqueNums = Array.from(d.numbers);
                       const preview = uniqueNums.slice(0, 5).join(', ');
                       const more = uniqueNums.length > 5 ? ` +${uniqueNums.length - 5}` : '';
+                      const marginPct = d.totalCents > 0
+                        ? (d.profitCents / d.totalCents) * 100
+                        : 0;
                       return (
                         <tr key={provider} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{provider}</td>
                           <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
                           <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
+                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: d.profitCents < 0 ? '#ef4444' : '#86efac' }}>
+                            {formatCurrency(d.profitCents)}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.75rem', color: marginPct >= 5 ? '#86efac' : marginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
+                            {marginPct.toFixed(1)}%
+                          </td>
                           <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
                             <span style={{ color: '#94a3b8', fontWeight: 700 }}>{uniqueNums.length}</span>
                             {uniqueNums.length > 0 && <span style={{ marginLeft: '0.5rem' }}>— {preview}{more}</span>}
@@ -1533,24 +1572,34 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                         </tr>
                       );
                     })}
-                  <tr style={{ borderTop: '2px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' }}>
-                    <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#fff' }}>TOTAL</td>
-                    <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#fff' }}>
-                      {Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.count, 0)}
-                    </td>
-                    <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#22c55e', fontSize: '0.95rem' }}>
-                      {formatCurrency(Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.totalCents, 0))}
-                    </td>
-                    <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>
-                      {(() => {
-                        const allUnique = new Set<string>();
-                        for (const d of Object.values(stats.phonePaymentsByProvider)) {
-                          for (const n of d.numbers) allUnique.add(n);
-                        }
-                        return `${allUnique.size} ${es ? 'únicos' : 'unique'}`;
-                      })()}
-                    </td>
-                  </tr>
+                  {(() => {
+                    const totalCount = Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.count, 0);
+                    const totalRevenue = Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.totalCents, 0);
+                    const totalProfit = Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.profitCents, 0);
+                    const totalMarginPct = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+                    const allUnique = new Set<string>();
+                    for (const d of Object.values(stats.phonePaymentsByProvider)) {
+                      for (const n of d.numbers) allUnique.add(n);
+                    }
+                    return (
+                      <tr style={{ borderTop: '2px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' }}>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#fff' }}>TOTAL</td>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#fff' }}>{totalCount}</td>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#22c55e', fontSize: '0.95rem' }}>
+                          {formatCurrency(totalRevenue)}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: totalProfit < 0 ? '#ef4444' : '#86efac', fontSize: '0.95rem' }}>
+                          {formatCurrency(totalProfit)}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: totalMarginPct >= 5 ? '#86efac' : totalMarginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
+                          {totalMarginPct.toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>
+                          {allUnique.size} {es ? 'únicos' : 'unique'}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
