@@ -16,6 +16,7 @@ import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
 import { SMS_PROVIDERS, isLegacyProvider, type SmsProviderId } from '@/services/smsProviders';
+import { SmsSetupWizard } from './SmsSetupWizard';
 
 const SECTIONS = [
   { id: 'store',       icon: '🏪',  label: 'Store Info' },
@@ -1359,36 +1360,16 @@ export default function SettingsModule() {
                   </button>
                 </div>
 
-                {/* Placeholder — R-SMS-WIZARD will render <SmsSetupWizard /> here */}
                 {smsWizardOpen && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 12,
-                      background: '#fffbeb',
-                      border: '1px solid #fde68a',
-                      borderRadius: 6,
-                      fontSize: 13,
-                      color: '#92400e',
+                  <SmsSetupWizard
+                    settings={settings}
+                    language={lang === 'es' ? 'es' : 'en'}
+                    onSave={(patch) => {
+                      setSettings(patch as any);
+                      persistSettings(patch as Record<string, unknown>);
                     }}
-                  >
-                    {lang === 'es'
-                      ? 'Wizard pendiente (R-SMS-WIZARD). Cierra este mensaje para continuar.'
-                      : 'Wizard pending (R-SMS-WIZARD). Dismiss to continue.'}
-                    <button
-                      onClick={() => setSmsWizardOpen(false)}
-                      style={{
-                        marginLeft: 8,
-                        background: 'none',
-                        border: 'none',
-                        textDecoration: 'underline',
-                        cursor: 'pointer',
-                        color: '#92400e',
-                      }}
-                    >
-                      {lang === 'es' ? 'Cerrar' : 'Dismiss'}
-                    </button>
-                  </div>
+                    onClose={() => setSmsWizardOpen(false)}
+                  />
                 )}
               </div>
 
