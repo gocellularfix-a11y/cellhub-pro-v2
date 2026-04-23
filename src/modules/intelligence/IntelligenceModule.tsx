@@ -13,6 +13,7 @@ import {
   summarizeCustomerHistory,
 } from '@/services/intelligence';
 import IntelligenceDashboard from '@/components/ui/IntelligenceDashboard';
+import IntelligenceChat from './IntelligenceChat';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 
@@ -86,6 +87,13 @@ export default function IntelligenceModule() {
 
   return (
     <div className="space-y-4">
+      {/* ── Chat (R-INTEL-CHAT-F5) ─────────────────────────── */}
+      <IntelligenceChat
+        engine={engine}
+        customers={customers}
+        lang={lang === 'es' ? 'es' : 'en'}
+      />
+
       {/* ── Customer Lookup Card (R-INTEL-CUSTOMER-HISTORY) ─── */}
       <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
         <div className="flex items-center justify-between mb-3">
