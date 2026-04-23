@@ -1,7 +1,8 @@
 // CellHub Intelligence — Financial Analyzer
 import type { Sale, Repair } from '@/store/types';
 import { Insight, FinancialMetrics } from '../types';
-import { getDaysAgo, getMonthBoundaries } from '../utils/dateHelpers';
+import { getDaysAgo } from '../utils/dateHelpers';
+import { standardDeviation, zScore } from '../utils/statistics';
 
 export interface ExpenseCategory {
   name: string;
@@ -176,6 +177,58 @@ export class FinancialAnalyzer {
     return result;
   }
 
+  // R-INTEL-SMARTER-F1: statistical anomaly detection on daily revenue.
+  // Computes mean + stdDev across the last N days, flags any day with
+  // |z-score| ≥ 2 (≈top/bottom 2.5% under normal). Useful for "weirdness
+  // detection" without hardcoded thresholds — adaptive per-shop baseline.
+  //
+  // Returns array sorted by absolute z-score (most anomalous first).
+  // Empty if fewer than 14 days of data or stdDev is zero (flat baseline).
+  getCashFlowAnomalies(windowDays: number = 30): Array<{
+    date: string;
+    revenue: number;
+    zScore: number;
+    baseline: number;
+  }> {
+    const salesFiltered = this.filterByStore(this.sales);
+
+    // Daily revenue map for last `windowDays` days.
+    const dailyRevenue: number[] = [];
+    const dayStrings: string[] = [];
+    for (let i = windowDays - 1; i >= 0; i--) {
+      const day = getDaysAgo(i);
+      const dayStr = day.toISOString().split('T')[0];
+      dayStrings.push(dayStr);
+      const daySales = salesFiltered.filter(s => {
+        if (s.status === 'voided') return false;
+        const d = new Date(s.createdAt as string);
+        return d.toISOString().split('T')[0] === dayStr;
+      });
+      dailyRevenue.push(daySales.reduce((sum, s) => sum + (s.total || 0), 0));
+    }
+
+    if (dailyRevenue.length < 14) return [];
+
+    const mean = dailyRevenue.reduce((a, b) => a + b, 0) / dailyRevenue.length;
+    const stdDev = standardDeviation(dailyRevenue);
+    if (stdDev === 0) return [];
+
+    const anomalies: Array<{ date: string; revenue: number; zScore: number; baseline: number }> = [];
+    for (let i = 0; i < dailyRevenue.length; i++) {
+      const z = zScore(dailyRevenue[i], mean, stdDev);
+      if (Math.abs(z) >= 2) {
+        anomalies.push({
+          date: dayStrings[i],
+          revenue: dailyRevenue[i],
+          zScore: z,
+          baseline: Math.round(mean),
+        });
+      }
+    }
+
+    return anomalies.sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore));
+  }
+
   generateInsights(window?: { start: Date; end: Date }): Insight[] {
     const insights: Insight[] = [];
     const metrics = this.getMetrics(window);
@@ -254,6 +307,44 @@ export class FinancialAnalyzer {
         confidence: 0.95,
         generatedAt: new Date(),
         expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      });
+    }
+
+    // R-INTEL-SMARTER-F1: cash-flow anomaly insights.
+    // Surfaces up to 3 most-anomalous days (|z| ≥ 2) from last 30 days.
+    // "Shop talks back" — tells you when you had an unusually good/bad day
+    // relative to YOUR OWN baseline (not a hardcoded threshold).
+    const anomalies = this.getCashFlowAnomalies(30);
+    for (const a of anomalies.slice(0, 3)) {
+      const positive = a.zScore > 0;
+      const revenueDollars = (a.revenue / 100).toFixed(2);
+      const baselineDollars = (a.baseline / 100).toFixed(2);
+      const zAbs = Math.abs(a.zScore).toFixed(1);
+      const d = new Date(a.date);
+      const dayLabel = d.toLocaleDateString(this.lang === 'es' ? 'es-MX' : 'en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
+
+      insights.push({
+        id: `financial-anomaly-${a.date}`,
+        category: 'financial',
+        severity: positive ? 'info' : 'warning',
+        title: positive ? 'Unusually Strong Day' : 'Unusually Weak Day',
+        titleEs: positive ? 'Día Inusualmente Fuerte' : 'Día Inusualmente Débil',
+        description: positive
+          ? `${dayLabel}: $${revenueDollars} — ${zAbs}σ above your $${baselineDollars} daily baseline.`
+          : `${dayLabel}: $${revenueDollars} — ${zAbs}σ below your $${baselineDollars} daily baseline.`,
+        descriptionEs: positive
+          ? `${dayLabel}: $${revenueDollars} — ${zAbs}σ sobre tu baseline diario de $${baselineDollars}.`
+          : `${dayLabel}: $${revenueDollars} — ${zAbs}σ bajo tu baseline diario de $${baselineDollars}.`,
+        metric: a.revenue,
+        metricLabel: this.lang === 'es' ? 'Ingresos del día' : 'Day revenue',
+        trend: positive ? 'up' : 'down',
+        trendPercent: a.baseline > 0 ? ((a.revenue - a.baseline) / a.baseline) * 100 : 0,
+        confidence: Math.min(0.95, Math.abs(a.zScore) / 3),
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        data: { date: a.date, zScore: a.zScore, baseline: a.baseline },
       });
     }
 

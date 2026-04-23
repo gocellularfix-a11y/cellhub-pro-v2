@@ -1,8 +1,8 @@
 // CellHub Intelligence — Sales Analyzer
 import type { Sale, Customer } from '@/store/types';
-import { Insight, SalesMetrics, AnalysisWindow } from '../types';
-import { movingAverage, calculateGrowthRate, percentile } from '../utils/statistics';
-import { getWeekBoundaries, getDaysAgo } from '../utils/dateHelpers';
+import { Insight, SalesMetrics, AnalysisWindow, ForecastResult } from '../types';
+import { calculateGrowthRate, linearRegression } from '../utils/statistics';
+import { getDaysAgo } from '../utils/dateHelpers';
 import { formatCurrency } from '@/utils/currency';
 
 export class SalesAnalyzer {
@@ -129,6 +129,84 @@ export class SalesAnalyzer {
     return hourly;
   }
 
+  // R-INTEL-SMARTER-F1: per-SKU demand forecasting via linear regression
+  // over daily unit sales. Returns only items with r² ≥ 0.3 (some signal;
+  // lower than that is noise). Projects 7 and 30 days.
+  //
+  // Input window: last 60 days by default. Fewer than 14 days of data per
+  // item → skip (can't fit a meaningful line).
+  getItemForecasts(topN: number = 10, windowDays: number = 60): ForecastResult[] {
+    const windowStart = getDaysAgo(windowDays);
+    const recentSales = this.sales.filter(s => {
+      const d = new Date(s.createdAt as string);
+      return d >= windowStart && s.status !== 'voided';
+    });
+
+    // Aggregate item sales by day. Map: itemKey → Map<dayIndex, qty>
+    const seriesByItem = new Map<string, { id?: string; name: string; byDay: Map<number, number>; totalQty: number }>();
+    for (const sale of recentSales) {
+      const dayIdx = Math.floor(
+        (new Date(sale.createdAt as string).getTime() - windowStart.getTime())
+        / (1000 * 60 * 60 * 24),
+      );
+      for (const item of sale.items || []) {
+        // Skip phone_payment/top_up — not real SKUs with demand curves.
+        if (item.category === 'phone_payment' || item.category === 'top_up') continue;
+        const key = item.inventoryId || item.name || 'unknown';
+        const qty = item.qty || 0;
+        if (qty <= 0) continue;
+        let entry = seriesByItem.get(key);
+        if (!entry) {
+          entry = { id: item.inventoryId, name: item.name || key, byDay: new Map(), totalQty: 0 };
+          seriesByItem.set(key, entry);
+        }
+        entry.byDay.set(dayIdx, (entry.byDay.get(dayIdx) || 0) + qty);
+        entry.totalQty += qty;
+      }
+    }
+
+    // Rank items by total volume, take top N.
+    const ranked = Array.from(seriesByItem.entries())
+      .map(([key, e]) => ({ key, ...e }))
+      .sort((a, b) => b.totalQty - a.totalQty)
+      .slice(0, topN);
+
+    const forecasts: ForecastResult[] = [];
+    for (const entry of ranked) {
+      // Need ≥14 distinct days of data to trust the fit.
+      if (entry.byDay.size < 14) continue;
+
+      // Build [dayIdx, qty] pairs across the full window (zero-fill missing days).
+      const points: [number, number][] = [];
+      for (let i = 0; i < windowDays; i++) {
+        points.push([i, entry.byDay.get(i) || 0]);
+      }
+
+      const { slope, intercept, r2 } = linearRegression(points);
+      if (r2 < 0.3) continue;
+
+      // Predict future day N = windowDays, windowDays+7, windowDays+30
+      // relative to windowStart. Sum the per-day prediction for the horizon.
+      let pred7 = 0;
+      let pred30 = 0;
+      for (let d = 1; d <= 30; d++) {
+        const pred = Math.max(0, slope * (windowDays + d) + intercept);
+        if (d <= 7) pred7 += pred;
+        pred30 += pred;
+      }
+
+      forecasts.push({
+        inventoryId: entry.id || entry.key,
+        itemName: entry.name,
+        predictedDemand7Days: Math.round(pred7),
+        predictedDemand30Days: Math.round(pred30),
+        confidence: Math.min(1, Math.max(0, r2)),
+      });
+    }
+
+    return forecasts.sort((a, b) => b.predictedDemand30Days - a.predictedDemand30Days);
+  }
+
   generateInsights(window: AnalysisWindow): Insight[] {
     const insights: Insight[] = [];
     const metrics = this.getMetrics(window);
@@ -206,6 +284,55 @@ export class SalesAnalyzer {
         confidence: 0.95,
         generatedAt: new Date(),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    }
+
+    // R-INTEL-SMARTER-F1: forecasting insights — rising / falling trend
+    // on top-volume SKUs. Only surfaces the strongest (by r²).
+    const forecasts = this.getItemForecasts(10, 60);
+    for (const f of forecasts.slice(0, 3)) {
+      // Compare 30-day projection vs observed last 30 days to get direction.
+      const last30Start = getDaysAgo(30);
+      let observed30 = 0;
+      for (const sale of this.sales) {
+        if (sale.status === 'voided') continue;
+        const d = new Date(sale.createdAt as string);
+        if (d < last30Start) continue;
+        for (const item of sale.items || []) {
+          const key = item.inventoryId || item.name || 'unknown';
+          if (key === f.inventoryId || item.name === f.itemName) {
+            observed30 += item.qty || 0;
+          }
+        }
+      }
+      const deltaPct = observed30 > 0
+        ? ((f.predictedDemand30Days - observed30) / observed30) * 100
+        : 0;
+
+      // Only emit if meaningful change (>15% projected) OR shrinking fast.
+      if (Math.abs(deltaPct) < 15) continue;
+
+      const rising = deltaPct > 0;
+      insights.push({
+        id: `sales-forecast-${f.inventoryId}`,
+        category: 'sales',
+        severity: rising ? 'opportunity' : 'warning',
+        title: rising ? 'Demand Rising' : 'Demand Declining',
+        titleEs: rising ? 'Demanda Subiendo' : 'Demanda Bajando',
+        description: rising
+          ? `${f.itemName} projected at ${f.predictedDemand30Days} units next 30 days (vs ${observed30} observed). Consider stocking more.`
+          : `${f.itemName} projected at ${f.predictedDemand30Days} units next 30 days (vs ${observed30} observed). Trend is down ${Math.abs(deltaPct).toFixed(0)}%.`,
+        descriptionEs: rising
+          ? `${f.itemName} proyecta ${f.predictedDemand30Days} uds en 30 días (vs ${observed30} observadas). Considera más stock.`
+          : `${f.itemName} proyecta ${f.predictedDemand30Days} uds en 30 días (vs ${observed30} observadas). Tendencia baja ${Math.abs(deltaPct).toFixed(0)}%.`,
+        metric: f.predictedDemand30Days,
+        metricLabel: this.lang === 'es' ? 'Demanda proyectada 30d' : 'Projected demand 30d',
+        trend: rising ? 'up' : 'down',
+        trendPercent: deltaPct,
+        confidence: f.confidence,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        data: { forecast: f as unknown as Record<string, unknown>, observed30 },
       });
     }
 
