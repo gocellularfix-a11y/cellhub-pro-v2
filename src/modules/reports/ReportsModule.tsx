@@ -24,6 +24,7 @@ import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
+import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -568,7 +569,13 @@ export default function ReportsModule() {
     }> = {};
     const employeeStats: Record<string, { transactions: number; revenueCents: number }> = {};
     const itemStats: Record<string, { quantity: number; revenueCents: number }> = {};
-    const phonePaymentsByCarrier: Record<string, { count: number; totalCents: number; numbers: string[] }> = {};
+    // R-REPORTS-PHONE-PROVIDER: group phone payments by PROVIDER (WebPOS,
+    // QPay, VidaPay, H2O) instead of by carrier brand. `numbers` uses Set
+    // internally so repeated payments to the same phone don't inflate
+    // the displayed list — we expose a unique count + sample.
+    const phonePaymentsByProvider: Record<string, { count: number; totalCents: number; numbers: Set<string> }> = {};
+    const activePortals = getActivePortals(settings);
+    const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
 
     const ensureCat = (name: string) => {
       const key = normalizeCategoryKey(name);
@@ -631,16 +638,29 @@ export default function ReportsModule() {
 
         if (kind === 'phone_payment') {
           catName = 'Phone Payments';
+          // Commission rate is still keyed by CARRIER (AT&T/T-Mobile/etc) —
+          // that's how commissions actually work. Only the DISPLAY bucket
+          // changes to PROVIDER (VidaPay/WebPOS/QPay/H2O).
           let carrierName = item.carrier || '';
           if (!carrierName && item.name) carrierName = item.name.split('-')[0].trim();
-          const normalized = normalizeCarrierName(carrierName);
-          const commRate = settings.carrierCommissions?.[normalized] || settings.defaultCommissionRate || 0.07;
+          const normalizedCarrier = normalizeCarrierName(carrierName);
+          const commRate = settings.carrierCommissions?.[normalizedCarrier] || settings.defaultCommissionRate || 0.07;
           costCents = Math.round(revenueCents * (1 - commRate));
           profitCents = revenueCents - costCents;
-          if (!phonePaymentsByCarrier[normalized]) phonePaymentsByCarrier[normalized] = { count: 0, totalCents: 0, numbers: [] };
-          phonePaymentsByCarrier[normalized].count += qty;
-          phonePaymentsByCarrier[normalized].totalCents += revenueCents;
-          if (item.phoneNumber) phonePaymentsByCarrier[normalized].numbers.push(item.phoneNumber);
+
+          // Resolve provider: prefer item.portal (set by PhonePaymentModal
+          // on new sales). For legacy sales without portal, derive it
+          // from the carrier via the same matching logic the modal uses.
+          let provider = (item.portal || '').trim();
+          if (!provider && normalizedCarrier) {
+            provider = getDefaultPortalId(normalizedCarrier, activePortals, carrierPortalUrls);
+          }
+          if (!provider) provider = es ? '(Sin proveedor)' : '(No provider)';
+
+          if (!phonePaymentsByProvider[provider]) phonePaymentsByProvider[provider] = { count: 0, totalCents: 0, numbers: new Set() };
+          phonePaymentsByProvider[provider].count += qty;
+          phonePaymentsByProvider[provider].totalCents += revenueCents;
+          if (item.phoneNumber) phonePaymentsByProvider[provider].numbers.add(item.phoneNumber);
         } else if (kind === 'topup') {
           catName = 'Top-Ups';
           costCents = Math.round(revenueCents * TOPUP_COST_RATE);
@@ -874,7 +894,7 @@ export default function ReportsModule() {
       categoriesByRevenue,
       topItems,
       topEmployees,
-      phonePaymentsByCarrier,
+      phonePaymentsByProvider,
     };
   }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, es]);
 
@@ -1134,7 +1154,7 @@ export default function ReportsModule() {
 
     // All user-controlled strings below MUST go through escHtml (round 17 XSS fix).
     // formatCurrency output is safe (pure numeric), same for quantities and percentages.
-    const ppRows = Object.entries(stats.phonePaymentsByCarrier)
+    const ppRows = Object.entries(stats.phonePaymentsByProvider)
       .sort((a, b) => b[1].totalCents - a[1].totalCents)
       .map(([c, d]) => `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td></tr>`)
       .join('');
@@ -1175,8 +1195,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
   <div><span style="color:#666">${es ? 'Efectivo:' : 'Cash:'}</span> <strong>${formatCurrency(stats.cashCents)}</strong></div>
   <div><span style="color:#666">${es ? 'Tarjeta:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
 </div>
-<h2>${es ? 'Pagos por Carrier' : 'Phone Payments by Carrier'}</h2>
-<table><thead><tr><th>Carrier</th><th>${es ? 'Cant.' : 'Count'}</th><th>Total</th></tr></thead>
+<h2>${es ? 'Pagos por Proveedor' : 'Phone Payments by Provider'}</h2>
+<table><thead><tr><th>${es ? 'Proveedor' : 'Provider'}</th><th>${es ? 'Cant.' : 'Count'}</th><th>Total</th></tr></thead>
 <tbody>${ppRows}</tbody></table>
 <h2>${es ? 'Ventas por Categoría' : 'Sales by Category'}</h2>
 <table><thead><tr><th>${es ? 'Categoría' : 'Category'}</th><th>Qty</th><th>${es ? 'Ingresos' : 'Revenue'}</th><th>${es ? 'Ganancia' : 'Profit'}</th><th>Margin</th></tr></thead>
@@ -1224,8 +1244,11 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         profit: formatCurrency(c.profitCents),
         margin: c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`,
       })),
-      phonePaymentsByCarrier: Object.entries(stats.phonePaymentsByCarrier).map(([carrier, d]) => ({
-        carrier, count: d.count, total: formatCurrency(d.totalCents),
+      phonePaymentsByProvider: Object.entries(stats.phonePaymentsByProvider).map(([provider, d]) => ({
+        provider,
+        count: d.count,
+        total: formatCurrency(d.totalCents),
+        uniqueNumbers: d.numbers.size,
       })),
       employees: stats.topEmployees.map((e) => ({
         name: e.name, transactions: e.transactions, revenue: formatCurrency(e.revenueCents),
@@ -1477,42 +1500,56 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             </div>
           )}
 
-          {/* ── Phone Payments by Carrier ── */}
-          {Object.keys(stats.phonePaymentsByCarrier).length > 0 && (
+          {/* ── Phone Payments by Provider (R-REPORTS-PHONE-PROVIDER) ── */}
+          {Object.keys(stats.phonePaymentsByProvider).length > 0 && (
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
               <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
-                📱 {es ? 'Pagos por Carrier' : 'Phone Payments by Carrier'}
+                📱 {es ? 'Pagos por Proveedor' : 'Phone Payments by Provider'}
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    {['Carrier', es ? 'Pagos' : 'Count', 'Total', es ? 'Números' : 'Phone Numbers'].map((h) => (
+                    {[es ? 'Proveedor' : 'Provider', es ? 'Pagos' : 'Count', 'Total', es ? 'Números únicos' : 'Unique Numbers'].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(stats.phonePaymentsByCarrier)
+                  {Object.entries(stats.phonePaymentsByProvider)
                     .sort((a, b) => b[1].totalCents - a[1].totalCents)
-                    .map(([carrier, d]) => (
-                      <tr key={carrier} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{carrier}</td>
-                        <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
-                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
-                        <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
-                          {d.numbers.slice(0, 5).join(', ')}{d.numbers.length > 5 ? ` +${d.numbers.length - 5}` : ''}
-                        </td>
-                      </tr>
-                    ))}
+                    .map(([provider, d]) => {
+                      const uniqueNums = Array.from(d.numbers);
+                      const preview = uniqueNums.slice(0, 5).join(', ');
+                      const more = uniqueNums.length > 5 ? ` +${uniqueNums.length - 5}` : '';
+                      return (
+                        <tr key={provider} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{provider}</td>
+                          <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
+                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
+                          <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
+                            <span style={{ color: '#94a3b8', fontWeight: 700 }}>{uniqueNums.length}</span>
+                            {uniqueNums.length > 0 && <span style={{ marginLeft: '0.5rem' }}>— {preview}{more}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   <tr style={{ borderTop: '2px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#fff' }}>TOTAL</td>
                     <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#fff' }}>
-                      {Object.values(stats.phonePaymentsByCarrier).reduce((s, d) => s + d.count, 0)}
+                      {Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.count, 0)}
                     </td>
                     <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#22c55e', fontSize: '0.95rem' }}>
-                      {formatCurrency(Object.values(stats.phonePaymentsByCarrier).reduce((s, d) => s + d.totalCents, 0))}
+                      {formatCurrency(Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.totalCents, 0))}
                     </td>
-                    <td />
+                    <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>
+                      {(() => {
+                        const allUnique = new Set<string>();
+                        for (const d of Object.values(stats.phonePaymentsByProvider)) {
+                          for (const n of d.numbers) allUnique.add(n);
+                        }
+                        return `${allUnique.size} ${es ? 'únicos' : 'unique'}`;
+                      })()}
+                    </td>
                   </tr>
                 </tbody>
               </table>
