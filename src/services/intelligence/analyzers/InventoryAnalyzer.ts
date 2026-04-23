@@ -2,6 +2,7 @@
 import type { InventoryItem } from '@/store/types';
 import { Insight, InventoryMetrics } from '../types';
 import { getDaysAgo } from '../utils/dateHelpers';
+import { exponentialSmoothing } from '../utils/statistics';
 
 export interface InventoryThresholds {
   deadStockDays: number;
@@ -150,6 +151,96 @@ export class InventoryAnalyzer {
       .sort((a, b) => b.daysSinceCreated - a.daysSinceCreated);
   }
 
+  // R-INTEL-SMARTER-F2: velocity-based dead-stock ranking.
+  // The legacy getDeadStock() is BINARY — 0 sales in 60 days = dead.
+  // An item with 1 sale in 60 days gets the same "alive" rating as
+  // one selling daily. This method scores continuous "liveness" 0..1
+  // using exponentialSmoothing on daily sales, so "dying" items are
+  // flagged BEFORE they hit fully-dead status.
+  //
+  // Score interpretation:
+  //   0.00–0.10  dying (likely dead in next 30 days)
+  //   0.10–0.30  slow
+  //   0.30–0.70  moderate
+  //   0.70–1.00  healthy / hot
+  getDeadStockByVelocity(windowDays: number = 90): Array<{
+    item: InventoryItem;
+    velocityScore: number;
+    daysSinceLastSale: number | null;
+    salesLastWindow: number;
+  }> {
+    const windowStart = getDaysAgo(windowDays);
+    const recentSales = this.sales.filter(s => {
+      const d = new Date(s.createdAt as string);
+      return d >= windowStart && s.status !== 'voided';
+    });
+
+    const result: Array<{
+      item: InventoryItem;
+      velocityScore: number;
+      daysSinceLastSale: number | null;
+      salesLastWindow: number;
+    }> = [];
+
+    // Peak smoothed value observed across all items — normalizes scores to 0..1
+    // relative to the hottest SKU in the shop. Computed in a first pass.
+    const rawByItem = new Map<string, { series: number[]; lastSaleDay: number | null; total: number }>();
+
+    for (const item of this.inventory) {
+      if ((item.qty || 0) <= 0) continue;
+      const byDay: number[] = new Array(windowDays).fill(0);
+      let lastSaleDay: number | null = null;
+      let total = 0;
+      for (const sale of recentSales) {
+        const dayIdx = Math.floor(
+          (new Date(sale.createdAt as string).getTime() - windowStart.getTime())
+          / (1000 * 60 * 60 * 24),
+        );
+        for (const si of sale.items || []) {
+          if (si.inventoryId === item.id || si.name === item.name) {
+            const qty = si.qty || 0;
+            byDay[dayIdx] = (byDay[dayIdx] || 0) + qty;
+            total += qty;
+            if (lastSaleDay === null || dayIdx > lastSaleDay) lastSaleDay = dayIdx;
+          }
+        }
+      }
+      rawByItem.set(item.id, { series: byDay, lastSaleDay, total });
+    }
+
+    // Compute smoothed signal per item. alpha=0.3 weights recent sales
+    // higher than old ones — responds to slowdowns without being jittery.
+    let peak = 0;
+    const smoothedByItem = new Map<string, number>();
+    for (const [itemId, entry] of rawByItem) {
+      const smoothed = exponentialSmoothing(entry.series, 0.3);
+      const latest = smoothed[smoothed.length - 1] || 0;
+      smoothedByItem.set(itemId, latest);
+      if (latest > peak) peak = latest;
+    }
+
+    // Normalize to 0..1 relative to peak; if peak is zero, every item is dying.
+    for (const item of this.inventory) {
+      if ((item.qty || 0) <= 0) continue;
+      const raw = rawByItem.get(item.id);
+      if (!raw) continue;
+      const smoothed = smoothedByItem.get(item.id) || 0;
+      const velocityScore = peak > 0 ? smoothed / peak : 0;
+      const daysSinceLastSale = raw.lastSaleDay !== null
+        ? windowDays - 1 - raw.lastSaleDay
+        : null;
+
+      result.push({
+        item,
+        velocityScore,
+        daysSinceLastSale,
+        salesLastWindow: raw.total,
+      });
+    }
+
+    return result.sort((a, b) => a.velocityScore - b.velocityScore);
+  }
+
   getInventoryTurnoverRate(): number {
     const costValue = this.inventory.reduce((sum, i) => sum + ((i.cost || 0) * Math.max(0, i.qty || 0)), 0);
     const recentSales = this.sales.filter(s => {
@@ -224,6 +315,47 @@ export class InventoryAnalyzer {
         confidence: 0.85,
         generatedAt: new Date(),
         expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      });
+    }
+
+    // R-INTEL-SMARTER-F2: early-warning "dying stock" insight — items
+    // with velocityScore < 0.1 but some sales (else they'd already be
+    // flagged as fully dead). Gives the owner time to act before the
+    // item crosses into hard dead-stock threshold.
+    const velocityData = this.getDeadStockByVelocity(90);
+    const dying = velocityData.filter(
+      v => v.velocityScore > 0 && v.velocityScore < 0.1 && v.salesLastWindow > 0,
+    );
+    if (dying.length > 0) {
+      const dyingValue = dying.reduce(
+        (s, v) => s + ((v.item.price || 0) * (v.item.qty || 0)),
+        0,
+      );
+      const top = dying.slice(0, 3).map(v => v.item.name).join(', ');
+      insights.push({
+        id: 'inventory-dying-stock',
+        category: 'inventory',
+        severity: 'warning',
+        title: 'Items Losing Momentum',
+        titleEs: 'Artículos Perdiendo Velocidad',
+        description: `${dying.length} items with velocity <10% of peak SKU. Consider promo before they go dead. Top: ${top}.`,
+        descriptionEs: `${dying.length} artículos con velocidad <10% del SKU top. Considera promoción antes de que caigan muertos. Top: ${top}.`,
+        metric: dyingValue,
+        metricLabel: this.lang === 'es' ? 'Valor en riesgo' : 'At-risk value',
+        actionLabel: this.lang === 'es' ? 'Ver Inventario' : 'View Inventory',
+        actionRoute: 'inventory',
+        confidence: 0.85,
+        generatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        data: {
+          items: dying.slice(0, 10).map(v => ({
+            id: v.item.id,
+            name: v.item.name,
+            velocity: Math.round(v.velocityScore * 100) / 100,
+            daysSinceLastSale: v.daysSinceLastSale,
+            salesLastWindow: v.salesLastWindow,
+          })),
+        },
       });
     }
 
