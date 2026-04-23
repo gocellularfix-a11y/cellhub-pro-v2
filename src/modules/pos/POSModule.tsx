@@ -33,8 +33,7 @@ import type { Customer, Sale, InventoryItem, CartItem } from '@/store/types';
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { forwardTaxFromBase } from '@/utils/depositTax';
-import { sendSms } from '@/services/sms';
-import { buildSale, computePaidCents, buildReceiptSmsMessage } from './saleBuilder';
+import { buildSale, computePaidCents } from './saleBuilder';
 
 export default function POSModule() {
   const {
@@ -104,9 +103,6 @@ export default function POSModule() {
   const [creditCardFeeOverride, setCreditCardFeeOverride] = useState<number | null>(null);
   const [cashAmount, setCashAmount] = useState(0);
   const [cardAmount, setCardAmount] = useState(0);
-  // Round R-POS-PAY-DEDUPE F2: SMS-on-checkout toggle. Lives here so
-  // handleCompleteSale can read it (F4) and reset post-sale (I5).
-  const [sendSmsReceipt, setSendSmsReceipt] = useState(false);
 
   useEffect(() => {
     if (paymentMethod !== 'Card' && paymentMethod !== 'Split') {
@@ -701,27 +697,6 @@ export default function POSModule() {
         batchSave(layawayOps);
       }
 
-      // [I4] SMS receipt — SINGLE trigger location for both checkout paths
-      // (bypass + phone portal). Moved here from PaymentModal in F4. Fire
-      // and forget; SMS errors never block receipt display.
-      if (
-        sendSmsReceipt
-        && selectedCustomer?.phone
-        && settings.smsProvider
-        && settings.smsProvider !== 'none'
-      ) {
-        try {
-          const firstName = (selectedCustomer.name || '').split(' ')[0] || '';
-          const storeName = settings.storeName || 'GO CELLULAR';
-          const message = buildReceiptSmsMessage(sale, lang, firstName, storeName);
-          sendSms(selectedCustomer.phone, message, settings).catch((err) => {
-            console.warn('[SMS receipt] Failed:', err);
-          });
-        } catch (err) {
-          console.warn('[SMS receipt] Build error:', err);
-        }
-      }
-
       // 6. Clear cart and reset
       cartRef.current = [];
       setCart([]);
@@ -730,7 +705,6 @@ export default function POSModule() {
       setCashAmount(0);
       setCardAmount(0);
       setAddCreditCardFee(false);
-      setSendSmsReceipt(false);
       setSelectedCustomer(null);
       setShowPayment(false);
 
@@ -748,7 +722,6 @@ export default function POSModule() {
       setSales, setInventory, setCustomers,
       selectedCustomer, setRepairs, setSpecialOrders, setUnlocks, setLayaways,
       setCart, settings, toast, lang,
-      sendSmsReceipt,  // F4 I4: SMS trigger reads this
     ],
   );
 
@@ -1089,8 +1062,6 @@ export default function POSModule() {
             setAddCreditCardFee={setAddCreditCardFee}
             creditCardFeeOverride={creditCardFeeOverride}
             setCreditCardFeeOverride={setCreditCardFeeOverride}
-            sendSmsReceipt={sendSmsReceipt}
-            setSendSmsReceipt={setSendSmsReceipt}
             onCheckout={handleCartCheckout}
             onClearCart={() => setShowClearConfirm(true)}
             onSelectCustomer={() => setShowCustomerSearch(true)}

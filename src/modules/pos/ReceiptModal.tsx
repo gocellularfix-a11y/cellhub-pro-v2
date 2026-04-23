@@ -8,9 +8,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@/components/ui';
+import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
+import { sendSms } from '@/services/sms';
+import { buildReceiptSmsMessage } from './saleBuilder';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
@@ -91,7 +94,11 @@ interface ReceiptModalProps {
 export default function ReceiptModal({ open, sale, settings, onClose, customers, setCustomers, setSales, sales, lang, L }: ReceiptModalProps) {
   const es = lang === 'es';
   const { printHtml } = usePrint();
+  const { toast } = useToast();
   const [qrSvg, setQrSvg] = useState<string>('');
+  // R-PRINT-SMS-PARITY-F1: in-flight flag for the SMS button (disables +
+  // dims while sendSms Promise is pending, prevents double-click).
+  const [sending, setSending] = useState(false);
 
   // ── Retroactive customer assignment state ─────────────────
   const [assignSearch, setAssignSearch] = useState('');
@@ -566,6 +573,56 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
             style={{ background: '#25D366', color: '#fff', fontWeight: 700, border: 'none' }}
           >
             📲 WhatsApp
+          </button>
+        )}
+        {/* R-PRINT-SMS-PARITY-F1: post-sale SMS send. Single entry point
+            (replaces the pre-sale Cart checkbox — no double-send race).
+            Hidden (not disabled) when SMS not configured, consistent with
+            waEnabled=false pattern. */}
+        {settings.smsProvider !== 'none'
+          && settings.smsApiKey
+          && (sale?.customerPhone || assignedCustomer?.phone) && (
+          <button
+            onClick={async () => {
+              if (sending) return;
+              const phone = sale?.customerPhone || assignedCustomer?.phone || '';
+              const name = sale?.customerName || assignedCustomer?.name || '';
+              const firstName = (name || '').split(' ')[0] || '';
+              const storeName = settings.storeName || 'GO CELLULAR';
+              if (!sale) return;
+              const message = buildReceiptSmsMessage(sale, lang, firstName, storeName);
+
+              setSending(true);
+              try {
+                const result = await sendSms(phone, message, settings);
+                if (result.success) {
+                  toast(es ? 'SMS enviado' : 'SMS sent', 'success');
+                } else {
+                  toast(
+                    es
+                      ? `Error: ${result.error || 'SMS falló'}`
+                      : `Error: ${result.error || 'SMS failed'}`,
+                    'error',
+                  );
+                }
+              } catch (err) {
+                toast(es ? 'Error enviando SMS' : 'Error sending SMS', 'error');
+                console.warn('[ReceiptModal SMS] Error:', err);
+              } finally {
+                setSending(false);
+              }
+            }}
+            disabled={sending}
+            className="btn flex-1"
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              fontWeight: 700,
+              border: 'none',
+              opacity: sending ? 0.6 : 1,
+            }}
+          >
+            📱 {sending ? (es ? 'Enviando…' : 'Sending…') : 'SMS'}
           </button>
         )}
         <button onClick={handlePrint} className="btn btn-primary flex-1">
