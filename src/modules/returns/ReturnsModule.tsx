@@ -208,6 +208,12 @@ export default function ReturnsModule() {
     setSelectedItems({});
     setSearchResults([]);
     setStep(2);
+    // R-RETURNS-F1.4: if the original was store credit, pre-select
+    // a valid refund method (store_credit) so the form starts in a
+    // valid state — the cash/card buttons will render disabled.
+    if (sale.paymentMethod === 'Store Credit') {
+      setResolution('store_credit');
+    }
   };
 
   const resetSearch = () => {
@@ -314,6 +320,20 @@ export default function ReturnsModule() {
   // ── Process customer return ────────────────────────────────
   const processReturn = useCallback(() => {
     if (selectedCount === 0) { toast(es ? 'Selecciona al menos un artículo.' : 'Select at least one item.', 'warning'); return; }
+
+    // R-RETURNS-F1.4: hard guard — if the original sale was paid with store
+    // credit, no cash/card money physically entered the drawer. Refunding
+    // to cash or card would cash out money that was never collected.
+    // Force store_credit or exchange.
+    if (foundSale?.paymentMethod === 'Store Credit' && (resolution === 'cash' || resolution === 'card')) {
+      toast(
+        es
+          ? 'Venta original fue con crédito — solo se puede reembolsar a crédito o cambio'
+          : 'Original sale was store credit — refund must be store credit or exchange',
+        'error',
+      );
+      return;
+    }
 
     // Multi-station safe return number (ts8 + rand4).
     const rtnTs8  = Date.now().toString().slice(-8);
@@ -1139,19 +1159,53 @@ export default function ReturnsModule() {
                       <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
                         {es ? 'Resolución' : 'Resolution'}
                       </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
-                        {[
-                          { v: 'cash',         l: es ? '💵 Efectivo' : '💵 Cash Refund' },
-                          { v: 'card',         l: es ? '💳 Tarjeta' : '💳 Card Refund' },
-                          { v: 'store_credit', l: es ? '🎫 Crédito Tienda' : '🎫 Store Credit' },
-                          { v: 'exchange',     l: es ? '🔄 Cambio' : '🔄 Exchange' },
-                        ].map((r) => (
-                          <button key={r.v} onClick={() => setResolution(r.v)}
-                            style={{ padding: '0.5rem', borderRadius: '8px', border: `2px solid ${resolution === r.v ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: resolution === r.v ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', color: resolution === r.v ? '#a5b4fc' : '#94a3b8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: resolution === r.v ? 700 : 400 }}>
-                            {r.l}
-                          </button>
-                        ))}
-                      </div>
+                      {/* R-RETURNS-F1.4: disable cash/card when original sale was
+                          Store Credit — no physical money to refund from drawer. */}
+                      {(() => {
+                        const origWasStoreCredit = foundSale?.paymentMethod === 'Store Credit';
+                        const resolutionDisabled = (v: string) =>
+                          origWasStoreCredit && (v === 'cash' || v === 'card');
+                        return (
+                          <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                              {[
+                                { v: 'cash',         l: es ? '💵 Efectivo' : '💵 Cash Refund' },
+                                { v: 'card',         l: es ? '💳 Tarjeta' : '💳 Card Refund' },
+                                { v: 'store_credit', l: es ? '🎫 Crédito Tienda' : '🎫 Store Credit' },
+                                { v: 'exchange',     l: es ? '🔄 Cambio' : '🔄 Exchange' },
+                              ].map((r) => {
+                                const disabled = resolutionDisabled(r.v);
+                                return (
+                                  <button
+                                    key={r.v}
+                                    onClick={() => !disabled && setResolution(r.v)}
+                                    disabled={disabled}
+                                    title={disabled
+                                      ? (es ? 'Original fue crédito — solo crédito o cambio' : 'Original was store credit — credit or exchange only')
+                                      : undefined}
+                                    style={{
+                                      padding: '0.5rem', borderRadius: '8px',
+                                      border: `2px solid ${resolution === r.v ? '#6366f1' : 'rgba(255,255,255,0.1)'}`,
+                                      background: resolution === r.v ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
+                                      color: resolution === r.v ? '#a5b4fc' : '#94a3b8',
+                                      cursor: disabled ? 'not-allowed' : 'pointer',
+                                      opacity: disabled ? 0.4 : 1,
+                                      fontSize: '0.82rem',
+                                      fontWeight: resolution === r.v ? 700 : 400,
+                                    }}>
+                                    {r.l}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {origWasStoreCredit && (
+                              <div style={{ fontSize: '0.72rem', color: '#f59e0b', marginTop: '0.4rem' }}>
+                                ⚠️ {es ? 'Venta original fue con crédito — reembolso solo a crédito o cambio' : 'Original was store credit — refund to credit or exchange only'}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
