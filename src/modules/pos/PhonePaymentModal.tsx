@@ -1669,6 +1669,53 @@ export default function PhonePaymentModal({
                         placeholder={es ? 'Número' : 'Phone'}
                         className="input" style={{ flex: 1, minWidth: '110px' }}
                       />
+                      {/* R-PHONE-FAMILY-COPYBTN: manual copy per-line for Family Plan.
+                          Cashier clicks 📋 to copy THIS line's phone to clipboard
+                          (autoCopyPhone helper has no toast; button gives explicit
+                          feedback for the active user action). Disabled until the
+                          number is a valid 10-digit. */}
+                      {(() => {
+                        const lineValid = isValidPhone(line.number);
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const clean = sanitizePhone(line.number);
+                              if (!isValidPhone(clean)) return;
+                              navigator.clipboard.writeText(clean).then(() => {
+                                toast(
+                                  es
+                                    ? `Número copiado: ${formatPhone(clean)}`
+                                    : `Number copied: ${formatPhone(clean)}`,
+                                  'success',
+                                );
+                              }).catch(() => {
+                                toast(
+                                  es
+                                    ? 'No se pudo copiar al portapapeles'
+                                    : 'Could not copy to clipboard',
+                                  'error',
+                                );
+                              });
+                            }}
+                            disabled={!lineValid}
+                            title={es ? 'Copiar número' : 'Copy number'}
+                            aria-label={es ? 'Copiar número al portapapeles' : 'Copy number to clipboard'}
+                            style={{
+                              background: 'rgba(100,116,139,0.12)',
+                              color: '#94a3b8',
+                              border: '1px solid transparent',
+                              borderRadius: '0.35rem',
+                              padding: '0 0.4rem',
+                              fontSize: '0.95rem',
+                              cursor: lineValid ? 'pointer' : 'not-allowed',
+                              opacity: lineValid ? 1 : 0.4,
+                            }}
+                          >
+                            📋
+                          </button>
+                        );
+                      })()}
                       {/* R-PHONE-FAMILY-PERLINE: per-line carrier select */}
                       <select
                         value={line.carrier}
