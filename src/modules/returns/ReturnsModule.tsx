@@ -418,8 +418,43 @@ export default function ReturnsModule() {
     // attach linkedRefunds before we persist.
     // paymentMethod = 'Cash'/'Card' so Reports drawer reconciliation finds it;
     // the "is refund" identity is encoded via isRefund:true + negative total.
+    //
+    // R-RETURNS-F1.3: if the original sale was Split, the refund must be
+    // proportionally distributed across cash/card to keep the drawer
+    // reconciled. Otherwise refunding a $100 50/50 split entirely to
+    // cash would cash-out $50 that was never in the drawer.
     let refundSale: any = null;
     if (resolution === 'cash' || resolution === 'card') {
+      const wasSplit = foundSale?.paymentMethod === 'Split' && !!foundSale?.splitPayment;
+      const origCashCents = wasSplit ? (foundSale!.splitPayment!.cash || 0) : 0;
+      const origCardCents = wasSplit ? (foundSale!.splitPayment!.card || 0) : 0;
+      const origSplitTotal = origCashCents + origCardCents;
+
+      let refundPaymentMethod: string;
+      let refundSplitPayment: { cash: number; card: number; storeCredit: number } | undefined;
+
+      if (wasSplit && origSplitTotal > 0) {
+        // Proportional split: preserve the original cash/card ratio.
+        // Remainder goes to the non-rounded side so totals match exactly.
+        const cashRatio = origCashCents / origSplitTotal;
+        const refundCashCents = Math.round(totalCents * cashRatio);
+        const refundCardCents = totalCents - refundCashCents;
+        refundPaymentMethod = 'Split';
+        refundSplitPayment = {
+          cash: -refundCashCents,
+          card: -refundCardCents,
+          storeCredit: 0,
+        };
+        toast(
+          es
+            ? `Venta original fue Split — reembolso proporcional: $${(refundCashCents / 100).toFixed(2)} efectivo + $${(refundCardCents / 100).toFixed(2)} tarjeta`
+            : `Original sale was Split — proportional refund: $${(refundCashCents / 100).toFixed(2)} cash + $${(refundCardCents / 100).toFixed(2)} card`,
+          'info',
+        );
+      } else {
+        refundPaymentMethod = resolution === 'cash' ? 'Cash' : 'Card';
+      }
+
       refundSale = {
         id: generateId(),
         invoiceNumber: `REF-${returnNumber}`,
@@ -427,7 +462,8 @@ export default function ReturnsModule() {
         customerPhone: returnRecord.customerPhone,
         employeeName: currentEmployee?.name || '',
         createdAt: nowIso,
-        paymentMethod: resolution === 'cash' ? 'Cash' : 'Card',
+        paymentMethod: refundPaymentMethod,
+        ...(refundSplitPayment ? { splitPayment: refundSplitPayment } : {}),
         isRefund: true,
         // Round 11: refund sale is an audit record, not a real sale. 'voided'
         // aligns with SO/Repair/Unlock/Layaway cancellation refund sales and
