@@ -247,6 +247,18 @@ export default function PhonePaymentModal({
     const primaryNorm = normalizePhone(selectedCustomer.phone);
     if (primaryNorm && !seen.has(primaryNorm)) seen.set(primaryNorm, 0);
 
+    // R-PHONE-FAMILY-MULTIPHONES: include ALL saved phones from the
+    // customer.phones[] array (multi-line support field). Before, only
+    // primary phone + past-sale phones were surfaced — saved alt lines
+    // the customer never paid through the store were invisible.
+    const allPhones = (selectedCustomer as { phones?: string[] }).phones;
+    if (Array.isArray(allPhones)) {
+      for (const p of allPhones) {
+        const n = normalizePhone(p);
+        if (n && !seen.has(n)) seen.set(n, 0);
+      }
+    }
+
     return [...seen.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([norm]) => norm);
@@ -1277,8 +1289,12 @@ export default function PhonePaymentModal({
 
         {/* ══════════════════════════════════════════════════
             KNOWN LINES PANEL — shown when customer has history
+            AND Family Plan toggle is OFF. When toggle is ON the user
+            uses the manual multi-line UI (per-line carrier + portal)
+            from R-PHONE-FAMILY-PERLINE, which is strictly more capable
+            (mixed carriers across known + new numbers).
         ══════════════════════════════════════════════════ */}
-        {hasKnownLines && (
+        {hasKnownLines && !isMultiLine && (
           <div style={{
             border: '1px solid rgba(102,126,234,0.35)',
             borderRadius: '0.75rem',
@@ -1377,12 +1393,15 @@ export default function PhonePaymentModal({
         )}
 
         {/* ══════════════════════════════════════════════════
-            MANUAL ENTRY — shown when no customer selected
-            OR customer has no known lines
-            OR cashier wants to add a NEW line for this customer
+            FAMILY PLAN TOGGLE + MANUAL ENTRY
+            R-PHONE-FAMILY-MULTIPHONES: toggle is ALWAYS visible (used
+            to live behind {!hasKnownLines && ...} which hid it for any
+            customer with a phone field). Single-line UI renders only
+            when toggle is OFF AND customer has no known lines —
+            otherwise the KnownLinesPanel above handles that case or
+            the MultiLineUI below handles the toggle-ON case.
         ══════════════════════════════════════════════════ */}
-        {!hasKnownLines && (
-          <>
+        <>
             {/* Family Plan toggle */}
             <label style={{
               display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -1540,7 +1559,7 @@ export default function PhonePaymentModal({
                   )}
                 </div>
               </div>
-            ) : (
+            ) : !hasKnownLines ? (
               <div>
                 <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>
                   {es ? 'Número de Teléfono' : 'Phone Number'}
@@ -1573,15 +1592,16 @@ export default function PhonePaymentModal({
                   )}
                 </div>
               </div>
-            )}
+            ) : null}
           </>
-        )}
 
-        {/* If customer HAS known lines, allow adding a brand-new number too.
+        {/* If customer HAS known lines (and toggle OFF), allow adding a
+            brand-new number too. When toggle ON the user uses the normal
+            multi-line UI with per-line carrier + portal instead.
             R-PHONE-MULTILINE-AUTOFILL-v3: uses INDEPENDENT state (newLinePhone /
             newLineAmount) instead of sharing phoneNumber/amount — prevents
             customer's primary phone from appearing pre-filled here. */}
-        {hasKnownLines && (
+        {hasKnownLines && !isMultiLine && (
           <details style={{ fontSize: '0.8rem' }}>
             <summary style={{ cursor: 'pointer', color: '#64748b', userSelect: 'none', padding: '0.25rem 0' }}>
               + {es ? 'Agregar número nuevo' : 'Add a new number'}
