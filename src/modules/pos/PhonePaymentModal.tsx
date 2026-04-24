@@ -1251,13 +1251,51 @@ export default function PhonePaymentModal({
             </div>
           )}
           {selectedCustomer && (
-            <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>
-              ✓ {selectedCustomer.name}
+            <div style={{
+              fontSize: '0.75rem', marginTop: '0.25rem',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ color: '#22c55e' }}>✓ {selectedCustomer.name}</span>
               {hasKnownLines && (
-                <span style={{ color: '#a5b4fc', marginLeft: '0.5rem' }}>
+                <span style={{ color: '#a5b4fc' }}>
                   · {knownLines.length} {es ? 'línea(s) conocida(s)' : `known line${knownLines.length > 1 ? 's' : ''}`}
                 </span>
               )}
+              {/* R-PHONE-FAMILY-SWITCHCUSTOMER: explicit "change customer" button.
+                  Clears everything so user can search a different customer without
+                  having to manually delete the filled input value. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCustomer(null);
+                  setCustSearch('');
+                  setSelectedKnownLines({});
+                  setFirstName('');
+                  setLastName('');
+                  setPhoneNumber('');
+                  setCarrier('');
+                  setAmount('');
+                  setPortal('');
+                  setNewLinePhone('');
+                  setNewLineAmount('');
+                  setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
+                  setShowCustDropdown(true);
+                }}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(148,163,184,0.12)',
+                  border: '1px solid rgba(148,163,184,0.3)',
+                  color: '#94a3b8',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '0.35rem',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                × {es ? 'Cambiar cliente' : 'Change customer'}
+              </button>
             </div>
           )}
         </div>
