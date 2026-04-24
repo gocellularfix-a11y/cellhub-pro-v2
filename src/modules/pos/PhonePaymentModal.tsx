@@ -1523,7 +1523,13 @@ export default function PhonePaymentModal({
                         readOnly
                         onFocus={(e) => { e.currentTarget.readOnly = false; }}
                         value={line.number || ''}
-                        onChange={(e) => updateLine(line.id, 'number', sanitizePhone(e.target.value))}
+                        onChange={(e) => {
+                          const clean = sanitizePhone(e.target.value);
+                          updateLine(line.id, 'number', clean);
+                          // R-PHONE-FAMILY-AUTOCOPY: mirror the single-line input's
+                          // auto-copy-to-clipboard behavior for multi-line entries.
+                          autoCopyPhone(clean);
+                        }}
                         placeholder={es ? 'Número' : 'Phone'}
                         className="input" style={{ flex: 1, minWidth: '110px' }}
                       />
@@ -1655,7 +1661,12 @@ export default function PhonePaymentModal({
                 maxLength={10}
                 pattern="[0-9]*"
                 autoComplete="off"
-                onChange={(e) => setNewLinePhone(sanitizePhone(e.target.value))}
+                onChange={(e) => {
+                  const clean = sanitizePhone(e.target.value);
+                  setNewLinePhone(clean);
+                  // R-PHONE-FAMILY-AUTOCOPY: same auto-copy as single-line input.
+                  autoCopyPhone(clean);
+                }}
               />
               <input
                 type="number"
