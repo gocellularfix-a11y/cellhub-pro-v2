@@ -144,7 +144,12 @@ export default function TaxReportsModule() {
       arr.filter((x) => { const d = toDate(x.createdAt); return d.getFullYear() === selectedYear && quarter.months.includes(d.getMonth()); });
 
     // FIX 1: Don't filter by status='completed' — original filters by !voided only
-    const qSales = inQ(sales).filter((s) => s.status !== 'voided');
+    // R-RETURNS-F1.1: also exclude refunded sales — ReturnsModule marks the
+    // original sale 'refunded' and creates a separate 'voided' refund sale.
+    // Without this filter, CDTFA-401 report over-counts salesTax/utilityTax/
+    // mobileSurcharge on refunded originals (tax that was reversed to the
+    // customer but still reported to CDTFA as collected).
+    const qSales = inQ(sales).filter((s) => s.status !== 'voided' && s.status !== 'refunded');
 
     let productSalesCount = 0, productSalesRevenue = 0, productSalesTax = 0;
     let phonePaymentsCount = 0, phonePaymentsRevenue = 0, phonePaymentsTax = 0, phonePaymentsMobilityFees = 0;
@@ -243,7 +248,10 @@ export default function TaxReportsModule() {
   const annual = useMemo(() => {
     const ySales = sales.filter((s) => {
       const d = toDate(s.createdAt);
-      return d.getFullYear() === selectedYear && s.status !== 'voided';
+      // R-RETURNS-F1.1: exclude refunded originals from annual P&L (same
+      // rationale as quarterly filter — avoid over-reporting income that
+      // was refunded to the customer).
+      return d.getFullYear() === selectedYear && s.status !== 'voided' && s.status !== 'refunded';
     });
     // Per-item classification (matches quarterly caTax fix)
     let phoneGross = 0;
