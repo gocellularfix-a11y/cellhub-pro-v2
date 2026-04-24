@@ -4,7 +4,20 @@
 // Falls back to localStorage when Firestore is unavailable.
 // ============================================================
 
+import {
+  isLegacyBackup,
+  normalizeLegacyBackup,
+  NormalizationResult,
+} from './import/legacyAdapter';
+
 const STORAGE_PREFIX = 'cellhub_';
+
+export interface ImportBackupResult {
+  success: boolean;
+  error?: string;
+  /** Non-null when the backup was detected as legacy v1 and converted. */
+  normalization?: NormalizationResult;
+}
 
 /**
  * Save data to localStorage (fallback / cache layer).
@@ -95,15 +108,25 @@ export function exportBackup(): Record<string, unknown> {
  */
 export async function importBackup(
   backup: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ImportBackupResult> {
+  let normalization: NormalizationResult | undefined;
   try {
     const source = (backup.data && typeof backup.data === 'object' && !Array.isArray(backup.data))
       ? backup.data as Record<string, unknown>
       : backup;
 
+    // R-IMPORT-LEGACY-ADAPTER: detect v1 shape and normalize BEFORE merging.
+    // Owns zero mapping logic here — delegates entirely to legacyAdapter.
+    let effectiveSource = source;
+    if (isLegacyBackup(source)) {
+      normalization = normalizeLegacyBackup(source);
+      effectiveSource = normalization.normalized;
+      console.log(`[importBackup] Legacy v1 shape detected — normalized ${Object.keys(normalization.stats).length} collections`);
+    }
+
     // MERGE strategy: only ADD records that don't already exist by ID
     for (const key of BACKUP_KEYS) {
-      const value = source[key];
+      const value = effectiveSource[key];
       if (value === undefined) continue;
 
       if (key === 'settings' && typeof value === 'object' && !Array.isArray(value)) {
@@ -142,7 +165,7 @@ export async function importBackup(
     let written = 0;
     let skipped = 0;
     for (const [backupKey, collectionName] of Object.entries(COLLECTION_MAP)) {
-      const records = source[backupKey];
+      const records = effectiveSource[backupKey];
       if (!Array.isArray(records) || records.length === 0) continue;
       const existing = loadLocal<Array<Record<string, unknown>>>(backupKey, []);
       const existingIds = new Set(existing.map((r) => r.id).filter(Boolean));
@@ -157,8 +180,8 @@ export async function importBackup(
       }
     }
     console.log(`[importBackup] ${written} written, ${skipped} skipped (already exist)`);
-    return { success: true };
+    return { success: true, normalization };
   } catch (e) {
-    return { success: false, error: String(e) };
+    return { success: false, error: String(e), normalization };
   }
 }

@@ -339,6 +339,14 @@ export default function SettingsModule() {
   const [cloudToggleTarget, setCloudToggleTarget] = useState<'on' | 'off' | null>(null);
   const [showFirebaseSetup, setShowFirebaseSetup] = useState(false);
   const [showRestartPrompt, setShowRestartPrompt] = useState<'enabled' | 'disabled' | null>(null);
+  // R-IMPORT-LEGACY-ADAPTER: post-import modal state. Populated only when a
+  // legacy v1 backup was normalized AND produced warnings the user should
+  // review before the reload fires (reload is deferred until modal close).
+  const [importResultModal, setImportResultModal] = useState<{
+    stats: Record<string, { total: number; converted: number; passthrough: number }>;
+    warnings: string[];
+    wasLegacy: boolean;
+  } | null>(null);
 
   const requireConfirm = (opts: typeof confirmModal) => {
     setConfirmInput('');
@@ -397,18 +405,37 @@ export default function SettingsModule() {
         const text = await file.text();
         const data = JSON.parse(text);
         const result = await importBackup(data);
-        if (result.success) {
-          toast(L.backupImportedSuccess || 'Backup imported! Reloading…', 'success');
+        const es = lang === 'es';
+
+        if (!result.success) {
+          toast(es ? `Error al importar: ${result.error}` : `Import failed: ${result.error}`, 'error');
+          return;
+        }
+
+        if (result.normalization && result.normalization.warnings.length > 0) {
+          // Detailed modal — user must review warnings before continuing.
+          // Reload fires when user closes the modal (see onClose below).
+          setImportResultModal({
+            stats: result.normalization.stats,
+            warnings: result.normalization.warnings,
+            wasLegacy: true,
+          });
+        } else if (result.normalization) {
+          toast(es
+            ? '✅ Importación completa — datos legacy v1 convertidos a formato v2.'
+            : '✅ Import complete — legacy v1 data converted to v2 format.',
+            'success');
           setTimeout(() => window.location.reload(), 1500);
         } else {
-          toast(`Import failed: ${result.error}`, 'error');
+          toast(L.backupImportedSuccess || (es ? '✅ Importación completa' : '✅ Import complete'), 'success');
+          setTimeout(() => window.location.reload(), 1500);
         }
       } catch (err) {
         toast(`Import error: ${err}`, 'error');
       }
     };
     input.click();
-  }, [toast, L]);
+  }, [toast, L, lang]);
 
   return (
     <div className="space-y-4">
@@ -2018,6 +2045,57 @@ export default function SettingsModule() {
           onConfirm={() => setShowRestartPrompt(null)}
           onCancel={() => setShowRestartPrompt(null)}
         />
+      )}
+
+      {/* R-IMPORT-LEGACY-ADAPTER: post-import breakdown + warnings modal.
+          Renders only when a legacy backup was normalized AND had warnings
+          — the reload is deferred until this modal closes. */}
+      {importResultModal && (
+        <Modal
+          open={true}
+          onClose={() => {
+            setImportResultModal(null);
+            window.location.reload();
+          }}
+          title={lang === 'es' ? '✅ Importación completa' : '✅ Import complete'}
+          size="max-w-2xl"
+        >
+          <div className="space-y-4 text-sm">
+            <div>
+              <h3 className="font-semibold text-white mb-2">
+                {lang === 'es' ? 'Colecciones normalizadas' : 'Collections normalized'}
+              </h3>
+              <ul className="space-y-1 text-slate-300">
+                {Object.entries(importResultModal.stats).map(([key, s]) => (
+                  <li key={key}>
+                    <strong className="text-slate-100">{key}:</strong>{' '}
+                    {s.total} ({s.converted} {lang === 'es' ? 'convertidos' : 'converted'},{' '}
+                    {s.passthrough} {lang === 'es' ? 'pasados' : 'passthrough'})
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {importResultModal.warnings.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-amber-300 mb-2">
+                  ⚠️ {lang === 'es' ? 'Advertencias' : 'Warnings'} ({importResultModal.warnings.length})
+                </h3>
+                <ul className="space-y-1 text-amber-200 text-xs max-h-48 overflow-y-auto">
+                  {importResultModal.warnings.map((w, i) => (
+                    <li key={i}>• {w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-400 pt-2 border-t border-white/10">
+              {lang === 'es'
+                ? 'Al cerrar esta ventana la app se recargará para mostrar los datos importados.'
+                : 'Closing this window will reload the app to show the imported data.'}
+            </p>
+          </div>
+        </Modal>
       )}
     </div>
   );

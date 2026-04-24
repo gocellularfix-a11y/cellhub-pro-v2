@@ -144,16 +144,38 @@ function migrateSale(s) {
 }
 
 function mapItemCategory(cat) {
-  if (!cat) return 'other';
-  const c = cat.toLowerCase();
-  if (c === 'phone_payment' || c === 'phonepayment') return 'phone_payment';
-  if (c === 'phone' || c === 'phones') return 'phone';
-  if (c === 'accessory' || c === 'accessories') return 'accessory';
-  if (c === 'part' || c === 'parts') return 'part';
-  if (c === 'service' || c === 'services' || c === 'servicio' || c === 'servicios') return 'service';
-  if (c === 'top_up' || c === 'topup') return 'top_up';
-  if (c === 'special_order') return 'special_order';
-  return cat; // preserve custom categories
+  if (!cat || cat === '' || cat === null || cat === undefined) return 'Uncategorized';
+  const c = String(cat).toLowerCase().trim();
+
+  // Phone payment special category (v2 uses spaced Title Case)
+  if (c === 'phone_payment' || c === 'phonepayment' || c === 'phone payment' || c === 'phone payments') return 'Phone Payments';
+
+  // Inventory standard categories — plural Title Case
+  if (c === 'phone' || c === 'phones') return 'Phones';
+  if (c === 'accessory' || c === 'accessories') return 'Accessories';
+  if (c === 'part' || c === 'parts') return 'Parts';
+  if (c === 'service' || c === 'services' || c === 'servicio' || c === 'servicios') return 'Services';
+  if (c === 'top_up' || c === 'topup' || c === 'top-up' || c === 'top-ups' || c === 'top up' || c === 'top ups') return 'Top-Ups';
+  if (c === 'tablet' || c === 'tablets') return 'Tablets';
+  if (c === 'ebike' || c === 'ebikes' || c === 'e-bike' || c === 'e-bikes') return 'Ebikes';
+  if (c === 'hotspot' || c === 'hotspots') return 'Hotspots';
+  if (c === 'laptop' || c === 'laptops') return 'Laptops';
+  if (c === 'scooter' || c === 'scooters') return 'Scooters';
+
+  // Order/sale special categories
+  if (c === 'special_order' || c === 'special order' || c === 'special orders') return 'Special Orders';
+  if (c === 'layaway' || c === 'layaways') return 'Layaways';
+  if (c === 'return' || c === 'returns') return 'Returns';
+  if (c === 'activation' || c === 'activations') return 'Activations';
+
+  // Legacy catch
+  if (c === 'uncategorized' || c === 'other') return 'Uncategorized';
+
+  // Unknown category — preserve with Title Case conversion attempt
+  // (rather than silently pass-through lowercase value)
+  return String(cat).split(' ').map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
 }
 
 function mapPaymentMethod(pm) {
@@ -167,15 +189,64 @@ function mapPaymentMethod(pm) {
 }
 
 function mapSaleStatus(status, sale) {
-  if (sale.voided) return 'voided';
-  if (sale.refunded) return 'refunded';
-  if (!status) return 'completed';
-  const s = status.toLowerCase();
-  if (s === 'completed' || s === 'complete') return 'completed';
-  if (s === 'voided' || s === 'void') return 'voided';
-  if (s === 'refunded' || s === 'refund') return 'refunded';
-  if (s === 'partial_refund') return 'partial_refund';
-  return 'completed';
+  if (sale.voided) return 'Voided';
+  if (sale.refunded) return 'Refunded';
+  if (!status) return 'Completed';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'completed' || s === 'complete') return 'Completed';
+  if (s === 'voided' || s === 'void') return 'Voided';
+  if (s === 'refunded' || s === 'refund') return 'Refunded';
+  if (s === 'partial_refund' || s === 'partial refund') return 'Partial Refund';
+  return 'Completed';
+}
+
+function mapRepairStatus(status) {
+  if (!status) return 'Pending';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'complete' || s === 'completed') return 'Completed';
+  if (s === 'received') return 'Received';
+  if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+  if (s === 'in_progress' || s === 'in progress' || s === 'working') return 'In Progress';
+  if (s === 'ready' || s === 'picked_up' || s === 'picked up') return 'Picked Up';
+  if (s === 'pending' || s === 'new') return 'Pending';
+  // Unknown — Title Case attempt
+  return String(status).split(' ').map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
+}
+
+function mapLayawayStatus(status) {
+  if (!status) return 'Active';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'active' || s === 'open') return 'Active';
+  if (s === 'completed' || s === 'complete' || s === 'paid') return 'Completed';
+  if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+  if (s === 'refunded') return 'Refunded';
+  return String(status).split(' ').map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
+}
+
+function mapSpecialOrderStatus(status) {
+  if (!status) return 'Ordered';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'ordered') return 'Ordered';
+  if (s === 'picked up' || s === 'picked_up' || s === 'pickedup') return 'Picked Up';
+  if (s === 'received') return 'Received';
+  if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+  if (s === 'refunded') return 'Refunded';
+  if (s === 'pending') return 'Pending';
+  return String(status).split(' ').map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
+}
+
+function mapRepairPriority(p) {
+  if (!p) return 'Normal';
+  const s = String(p).toLowerCase().trim();
+  if (s === 'high' || s === 'urgent' || s === 'rush') return 'High';
+  if (s === 'low') return 'Low';
+  return 'Normal';
 }
 
 // ── Inventory Migration ─────────────────────────────────────
@@ -214,6 +285,10 @@ function migrateInventoryItem(item) {
     createdAt: safeDate(item.createdAt),
     updatedAt: item.updatedAt ? safeDate(item.updatedAt) : undefined,
     lastRestocked: item.lastRestocked || '',
+    // R-MIGRATE-V1-V2-NORMALIZE: tag all migrated records with the
+    // default storeId so multi-store filtering (AppProvider) doesn't
+    // exclude them when Jorge eventually enables multi-store M2+.
+    storeId: 'default',
     _migrated: 'v2-cents',
   };
 }
@@ -243,8 +318,8 @@ function migrateRepair(r) {
     imei: r.imei || '',
     issue: r.issue || '',
     diagnosis: r.diagnosis || '',
-    status: r.status || 'Pending',
-    priority: (r.priority || 'normal').toLowerCase(),
+    status: mapRepairStatus(r.status),
+    priority: mapRepairPriority(r.priority),
     parts: (r.parts || []).map(p => ({
       ...p,
       cost: p.cost !== undefined ? toCents(p.cost) : 0,
@@ -273,6 +348,7 @@ function migrateRepair(r) {
     lastPaymentVoidReason: r.lastPaymentVoidReason || '',
     createdAt: safeDate(r.createdAt),
     updatedAt: r.updatedAt ? safeDate(r.updatedAt) : undefined,
+    storeId: 'default',
     _migrated: 'v2-cents',
   };
 }
@@ -302,7 +378,7 @@ function migrateLayaway(l) {
       name: l.itemDescription || '',
       sku: l.itemSku || '',
       imei: l.imei || '',
-      category: l.itemCategory || 'other',
+      category: mapItemCategory(l.itemCategory),
       price: toCents(l.itemPrice),
       qty: 1,
     }],
@@ -318,7 +394,7 @@ function migrateLayaway(l) {
     }],
     paidAmount: toCents(l.deposit),
     balance: toCents(l.balance),
-    status: l.status || 'active',
+    status: mapLayawayStatus(l.status),
     notes: l.notes || '',
     employeeName: l.employeeName || '',
     inventoryId: l.inventoryId || null,
@@ -329,6 +405,7 @@ function migrateLayaway(l) {
     pickupDate: l.pickupDate || '',
     createdAt: safeDate(l.createdAt),
     updatedAt: l.updatedAt ? safeDate(l.updatedAt) : undefined,
+    storeId: 'default',
     _migrated: 'v2-cents',
   };
 }
@@ -362,7 +439,7 @@ function migrateSpecialOrder(so) {
     taxAmount: so.taxAmount ? toCents(so.taxAmount) : 0,
     taxable: so.taxable || false,
     total: toCents(so.totalWithTax || so.total || so.totalPrice || 0),
-    status: so.status || 'ordered',
+    status: mapSpecialOrderStatus(so.status),
     notes: so.notes || '',
     eta: so.eta || '',
     employeeName: so.employeeName || so.createdBy || '',
@@ -370,6 +447,7 @@ function migrateSpecialOrder(so) {
     paidViaSales: so.paidViaSales || false,
     createdAt: safeDate(so.createdAt),
     updatedAt: so.updatedAt ? safeDate(so.updatedAt) : undefined,
+    storeId: 'default',
     _migrated: 'v2-cents',
   };
 }
