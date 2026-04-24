@@ -7,6 +7,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { persistSettings } from '@/services/persist';
+import { generateId } from '@/utils/dates';
 import type {
   TaxYearData,
   TaxExpense,
@@ -19,6 +20,13 @@ import type {
   TaxExpenseCategory,
   TaxIncomeCategory,
   TaxReturnStatus,
+  // R-TAX-MODULE-UI: new tax form types
+  Tax1040Data,
+  TaxBalanceSheet,
+  TaxScheduleC,
+  TaxScheduleM,
+  TaxDependent,
+  TaxDraw,
 } from '@/store/types';
 
 // ── Defaults ─────────────────────────────────────────────
@@ -54,6 +62,82 @@ export function emptyYearData(): TaxYearData {
     inventory: { ...DEFAULT_INVENTORY },
     adjustments: { ...DEFAULT_ADJUSTMENTS },
     ca540: { ...DEFAULT_CA540 },
+  };
+}
+
+// R-TAX-MODULE-UI: empty default factories for the 6 new tax forms.
+// Used when data.form1040 (or peers) is undefined on first edit — the
+// updateXxx helper spreads {...empty, ...patch} so the store ends up
+// with a fully-populated object even on the very first keystroke.
+
+export function emptyForm1040(): Tax1040Data {
+  return {
+    filingStatus: 'single',
+    dependents: 0,
+    wages: 0,
+    interestDividends: 0,
+    capitalGains: 0,
+    otherIncome1040: 0,
+    iraDeduction: 0,
+    studentLoanInterest: 0,
+    hsaDeduction: 0,
+    otherAdjustments: 0,
+    useStandardDeduction: true,
+    itemizedDeductions: 0,
+    childTaxCredit: 0,
+    earnedIncomeCredit: 0,
+    otherCredits: 0,
+    federalWithholding: 0,
+    q1Payment: 0,
+    q2Payment: 0,
+    q3Payment: 0,
+    q4Payment: 0,
+    firstName: '',
+    lastName: '',
+    ssn: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: '',
+  };
+}
+
+export function emptyBalanceSheet(): TaxBalanceSheet {
+  return {
+    cashBegin: 0, cashEnd: 0,
+    accountsReceivableBegin: 0, accountsReceivableEnd: 0,
+    inventoryBegin: 0, inventoryEnd: 0,
+    otherCurrentAssetsBegin: 0, otherCurrentAssetsEnd: 0,
+    buildingsBegin: 0, buildingsEnd: 0,
+    accDepreciationBegin: 0, accDepreciationEnd: 0,
+    landBegin: 0, landEnd: 0,
+    otherAssetsBegin: 0, otherAssetsEnd: 0,
+    accountsPayableBegin: 0, accountsPayableEnd: 0,
+    shortTermDebtBegin: 0, shortTermDebtEnd: 0,
+    longTermDebtBegin: 0, longTermDebtEnd: 0,
+    otherLiabilitiesBegin: 0, otherLiabilitiesEnd: 0,
+  };
+}
+
+export function emptyScheduleC(): TaxScheduleC {
+  return {
+    advertising: 0, carAndTruck: 0, commissions: 0, contractLabor: 0,
+    depletion: 0, depreciation: 0, employeeBenefits: 0, insurance: 0,
+    mortgageInterest: 0, otherInterest: 0, legalProfessional: 0,
+    officeExpense: 0, pensionProfit: 0, rentVehicles: 0, rentProperty: 0,
+    repairs: 0, supplies: 0, taxesLicenses: 0, travel: 0, meals: 0,
+    utilities: 0, wages: 0, otherExpenses: 0, homeOffice: 0,
+  };
+}
+
+export function emptyScheduleM(): TaxScheduleM {
+  return {
+    federalIncomeTax: 0,
+    excessCapitalLosses: 0,
+    incomeNotRecorded: 0,
+    expensesNotDeducted: 0,
+    taxExemptInterest: 0,
+    deductionsNotCharged: 0,
   };
 }
 
@@ -110,8 +194,13 @@ export function useTaxYear(year: number) {
   const allYears = settings.taxData?.byYear ?? {};
   const yearData: TaxYearData = allYears[yearKey] ?? emptyYearData();
 
-  // Merge partial defaults so older saved data still has all fields
+  // Merge partial defaults so older saved data still has all fields.
+  // R-TAX-MODULE-UI: spread yearData FIRST to preserve the 6 optional
+  // new fields (form1040, balanceSheet, dependents, draws, scheduleC,
+  // scheduleM) — explicit properties below then override with safe
+  // defaults only for the 7 required fields.
   const safeYearData: TaxYearData = {
+    ...yearData,
     expenses: yearData.expenses ?? [],
     income: yearData.income ?? [],
     suppliers: yearData.suppliers ?? [],
@@ -226,6 +315,62 @@ export function useTaxYear(year: number) {
     patchYear({ ca540: { ...safeYearDataRef.current.ca540, ...patch } });
   }, [patchYear]);
 
+  // ── R-TAX-MODULE-UI: 6 new tax-form setters ─────────────
+  // Singletons spread the empty default if the field is undefined on first
+  // edit so the store ends up with a fully-populated object.
+
+  const updateForm1040 = useCallback((patch: Partial<Tax1040Data>) => {
+    const current = safeYearDataRef.current.form1040 ?? emptyForm1040();
+    patchYear({ form1040: { ...current, ...patch } });
+  }, [patchYear]);
+
+  const updateBalanceSheet = useCallback((patch: Partial<TaxBalanceSheet>) => {
+    const current = safeYearDataRef.current.balanceSheet ?? emptyBalanceSheet();
+    patchYear({ balanceSheet: { ...current, ...patch } });
+  }, [patchYear]);
+
+  const updateScheduleC = useCallback((patch: Partial<TaxScheduleC>) => {
+    const current = safeYearDataRef.current.scheduleC ?? emptyScheduleC();
+    patchYear({ scheduleC: { ...current, ...patch } });
+  }, [patchYear]);
+
+  const updateScheduleM = useCallback((patch: Partial<TaxScheduleM>) => {
+    const current = safeYearDataRef.current.scheduleM ?? emptyScheduleM();
+    patchYear({ scheduleM: { ...current, ...patch } });
+  }, [patchYear]);
+
+  // ── Dependents CRUD ─────────────────────────────────────
+  const addDependent = useCallback((d: Omit<TaxDependent, 'id'>) => {
+    const next = [...(safeYearDataRef.current.dependents ?? []), { ...d, id: generateId() }];
+    patchYear({ dependents: next });
+  }, [patchYear]);
+
+  const updateDependent = useCallback((id: string, patch: Partial<TaxDependent>) => {
+    const current = safeYearDataRef.current.dependents ?? [];
+    patchYear({ dependents: current.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }, [patchYear]);
+
+  const deleteDependent = useCallback((id: string) => {
+    const current = safeYearDataRef.current.dependents ?? [];
+    patchYear({ dependents: current.filter((e) => e.id !== id) });
+  }, [patchYear]);
+
+  // ── Draws CRUD ──────────────────────────────────────────
+  const addDraw = useCallback((d: Omit<TaxDraw, 'id'>) => {
+    const next = [...(safeYearDataRef.current.draws ?? []), { ...d, id: generateId() }];
+    patchYear({ draws: next });
+  }, [patchYear]);
+
+  const updateDraw = useCallback((id: string, patch: Partial<TaxDraw>) => {
+    const current = safeYearDataRef.current.draws ?? [];
+    patchYear({ draws: current.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }, [patchYear]);
+
+  const deleteDraw = useCallback((id: string) => {
+    const current = safeYearDataRef.current.draws ?? [];
+    patchYear({ draws: current.filter((e) => e.id !== id) });
+  }, [patchYear]);
+
   // ── Derived totals (in cents) ────────────────────────
 
   const totalExpensesAll = safeYearData.expenses.reduce((s, e) => s + e.amount, 0);
@@ -262,6 +407,10 @@ export function useTaxYear(year: number) {
     addSupplier, updateSupplier, deleteSupplier,
     addReturn, updateReturn, deleteReturn,
     updateInventory, updateAdjustments, updateCA540,
+    // R-TAX-MODULE-UI helpers
+    updateForm1040, updateBalanceSheet, updateScheduleC, updateScheduleM,
+    addDependent, updateDependent, deleteDependent,
+    addDraw, updateDraw, deleteDraw,
     // totals
     totalExpensesAll,
     totalExpensesDeductible,

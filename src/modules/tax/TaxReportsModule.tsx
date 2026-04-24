@@ -19,6 +19,10 @@ import TaxExpensesTab from './TaxExpensesTab';
 import TaxIncomeTab from './TaxIncomeTab';
 import TaxInventoryTab from './TaxInventoryTab';
 import TaxCA540Tab from './TaxCA540Tab';
+import Tax1040Tab from './Tax1040Tab';
+import TaxScheduleCTab from './TaxScheduleCTab';
+import TaxBalanceSheetTab from './TaxBalanceSheetTab';
+import TaxScheduleMTab from './TaxScheduleMTab';
 
 // ── Quarter config ────────────────────────────────────────
 const QUARTERS = [
@@ -47,6 +51,7 @@ function getCurrentQuarter() {
 // ── 1065 horizontal tabs ──────────────────────────────────
 const F1065_TABS = [
   { id: 'overview',   label: 'Overview' },
+  { id: 'f1040',      label: '1040' },
   { id: 'income',     label: 'Income (Auto)' },
   { id: 'expenses',   label: 'Expenses' },
   { id: 'inventory',  label: 'Inventory' },
@@ -1158,23 +1163,34 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               </div>
             )}
 
-            {/* ── Schedule C / SE / 1040 tabs (read-only auto-calc) ── */}
-            {['schedC','schedSE','sched1','sched2','f1040C','schedL','schedM'].includes(f1065Tab) && (
+            {/* ── R-TAX-MODULE-UI: editable tabs for the 4 new tax forms ── */}
+            {f1065Tab === 'f1040' && (
+              <Tax1040Tab year={selectedYear} />
+            )}
+            {f1065Tab === 'schedC' && (
+              <TaxScheduleCTab year={selectedYear} />
+            )}
+            {f1065Tab === 'schedL' && (
+              <TaxBalanceSheetTab year={selectedYear} />
+            )}
+            {f1065Tab === 'schedM' && (
+              <TaxScheduleMTab year={selectedYear} />
+            )}
+
+            {/* ── Remaining read-only auto-calc tabs (SE / Schedule 1 / Schedule 2 / 1040 Sched C) ── */}
+            {['schedSE','sched1','sched2','f1040C'].includes(f1065Tab) && (
               <div>
                 <InfoBox color="amber">
-                  {f1065Tab === 'schedC' && '📊 Schedule C — Profit or Loss from Business. For sole proprietors only. This business files 1065 as a partnership, but this is provided for reference.'}
                   {f1065Tab === 'schedSE' && '📋 Schedule SE — Self-Employment Tax. Each partner calculates SE tax on their K-1 Box 14 amount (net earnings × 92.35% × 15.3%).'}
                   {f1065Tab === 'sched1' && '📄 Schedule 1 — Additional Income and Adjustments. Partners attach K-1 income here via Schedule E, and deduct ½ SE tax.'}
                   {f1065Tab === 'sched2' && '📄 Schedule 2 — Additional Taxes. Self-employment tax from Schedule SE flows here.'}
                   {f1065Tab === 'f1040C' && '🧾 1040 Schedule C — Use this if business entity changes to sole prop. Currently N/A for partnerships — for sole proprietors only.'}
-                  {f1065Tab === 'schedL' && '📋 Schedule L — Balance Sheet. Required if partnership receipts ≥ $250K or assets ≥ $1M.'}
-                  {f1065Tab === 'schedM' && '📋 Schedule M-1/M-2 — Reconciliation of Income. Required if Schedule L is required.'}
                 </InfoBox>
-                {(f1065Tab === 'schedC' || f1065Tab === 'schedSE') && (() => {
+                {f1065Tab === 'schedSE' && (() => {
                   const realMembers = settings.partnership?.members ?? [];
                   // r29b-1: removed bogus 50/50 fallback. If no members are configured,
                   // show the same CTA pattern used in the K-1 tab — honest > inventing data.
-                  if (f1065Tab === 'schedSE' && realMembers.length === 0) {
+                  if (realMembers.length === 0) {
                     return (
                       <div style={{
                         background: 'rgba(251,191,36,0.08)',
@@ -1211,33 +1227,27 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     );
                   }
                   return (
-                    <Card title={f1065Tab === 'schedC' ? 'Schedule C Summary' : 'Schedule SE — Per Partner'}>
-                      {f1065Tab === 'schedC' ? <>
-                        <Row label="Gross Income (Line 7)" value={formatCurrency(annual.totalIncome)} color="#22c55e" />
-                        <Row label="Total Expenses (Line 28)" value={`(${formatCurrency(annual.manualTotal)})`} color="#f87171" />
-                        <Row label="Net Profit/Loss (Line 31)" value={formatCurrency(annual.netProfit)} color={annual.netProfit >= 0 ? '#22c55e' : '#f87171'} bold />
-                      </> : <>
-                        {realMembers.map((m) => {
-                          // r29d-1 — use canonical calcMemberK1. Previously inline math
-                          // had the same Box 14 bug as the K-1 print render. The "Net SE
-                          // earnings" row was showing the PRE-multiplication value.
-                          const k1 = calcMemberK1(m, annual.netProfit);
-                          return (
-                            <div key={m.id} style={{ marginBottom: '0.875rem', paddingBottom: '0.5rem', borderBottom: '1px dashed rgba(255,255,255,0.08)' }}>
-                              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.3rem' }}>
-                                {m.name} ({m.ownershipPct.toFixed(2)}%)
-                              </div>
-                              <Row label="Box 1 — Ordinary income share" value={formatCurrency(k1.ordinaryIncome)} indent />
-                              {m.guaranteedPayments > 0 && (
-                                <Row label="+ Guaranteed payments" value={formatCurrency(m.guaranteedPayments)} indent />
-                              )}
-                              <Row label="Net SE earnings (K-1 Box 14, after × 92.35%)" value={formatCurrency(k1.netSEEarnings)} indent />
-                              <Row label="× 15.3% SE Tax" value={formatCurrency(k1.seTax)} color="#f87171" bold indent />
-                              <Row label="Deductible ½ SE" value={formatCurrency(k1.halfSE)} color="#22c55e" indent />
+                    <Card title="Schedule SE — Per Partner">
+                      {realMembers.map((m) => {
+                        // r29d-1 — use canonical calcMemberK1. Previously inline math
+                        // had the same Box 14 bug as the K-1 print render. The "Net SE
+                        // earnings" row was showing the PRE-multiplication value.
+                        const k1 = calcMemberK1(m, annual.netProfit);
+                        return (
+                          <div key={m.id} style={{ marginBottom: '0.875rem', paddingBottom: '0.5rem', borderBottom: '1px dashed rgba(255,255,255,0.08)' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.3rem' }}>
+                              {m.name} ({m.ownershipPct.toFixed(2)}%)
                             </div>
-                          );
-                        })}
-                      </>}
+                            <Row label="Box 1 — Ordinary income share" value={formatCurrency(k1.ordinaryIncome)} indent />
+                            {m.guaranteedPayments > 0 && (
+                              <Row label="+ Guaranteed payments" value={formatCurrency(m.guaranteedPayments)} indent />
+                            )}
+                            <Row label="Net SE earnings (K-1 Box 14, after × 92.35%)" value={formatCurrency(k1.netSEEarnings)} indent />
+                            <Row label="× 15.3% SE Tax" value={formatCurrency(k1.seTax)} color="#f87171" bold indent />
+                            <Row label="Deductible ½ SE" value={formatCurrency(k1.halfSE)} color="#22c55e" indent />
+                          </div>
+                        );
+                      })}
                     </Card>
                   );
                 })()}
