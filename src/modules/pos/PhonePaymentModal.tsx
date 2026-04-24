@@ -623,10 +623,15 @@ export default function PhonePaymentModal({
   }, [canAddToCart, buildCartItems, setCart, onClose]);
 
   // ── Manual line helpers ───────────────────────────────────
-  const addLine = () => setLines([...lines, { id: generateId(), number: '', amount: '' }]);
-  const removeLine = (id: string) => { if (lines.length > 1) setLines(lines.filter((l) => l.id !== id)); };
+  // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
+  // stale-closure scenario where rapid add-line+type interleavings could
+  // cause one update to see pre-update `lines` and clobber changes.
+  const addLine = () =>
+    setLines((prev) => [...prev, { id: generateId(), number: '', amount: '' }]);
+  const removeLine = (id: string) =>
+    setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : prev));
   const updateLine = (id: string, field: 'number' | 'amount', val: string) =>
-    setLines(lines.map((l) => l.id === id ? { ...l, [field]: val } : l));
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: val } : l)));
 
   const carriers = settings.phoneCarriers?.length
     ? settings.phoneCarriers
@@ -1318,11 +1323,15 @@ export default function PhonePaymentModal({
                 {lines.map((line, i) => (
                   <div key={line.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: '#64748b', width: '20px' }}>{i + 1}.</span>
-                    {/* R-PHONE-MULTILINE-AUTOFILL: autoComplete="off" + unique name
-                        blocks Chrome from autofilling a newly-mounted tel input with
-                        the last-typed tel value (which was duplicating line 1 into
-                        line 2). sanitizePhone + inputMode/maxLength/pattern align
-                        with single-line input protections from R-PHONE-INPUT-VALIDATION. */}
+                    {/* R-PHONE-MULTILINE-AUTOFILL-v2:
+                        Chrome ignores autoComplete="off" for type="tel" in some
+                        scenarios (saved form data). Nuclear option: mount input
+                        as readOnly, unlock on focus — Chrome never autofills a
+                        readOnly input. User-experience cost is nil (clicking the
+                        field focuses it → readOnly removed synchronously → first
+                        keystroke lands normally). Kept autoComplete/inputMode/
+                        maxLength/pattern/sanitize + unique name for defense in
+                        depth and mobile numeric keyboard. */}
                     <input
                       type="tel"
                       name={`line-number-${line.id}`}
@@ -1330,6 +1339,8 @@ export default function PhonePaymentModal({
                       inputMode="numeric"
                       maxLength={10}
                       pattern="[0-9]*"
+                      readOnly
+                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
                       value={line.number || ''}
                       onChange={(e) => updateLine(line.id, 'number', sanitizePhone(e.target.value))}
                       placeholder={es ? 'Número' : 'Phone number'}
@@ -1339,6 +1350,8 @@ export default function PhonePaymentModal({
                       type="number"
                       name={`line-amount-${line.id}`}
                       autoComplete="off"
+                      readOnly
+                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
                       value={line.amount}
                       onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
                       placeholder="$0.00"
