@@ -37,11 +37,15 @@ export interface PhonePaymentForm {
   creditCard: boolean;
 }
 
-/** Multi-line phone payment entry */
+/** Multi-line phone payment entry.
+ *  R-PHONE-FAMILY-PERLINE: carrier is per-line (was global before) so
+ *  family-plan scenarios with mixed carriers (e.g. AT&T + T-Mobile on
+ *  the same customer) persist each line with its own carrier. */
 export interface PhonePaymentLine {
   id: string;
   number: string;
   amount: string;
+  carrier: string;
 }
 
 /** Discount state */

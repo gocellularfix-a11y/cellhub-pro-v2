@@ -155,7 +155,7 @@ export default function PhonePaymentModal({
 
   // ── Multi-line rows ───────────────────────────────────────
   const [lines, setLines] = useState<PhonePaymentLine[]>([
-    { id: generateId(), number: '', amount: '' },
+    { id: generateId(), number: '', amount: '', carrier: '' },
   ]);
 
   // R-PHONE-MULTILINE-AUTOFILL-v3 Bug A:
@@ -342,7 +342,7 @@ export default function PhonePaymentModal({
     setPhoneNumber(''); setCopiedPhone(null); setFirstName(''); setLastName('');
     setPortal(''); setAmount('');
     // CC fee removed — Cart.tsx handles it
-    setLines([{ id: generateId(), number: '', amount: '' }]);
+    setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
     setSelectedKnownLines({});
     setNewLinePhone('');
     setNewLineAmount('');
@@ -354,15 +354,15 @@ export default function PhonePaymentModal({
   const validLines = useMemo<PhonePaymentLine[]>(() => {
     // If customer has known lines and at least one is selected+filled → use those
     if (knownLines.length > 0) {
-      const selected = Object.entries(selectedKnownLines)
+      // R-PHONE-FAMILY-PERLINE: known-lines entries carry an empty carrier
+      // for now; buildCartItems multi-line branch falls back to the global
+      // `carrier` when line.carrier is empty (Phase B: per-line carrier
+      // for known-lines will need its own state extension).
+      const selected: PhonePaymentLine[] = Object.entries(selectedKnownLines)
         .filter(([, amt]) => parseFloat(amt) > 0)
-        .map(([norm, amt]) => ({ id: norm, number: norm, amount: amt }));
-      // R-PHONE-MULTILINE-AUTOFILL-v3: if user also filled the "+ Agregar
-      // número nuevo" expander, include that new line alongside the known
-      // ones. Previously this pair was ignored entirely (pre-existing
-      // bug — expander looked functional but didn't commit to cart).
+        .map(([norm, amt]) => ({ id: norm, number: norm, amount: amt, carrier: '' }));
       if (isValidPhone(newLinePhone) && parseFloat(newLineAmount) > 0) {
-        selected.push({ id: `new-${newLinePhone}`, number: sanitizePhone(newLinePhone), amount: newLineAmount });
+        selected.push({ id: `new-${newLinePhone}`, number: sanitizePhone(newLinePhone), amount: newLineAmount, carrier: '' });
       }
       return selected;
     }
@@ -431,13 +431,17 @@ export default function PhonePaymentModal({
   // CC fee is intentionally NOT added here — Cart.tsx handles it via its own
   // % toggle on subtotal, source of truth for all card payments.
   const buildCartItems = useCallback((): CartItem[] => {
-    if (!carrier) return [];
-    const normalizedCarrier = normalizeCarrier(carrier);
     const customerNote = `${firstName} ${lastName}`.trim();
     const items: CartItem[] = [];
 
     if (isMultiLine || knownLines.length > 0) {
+      // R-PHONE-FAMILY-PERLINE: each PhonePaymentLine has its own carrier.
+      // Fall back to global `carrier` only if the line left it blank
+      // (e.g. legacy known-line entries that don't carry carrier yet).
       validLines.forEach((line) => {
+        const lineCarrierRaw = line.carrier || carrier;
+        if (!lineCarrierRaw) return;
+        const normalizedCarrier = normalizeCarrier(lineCarrierRaw);
         const phone = normalizePhone(line.number);
         items.push({
           id: generateId(),
@@ -450,6 +454,9 @@ export default function PhonePaymentModal({
         });
       });
     } else {
+      // Single-line mode requires the global carrier (unchanged).
+      if (!carrier) return [];
+      const normalizedCarrier = normalizeCarrier(carrier);
       // Round R-PHONE-INPUT-VALIDATION: validate 10-digit phone BEFORE build.
       // Prior guard `!phoneNumber.trim()` let letter-only input through
       // (e.g. "abcXYZ" truthy after trim), causing receipt to show
@@ -641,15 +648,82 @@ export default function PhonePaymentModal({
     onClose();
   }, [canAddToCart, buildCartItems, setCart, onClose]);
 
+  // R-PHONE-FAMILY-PERLINE: per-line portal handler — multi-line mode.
+  // Processes ONE line at a time: validates, builds its cart item with
+  // ITS carrier, opens that carrier's portal, adds to cart, removes
+  // the line from state. When the last line is processed, closes modal.
+  const handlePortalForLine = useCallback((lineId: string) => {
+    const line = lines.find((l) => l.id === lineId);
+    if (!line) return;
+    if (!line.carrier) {
+      toast(es ? 'Selecciona carrier para esta línea' : 'Pick a carrier for this line', 'error');
+      return;
+    }
+    if (!isValidPhone(line.number)) {
+      toast(es ? 'Número inválido (10 dígitos)' : 'Invalid phone (10 digits)', 'error');
+      return;
+    }
+    const amt = parseFloat(line.amount);
+    if (!amt || amt <= 0) {
+      toast(es ? 'Monto inválido' : 'Invalid amount', 'error');
+      return;
+    }
+
+    const normCarrier = normalizeCarrier(line.carrier);
+    const phone = sanitizePhone(line.number);
+    const customerNote = `${firstName} ${lastName}`.trim();
+
+    const newItem: CartItem = {
+      id: generateId(),
+      name: `${normCarrier} - ${formatPhone(phone)}`,
+      category: 'phone_payment',
+      price: Math.round(amt * 100),
+      qty: 1,
+      taxable: false,
+      cbeEligible: false,
+      carrier: normCarrier,
+      phoneNumber: phone,
+      notes: customerNote,
+      commissionRate: settings.carrierCommissions?.[normCarrier] ?? 0,
+    };
+
+    // Open this carrier's portal (if URL configured).
+    const url = settings.carrierPortalUrls?.[normCarrier];
+    if (url) {
+      const c = normCarrier.toLowerCase();
+      const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
+        ? 'qpayWindow' : 'externalPortalWindow';
+      window.open(url, winName, 'noopener,noreferrer');
+    }
+
+    // Commit to cart.
+    const nextCart = [...cartRef.current, newItem];
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    // Remove the processed line; if it was the last, close the modal.
+    setLines((prev) => {
+      const remaining = prev.filter((l) => l.id !== lineId);
+      if (remaining.length === 0) {
+        // Defer close to next tick so state settles.
+        setTimeout(() => { reset(); onClose(); }, 0);
+        return [{ id: generateId(), number: '', amount: '', carrier: '' }];
+      }
+      return remaining;
+    });
+  }, [lines, firstName, lastName, settings, setCart, onClose, es, toast]);
+
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
   // stale-closure scenario where rapid add-line+type interleavings could
   // cause one update to see pre-update `lines` and clobber changes.
+  // R-PHONE-FAMILY-PERLINE: new lines inherit the global `carrier` state
+  // as a convenience default; user can override per-row.
   const addLine = () =>
-    setLines((prev) => [...prev, { id: generateId(), number: '', amount: '' }]);
+    setLines((prev) => [...prev, { id: generateId(), number: '', amount: '', carrier: carrier || '' }]);
   const removeLine = (id: string) =>
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : prev));
-  const updateLine = (id: string, field: 'number' | 'amount', val: string) =>
+  const updateLine = (id: string, field: 'number' | 'amount' | 'carrier', val: string) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: val } : l)));
 
   const carriers = settings.phoneCarriers?.length
@@ -1323,28 +1397,35 @@ export default function PhonePaymentModal({
                 onChange={(e) => {
                   const checked = e.target.checked;
                   setIsMultiLine(checked);
-                  // R-PHONE-MULTILINE-AUTOFILL-v3 Bug B: transfer typed phone
-                  // between single-line (phoneNumber) and multi-line (lines[0])
+                  // R-PHONE-MULTILINE-AUTOFILL-v3 Bug B + R-PHONE-FAMILY-PERLINE:
+                  // transfer typed phone AND carrier between single-line
+                  // (phoneNumber + global carrier) and multi-line (lines[0])
                   // when toggling, so the user's input isn't lost visually.
                   if (checked) {
-                    // Single → Multi: move phoneNumber/amount into lines[0]
+                    // Single → Multi: move phoneNumber/amount/carrier into lines[0]
                     const clean = sanitizePhone(phoneNumber);
-                    if (clean) {
+                    if (clean || carrier) {
                       setLines((prev) => {
                         const head = prev[0];
-                        if (head && !head.number.trim()) {
-                          return [{ ...head, number: clean, amount: amount || head.amount }, ...prev.slice(1)];
+                        if (head && !head.number.trim() && !head.carrier) {
+                          return [{
+                            ...head,
+                            number: clean || head.number,
+                            amount: amount || head.amount,
+                            carrier: carrier || head.carrier,
+                          }, ...prev.slice(1)];
                         }
                         return prev;
                       });
                     }
                   } else {
-                    // Multi → Single: move lines[0] back into phoneNumber/amount
+                    // Multi → Single: move lines[0] back into phoneNumber/amount/carrier
                     setLines((prev) => {
                       const head = prev[0];
                       if (head && head.number.trim() && !phoneNumber) {
                         setPhoneNumber(head.number);
                         if (head.amount && !amount) setAmount(head.amount);
+                        if (head.carrier && !carrier) setCarrier(head.carrier);
                       }
                       return prev;
                     });
@@ -1368,52 +1449,86 @@ export default function PhonePaymentModal({
                 <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
                   {es ? 'Líneas' : 'Lines'}
                 </label>
-                {lines.map((line, i) => (
-                  <div key={line.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', width: '20px' }}>{i + 1}.</span>
-                    {/* R-PHONE-MULTILINE-AUTOFILL-v2:
-                        Chrome ignores autoComplete="off" for type="tel" in some
-                        scenarios (saved form data). Nuclear option: mount input
-                        as readOnly, unlock on focus — Chrome never autofills a
-                        readOnly input. User-experience cost is nil (clicking the
-                        field focuses it → readOnly removed synchronously → first
-                        keystroke lands normally). Kept autoComplete/inputMode/
-                        maxLength/pattern/sanitize + unique name for defense in
-                        depth and mobile numeric keyboard. */}
-                    <input
-                      type="tel"
-                      name={`line-number-${line.id}`}
-                      autoComplete="off"
-                      inputMode="numeric"
-                      maxLength={10}
-                      pattern="[0-9]*"
-                      readOnly
-                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
-                      value={line.number || ''}
-                      onChange={(e) => updateLine(line.id, 'number', sanitizePhone(e.target.value))}
-                      placeholder={es ? 'Número' : 'Phone number'}
-                      className="input" style={{ flex: 1 }}
-                    />
-                    <input
-                      type="number"
-                      name={`line-amount-${line.id}`}
-                      autoComplete="off"
-                      readOnly
-                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
-                      value={line.amount}
-                      onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
-                      placeholder="$0.00"
-                      className="input" style={{ width: '90px' }}
-                      step="0.01" min="0"
-                    />
-                    {lines.length > 1 && (
-                      <button onClick={() => removeLine(line.id)} style={{
-                        background: 'transparent', border: 'none', color: '#ef4444',
-                        cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem',
-                      }}>✕</button>
-                    )}
-                  </div>
-                ))}
+                {lines.map((line, i) => {
+                  const lineCarrierColor = line.carrier ? (CARRIER_COLORS[line.carrier] || '#667eea') : '#64748b';
+                  const lineReady = !!(line.carrier && isValidPhone(line.number) && parseFloat(line.amount) > 0);
+                  return (
+                    <div key={line.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', width: '18px' }}>{i + 1}.</span>
+                      {/* Phone number — R-PHONE-MULTILINE-AUTOFILL-v2 protections kept */}
+                      <input
+                        type="tel"
+                        name={`line-number-${line.id}`}
+                        autoComplete="off"
+                        inputMode="numeric"
+                        maxLength={10}
+                        pattern="[0-9]*"
+                        readOnly
+                        onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                        value={line.number || ''}
+                        onChange={(e) => updateLine(line.id, 'number', sanitizePhone(e.target.value))}
+                        placeholder={es ? 'Número' : 'Phone'}
+                        className="input" style={{ flex: 1, minWidth: '110px' }}
+                      />
+                      {/* R-PHONE-FAMILY-PERLINE: per-line carrier select */}
+                      <select
+                        value={line.carrier}
+                        onChange={(e) => updateLine(line.id, 'carrier', e.target.value)}
+                        className="input"
+                        style={{
+                          width: '110px',
+                          fontSize: '0.75rem',
+                          color: line.carrier ? lineCarrierColor : '#94a3b8',
+                          fontWeight: line.carrier ? 700 : 400,
+                          borderColor: line.carrier ? `${lineCarrierColor}66` : undefined,
+                        }}
+                      >
+                        <option value="">{es ? 'Carrier…' : 'Carrier…'}</option>
+                        {carriers.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        name={`line-amount-${line.id}`}
+                        autoComplete="off"
+                        readOnly
+                        onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                        value={line.amount}
+                        onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
+                        placeholder="$0.00"
+                        className="input" style={{ width: '80px' }}
+                        step="0.01" min="0"
+                      />
+                      {/* Per-line portal button: opens THIS line's carrier portal,
+                          adds THIS line to cart, removes from state. */}
+                      <button
+                        onClick={() => handlePortalForLine(line.id)}
+                        disabled={!lineReady}
+                        title={lineReady
+                          ? (es ? `Abrir portal de ${line.carrier}` : `Open ${line.carrier} portal`)
+                          : (es ? 'Faltan datos en la línea' : 'Missing line data')}
+                        style={{
+                          background: lineReady ? lineCarrierColor : 'rgba(255,255,255,0.05)',
+                          color: lineReady ? '#fff' : '#475569',
+                          border: 'none', borderRadius: '0.4rem',
+                          padding: '0.45rem 0.65rem',
+                          cursor: lineReady ? 'pointer' : 'not-allowed',
+                          fontSize: '0.85rem', fontWeight: 700,
+                          opacity: lineReady ? 1 : 0.5,
+                        }}
+                      >
+                        📡
+                      </button>
+                      {lines.length > 1 && (
+                        <button onClick={() => removeLine(line.id)} style={{
+                          background: 'transparent', border: 'none', color: '#ef4444',
+                          cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem',
+                        }}>✕</button>
+                      )}
+                    </div>
+                  );
+                })}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <button onClick={addLine} className="btn btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }}>
                     + {es ? 'Agregar Línea' : 'Add Line'}
