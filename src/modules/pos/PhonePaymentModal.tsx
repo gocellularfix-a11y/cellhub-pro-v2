@@ -186,7 +186,9 @@ export default function PhonePaymentModal({
     }
     // Autofill from customer record
     setSelectedCustomer(match);
-    setCustSearch(match.name || '');
+    // R-PHONE-FAMILY-MULTICUST: searchbar stays clean so the cashier can
+    // immediately search the next customer (Family Plan multi-customer flow).
+    setCustSearch('');
     setFirstName(match.firstName || (match.name || '').split(' ')[0] || '');
     setLastName(match.lastName || (match.name || '').split(' ').slice(1).join(' ') || '');
     // Primary phone — v2 Boundary 3: sanitize on hydration (legacy customers
@@ -274,7 +276,10 @@ export default function PhonePaymentModal({
   // Core customer-selection logic (used after phone is chosen or if only one)
   const applyCustomerSelection = (c: Customer, chosenPhone: string) => {
     setSelectedCustomer(c);
-    setCustSearch(c.name);
+    // R-PHONE-FAMILY-MULTICUST: clear searchbar post-selection (the green ✓
+    // badge below is the visual confirmation). Lets the user immediately
+    // search for a different/next customer without manually deleting.
+    setCustSearch('');
     setShowCustDropdown(false);
     const parts = c.name.trim().split(' ');
     setFirstName(c.firstName || parts[0] || '');
@@ -288,6 +293,44 @@ export default function PhonePaymentModal({
     setSelectedKnownLines({});
   };
 
+  // R-PHONE-FAMILY-MULTICUST: add a customer's line to the multi-line rows
+  // without replacing the previously selected customer. Fills the first
+  // empty line (number + carrier both blank) or pushes a new one.
+  // The FIRST customer added in a multi-line transaction becomes
+  // selectedCustomer (drives sale.customerId / loyalty attribution).
+  const addCustomerLineToMulti = (c: Customer, chosenPhone: string) => {
+    const cleanPhone = sanitizePhone(chosenPhone || c.phone || '');
+    const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
+    const monthly = (c as any).monthlyPayment;
+    const amt = monthly ? String(monthly) : '';
+
+    if (!selectedCustomer) {
+      setSelectedCustomer(c);
+      const parts = (c.name || '').trim().split(' ');
+      setFirstName(c.firstName || parts[0] || '');
+      setLastName(c.lastName || parts.slice(1).join(' ') || '');
+    }
+
+    setLines((prev) => {
+      const idx = prev.findIndex((l) => !l.number.trim() && !l.carrier);
+      const filled = {
+        number: cleanPhone,
+        amount: amt,
+        carrier: primaryCarrier,
+        customerId: c.id,
+        customerName: c.name,
+      };
+      if (idx >= 0) {
+        return prev.map((l, i) => (i === idx ? { ...l, ...filled } : l));
+      }
+      return [...prev, { id: generateId(), ...filled }];
+    });
+
+    autoCopyPhone(cleanPhone);
+    setCustSearch('');
+    setShowCustDropdown(false);
+  };
+
   // ── Select a customer ─────────────────────────────────────
   const handleSelectCustomer = (c: Customer) => {
     // If customer has multiple valid phones, show the selector
@@ -299,8 +342,15 @@ export default function PhonePaymentModal({
       setShowCustDropdown(false);
       return;
     }
-    // Single or no phones → select directly
-    applyCustomerSelection(c, uniquePhones[0] || c.phone || '');
+    // R-PHONE-FAMILY-MULTICUST: in multi-line mode, append a new line for
+    // this customer instead of overwriting the previously selected one.
+    const chosenPhone = uniquePhones[0] || c.phone || '';
+    if (isMultiLine) {
+      addCustomerLineToMulti(c, chosenPhone);
+      return;
+    }
+    // Single-line mode — replace behavior unchanged.
+    applyCustomerSelection(c, chosenPhone);
   };
 
   // ── Toggle a known line on/off ────────────────────────────
@@ -399,7 +449,26 @@ export default function PhonePaymentModal({
     const mobilityPerLineCents = Math.round((settings.mobileSurcharge || 0.41) * 100);
     // Fix Bug #5: normalize carrier before commission lookup (consistent with buildCartItems)
     const normalizedCarrier = normalizeCarrier(carrier);
-    const commRate = settings.carrierCommissions?.[normalizedCarrier] ?? 0;
+    const globalCommRate = settings.carrierCommissions?.[normalizedCarrier] ?? 0;
+
+    // R-PHONE-FAMILY-MULTILINE-TOTALS: per-line commission accumulator grouped by
+    // carrier. Multi-line family plans can mix carriers (T-Mobile $70 @ 10% +
+    // Verizon $50 @ 7%) and the prior global-carrier math gave $12 instead of
+    // the correct $10.50. Sum per-line (Approach A) to avoid rounding drift.
+    const commGroups = new Map<string, { rate: number; amountCents: number; commissionCents: number }>();
+    const addLineCommission = (carrierRaw: string, amountCents: number) => {
+      if (amountCents <= 0) return;
+      const norm = normalizeCarrier(carrierRaw);
+      const rate = settings.carrierCommissions?.[norm] ?? 0;
+      const lineCommissionCents = Math.round(amountCents * rate);
+      const existing = commGroups.get(norm);
+      if (existing) {
+        existing.amountCents += amountCents;
+        existing.commissionCents += lineCommissionCents;
+      } else {
+        commGroups.set(norm, { rate, amountCents, commissionCents: lineCommissionCents });
+      }
+    };
 
     // Subtotal: sum of all line amounts (or single amount), in CENTS
     let subtotalCents = 0;
@@ -410,17 +479,43 @@ export default function PhonePaymentModal({
         if (cents > 0) {
           subtotalCents += cents;
           lineCount++;
+          // Fall back to global `carrier` when the line left it blank (legacy
+          // known-line entries) — mirrors buildCartItems multi-line logic.
+          addLineCommission(l.carrier || carrier, cents);
         }
       }
     } else {
       subtotalCents = Math.round((parseFloat(amount) || 0) * 100);
       lineCount = subtotalCents > 0 ? 1 : 0;
+      if (subtotalCents > 0 && carrier) {
+        addLineCommission(carrier, subtotalCents);
+      }
     }
 
     const utilityTaxCents  = Math.round(subtotalCents * utilRate);
     const mobilityTotCents = mobilityPerLineCents * lineCount;
     const totalCents       = subtotalCents + utilityTaxCents + mobilityTotCents;
-    const commissionCents  = Math.round(subtotalCents * commRate);
+
+    // Build ordered breakdown array + total commission from the per-carrier
+    // groups. Total = sum of group totals (NOT re-derived from subtotal).
+    const commissionBreakdown: Array<{
+      carrier: string;
+      rate: number;
+      amountCents: number;
+      commissionCents: number;
+    }> = [];
+    let commissionCents = 0;
+    commGroups.forEach((g, carrierKey) => {
+      if (g.commissionCents > 0) {
+        commissionBreakdown.push({
+          carrier: carrierKey,
+          rate: g.rate,
+          amountCents: g.amountCents,
+          commissionCents: g.commissionCents,
+        });
+        commissionCents += g.commissionCents;
+      }
+    });
 
     // Dollar equivalents for display only
     return {
@@ -430,7 +525,11 @@ export default function PhonePaymentModal({
       mobilityTot: mobilityTotCents / 100,
       total:       totalCents / 100,
       commission:  commissionCents / 100,
-      commRate, utilRate,
+      commissionBreakdown,
+      // Kept as globalCommRate for backward-compat with any consumer still
+      // reading the single-carrier rate; commissionBreakdown is the new truth.
+      commRate: globalCommRate,
+      utilRate,
       mobility:    mobilityPerLineCents / 100,
       lineCount,
     };
@@ -450,11 +549,17 @@ export default function PhonePaymentModal({
       // R-PHONE-FAMILY-PERLINE: each PhonePaymentLine has its own carrier.
       // Fall back to global `carrier` only if the line left it blank
       // (e.g. legacy known-line entries that don't carry carrier yet).
+      // R-PHONE-FAMILY-MULTICUST: each line may be attributed to a different
+      // customer. Prefer the line's own customerName for the cart-item note so
+      // a multi-customer family bundle shows the right person per line on the
+      // receipt; fall back to the global note when the line wasn't sourced
+      // from a specific customer (manual typed entry).
       validLines.forEach((line) => {
         const lineCarrierRaw = line.carrier || carrier;
         if (!lineCarrierRaw) return;
         const normalizedCarrier = normalizeCarrier(lineCarrierRaw);
         const phone = normalizePhone(line.number);
+        const lineNote = line.customerName || customerNote;
         items.push({
           id: generateId(),
           name: `${normalizedCarrier} - ${formatPhone(phone)}`,
@@ -462,7 +567,10 @@ export default function PhonePaymentModal({
           price: Math.round(parseFloat(line.amount) * 100),
           qty: 1, taxable: false, cbeEligible: false,
           carrier: normalizedCarrier, phoneNumber: phone,
-          notes: customerNote,
+          // R-PHONE-FAMILY-MULTILINE-TOTALS: persist per-line rate so historical
+          // reports (sum of item.price × item.commissionRate) match the preview.
+          commissionRate: settings.carrierCommissions?.[normalizedCarrier] ?? 0,
+          notes: lineNote,
         });
       });
     } else {
@@ -496,6 +604,10 @@ export default function PhonePaymentModal({
         // trust raw state; guarantees the 10-digit phoneNumber shipped to
         // cart → sale → receipt → SMS is identical to what validation saw.
         phoneNumber: sanitizePhone(phoneNumber),
+        // R-PHONE-FAMILY-MULTILINE-TOTALS: parity with multi-line path +
+        // handlePortalForLine/activation — reports need this to attribute
+        // commission on historical single-line sales.
+        commissionRate: settings.carrierCommissions?.[normalizedCarrier] ?? 0,
         notes: customerNote,
       });
     }
@@ -573,7 +685,9 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(updated.id, updated as unknown as Record<string, unknown>);
       setSelectedCustomer(updated);
-      setCustSearch(updated.name);
+      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save (consistent
+      // with select-customer flow — ✓ badge is the confirmation).
+      setCustSearch('');
       // Sync form fields with updated customer
       // v2 Boundary 3: sanitize (defense in depth — even though Boundary 2
       // already blocked bad phones pre-persist, preserves the invariant).
@@ -602,7 +716,8 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
       setSelectedCustomer(newCust);
-      setCustSearch(newCust.name);
+      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save.
+      setCustSearch('');
       // v2 Boundary 3: sanitize (defense in depth).
       setPhoneNumber(sanitizePhone(newCust.phone));
       setFirstName(newCust.firstName || '');
@@ -683,7 +798,10 @@ export default function PhonePaymentModal({
 
     const normCarrier = normalizeCarrier(line.carrier);
     const phone = sanitizePhone(line.number);
-    const customerNote = `${firstName} ${lastName}`.trim();
+    // R-PHONE-FAMILY-MULTICUST: attribute the cart-item note to this line's
+    // customer (set when a customer was picked via the searchbar in multi mode)
+    // and fall back to the global note for manually typed lines.
+    const customerNote = line.customerName || `${firstName} ${lastName}`.trim();
 
     const newItem: CartItem = {
       id: generateId(),
@@ -1459,7 +1577,10 @@ export default function PhonePaymentModal({
                   // (phoneNumber + global carrier) and multi-line (lines[0])
                   // when toggling, so the user's input isn't lost visually.
                   if (checked) {
-                    // Single → Multi: move phoneNumber/amount/carrier into lines[0]
+                    // Single → Multi: move phoneNumber/amount/carrier into lines[0].
+                    // R-PHONE-FAMILY-MULTICUST: also carry selectedCustomer id/name
+                    // so the line is attributed to the right customer on the receipt
+                    // even before the user adds additional family members.
                     const clean = sanitizePhone(phoneNumber);
                     if (clean || carrier) {
                       setLines((prev) => {
@@ -1470,6 +1591,8 @@ export default function PhonePaymentModal({
                             number: clean || head.number,
                             amount: amount || head.amount,
                             carrier: carrier || head.carrier,
+                            customerId: selectedCustomer?.id || head.customerId,
+                            customerName: selectedCustomer?.name || head.customerName,
                           }, ...prev.slice(1)];
                         }
                         return prev;
@@ -1510,8 +1633,21 @@ export default function PhonePaymentModal({
                   const lineCarrierColor = line.carrier ? (CARRIER_COLORS[line.carrier] || '#667eea') : '#64748b';
                   const lineReady = !!(line.carrier && isValidPhone(line.number) && parseFloat(line.amount) > 0);
                   return (
-                    <div key={line.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b', width: '18px' }}>{i + 1}.</span>
+                    <div key={line.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      {/* R-PHONE-FAMILY-MULTICUST: show which customer this line
+                          belongs to when it was added via searchbar in multi-line
+                          mode. Hidden for manually typed rows (customerName empty). */}
+                      {line.customerName && (
+                        <div style={{
+                          fontSize: '0.7rem', color: '#a5b4fc', fontWeight: 600,
+                          marginLeft: '22px', display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        }}>
+                          <span>👤</span>
+                          <span>{line.customerName}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', width: '18px' }}>{i + 1}.</span>
                       {/* Phone number — R-PHONE-MULTILINE-AUTOFILL-v2 protections kept */}
                       <input
                         type="tel"
@@ -1583,12 +1719,13 @@ export default function PhonePaymentModal({
                       >
                         📡
                       </button>
-                      {lines.length > 1 && (
-                        <button onClick={() => removeLine(line.id)} style={{
-                          background: 'transparent', border: 'none', color: '#ef4444',
-                          cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem',
-                        }}>✕</button>
-                      )}
+                        {lines.length > 1 && (
+                          <button onClick={() => removeLine(line.id)} style={{
+                            background: 'transparent', border: 'none', color: '#ef4444',
+                            cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem',
+                          }}>✕</button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1762,23 +1899,40 @@ export default function PhonePaymentModal({
         {/* Old toggle removed to prevent double-charge. */}
 
         {/* ── Commission preview ──────────────────────────── */}
-        {breakdown.subtotal > 0 && carrier && breakdown.commRate > 0 && (
+        {/* R-PHONE-FAMILY-MULTILINE-TOTALS: gate on total commission (not
+            global carrier) so mixed-carrier multi-line bundles still render
+            the card even when no top-level carrier was picked. */}
+        {breakdown.commissionCents > 0 && breakdown.commissionBreakdown.length > 0 && (
           <div style={{
             padding: '0.75rem 1rem',
             background: 'rgba(34,197,94,0.1)',
             border: '1px solid rgba(34,197,94,0.3)',
             borderRadius: '0.625rem',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
           }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ color: '#22c55e', fontWeight: 700, fontSize: '0.88rem' }}>
                 💰 {es ? 'Tu Comisión' : 'Your Commission'}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#86efac', marginTop: '0.15rem' }}>
-                {normalizeCarrier(carrier)}: {(breakdown.commRate * 100).toFixed(0)}% {es ? 'comisión' : 'commission'}
-              </div>
+              {breakdown.commissionBreakdown.length === 1 ? (
+                <div style={{ fontSize: '0.72rem', color: '#86efac', marginTop: '0.15rem' }}>
+                  {breakdown.commissionBreakdown[0].carrier}: {(breakdown.commissionBreakdown[0].rate * 100).toFixed(0)}% {es ? 'comisión' : 'commission'}
+                </div>
+              ) : (
+                <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                  {breakdown.commissionBreakdown.map((g) => (
+                    <div key={g.carrier} style={{
+                      fontSize: '0.72rem', color: '#86efac',
+                      display: 'flex', justifyContent: 'space-between', gap: '0.5rem',
+                    }}>
+                      <span>{g.carrier} {(g.rate * 100).toFixed(0)}%:</span>
+                      <span>${(g.commissionCents / 100).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#22c55e' }}>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#22c55e', marginLeft: '0.75rem' }}>
               ${breakdown.commission.toFixed(2)}
             </div>
           </div>
@@ -1937,8 +2091,20 @@ export default function PhonePaymentModal({
                     <button
                       key={`${p}-${idx}`}
                       onClick={() => {
-                        applyCustomerSelection(c, p);
-                        if (carrierForLine) setCarrier(carrierForLine);
+                        // R-PHONE-FAMILY-MULTICUST: multi-line path appends a
+                        // line per customer-phone selected, single-line path
+                        // replaces the global form state as before.
+                        if (isMultiLine) {
+                          // Temporarily stamp the customer's carriers[idx] as
+                          // primary so addCustomerLineToMulti reads it for the line.
+                          const withPickedCarrier = carrierForLine
+                            ? ({ ...c, carriers: [carrierForLine, ...((c as any).carriers || [])] } as Customer)
+                            : c;
+                          addCustomerLineToMulti(withPickedCarrier, p);
+                        } else {
+                          applyCustomerSelection(c, p);
+                          if (carrierForLine) setCarrier(carrierForLine);
+                        }
                         setPhoneSelectorCustomer(null);
                       }}
                       style={{
