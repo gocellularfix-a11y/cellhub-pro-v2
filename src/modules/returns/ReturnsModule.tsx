@@ -259,17 +259,51 @@ export default function ReturnsModule() {
     setSelectedItems((prev) => ({ ...prev, [itemId]: { ...prev[itemId], qty: safeQty, maxQty } }));
   };
 
+  // R-RETURNS-F1.2: discount ratio reconstruction — mirrors POSModule's
+  // itemPaidCents helper (see POSModule.tsx line ~493). When the original
+  // sale had a cart discount, calculateCartTotals prorated it across
+  // discountable items. Refunding `price × qty × taxRate` (without the
+  // ratio) would over-refund both the item base AND the tax, paying the
+  // customer more than they paid the store.
+  //
+  // Only discountable categories (exclude phone_payment + top_up) get the
+  // ratio applied. phone_payment is NON_RETURNABLE anyway, but the filter
+  // preserves the invariant symmetry with POSModule.
+  const discountRatio = useMemo(() => {
+    if (!foundSale) return 1;
+    const discountableBaseSum = (foundSale.items || [])
+      .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
+      .reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
+    const saleDiscountAmount = Math.max(
+      0,
+      (foundSale.subtotal || 0) - ((foundSale as any).subtotalAfterDiscount ?? foundSale.subtotal ?? 0),
+    );
+    return discountableBaseSum > 0
+      ? Math.max(0, (discountableBaseSum - saleDiscountAmount) / discountableBaseSum)
+      : 1;
+  }, [foundSale]);
+
+  // Effective per-unit price in cents after applying the sale's prorated
+  // discount. Non-discountable categories pass through unchanged.
+  const effectivePriceCents = useCallback((item: { price?: number; category?: string }) => {
+    const raw = item.price || 0;
+    const isDiscountable = item.category !== 'phone_payment' && item.category !== 'top_up';
+    return isDiscountable ? Math.round(raw * discountRatio) : raw;
+  }, [discountRatio]);
+
   const returnSubtotal = useMemo(() =>
     Object.entries(selectedItems).reduce((sum, [id, sel]) => {
       const item = returnableItems.find((i) => i.id === id);
-      return sum + (item ? (item.price / 100) * sel.qty : 0);
-    }, 0), [selectedItems, returnableItems]);
+      if (!item) return sum;
+      return sum + (effectivePriceCents(item) / 100) * sel.qty;
+    }, 0), [selectedItems, returnableItems, effectivePriceCents]);
 
   const returnTax = useMemo(() =>
     Object.entries(selectedItems).reduce((sum, [id, sel]) => {
       const item = returnableItems.find((i) => i.id === id);
-      return sum + (item?.taxable ? rc((item.price / 100) * sel.qty * taxRate) : 0);
-    }, 0), [selectedItems, returnableItems, taxRate]);
+      if (!item?.taxable) return sum;
+      return sum + rc((effectivePriceCents(item) / 100) * sel.qty * taxRate);
+    }, 0), [selectedItems, returnableItems, taxRate, effectivePriceCents]);
 
   const returnTotal = rc(returnSubtotal + returnTax);
   const selectedCount = Object.keys(selectedItems).length;
@@ -289,9 +323,14 @@ export default function ReturnsModule() {
 
     // Phase 1: build return items with dual-write (canonical cents + legacy dollars).
     // SaleItem.price is already cents; no conversion math here, just multiply.
+    //
+    // R-RETURNS-F1.2: priceCents is the EFFECTIVE (post-discount) per-unit
+    // price the customer actually paid. This matches the refund amount
+    // owed. Previously priceCents was the pre-discount sticker which
+    // over-refunded by the discount portion (base + tax both inflated).
     const returnItems: CustomerReturnItem[] = Object.entries(selectedItems).map(([id, sel]) => {
       const item = returnableItems.find((i) => i.id === id);
-      const priceCents    = item?.price || 0;
+      const priceCents    = item ? effectivePriceCents(item) : 0;
       const subtotalCents = priceCents * sel.qty;
       const taxCents      = item?.taxable ? Math.round(subtotalCents * taxRate) : 0;
       const totalCents    = subtotalCents + taxCents;
@@ -998,9 +1037,12 @@ export default function ReturnsModule() {
                       const alreadyReturned = item.returnedQty || 0;
                       const available = item.qty - alreadyReturned;
                       const disabled = available <= 0;
-                      const itemTotal = sel
-                        ? ((item.price / 100) * sel.qty) + (item.taxable ? rc((item.price / 100) * sel.qty * taxRate) : 0)
-                        : ((item.price / 100) * item.qty) + (item.taxable ? rc((item.price / 100) * item.qty * taxRate) : 0);
+                      // R-RETURNS-F1.2: use post-discount effective price so per-item
+                      // display matches the totals panel (which applies discountRatio).
+                      const effCents = effectivePriceCents(item);
+                      const qtyForTotal = sel ? sel.qty : item.qty;
+                      const itemTotal = (effCents / 100) * qtyForTotal
+                        + (item.taxable ? rc((effCents / 100) * qtyForTotal * taxRate) : 0);
                       return (
                         <div key={item.id}
                           onClick={() => !disabled && toggleItem(item.id)}
