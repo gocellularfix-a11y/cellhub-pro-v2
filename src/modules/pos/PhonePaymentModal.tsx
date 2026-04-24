@@ -158,6 +158,15 @@ export default function PhonePaymentModal({
     { id: generateId(), number: '', amount: '' },
   ]);
 
+  // R-PHONE-MULTILINE-AUTOFILL-v3 Bug A:
+  // "+ Agregar número nuevo" expander needs its OWN state — sharing
+  // phoneNumber caused the customer's primary phone to appear pre-filled
+  // when a customer was selected (since applyCustomerSelection writes
+  // customer.phone into phoneNumber). Independent state = always starts
+  // empty when expander is opened.
+  const [newLinePhone, setNewLinePhone] = useState('');
+  const [newLineAmount, setNewLineAmount] = useState('');
+
   // ── Customer form modal (add/edit from within phone payment) ─
   const [showCustomerForm, setShowCustomerForm] = useState(false);
 
@@ -335,6 +344,8 @@ export default function PhonePaymentModal({
     // CC fee removed — Cart.tsx handles it
     setLines([{ id: generateId(), number: '', amount: '' }]);
     setSelectedKnownLines({});
+    setNewLinePhone('');
+    setNewLineAmount('');
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -343,13 +354,21 @@ export default function PhonePaymentModal({
   const validLines = useMemo<PhonePaymentLine[]>(() => {
     // If customer has known lines and at least one is selected+filled → use those
     if (knownLines.length > 0) {
-      return Object.entries(selectedKnownLines)
+      const selected = Object.entries(selectedKnownLines)
         .filter(([, amt]) => parseFloat(amt) > 0)
         .map(([norm, amt]) => ({ id: norm, number: norm, amount: amt }));
+      // R-PHONE-MULTILINE-AUTOFILL-v3: if user also filled the "+ Agregar
+      // número nuevo" expander, include that new line alongside the known
+      // ones. Previously this pair was ignored entirely (pre-existing
+      // bug — expander looked functional but didn't commit to cart).
+      if (isValidPhone(newLinePhone) && parseFloat(newLineAmount) > 0) {
+        selected.push({ id: `new-${newLinePhone}`, number: sanitizePhone(newLinePhone), amount: newLineAmount });
+      }
+      return selected;
     }
     // Otherwise fall back to the manual multi-line rows
     return lines.filter((l) => l.number.trim() && parseFloat(l.amount) > 0);
-  }, [knownLines, selectedKnownLines, lines]);
+  }, [knownLines, selectedKnownLines, lines, newLinePhone, newLineAmount]);
 
   // ── Can add to cart? ─────────────────────────────────────
   const canAddToCart = useMemo(() => {
@@ -1301,7 +1320,36 @@ export default function PhonePaymentModal({
               <input
                 type="checkbox"
                 checked={isMultiLine}
-                onChange={(e) => setIsMultiLine(e.target.checked)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsMultiLine(checked);
+                  // R-PHONE-MULTILINE-AUTOFILL-v3 Bug B: transfer typed phone
+                  // between single-line (phoneNumber) and multi-line (lines[0])
+                  // when toggling, so the user's input isn't lost visually.
+                  if (checked) {
+                    // Single → Multi: move phoneNumber/amount into lines[0]
+                    const clean = sanitizePhone(phoneNumber);
+                    if (clean) {
+                      setLines((prev) => {
+                        const head = prev[0];
+                        if (head && !head.number.trim()) {
+                          return [{ ...head, number: clean, amount: amount || head.amount }, ...prev.slice(1)];
+                        }
+                        return prev;
+                      });
+                    }
+                  } else {
+                    // Multi → Single: move lines[0] back into phoneNumber/amount
+                    setLines((prev) => {
+                      const head = prev[0];
+                      if (head && head.number.trim() && !phoneNumber) {
+                        setPhoneNumber(head.number);
+                        if (head.amount && !amount) setAmount(head.amount);
+                      }
+                      return prev;
+                    });
+                  }
+                }}
                 style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#667eea' }}
               />
               <div>
@@ -1414,7 +1462,10 @@ export default function PhonePaymentModal({
           </>
         )}
 
-        {/* If customer HAS known lines, allow adding a brand-new number too */}
+        {/* If customer HAS known lines, allow adding a brand-new number too.
+            R-PHONE-MULTILINE-AUTOFILL-v3: uses INDEPENDENT state (newLinePhone /
+            newLineAmount) instead of sharing phoneNumber/amount — prevents
+            customer's primary phone from appearing pre-filled here. */}
         {hasKnownLines && (
           <details style={{ fontSize: '0.8rem' }}>
             <summary style={{ cursor: 'pointer', color: '#64748b', userSelect: 'none', padding: '0.25rem 0' }}>
@@ -1426,19 +1477,21 @@ export default function PhonePaymentModal({
                 className="input"
                 style={{ flex: 1 }}
                 placeholder={es ? 'Número nuevo' : 'New number'}
-                value={phoneNumber || ''}
+                value={newLinePhone}
                 inputMode="numeric"
                 maxLength={10}
                 pattern="[0-9]*"
-                onChange={(e) => setPhoneNumber(sanitizePhone(e.target.value))}
+                autoComplete="off"
+                onChange={(e) => setNewLinePhone(sanitizePhone(e.target.value))}
               />
               <input
                 type="number"
                 className="input"
                 style={{ width: '90px' }}
                 placeholder="$0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                value={newLineAmount}
+                autoComplete="off"
+                onChange={(e) => setNewLineAmount(e.target.value)}
                 step="0.01" min="0"
               />
             </div>
