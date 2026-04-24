@@ -1318,15 +1318,27 @@ export default function PhonePaymentModal({
                 {lines.map((line, i) => (
                   <div key={line.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: '#64748b', width: '20px' }}>{i + 1}.</span>
+                    {/* R-PHONE-MULTILINE-AUTOFILL: autoComplete="off" + unique name
+                        blocks Chrome from autofilling a newly-mounted tel input with
+                        the last-typed tel value (which was duplicating line 1 into
+                        line 2). sanitizePhone + inputMode/maxLength/pattern align
+                        with single-line input protections from R-PHONE-INPUT-VALIDATION. */}
                     <input
                       type="tel"
-                      value={line.number}
-                      onChange={(e) => updateLine(line.id, 'number', e.target.value)}
+                      name={`line-number-${line.id}`}
+                      autoComplete="off"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="[0-9]*"
+                      value={line.number || ''}
+                      onChange={(e) => updateLine(line.id, 'number', sanitizePhone(e.target.value))}
                       placeholder={es ? 'Número' : 'Phone number'}
                       className="input" style={{ flex: 1 }}
                     />
                     <input
                       type="number"
+                      name={`line-amount-${line.id}`}
+                      autoComplete="off"
                       value={line.amount}
                       onChange={(e) => updateLine(line.id, 'amount', e.target.value)}
                       placeholder="$0.00"
