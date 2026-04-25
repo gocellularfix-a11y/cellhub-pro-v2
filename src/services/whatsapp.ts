@@ -84,10 +84,20 @@ export type WaTemplate =
   | 'thankYou'
   | 'custom';
 
+// R-COMMS-WHATSAPP-WINDOWS-SAFE-SYMBOLS: template default symbols
+// restricted to BMP (Basic Multilingual Plane) characters because
+// Electron's shell.openExternal on Windows corrupts non-BMP UTF-16
+// surrogate pairs (e.g. F0 9F 98 8A → EF BF BD). See
+// R-COMMS-WHATSAPP-EMOJI-RECON-FINAL for full diagnosis.
+//
+// User can still add non-BMP emojis to their custom templates via
+// Settings → WhatsApp tab. They will display correctly when WA
+// template is sent through paths NOT going through shell.openExternal,
+// and may render as � otherwise. This is a known platform quirk.
 export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string }> = {
   repairReady: {
-    en: `Hi {name}! 🎉 Your {device} is ready for pickup at {store}. Balance due: {balance}. Come by anytime! — {store}`,
-    es: `¡Hola {nombre}! 🎉 Tu {dispositivo} ya está listo para recoger en {tienda}. Balance pendiente: {balance}. ¡Te esperamos! — {tienda}`,
+    en: `Hi {name}! ✓ Your {device} is ready for pickup at {store}. Balance due: {balance}. Come by anytime! — {store}`,
+    es: `¡Hola {nombre}! ✓ Tu {dispositivo} ya está listo para recoger en {tienda}. Balance pendiente: {balance}. ¡Te esperamos! — {tienda}`,
   },
   repairReceived: {
     en: `Hi {name}, we received your {device} for repair. Ticket #{ticket}. We'll message you with updates. — {store}`,
@@ -102,8 +112,8 @@ export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string }> =
     es: `Hola {nombre}, tienes un saldo pendiente de {balance} por tu {dispositivo}. ¡Pasa cuando puedas! — {tienda}`,
   },
   specialOrderReady: {
-    en: `Hi {name}! 📦 Your order ({item}) has arrived at {store}. Balance: {balance}. Come pick it up! — {store}`,
-    es: `¡Hola {nombre}! 📦 Tu pedido ({articulo}) llegó a {tienda}. Balance: {balance}. ¡Pasa a recogerlo! — {tienda}`,
+    en: `Hi {name}! ✓ Your order ({item}) has arrived at {store}. Balance: {balance}. Come pick it up! — {store}`,
+    es: `¡Hola {nombre}! ✓ Tu pedido ({articulo}) llegó a {tienda}. Balance: {balance}. ¡Pasa a recogerlo! — {tienda}`,
   },
   layawayReminder: {
     en: `Hi {name}, reminder: your layaway for {item} has a balance of {balance}. Stop by anytime. — {store}`,
@@ -114,8 +124,8 @@ export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string }> =
     es: `Hola {nombre}, recuerda tu cita en {tienda} el {date} a las {time}. ¡Te esperamos! — {tienda}`,
   },
   thankYou: {
-    en: `Hi {name}, thank you for visiting {store}! We appreciate your business. See you next time! 😊`,
-    es: `¡Hola {nombre}, gracias por visitarnos en {tienda}! Apreciamos tu preferencia. ¡Hasta la próxima! 😊`,
+    en: `Hi {name}, thank you for visiting {store}! We appreciate your business. See you next time! ☺`,
+    es: `¡Hola {nombre}, gracias por visitarnos en {tienda}! Apreciamos tu preferencia. ¡Hasta la próxima! ☺`,
   },
   custom: {
     en: `Hi {name},`,
