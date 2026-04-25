@@ -15,3 +15,22 @@ AGENTS.md
 *.exe
 *.blockmap
 cellhub-v2-FINAL-apr17-2012.json
+
+# ──────────────────────────────────────────────────────────────
+# R-CHORE-GITIGNORE-CRUFT: development workflow artifacts
+# ──────────────────────────────────────────────────────────────
+# Auditor/reparador handoff docs (created during dev sessions)
+HANDOFF-AUDITOR.md
+HANDOFF-*.md
+
+# Intermediate diff files (generated during code review)
+*.diff
+*.patch
+
+# Diff files saved as .txt (legacy naming)
+*-diff.txt
+diff*.txt
+
+# Code snippets pasted for analysis
+snippet*.txt
+snippet*.md
