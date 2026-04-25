@@ -151,7 +151,7 @@ export default function AppointmentsModule() {
           storeCredit: 0,
           customerNumber: custNum,
           notes: '',
-          smsConsent: false,           // R-COMMS-SMS-HARD-DISABLE: SMS path retired
+          communicationConsent: false, // R-COMMS-CONSENT-UNIFY: unified consent field
           createdAt: new Date().toISOString(),
         };
         const nextCustomers = [...customersRef.current, newCust];
@@ -180,8 +180,8 @@ export default function AppointmentsModule() {
       persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
       toast(es ? 'Cita actualizada' : 'Appointment updated', 'success');
     } else {
-      // R-COMMS-SMS-HARD-DISABLE: removed sendConfirmationSms write + TCPA-gated SMS dispatch.
-      // Appointment.sendConfirmationSms field stays in schema (cleaned in round 3).
+      // R-COMMS-CONSENT-UNIFY: sendConfirmationSms write + TCPA-gated SMS dispatch
+      // removed in Round 1; schema field removed in Round 3.
       const appt: Appointment = {
         id: generateId(),
         customerId: linkedCustomerId,
@@ -605,8 +605,8 @@ function AppointmentFormModal({ appointment, customers, setCustomers, onSave, on
               : '⚠️ Do not write passwords here. Write them on paper.'}
           </p>
         </div>
-        {/* R-COMMS-SMS-HARD-DISABLE: removed "Send confirmation SMS" checkbox.
-            Schema field Appointment.sendConfirmationSms stays for now (round 3 cleanup). */}
+        {/* R-COMMS-CONSENT-UNIFY: "Send confirmation SMS" checkbox removed in Round 1;
+            Appointment.sendConfirmationSms schema field removed in Round 3. */}
       </div>
       <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
         <button onClick={onClose} className="btn btn-secondary flex-1">{es ? 'Cancelar' : 'Cancel'}</button>

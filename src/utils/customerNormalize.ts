@@ -75,12 +75,20 @@ export function normalizeCustomer(raw: unknown): Customer {
     || (typeof c.credentialPhoto === 'string' && c.credentialPhoto)
     || '';
 
-  // ── SMS opt flags — unify smsConsent / smsOptIn / smsOptOut ─
-  const smsConsent = typeof c.smsConsent === 'boolean'
-    ? c.smsConsent
-    : typeof c.smsOptIn === 'boolean'
-      ? c.smsOptIn
-      : false;
+  // ── R-COMMS-CONSENT-UNIFY: collapse legacy SMS opt-in fields to
+  // unified communicationConsent. Lossless migration:
+  //   - If new field present, use it
+  //   - Else fold legacy: (smsConsent || smsOptIn) && !smsOptOut
+  // legacyAdapter still preserves v1 SMS fields for backup imports.
+  const newField = (c as any).communicationConsent;
+  let communicationConsent: boolean;
+  if (typeof newField === 'boolean') {
+    communicationConsent = newField;
+  } else {
+    const consent = Boolean(c.smsConsent || (c as any).smsOptIn);
+    const optOut = Boolean((c as any).smsOptOut);
+    communicationConsent = consent && !optOut;
+  }
 
   return {
     id: String(c.id || ''),
@@ -117,9 +125,7 @@ export function normalizeCustomer(raw: unknown): Customer {
     referredBy:     typeof c.referredBy     === 'string' ? c.referredBy     : undefined,
 
     notes:     typeof c.notes === 'string' ? c.notes : '',
-    smsConsent,
-    smsOptIn:  typeof c.smsOptIn  === 'boolean' ? c.smsOptIn  : undefined,
-    smsOptOut: typeof c.smsOptOut === 'boolean' ? c.smsOptOut : undefined,
+    communicationConsent,
 
     // r28: preserve top-up history. Defensive — accept any shape coming
     // from Firestore/localStorage and filter to entries with a recipient.

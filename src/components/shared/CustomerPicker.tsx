@@ -56,7 +56,7 @@ export default function CustomerPicker({
       storeCredit: 0,
       customerNumber: '',
       notes: '',
-      smsConsent: false,
+      communicationConsent: false,
       createdAt: now,
     };
     onCreateCustomer?.(newCustomer);

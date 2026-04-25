@@ -13,8 +13,9 @@
 //
 // Known legacy fields mapped here:
 //   - InventoryItem:  costPrice → cost, salePrice → price, quantity/stock → qty
-//   - Customer:       smsOptIn → smsConsent; injects defaults for storeCredit,
-//                     referralCode, referredBy when missing
+//   - Customer:       legacy smsConsent/smsOptIn/smsOptOut → communicationConsent
+//                     (defensive fold; primary migration in customerNormalize);
+//                     injects defaults for storeCredit, referralCode, referredBy
 //   - Repair:         total → estimatedCost, deposit → depositAmount,
 //                     deviceType → device, model → deviceModel, updatedAt →
 //                     completedAt (only when status indicates completion);
@@ -124,10 +125,12 @@ export function adaptCustomer(raw: unknown[]): Customer[] {
       customerNumber: String(rec.customerNumber ?? ''),
       loyaltyPoints: Number(rec.loyaltyPoints ?? 0),
       storeCredit: Number(rec.storeCredit ?? 0),
-      smsConsent:
-        rec.smsConsent !== undefined
-          ? Boolean(rec.smsConsent)
-          : Boolean(rec.smsOptIn) && !rec.smsOptOut,
+      // R-COMMS-CONSENT-UNIFY: SMS consent migration moved to
+      // customerNormalize.ts. This adapter no longer touches consent.
+      communicationConsent:
+        rec.communicationConsent !== undefined
+          ? Boolean(rec.communicationConsent)
+          : Boolean(rec.smsConsent || rec.smsOptIn) && !rec.smsOptOut,
       referralCode: rec.referralCode != null ? String(rec.referralCode) : undefined,
       referredBy: rec.referredBy != null ? String(rec.referredBy) : undefined,
       createdAt: (rec.createdAt as string | Date) ?? new Date().toISOString(),

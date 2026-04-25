@@ -336,7 +336,7 @@ export default function SpecialOrdersModule() {
           id: generateId(), firstName, lastName, name: customerName, phone: form.customerPhone || '',
           email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${ts}-${rand}`,
-          notes: '', smsConsent: false, createdAt: new Date().toISOString(),
+          notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
         };
         workingCustomers = [...workingCustomers, newCust];
         customersChanged = true;

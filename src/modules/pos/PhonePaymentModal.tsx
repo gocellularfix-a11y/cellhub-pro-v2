@@ -720,7 +720,7 @@ export default function PhonePaymentModal({
         storeCredit: 0,
         customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-4)}`,
         notes: data.notes || '',
-        smsConsent: data.smsConsent ?? false,
+        communicationConsent: data.communicationConsent ?? false,
         createdAt: new Date().toISOString(),
         ...data,
       } as Customer;
@@ -2239,7 +2239,7 @@ export default function PhonePaymentModal({
             storeCredit: 0,
             customerNumber: '',
             notes: '',
-            smsConsent: false,
+            communicationConsent: false,
             createdAt: '',
           } as unknown as Customer)}
           onSave={handleSaveCustomer}

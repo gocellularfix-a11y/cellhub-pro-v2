@@ -301,7 +301,7 @@ export default function CustomerModule() {
           storeCredit: 0,
           customerNumber: custNum,
           notes: data.notes || '',
-          smsConsent: data.smsConsent ?? false,
+          communicationConsent: data.communicationConsent ?? false,
           createdAt: new Date().toISOString(),
           ...dataRest,
           // Canonical name fields — placed last so nothing in dataRest overrides them
@@ -412,7 +412,7 @@ export default function CustomerModule() {
                 // Build CSV for TextMagic / any SMS platform.
                 // Clients with multiple phones get one row per number (so bulk SMS
                 // reaches all their lines, not just the primary).
-                const rows = [['First Name', 'Last Name', 'Phone', 'Email', 'SMS Consent', 'Carrier', 'Plan', 'Store Credit']];
+                const rows = [['First Name', 'Last Name', 'Phone', 'Email', 'Communication Consent', 'Carrier', 'Plan', 'Store Credit']];
                 customers.forEach((c) => {
                   // Collect every phone: primary + phones[] array, dedup
                   const allPhones = new Set<string>();
@@ -434,7 +434,7 @@ export default function CustomerModule() {
                       c.lastName || (c.name || '').split(' ').slice(1).join(' ') || '',
                       phone,
                       c.email || '',
-                      c.smsConsent ? 'Yes' : 'No',
+                      c.communicationConsent ? 'Yes' : 'No',
                       carriers[idx] || (c as any).carrier || '',
                       (c as any).plan || '',
                       ((c.storeCredit || 0) / 100).toFixed(2),
@@ -744,7 +744,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
       carrier: '', carriers: [''] as string[],
       email: '', address: '', city: '', state: '', zip: '',
       plan: '', monthlyPayment: '',
-      notes: '', smsConsent: false, photo: '',
+      notes: '', communicationConsent: false, photo: '',
       referredBy: '',
     };
 
@@ -775,7 +775,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
         plan:    cAny.plan || '',
         monthlyPayment: cAny.monthlyPayment != null ? String(cAny.monthlyPayment) : '',
         notes: customer.notes || '',
-        smsConsent: customer.smsConsent ?? false,
+        communicationConsent: customer.communicationConsent ?? false,
         photo: cAny.photo || '',
       };
     }
@@ -905,7 +905,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
       monthlyPayment: form.monthlyPayment || undefined,
       photo: form.photo,
       notes: form.notes,
-      smsConsent: form.smsConsent,
+      communicationConsent: form.communicationConsent,
       referredBy: form.referredBy.trim().toUpperCase() || undefined,
     };
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -925,7 +925,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
           firstName: '', lastName: '', phone: '', phones: [''],
           carrier: '', carriers: [''],
           email: '', address: '', city: '', state: '', zip: '',
-          plan: '', monthlyPayment: '', notes: '', smsConsent: false, photo: '',
+          plan: '', monthlyPayment: '', notes: '', communicationConsent: false, photo: '',
           referredBy: '',
         });
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -1088,10 +1088,10 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
           </div>
         )}
 
-        {/* SMS consent */}
+        {/* Communication consent — R-COMMS-CONSENT-UNIFY: covers SMS, WhatsApp, future email */}
         <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-          <input type="checkbox" checked={form.smsConsent} onChange={(e) => setForm({ ...form, smsConsent: e.target.checked })} className="rounded border-white/20 bg-white/5" />
-          {es ? 'Consiente recibir SMS' : 'SMS consent'}
+          <input type="checkbox" checked={form.communicationConsent} onChange={(e) => setForm({ ...form, communicationConsent: e.target.checked })} className="rounded border-white/20 bg-white/5" />
+          {es ? 'Cliente acepta recibir comunicaciones' : 'Customer agrees to receive communications'}
         </label>
 
         {/* Notes */}

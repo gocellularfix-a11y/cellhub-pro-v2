@@ -486,9 +486,10 @@ export interface Customer {
 
   // ── Meta ──
   notes: string;
-  smsConsent: boolean;     // canonical name in v2
-  smsOptIn?: boolean;      // legacy alias from original app
-  smsOptOut?: boolean;     // legacy explicit opt-out flag
+  // R-COMMS-CONSENT-UNIFY: unified consent field replaces sms-specific
+  // smsConsent. Future-proof for email/other comm channel opt-ins.
+  // Legacy v1 imports auto-migrated by customerNormalize.
+  communicationConsent: boolean;
 
   // ── Top-up history (r28) ──
   // Persistent memory of recipients this customer has sent top-ups to.
@@ -1165,7 +1166,7 @@ export interface Appointment {
   employeeId?: string;
   employeeName?: string;
   repairId?: string;                // set when converted to repair ticket
-  sendConfirmationSms?: boolean;    // TCPA-gated SMS opt-in (round 23 fix)
+  // R-COMMS-CONSENT-UNIFY: sendConfirmationSms removed (SMS path retired in Round 1).
   createdAt: string;
   updatedAt: string;
 }

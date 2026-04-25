@@ -528,7 +528,7 @@ export default function UnlockModule() {
           id: generateId(), firstName, lastName, name: customerName, phone: form.customerPhone,
           email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-4)}`,
-          notes: '', smsConsent: false, createdAt: new Date().toISOString(),
+          notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
         };
         setCustomers([...customers, newCust]);
         persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);

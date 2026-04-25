@@ -110,7 +110,7 @@ export class CustomerScorer {
 
     if (customer.phones && customer.phones.length > 1) score += 5;
     if (customer.email) score += 5;
-    if (customer.smsConsent) score += 5;
+    if (customer.communicationConsent) score += 5;
 
     return Math.min(score, 100);
   }

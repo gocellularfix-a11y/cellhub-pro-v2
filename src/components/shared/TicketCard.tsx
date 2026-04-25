@@ -31,16 +31,12 @@ interface TicketCardProps {
   onDeposit?: () => void;
   onComplete?: () => void;
   onPrint?: () => void;
-  onSMS?: () => void;
   onDelete?: () => void;
 
   // NEW — complete button state hints (Repairs sets these; others don't)
   completeLabel?: string;
   completeDisabled?: boolean;
   completeVariant?: 'amber' | 'green' | 'neutral';
-
-  // NEW — SMS button enabled state
-  smsAvailable?: boolean;
 
   // R-EDIT-AUDIT: optional extra badges rendered alongside the status/priority
   // badges (e.g. edit-history indicator). Caller is responsible for event
@@ -71,12 +67,10 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   onDeposit,
   onComplete,
   onPrint,
-  onSMS,
   onDelete,
   completeLabel,
   completeDisabled,
   completeVariant = 'amber',
-  smsAvailable = false,
   extraBadges,
 }, ref) {
   return (
@@ -190,7 +184,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
             )}
 
             {/* Secondary icon row */}
-            {(onPrint || onSMS || (onWhatsApp && customerPhone) || onDelete) && (
+            {(onPrint || (onWhatsApp && customerPhone) || onDelete) && (
               <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.5rem' }}>
                 {onPrint && (
                   <button
@@ -204,23 +198,6 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                     }}
                     title={L.print || 'Print'}
                   >🖨</button>
-                )}
-
-                {onSMS && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); if (smsAvailable) onSMS(); }}
-                    disabled={!smsAvailable}
-                    style={{
-                      width: 38, height: 38, padding: 0,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: '0.5rem', fontSize: '1rem',
-                      background: 'rgba(255,255,255,0.05)', color: '#e5e7eb',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      cursor: smsAvailable ? 'pointer' : 'not-allowed',
-                      opacity: smsAvailable ? 1 : 0.4,
-                    }}
-                    title="SMS"
-                  >💬</button>
                 )}
 
                 {onWhatsApp && customerPhone && (

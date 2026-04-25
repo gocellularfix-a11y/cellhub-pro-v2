@@ -386,7 +386,7 @@ export default function LayawayModule() {
           id: generateId(), firstName: fName, lastName: lName, name: customerName, phone: form.customerPhone,
           phones: [form.customerPhone], email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-          notes: '', smsConsent: false, createdAt: new Date().toISOString(),
+          notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
         };
         const nextCustomers = [...customersRef.current, newCust];
         customersRef.current = nextCustomers;

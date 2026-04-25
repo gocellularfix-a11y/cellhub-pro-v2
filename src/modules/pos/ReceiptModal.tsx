@@ -196,7 +196,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       storeCredit: 0,
       customerNumber: `${settings.customerNumberPrefix || 'GC'}-${ts}-${rand}`,
       notes: '',
-      smsConsent: false,
+      communicationConsent: false,
       createdAt: new Date().toISOString(),
     };
     // FIX stale closure: build the combined array ourselves and pass it to

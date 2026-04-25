@@ -407,7 +407,7 @@ export default function RepairModule() {
             storeCredit: 0,
             customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
             notes: '',
-            smsConsent: false,
+            communicationConsent: false,
             createdAt: new Date().toISOString(),
           };
           const nextCustomers = [...customersRef.current, newCustomer];
