@@ -40,12 +40,18 @@ export interface PhonePaymentForm {
 /** Multi-line phone payment entry.
  *  R-PHONE-FAMILY-PERLINE: carrier is per-line (was global before) so
  *  family-plan scenarios with mixed carriers (e.g. AT&T + T-Mobile on
- *  the same customer) persist each line with its own carrier. */
+ *  the same customer) persist each line with its own carrier.
+ *  R-PHONE-FAMILY-MULTICUST: customerId/customerName are per-line so
+ *  a family-plan transaction can bundle bills for distinct customers
+ *  (e.g. pay Juan's line + María's line in one sale), with each cart
+ *  item's `notes` attributed to the correct person on the receipt. */
 export interface PhonePaymentLine {
   id: string;
   number: string;
   amount: string;
   carrier: string;
+  customerId?: string;
+  customerName?: string;
 }
 
 /** Discount state */
