@@ -2,13 +2,14 @@
 // CellHub Pro — Settings Module
 // ============================================================
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
 import { exportBackup, importBackup } from '@/services/storage';
 import { persistSettings } from '@/services/persist';
+import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
 import { isElectron, getElectronAPI } from '@/utils/platform';
@@ -358,6 +359,38 @@ export default function SettingsModule() {
     },
     [setSettings],
   );
+
+  // R-COMMS-WHATSAPP-EMOJI-FIX-V2.2: one-shot migration to strip non-BMP
+  // characters from legacy custom WhatsApp templates persisted before
+  // V2/V2.1 sanitize guards existed. Delta-only persist per CLAUDE.md
+  // (settings collection merges; passing only changed keys is safe).
+  // Runs once on SettingsModule mount; no-op when storage is already clean.
+  useEffect(() => {
+    const waKeys = [
+      'waTemplateRepairReady',
+      'waTemplateRepairReceived',
+      'waTemplateSpecialOrderReady',
+      'waTemplateLayawayReminder',
+      'waTemplateAppointmentReminder',
+      'waTemplateThankYou',
+    ] as const;
+    const delta: Record<string, string> = {};
+    for (const key of waKeys) {
+      const value = String((settings as any)[key] || '');
+      const safe = sanitizeToBMP(value);
+      if (safe !== value) delta[key] = safe;
+    }
+    if (Object.keys(delta).length > 0) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[whatsapp] Legacy templates sanitized (migration)', delta);
+      }
+      setSettings(delta as any);
+      persistSettings(delta);
+    }
+    // Mount-only migration; intentionally empty deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Export / Import ─────────────────────────────────────
   const handleExport = useCallback(() => {
@@ -1305,7 +1338,18 @@ export default function SettingsModule() {
                       className="input text-xs"
                       rows={2}
                       value={String(settings[key] || '')}
-                      onChange={(e) => update(key as string, e.target.value)}
+                      onChange={(e) => {
+                        // R-COMMS-WHATSAPP-EMOJI-FIX-V2.1: strip non-BMP at the
+                        // persistence boundary so storage matches what wa.me will
+                        // receive. Prevents the "saved 😊, sent nothing" mismatch.
+                        const raw = e.target.value;
+                        const safe = sanitizeToBMP(raw);
+                        if (import.meta.env.DEV && safe !== raw) {
+                          // eslint-disable-next-line no-console
+                          console.warn('[whatsapp] Non-BMP characters removed from custom template', { original: raw, sanitized: safe });
+                        }
+                        update(key as string, safe);
+                      }}
                       placeholder={lang === 'es' ? 'Deja en blanco para el default...' : 'Leave blank for default...'}
                       style={{ resize: 'vertical', fontFamily: 'inherit' }}
                     />

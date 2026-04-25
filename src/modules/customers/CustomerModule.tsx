@@ -17,6 +17,7 @@ import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
+import { openWhatsApp } from '@/services/whatsapp';
 
 export default function CustomerModule() {
   // Round 18: extract `state` at root and destructure separately so we can also
@@ -601,8 +602,9 @@ export default function CustomerModule() {
                         >$</button>
                         <button
                           onClick={() => {
-                            const phone = (c.phone || '').replace(/\D/g, '');
-                            if (phone) window.open(`https://wa.me/1${phone}`, '_blank');
+                            // R-COMMS-WHATSAPP-EMOJI-FIX-V2: route through openWhatsApp
+                            // for consistent country-code handling + BMP sanitize guard.
+                            if (c.phone) openWhatsApp(c.phone, '');
                           }}
                           title="WhatsApp"
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(59,130,246,0.3)', color: '#3b82f6' }}

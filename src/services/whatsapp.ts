@@ -5,6 +5,16 @@
 // The employee just clicks → WhatsApp opens → hits Send.
 // ============================================================
 
+// R-COMMS-WHATSAPP-EMOJI-FIX-V2: strip non-BMP code points (U+10000+)
+// before encoding. Electron's shell.openExternal on Windows mangles
+// non-BMP UTF-16 surrogate pairs to U+FFFD (�) in the resulting URL.
+// Whitelisted BMP symbols (✓, ☺, ★, etc.) survive this path intact.
+// R-COMMS-WHATSAPP-EMOJI-FIX-V2.1: exported so Settings can sanitize at
+// the persistence boundary (custom templates) — not just at send time.
+export function sanitizeToBMP(input: string): string {
+  return input.replace(/[\u{10000}-\u{10FFFF}]/gu, '');
+}
+
 /**
  * Build a wa.me URL for click-to-chat.
  * Phone must include country code (digits only).
@@ -14,7 +24,12 @@ export function buildWhatsAppUrl(phone: string, message: string): string {
   const digits = phone.replace(/\D/g, '');
   // Add US country code if 10 digits and no leading 1
   const e164 = digits.length === 10 ? `1${digits}` : digits;
-  const encoded = encodeURIComponent(message);
+  const safeMessage = sanitizeToBMP(message);
+  if (import.meta.env.DEV && safeMessage !== message) {
+    // eslint-disable-next-line no-console
+    console.warn('[whatsapp] Non-BMP characters stripped from message', { original: message, safe: safeMessage });
+  }
+  const encoded = encodeURIComponent(safeMessage);
   return `https://wa.me/${e164}?text=${encoded}`;
 }
 
