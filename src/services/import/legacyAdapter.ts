@@ -107,7 +107,7 @@ export function mapPaymentMethod(pm: unknown): string {
   if (p === 'card' || p === 'credit card' || p === 'debit') return 'Card';
   if (p === 'split') return 'Split';
   if (p === 'store credit' || p === 'storecredit') return 'Store Credit';
-  return titleCase(String(pm));
+  return String(pm).toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 export function mapSaleStatus(
@@ -130,15 +130,18 @@ export function mapSaleStatus(
 }
 
 export function mapRepairStatus(status: unknown): string {
-  if (!status) return 'Pending';
+  // R-TAX-POS-CLASSIFICATION-FIX-V2 Section 4: ALL outputs lowercase.
+  // Aligns with TaxReportsModule consumer's normR(s).toLowerCase() check
+  // and the broader codebase convention for status comparisons.
+  if (!status) return 'pending';
   const s = String(status).toLowerCase().trim();
-  if (s === 'complete' || s === 'completed') return 'Completed';
-  if (s === 'received') return 'Received';
-  if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
-  if (s === 'in_progress' || s === 'in progress' || s === 'working') return 'In Progress';
-  if (s === 'ready' || s === 'picked_up' || s === 'picked up') return 'Picked Up';
-  if (s === 'pending' || s === 'new') return 'Pending';
-  return titleCase(String(status));
+  if (s === 'complete' || s === 'completed') return 'completed';
+  if (s === 'received') return 'received';
+  if (s === 'cancelled' || s === 'canceled') return 'cancelled';
+  if (s === 'in_progress' || s === 'in progress' || s === 'working') return 'in_progress';
+  if (s === 'ready' || s === 'picked_up' || s === 'picked up') return 'picked_up';
+  if (s === 'pending' || s === 'new') return 'pending';
+  return String(status).toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 export function mapLayawayStatus(status: unknown): string {
@@ -148,7 +151,7 @@ export function mapLayawayStatus(status: unknown): string {
   if (s === 'completed' || s === 'complete' || s === 'paid') return 'Completed';
   if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
   if (s === 'refunded') return 'Refunded';
-  return titleCase(String(status));
+  return String(status).toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 export function mapSpecialOrderStatus(status: unknown): string {
@@ -160,7 +163,7 @@ export function mapSpecialOrderStatus(status: unknown): string {
   if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
   if (s === 'refunded') return 'Refunded';
   if (s === 'pending') return 'Pending';
-  return titleCase(String(status));
+  return String(status).toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 export function mapRepairPriority(p: unknown): string {
@@ -229,6 +232,11 @@ export function normalizeLegacySale(s: Record<string, any>): Record<string, unkn
     name: item.name || '',
     sku: item.sku || '',
     imei: item.imei || '',
+    // R-TAX-POS-CLASSIFICATION-FIX-V2 Section 1: preserve v1 `type` field
+    // (accounting semantic). Consumers check `item.type === 'repair'` etc.
+    // Without this, items with v1 type='repair' but category='Service'
+    // were misclassified — 50 of 75 repair items routed to productGross.
+    type: item.type || undefined,
     category: mapItemCategory(item.category || item.type || 'other'),
     price: toCents(item.price),
     originalPrice: item.originalPrice ? toCents(item.originalPrice) : undefined,
