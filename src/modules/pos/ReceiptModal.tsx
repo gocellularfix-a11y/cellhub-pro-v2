@@ -12,8 +12,9 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
-import { sendSms } from '@/services/sms';
-import { buildReceiptSmsMessage } from './saleBuilder';
+// R-COMMS-SMS-HARD-DISABLE: sendSms + buildReceiptSmsMessage imports removed
+// (post-sale SMS button retired; WhatsApp button is now the sole comm channel
+// from this modal). Service files deleted in next round.
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
@@ -86,13 +87,8 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   const { printHtml } = usePrint();
   const { toast } = useToast();
   const [qrSvg, setQrSvg] = useState<string>('');
-  // R-PRINT-SMS-PARITY-F1: in-flight flag for the SMS button (disables +
-  // dims while sendSms Promise is pending, prevents double-click).
-  const [sending, setSending] = useState(false);
-  // Derived: SMS provider + API key must both be set to actually send.
-  // Button stays VISIBLE even when false (feature discovery) but goes
-  // disabled with a tooltip pointing to Settings.
-  const smsConfigured = settings.smsProvider !== 'none' && !!settings.smsApiKey;
+  // R-COMMS-SMS-HARD-DISABLE: removed `sending` state and `smsConfigured`
+  // derived flag — both were used exclusively by the post-sale SMS button.
 
   // ── Retroactive customer assignment state ─────────────────
   const [assignSearch, setAssignSearch] = useState('');
@@ -569,56 +565,8 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
             📲 WhatsApp
           </button>
         )}
-        {/* R-PRINT-SMS-PARITY-F1: post-sale SMS send. Single entry point
-            (replaces the pre-sale Cart checkbox — no double-send race).
-            Always visible when a customer phone exists (feature discovery);
-            disabled with tooltip when SMS provider not configured. */}
-        {(sale?.customerPhone || assignedCustomer?.phone) && (
-          <button
-            onClick={async () => {
-              if (sending || !smsConfigured) return;
-              const phone = sale?.customerPhone || assignedCustomer?.phone || '';
-              const name = sale?.customerName || assignedCustomer?.name || '';
-              const firstName = (name || '').split(' ')[0] || '';
-              const storeName = settings.storeName || 'GO CELLULAR';
-              if (!sale) return;
-              const message = buildReceiptSmsMessage(sale, lang, firstName, storeName);
-
-              setSending(true);
-              try {
-                const result = await sendSms(phone, message, settings);
-                if (result.success) {
-                  toast(es ? 'SMS enviado' : 'SMS sent', 'success');
-                } else {
-                  toast(
-                    es
-                      ? `Error: ${result.error || 'SMS falló'}`
-                      : `Error: ${result.error || 'SMS failed'}`,
-                    'error',
-                  );
-                }
-              } catch (err) {
-                toast(es ? 'Error enviando SMS' : 'Error sending SMS', 'error');
-                console.warn('[ReceiptModal SMS] Error:', err);
-              } finally {
-                setSending(false);
-              }
-            }}
-            disabled={!smsConfigured || sending}
-            title={!smsConfigured ? (es ? 'Configura SMS en Ajustes' : 'Configure SMS in Settings') : undefined}
-            className="btn flex-1"
-            style={{
-              background: '#3b82f6',
-              color: '#fff',
-              fontWeight: 700,
-              border: 'none',
-              opacity: (!smsConfigured || sending) ? 0.5 : 1,
-              cursor: !smsConfigured ? 'not-allowed' : 'pointer',
-            }}
-          >
-            📱 {sending ? (es ? 'Enviando…' : 'Sending…') : 'SMS'}
-          </button>
-        )}
+        {/* R-COMMS-SMS-HARD-DISABLE: post-sale SMS button removed.
+            WhatsApp button above is now the sole comm channel here. */}
         <button onClick={handlePrint} className="btn btn-primary flex-1">
           🖨️ {L.print || 'Print Receipt (4×6)'}
         </button>
@@ -641,17 +589,9 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600">${fmt(item.price * item.qty)}</td>
     </tr>`).join('');
 
-  const smsConsentHtml = (settings as any).showSmsConsent !== false ? `
-    <div style="font-size:8px;color:#000;margin-top:6px;border-top:1px solid #000;padding-top:4px;line-height:1.3">
-      <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-        <div style="width:9px;height:9px;border:1.5px solid #000;border-radius:2px;flex-shrink:0"></div>
-        <span style="font-size:8px;font-weight:600">${es ? (settings.storeName ? `Acepto SMS de ${escHtml(settings.storeName)} (órdenes/servicio). Reply STOP para cancelar.` : 'Acepto recibir SMS. Reply STOP para cancelar.') : (settings.storeName ? `I agree to receive service SMS from ${escHtml(settings.storeName)}. Reply STOP to opt out.` : 'I agree to receive service SMS. Reply STOP to opt out.')}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <div style="width:9px;height:9px;border:1.5px solid #000;border-radius:2px;flex-shrink:0"></div>
-        <span style="font-size:8px;font-weight:600">${es ? (settings.storeName ? `Acepto SMS promocionales de ${escHtml(settings.storeName)}. Reply STOP para cancelar.` : 'Acepto recibir SMS promocionales. Reply STOP para cancelar.') : (settings.storeName ? `I agree to receive promotional SMS from ${escHtml(settings.storeName)}. Reply STOP to opt out.` : 'I agree to receive promotional SMS. Reply STOP to opt out.')}</span>
-      </div>
-    </div>` : '';
+  // R-COMMS-SMS-HARD-DISABLE: TCPA disclaimer block removed from receipt
+  // template. With SMS sending disabled, the printed opt-in checkboxes
+  // had no backing send path. Restored if SMS comms return in a future round.
 
   return `<!DOCTYPE html>
 <html><head>
@@ -720,7 +660,6 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ${settings.receiptFooter ? escHtml(settings.receiptFooter) : (es ? '¡Gracias por su compra!' : 'Thank you for your purchase!')}
     ${settings.warrantyText ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.warrantyText)}</div>` : ''}
     ${settings.returnPolicy ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.returnPolicy)}</div>` : ''}
-    ${smsConsentHtml}
     ${settings.showReviewQr && settings.googleReviewUrl ? `
     <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
       <div style="font-size:10px;font-weight:700;margin-bottom:4px">${es ? '¡Déjanos tu reseña!' : 'Leave us a review!'}</div>

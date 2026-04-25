@@ -11,7 +11,7 @@ import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
-import { sendSms } from '@/services/sms';
+// R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import { persist, remove } from '@/services/persist';
 import DepositModal from '@/components/DepositModal';
 import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
@@ -672,17 +672,8 @@ export default function UnlockModule() {
       setUnlocks(nextUnlocks);
         persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
 
-      // Auto-SMS on completion
-      if (updated.status === 'Completed' && editUnlock.status !== 'Completed' &&
-          settings.smsAutoUnlockReady && updated.customerPhone) {
-        const codeLine = updated.unlockCode
-          ? (lang === 'es' ? ` Código: ${updated.unlockCode}.` : ` Code: ${updated.unlockCode}.`)
-          : '';
-        const msg = lang === 'es'
-          ? `Hola ${customerName}, su desbloqueo está listo.${codeLine} ${settings.storeName || 'CellHub Pro'}`
-          : `Hi ${customerName}, your unlock is ready!${codeLine} ${settings.storeName || 'CellHub Pro'}`;
-        sendSms(updated.customerPhone, msg, settings).catch(console.error);
-      }
+      // R-COMMS-SMS-HARD-DISABLE: removed auto-SMS on completion (edit path).
+      // WhatsApp ticket button stays for manual comm.
       toast(L.saved || 'Saved!', 'success');
     } else {
       const newUnlock: Unlock = {
@@ -954,16 +945,7 @@ export default function UnlockModule() {
     setUnlocks(next);
     persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
 
-    // Preserve auto-SMS on completion (Round 6-pre behavior).
-    if ((settings as any).smsAutoUnlockReady && updated.customerPhone) {
-      const codeLine = updated.unlockCode
-        ? (lang === 'es' ? ` Código: ${updated.unlockCode}.` : ` Code: ${updated.unlockCode}.`)
-        : '';
-      const msg = lang === 'es'
-        ? `Hola ${updated.customerName}, su desbloqueo está listo.${codeLine} ${settings.storeName || 'CellHub Pro'}`
-        : `Hi ${updated.customerName}, your unlock is ready!${codeLine} ${settings.storeName || 'CellHub Pro'}`;
-      sendSms(updated.customerPhone, msg, settings).catch(console.error);
-    }
+    // R-COMMS-SMS-HARD-DISABLE: removed auto-SMS on completion (Complete-confirm path).
 
     setCompleteConfirm(null);
     toast(
@@ -974,17 +956,8 @@ export default function UnlockModule() {
     );
   }, [completeConfirm, consolidateCartForUnlock, setUnlocks, dispatch, settings, toast, lang]);
 
-  const handleSMSButton = useCallback((unlock: Unlock) => {
-    if (!unlock.customerPhone) return;
-    const codeLine = unlock.unlockCode
-      ? (lang === 'es' ? ` Código: ${unlock.unlockCode}.` : ` Code: ${unlock.unlockCode}.`)
-      : '';
-    const msg = lang === 'es'
-      ? `Hola ${unlock.customerName}, su desbloqueo está listo.${codeLine} ${settings.storeName || 'CellHub Pro'}`
-      : `Hi ${unlock.customerName}, your unlock is ready!${codeLine} ${settings.storeName || 'CellHub Pro'}`;
-    sendSms(unlock.customerPhone, msg, settings).catch(console.error);
-    toast(lang === 'es' ? 'SMS enviado' : 'SMS sent', 'success');
-  }, [settings, lang, toast]);
+  // R-COMMS-SMS-HARD-DISABLE: handleSMSButton callback removed.
+  // TicketCard onWhatsApp prop is the live manual comm path.
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -1150,9 +1123,7 @@ export default function UnlockModule() {
                   printUnlockEntity(u);
                 }
               }}
-              onSMS={() => handleSMSButton(u)}
               onDelete={() => setDeleteConfirm(u)}
-              smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && u.customerPhone)}
               extraBadges={
                 <>
                   {/* R-EDIT-AUDIT F4.6: edit-history count badge. */}

@@ -15,7 +15,7 @@ import { generateId } from '@/utils/dates';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
-import { sendSms } from '@/services/sms';
+// R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import TicketListLayout from '@/components/shared/TicketListLayout';
 import TicketCard from '@/components/shared/TicketCard';
@@ -547,51 +547,8 @@ export default function RepairModule() {
           });
         }
 
-        // Proactive SMS on status changes (if customer has smsConsent or phone exists)
-        const prevStatus = editRepair.status;
-        const newStatus = updated.status;
-        const statusChanged = prevStatus !== newStatus;
-        const hasPhone = !!updated.customerPhone;
-        const smsEnabled = settings.smsProvider !== 'none' && settings.smsApiKey;
-
-        if (statusChanged && hasPhone && smsEnabled) {
-          const store = settings.storeName || '';
-          const name = updated.customerName?.split(' ')[0] || updated.customerName;
-          const device = [(updated as any).brand, (updated as any).model].filter(Boolean).join(' ') || updated.device;
-          const ticket = (updated as any).ticketNumber || updated.id.slice(-6).toUpperCase();
-          let msg = '';
-
-          // Round R2: normalize once; cases are canonical only.
-          const canonicalNew = normalizeRepairStatus(newStatus);
-
-          if (canonicalNew === REPAIR_STATUS.RECEIVED) {
-            if (settings.smsAutoRepairReady) {
-              msg = lang === 'es'
-                ? `Hola ${name}, recibimos tu ${device}. Ticket #${ticket}. Te avisamos cuando esté listo. — ${store}`
-                : `Hi ${name}, we received your ${device}. Ticket #${ticket}. We'll text you when it's ready. — ${store}`;
-            }
-          } else if (canonicalNew === REPAIR_STATUS.IN_PROGRESS) {
-            if (settings.smsAutoRepairReady) {
-              msg = lang === 'es'
-                ? `Hola ${name}, tu ${device} está en reparación. Ticket #${ticket}. — ${store}`
-                : `Hi ${name}, we're working on your ${device}. Ticket #${ticket}. — ${store}`;
-            }
-          } else if (canonicalNew === REPAIR_STATUS.PICKED_UP || canonicalNew === REPAIR_STATUS.READY) {
-            if (settings.smsAutoRepairReady) {
-              msg = lang === 'es'
-                ? `Hola ${name}, tu reparación está lista. Pasa a recoger tu ${device}. Total: ${formatCurrency(updated.balance || 0)}. — ${store}`
-                : `Hi ${name}, your ${device} is ready for pickup! Total due: ${formatCurrency(updated.balance || 0)}. — ${store}`;
-            }
-          } else if (canonicalNew === REPAIR_STATUS.CANCELLED) {
-            if (settings.smsAutoRepairReady) {
-              msg = lang === 'es'
-                ? `Hola ${name}, tu ticket #${ticket} fue cancelado. Llámanos si tienes preguntas. — ${store}`
-                : `Hi ${name}, your repair ticket #${ticket} has been cancelled. Call us if you have questions. — ${store}`;
-            }
-          }
-
-          if (msg) sendSms(updated.customerPhone, msg, settings).catch(console.error);
-        }
+        // R-COMMS-SMS-HARD-DISABLE: removed proactive status-change SMS block.
+        // WhatsApp button on TicketCard remains the manual comm channel.
 
         toast(L.saved || 'Saved!', 'success');
       } else {
@@ -1024,19 +981,8 @@ export default function RepairModule() {
     );
   }, [completeConfirm, consolidateCartForRepair, setRepairs, dispatch, toast, lang, settings.taxRate]);
 
-  const handleSMS = useCallback((repair: Repair) => {
-    if (!repair.customerPhone) return;
-    const store = settings.storeName || 'Go Cellular';
-    const name = repair.customerName?.split(' ')[0] || repair.customerName;
-    const device = [(repair as any).brand, (repair as any).model].filter(Boolean).join(' ') || repair.device || '';
-    const ticket = (repair as any).ticketNumber || repair.id.slice(-6).toUpperCase();
-    const amount = formatCurrency(repair.balance || repair.total || 0);
-    const msg = lang === 'es'
-      ? `Hola ${name}, tu reparación ${ticket} está lista. Total: ${amount}. — ${store}`
-      : `Hi ${name}, your repair ${ticket} is ready for pickup. Total: ${amount}. — ${store}`;
-    sendSms(repair.customerPhone, msg, settings).catch(console.error);
-    toast(lang === 'es' ? 'SMS enviado' : 'SMS sent', 'success');
-  }, [settings, lang, toast]);
+  // R-COMMS-SMS-HARD-DISABLE: handleSMS callback removed.
+  // TicketCard's onWhatsApp prop is the live manual comm path.
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -1190,9 +1136,7 @@ export default function RepairModule() {
                   printRepairTicket(repair);
                 }
               }}
-              onSMS={() => handleSMS(repair)}
               onDelete={() => setDeleteConfirm(repair)}
-              smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && repair.customerPhone)}
               extraBadges={
                 <>
                   {/* R-EDIT-AUDIT F3.9: edit-history count badge. */}

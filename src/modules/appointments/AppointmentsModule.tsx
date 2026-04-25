@@ -13,7 +13,7 @@ import CustomerPicker from '@/components/shared/CustomerPicker';
 import { generateId } from '@/utils/dates';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
-import { sendSms } from '@/services/sms';
+// R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import type { Customer, Appointment, AppointmentStatus } from '@/store/types';
@@ -109,7 +109,7 @@ export default function AppointmentsModule() {
     const customerName = data.customerName
       || `${(rawFirst || '').trim()} ${(rawLast || '').trim()}`.trim();
     const normalizedPhone = normalizePhone(data.customerPhone || '');
-    const smsOptIn = (data as any).sendConfirmationSms === true;
+    // R-COMMS-SMS-HARD-DISABLE: removed `smsOptIn` extraction (form checkbox gone).
 
     // Auto-create customer if phone provided and not already in system.
     // Reads customers via ref to avoid clobbering concurrent listener updates.
@@ -151,7 +151,7 @@ export default function AppointmentsModule() {
           storeCredit: 0,
           customerNumber: custNum,
           notes: '',
-          smsConsent: smsOptIn,        // respect the checkbox from the form
+          smsConsent: false,           // R-COMMS-SMS-HARD-DISABLE: SMS path retired
           createdAt: new Date().toISOString(),
         };
         const nextCustomers = [...customersRef.current, newCust];
@@ -165,13 +165,13 @@ export default function AppointmentsModule() {
     const now = new Date().toISOString();
 
     if (editAppt) {
+      // R-COMMS-SMS-HARD-DISABLE: removed sendConfirmationSms write (form checkbox retired).
       const updated: Appointment = {
         ...editAppt,
         ...data,
         customerId: linkedCustomerId || editAppt.customerId,
         customerName,
         customerPhone: normalizedPhone,
-        sendConfirmationSms: smsOptIn,
         updatedAt: now,
       };
       const nextAppts = appointmentsRef.current.map((a) => a.id === editAppt.id ? updated : a);
@@ -180,6 +180,8 @@ export default function AppointmentsModule() {
       persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
       toast(es ? 'Cita actualizada' : 'Appointment updated', 'success');
     } else {
+      // R-COMMS-SMS-HARD-DISABLE: removed sendConfirmationSms write + TCPA-gated SMS dispatch.
+      // Appointment.sendConfirmationSms field stays in schema (cleaned in round 3).
       const appt: Appointment = {
         id: generateId(),
         customerId: linkedCustomerId,
@@ -192,7 +194,6 @@ export default function AppointmentsModule() {
         notes: data.notes || '',
         employeeId: currentEmployee?.id,
         employeeName: currentEmployee?.name,
-        sendConfirmationSms: smsOptIn,
         createdAt: now,
         updatedAt: now,
       };
@@ -200,17 +201,6 @@ export default function AppointmentsModule() {
       appointmentsRef.current = nextAppts;
       setAppointments(nextAppts);
       persist.appointment(appt.id, appt as unknown as Record<string, unknown>);
-
-      // TCPA-gated confirmation SMS — ONLY send if the user opted in via the form checkbox
-      if (smsOptIn && settings.smsProvider !== 'none' && settings.smsApiKey && appt.customerPhone) {
-        const dt = new Date(appt.estimatedDropOff);
-        const timeStr = dt.toLocaleTimeString(es ? 'es-MX' : 'en-US', { hour: 'numeric', minute: '2-digit' });
-        const dateStr = dt.toLocaleDateString(es ? 'es-MX' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const msg = es
-          ? `Hola ${appt.customerName}, tu cita está confirmada para el ${dateStr} a las ${timeStr}. ${settings.storeName || ''} ${settings.storePhone ? '— ' + settings.storePhone : ''}`.trim()
-          : `Hi ${appt.customerName}, your drop-off is confirmed for ${dateStr} at ${timeStr}. ${settings.storeName || ''} ${settings.storePhone ? '— ' + settings.storePhone : ''}`.trim();
-        sendSms(appt.customerPhone, msg, settings).catch(console.error);
-      }
 
       toast(es ? 'Cita creada' : 'Appointment created', 'success');
     }
@@ -517,7 +507,7 @@ function AppointmentFormModal({ appointment, customers, setCustomers, onSave, on
       ? new Date(appointment.estimatedDropOff).toISOString().slice(0, 16)
       : defaultDT(),
     notes: appointment?.notes || '',
-    sendConfirmationSms: appointment?.sendConfirmationSms ?? false,
+    // R-COMMS-SMS-HARD-DISABLE: removed sendConfirmationSms form field (checkbox retired).
   });
 
   const handleSelectCustomer = useCallback((c: Customer | null) => {
@@ -615,19 +605,8 @@ function AppointmentFormModal({ appointment, customers, setCustomers, onSave, on
               : '⚠️ Do not write passwords here. Write them on paper.'}
           </p>
         </div>
-        <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={form.sendConfirmationSms}
-            onChange={(e) => setForm({ ...form, sendConfirmationSms: e.target.checked })}
-          />
-          <span className="text-xs text-slate-300">
-            {es
-              ? 'Enviar SMS de confirmación (cliente dio consentimiento para recibir mensajes)'
-              : 'Send confirmation SMS (customer consented to receive messages)'}
-          </span>
-        </label>
+        {/* R-COMMS-SMS-HARD-DISABLE: removed "Send confirmation SMS" checkbox.
+            Schema field Appointment.sendConfirmationSms stays for now (round 3 cleanup). */}
       </div>
       <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
         <button onClick={onClose} className="btn btn-secondary flex-1">{es ? 'Cancelar' : 'Cancel'}</button>
