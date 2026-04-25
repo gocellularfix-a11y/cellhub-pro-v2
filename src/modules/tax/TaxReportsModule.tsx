@@ -334,6 +334,33 @@ export default function TaxReportsModule() {
     // Combined totals (POS + Tax Center editable)
     const manualTotal = generalExpensesTotal + taxExpensesDeductible;
 
+    // ── R-TAX-DISPLAY-PARITY: v1 parity breakdown ──────────
+    // v1 split expense entries into two buckets for display:
+    //   - 'Inventory/COGS' category → COGS bucket (combined w/ suppliers + inv delta)
+    //   - everything else (ex Pass-through) → Operating Expenses bucket
+    // Math unchanged: manualTotal still feeds netProfit identically.
+    // These values exist purely for the Tax Year Summary cosmetic split.
+    const taxExpensesCOGS = taxExpenses
+      .filter((e: any) => e.category === 'Inventory/COGS')
+      .reduce((s: number, e: any) => s + e.amount, 0);
+    const taxExpensesOperating = taxExpenses
+      .filter((e: any) => e.category !== 'Pass-through' && e.category !== 'Inventory/COGS')
+      .reduce((s: number, e: any) => s + e.amount, 0);
+
+    // v1 formula: cogs = max(0, beginInv + (expensesCOGS + suppliers − refundedReturns) − endInv)
+    const cogsPurchasesV1 = taxExpensesCOGS + taxSupplierTotal - taxReturnsRefunded;
+    const cogsV1 = Math.max(0, taxInventory.beginningInventory + cogsPurchasesV1 - taxInventory.endingInventory);
+    const operatingExpensesV1 = generalExpensesTotal + taxExpensesOperating;
+
+    // PRE-COGS total income for the Tax Year Summary display. Matches v1's
+    // totalIncome semantic so `displayTotalIncome − cogsV1 − operatingExpensesV1`
+    // equals netProfit (when GP=0 — GP deduction is v2-only per Form 1065 Line 23).
+    const displayTotalIncome =
+      totalIncome
+      + taxIncomeAdditional
+      + taxAdjustments.otherIncome
+      - taxAdjustments.returnsRefunds;
+
     // Guaranteed payments to partners — Form 1065 Line 10 deduction.
     // Reduces ordinary business income (Line 23) but partners pay SE tax on them
     // separately via K-1 Box 4a + Box 14 Code A.
@@ -411,6 +438,12 @@ export default function TaxReportsModule() {
       taxCOGS,
       taxAdjustments,
       generalExpensesTotal,
+      // R-TAX-DISPLAY-PARITY: v1-parity display buckets
+      displayTotalIncome,
+      cogsV1,
+      operatingExpensesV1,
+      taxExpensesCOGS,
+      taxExpensesOperating,
     };
   // r29b-1: granular deps. Previously this depended on the entire `settings`
   // object, so any unrelated settings edit (storeName, smsTemplate, etc.) would
@@ -1001,10 +1034,24 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
                 <div style={{ textAlign: 'center', padding: '2rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem' }}>
                   <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>Tax Year {selectedYear} Summary</div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem', alignItems: 'flex-end' }}>
-                    <div><div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Income</div><div style={{ fontSize: '2rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(annual.totalIncome)}</div><div style={{ fontSize: '0.72rem', color: '#64748b' }}>POS profit + Manual income</div></div>
-                    <div style={{ fontSize: '1.5rem', color: '#475569' }}>—</div>
-                    <div><div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Additional Expenses</div><div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.manualTotal)}</div><div style={{ fontSize: '0.72rem', color: '#64748b' }}>Manual tracking only</div></div>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '2.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Income</div>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(annual.displayTotalIncome)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>POS profit + Manual income</div>
+                    </div>
+                    <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>COGS</div>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.cogsV1)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Inventory purchases + suppliers</div>
+                    </div>
+                    <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Operating Expenses</div>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.operatingExpensesV1)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Rent, utilities, payroll, etc.</div>
+                    </div>
                   </div>
                   <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Net Profit (Loss)</div>
