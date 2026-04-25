@@ -199,10 +199,10 @@ export default function TaxReportsModule() {
 
     const salesRevenue = qSales.reduce((s, sale) => s + (sale.total || 0), 0);
 
-    // FIX 4: Repairs — normalize status to catch both 'Complete' and 'complete'
+    // FIX 4: Repairs — normalize status to catch 'Complete' / 'complete' / 'Completed' (adapter output) / 'picked_up'
     const normStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
     const qRepairs = inQ(repairs).filter((r) =>
-      ['complete', 'picked_up'].includes(normStatus(r.status)) && r.balance === 0 && !(r as any).paidViaSales
+      ['complete', 'completed', 'picked_up'].includes(normStatus(r.status)) && r.balance === 0 && !(r as any).paidViaSales
     );
     const qUnlocks = inQ(unlocks).filter((u) => normStatus((u as any).status) === 'completed');
 
@@ -288,7 +288,10 @@ export default function TaxReportsModule() {
     const productProfit = productGross - productCOGS;
 
     // Repairs for the year (completed, paid in full, not through POS)
-    const DONE_REPAIR = ['complete', 'picked_up'];
+    // R-IMPORT-CATEGORY-FIXES: added 'completed' to catch adapter output
+    // (mapRepairStatus emits Title Case 'Completed' → normR → 'completed'
+    // which was missing from this list, zeroing out imported repair revenue).
+    const DONE_REPAIR = ['complete', 'completed', 'picked_up'];
     const normR = (s: string) => s.toLowerCase().replace(/ /g, '_');
     const yearRepairs = repairs.filter((r) => {
       const d = toDate(r.createdAt);

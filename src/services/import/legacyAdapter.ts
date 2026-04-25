@@ -59,35 +59,45 @@ function titleCase(s: string): string {
 // ── Mapping functions (exported — vocabulary source of truth) ─
 
 export function mapItemCategory(cat: unknown): string {
-  if (!cat || cat === '' || cat === null || cat === undefined) return 'Uncategorized';
+  // R-IMPORT-CATEGORY-FIXES Path B: output matches InventoryCategory type
+  // literals (types.ts:536-544): 'phone' | 'accessory' | 'part' | 'service'
+  // | 'quick_charge' | 'top_up' | 'phone_payment' | string. Lowercase
+  // snake_case is canonical. Previous Title Case output broke the
+  // consumer filter `item.category === 'phone_payment'` in Tax rollup,
+  // dropping all sales into productGross.
+  if (!cat || cat === '' || cat === null || cat === undefined) return 'other';
   const c = String(cat).toLowerCase().trim();
 
-  // Phone payment special category (v2 uses spaced Title Case)
-  if (c === 'phone_payment' || c === 'phonepayment' || c === 'phone payment' || c === 'phone payments') return 'Phone Payments';
+  // Phone payment special category
+  if (c === 'phone_payment' || c === 'phonepayment' || c === 'phone payment' || c === 'phone payments') return 'phone_payment';
 
-  // Inventory standard categories — plural Title Case
-  if (c === 'phone' || c === 'phones') return 'Phones';
-  if (c === 'accessory' || c === 'accessories') return 'Accessories';
-  if (c === 'part' || c === 'parts') return 'Parts';
-  if (c === 'service' || c === 'services' || c === 'servicio' || c === 'servicios') return 'Services';
-  if (c === 'top_up' || c === 'topup' || c === 'top-up' || c === 'top-ups' || c === 'top up' || c === 'top ups') return 'Top-Ups';
-  if (c === 'tablet' || c === 'tablets') return 'Tablets';
-  if (c === 'ebike' || c === 'ebikes' || c === 'e-bike' || c === 'e-bikes') return 'Ebikes';
-  if (c === 'hotspot' || c === 'hotspots') return 'Hotspots';
-  if (c === 'laptop' || c === 'laptops') return 'Laptops';
-  if (c === 'scooter' || c === 'scooters') return 'Scooters';
+  // Inventory standard categories — canonical lowercase singular per InventoryCategory type
+  if (c === 'phone' || c === 'phones') return 'phone';
+  if (c === 'accessory' || c === 'accessories') return 'accessory';
+  if (c === 'part' || c === 'parts') return 'part';
+  if (c === 'service' || c === 'services' || c === 'servicio' || c === 'servicios') return 'service';
+  if (c === 'top_up' || c === 'topup' || c === 'top-up' || c === 'top-ups' || c === 'top up' || c === 'top ups') return 'top_up';
+  if (c === 'quick_charge' || c === 'quickcharge' || c === 'quick charge' || c === 'quick charges') return 'quick_charge';
+
+  // Custom extended categories (outside strict type union but allowed via `| string`).
+  // Keep lowercase snake_case to stay consistent with the canonical convention.
+  if (c === 'tablet' || c === 'tablets') return 'tablet';
+  if (c === 'ebike' || c === 'ebikes' || c === 'e-bike' || c === 'e-bikes') return 'ebike';
+  if (c === 'hotspot' || c === 'hotspots') return 'hotspot';
+  if (c === 'laptop' || c === 'laptops') return 'laptop';
+  if (c === 'scooter' || c === 'scooters') return 'scooter';
 
   // Order/sale special categories
-  if (c === 'special_order' || c === 'special order' || c === 'special orders') return 'Special Orders';
-  if (c === 'layaway' || c === 'layaways') return 'Layaways';
-  if (c === 'return' || c === 'returns') return 'Returns';
-  if (c === 'activation' || c === 'activations') return 'Activations';
+  if (c === 'special_order' || c === 'special order' || c === 'special orders') return 'special_order';
+  if (c === 'layaway' || c === 'layaways') return 'layaway';
+  if (c === 'return' || c === 'returns') return 'return';
+  if (c === 'activation' || c === 'activations') return 'activation';
 
-  // Legacy catch
-  if (c === 'uncategorized' || c === 'other') return 'Uncategorized';
+  // Legacy catch — 'uncategorized' and 'other' collapse to 'other'
+  if (c === 'uncategorized' || c === 'other') return 'other';
 
-  // Unknown category — Title Case attempt
-  return titleCase(String(cat));
+  // Unknown category — preserve already-lowercased input, collapse spaces/dashes to underscore
+  return c.replace(/[\s-]+/g, '_');
 }
 
 export function mapPaymentMethod(pm: unknown): string {
