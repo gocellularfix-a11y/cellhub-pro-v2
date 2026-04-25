@@ -15,8 +15,8 @@ import { isElectron, getElectronAPI } from '@/utils/platform';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
-import { SMS_PROVIDERS, isLegacyProvider, type SmsProviderId } from '@/services/smsProviders';
-import { SmsSetupWizard } from './SmsSetupWizard';
+// R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
+// + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
 
 const SECTIONS = [
   { id: 'store',       icon: '🏪',  label: 'Store Info' },
@@ -28,7 +28,7 @@ const SECTIONS = [
   // portals, international top-ups) all share the "commission income" theme.
   { id: 'commissions', icon: '💰',  label: 'Commission Income' },
   { id: 'hardware',    icon: '🖨️', label: 'Hardware' },
-  { id: 'sms',         icon: '📱',  label: 'SMS Notifications' },
+  // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
   { id: 'whatsapp',    icon: '💬',  label: 'WhatsApp' },
   { id: 'ai',          icon: '🤖',  label: 'AI Assistant' },
   { id: 'employees',   icon: '👥',  label: 'Employees' },
@@ -241,10 +241,7 @@ export default function SettingsModule() {
   // that the chosen name becomes detectedPrinters[0].
   const [scanningPrinters, setScanningPrinters] = useState(false);
 
-  // R-SMS-SETTINGS-UI: placeholder flag for the "Configure SMS" wizard.
-  // Wizard component wiring arrives in R-SMS-WIZARD — this flag just
-  // toggles a stub banner for now.
-  const [smsWizardOpen, setSmsWizardOpen] = useState(false);
+  // R-COMMS-SMS-INFRA-CLEANUP: smsWizardOpen state removed (Wizard retired).
 
   const scanForPrinters = useCallback(async () => {
     if (!isElectron()) {
@@ -1270,149 +1267,9 @@ export default function SettingsModule() {
             </div>
           )}
 
-          {activeSection === 'sms' && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white mb-4">{L.smsNotifications || 'SMS Notifications'}</h2>
-
-              {/* R-SMS-SETTINGS-UI: status card + Configure button replaces
-                  the old dropdown + API Key pair. Wizard wiring deferred to
-                  R-SMS-WIZARD. smsApiSecret, smsFromNumber, and the 3
-                  auto-send toggles stay below (unchanged). */}
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>
-                  {lang === 'es' ? 'Proveedor de SMS' : 'SMS Provider'}
-                </label>
-
-                <div
-                  style={{
-                    padding: 14,
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
-                    background: '#f9fafb',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    {(() => {
-                      const provider = (settings.smsProvider || 'none') as SmsProviderId;
-
-                      // State 1: Not configured
-                      if (provider === 'none') {
-                        return (
-                          <>
-                            <div style={{ fontWeight: 600, color: '#6b7280' }}>
-                              {lang === 'es' ? 'SMS no configurado' : 'SMS not configured'}
-                            </div>
-                            <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
-                              {lang === 'es'
-                                ? 'Escoge un proveedor para mandar recibos por SMS'
-                                : 'Pick a provider to send receipts via SMS'}
-                            </div>
-                          </>
-                        );
-                      }
-
-                      // State 2: Legacy provider (messagebird / nexmo)
-                      if (isLegacyProvider(provider)) {
-                        return (
-                          <>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontWeight: 700 }}>{provider}</span>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  padding: '2px 8px',
-                                  borderRadius: 10,
-                                  background: '#fef3c7',
-                                  color: '#92400e',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                ⚠ {lang === 'es' ? 'Provider legacy' : 'Legacy provider'}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-                              {lang === 'es'
-                                ? 'Este proveedor no es soportado. Migra a Twilio, Telnyx, o Plivo.'
-                                : 'This provider is not supported. Migrate to Twilio, Telnyx, or Plivo.'}
-                            </div>
-                          </>
-                        );
-                      }
-
-                      // State 3: Supported provider configured
-                      const meta = SMS_PROVIDERS[provider as 'textbelt' | 'twilio' | 'telnyx' | 'plivo'];
-                      return (
-                        <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontWeight: 700 }}>{meta?.name || provider}</span>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                padding: '2px 8px',
-                                borderRadius: 10,
-                                background: '#d1fae5',
-                                color: '#065f46',
-                                fontWeight: 700,
-                              }}
-                            >
-                              ✓ {lang === 'es' ? 'Configurado' : 'Configured'}
-                            </span>
-                          </div>
-                          {meta && (
-                            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-                              {lang === 'es' ? meta.tagline.es : meta.tagline.en}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  <button
-                    onClick={() => setSmsWizardOpen(true)}
-                    className="btn"
-                    style={{ background: '#3b82f6', color: '#fff', fontWeight: 700 }}
-                  >
-                    {settings.smsProvider && settings.smsProvider !== 'none'
-                      ? lang === 'es'
-                        ? 'Cambiar / reconfigurar'
-                        : 'Change / reconfigure'
-                      : lang === 'es'
-                      ? 'Configurar SMS'
-                      : 'Configure SMS'}
-                  </button>
-                </div>
-
-                {smsWizardOpen && (
-                  <SmsSetupWizard
-                    settings={settings}
-                    language={lang === 'es' ? 'es' : 'en'}
-                    onSave={(patch) => {
-                      setSettings(patch as any);
-                      persistSettings(patch as Record<string, unknown>);
-                    }}
-                    onClose={() => setSmsWizardOpen(false)}
-                  />
-                )}
-              </div>
-
-              {settings.smsProvider !== 'none' && (
-                <>
-                  <Field settings={settings} update={update} label="API Secret" settingsKey="smsApiSecret" type="password" />
-                  <Field settings={settings} update={update} label="From Number" settingsKey="smsFromNumber" placeholder="+1XXXXXXXXXX" />
-                  <div className="border-t border-white/10 pt-4 space-y-2">
-                    <Toggle settings={settings} update={update} label="Auto-send when repair ready" settingsKey="smsAutoRepairReady" />
-                    <Toggle settings={settings} update={update} label="Auto-send when unlock ready" settingsKey="smsAutoUnlockReady" />
-                    <Toggle settings={settings} update={update} label="Auto-send thank you after sale" settingsKey="smsAutoThankYou" />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          {/* R-COMMS-SMS-INFRA-CLEANUP: SMS Notifications tab body removed.
+              Service files deleted, 14 settings fields retired. WhatsApp tab
+              below is the sole customer-comm surface in Settings. */}
 
           {activeSection === 'whatsapp' && (
             <div className="space-y-5">

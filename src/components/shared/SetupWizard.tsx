@@ -147,8 +147,6 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         loyaltyEnabled: true,
         loyaltyRate: 1,
         lowStockThreshold: 2,
-        smsProvider: 'none',
-        smsApiKey: '',
         cbeFeeEnabled: false,
         cbeFeeRate: 0.015,
         cbeFeeMax: 15,

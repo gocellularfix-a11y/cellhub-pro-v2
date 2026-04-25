@@ -108,22 +108,10 @@ export interface StoreSettings {
   loyaltyEnabled?: boolean;
   loyaltyRate?: number;
 
-  // SMS
-  smsProvider: 'none' | 'textbelt' | 'twilio' | 'messagebird' | 'plivo' | 'nexmo' | 'telnyx';
-  smsApiKey: string;
-  smsApiSecret: string;
-  smsFromNumber: string;
-  // R-SMS-PROVIDERS-EXPANSION: carrier provider credentials
-  smsAccountSid?: string;          // twilio Account SID, plivo Auth ID
-  smsAuthToken?: string;           // twilio Auth Token, plivo Auth Token
-  smsMessagingProfileId?: string;  // telnyx UUID
-  smsTemplateRepairReady: string;
-  smsTemplatePaymentReminder: string;
-  smsTemplateOrderReady: string;
-  smsTemplateThankYou: string;
-  smsAutoRepairReady: boolean;
-  smsAutoUnlockReady: boolean;
-  smsAutoThankYou: boolean;
+  // R-COMMS-SMS-INFRA-CLEANUP: 14 sms* fields removed.
+  // See R-COMMS-RECON for forensic baseline. WhatsApp now sole
+  // customer comm channel. Customer.smsConsent migration deferred
+  // to round 3 (R-COMMS-CONSENT-UNIFY).
 
   // WhatsApp templates (wa.me click-to-chat)
   waEnabled: boolean;

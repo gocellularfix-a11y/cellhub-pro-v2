@@ -82,18 +82,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   customAiKey: '',
   customAiModel: '',
 
-  // SMS
-  smsProvider: 'none',
-  smsApiKey: '',
-  smsApiSecret: '',
-  smsFromNumber: '',
-  smsTemplateRepairReady: '',
-  smsTemplatePaymentReminder: '',
-  smsTemplateOrderReady: '',
-  smsTemplateThankYou: '',
-  smsAutoRepairReady: false,
-  smsAutoUnlockReady: false,
-  smsAutoThankYou: false,
+  // R-COMMS-SMS-INFRA-CLEANUP: sms* defaults removed (14 fields).
 
   // WhatsApp templates (wa.me — blank = use built-in defaults)
   waEnabled: true,

@@ -743,16 +743,8 @@ export default function SpecialOrdersModule() {
     );
   }, [completeConfirm, consolidateCartForSpecialOrder, setSpecialOrders, dispatch, toast, lang]);
 
-  const handleSMS = useCallback((_order: SpecialOrder) => {
-    // TODO: wire SMS send once an SO-specific template is agreed.
-    // Placeholder toast keeps the button interactive without inventing copy.
-    toast(
-      lang === 'es'
-        ? 'SMS no implementado aún para pedidos especiales'
-        : 'SMS not yet wired for special orders',
-      'info',
-    );
-  }, [lang, toast]);
+  // R-COMMS-SMS-INFRA-CLEANUP: handleSMS stub callback removed
+  // (was a placeholder toast; SMS sending retired entirely).
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -883,9 +875,7 @@ export default function SpecialOrdersModule() {
                   printSpecialOrderEntity(o);
                 }
               }}
-              onSMS={() => handleSMS(o)}
               onDelete={() => setDeleteConfirm(o)}
-              smsAvailable={!!(settings.smsProvider && settings.smsProvider !== 'none' && o.customerPhone)}
               extraBadges={
                 <>
                   {/* R-EDIT-AUDIT F5: edit-history count badge. */}
