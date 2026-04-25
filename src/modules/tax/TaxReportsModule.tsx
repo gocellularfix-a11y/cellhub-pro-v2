@@ -159,36 +159,65 @@ export default function TaxReportsModule() {
     let productSalesCount = 0, productSalesRevenue = 0, productSalesTax = 0;
     let phonePaymentsCount = 0, phonePaymentsRevenue = 0, phonePaymentsTax = 0, phonePaymentsMobilityFees = 0;
     let cbeTotal = 0, screenFeeTotal = 0;
+    // R-IMPORT-REPAIR-REVENUE-PARITY: sales.items-sourced repair accumulators
+    // (v1 architecture). Replaces qRepairs + balance=0 filter that missed
+    // paid-via-sale repair transactions.
+    let repairRevenueFromSales = 0;
+    let repairCostFromSales = 0;
+    let repairItemsCount = 0;
 
     for (const sale of qSales) {
       let saleHasPhonePayment = false;
       let saleHasProduct = false;
+      let saleHasRepair = false;
       let salePhoneItemsRevenue = 0;
       let saleProductItemsRevenue = 0;
+      let saleRepairItemsRevenue = 0;
 
       for (const item of (sale.items || [])) {
-        const isPhone = (item as any).type === 'phone_payment' || (item as any).category === 'phone_payment';
+        const itemType = (item as any).type;
+        const itemCategory = (item as any).category;
+        const isPhone = itemType === 'phone_payment' || itemCategory === 'phone_payment';
+        const isRepair = itemType === 'repair' || itemCategory === 'repair'
+          || itemType === 'special_order' || itemCategory === 'special_order';
         const itemRevenue = ((item as any).price || 0) * ((item as any).qty || (item as any).quantity || 1);
+        const qty = (item as any).qty || (item as any).quantity || 1;
+
         if (isPhone) {
           saleHasPhonePayment = true;
           salePhoneItemsRevenue += itemRevenue;
+        } else if (isRepair) {
+          saleHasRepair = true;
+          saleRepairItemsRevenue += itemRevenue;
+          repairItemsCount++;
+          const itemCost = ((item as any).cost || 0) * qty;
+          const fallbackCost = itemRevenue * 0.35;
+          repairCostFromSales += itemCost > 0 ? itemCost : fallbackCost;
         } else {
           saleHasProduct = true;
           saleProductItemsRevenue += itemRevenue;
         }
       }
 
+      // Add accumulated repair-items revenue for this sale
+      repairRevenueFromSales += saleRepairItemsRevenue;
+
       if (saleHasProduct) {
         productSalesCount++;
+        // On pure-product sales use saleSubtotal (captures discount + rounding).
+        // On mixed sales use per-item revenue to avoid crediting product
+        // with the phone/repair portion of the sale.
         const saleSubtotal = (sale as any).subtotalAfterDiscount ?? (sale as any).subtotal ?? sale.total ?? 0;
-        productSalesRevenue += saleHasPhonePayment ? saleProductItemsRevenue : saleSubtotal;
-        // Sales tax always goes to Product Sales — even on mixed sales (product + phone payment).
-        // Sales tax is levied on the product portion, not the phone payment portion.
-        productSalesTax += (sale as any).salesTax || (saleHasPhonePayment ? 0 : ((sale as any).taxAmount || 0));
+        const isMixed = saleHasPhonePayment || saleHasRepair;
+        productSalesRevenue += isMixed ? saleProductItemsRevenue : saleSubtotal;
+        // Sales tax always goes to Product Sales — even on mixed sales.
+        // Sales tax is levied on the product portion, not the phone or repair portion.
+        productSalesTax += (sale as any).salesTax || (isMixed ? 0 : ((sale as any).taxAmount || 0));
       }
       if (saleHasPhonePayment) {
         phonePaymentsCount++;
-        phonePaymentsRevenue += saleHasProduct ? salePhoneItemsRevenue : (sale.total || 0);
+        const isMixed = saleHasProduct || saleHasRepair;
+        phonePaymentsRevenue += isMixed ? salePhoneItemsRevenue : (sale.total || 0);
         phonePaymentsTax += (sale as any).utilityTax || 0;
         phonePaymentsMobilityFees += (sale as any).mobileSurcharge || 0;
       }
@@ -197,17 +226,21 @@ export default function TaxReportsModule() {
       screenFeeTotal += (sale as any).screenFee || (sale as any).screenFeeTotal || 0;
     }
 
-    const salesRevenue = qSales.reduce((s, sale) => s + (sale.total || 0), 0);
+    // salesRevenue = sum of sale.total, MINUS repair-items portion (which is
+    // broken out into repairRevenue below), to avoid double-counting in
+    // totalRevenue = salesRevenue + repairRevenue + unlockRevenue.
+    const salesRevenue = qSales.reduce((s, sale) => s + (sale.total || 0), 0) - repairRevenueFromSales;
 
-    // FIX 4: Repairs — normalize status to catch 'Complete' / 'complete' / 'Completed' (adapter output) / 'picked_up'
     const normStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');
+    // qRepairs retained for count/workflow display only (e.g. "X repairs this quarter").
+    // Revenue now sourced from sales.items via repairRevenueFromSales.
     const qRepairs = inQ(repairs).filter((r) =>
       ['complete', 'completed', 'picked_up'].includes(normStatus(r.status)) && r.balance === 0 && !(r as any).paidViaSales
     );
     const qUnlocks = inQ(unlocks).filter((u) => normStatus((u as any).status) === 'completed');
 
-    // FIX 5: Use r.total for repair revenue (not estimatedCost which is pre-deposit)
-    const repairRevenue = qRepairs.reduce((s, r) => s + ((r as any).total || r.estimatedCost || 0), 0);
+    // R-IMPORT-REPAIR-REVENUE-PARITY: repairRevenue = sales.items-sourced
+    const repairRevenue = repairRevenueFromSales;
     const unlockRevenue = qUnlocks.reduce((s, u) => s + ((u as any).price || 0), 0);
     const totalRevenue = salesRevenue + repairRevenue + unlockRevenue;
 
@@ -263,11 +296,24 @@ export default function TaxReportsModule() {
     let phoneNetCommission = 0;
     let productGross = 0;
     let productCOGS = 0;
+    // R-IMPORT-REPAIR-REVENUE-PARITY: track repair revenue/cost from
+    // sales.items[type='repair'|'special_order'] — matches v1 monolith
+    // architecture (GOCELLULARAPP.html L34573-34629). Replaces the prior
+    // `repairs[]` collection + balance=0 filter which undercounted revenue
+    // (only ~50% of paid repairs passed) and produced $0 parts cost (v1 data
+    // has empty parts[] arrays; cost lives on the transaction item instead).
+    let repairRevenueFromSales = 0;
+    let repairCostFromSales = 0;
 
     for (const sale of ySales) {
       for (const item of (sale.items || [])) {
-        const isPhone = (item as any).type === 'phone_payment' || (item as any).category === 'phone_payment';
+        const itemType = (item as any).type;
+        const itemCategory = (item as any).category;
+        const isPhone = itemType === 'phone_payment' || itemCategory === 'phone_payment';
+        const isRepair = itemType === 'repair' || itemCategory === 'repair'
+          || itemType === 'special_order' || itemCategory === 'special_order';
         const amt = ((item as any).price || 0) * ((item as any).qty || (item as any).quantity || 1);
+        const qty = (item as any).qty || (item as any).quantity || 1;
 
         if (isPhone) {
           phoneGross += amt;
@@ -275,10 +321,16 @@ export default function TaxReportsModule() {
           const carrierRate = carrier ? (settings.carrierCommissions?.[carrier] ?? undefined) : undefined;
           const rate = (item as any).commissionRate || carrierRate || (settings as any).defaultCommissionRate || 0.07;
           phoneNetCommission += amt * rate;
+        } else if (isRepair) {
+          repairRevenueFromSales += amt;
+          const itemCost = ((item as any).cost || 0) * qty;
+          // V1 fallback: if transactional cost is 0, assume 35% of revenue
+          // (matches monolith `defaultRepairCostPct || 0.35`).
+          const fallbackCost = amt * 0.35;
+          repairCostFromSales += itemCost > 0 ? itemCost : fallbackCost;
         } else {
           productGross += amt;
           const cost = (item as any).cost || 0;
-          const qty = (item as any).qty || (item as any).quantity || 1;
           productCOGS += cost * qty;
         }
       }
@@ -287,19 +339,13 @@ export default function TaxReportsModule() {
     const phonePaidToCarrier = phoneGross - phoneNetCommission;
     const productProfit = productGross - productCOGS;
 
-    // Repairs for the year (completed, paid in full, not through POS)
-    // R-IMPORT-CATEGORY-FIXES: added 'completed' to catch adapter output
-    // (mapRepairStatus emits Title Case 'Completed' → normR → 'completed'
-    // which was missing from this list, zeroing out imported repair revenue).
-    const DONE_REPAIR = ['complete', 'completed', 'picked_up'];
-    const normR = (s: string) => s.toLowerCase().replace(/ /g, '_');
-    const yearRepairs = repairs.filter((r) => {
-      const d = toDate(r.createdAt);
-      return d.getFullYear() === selectedYear && DONE_REPAIR.includes(normR(r.status)) && r.balance === 0;
-    });
-    const repairRevenue = yearRepairs.reduce((s, r) => s + ((r as any).total || r.estimatedCost || 0), 0);
-    const repairCOGS = yearRepairs.reduce((s, r) =>
-      s + (r.parts || []).reduce((si: number, p: any) => si + (p.cost || 0) * (p.qty || p.quantity || 1), 0), 0);
+    // R-IMPORT-REPAIR-REVENUE-PARITY: repair revenue/cost sourced from the
+    // sales.items loop above (v1 architecture). The `repairs[]` collection
+    // is workflow-only — used for ticket UX (RepairModule, RepairModal) but
+    // NOT for tax revenue accounting, to avoid double-counting when the
+    // same repair is both a ticket AND a POS sale item.
+    const repairRevenue = repairRevenueFromSales;
+    const repairCOGS = repairCostFromSales;
     const repairProfit = repairRevenue - repairCOGS;
 
     const totalIncome = productProfit + phoneNetCommission + repairProfit;
@@ -432,7 +478,7 @@ export default function TaxReportsModule() {
       repairRevenue, repairCOGS, repairProfit,
       totalIncome, manualTotal, netProfit, guaranteedPaymentsTotal,
       inventoryValue, inventoryRetail,
-      ySales, yearRepairs,
+      ySales,
       schedCLinesSorted, yearExpenses,
       // Tax Center editable data exposed for display
       adjustedTotalIncome,
