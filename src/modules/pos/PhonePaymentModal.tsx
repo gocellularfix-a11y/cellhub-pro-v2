@@ -449,7 +449,10 @@ export default function PhonePaymentModal({
     const mobilityPerLineCents = Math.round((settings.mobileSurcharge || 0.41) * 100);
     // Fix Bug #5: normalize carrier before commission lookup (consistent with buildCartItems)
     const normalizedCarrier = normalizeCarrier(carrier);
-    const globalCommRate = settings.carrierCommissions?.[normalizedCarrier] ?? 0;
+    // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain to avoid silent zero
+    const globalCommRate = (settings.carrierCommissions?.[normalizedCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
 
     // R-PHONE-FAMILY-MULTILINE-TOTALS: per-line commission accumulator grouped by
     // carrier. Multi-line family plans can mix carriers (T-Mobile $70 @ 10% +
@@ -459,7 +462,10 @@ export default function PhonePaymentModal({
     const addLineCommission = (carrierRaw: string, amountCents: number) => {
       if (amountCents <= 0) return;
       const norm = normalizeCarrier(carrierRaw);
-      const rate = settings.carrierCommissions?.[norm] ?? 0;
+      // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain
+      const rate = (settings.carrierCommissions?.[norm]
+        ?? settings.defaultCommissionRate
+        ?? 0.07);
       const lineCommissionCents = Math.round(amountCents * rate);
       const existing = commGroups.get(norm);
       if (existing) {
@@ -569,7 +575,11 @@ export default function PhonePaymentModal({
           carrier: normalizedCarrier, phoneNumber: phone,
           // R-PHONE-FAMILY-MULTILINE-TOTALS: persist per-line rate so historical
           // reports (sum of item.price × item.commissionRate) match the preview.
-          commissionRate: settings.carrierCommissions?.[normalizedCarrier] ?? 0,
+          // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (was `?? 0` —
+          // silent zero corrupted reports when carrier missing from settings).
+          commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
+            ?? settings.defaultCommissionRate
+            ?? 0.07),
           notes: lineNote,
         });
       });
@@ -607,7 +617,10 @@ export default function PhonePaymentModal({
         // R-PHONE-FAMILY-MULTILINE-TOTALS: parity with multi-line path +
         // handlePortalForLine/activation — reports need this to attribute
         // commission on historical single-line sales.
-        commissionRate: settings.carrierCommissions?.[normalizedCarrier] ?? 0,
+        // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
+        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
+          ?? settings.defaultCommissionRate
+          ?? 0.07),
         notes: customerNote,
       });
     }
@@ -814,7 +827,10 @@ export default function PhonePaymentModal({
       carrier: normCarrier,
       phoneNumber: phone,
       notes: customerNote,
-      commissionRate: settings.carrierCommissions?.[normCarrier] ?? 0,
+      // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
+      commissionRate: (settings.carrierCommissions?.[normCarrier]
+        ?? settings.defaultCommissionRate
+        ?? 0.07),
     };
 
     // Open this carrier's portal (if URL configured).
@@ -870,7 +886,10 @@ export default function PhonePaymentModal({
   const actCommissionCents = useMemo(() => {
     if (!actCarrier || !actPlanPrice) return 0;
     const normalizedActCarrier = normalizeCarrier(actCarrier);
-    const rate = settings.carrierCommissions?.[normalizedActCarrier] ?? 0;
+    // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain
+    const rate = (settings.carrierCommissions?.[normalizedActCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
     const baseCents = Math.round((parseFloat(actPlanPrice) || 0) * 100);
     return Math.round(baseCents * rate);
   }, [actCarrier, actPlanPrice, settings.carrierCommissions]);
@@ -923,7 +942,10 @@ export default function PhonePaymentModal({
         carrier: normalizedCarrier,
         phoneNumber: phoneNorm,
         notes: [customerNote, actNotes.trim()].filter(Boolean).join(' — '),
-        commissionRate: settings.carrierCommissions?.[normalizedCarrier] ?? 0,
+        // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
+        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
+          ?? settings.defaultCommissionRate
+          ?? 0.07),
       });
     }
 

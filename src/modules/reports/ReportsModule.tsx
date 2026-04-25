@@ -22,6 +22,7 @@ import { SearchInput } from '@/components/ui';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { normalizeCarrier } from '@/utils/normalize';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
@@ -646,13 +647,28 @@ export default function ReportsModule() {
 
         if (kind === 'phone_payment') {
           catName = 'Phone Payments';
-          // Commission rate is still keyed by CARRIER (AT&T/T-Mobile/etc) —
-          // that's how commissions actually work. Only the DISPLAY bucket
-          // changes to PROVIDER (VidaPay/WebPOS/QPay/H2O).
+          // R-COMMISSION-FIX-WRITE-AND-READ: align with TaxReportsModule.
+          // Trust stamped item.commissionRate first (transaction-time
+          // accounting standard). Recompute only if missing or invalid.
+          let commRate = (item as any).commissionRate;
+          if (commRate == null || commRate === 0) {
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || '').trim();
+            if (!rawCarrier && (item as any).name) {
+              const match = String((item as any).name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
+              if (match) rawCarrier = match[1].trim();
+            }
+            const normalized = normalizeCarrier(rawCarrier);
+            const carrierRate = normalized
+              ? settings.carrierCommissions?.[normalized]
+              : undefined;
+            commRate = carrierRate
+              ?? settings.defaultCommissionRate
+              ?? 0.07;
+          }
+          // Carrier name is still computed (kept for provider lookup downstream)
           let carrierName = item.carrier || '';
           if (!carrierName && item.name) carrierName = item.name.split('-')[0].trim();
           const normalizedCarrier = normalizeCarrierName(carrierName);
-          const commRate = settings.carrierCommissions?.[normalizedCarrier] || settings.defaultCommissionRate || 0.07;
           costCents = Math.round(revenueCents * (1 - commRate));
           profitCents = revenueCents - costCents;
 

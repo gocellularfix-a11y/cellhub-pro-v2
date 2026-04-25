@@ -13,6 +13,7 @@ import { getLabels } from '@/config/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { toDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
+import { normalizeCarrier } from '@/utils/normalize';
 import { calcMemberK1 } from './taxData';
 import PartnershipMembersTab from './PartnershipMembersTab';
 import TaxExpensesTab from './TaxExpensesTab';
@@ -317,9 +318,28 @@ export default function TaxReportsModule() {
 
         if (isPhone) {
           phoneGross += amt;
-          const carrier = ((item as any).carrier || (item as any).carrierName || '').trim();
-          const carrierRate = carrier ? (settings.carrierCommissions?.[carrier] ?? undefined) : undefined;
-          const rate = (item as any).commissionRate || carrierRate || (settings as any).defaultCommissionRate || 0.07;
+          // R-COMMISSION-FIX-WRITE-AND-READ: trust stamped rate first
+          // (transaction-time commission = source of truth). Only recompute
+          // if stamped data is missing or invalid (legacy items, broken
+          // writes from `?? 0` bug pre-fix).
+          let rate = (item as any).commissionRate;
+          if (rate == null || rate === 0) {
+            // Stamped rate missing or zero — recompute from settings.
+            // Normalize carrier first to handle legacy lowercase variants.
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || '').trim();
+            // Last-resort fallback: extract from item.name (v1 legacy compat)
+            if (!rawCarrier && (item as any).name) {
+              const match = String((item as any).name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
+              if (match) rawCarrier = match[1].trim();
+            }
+            const normalized = normalizeCarrier(rawCarrier);
+            const carrierRate = normalized
+              ? settings.carrierCommissions?.[normalized]
+              : undefined;
+            rate = carrierRate
+              ?? (settings as any).defaultCommissionRate
+              ?? 0.07;
+          }
           phoneNetCommission += amt * rate;
         } else if (isRepair) {
           repairRevenueFromSales += amt;
