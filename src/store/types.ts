@@ -293,6 +293,145 @@ export interface TaxCA540 {
   itemizedDeductionsCA: number;           // CENTS
 }
 
+// ── R-TAX-SCHEMA-EXTEND: legacy v1 tax forms hoisted as first-class
+//    fields on TaxYearData. All money in CENTS (int). All 6 new fields
+//    on TaxYearData are OPTIONAL — adapter populates on import; UI must
+//    check presence. emptyYearData() intentionally does NOT initialize
+//    them, so pristine years have them undefined.
+
+/** Form 1040 Personal — filing header, income lines, credits, estimated
+ *  payments, filer/spouse PII. Singleton per year. */
+export interface Tax1040Data {
+  // Filing
+  filingStatus: 'single' | 'married' | 'mfs' | 'hoh' | 'qw';
+  dependents: number;
+
+  // Income (cents)
+  wages: number;
+  interestDividends: number;
+  capitalGains: number;
+  otherIncome1040: number;
+
+  // Adjustments (cents)
+  iraDeduction: number;
+  studentLoanInterest: number;
+  hsaDeduction: number;
+  otherAdjustments: number;
+
+  // Deduction
+  useStandardDeduction: boolean;
+  itemizedDeductions: number;   // cents
+
+  // Credits (cents)
+  childTaxCredit: number;
+  earnedIncomeCredit: number;
+  otherCredits: number;
+
+  // Withholding & estimated payments (cents)
+  federalWithholding: number;
+  q1Payment: number;
+  q2Payment: number;
+  q3Payment: number;
+  q4Payment: number;
+
+  // Filer PII
+  firstName: string;
+  lastName: string;
+  ssn: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+
+  // Spouse PII (optional)
+  spouseFirstName?: string;
+  spouseLastName?: string;
+  spouseSsn?: string;
+}
+
+/** Form 1065 Schedule L — partnership balance sheet. Begin/End pairs
+ *  per line item (cents). */
+export interface TaxBalanceSheet {
+  // Assets — Begin/End pairs (cents)
+  cashBegin: number;                 cashEnd: number;
+  accountsReceivableBegin: number;   accountsReceivableEnd: number;
+  inventoryBegin: number;            inventoryEnd: number;
+  otherCurrentAssetsBegin: number;   otherCurrentAssetsEnd: number;
+  buildingsBegin: number;            buildingsEnd: number;
+  accDepreciationBegin: number;      accDepreciationEnd: number;
+  landBegin: number;                 landEnd: number;
+  otherAssetsBegin: number;          otherAssetsEnd: number;
+
+  // Liabilities — Begin/End pairs (cents)
+  accountsPayableBegin: number;      accountsPayableEnd: number;
+  shortTermDebtBegin: number;        shortTermDebtEnd: number;
+  longTermDebtBegin: number;         longTermDebtEnd: number;
+  otherLiabilitiesBegin: number;     otherLiabilitiesEnd: number;
+}
+
+/** Dependent claimed on Form 1040. Kept as TaxYearData.dependents[] to
+ *  preserve the v1 year-scoped shape — semántica estable entre años
+ *  pero el form lo pide year-by-year. */
+export interface TaxDependent {
+  id: string;
+  firstName: string;
+  lastName: string;
+  ssn: string;
+  dateOfBirth: string;   // ISO date 'YYYY-MM-DD'
+  relationship: string;  // 'Child' | 'Other' — string for flexibility
+}
+
+/** Partner draw / distribution — withdrawals a partner takes from the
+ *  partnership during the year. Relevant for K-1 Line 19 distributions
+ *  + capital account tracking. */
+export interface TaxDraw {
+  id: string;
+  memberId: string;   // FK to settings.partnership.members[].id
+  amount: number;     // cents
+  date: string;       // ISO date
+  notes?: string;
+}
+
+/** IRS Schedule C (Form 1040) — 24 expense category totals. Lines 8–27
+ *  plus line 30 (home office). All in cents. */
+export interface TaxScheduleC {
+  advertising: number;
+  carAndTruck: number;
+  commissions: number;
+  contractLabor: number;
+  depletion: number;
+  depreciation: number;
+  employeeBenefits: number;
+  insurance: number;
+  mortgageInterest: number;
+  otherInterest: number;
+  legalProfessional: number;
+  officeExpense: number;
+  pensionProfit: number;
+  rentVehicles: number;
+  rentProperty: number;
+  repairs: number;
+  supplies: number;
+  taxesLicenses: number;
+  travel: number;
+  meals: number;
+  utilities: number;
+  wages: number;
+  otherExpenses: number;
+  homeOffice: number;
+}
+
+/** Form 1065 Schedule M-1 — Reconciliation of Income per Books vs per
+ *  Return. 6 standard book-to-tax adjustments (cents). */
+export interface TaxScheduleM {
+  federalIncomeTax: number;
+  excessCapitalLosses: number;
+  incomeNotRecorded: number;
+  expensesNotDeducted: number;
+  taxExemptInterest: number;
+  deductionsNotCharged: number;
+}
+
 /** Per-year tax data — all manually editable inside the Tax Center */
 export interface TaxYearData {
   expenses: TaxExpense[];
@@ -302,6 +441,14 @@ export interface TaxYearData {
   inventory: TaxInventoryData;
   adjustments: TaxAdjustments;
   ca540: TaxCA540;
+
+  // R-TAX-SCHEMA-EXTEND: legacy v1 tax forms (optional — adapter populates)
+  form1040?: Tax1040Data;
+  balanceSheet?: TaxBalanceSheet;
+  dependents?: TaxDependent[];
+  draws?: TaxDraw[];
+  scheduleC?: TaxScheduleC;
+  scheduleM?: TaxScheduleM;
 }
 
 /** Map of year-string → TaxYearData */
