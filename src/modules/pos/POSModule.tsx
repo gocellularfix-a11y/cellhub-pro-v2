@@ -1095,6 +1095,12 @@ export default function POSModule() {
         sales={sales}
         lang={lang}
         L={L}
+        // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: mirror TopUpModal r28b-fix
+        setSelectedCustomer={(c) => {
+          if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
+            setSelectedCustomer(c);
+          }
+        }}
       />
 
       <PaymentModal

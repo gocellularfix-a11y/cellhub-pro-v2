@@ -76,10 +76,15 @@ interface Props {
   sales: Sale[];          // needed to derive known phone lines per customer
   lang: string;
   L: Record<string, any>;
+  // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: propagate the picked customer
+  // up to POSModule so Sale.customerId / loyalty / store credit / purchase
+  // history all work for phone payments. Mirror of TopUpModal's r28b-fix.
+  setSelectedCustomer: (c: Customer | null) => void;
 }
 
 export default function PhonePaymentModal({
   open, onClose, settings, cart, setCart, customers, setCustomers, sales, lang, L,
+  setSelectedCustomer: propagateSelectedCustomer,
 }: Props) {
   const es = lang === 'es';
   const { toast } = useToast();
@@ -771,10 +776,12 @@ export default function PhonePaymentModal({
     }
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
+    // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
     reset();
     onClose();
-  }, [carrier, settings, buildCartItems, setCart, onClose]);
+  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
 
   // ── Add to cart ───────────────────────────────────────────
   const handleAddToCart = useCallback(() => {
@@ -783,10 +790,12 @@ export default function PhonePaymentModal({
     if (!newItems.length) return;
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
+    // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
     reset();
     onClose();
-  }, [canAddToCart, buildCartItems, setCart, onClose]);
+  }, [canAddToCart, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
 
   // R-PHONE-FAMILY-PERLINE: per-line portal handler — multi-line mode.
   // Processes ONE line at a time: validates, builds its cart item with
@@ -845,6 +854,8 @@ export default function PhonePaymentModal({
     // Commit to cart.
     const nextCart = [...cartRef.current, newItem];
     cartRef.current = nextCart;
+    // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
 
     // Remove the processed line; if it was the last, close the modal.
@@ -857,7 +868,7 @@ export default function PhonePaymentModal({
       }
       return remaining;
     });
-  }, [lines, firstName, lastName, settings, setCart, onClose, es, toast]);
+  }, [lines, firstName, lastName, settings, setCart, onClose, es, toast, selectedCustomer, propagateSelectedCustomer]);
 
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
@@ -968,6 +979,8 @@ export default function PhonePaymentModal({
 
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
+    // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
 
     // Persist spiff (INTERNAL — does NOT touch cart, reported separately in Taxes)
@@ -1009,7 +1022,8 @@ export default function PhonePaymentModal({
     reset();
     onClose();
   }, [canAddActivation, actCarrier, actPhone, actPlan, actPlanPrice, actAmount, actNotes, actSpiff,
-      actCommissionCents, settings, setCart, onClose, es, firstName, lastName]);
+      actCommissionCents, settings, setCart, onClose, es, firstName, lastName,
+      selectedCustomer, propagateSelectedCustomer]);
 
   const handleOpenActivationPortal = () => {
     // Try both raw and normalized carrier name as keys
