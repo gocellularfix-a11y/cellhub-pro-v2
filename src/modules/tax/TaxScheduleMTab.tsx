@@ -283,7 +283,7 @@ export default function TaxScheduleMTab({ year }: Props) {
               >
                 <option value="">{es ? 'Seleccionar...' : 'Select...'}</option>
                 {members.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name} ({m.ownershipPct.toFixed(1)}%)</option>
+                  <option key={m.id} value={m.id}>{m.name} ({(m.ownershipPct ?? 0).toFixed(1)}%)</option>
                 ))}
               </select>
             </div>

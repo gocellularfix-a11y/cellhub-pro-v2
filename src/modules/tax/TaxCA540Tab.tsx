@@ -375,7 +375,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>
-                  {calc.member.name} <span style={{ fontWeight: 400, color: '#64748b' }}>({calc.member.ownershipPct.toFixed(2)}%)</span>
+                  {calc.member.name} <span style={{ fontWeight: 400, color: '#64748b' }}>({(calc.member.ownershipPct ?? 0).toFixed(2)}%)</span>
                 </div>
                 <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f87171', fontFamily: 'ui-monospace, monospace' }}>
                   {formatCurrency(calc.totalCATax)}

@@ -1143,9 +1143,9 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                         {m.ein && <Row label="Partner's EIN (entity)" value={m.ein} />}
                         <Row label="Partnership EIN" value={partnership?.ein || (es ? '(configurar arriba)' : '(set above)')} />
                         <Row label="Partnership Name" value={partnership?.legalName || '(not set)'} />
-                        <Row label="Profit sharing %" value={`${m.ownershipPct.toFixed(2)}%`} />
-                        <Row label="Loss sharing %" value={`${m.ownershipPct.toFixed(2)}%`} />
-                        <Row label="Capital sharing %" value={`${m.ownershipPct.toFixed(2)}%`} />
+                        <Row label="Profit sharing %" value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} />
+                        <Row label="Loss sharing %" value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} />
+                        <Row label="Capital sharing %" value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} />
                         <Row label="Box 1 — Ordinary business income" value={formatCurrency(k1.ordinaryIncome)} color="#22c55e" bold />
                         {m.guaranteedPayments > 0 && (
                           <Row label="Box 4a — Guaranteed payments for services" value={formatCurrency(m.guaranteedPayments)} color="#fbbf24" />
@@ -1236,7 +1236,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                         return (
                           <div key={m.id} style={{ marginBottom: '0.875rem', paddingBottom: '0.5rem', borderBottom: '1px dashed rgba(255,255,255,0.08)' }}>
                             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.3rem' }}>
-                              {m.name} ({m.ownershipPct.toFixed(2)}%)
+                              {m.name} ({(m.ownershipPct ?? 0).toFixed(2)}%)
                             </div>
                             <Row label="Box 1 — Ordinary income share" value={formatCurrency(k1.ordinaryIncome)} indent />
                             {m.guaranteedPayments > 0 && (

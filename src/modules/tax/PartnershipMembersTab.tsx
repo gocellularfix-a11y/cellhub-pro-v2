@@ -525,7 +525,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
 
               {/* K-1 preview rows */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.5rem' }}>
-                <MemberRow label={es ? 'Propiedad' : 'Ownership'} value={`${m.ownershipPct.toFixed(2)}%`} bold />
+                <MemberRow label={es ? 'Propiedad' : 'Ownership'} value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} bold />
                 <MemberRow label="Box 1 — Ordinary Income" value={formatCurrency(k1.ordinaryIncome)} color="#22c55e" />
                 {m.guaranteedPayments > 0 && (
                   <MemberRow label="Box 4 — Guaranteed Payments" value={formatCurrency(m.guaranteedPayments)} color="#fbbf24" />

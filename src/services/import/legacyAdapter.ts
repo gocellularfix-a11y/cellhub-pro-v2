@@ -104,15 +104,19 @@ export function mapSaleStatus(
   status: unknown,
   sale: { voided?: boolean; refunded?: boolean },
 ): string {
-  if (sale.voided) return 'Voided';
-  if (sale.refunded) return 'Refunded';
-  if (!status) return 'Completed';
+  // R-IMPORT-SALES-FIXES Path B: output matches SaleStatus type
+  // ('completed' | 'voided' | 'refunded' | 'partial_refund'), which is
+  // lowercase per types.ts:496. Previously emitted Title Case which
+  // bypassed ~40 consumer filters checking `s.status !== 'voided'` etc.
+  if (sale.voided) return 'voided';
+  if (sale.refunded) return 'refunded';
+  if (!status) return 'completed';
   const s = String(status).toLowerCase().trim();
-  if (s === 'completed' || s === 'complete') return 'Completed';
-  if (s === 'voided' || s === 'void') return 'Voided';
-  if (s === 'refunded' || s === 'refund') return 'Refunded';
-  if (s === 'partial_refund' || s === 'partial refund') return 'Partial Refund';
-  return 'Completed';
+  if (s === 'completed' || s === 'complete') return 'completed';
+  if (s === 'voided' || s === 'void') return 'voided';
+  if (s === 'refunded' || s === 'refund') return 'refunded';
+  if (s === 'partial_refund' || s === 'partial refund') return 'partial_refund';
+  return 'completed';
 }
 
 export function mapRepairStatus(status: unknown): string {
@@ -270,6 +274,12 @@ export function normalizeLegacySale(s: Record<string, any>): Record<string, unkn
     storeCreditUsed: s.storeCreditUsed ? toCents(s.storeCreditUsed) : undefined,
     createdAt: safeDate(s.createdAt),
     updatedAt: s.updatedAt ? safeDate(s.updatedAt) : undefined,
+    // R-IMPORT-SALES-FIXES Path B: stamp default storeId to match the
+    // pattern used by inventory/repair/layaway/specialOrder adapters.
+    // Without this, imported sales have `storeId: undefined` — harmless
+    // today since `belongs(undefined)` passes, but breaks on first
+    // multi-store activation.
+    storeId: 'default',
     _migrated: 'v2-cents',
   };
 }
@@ -436,6 +446,338 @@ export function normalizeLegacyCustomer(c: Record<string, any>): Record<string, 
   };
 }
 
+// ── Legacy tax_* routing ─────────────────────────────────────
+//
+// v1 stored tax forms as TOP-LEVEL keys outside settings: `tax_1040_2025`,
+// `tax_exp_2025`, `tax_members`, etc. v2 expects them nested inside
+// `settings.taxData.byYear[YYYY]` + `settings.partnership`. This routine
+// walks every `tax_*` key in the source and rebuilds the v2-native shape
+// while converting dollar money fields to cents.
+//
+// Empty-default objects (all-zero money + empty strings) are skipped so
+// pristine years don't pollute v2 settings with zero-filled forms.
+// Unrecognized `tax_*` keys get warnings (defensive against v1 drift).
+// ─────────────────────────────────────────────────────────────
+
+const VALID_FILING_STATUS = new Set(['single', 'married', 'mfs', 'hoh', 'qw']);
+
+const BALANCE_SHEET_FIELDS = [
+  'cashBegin', 'cashEnd',
+  'accountsReceivableBegin', 'accountsReceivableEnd',
+  'inventoryBegin', 'inventoryEnd',
+  'otherCurrentAssetsBegin', 'otherCurrentAssetsEnd',
+  'buildingsBegin', 'buildingsEnd',
+  'accDepreciationBegin', 'accDepreciationEnd',
+  'landBegin', 'landEnd',
+  'otherAssetsBegin', 'otherAssetsEnd',
+  'accountsPayableBegin', 'accountsPayableEnd',
+  'shortTermDebtBegin', 'shortTermDebtEnd',
+  'longTermDebtBegin', 'longTermDebtEnd',
+  'otherLiabilitiesBegin', 'otherLiabilitiesEnd',
+] as const;
+
+const SCHEDULE_C_FIELDS = [
+  'advertising', 'carAndTruck', 'commissions', 'contractLabor', 'depletion',
+  'depreciation', 'employeeBenefits', 'insurance', 'mortgageInterest',
+  'otherInterest', 'legalProfessional', 'officeExpense', 'pensionProfit',
+  'rentVehicles', 'rentProperty', 'repairs', 'supplies', 'taxesLicenses',
+  'travel', 'meals', 'utilities', 'wages', 'otherExpenses', 'homeOffice',
+] as const;
+
+const SCHEDULE_M_FIELDS = [
+  'federalIncomeTax', 'excessCapitalLosses', 'incomeNotRecorded',
+  'expensesNotDeducted', 'taxExemptInterest', 'deductionsNotCharged',
+] as const;
+
+const FORM_1040_MONEY_FIELDS = [
+  'wages', 'interestDividends', 'capitalGains', 'otherIncome1040',
+  'iraDeduction', 'studentLoanInterest', 'hsaDeduction', 'otherAdjustments',
+  'itemizedDeductions', 'childTaxCredit', 'earnedIncomeCredit', 'otherCredits',
+  'federalWithholding', 'q1Payment', 'q2Payment', 'q3Payment', 'q4Payment',
+] as const;
+
+const FORM_1040_STRING_FIELDS = [
+  'firstName', 'lastName', 'ssn', 'address', 'city', 'state', 'zip',
+  'spouseFirstName', 'spouseLastName', 'spouseSsn',
+] as const;
+
+function allZero(o: Record<string, any>, fields: readonly string[]): boolean {
+  return fields.every((f) => !o[f]);
+}
+
+export function normalizeLegacyTaxData(
+  source: Record<string, unknown>,
+  warnings: string[],
+): {
+  taxData?: { byYear: Record<string, Record<string, unknown>> };
+  partnership?: Record<string, unknown>;
+} {
+  const byYear: Record<string, Record<string, unknown>> = {};
+  let partnership: Record<string, unknown> | undefined;
+  let members: unknown[] | undefined;
+
+  const ensureYear = (year: string) => {
+    if (!byYear[year]) byYear[year] = {};
+    return byYear[year];
+  };
+
+  for (const key of Object.keys(source)) {
+    if (!key.startsWith('tax_')) continue;
+    const val = source[key];
+
+    // ── Globals ────────────────────────────────────────────
+    if (key === 'tax_partnership_info') {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        partnership = { ...(val as Record<string, unknown>) };
+      }
+      continue;
+    }
+    if (key === 'tax_members') {
+      if (Array.isArray(val)) {
+        // v1 → v2 PartnershipMember field remap. v1 uses `ownership` (not
+        // `ownershipPct`), `capitalAccountBeginning/Contributions/Distributions`
+        // (not the v2 short names), `isGeneralPartner` (v2 calls it
+        // `isManaging`). Without this remap, UI sites that call
+        // `.toFixed()` on ownershipPct throw TypeError on every render that
+        // touches members (CA540 tab, Schedule SE, K-1). Default
+        // `isUSResident: true` since v1 had no analog — Jorge's shop is
+        // all-domestic partners. Money fields: v1 dollars → v2 cents.
+        members = val.map((m: any, i: number) => ({
+          id: String(m?.id || `member-${Date.now()}-${i}`),
+          name: String(m?.name || ''),
+          ssn: String(m?.ssn || ''),
+          ...(m?.ein ? { ein: String(m.ein) } : {}),
+          address: String(m?.address || ''),
+          city: String(m?.city || ''),
+          state: String(m?.state || ''),
+          zip: String(m?.zip || ''),
+          ownershipPct: Number(m?.ownershipPct ?? m?.ownership ?? 0),
+          isManaging: !!(m?.isManaging ?? m?.isGeneralPartner ?? false),
+          isUSResident: m?.isUSResident !== undefined ? !!m.isUSResident : true,
+          beginningCapital: toCents(m?.beginningCapital ?? m?.capitalAccountBeginning ?? 0),
+          contributions: toCents(m?.contributions ?? m?.capitalContributions ?? 0),
+          distributions: toCents(m?.distributions ?? m?.capitalDistributions ?? 0),
+          guaranteedPayments: toCents(m?.guaranteedPayments ?? 0),
+          ...(m?.notes ? { notes: String(m.notes) } : {}),
+        }));
+      }
+      continue;
+    }
+
+    // ── Year-scoped keys: tax_<prefix>_<YYYY> ──────────────
+    const match = key.match(/^tax_([a-zA-Z0-9]+)_(\d{4})$/);
+    if (!match) {
+      warnings.push(`Unrecognized legacy tax_* key: ${key}`);
+      continue;
+    }
+    const prefix = match[1];
+    const year = match[2];
+
+    switch (prefix) {
+      case 'exp':
+        if (Array.isArray(val)) {
+          ensureYear(year).expenses = val.map((e: any) => ({
+            ...e, amount: toCents(e?.amount ?? 0),
+          }));
+        }
+        break;
+
+      case 'income':
+        if (Array.isArray(val)) {
+          ensureYear(year).income = val.map((e: any) => ({
+            ...e, amount: toCents(e?.amount ?? 0),
+          }));
+        }
+        break;
+
+      case 'suppliers':
+        if (Array.isArray(val)) {
+          ensureYear(year).suppliers = val.map((e: any) => ({
+            ...e, amount: toCents(e?.amount ?? 0),
+          }));
+        }
+        break;
+
+      case 'returns':
+        if (Array.isArray(val)) {
+          ensureYear(year).returns = val.map((e: any) => ({
+            ...e, amount: toCents(e?.amount ?? 0),
+          }));
+        }
+        break;
+
+      case 'inv':
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const o = val as any;
+          ensureYear(year).inventory = {
+            beginningInventory: toCents(o.beginningInventory ?? 0),
+            endingInventory: toCents(o.endingInventory ?? 0),
+          };
+        }
+        break;
+
+      case 'adj':
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const o = val as any;
+          ensureYear(year).adjustments = {
+            otherIncome: toCents(o.otherIncome ?? 0),
+            returnsRefunds: toCents(o.returnsRefunds ?? 0),
+          };
+        }
+        break;
+
+      case 'ca540':
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const o = val as any;
+          ensureYear(year).ca540 = {
+            caWithholding: toCents(o.caWithholding ?? 0),
+            caQ1: toCents(o.caQ1 ?? 0),
+            caQ2: toCents(o.caQ2 ?? 0),
+            caQ3: toCents(o.caQ3 ?? 0),
+            caQ4: toCents(o.caQ4 ?? 0),
+            selfEmployedHealthInsuranceCA: toCents(o.selfEmployedHealthInsuranceCA ?? 0),
+            otherCADeductions: toCents(o.otherCADeductions ?? 0),
+            useStandardDeductionCA: !!o.useStandardDeductionCA,
+            itemizedDeductionsCA: toCents(o.itemizedDeductionsCA ?? 0),
+          };
+        }
+        break;
+
+      case '1040': {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) break;
+        const o = val as any;
+        // Empty-object guard: all money zero AND all strings empty → skip
+        if (
+          allZero(o, FORM_1040_MONEY_FIELDS) &&
+          FORM_1040_STRING_FIELDS.every((f) => !o[f]) &&
+          !o.dependents
+        ) break;
+
+        let filingStatus = String(o.filingStatus || '').toLowerCase();
+        if (!VALID_FILING_STATUS.has(filingStatus)) {
+          warnings.push(
+            `form1040 ${year}: filingStatus '${o.filingStatus}' invalid, defaulted to 'single'`,
+          );
+          filingStatus = 'single';
+        }
+
+        const form1040: Record<string, unknown> = {
+          filingStatus,
+          dependents: Number(o.dependents) || 0,
+          useStandardDeduction: !!o.useStandardDeduction,
+          firstName: String(o.firstName || ''),
+          lastName: String(o.lastName || ''),
+          ssn: String(o.ssn || ''),
+          address: String(o.address || ''),
+          city: String(o.city || ''),
+          state: String(o.state || ''),
+          zip: String(o.zip || ''),
+        };
+        for (const f of FORM_1040_MONEY_FIELDS) {
+          form1040[f] = toCents(o[f] ?? 0);
+        }
+        // Spouse PII: include only if non-empty (optional fields).
+        if (o.spouseFirstName) form1040.spouseFirstName = String(o.spouseFirstName);
+        if (o.spouseLastName) form1040.spouseLastName = String(o.spouseLastName);
+        if (o.spouseSsn) form1040.spouseSsn = String(o.spouseSsn);
+        ensureYear(year).form1040 = form1040;
+        break;
+      }
+
+      case 'balanceSheet': {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) break;
+        const o = val as any;
+        if (allZero(o, BALANCE_SHEET_FIELDS)) break; // pristine → skip
+        const bs: Record<string, unknown> = {};
+        for (const f of BALANCE_SHEET_FIELDS) bs[f] = toCents(o[f] ?? 0);
+        ensureYear(year).balanceSheet = bs;
+        break;
+      }
+
+      case 'dependents':
+        if (Array.isArray(val) && val.length > 0) {
+          ensureYear(year).dependents = val.map((d: any, i: number) => ({
+            id: d?.id || `dep-${year}-${i}-${Date.now()}`,
+            firstName: String(d?.firstName || ''),
+            lastName: String(d?.lastName || ''),
+            ssn: String(d?.ssn || ''),
+            dateOfBirth: String(d?.dateOfBirth || ''),
+            relationship: String(d?.relationship || 'Other'),
+          }));
+        }
+        break;
+
+      case 'draw':
+        if (Array.isArray(val) && val.length > 0) {
+          const normalizedDraws: Record<string, unknown>[] = [];
+          for (const d of val) {
+            const ok = d && typeof d === 'object' && !Array.isArray(d)
+              && 'id' in d && 'memberId' in d && 'amount' in d && 'date' in d;
+            if (!ok) {
+              warnings.push(
+                `tax_draw_${year}: entry with malformed shape skipped: ${JSON.stringify(d).slice(0, 100)}`,
+              );
+              continue;
+            }
+            const e = d as any;
+            normalizedDraws.push({
+              id: String(e.id),
+              memberId: String(e.memberId),
+              amount: toCents(e.amount ?? 0),
+              date: String(e.date),
+              ...(e.notes ? { notes: String(e.notes) } : {}),
+            });
+          }
+          if (normalizedDraws.length > 0) {
+            ensureYear(year).draws = normalizedDraws;
+          }
+        }
+        break;
+
+      case 'scheduleC': {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) break;
+        const o = val as any;
+        if (allZero(o, SCHEDULE_C_FIELDS)) break;
+        const sc: Record<string, unknown> = {};
+        for (const f of SCHEDULE_C_FIELDS) sc[f] = toCents(o[f] ?? 0);
+        ensureYear(year).scheduleC = sc;
+        break;
+      }
+
+      case 'scheduleM': {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) break;
+        const o = val as any;
+        if (allZero(o, SCHEDULE_M_FIELDS)) break;
+        const sm: Record<string, unknown> = {};
+        for (const f of SCHEDULE_M_FIELDS) sm[f] = toCents(o[f] ?? 0);
+        ensureYear(year).scheduleM = sm;
+        break;
+      }
+
+      default:
+        warnings.push(`Unrecognized legacy tax_* key: ${key}`);
+    }
+  }
+
+  // Drop years where nothing was populated.
+  for (const y of Object.keys(byYear)) {
+    if (Object.keys(byYear[y]).length === 0) delete byYear[y];
+  }
+
+  const result: {
+    taxData?: { byYear: Record<string, Record<string, unknown>> };
+    partnership?: Record<string, unknown>;
+  } = {};
+  if (Object.keys(byYear).length > 0) result.taxData = { byYear };
+  if (partnership || members) {
+    result.partnership = {
+      ...(partnership || {}),
+      ...(members ? { members } : {}),
+    };
+  }
+  return result;
+}
+
 // ── Top-level entry point ────────────────────────────────────
 
 export function normalizeLegacyBackup(
@@ -478,6 +820,34 @@ export function normalizeLegacyBackup(
   run('special_orders', normalizeLegacySpecialOrder);
   run('customer_returns', normalizeLegacyCustomerReturn);
   run('customers', normalizeLegacyCustomer);
+
+  // R-IMPORT-TAX-DATA: collect legacy tax_* keys and route them into
+  // settings.taxData.byYear + settings.partnership. Merges with any
+  // existing settings.taxData/partnership already present in the source
+  // (v2-native portions win only for fields absent from the legacy data).
+  const taxDelta = normalizeLegacyTaxData(source, warnings);
+  if (taxDelta.taxData || taxDelta.partnership) {
+    const existingSettings = (source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings))
+      ? { ...(source.settings as Record<string, unknown>) }
+      : {};
+    if (taxDelta.taxData) {
+      const existing = existingSettings.taxData as { byYear?: Record<string, unknown> } | undefined;
+      existingSettings.taxData = {
+        byYear: {
+          ...(existing?.byYear || {}),
+          ...taxDelta.taxData.byYear,
+        },
+      };
+    }
+    if (taxDelta.partnership) {
+      const existing = existingSettings.partnership as Record<string, unknown> | undefined;
+      existingSettings.partnership = {
+        ...(existing || {}),
+        ...taxDelta.partnership,
+      };
+    }
+    normalized.settings = existingSettings;
+  }
 
   return { normalized, stats, warnings };
 }
