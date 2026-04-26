@@ -2,6 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme tokens ── */
+:root,
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-elevated: #334155;
+  --bg-surface: #1e293b;
+  --bg-input: rgba(255,255,255,0.05);
+  --bg-hover: rgba(255,255,255,0.1);
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-accent: #667eea;
+  --border-default: rgba(255,255,255,0.1);
+  --border-strong: rgba(255,255,255,0.2);
+  --color-accent: #667eea;
+  --color-accent-hover: #5a6fd6;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --gradient-bg: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-input: #f1f5f9;
+  --bg-hover: rgba(0,0,0,0.05);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-accent: #4f46e5;
+  --border-default: rgba(0,0,0,0.1);
+  --border-strong: rgba(0,0,0,0.2);
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #2563eb;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.15);
+  --gradient-bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+[data-theme="ocean"] {
+  --bg-primary: #0c1929;
+  --bg-secondary: #132f4c;
+  --bg-elevated: #1a3a5c;
+  --bg-surface: #132f4c;
+  --bg-input: rgba(255,255,255,0.06);
+  --bg-hover: rgba(255,255,255,0.1);
+  --text-primary: #e0f2fe;
+  --text-secondary: #7dd3fc;
+  --text-muted: #38bdf8;
+  --text-accent: #38bdf8;
+  --border-default: rgba(56,189,248,0.15);
+  --border-strong: rgba(56,189,248,0.3);
+  --color-accent: #0ea5e9;
+  --color-accent-hover: #0284c7;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #38bdf8;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --gradient-bg: linear-gradient(135deg, #0c1929 0%, #132f4c 100%);
+}
+
+[data-theme="sunset"] {
+  --bg-primary: #1a0a0a;
+  --bg-secondary: #2d1515;
+  --bg-elevated: #3d1f1f;
+  --bg-surface: #2d1515;
+  --bg-input: rgba(255,255,255,0.06);
+  --bg-hover: rgba(255,255,255,0.1);
+  --text-primary: #fef2f2;
+  --text-secondary: #fca5a5;
+  --text-muted: #f87171;
+  --text-accent: #f97316;
+  --border-default: rgba(249,115,22,0.15);
+  --border-strong: rgba(249,115,22,0.3);
+  --color-accent: #f97316;
+  --color-accent-hover: #ea580c;
+  --color-success: #22c55e;
+  --color-warning: #fbbf24;
+  --color-error: #ef4444;
+  --color-info: #fb923c;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --gradient-bg: linear-gradient(135deg, #1a0a0a 0%, #2d1515 100%);
+}
+
 /* ==========================================
    CELLHUB PRO v2.1 — Custom Styles
    Ported from single-file HTML CSS block
@@ -16,7 +114,7 @@
 
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background: var(--gradient-bg);
     color: #e2e8f0;
     overflow: hidden;
   }
@@ -128,8 +226,9 @@
            placeholder-slate-500
            focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
            transition-all duration-200;
-    background-color: #1e293b;
-    color: #e2e8f0;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
   }
   .input-sm {
     @apply px-3 py-1.5 text-xs;
@@ -143,8 +242,9 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
-    background-color: #1e293b;
-    color: #e2e8f0;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
     padding-right: 2.5rem;
   }
 
