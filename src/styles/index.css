@@ -25,6 +25,10 @@
   --color-info: #3b82f6;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --bg-accent-soft: rgba(102,126,234,0.15);
+  --text-accent-soft: #a5b4fc;
+  --scrollbar-thumb: rgba(102,126,234,0.3);
+  --scrollbar-thumb-hover: rgba(102,126,234,0.5);
   --gradient-bg: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
 }
 
@@ -49,6 +53,10 @@
   --color-info: #2563eb;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.15);
+  --bg-accent-soft: rgba(79,70,229,0.1);
+  --text-accent-soft: #6366f1;
+  --scrollbar-thumb: rgba(79,70,229,0.3);
+  --scrollbar-thumb-hover: rgba(79,70,229,0.5);
   --gradient-bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
 }
 
@@ -73,6 +81,10 @@
   --color-info: #38bdf8;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --bg-accent-soft: rgba(14,165,233,0.15);
+  --text-accent-soft: #38bdf8;
+  --scrollbar-thumb: rgba(14,165,233,0.3);
+  --scrollbar-thumb-hover: rgba(14,165,233,0.5);
   --gradient-bg: linear-gradient(135deg, #0c1929 0%, #132f4c 100%);
 }
 
@@ -97,6 +109,10 @@
   --color-info: #fb923c;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --bg-accent-soft: rgba(249,115,22,0.15);
+  --text-accent-soft: #fdba74;
+  --scrollbar-thumb: rgba(249,115,22,0.3);
+  --scrollbar-thumb-hover: rgba(249,115,22,0.5);
   --gradient-bg: linear-gradient(135deg, #1a0a0a 0%, #2d1515 100%);
 }
 
@@ -133,18 +149,20 @@
     background: rgba(15, 23, 42, 0.5);
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(102, 126, 234, 0.3);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(102, 126, 234, 0.5);
+    background: var(--scrollbar-thumb-hover);
   }
 }
 
 @layer components {
   /* Glass-morphism cards */
   .glass-card {
-    @apply rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm;
+    @apply rounded-xl backdrop-blur-sm;
+    background: var(--bg-input);
+    border: 1px solid var(--border-default);
   }
 
   /* Generic card */
@@ -165,7 +183,7 @@
     background: transparent;
     border: none;
     border-left: 3px solid transparent;
-    color: #94a3b8;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -178,13 +196,13 @@
     letter-spacing: 0.01em;
   }
   .nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: #e2e8f0;
+    background: var(--bg-input);
+    color: var(--text-primary);
   }
   .nav-item.active {
-    background: rgba(102, 126, 234, 0.15);
-    border-left-color: #667eea;
-    color: #a5b4fc;
+    background: var(--bg-accent-soft);
+    border-left-color: var(--color-accent);
+    color: var(--text-accent-soft);
     font-weight: 800;
   }
 
@@ -195,10 +213,18 @@
            cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700;
+    @apply text-white;
+    background: var(--color-accent);
+  }
+  .btn-primary:hover {
+    background: var(--color-accent-hover);
   }
   .btn-secondary {
-    @apply bg-white/10 text-slate-300 hover:bg-white/20;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+  }
+  .btn-secondary:hover {
+    background: var(--border-strong);
   }
   .btn-success {
     @apply bg-emerald-600 text-white hover:bg-emerald-700;
@@ -210,7 +236,12 @@
     @apply bg-amber-600 text-white hover:bg-amber-700;
   }
   .btn-ghost {
-    @apply bg-transparent text-slate-400 hover:bg-white/10 hover:text-white;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
   .btn-sm {
     @apply px-3 py-1.5 text-xs;
@@ -248,26 +279,26 @@
     padding-right: 2.5rem;
   }
 
-  /* Force dark dropdown options (Chrome/Edge/Firefox on Windows) */
+  /* Force theme-aware dropdown options (Chrome/Edge/Firefox on Windows) */
   .select option,
   select option {
-    background-color: #1e293b;
-    color: #e2e8f0;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
   }
   .select option:checked,
   select option:checked {
-    background-color: #334155;
-    color: #ffffff;
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
   }
 
   /* Also catch bare <select> elements used with inline styles in modules */
   select {
-    background-color: #1e293b !important;
-    color: #e2e8f0 !important;
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
   }
   select option {
-    background-color: #1e293b !important;
-    color: #e2e8f0 !important;
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
   }
 
   /* Textarea */
@@ -297,22 +328,26 @@
 
   /* Table */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-white/10;
+    @apply overflow-x-auto rounded-xl;
+    border: 1px solid var(--border-default);
   }
   .table {
     @apply w-full text-sm;
   }
   .table thead {
-    @apply bg-white/5;
+    background: var(--bg-input);
   }
   .table th {
-    @apply px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider;
+    @apply px-4 py-3 text-left text-xs font-medium uppercase tracking-wider;
+    color: var(--text-secondary);
   }
   .table td {
-    @apply px-4 py-3 text-slate-300 border-t border-white/5;
+    @apply px-4 py-3;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-default);
   }
   .table tbody tr:hover {
-    @apply bg-white/5;
+    background: var(--bg-input);
   }
 
   /* Modal overlay */
@@ -321,15 +356,17 @@
            bg-black/60 backdrop-blur-sm animate-fade-in;
   }
   .modal-content {
-    @apply relative bg-surface-800 rounded-2xl border border-white/10
-           shadow-2xl max-h-[90vh] overflow-y-auto animate-scale-in;
+    @apply relative rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto animate-scale-in;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
   }
 
   /* Toast */
   .toast {
     @apply fixed bottom-4 right-4 z-[100] flex items-center gap-3
-           px-5 py-3 rounded-xl border border-white/10 bg-surface-800
-           shadow-xl animate-slide-in-right;
+           px-5 py-3 rounded-xl shadow-xl animate-slide-in-right;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
   }
 
   /* Loading spinner */
