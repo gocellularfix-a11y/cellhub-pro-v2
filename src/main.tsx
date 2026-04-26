@@ -5,6 +5,7 @@ import { MultiStoreProvider } from '@/store/MultiStoreProvider';
 import { ToastProvider } from '@/components/ui/Toast';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 import LicenseGate from '@/components/shared/LicenseGate';
+import { ThemeProvider } from '@/theme';
 import App from './App';
 import '@/styles/index.css';
 
@@ -21,13 +22,15 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <LicenseGate>
-        <AppProvider>
-          <MultiStoreProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
-          </MultiStoreProvider>
-        </AppProvider>
+        <ThemeProvider>
+          <AppProvider>
+            <MultiStoreProvider>
+              <ToastProvider>
+                <App />
+              </ToastProvider>
+            </MultiStoreProvider>
+          </AppProvider>
+        </ThemeProvider>
       </LicenseGate>
     </ErrorBoundary>
   </StrictMode>,

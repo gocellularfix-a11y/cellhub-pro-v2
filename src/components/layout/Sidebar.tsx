@@ -2,6 +2,7 @@ import { useApp } from '@/store/AppProvider';
 import { useMultiStore } from '@/store/MultiStoreProvider';
 import { getLabels } from '@/config/i18n';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
+import { useTheme, THEMES } from '@/theme';
 
 export default function Sidebar() {
   const {
@@ -14,6 +15,7 @@ export default function Sidebar() {
   } = useApp();
 
   const { state: multiStore, setConsolidatedView } = useMultiStore();
+  const { theme, setTheme } = useTheme();
   const L = getLabels(lang);
 
   const handleClockOut = () => {
@@ -186,6 +188,39 @@ export default function Sidebar() {
             >
               🇧🇷 PT
             </button>
+          </div>
+        </div>
+
+        {/* Theme picker — color swatches */}
+        <div style={{ marginBottom: '0.75rem' }}>
+          <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a78bfa', display: 'inline-block' }} />
+            {lang === 'en' ? 'THEME' : 'TEMA'}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
+            {THEMES.map((t) => {
+              const localizedLabel = lang === 'es' ? t.labelEs : lang === 'pt' ? t.labelPt : t.label;
+              const isActive = theme === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  title={localizedLabel}
+                  aria-label={localizedLabel}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    border: isActive ? '2px solid #ffffff' : '2px solid rgba(255,255,255,0.1)',
+                    background: t.preview,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: isActive ? '0 0 0 2px rgba(167,139,250,0.4)' : 'none',
+                    padding: 0,
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
 
