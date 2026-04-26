@@ -5,7 +5,7 @@
 
 import { useState, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { usePrint } from '@/hooks/usePrint';
@@ -23,9 +23,8 @@ interface Props {
 }
 
 export default function NotepadModal({ open, onClose }: Props) {
-  const { state: { lang, settings } } = useApp();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { state: { settings } } = useApp();
+  const { t } = useTranslation();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<NotepadImage[]>([]);
@@ -47,12 +46,12 @@ export default function NotepadModal({ open, onClose }: Props) {
     // Validate file type (accept="image/*" is only a browser hint)
     const validFiles = files.filter((f) => f.type.startsWith('image/'));
     if (validFiles.length < files.length) {
-      toast(es ? 'Solo se permiten imágenes' : 'Only image files are allowed', 'warning');
+      toast(t('notepadModal.onlyImagesAllowed'), 'warning');
     }
 
     // Enforce max image limit
     if (images.length + validFiles.length > MAX_IMAGES) {
-      toast(es ? `Máximo ${MAX_IMAGES} imágenes` : `Maximum ${MAX_IMAGES} images`, 'warning');
+      toast(t('notepadModal.maxImages', MAX_IMAGES), 'warning');
       e.target.value = '';
       return;
     }
@@ -95,7 +94,7 @@ export default function NotepadModal({ open, onClose }: Props) {
     ).join('');
 
     const html = `<html><head>
-      <title>${es ? 'Notas' : 'Notes'}</title>
+      <title>${t('notepadModal.printTitle')}</title>
       <style>
         @page { size: 4in auto; margin: 0.25in; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -127,7 +126,7 @@ export default function NotepadModal({ open, onClose }: Props) {
   const canPrint = text.trim() || images.length > 0;
 
   return (
-    <Modal open={open} onClose={handleClose} title={`📝 ${es ? 'Bloc de Notas' : 'Notepad'}`} size="max-w-2xl">
+    <Modal open={open} onClose={handleClose} title={`📝 ${t('notepadModal.modalTitle')}`} size="max-w-2xl">
       {/* Info banner */}
       <div style={{
         background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.3)',
@@ -137,14 +136,14 @@ export default function NotepadModal({ open, onClose }: Props) {
       }}>
         <span style={{ fontSize: '1.5rem' }}>📝</span>
         <span style={{ flex: 1 }}>
-          {es ? 'Escribe notas y sube imágenes para imprimir en recibo térmico.' : 'Write notes and upload images to print on thermal receipt.'}
+          {t('notepadModal.banner')}
         </span>
       </div>
 
       {/* Textarea */}
       <textarea
         className="input"
-        placeholder={es ? 'Escribe tus notas aquí...' : 'Write your notes here...'}
+        placeholder={t('notepadModal.placeholder')}
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={15}
@@ -160,7 +159,7 @@ export default function NotepadModal({ open, onClose }: Props) {
         <input ref={fileRef} type="file" accept="image/*" multiple
           style={{ display: 'none' }} onChange={handleImageUpload} />
         <button onClick={() => fileRef.current?.click()} className="btn btn-secondary" style={{ width: '100%' }}>
-          {es ? '📷 Subir Imagen(es)' : '📷 Upload Image(s)'}
+          {t('notepadModal.uploadImages')}
         </button>
 
         {images.length > 0 && (
@@ -172,7 +171,7 @@ export default function NotepadModal({ open, onClose }: Props) {
               <div key={img.id} style={{ position: 'relative' }}>
                 <img src={img.data} alt={img.name} style={{
                   width: '100%', height: '120px', objectFit: 'cover',
-                  borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '0.5rem', border: '1px solid var(--border-strong)',
                 }} />
                 <button
                   onClick={() => setImages((prev) => prev.filter((i) => i.id !== img.id))}
@@ -192,11 +191,11 @@ export default function NotepadModal({ open, onClose }: Props) {
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
         <button onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>
-          {es ? 'Cerrar' : 'Close'}
+          {t('close')}
         </button>
         <button onClick={handlePrint} className="btn btn-primary" style={{ flex: 1 }}
           disabled={!canPrint}>
-          🖨️ {es ? 'Imprimir' : 'Print'}
+          🖨️ {t('print')}
         </button>
       </div>
     </Modal>
