@@ -5,7 +5,7 @@
 
 // ── Common ────────────────────────────────────────────────
 
-export type Lang = 'en' | 'es';
+export type Lang = 'en' | 'es' | 'pt';
 
 export type PaymentMethod = string; // 'cash' | 'card' | 'store_credit' | 'split' (legacy uses capitalized)
 

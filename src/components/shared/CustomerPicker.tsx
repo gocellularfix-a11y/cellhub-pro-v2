@@ -12,7 +12,7 @@ interface CustomerPickerProps {
   customers: Customer[];
   selectedCustomer: Customer | null;
   onSelect: (customer: Customer | null) => void;
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   /** Optional placeholder for the search input */
   placeholder?: string;
   /** When true, shows a "Walk-in (no customer)" clear chip when one is selected */

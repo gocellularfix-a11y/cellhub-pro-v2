@@ -17,9 +17,7 @@ import type { Locale } from './types';
 export function useTranslation() {
   const { state } = useApp();
 
-  // Current lang from AppState ('en' | 'es').
-  // Cast to Locale to support future 'pt' when Lang type is extended.
-  const locale: Locale = state.lang as Locale;
+  const locale: Locale = state.lang;
 
   const t = useCallback(
     (key: string, ...args: any[]): string => {

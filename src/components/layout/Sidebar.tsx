@@ -23,7 +23,7 @@ export default function Sidebar() {
   };
 
   const toggleLang = () => {
-    setLang(lang === 'en' ? 'es' : 'en');
+    setLang(lang === 'en' ? 'es' : lang === 'es' ? 'pt' : 'en');
   };
 
   return (
@@ -174,6 +174,17 @@ export default function Sidebar() {
               }}
             >
               🇲🇽 ES
+            </button>
+            <button
+              onClick={() => setLang('pt')}
+              style={{
+                flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
+                background: lang === 'pt' ? '#22c55e' : 'rgba(255,255,255,0.1)',
+                color: lang === 'pt' ? 'white' : '#94a3b8',
+              }}
+            >
+              🇧🇷 PT
             </button>
           </div>
         </div>
