@@ -3,6 +3,7 @@ import { useMultiStore } from '@/store/MultiStoreProvider';
 import { getLabels } from '@/config/i18n';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
 import { useTheme, THEMES } from '@/theme';
+import { useTranslation } from '@/i18n';
 
 export default function Sidebar() {
   const {
@@ -16,6 +17,7 @@ export default function Sidebar() {
 
   const { state: multiStore, setConsolidatedView } = useMultiStore();
   const { theme, setTheme } = useTheme();
+  const { t } = useTranslation();
   const L = getLabels(lang);
 
   const handleClockOut = () => {
@@ -49,7 +51,7 @@ export default function Sidebar() {
                 : 'bg-white/5 text-slate-500 hover:bg-white/10'
             }`}
           >
-            {multiStore.consolidatedView ? '🌐 All Stores' : '📍 This Store'}
+            {multiStore.consolidatedView ? `🌐 ${t('sidebar.allStores')}` : `📍 ${t('sidebar.thisStore')}`}
           </button>
         )}
       </div>
@@ -70,11 +72,11 @@ export default function Sidebar() {
           onClick={() => window.dispatchEvent(new CustomEvent('cellhub_global_search'))}
           style={{
             width: '100%', padding: '0.5rem 0.75rem',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border-default)',
             borderRadius: '8px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            color: '#64748b', fontSize: '0.82rem',
+            color: 'var(--text-muted)', fontSize: '0.82rem',
             transition: 'all 0.2s',
           }}
           onMouseEnter={(e) => {
@@ -83,19 +85,19 @@ export default function Sidebar() {
             (e.currentTarget as HTMLElement).style.borderColor = 'rgba(102,126,234,0.4)';
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
-            (e.currentTarget as HTMLElement).style.color = '#64748b';
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
+            (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)';
+            (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-default)';
           }}
         >
           <span>🔍</span>
           <span style={{ flex: 1, textAlign: 'left' }}>
-            {lang === 'es' ? 'Buscar todo...' : 'Search everything...'}
+            {t('sidebar.searchPlaceholder')}
           </span>
           <kbd style={{
             fontSize: '0.6rem', padding: '0.1rem 0.35rem',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border-default)',
             borderRadius: '3px', letterSpacing: '0.02em',
           }}>⌘K</kbd>
         </button>
@@ -131,28 +133,28 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom section — matches original */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '1rem 1.5rem', paddingBottom: '2rem' }}>
+      <div style={{ borderTop: '1px solid var(--border-default)', padding: '1rem 1.5rem', paddingBottom: '2rem' }}>
         {/* AI Assistant */}
         <button
           onClick={() => dispatch({ type: 'SET_SHOW_AI_ASSISTANT', payload: true })}
           style={{
             width: '100%', padding: '0.6rem 0.75rem', background: 'transparent', border: 'none',
-            color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.75rem',
+            color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.75rem',
             cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, textAlign: 'left',
             borderRadius: '8px', transition: 'all 0.2s', marginBottom: '0.5rem',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
         >
           <span style={{ fontSize: '1.1rem' }}>🤖</span>
-          <span>AI Assistant</span>
+          <span>{t('sidebar.aiAssistant')}</span>
         </button>
 
         {/* Language toggle — EN / ES buttons like original */}
         <div style={{ marginBottom: '0.75rem' }}>
-          <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-            {L.language || 'LANGUAGE'}
+            {t('language')}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
@@ -160,8 +162,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'en' ? '#ef4444' : 'rgba(255,255,255,0.1)',
-                color: lang === 'en' ? 'white' : '#94a3b8',
+                background: lang === 'en' ? '#ef4444' : 'var(--bg-hover)',
+                color: lang === 'en' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇺🇸 EN
@@ -171,8 +173,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'es' ? '#3b82f6' : 'rgba(255,255,255,0.1)',
-                color: lang === 'es' ? 'white' : '#94a3b8',
+                background: lang === 'es' ? '#3b82f6' : 'var(--bg-hover)',
+                color: lang === 'es' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇲🇽 ES
@@ -182,8 +184,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'pt' ? '#22c55e' : 'rgba(255,255,255,0.1)',
-                color: lang === 'pt' ? 'white' : '#94a3b8',
+                background: lang === 'pt' ? '#22c55e' : 'var(--bg-hover)',
+                color: lang === 'pt' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇧🇷 PT
@@ -193,9 +195,9 @@ export default function Sidebar() {
 
         {/* Theme picker — color swatches */}
         <div style={{ marginBottom: '0.75rem' }}>
-          <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a78bfa', display: 'inline-block' }} />
-            {lang === 'en' ? 'THEME' : 'TEMA'}
+            {t('sidebar.theme')}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
             {THEMES.map((t) => {
@@ -225,7 +227,7 @@ export default function Sidebar() {
         </div>
 
         {/* Version info */}
-        <div style={{ fontSize: '0.65rem', color: '#475569', marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
           CellHub Pro — Build 2026.04.01
         </div>
 
@@ -240,7 +242,7 @@ export default function Sidebar() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
             }}
           >
-            🚪 {L.clockOut || 'Clock Out'}
+            🚪 {t('sidebar.clockOut')}
           </button>
         ) : (
           <button
@@ -252,7 +254,7 @@ export default function Sidebar() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
             }}
           >
-            {L.clockIn || 'Clock In'}
+            {t('sidebar.clockIn')}
           </button>
         )}
 
@@ -263,7 +265,7 @@ export default function Sidebar() {
             display: 'flex', alignItems: 'center', gap: '0.4rem',
           }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-            🔒 Admin Mode — click to exit
+            🔒 {t('sidebar.adminMode')}
           </div>
         )}
       </div>

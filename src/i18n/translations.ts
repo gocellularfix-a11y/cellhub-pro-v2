@@ -1145,4 +1145,12 @@ export const translations: TranslationDictionary = {
   'yourCommission': { en: 'Your Commission', es: 'Tu Comisión', pt: 'Sua Comissão' },
   'zip': { en: 'ZIP', es: 'Código Postal', pt: 'CEP' },
   'zipLabel': { en: 'ZIP', es: 'Código Postal', pt: 'CEP' },
+  'sidebar.searchPlaceholder': { en: 'Search everything...', es: 'Buscar todo...', pt: 'Buscar tudo...' },
+  'sidebar.aiAssistant': { en: 'AI Assistant', es: 'Asistente IA', pt: 'Assistente IA' },
+  'sidebar.allStores': { en: 'All Stores', es: 'Todas las tiendas', pt: 'Todas as lojas' },
+  'sidebar.thisStore': { en: 'This Store', es: 'Esta tienda', pt: 'Esta loja' },
+  'sidebar.adminMode': { en: 'Admin Mode — click to exit', es: 'Modo Admin — clic para salir', pt: 'Modo Admin — clique para sair' },
+  'sidebar.theme': { en: 'THEME', es: 'TEMA', pt: 'TEMA' },
+  'sidebar.clockIn': { en: 'Clock In', es: 'Registrar Entrada', pt: 'Registrar Entrada' },
+  'sidebar.clockOut': { en: 'Clock Out', es: 'Registrar Salida', pt: 'Registrar Saída' },
 };
