@@ -5,6 +5,7 @@
 
 import { type CSSProperties } from 'react';
 import type { CustomCategory } from './types';
+import { useTranslation } from '@/i18n';
 
 interface QuickActionGridProps {
   lang: string;
@@ -87,6 +88,7 @@ export default function QuickActionGrid({
   onLabelPrinter,
   onAddCategory,
 }: QuickActionGridProps) {
+  const { t } = useTranslation();
   const handleClick = (id: string) => {
     if (id === 'phone_payment') onPhonePayment();
     else if (id === 'credential') onCredentialMaker();
@@ -103,10 +105,10 @@ export default function QuickActionGrid({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h2 style={{ fontSize: '1.875rem', fontWeight: 700 }}>
-            {L.quickActions || 'Quick actions'}
+            {t('quickActions')}
           </h2>
-          <p style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-            {L.selectCategoryToBegin || 'Select a category to begin'}
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            {t('selectCategoryToBegin')}
           </p>
         </div>
       </div>
@@ -140,13 +142,13 @@ export default function QuickActionGrid({
                 letterSpacing: '0.02em',
               }}>
                 {(() => {
-                  const val = L[action.labelKey];
+                  const val = t(action.labelKey);
                   return (val && val !== action.labelKey ? val : action.labelFallback).toUpperCase();
                 })()}
               </div>
-              <div style={{ fontSize: '0.95rem', color: '#94a3b8', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
                 {(() => {
-                  const val = L[action.descKey];
+                  const val = t(action.descKey);
                   return val && val !== action.descKey ? val : action.descFallback;
                 })()}
               </div>
@@ -169,7 +171,7 @@ export default function QuickActionGrid({
                 {lang === 'es' && cat.labelEs ? cat.labelEs : cat.label}
               </div>
               {cat.description && (
-                <div style={{ fontSize: '0.95rem', color: '#94a3b8' }}>{cat.description}</div>
+                <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>{cat.description}</div>
               )}
             </div>
           </button>
@@ -179,8 +181,8 @@ export default function QuickActionGrid({
         <button
           onClick={onAddCategory}
           style={{
-            background: 'rgba(255,255,255,0.03)',
-            border: '2px dashed rgba(255,255,255,0.15)',
+            background: 'var(--bg-input)',
+            border: '2px dashed var(--border-default)',
             borderRadius: '24px',
             padding: '3rem',
             cursor: 'pointer',
@@ -192,21 +194,21 @@ export default function QuickActionGrid({
             gap: '1.5rem',
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.3)';
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-strong)';
+            (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)';
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-default)';
+            (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)';
           }}
         >
           <div style={{ fontSize: '4rem', lineHeight: 1, opacity: 0.5 }}>➕</div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-              {L.qaAddCategory || 'Add Category'}
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              {t('qaAddCategory')}
             </div>
-            <div style={{ fontSize: '0.9rem', color: '#475569' }}>
-              {L.qaAddCategoryDesc || 'Create a new big quick button'}
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              {t('qaAddCategoryDesc')}
             </div>
           </div>
         </button>

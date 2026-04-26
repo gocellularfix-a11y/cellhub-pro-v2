@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency, toCents } from '@/utils/currency';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { escHtml } from '@/utils/escHtml';
@@ -18,9 +18,8 @@ interface Props {
 }
 
 export default function EstimateModal({ open, onClose }: Props) {
-  const { state: { lang, settings } } = useApp();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { state: { settings } } = useApp();
+  const { t } = useTranslation();
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -67,9 +66,9 @@ export default function EstimateModal({ open, onClose }: Props) {
         <div>${escHtml(settings.storeAddress || '')}</div>
         ${settings.storePhone ? `<div>${escHtml(settings.storePhone)}</div>` : ''}
       </div>
-      <div class="row" style="font-size:16px;font-weight:700;justify-content:center"><span>*** ${es ? 'ESTIMADO' : 'ESTIMATE'} ***</span></div>
-      <div class="row"><span>${es ? 'ESTIMADO' : 'ESTIMATE'} #:</span><span>${escHtml(receiptNum)}</span></div>
-      <div class="row"><span>${es ? 'FECHA' : 'DATE'}:</span><span>${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div class="row" style="font-size:16px;font-weight:700;justify-content:center"><span>*** ${t('estimateModal.title').toUpperCase()} ***</span></div>
+      <div class="row"><span>${t('estimateModal.title').toUpperCase()} #:</span><span>${escHtml(receiptNum)}</span></div>
+      <div class="row"><span>${t('estimateModal.dateLabel')}:</span><span>${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
       <div class="line"></div>
       <div class="row"><span style="flex:1">${escHtml(description)}</span></div>
       ${notes ? `<div class="row" style="font-size:12px;color:#666"><span>${escHtml(notes)}</span></div>` : ''}
@@ -80,8 +79,8 @@ export default function EstimateModal({ open, onClose }: Props) {
       <div class="row total"><span>TOTAL:</span><span>${formatCurrency(fwd.totalCents)}</span></div>
       <div class="footer">
         <div class="line"></div>
-        <div style="font-size:14px;font-weight:700;margin:0.1in 0">*** ${es ? 'ESTIMADO - NO ES RECIBO' : 'ESTIMATE - NOT A RECEIPT'} ***</div>
-        <div>${es ? 'Gracias por su preferencia' : 'Thank you for your business'}</div>
+        <div style="font-size:14px;font-weight:700;margin:0.1in 0">*** ${t('estimateModal.notReceiptDisclaimer')} ***</div>
+        <div>${t('estimateModal.thankYou')}</div>
       </div>
     </body></html>`;
 
@@ -94,7 +93,7 @@ export default function EstimateModal({ open, onClose }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title={`📋 ${es ? 'Estimado' : 'Estimate'}`} size="max-w-lg">
+    <Modal open={open} onClose={handleClose} title={`📋 ${t('estimateModal.title')}`} size="max-w-lg">
       {/* Info banner */}
       <div style={{
         background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)',
@@ -103,25 +102,25 @@ export default function EstimateModal({ open, onClose }: Props) {
         fontSize: '0.875rem', color: '#60a5fa',
       }}>
         <span style={{ fontSize: '1.25rem' }}>📋</span>
-        <span>{es ? 'Este estimado NO se guarda en el sistema. Solo imprime recibo.' : 'This estimate is NOT saved to the system. Receipt only.'}</span>
+        <span>{t('estimateModal.notSavedBanner')}</span>
       </div>
 
       {/* Description */}
       <div style={{ marginBottom: '1rem' }}>
-        <label className="text-sm text-slate-400 mb-1 block">{es ? 'Descripción *' : 'Description *'}</label>
+        <label className="text-sm text-slate-400 mb-1 block">{t('estimateModal.descriptionLabel')}</label>
         <input
           type="text"
           className="input"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder={es ? 'Ej: Reparación pantalla iPhone 15' : 'E.g.: iPhone 15 Screen Repair'}
+          placeholder={t('estimateModal.descriptionPlaceholder')}
           autoFocus
         />
       </div>
 
       {/* Amount */}
       <div style={{ marginBottom: '1rem' }}>
-        <label className="text-sm text-slate-400 mb-1 block">{es ? 'Monto *' : 'Amount *'}</label>
+        <label className="text-sm text-slate-400 mb-1 block">{t('estimateModal.amountLabel')}</label>
         <input
           type="number"
           step="0.01"
@@ -138,9 +137,9 @@ export default function EstimateModal({ open, onClose }: Props) {
       <div style={{ marginBottom: '1rem' }}>
         <label style={{
           display: 'flex', alignItems: 'center', gap: '0.75rem',
-          padding: '0.75rem', background: 'rgba(255,255,255,0.05)',
+          padding: '0.75rem', background: 'var(--bg-input)',
           borderRadius: '0.5rem', cursor: 'pointer',
-          border: '2px solid rgba(255,255,255,0.1)',
+          border: '2px solid var(--border-default)',
         }}>
           <input
             type="checkbox"
@@ -149,9 +148,9 @@ export default function EstimateModal({ open, onClose }: Props) {
             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
           />
           <div style={{ flex: 1 }}>
-            <strong>💵 {es ? 'Cobrar Impuesto' : 'Charge Tax'}</strong>
+            <strong>💵 {t('estimateModal.chargeTax')}</strong>
             <br />
-            <span style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
               Tax rate: {taxRatePercent}%
             </span>
           </div>
@@ -160,13 +159,13 @@ export default function EstimateModal({ open, onClose }: Props) {
 
       {/* Notes */}
       <div style={{ marginBottom: '1rem' }}>
-        <label className="text-sm text-slate-400 mb-1 block">{es ? 'Notas (opcional)' : 'Notes (optional)'}</label>
+        <label className="text-sm text-slate-400 mb-1 block">{t('estimateModal.notesLabel')}</label>
         <input
           type="text"
           className="input"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder={es ? 'Notas adicionales...' : 'Additional notes...'}
+          placeholder={t('estimateModal.notesPlaceholder')}
         />
       </div>
 
@@ -177,17 +176,17 @@ export default function EstimateModal({ open, onClose }: Props) {
           padding: '1.25rem', marginBottom: '1rem',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
-            <span style={{ color: '#94a3b8' }}>Subtotal:</span>
+            <span style={{ color: 'var(--text-secondary)' }}>Subtotal:</span>
             <span style={{ fontWeight: 600 }}>{formatCurrency(fwd.baseCents)}</span>
           </div>
           {taxable && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
-              <span style={{ color: '#94a3b8' }}>Tax ({taxRatePercent}%):</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Tax ({taxRatePercent}%):</span>
               <span style={{ fontWeight: 600 }}>{formatCurrency(fwd.taxCents)}</span>
             </div>
           )}
           <div style={{
-            borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem',
+            borderTop: '1px solid var(--border-default)', paddingTop: '0.5rem',
             marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between',
           }}>
             <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#60a5fa' }}>TOTAL:</span>
@@ -199,7 +198,7 @@ export default function EstimateModal({ open, onClose }: Props) {
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.75rem' }}>
         <button onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>
-          {L.cancel || 'Cancel'}
+          {t('cancel')}
         </button>
         <button
           onClick={handlePrint}
@@ -207,7 +206,7 @@ export default function EstimateModal({ open, onClose }: Props) {
           style={{ flex: 1 }}
           disabled={!description.trim() || subtotalCents <= 0}
         >
-          🖨️ {es ? 'Imprimir Estimado' : 'Print Estimate'}
+          🖨️ {t('estimateModal.printButton')}
         </button>
       </div>
     </Modal>

@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import type { CartItem, Customer, Sale, Employee, StoreSettings } from '@/store/types';
 import type { CartTotals } from './types';
@@ -52,6 +53,7 @@ export default function PaymentModal({
   const [showPortalConfirm, setShowPortalConfirm] = useState(false);
   const [processing, setProcessing] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   // External portal detection — invariant I6 robust: explicit string check
   // on carrier prevents a phone_payment item with undefined/empty carrier
@@ -92,12 +94,7 @@ export default function PaymentModal({
     );
     if (paidCents < totals.total) {
       const shortBy = totals.total - paidCents;
-      toast(
-        lang === 'es'
-          ? `Pago insuficiente — falta $${(shortBy / 100).toFixed(2)}`
-          : `Insufficient payment — short by $${(shortBy / 100).toFixed(2)}`,
-        'error',
-      );
+      toast(t('paymentModal.insufficientPayment', formatCurrency(shortBy)), 'error');
       return;
     }
 
@@ -127,13 +124,13 @@ export default function PaymentModal({
       <Modal
         open={open}
         onClose={onClose}
-        title={`💰 ${L.payment || 'Payment'}`}
+        title={`💰 ${t('payment')}`}
         size="max-w-md"
       >
         <div className="space-y-5">
           {/* Total */}
           <div className="text-center py-4 rounded-xl bg-white/5">
-            <p className="text-sm text-slate-400">{L.total}</p>
+            <p className="text-sm text-slate-400">{t('total')}</p>
             <p className="text-4xl font-bold text-emerald-400 mt-1">
               {formatCurrency(totals.total)}
             </p>
@@ -144,9 +141,7 @@ export default function PaymentModal({
           {hasExternalPortal && (
             <div className="text-center py-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
               <p className="text-sm text-amber-400">
-                ⚠️ {lang === 'es'
-                  ? 'Requiere pago en portal externo'
-                  : 'External portal payment required'}
+                ⚠️ {t('paymentModal.externalPortalRequired')}
               </p>
             </div>
           )}
@@ -158,8 +153,8 @@ export default function PaymentModal({
             className="btn btn-success w-full text-lg py-4"
           >
             {processing
-              ? (lang === 'es' ? 'Procesando…' : 'Processing…')
-              : `${L.completeSale} ✓`}
+              ? t('paymentModal.processing')
+              : `${t('completeSale')} ✓`}
           </button>
         </div>
       </Modal>
@@ -167,12 +162,10 @@ export default function PaymentModal({
       {/* External portal confirmation — keep (Jorge-mandated) */}
       <ConfirmDialog
         open={showPortalConfirm}
-        title={lang === 'es' ? '⚠️ Portal de Pago Externo' : '⚠️ External Payment Portal'}
-        message={lang === 'es'
-          ? '¿Ya COMPLETASTE el pago en el portal externo?'
-          : 'Have you COMPLETED the payment in the external portal?'}
-        confirmLabel={lang === 'es' ? '✅ SÍ — Completar' : '✅ YES — Complete'}
-        cancelLabel={lang === 'es' ? '❌ NO — Aún no' : '❌ NO — Not Yet'}
+        title={t('paymentModal.portalConfirmTitle')}
+        message={t('paymentModal.portalConfirmMessage')}
+        confirmLabel={t('paymentModal.portalConfirmYes')}
+        cancelLabel={t('paymentModal.portalConfirmNo')}
         variant="warning"
         onConfirm={() => {
           setShowPortalConfirm(false);
