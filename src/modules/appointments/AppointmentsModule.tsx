@@ -17,6 +17,9 @@ import { persist } from '@/services/persist';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import type { Customer, Appointment, AppointmentStatus } from '@/store/types';
+import { usePrint } from '@/hooks/usePrint';
+import { escHtml } from '@/utils/escHtml';
+import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 
 // Re-export for any legacy consumer
 export type { Appointment, AppointmentStatus };
@@ -43,6 +46,7 @@ export default function AppointmentsModule() {
     setRepairs, setCustomers, setAppointments, dispatch,
   } = useApp();
   const { toast } = useToast();
+  const { printHtml } = usePrint();
   const es = lang === 'es';
 
   // Anti-stale-closure refs (canonical pattern — setters don't accept updater fns)
@@ -65,6 +69,7 @@ export default function AppointmentsModule() {
   const [showModal, setShowModal] = useState(false);
   const [editAppt, setEditAppt] = useState<Appointment | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [postSaveModal, setPostSaveModal] = useState<Appointment | null>(null);
   const [search, setSearch] = useState('');
 
   // Day-boundary refresh — recompute todayCount every minute so overnight
@@ -102,6 +107,78 @@ export default function AppointmentsModule() {
   );
 
   // ── Actions ──────────────────────────────────────────────
+
+  const printAppointmentTicket = useCallback((appt: Appointment) => {
+    const dateStr = new Date(appt.estimatedDropOff).toLocaleDateString(
+      es ? 'es-MX' : 'en-US',
+      { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
+    );
+    const timeStr = new Date(appt.estimatedDropOff).toLocaleTimeString(
+      es ? 'es-MX' : 'en-US',
+      { hour: 'numeric', minute: '2-digit' }
+    );
+    const lines: string[] = [];
+    lines.push(settings.storeName || 'Go Cellular');
+    if ((settings as any).storeAddress) lines.push((settings as any).storeAddress);
+    if (settings.storePhone) lines.push(settings.storePhone);
+    lines.push('');
+    lines.push('================================');
+    lines.push(es ? '       CITA / APPOINTMENT      ' : '          APPOINTMENT          ');
+    lines.push('================================');
+    lines.push('');
+    lines.push(`Ticket: ${appt.id.slice(-8).toUpperCase()}`);
+    lines.push('');
+    lines.push(`${es ? 'Cliente' : 'Customer'}: ${appt.customerName}`);
+    lines.push(`${es ? 'Teléfono' : 'Phone'}: ${formatPhone(appt.customerPhone) || '-'}`);
+    lines.push('');
+    lines.push(`${es ? 'Equipo' : 'Device'}: ${appt.device || '-'}`);
+    lines.push(`${es ? 'Problema' : 'Issue'}: ${appt.issue || '-'}`);
+    lines.push('');
+    lines.push(`${es ? 'Fecha' : 'Date'}: ${dateStr}`);
+    lines.push(`${es ? 'Hora' : 'Time'}: ${timeStr}`);
+    if (appt.notes) {
+      lines.push('');
+      lines.push(`${es ? 'Notas' : 'Notes'}: ${appt.notes}`);
+    }
+    if (appt.employeeName) {
+      lines.push('');
+      lines.push(`${es ? 'Atendido por' : 'Attended by'}: ${appt.employeeName}`);
+    }
+    lines.push('');
+    lines.push('================================');
+    lines.push(es ? '   Gracias por elegirnos   ' : '  Thank you for choosing us  ');
+    lines.push('================================');
+
+    const text = lines.join('\n');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Appointment ${escHtml(appt.id.slice(-8))}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${escHtml(text)}</pre></body></html>`;
+
+    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+    toast(es ? 'Imprimiendo cita...' : 'Printing appointment...', 'info');
+  }, [settings, es, printHtml, toast]);
+
+  const sendAppointmentWhatsApp = useCallback((appt: Appointment) => {
+    if (!appt.customerPhone) return;
+    const dateStr = new Date(appt.estimatedDropOff).toLocaleDateString(
+      es ? 'es-MX' : 'en-US',
+      { weekday: 'short', month: 'short', day: 'numeric' }
+    );
+    const timeStr = new Date(appt.estimatedDropOff).toLocaleTimeString(
+      es ? 'es-MX' : 'en-US',
+      { hour: 'numeric', minute: '2-digit' }
+    );
+    const msg = buildWaMessage(
+      'appointmentReminder',
+      {
+        customerName: appt.customerName,
+        storeName: settings.storeName || 'Go Cellular',
+        storePhone: settings.storePhone,
+        appointmentDate: dateStr,
+        appointmentTime: timeStr,
+      },
+      es ? 'es' : 'en',
+    );
+    openWhatsApp(appt.customerPhone, msg);
+  }, [settings, es]);
 
   const handleSave = useCallback((data: Partial<Appointment>) => {
     const rawFirst = (data as any).firstName as string | undefined;
@@ -203,6 +280,7 @@ export default function AppointmentsModule() {
       persist.appointment(appt.id, appt as unknown as Record<string, unknown>);
 
       toast(es ? 'Cita creada' : 'Appointment created', 'success');
+      setPostSaveModal(appt);
     }
     setShowModal(false);
     setEditAppt(null);
@@ -428,6 +506,14 @@ export default function AppointmentsModule() {
                       <button onClick={() => { setEditAppt(appt); setShowModal(true); }} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
                         ✏️ {es ? 'Editar' : 'Edit'}
                       </button>
+                      <button onClick={() => printAppointmentTicket(appt)} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
+                        🖨️ {es ? 'Imprimir' : 'Print'}
+                      </button>
+                      {settings.waEnabled !== false && appt.customerPhone && (
+                        <button onClick={() => sendAppointmentWhatsApp(appt)} className="btn btn-sm" style={{ background: 'rgba(37,211,102,0.15)', color: '#25d366', border: '1px solid rgba(37,211,102,0.3)', fontSize: '0.72rem' }}>
+                          📱 WhatsApp
+                        </button>
+                      )}
                       {appt.status !== 'cancelled' && appt.status !== 'converted' && (
                         <button onClick={() => setDeleteConfirm(appt.id)} className="btn btn-ghost btn-sm text-red-400" style={{ fontSize: '0.72rem' }}>
                           ✕ {es ? 'Cancelar' : 'Cancel'}
@@ -454,6 +540,53 @@ export default function AppointmentsModule() {
           es={es}
         />
       )}
+
+      {/* Post-Save modal: cajero elige Print / WhatsApp / Skip al CREAR cita */}
+      <Modal
+        open={!!postSaveModal}
+        onClose={() => setPostSaveModal(null)}
+        title={es ? '¿Cómo notificar al cliente?' : 'How to notify customer?'}
+        size="max-w-sm"
+      >
+        {postSaveModal && (
+          <div>
+            <p className="text-sm text-slate-400 mb-4">
+              {es
+                ? `Cita de ${postSaveModal.customerName} guardada.`
+                : `${postSaveModal.customerName}'s appointment saved.`}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  printAppointmentTicket(postSaveModal);
+                  setPostSaveModal(null);
+                }}
+              >
+                🖨️ {es ? 'Imprimir comprobante' : 'Print receipt'}
+              </button>
+              {settings.waEnabled !== false && postSaveModal.customerPhone && (
+                <button
+                  className="btn"
+                  style={{ background: 'rgba(37,211,102,0.15)', color: '#25d366', border: '1px solid rgba(37,211,102,0.3)' }}
+                  onClick={() => {
+                    sendAppointmentWhatsApp(postSaveModal);
+                    setPostSaveModal(null);
+                  }}
+                >
+                  📱 {es ? 'Enviar por WhatsApp' : 'Send via WhatsApp'}
+                </button>
+              )}
+              <button
+                className="btn btn-ghost"
+                onClick={() => setPostSaveModal(null)}
+              >
+                {es ? 'Omitir' : 'Skip'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={!!deleteConfirm}
