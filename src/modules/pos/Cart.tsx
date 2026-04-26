@@ -7,6 +7,7 @@ import type { CartItem, Customer, StoreSettings } from '@/store/types';
 import type { CartTotals, DiscountState } from './types';
 import { formatCurrency } from '@/utils/currency';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 
 function resolveDefaultCcFeeCents(settings: StoreSettings): number {
   const shadow = (settings as any).creditCardFeeCents as number | undefined;
@@ -65,7 +66,7 @@ export default function Cart({
   lang,
   L,
 }: CartProps) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [showCcFeeOverride, setShowCcFeeOverride] = useState(false);
 
@@ -107,8 +108,8 @@ export default function Cart({
     return (
       <div className="glass-card flex flex-col items-center justify-center h-full p-6">
         <span className="text-5xl mb-4">🛒</span>
-        <p className="text-slate-400 font-medium">{L.cart || 'Cart'}</p>
-        <p className="text-xs text-slate-500 mt-1">{L.cartEmpty || 'Cart is empty'}</p>
+        <p className="text-slate-400 font-medium">{t('cart')}</p>
+        <p className="text-xs text-slate-500 mt-1">{t('cartEmpty')}</p>
       </div>
     );
   }
@@ -118,10 +119,10 @@ export default function Cart({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <h3 className="text-sm font-semibold text-white">
-          🛒 {L.cart} ({cart.length})
+          🛒 {t('cart')} ({cart.length})
         </h3>
         <button onClick={onClearCart} className="text-xs text-red-400 hover:text-red-300">
-          {L.clear}
+          {t('clear')}
         </button>
       </div>
 
@@ -136,12 +137,12 @@ export default function Cart({
             ? '1px solid rgba(102,126,234,0.4)'
             : settings.loyaltyEnabled && loyaltyPtsPreview > 0
               ? '1px solid rgba(251,191,36,0.5)'
-              : '1px solid rgba(255,255,255,0.1)',
+              : '1px solid var(--border-default)',
           background: selectedCustomer
             ? 'rgba(102,126,234,0.1)'
             : settings.loyaltyEnabled && loyaltyPtsPreview > 0
               ? 'rgba(251,191,36,0.07)'
-              : 'rgba(255,255,255,0.05)',
+              : 'var(--bg-input)',
           cursor: 'pointer',
           textAlign: 'left',
           width: 'calc(100% - 2rem)',
@@ -151,12 +152,12 @@ export default function Cart({
         {selectedCustomer ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a5b4fc', margin: 0 }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-accent-soft)', margin: 0 }}>
                 👤 {selectedCustomer.name}
               </p>
               {selectedCustomer.storeCredit > 0 && (
                 <p style={{ fontSize: '0.7rem', color: '#34d399', margin: '1px 0 0' }}>
-                  {es ? 'Crédito' : 'Credit'}: {formatCurrency(selectedCustomer.storeCredit)}
+                  {t('cart.credit')}: {formatCurrency(selectedCustomer.storeCredit)}
                 </p>
               )}
             </div>
@@ -172,10 +173,10 @@ export default function Cart({
           </div>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ fontSize: '0.78rem', color: settings.loyaltyEnabled && loyaltyPtsPreview > 0 ? '#fbbf24' : '#64748b', margin: 0, fontWeight: settings.loyaltyEnabled && loyaltyPtsPreview > 0 ? 600 : 400 }}>
+            <p style={{ fontSize: '0.78rem', color: settings.loyaltyEnabled && loyaltyPtsPreview > 0 ? '#fbbf24' : 'var(--text-muted)', margin: 0, fontWeight: settings.loyaltyEnabled && loyaltyPtsPreview > 0 ? 600 : 400 }}>
               {settings.loyaltyEnabled && loyaltyPtsPreview > 0
-                ? (es ? `👤 Agregar cliente — +${loyaltyPtsPreview} pts` : `👤 Add customer — +${loyaltyPtsPreview} pts`)
-                : (es ? '👤 Agregar cliente (opcional)' : '👤 Add customer (optional)')}
+                ? `👤 ${t('cart.addCustomerWithPoints', loyaltyPtsPreview)}`
+                : `👤 ${t('cart.addCustomerOptional')}`}
             </p>
             {settings.loyaltyEnabled && loyaltyPtsPreview > 0 && (
               <span style={{
@@ -239,7 +240,7 @@ export default function Cart({
               type="text"
               value={item.notes || ''}
               onChange={(e) => updateNotes(item.id, e.target.value)}
-              placeholder={L.addNote || 'Add note…'}
+              placeholder={t('addNote')}
               className="mt-2 w-full bg-transparent border-b border-white/10 text-xs text-slate-400
                          placeholder-slate-600 focus:outline-none focus:border-brand-500 py-1"
             />
@@ -256,7 +257,7 @@ export default function Cart({
             step="0.01"
             value={discount.amount || ''}
             onChange={(e) => setDiscount({ ...discount, amount: parseFloat(e.target.value) || 0 })}
-            placeholder={L.discount || 'Discount'}
+            placeholder={t('discount')}
             className="input input-sm flex-1"
           />
           <select
@@ -273,60 +274,60 @@ export default function Cart({
       {/* Totals */}
       <div className="px-4 py-3 border-t border-white/10 space-y-1 text-sm">
         <div className="flex justify-between text-slate-400">
-          <span>{L.subtotal}</span>
+          <span>{t('subtotal')}</span>
           <span>{formatCurrency(totals.subtotal)}</span>
         </div>
         {totals.discountAmount > 0 && (
           <div className="flex justify-between text-amber-400">
-            <span>{L.discount}</span>
+            <span>{t('discount')}</span>
             <span>-{formatCurrency(totals.discountAmount)}</span>
           </div>
         )}
         {totals.salesTax > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{L.tax}</span>
+            <span>{t('tax')}</span>
             <span>{formatCurrency(totals.salesTax)}</span>
           </div>
         )}
         {totals.utilityTax > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{es ? 'Imp. Utilidad' : 'Utility Tax'}</span>
+            <span>{t('cart.utilityTax')}</span>
             <span>{formatCurrency(totals.utilityTax)}</span>
           </div>
         )}
         {totals.mobileSurcharge > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{es ? 'Recargo Móvil' : 'Surcharge'}</span>
+            <span>{t('cart.surcharge')}</span>
             <span>{formatCurrency(totals.mobileSurcharge)}</span>
           </div>
         )}
         {totals.cbeFee > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{es ? 'Cuota CBE' : 'CBE Fee'}</span>
+            <span>{t('cart.cbeFee')}</span>
             <span>{formatCurrency(totals.cbeFee)}</span>
           </div>
         )}
         {totals.screenFee > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{es ? 'Cuota Pantalla' : 'Screen Fee'}</span>
+            <span>{t('cart.screenFee')}</span>
             <span>{formatCurrency(totals.screenFee)}</span>
           </div>
         )}
         {totals.creditCardFee > 0 && (
           <div className="flex justify-between text-slate-400">
-            <span>{es ? 'Cargo Tarjeta' : 'CC Fee'}</span>
+            <span>{t('cart.ccFee')}</span>
             <span>{formatCurrency(totals.creditCardFee)}</span>
           </div>
         )}
         <div className="flex justify-between text-white font-bold text-lg pt-2 border-t border-white/10">
-          <span>{L.total}</span>
+          <span>{t('total')}</span>
           <span className="text-emerald-400">{formatCurrency(totals.total)}</span>
         </div>
       </div>
 
       {/* Payment Method */}
       <div className="px-4 py-3 border-t border-white/10 space-y-3">
-        <p className="text-xs text-slate-400">{L.paymentMethodLabel}</p>
+        <p className="text-xs text-slate-400">{t('paymentMethodLabel')}</p>
         <div className="grid grid-cols-4 gap-1">
           {['Cash', 'Card', 'Split', 'Store Credit'].map((method) => {
             const isStoreCredit = method === 'Store Credit';
@@ -361,10 +362,10 @@ export default function Cart({
                       : 'bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10'
                 }`}
               >
-                {method === 'Cash' ? `💵 ${L.cash || 'Cash'}` :
-                 method === 'Card' ? `💳 ${L.card || 'Card'}` :
-                 method === 'Split' ? (es ? '✂️ Dividir' : '✂️ Split') :
-                 (es ? '🏪 Crédito' : '🏪 Credit')}
+                {method === 'Cash' ? `💵 ${t('cash')}` :
+                 method === 'Card' ? `💳 ${t('card')}` :
+                 method === 'Split' ? `✂️ ${t('cart.split')}` :
+                 `🏪 ${t('cart.credit')}`}
                 {isStoreCredit && creditBalance > 0 && (
                   <div className="text-[0.62rem] font-normal mt-0.5 opacity-80">
                     {formatCurrency(creditBalance)}
@@ -379,7 +380,7 @@ export default function Cart({
         {paymentMethod === 'Cash' && (
           <div className="space-y-2">
             <label className="text-[0.7rem] text-slate-500 uppercase tracking-wide font-bold">
-              {es ? 'Efectivo Recibido' : 'Cash Received'}
+              {t('cart.cashReceived')}
             </label>
             <input
               type="number"
@@ -414,11 +415,11 @@ export default function Cart({
               onClick={() => setCashAmount(Math.ceil(totals.total / 100))}
               className="w-full py-1 rounded text-[0.7rem] font-semibold bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition"
             >
-              {es ? 'Exacto' : 'Exact'}: ${(totals.total / 100).toFixed(2)}
+              {t('cart.exact')}: ${(totals.total / 100).toFixed(2)}
             </button>
             {cashAmount * 100 > totals.total && (
               <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}>
-                <div className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{es ? 'Cambio' : 'Change'}</div>
+                <div className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{t('cart.change')}</div>
                 <div className="text-2xl font-bold text-emerald-400">
                   ${(cashAmount - totals.total / 100).toFixed(2)}
                 </div>
@@ -426,7 +427,7 @@ export default function Cart({
             )}
             {cashAmount > 0 && cashAmount * 100 < totals.total && (
               <div className="rounded-lg p-2 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                <div className="text-[0.65rem] text-red-400 uppercase tracking-wide">{es ? 'Falta' : 'Short by'}</div>
+                <div className="text-[0.65rem] text-red-400 uppercase tracking-wide">{t('cart.shortBy')}</div>
                 <div className="text-base font-bold text-red-400">
                   ${(totals.total / 100 - cashAmount).toFixed(2)}
                 </div>
@@ -439,7 +440,7 @@ export default function Cart({
         {paymentMethod === 'Card' && (
           <div className="space-y-2">
             <label className="text-[0.7rem] text-slate-500 uppercase tracking-wide font-bold">
-              {es ? 'Monto Tarjeta' : 'Card Amount'}
+              {t('cart.cardAmount')}
             </label>
             <input
               type="number"
@@ -467,7 +468,7 @@ export default function Cart({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[0.65rem] text-emerald-400 uppercase tracking-wide font-bold block mb-1">
-                  💵 {es ? 'Efectivo' : 'Cash'}
+                  💵 {t('cash')}
                 </label>
                 <input
                   type="number"
@@ -482,7 +483,7 @@ export default function Cart({
               </div>
               <div>
                 <label className="text-[0.65rem] text-purple-400 uppercase tracking-wide font-bold block mb-1">
-                  💳 {es ? 'Tarjeta' : 'Card'}
+                  💳 {t('card')}
                 </label>
                 <input
                   type="number"
@@ -501,17 +502,17 @@ export default function Cart({
               const diff = sum - totals.total;
               if (Math.abs(diff) < 1) return (
                 <div className="rounded p-1.5 text-center text-[0.7rem] font-bold text-emerald-400" style={{ background: 'rgba(16,185,129,0.1)' }}>
-                  ✓ {es ? 'Cuadra' : 'Matches'}
+                  ✓ {t('cart.matches')}
                 </div>
               );
               if (diff > 0) return (
                 <div className="rounded p-1.5 text-center text-[0.7rem] font-bold text-amber-400" style={{ background: 'rgba(245,158,11,0.1)' }}>
-                  {es ? 'Sobra' : 'Over by'} ${(diff / 100).toFixed(2)}
+                  {t('cart.overBy')} ${(diff / 100).toFixed(2)}
                 </div>
               );
               return (
                 <div className="rounded p-1.5 text-center text-[0.7rem] font-bold text-red-400" style={{ background: 'rgba(239,68,68,0.1)' }}>
-                  {es ? 'Falta' : 'Short by'} ${(-diff / 100).toFixed(2)}
+                  {t('cart.shortBy')} ${(-diff / 100).toFixed(2)}
                 </div>
               );
             })()}
@@ -524,7 +525,7 @@ export default function Cart({
             return (
               <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
                 <div className="text-xs font-semibold text-red-400">
-                  ⚠️ {es ? 'Selecciona un cliente para usar crédito' : 'Select a customer to use store credit'}
+                  ⚠️ {t('cart.selectCustomerForCredit')}
                 </div>
               </div>
             );
@@ -534,7 +535,7 @@ export default function Cart({
             return (
               <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
                 <div className="text-xs font-semibold text-red-400">
-                  ❌ {es ? 'Sin crédito disponible' : 'No store credit available'}
+                  ❌ {t('cart.noCreditAvailable')}
                 </div>
               </div>
             );
@@ -545,25 +546,25 @@ export default function Cart({
           return (
             <div className="rounded-lg p-3 space-y-1.5 text-xs" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)' }}>
               <div className="flex justify-between">
-                <span className="text-slate-400">{es ? 'Crédito disponible' : 'Available credit'}</span>
+                <span className="text-slate-400">{t('cart.availableCredit')}</span>
                 <span className="font-bold text-emerald-400">{formatCurrency(creditBalance)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">{es ? 'Total a cobrar' : 'Sale total'}</span>
+                <span className="text-slate-400">{t('cart.saleTotal')}</span>
                 <span className="font-bold">{formatCurrency(totals.total)}</span>
               </div>
               <div className="flex justify-between border-t border-emerald-500/20 pt-1.5">
-                <span className="text-slate-400">{es ? 'Crédito aplicado' : 'Credit applied'}</span>
+                <span className="text-slate-400">{t('cart.creditApplied')}</span>
                 <span className="font-bold text-emerald-400">−{formatCurrency(creditUsed)}</span>
               </div>
               {remainingBalance > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-amber-400 font-semibold">{es ? 'Falta cobrar' : 'Remaining due'}</span>
+                  <span className="text-amber-400 font-semibold">{t('cart.remainingDue')}</span>
                   <span className="font-bold text-amber-400">{formatCurrency(remainingBalance)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-emerald-500/20 pt-1.5">
-                <span className="text-slate-500 text-[0.7rem]">{es ? 'Crédito restante' : 'Remaining credit'}</span>
+                <span className="text-slate-500 text-[0.7rem]">{t('cart.remainingCredit')}</span>
                 <span className="text-slate-400 text-[0.7rem]">{formatCurrency(newCreditBalance)}</span>
               </div>
             </div>
@@ -585,13 +586,13 @@ export default function Cart({
               />
               <div className="flex-1 text-xs">
                 <div className="font-bold text-orange-400">
-                  💳 {es ? 'Cargo por Tarjeta' : 'Credit Card Fee'}
+                  💳 {t('cart.creditCardFee')}
                 </div>
                 <div className="text-[0.7rem] text-slate-500 mt-0.5">
                   {creditCardFeeOverride !== null
-                    ? es ? `Personalizado: ${formatCurrency(creditCardFeeOverride)}` : `Custom: ${formatCurrency(creditCardFeeOverride)}`
+                    ? t('cart.customAmountLabel', formatCurrency(creditCardFeeOverride))
                     : formatCurrency(resolveDefaultCcFeeCents(settings))}
-                  {es ? ' por transacción' : ' per transaction'}
+                  {' '}{t('cart.perTransaction')}
                 </div>
               </div>
               {addCreditCardFee && totals.creditCardFee > 0 && (
@@ -605,7 +606,7 @@ export default function Cart({
                   onClick={() => setShowCcFeeOverride(!showCcFeeOverride)}
                   className="text-[0.65rem] px-2 py-1 rounded bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-colors"
                 >
-                  {showCcFeeOverride ? (es ? 'Cerrar' : 'Close') : (es ? 'Editar' : 'Edit')}
+                  {showCcFeeOverride ? t('close') : t('edit')}
                 </button>
               )}
             </div>
@@ -614,7 +615,7 @@ export default function Cart({
               <div className="mt-2 pt-2 border-t border-orange-500/20">
                 <div className="flex items-center gap-2">
                   <span className="text-[0.7rem] text-slate-400 whitespace-nowrap">
-                    {es ? 'Monto ($):' : 'Amount ($):'}
+                    {t('cart.amountLabel')}
                   </span>
                   <input
                     type="number"
@@ -626,9 +627,9 @@ export default function Cart({
                       const cents = Math.max(0, Math.round(val * 100));
                       setCreditCardFeeOverride(cents);
                       if (cents === 0) {
-                        toast(es ? 'Cargo de tarjeta removido' : 'CC fee waived', 'info');
+                        toast(t('cart.ccFeeWaived'), 'info');
                       } else {
-                        toast(es ? `Cargo de tarjeta: ${formatCurrency(cents)}` : `CC fee: ${formatCurrency(cents)}`, 'info');
+                        toast(t('cart.ccFeeAmount', formatCurrency(cents)), 'info');
                       }
                     }}
                     className="input flex-1 text-xs py-1"
@@ -643,11 +644,11 @@ export default function Cart({
                     onClick={() => {
                       setCreditCardFeeOverride(null);
                       setShowCcFeeOverride(false);
-                      toast(es ? `Cargo de tarjeta: ${formatCurrency(resolveDefaultCcFeeCents(settings))}` : `CC fee: ${formatCurrency(resolveDefaultCcFeeCents(settings))}`, 'info');
+                      toast(t('cart.ccFeeAmount', formatCurrency(resolveDefaultCcFeeCents(settings))), 'info');
                     }}
                     className="text-[0.65rem] px-2 py-1 rounded bg-slate-500/20 text-slate-400 hover:bg-slate-500/30 transition-colors"
                   >
-                    {es ? 'Restaurar default' : 'Reset to default'}
+                    {t('cart.resetToDefault')}
                   </button>
                 </div>
               </div>
@@ -663,7 +664,7 @@ export default function Cart({
           className="btn btn-success w-full text-base py-3"
           disabled={cart.length === 0}
         >
-          {L.completeSale} — {formatCurrency(totals.total)}
+          {t('completeSale')} — {formatCurrency(totals.total)}
         </button>
       </div>
     </div>
