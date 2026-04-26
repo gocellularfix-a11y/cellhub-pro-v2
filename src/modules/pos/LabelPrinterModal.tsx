@@ -6,6 +6,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import { Modal } from '@/components/ui';
 import { usePrint } from '@/hooks/usePrint';
 import { escHtml } from '@/utils/escHtml';
@@ -16,8 +17,8 @@ interface Props {
 }
 
 export default function LabelPrinterModal({ open, onClose }: Props) {
-  const { state: { lang, settings } } = useApp();
-  const es = lang === 'es';
+  const { state: { settings } } = useApp();
+  const { t } = useTranslation();
   const { printHtml } = usePrint();
 
   const [text, setText] = useState('');
@@ -97,7 +98,7 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <Modal open={open} onClose={handleClose} title={`🏷️ ${es ? 'Imprimir Etiqueta 4×6' : 'Print Label 4×6'}`} size="max-w-lg">
+    <Modal open={open} onClose={handleClose} title={`🏷️ ${t('labelPrinterModal.title')}`} size="max-w-lg">
       {/* Mode toggle */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         <button
@@ -105,24 +106,24 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
           style={{
             flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
             fontSize: '0.85rem', fontWeight: 600,
-            background: mode === 'text' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
-            color: mode === 'text' ? '#60a5fa' : '#64748b',
+            background: mode === 'text' ? 'rgba(59,130,246,0.2)' : 'var(--bg-input)',
+            color: mode === 'text' ? '#60a5fa' : 'var(--text-muted)',
             outline: mode === 'text' ? '1px solid rgba(59,130,246,0.4)' : 'none',
           }}
         >
-          📝 {es ? 'Texto' : 'Text'}
+          📝 {t('labelPrinterModal.textTab')}
         </button>
         <button
           onClick={() => setMode('image')}
           style={{
             flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
             fontSize: '0.85rem', fontWeight: 600,
-            background: mode === 'image' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)',
-            color: mode === 'image' ? '#34d399' : '#64748b',
+            background: mode === 'image' ? 'rgba(16,185,129,0.2)' : 'var(--bg-input)',
+            color: mode === 'image' ? '#34d399' : 'var(--text-muted)',
             outline: mode === 'image' ? '1px solid rgba(16,185,129,0.4)' : 'none',
           }}
         >
-          🖼️ {es ? 'Imagen' : 'Image'}
+          🖼️ {t('labelPrinterModal.imageTab')}
         </button>
       </div>
 
@@ -134,9 +135,7 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onPaste={handlePaste}
-            placeholder={es
-              ? 'Pega el texto del label aquí (Ctrl+V)...\n\nSi pegas una imagen, cambia automáticamente a modo imagen.'
-              : 'Paste label text here (Ctrl+V)...\n\nIf you paste an image, it switches to image mode automatically.'}
+            placeholder={t('labelPrinterModal.textPlaceholder')}
             className="input"
             style={{
               width: '100%', minHeight: '200px', fontFamily: 'monospace',
@@ -144,8 +143,8 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
             }}
             autoFocus
           />
-          <p style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.35rem' }}>
-            💡 {es ? 'Tip: Si pegas una imagen (screenshot), cambia a modo imagen automáticamente.' : 'Tip: If you paste an image (screenshot), it auto-switches to image mode.'}
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+            💡 {t('labelPrinterModal.tip')}
           </p>
         </div>
       )}
@@ -184,10 +183,10 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
               onDragOver={(e) => e.preventDefault()}
               tabIndex={0}
               style={{
-                border: '2px dashed rgba(255,255,255,0.15)',
+                border: '2px dashed var(--border-default)',
                 borderRadius: '12px', padding: '3rem 1rem',
-                textAlign: 'center', color: '#64748b', cursor: 'pointer',
-                background: 'rgba(255,255,255,0.02)',
+                textAlign: 'center', color: 'var(--text-muted)', cursor: 'pointer',
+                background: 'var(--bg-input)',
                 minHeight: '200px', display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
               }}
@@ -204,10 +203,10 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
             >
               <div style={{ fontSize: '3rem', opacity: 0.3 }}>📋</div>
               <p style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                {es ? 'Pega (Ctrl+V), arrastra, o haz click' : 'Paste (Ctrl+V), drag, or click'}
+                {t('labelPrinterModal.dropPrompt')}
               </p>
               <p style={{ fontSize: '0.75rem' }}>
-                {es ? 'Acepta screenshots, imágenes de labels de Amazon/eBay' : 'Accepts screenshots, Amazon/eBay label images'}
+                {t('labelPrinterModal.dropHint')}
               </p>
             </div>
           )}
@@ -217,7 +216,7 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
         <button onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>
-          {es ? 'Cancelar' : 'Cancel'}
+          {t('cancel')}
         </button>
         <button
           onClick={handlePrint}
@@ -225,7 +224,7 @@ export default function LabelPrinterModal({ open, onClose }: Props) {
           className="btn btn-primary"
           style={{ flex: 2, opacity: hasContent ? 1 : 0.4 }}
         >
-          🖨️ {es ? 'Imprimir 4×6' : 'Print 4×6'}
+          🖨️ {t('labelPrinterModal.printButton')}
         </button>
       </div>
     </Modal>

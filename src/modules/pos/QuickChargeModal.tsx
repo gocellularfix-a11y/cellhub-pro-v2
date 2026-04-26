@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui';
 import { generateId } from '@/utils/dates';
 import { normalizePhone } from '@/utils/normalize';
+import { useTranslation } from '@/i18n';
 import type { CartItem } from '@/store/types';
 
 interface QuickChargeModalProps {
@@ -25,6 +26,7 @@ export default function QuickChargeModal({
   lang,
   L,
 }: QuickChargeModalProps) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name: '',
     firstName: '',
@@ -74,17 +76,17 @@ export default function QuickChargeModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`⚡ ${L.quickCharge || 'Quick Charge'}`} size="max-w-md">
+    <Modal open={open} onClose={onClose} title={`⚡ ${t('quickCharge')}`} size="max-w-md">
       <div className="space-y-3">
         {/* Service name */}
         <div>
           <label className="text-sm text-slate-400 block mb-1">
-            {L.servicesTitle || 'Service Name'}
+            {t('servicesTitle')}
           </label>
           <input
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder={L.exampleService || 'e.g., Data Transfer, Screen Install'}
+            placeholder={t('exampleService')}
             className="input"
             autoFocus
           />
@@ -93,7 +95,7 @@ export default function QuickChargeModal({
         {/* Customer name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm text-slate-400 block mb-1">First Name</label>
+            <label className="text-sm text-slate-400 block mb-1">{t('quickChargeModal.firstName')}</label>
             <input
               value={form.firstName}
               onChange={(e) => setForm({ ...form, firstName: e.target.value })}
@@ -101,7 +103,7 @@ export default function QuickChargeModal({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-400 block mb-1">Last Name</label>
+            <label className="text-sm text-slate-400 block mb-1">{t('quickChargeModal.lastName')}</label>
             <input
               value={form.lastName}
               onChange={(e) => setForm({ ...form, lastName: e.target.value })}
@@ -112,7 +114,7 @@ export default function QuickChargeModal({
 
         {/* Phone */}
         <div>
-          <label className="text-sm text-slate-400 block mb-1">Phone (optional)</label>
+          <label className="text-sm text-slate-400 block mb-1">{t('quickChargeModal.phoneOptional')}</label>
           <input
             type="tel"
             value={form.phone}
@@ -124,7 +126,7 @@ export default function QuickChargeModal({
 
         {/* Price */}
         <div>
-          <label className="text-sm text-slate-400 block mb-1">{L.payment || 'Price'} ($)</label>
+          <label className="text-sm text-slate-400 block mb-1">{t('payment')} ($)</label>
           <input
             type="number"
             value={form.price}
@@ -138,11 +140,11 @@ export default function QuickChargeModal({
 
         {/* IMEI */}
         <div>
-          <label className="text-sm text-slate-400 block mb-1">IMEI (optional)</label>
+          <label className="text-sm text-slate-400 block mb-1">{t('quickChargeModal.imeiOptional')}</label>
           <input
             value={form.imei}
             onChange={(e) => setForm({ ...form, imei: e.target.value })}
-            placeholder="15-digit IMEI"
+            placeholder={t('quickChargeModal.imeiPlaceholder')}
             maxLength={15}
             className="input"
           />
@@ -150,21 +152,21 @@ export default function QuickChargeModal({
 
         {/* Tax mode */}
         <div>
-          <label className="text-sm text-slate-400 block mb-1">{L.taxType || 'Tax Type'}</label>
+          <label className="text-sm text-slate-400 block mb-1">{t('taxType')}</label>
           <select
             value={form.taxMode}
             onChange={(e) => setForm({ ...form, taxMode: e.target.value as typeof form.taxMode })}
             className="select"
           >
-            <option value="none">{L.noTaxServices || 'No Tax (services)'}</option>
-            <option value="sales">{L.salesTaxPhonesAccessories || 'Sales Tax'}</option>
-            <option value="phone_payment">{L.phonePaymentTaxes || 'Phone Payment Taxes'}</option>
+            <option value="none">{t('noTaxServices')}</option>
+            <option value="sales">{t('salesTaxPhonesAccessories')}</option>
+            <option value="phone_payment">{t('phonePaymentTaxes')}</option>
           </select>
         </div>
 
         {/* Comments */}
         <div>
-          <label className="text-sm text-slate-400 block mb-1">Comments</label>
+          <label className="text-sm text-slate-400 block mb-1">{t('quickChargeModal.comments')}</label>
           <textarea
             value={form.comments}
             onChange={(e) => setForm({ ...form, comments: e.target.value })}
@@ -174,7 +176,7 @@ export default function QuickChargeModal({
         </div>
 
         <button onClick={handleSubmit} className="btn btn-primary w-full mt-2">
-          {L.addToCart} →
+          {t('addToCart')} →
         </button>
       </div>
     </Modal>
