@@ -34,3 +34,4 @@ diff*.txt
 # Code snippets pasted for analysis
 snippet*.txt
 snippet*.md
+scripts/.pt-cache.json

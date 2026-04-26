@@ -12,7 +12,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { isToday, toDate, formatDate } from '@/utils/dates';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
@@ -52,7 +52,7 @@ export default function Dashboard() {
     },
     setActiveTab,
   } = useApp();
-  const L = getLabels(lang);
+  const { t } = useTranslation();
 
   // r-global-search: local `search` state and the 8 match useMemos + goTo
   // navigator + dropdown JSX were all extracted to GlobalSearchBar.tsx.
@@ -288,10 +288,10 @@ export default function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
         <div>
           <h2 style={{ fontSize: '1.875rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            {L.dashboard || 'Dashboard'}
+            {t('dashboard')}
           </h2>
-          <p style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
-            {new Date().toLocaleDateString(lang === 'es' ? 'es-MX' : 'en-US', {
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            {new Date().toLocaleDateString(lang === 'es' ? 'es-MX' : lang === 'pt' ? 'pt-BR' : 'en-US', {
               weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
             })}
           </p>
@@ -307,7 +307,7 @@ export default function Dashboard() {
               justifyContent: 'center', flexShrink: 0,
             }}
             onClick={() => setActiveTab('pos')}
-            title="New Sale"
+            title={t('dashboard.newSale')}
           >
             +
           </button>
@@ -323,35 +323,33 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('reports')}>
           <StatIcon icon="💲" color="rgba(34, 197, 94, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.todaysSales || "Today's Sales"}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('todaysSales')}
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#e2e8f0', marginTop: '0.5rem' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.5rem' }}>
             {formatCurrency(todayRevenue)}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-            {todaySales.length} {L.transactions || 'Transactions'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {todaySales.length} {t('transactions')}
           </div>
         </div>
 
         <div className="stat-card" title={todayReturnsCents > 0
-          ? (lang === 'es'
-              ? `Incluye ${formatCurrency(todayReturnsCents)} en devoluciones de hoy`
-              : `Includes ${formatCurrency(todayReturnsCents)} in refunds today`)
+          ? t('dashboard.refundsTooltip', formatCurrency(todayReturnsCents))
           : undefined}>
           <StatIcon icon="📈" color="rgba(34, 197, 94, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.estimatedGrossProfit || 'Gross Profit'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('estimatedGrossProfit')}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: todayProfit >= 0 ? '#34d399' : '#f87171', marginTop: '0.5rem' }}>
             {formatCurrency(todayProfit)}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
             {/* Clamp visual margin display: showing -1500% is meaningless when refunds dwarf today's sales */}
-            {Math.abs(parseFloat(profitMargin)) > 999 ? '—' : `${profitMargin}%`} {lang === 'es' ? 'margen' : 'margin'}
+            {Math.abs(parseFloat(profitMargin)) > 999 ? '—' : `${profitMargin}%`} {t('dashboard.margin')}
             {todayReturnsCents > 0 && (
               <span style={{ marginLeft: '0.4rem', color: '#fbbf24', fontSize: '0.7rem' }}>
-                ⚠ {lang === 'es' ? 'incl. devoluciones' : 'incl. refunds'}
+                ⚠ {t('dashboard.includesRefunds')}
               </span>
             )}
           </div>
@@ -359,53 +357,53 @@ export default function Dashboard() {
 
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
           <StatIcon icon="🔧" color="rgba(249, 115, 22, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.activeRepairs || 'Active Repairs'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('activeRepairs')}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f97316', marginTop: '0.5rem' }}>
             {activeRepairs.length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-            {readyRepairs.length} {L.readyForPickup || 'ready for pickup'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {readyRepairs.length} {t('readyForPickup')}
           </div>
         </div>
 
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('inventory')}>
           <StatIcon icon="⚠️" color="rgba(239, 68, 68, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.lowStock || 'Low Stock Items'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('lowStock')}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: lowStockItems.length > 0 ? '#ef4444' : '#34d399', marginTop: '0.5rem' }}>
             {lowStockItems.length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-            {L.needRestock || 'Need restock'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {t('needRestock')}
           </div>
         </div>
 
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('customers')}>
           <StatIcon icon="👥" color="rgba(236, 72, 153, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.totalCustomers || 'Total Customers'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('totalCustomers')}
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#e2e8f0', marginTop: '0.5rem' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.5rem' }}>
             {customers.length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-            {newCustomersToday.length} {L.newToday || 'new today'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {newCustomersToday.length} {t('newToday')}
           </div>
         </div>
 
         <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('unlocks')}>
           <StatIcon icon="🔓" color="rgba(139, 92, 246, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.02em' }}>
-            {L.activeUnlocks || 'Active Unlocks'}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('activeUnlocks')}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#a78bfa', marginTop: '0.5rem' }}>
             {activeUnlocks.length}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-            {unlocks.filter((u) => normStatus(u.status || '') === 'code_received').length} {L.codesReceived || 'codes received'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {unlocks.filter((u) => normStatus(u.status || '') === 'code_received').length} {t('codesReceived')}
           </div>
         </div>
       </div>
@@ -432,12 +430,10 @@ export default function Dashboard() {
         >
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f87171', marginBottom: '0.4rem' }}>
-              ⚠️ {L.lowStockAlert || (lang === 'es' ? 'Stock Bajo' : 'Low Stock Alert')}
+              ⚠️ {t('dashboard.lowStockBannerTitle')}
               {' — '}
               {lowStockItems.length}{' '}
-              {lowStockItems.length !== 1
-                ? (lang === 'es' ? 'productos necesitan reabasto' : 'items need restocking')
-                : (lang === 'es' ? 'producto necesita reabasto' : 'item needs restocking')}
+              {t('dashboard.lowStockItemsPlural', lowStockItems.length)}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
               {lowStockItems.slice(0, 5).map((i) => (
@@ -449,12 +445,12 @@ export default function Dashboard() {
                   borderRadius: '0.375rem',
                   color: '#fca5a5',
                 }}>
-                  {i.name} <span style={{ color: '#94a3b8' }}>· {i.qty}</span>
+                  {i.name} <span style={{ color: 'var(--text-secondary)' }}>· {i.qty}</span>
                 </span>
               ))}
               {lowStockItems.length > 5 && (
-                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                  +{lowStockItems.length - 5} {lang === 'es' ? 'más' : 'more'}
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  +{lowStockItems.length - 5} {t('dashboard.more')}
                 </span>
               )}
             </div>
@@ -473,7 +469,7 @@ export default function Dashboard() {
               fontWeight: 600,
             }}
           >
-            {lang === 'es' ? 'Ver inventario' : 'View inventory'}
+            {t('dashboard.viewInventory')}
           </button>
         </div>
       )}
@@ -488,7 +484,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f87171', marginBottom: '0.4rem' }}>
-                    🔧 {lang === 'es' ? `${abandonedRepairs.length} reparación(es) lista(s) sin recoger (3+ días)` : `${abandonedRepairs.length} repair(s) ready but not picked up (3+ days)`}
+                    🔧 {t('dashboard.abandonedRepairs', abandonedRepairs.length)}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     {abandonedRepairs.slice(0, 5).map((r) => (
@@ -496,11 +492,11 @@ export default function Dashboard() {
                         {r.customerName} — {r.device}
                       </span>
                     ))}
-                    {abandonedRepairs.length > 5 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>+{abandonedRepairs.length - 5} {lang === 'es' ? 'más' : 'more'}</span>}
+                    {abandonedRepairs.length > 5 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{abandonedRepairs.length - 5} {t('dashboard.more')}</span>}
                   </div>
                 </div>
                 <button onClick={() => setActiveTab('repairs')} style={{ fontSize: '0.72rem', padding: '0.35rem 0.75rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.375rem', color: '#f87171', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
-                  {lang === 'es' ? 'Ver tickets' : 'View tickets'}
+                  {t('dashboard.viewTickets')}
                 </button>
               </div>
             </div>
@@ -512,7 +508,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24', marginBottom: '0.4rem' }}>
-                    📅 {lang === 'es' ? `${overdueLayaways.length} apartado(s) vencido(s) con saldo pendiente` : `${overdueLayaways.length} overdue layaway(s) with balance due`}
+                    📅 {t('dashboard.overdueLayaways', overdueLayaways.length)}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     {overdueLayaways.slice(0, 5).map((l) => (
@@ -520,11 +516,11 @@ export default function Dashboard() {
                         {l.customerName} — {formatCurrency(l.balance)}
                       </span>
                     ))}
-                    {overdueLayaways.length > 5 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>+{overdueLayaways.length - 5} {lang === 'es' ? 'más' : 'more'}</span>}
+                    {overdueLayaways.length > 5 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{overdueLayaways.length - 5} {t('dashboard.more')}</span>}
                   </div>
                 </div>
                 <button onClick={() => setActiveTab('layaways')} style={{ fontSize: '0.72rem', padding: '0.35rem 0.75rem', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '0.375rem', color: '#fbbf24', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
-                  {lang === 'es' ? 'Ver apartados' : 'View layaways'}
+                  {t('dashboard.viewLayaways')}
                 </button>
               </div>
             </div>
@@ -536,7 +532,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24', marginBottom: '0.4rem' }}>
-                    📋 {lang === 'es' ? `${unpickedOrders.length} pedido(s) especial(es) listo(s) sin recoger (7+ días)` : `${unpickedOrders.length} special order(s) ready but uncollected (7+ days)`}
+                    📋 {t('dashboard.unpickedOrders', unpickedOrders.length)}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     {unpickedOrders.slice(0, 5).map((o) => (
@@ -544,11 +540,11 @@ export default function Dashboard() {
                         {o.customerName} — {formatCurrency(o.balance)}
                       </span>
                     ))}
-                    {unpickedOrders.length > 5 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>+{unpickedOrders.length - 5} {lang === 'es' ? 'más' : 'more'}</span>}
+                    {unpickedOrders.length > 5 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{unpickedOrders.length - 5} {t('dashboard.more')}</span>}
                   </div>
                 </div>
                 <button onClick={() => setActiveTab('specialOrders')} style={{ fontSize: '0.72rem', padding: '0.35rem 0.75rem', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '0.375rem', color: '#fbbf24', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
-                  {lang === 'es' ? 'Ver pedidos' : 'View orders'}
+                  {t('dashboard.viewOrders')}
                 </button>
               </div>
             </div>
@@ -560,7 +556,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.4rem' }}>
-                    👤 {lang === 'es' ? `${lapsedCustomers.length} cliente(s) sin visita en 30+ días` : `${lapsedCustomers.length} customer(s) haven't visited in 30+ days`}
+                    👤 {t('dashboard.lapsedCustomers', lapsedCustomers.length)}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     {lapsedCustomers.slice(0, 6).map((c) => (
@@ -568,11 +564,11 @@ export default function Dashboard() {
                         {c.name}
                       </span>
                     ))}
-                    {lapsedCustomers.length > 6 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>+{lapsedCustomers.length - 6} {lang === 'es' ? 'más' : 'more'}</span>}
+                    {lapsedCustomers.length > 6 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{lapsedCustomers.length - 6} {t('dashboard.more')}</span>}
                   </div>
                 </div>
                 <button onClick={() => setActiveTab('customers')} style={{ fontSize: '0.72rem', padding: '0.35rem 0.75rem', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '0.375rem', color: '#a5b4fc', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
-                  {lang === 'es' ? 'Ver clientes' : 'View customers'}
+                  {t('dashboard.viewCustomers')}
                 </button>
               </div>
             </div>
@@ -584,17 +580,17 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
         <div className="card" style={{ padding: '1.5rem' }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
-            {L.recentRepairTickets || 'Recent Repair Tickets'}
+            {t('recentRepairTickets')}
           </h3>
           {recentRepairs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {recentRepairs.map((repair) => (
                 <div key={repair.id} style={{
-                  padding: '1rem', background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)',
+                  padding: '1rem', background: 'var(--bg-input)',
+                  borderRadius: '12px', border: '1px solid var(--border-default)',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <div style={{ fontWeight: 600, color: '#a5b4fc' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-accent-soft)' }}>
                       {(repair as any).ticketNumber || repair.id.slice(-8).toUpperCase()}
                     </div>
                     {/* Round R2: canonical badge classification. */}
@@ -607,36 +603,36 @@ export default function Dashboard() {
                       {repair.status}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
                     {repair.customerName} • {repair.deviceModel || repair.device || ''}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{formatDate(repair.createdAt)}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDate(repair.createdAt)}</div>
                     <div style={{ fontWeight: 700, color: '#34d399' }}>{formatCurrency(repair.total || 0)}</div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
-              {L.noRepairTicketsYet || 'No repair tickets yet'}
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+              {t('noRepairTicketsYet')}
             </div>
           )}
         </div>
 
         <div className="card" style={{ padding: '1.5rem' }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
-            {L.recentSales || 'Recent Sales'}
+            {t('recentSales')}
           </h3>
           {recentSales.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {recentSales.map((sale) => (
                 <div key={sale.id} style={{
-                  padding: '1rem', background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)',
+                  padding: '1rem', background: 'var(--bg-input)',
+                  borderRadius: '12px', border: '1px solid var(--border-default)',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <div style={{ fontWeight: 600, color: '#a5b4fc' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-accent-soft)' }}>
                       {sale.invoiceNumber}
                     </div>
                     <span className="badge badge-info"
@@ -647,19 +643,19 @@ export default function Dashboard() {
                       {sale.paymentMethod?.toUpperCase()}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
-                    {sale.customerName || 'Walk-in'} • {sale.items.length} {sale.items.length !== 1 ? 'items' : 'item'}
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                    {sale.customerName || t('dashboard.walkIn')} • {sale.items.length} {t('dashboard.itemsCount', sale.items.length)}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{formatDate(sale.createdAt)}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDate(sale.createdAt)}</div>
                     <div style={{ fontWeight: 700, color: '#34d399' }}>{formatCurrency(sale.total)}</div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
-              {L.noSalesYet || 'No sales yet'}
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+              {t('noSalesYet')}
             </div>
           )}
         </div>
@@ -668,35 +664,35 @@ export default function Dashboard() {
       {/* ── Quick Stats — 3 equal columns ── */}
       <div className="card" style={{ padding: '1.5rem' }}>
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
-          {L.quickStats || 'Quick Stats'}
+          {t('quickStats')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0' }}>
           <div style={{ padding: '0.75rem 1rem' }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {lang === 'es' ? 'VALOR INVENTARIO (VENTA)' : 'INVENTORY VALUE (RETAIL)'}
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              {t('dashboard.inventoryValueRetail')}
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#e2e8f0' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {formatCurrency(totalInventoryRetail)}
             </div>
             {totalInventoryCost > 0 && (
-              <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.15rem' }}>
-                {lang === 'es' ? 'Costo' : 'Cost'}: {formatCurrency(totalInventoryCost)}
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                {t('dashboard.cost')}: {formatCurrency(totalInventoryCost)}
               </div>
             )}
           </div>
-          <div style={{ padding: '0.75rem 1rem', borderLeft: '1px solid rgba(255,255,255,0.08)', borderRight: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {(L.avgSaleValue || 'AVG SALE VALUE').toUpperCase()}
+          <div style={{ padding: '0.75rem 1rem', borderLeft: '1px solid var(--border-default)', borderRight: '1px solid var(--border-default)' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              {t('avgSaleValue').toUpperCase()}
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#e2e8f0' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {formatCurrency(avgSaleValue)}
             </div>
           </div>
           <div style={{ padding: '0.75rem 1rem' }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {(L.totalItemsInStock || 'TOTAL ITEMS IN STOCK').toUpperCase()}
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              {t('totalItemsInStock').toUpperCase()}
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#e2e8f0' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {totalItemsInStock}
             </div>
           </div>

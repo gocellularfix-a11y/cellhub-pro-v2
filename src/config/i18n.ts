@@ -6,7 +6,7 @@ import type { Lang } from '@/store/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type LabelValue = string | Record<string, string>;
-const LABELS: Record<Lang, Record<string, LabelValue>> = {
+const LABELS: Record<'en' | 'es', Record<string, LabelValue>> = {
   en: {
     "dashboard": "Dashboard",
     "intelligence": "Intelligence",
@@ -2329,7 +2329,7 @@ export default LABELS;
  */
 export function getLabels(lang: Lang): Record<string, any> {
   const en = LABELS.en;
-  const target = LABELS[lang] || en;
+  const target = LABELS[lang as 'en' | 'es'] || en;
   // Proxy that falls back to EN for missing keys, or undefined if neither has it
   return new Proxy(target, {
     get(obj: Record<string, LabelValue>, prop: string) {
