@@ -139,8 +139,8 @@ export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string }> =
     es: `Hola {nombre}, recuerda tu cita en {tienda} el {date} a las {time}. ¡Te esperamos! — {tienda}`,
   },
   thankYou: {
-    en: `Hi {name}, thank you for visiting {store}! We appreciate your business. See you next time! ☺`,
-    es: `¡Hola {nombre}, gracias por visitarnos en {tienda}! Apreciamos tu preferencia. ¡Hasta la próxima! ☺`,
+    en: `Hi {name}, thank you for visiting {store}! We appreciate your business. See you next time!`,
+    es: `¡Hola {nombre}, gracias por visitarnos en {tienda}! Apreciamos tu preferencia. ¡Hasta la próxima!`,
   },
   custom: {
     en: `Hi {name},`,
