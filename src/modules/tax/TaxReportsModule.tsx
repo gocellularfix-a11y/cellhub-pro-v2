@@ -1072,7 +1072,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
                   <StatCard label="POS Revenue" value={formatCurrency(annual.productGross + annual.phoneGross + annual.repairRevenue)} sub={`${annual.ySales.length} transactions`} color="#22c55e" />
-                  <StatCard label="POS Cost" value={formatCurrency(annual.productCOGS + annual.repairCOGS + annual.phonePaidToCarrier)} sub={`Inventory $${((annual.productCOGS + annual.repairCOGS) / 100).toFixed(0)} + Carriers $${(annual.phonePaidToCarrier / 100).toFixed(0)}`} color="#f87171" />
+                  <StatCard label="POS COGS (auto)" value={formatCurrency(annual.productCOGS + annual.repairCOGS + annual.phonePaidToCarrier)} sub={`Inventory $${((annual.productCOGS + annual.repairCOGS) / 100).toFixed(0)} + Carriers $${(annual.phonePaidToCarrier / 100).toFixed(0)}`} color="#f87171" />
                   <StatCard label="POS Profit" value={formatCurrency(annual.totalIncome)} sub="Revenue − Cost" color="#60a5fa" />
                   <StatCard label="Manual Income" value={formatCurrency(annual.taxIncomeAdditional)} sub={`${(settings.taxData?.byYear?.[String(selectedYear)]?.income ?? []).length} entries`} color="#94a3b8" />
                 </div>
@@ -1111,9 +1111,9 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     </div>
                     <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>COGS</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Schedule A COGS (manual)</div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.cogsV1)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Inventory purchases + suppliers</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{es ? 'Solo entradas del Tax Center' : 'Tax Center entries only'}</div>
                     </div>
                     <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
                     <div>
@@ -1126,6 +1126,17 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Net Profit (Loss)</div>
                     <div style={{ fontSize: '2.5rem', fontWeight: 900, color: annual.netProfit >= 0 ? '#22c55e' : '#f87171' }}>{formatCurrency(annual.netProfit)}</div>
                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✓ Taxable income</div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.15)', borderRadius: '0.625rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.35rem' }}>
+                    {es ? 'Cómo se calcula el COGS' : 'How COGS is calculated'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.5 }}>
+                    {es
+                      ? 'El Formulario 1065 Línea 2 combina POS COGS (auto, de las ventas) + Schedule A COGS (manual, del Tax Center). La mayoría de shops solo necesita POS COGS. Usa Schedule A para compras fuera del POS como mayoristas o proveedores externos.'
+                      : 'Form 1065 Line 2 combines POS COGS (auto, from sales) + Schedule A COGS (manual, from Tax Center). Most shops only need POS COGS. Use Schedule A for non-POS purchases like wholesale or off-system suppliers.'}
                   </div>
                 </div>
               </div>
