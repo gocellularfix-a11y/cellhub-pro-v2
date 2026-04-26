@@ -373,6 +373,7 @@ export default function SettingsModule() {
       'waTemplateLayawayReminder',
       'waTemplateAppointmentReminder',
       'waTemplateThankYou',
+      'waTemplateBalanceDue',
     ] as const;
     const delta: Record<string, string> = {};
     for (const key of waKeys) {
