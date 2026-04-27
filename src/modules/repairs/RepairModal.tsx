@@ -18,6 +18,7 @@
 import { useState, useMemo } from 'react';
 import { Modal, SearchInput, AutocompleteInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { calcDepositTotals } from '@/utils/depositTax';
 import { generateId } from '@/utils/dates';
@@ -168,7 +169,9 @@ function togglePill(current: string, value: string): string {
 }
 
 export default function RepairModal({ repair, customers, inventory, settings, allRepairs = [], onSave, onCollectBalance, onRequestCancel, onClose, lang, L }: Props) {
-  const es = lang === 'es';
+  const es = lang === 'es'; // kept — used in print HTML helpers (printTicket/printWarranty) per V1 surgical scope
+  void L; // vestigial — V3 cleanup
+  const { t } = useTranslation();
   const isEdit = !!repair;
   const { printHtml } = usePrint();
   const { toast } = useToast();
@@ -551,18 +554,18 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   const validateForm = (): boolean => {
     setValidationError(null);
     if (!form.firstName.trim() || !form.lastName.trim() || !form.customerPhone.trim()) {
-      setValidationError(es ? 'Nombre, apellido y teléfono son requeridos' : 'First name, last name and phone are required');
+      setValidationError(t('repairs.errFirstLastPhone'));
       return false;
     }
     const phoneLen = form.customerPhone.replace(/\D/g, '').length;
     if (phoneLen > 0 && phoneLen !== 10) {
-      setValidationError(es ? 'Teléfono debe ser 10 dígitos' : 'Phone must be 10 digits');
+      setValidationError(t('repairs.errPhone10'));
       return false;
     }
-    if (!form.model.trim()) { setValidationError(es ? 'Modelo del dispositivo requerido' : 'Device model required'); return false; }
-    if (!form.issue.trim()) { setValidationError(es ? 'Descripción del problema requerida' : 'Issue description required'); return false; }
+    if (!form.model.trim()) { setValidationError(t('repairs.errModelRequired')); return false; }
+    if (!form.issue.trim()) { setValidationError(t('repairs.errIssueRequired')); return false; }
     if (depositAmt > total && total > 0) {
-      setValidationError(es ? `Depósito no puede exceder el total ($${total.toFixed(2)})` : `Deposit cannot exceed total ($${total.toFixed(2)})`);
+      setValidationError(t('repairs.errDepositExceedsTotal', `$${total.toFixed(2)}`));
       return false;
     }
     return true;
@@ -597,28 +600,18 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     // freshest repairs list we have access to (allRepairs prop, React state).
     const fresh = (allRepairs || []).find((r) => r.id === repair.id);
     if (!fresh) {
-      toast(es ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+      toast(t('repairs.errTicketDeletedExternal'), 'error');
       handleClose();
       return;
     }
     const freshNorm = normalizeRepairStatus(fresh.status);
     if (freshNorm === REPAIR_STATUS.CANCELLED || freshNorm === 'refunded') {
-      toast(
-        es
-          ? 'Ticket cancelado/reembolsado. No se puede editar.'
-          : 'Ticket cancelled/refunded. Cannot edit.',
-        'error',
-      );
+      toast(t('repairs.errTicketCancelledRefunded'), 'error');
       handleClose();
       return;
     }
     if (fresh.updatedAt && repair.updatedAt && String(fresh.updatedAt) !== String(repair.updatedAt)) {
-      toast(
-        es
-          ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
-          : 'Ticket modified on another station. Reload and try again.',
-        'error',
-      );
+      toast(t('repairs.errTicketModifiedOtherStation'), 'error');
       handleClose();
       return;
     }
@@ -626,22 +619,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     // Edit-history cap check
     const historyStatus = checkEditHistoryStatus(fresh.editHistory);
     if (historyStatus === 'full') {
-      toast(
-        es
-          ? 'Historial de ediciones lleno (100). Contacta al administrador.'
-          : 'Edit history full (100). Contact admin.',
-        'error',
-      );
+      toast(t('repairs.errHistoryFull'), 'error');
       setIsSaving(false);
       return;
     }
     if (historyStatus === 'warning') {
-      toast(
-        es
-          ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
-          : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
-        'warning',
-      );
+      toast(t('repairs.warningHistoryStatus', fresh.editHistory?.length || 0), 'warning');
     }
 
     // R-EDIT-AUDIT F3.5: diff against FRESH entity (not originalSnapshot).
@@ -735,7 +718,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
   return (
     <Modal open onClose={handleClose}
-      title={isEdit ? `✏️ ${es ? 'Editar Ticket' : 'Edit Ticket'} #${(r?.id || '').slice(-8).toUpperCase()}` : `🔧 ${es ? 'Nuevo Ticket de Reparación' : 'New Repair Ticket'}`}
+      title={isEdit ? t('repairs.editTicketTitle', (r?.id || '').slice(-8).toUpperCase()) : t('repairs.newTicketTitle')}
       size="max-w-4xl"
     >
       <div style={{ maxHeight: '75vh', overflowY: 'auto', paddingRight: '2px', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -754,9 +737,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           }}>
             <span>⚠️</span>
             <span>
-              {es
-                ? 'Editando ticket completado. Los cambios se registrarán.'
-                : 'Editing completed ticket. Changes will be logged.'}
+              {t('repairs.editingCompletedBanner')}
             </span>
           </div>
         )}
@@ -779,7 +760,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Nombre *' : 'First Name *'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.firstNameStarLabel')}</label>
               <AutocompleteInput
                 value={form.firstName}
                 onChange={(val) => upd('firstName', val)}
@@ -792,12 +773,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   }
                 }}
                 options={firstNameOptions}
-                placeholder={es ? 'Jorge' : 'John'}
+                placeholder={t('repairs.firstNamePlaceholder')}
                 maxResults={6}
               />
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Apellido *' : 'Last Name *'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.lastNameStarLabel')}</label>
               <AutocompleteInput
                 value={form.lastName}
                 onChange={(val) => upd('lastName', val)}
@@ -810,12 +791,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   }
                 }}
                 options={lastNameOptions}
-                placeholder={es ? 'Ochoa' : 'Doe'}
+                placeholder={t('repairs.lastNamePlaceholder')}
                 maxResults={6}
               />
             </div>
             <div style={{ position: 'relative' }}>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Teléfono *' : 'Phone *'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.phoneStarLabel')}</label>
               <AutocompleteInput
                 type="tel"
                 value={form.customerPhone}
@@ -840,7 +821,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                       upd('lastName', parts.slice(1).join(' ') || '');
                     }}
                   >
-                    ✅ {es ? `Cliente: ${phoneMatch.name}` : `Found: ${phoneMatch.name}`}
+                    ✅ {t('repairs.foundCustomerHint', phoneMatch.name)}
                     {` · ${phoneMatch.loyaltyPoints || 0} pts`}
                   </div>
                 ) : undefined}
@@ -852,17 +833,17 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         {/* ── Device Info ───────────────────────────────────── */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '1rem' }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#94a3b8', margin: '0 0 0.75rem 0' }}>
-            📱 {es ? 'Información del Dispositivo' : 'Device Information'}
+            📱 {t('repairs.deviceInfoHeader')}
           </h4>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Tipo de Dispositivo' : 'Device Type'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.deviceTypeLabel')}</label>
               <select className="select" value={form.deviceType} onChange={(e) => upd('deviceType', e.target.value)}>
                 {['Phone','Tablet','Watch','Laptop','Other'].map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Modelo *' : 'Model *'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.modelStarLabel')}</label>
               <AutocompleteInput
                 value={form.model}
                 onChange={(val) => upd('model', val)}
@@ -879,13 +860,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <input className="input" style={{ flex: 1, fontFamily: 'monospace' }} value={form.imei}
                   onChange={(e) => upd('imei', e.target.value)} placeholder="15 digits" maxLength={15} />
-                <button type="button" onClick={generateIMEI} className="btn btn-secondary" title={es ? 'Generar IMEI de prueba' : 'Generate dummy IMEI'}
+                <button type="button" onClick={generateIMEI} className="btn btn-secondary" title={t('repairs.generateImei')}
                   style={{ padding: '0 0.625rem', flexShrink: 0 }}>🔄</button>
               </div>
-              <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '0.2rem' }}>{es ? 'Auto-generar si no disponible' : 'Auto-generate if unavailable'}</div>
+              <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '0.2rem' }}>{t('repairs.imeiAutoGenHint')}</div>
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Contraseña' : 'Device Password'}</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.devicePasswordLabel')}</label>
               <input className="input" value={form.password} onChange={(e) => upd('password', e.target.value)} placeholder="Optional" />
             </div>
             <div>
@@ -904,7 +885,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           {/* ── Device Photo ───────────────────────────────────── */}
           <div style={{ marginTop: '0.75rem' }}>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
-              📷 {es ? 'Foto del Dispositivo' : 'Device Photo'} <span style={{ color: '#475569', fontWeight: 400 }}>({es ? 'opcional' : 'optional'})</span>
+              📷 {t('repairs.devicePhotoLabel')} <span style={{ color: '#475569', fontWeight: 400 }}>({t('repairs.optional')})</span>
             </label>
 
             {form.devicePhoto ? (
@@ -924,7 +905,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                     color: '#fff', fontSize: '0.75rem', display: 'flex',
                     alignItems: 'center', justifyContent: 'center',
                   }}
-                  title={es ? 'Eliminar foto' : 'Remove photo'}
+                  title={t('repairs.removePhotoTitle')}
                 >✕</button>
               </div>
             ) : (
@@ -940,7 +921,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
               >
                 <span>📷</span>
-                <span>{es ? 'Tomar / subir foto' : 'Take / upload photo'}</span>
+                <span>{t('repairs.takeUploadPhoto')}</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -952,18 +933,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                     // Round R1 F7: size + MIME guard. Protects shop PC memory
                     // from malicious/oversized files before FileReader reads.
                     if (file.size > 5 * 1024 * 1024) {
-                      toast(
-                        es ? 'Imagen demasiado grande (máx 5MB)' : 'Image too large (max 5MB)',
-                        'error',
-                      );
+                      toast(t('repairs.imageTooLarge'), 'error');
                       (e.target as HTMLInputElement).value = '';
                       return;
                     }
                     if (!file.type.startsWith('image/')) {
-                      toast(
-                        es ? 'Archivo inválido. Solo imágenes.' : 'Invalid file. Images only.',
-                        'error',
-                      );
+                      toast(t('repairs.invalidFileImagesOnly'), 'error');
                       (e.target as HTMLInputElement).value = '';
                       return;
                     }
@@ -1003,7 +978,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           return (
             <div style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '0.75rem', padding: '0.875rem' }}>
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fbbf24', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                📋 {es ? `Historial del dispositivo — ${history.length} reparación${history.length > 1 ? 'es' : ''} previa${history.length > 1 ? 's' : ''}` : `Device history — ${history.length} previous repair${history.length > 1 ? 's' : ''}`}
+                📋 {t('repairs.deviceHistoryHeader', history.length)}
               </div>
               {history.slice(0, 4).map((r) => (
                 <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderBottom: '1px solid rgba(251,191,36,0.1)', fontSize: '0.78rem' }}>
@@ -1019,7 +994,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               ))}
               {history.length > 4 && (
                 <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.4rem', textAlign: 'center' }}>
-                  {es ? `+ ${history.length - 4} más` : `+ ${history.length - 4} more`}
+                  {t('repairs.moreShort', history.length - 4)}
                 </div>
               )}
             </div>
@@ -1029,13 +1004,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         {/* ── Issue & Diagnosis ─────────────────────────────── */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '1rem' }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#94a3b8', margin: '0 0 0.75rem 0' }}>
-            🔍 {es ? 'Problema y Diagnóstico' : 'Issue & Diagnosis'}
+            🔍 {t('repairs.issueDiagnosisHeader')}
           </h4>
 
           {/* Issue pills */}
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              ⚡ {es ? 'Problemas Comunes — toca para agregar' : 'Common Issues — tap to add'}
+              ⚡ {t('repairs.commonIssuesLabel')}
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
               {issues.map((issue) => (
@@ -1046,13 +1021,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </div>
             <textarea className="textarea" rows={2}
               value={form.issue} onChange={(e) => upd('issue', e.target.value)}
-              placeholder={es ? 'Toca los botones arriba o escribe el problema aquí...' : 'Tap buttons above or type the issue here...'} />
+              placeholder={t('repairs.issueTextarea')} />
           </div>
 
           {/* Diagnosis pills */}
           <div>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              🔬 {es ? 'Diagnóstico / Trabajo a Realizar' : 'Diagnosis / Work to be Done'}
+              🔬 {t('repairs.diagnosisLabel')}
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
               {diagOptions.map((opt) => (
@@ -1063,7 +1038,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </div>
             <textarea className="textarea" rows={2}
               value={form.diagnosis} onChange={(e) => upd('diagnosis', e.target.value)}
-              placeholder={es ? 'Toca los botones arriba o escribe el diagnóstico aquí...' : 'Tap buttons above or type diagnosis here...'} />
+              placeholder={t('repairs.diagnosisTextarea')} />
           </div>
         </div>
 
@@ -1071,10 +1046,10 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#94a3b8', margin: 0 }}>
-              🔩 {es ? 'Partes y Mano de Obra' : 'Parts & Labor'}
+              🔩 {t('repairs.partsLaborHeader')}
             </h4>
             <button type="button" onClick={addPart} className="btn btn-secondary btn-sm">
-              + {es ? 'Agregar Parte' : 'Add Part'}
+              + {t('repairs.addPart')}
             </button>
           </div>
 
@@ -1082,7 +1057,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 60px auto', gap: '0.5rem', marginBottom: '0.5rem', padding: '0.625rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', alignItems: 'center' }}>
               {/* Col 1: inventory selector */}
               <select className="select" value={part.partId || ''} onChange={(e) => updatePart(i, 'partId', e.target.value)} style={{ fontSize: '0.82rem' }}>
-                <option value="">{es ? 'Seleccionar parte / personalizado' : 'Select part or custom'}</option>
+                <option value="">{t('repairs.selectPartCustom')}</option>
                 {partsInventory.map((inv) => (
                   <option key={inv.id} value={inv.id}>{inv.name} — ${(inv.price / 100).toFixed(2)}</option>
                 ))}
@@ -1092,12 +1067,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 className="input"
                 value={part.name || ''}
                 onChange={(e) => updatePart(i, 'name', e.target.value)}
-                placeholder={es ? 'Nombre parte' : 'Part name'}
+                placeholder={t('repairs.partNamePlaceholder')}
                 style={{ fontSize: '0.82rem', visibility: part.partId ? 'hidden' : 'visible' }}
               />
               {/* Col 3: price */}
               <input type="number" className="input" value={part.price || ''} onChange={(e) => updatePart(i, 'price', e.target.value)}
-                placeholder={es ? 'Precio' : 'Price'} step="0.01" min="0" style={{ fontSize: '0.82rem' }} />
+                placeholder={t('repairs.partPricePlaceholder')} step="0.01" min="0" style={{ fontSize: '0.82rem' }} />
               {/* Col 4: qty */}
               <input type="number" className="input" value={part.quantity || 1} onChange={(e) => updatePart(i, 'quantity', e.target.value)}
                 placeholder="Qty" min="1" style={{ fontSize: '0.82rem' }} />
@@ -1109,7 +1084,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                {isLocked && !pin.editUnlocked && '🔒 '}{es ? 'Mano de Obra ($)' : 'Labor Cost ($)'}
+                {isLocked && !pin.editUnlocked && '🔒 '}{t('repairs.laborCostLabel')}
               </label>
               {/* R-EDIT-AUDIT F3.2: lock icon on laborCost when ticket is completed. */}
               <div style={{ position: 'relative' }}>
@@ -1131,7 +1106,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                       position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
                       cursor: 'pointer', fontSize: '1rem',
                     }}
-                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                    title={t('repairs.unlockWithPin')}
                   >
                     🔒
                   </span>
@@ -1143,13 +1118,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           {/* Cost breakdown */}
           <div style={{ marginTop: '0.875rem', padding: '0.875rem', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '0.625rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.3rem', color: '#94a3b8' }}>
-              <span>{es ? 'Partes:' : 'Parts total:'}</span><span>${partsTotal.toFixed(2)}</span>
+              <span>{t('repairs.partsTotal')}</span><span>${partsTotal.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.3rem', color: '#94a3b8' }}>
-              <span>{es ? 'Labor:' : 'Labor:'}</span><span>${laborCost.toFixed(2)}</span>
+              <span>{t('repairs.laborLabel')}</span><span>${laborCost.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem', color: '#cbd5e1', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.4rem' }}>
-              <span>{es ? 'Subtotal:' : 'Subtotal:'}</span><span>${subtotal.toFixed(2)}</span>
+              <span>{t('repairs.subtotal')}</span><span>${subtotal.toFixed(2)}</span>
             </div>
             {/* Tax toggle */}
             {/* R-EDIT-AUDIT F3.2: taxable is a money-impacting toggle — lock on completed tickets. */}
@@ -1164,25 +1139,25 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               />
               <label htmlFor="repair-taxable" style={{ fontSize: '0.78rem', color: '#cbd5e1', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}>
                 {isLocked && !pin.editUnlocked && '🔒 '}
-                {es ? `Aplicar impuesto (${(taxRate * 100).toFixed(2)}%)` : `Apply tax (${(taxRate * 100).toFixed(2)}%)`}
+                {t('repairs.applyTaxLabel', (taxRate * 100).toFixed(2))}
               </label>
               {isLocked && !pin.editUnlocked ? (
                 <span
                   onClick={pin.requestUnlock}
                   style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
-                  title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  title={t('repairs.unlockWithPin')}
                 >
                   🔒
                 </span>
               ) : (
                 <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: 'auto' }}>
-                  {es ? 'Por defecto OFF' : 'Default OFF'}
+                  {t('repairs.defaultOff')}
                 </span>
               )}
             </div>
             {form.taxable && taxCents > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.3rem', color: '#f59e0b' }}>
-                <span>{es ? `Impuesto (${(taxRate * 100).toFixed(2)}%):` : `Tax (${(taxRate * 100).toFixed(2)}%):`}</span>
+                <span>{t('repairs.taxLabel', (taxRate * 100).toFixed(2))}</span>
                 <span>+${taxAmt.toFixed(2)}</span>
               </div>
             )}
@@ -1191,7 +1166,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </div>
             <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-                {isEdit && '🔒 '}{es ? 'Depósito ($)' : 'Deposit Amount ($)'}
+                {isEdit && '🔒 '}{t('repairs.depositLabel')}
               </label>
               <input type="number" className="input" value={form.deposit || ''} onChange={(e) => !isEdit && upd('deposit', parseFloat(e.target.value) || 0)}
                 placeholder="0.00" step="0.01" min="0" max={total}
@@ -1200,13 +1175,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               {/* Deposit paid display - always shown when there's a deposit */}
               {depositAmt > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(34,197,94,0.1)', borderRadius: '0.375rem', fontSize: '0.875rem', fontWeight: 700 }}>
-                  <span style={{ color: '#94a3b8' }}>{es ? 'Depósito pagado:' : 'Deposit paid:'}</span>
+                  <span style={{ color: '#94a3b8' }}>{t('repairs.depositPaidShort')}</span>
                   <span style={{ color: '#22c55e' }}>${depositAmt.toFixed(2)}</span>
                 </div>
               )}
               {balance > 0 && depositAmt > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem', padding: '0.5rem 0.75rem', background: 'rgba(251,191,36,0.1)', borderRadius: '0.375rem', fontSize: '0.875rem', fontWeight: 700 }}>
-                  <span style={{ color: '#94a3b8' }}>{es ? 'Restante:' : 'Remaining:'}</span>
+                  <span style={{ color: '#94a3b8' }}>{t('repairs.remaining')}</span>
                   <span style={{ color: '#f59e0b' }}>${balance.toFixed(2)}</span>
                 </div>
               )}
@@ -1223,12 +1198,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               {orderedRepairStatusOptions.map((s) => {
                 const label = (() => {
                   switch (s) {
-                    case REPAIR_STATUS.RECEIVED:      return es ? 'Recibido' : 'Received';
-                    case REPAIR_STATUS.IN_PROGRESS:   return es ? 'En progreso' : 'In Progress';
-                    case REPAIR_STATUS.WAITING_PARTS: return es ? 'Esperando partes' : 'Waiting Parts';
-                    case REPAIR_STATUS.READY:         return es ? 'Listo' : 'Ready';
-                    case REPAIR_STATUS.PICKED_UP:     return es ? 'Completado' : 'Complete';
-                    case REPAIR_STATUS.CANCELLED:     return es ? 'Cancelado' : 'Cancelled';
+                    case REPAIR_STATUS.RECEIVED:      return t('repairs.statusReceived');
+                    case REPAIR_STATUS.IN_PROGRESS:   return t('repairs.statusInProgress');
+                    case REPAIR_STATUS.WAITING_PARTS: return t('repairs.statusWaitingParts');
+                    case REPAIR_STATUS.READY:         return t('repairs.statusReady');
+                    case REPAIR_STATUS.PICKED_UP:     return t('repairs.statusComplete');
+                    case REPAIR_STATUS.CANCELLED:     return t('repairs.statusCancelled');
                     default: return s;
                   }
                 })();
@@ -1243,12 +1218,12 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Entrega estimada' : 'Est. Completion'}</label>
+            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.estCompletion')}</label>
             <input type="date" className="input" value={form.estimatedCompletion} onChange={(e) => upd('estimatedCompletion', e.target.value)} />
           </div>
           <div>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              🛡️ {es ? 'Garantía (días)' : 'Warranty (days)'}
+              🛡️ {t('repairs.warrantyDays')}
             </label>
             <input
               type="number"
@@ -1265,25 +1240,25 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         {/* ── Notes ────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Notas del Cliente' : 'Customer Notes'}</label>
+            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.customerNotes')}</label>
             <textarea className="textarea" rows={3} value={form.notes} onChange={(e) => upd('notes', e.target.value)}
-              placeholder={es ? 'Notas del cliente...' : 'Customer-facing notes...'} />
+              placeholder={t('repairs.customerNotesPlaceholder')} />
           </div>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Notas Internas' : 'Internal Notes'}</label>
+            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.internalNotes')}</label>
             <textarea className="textarea" rows={3} value={form.internalNotes} onChange={(e) => upd('internalNotes', e.target.value)}
-              placeholder={es ? 'Solo visible al personal...' : 'Staff-only notes...'} />
+              placeholder={t('repairs.internalNotesPlaceholder')} />
           </div>
           {/* Diagnosis outcome — conversion tracking */}
           <div>
             <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              📊 {es ? '¿El cliente aceptó la reparación?' : 'Did customer accept the repair?'}
+              📊 {t('repairs.diagnosisOutcome')}
             </label>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               {[
-                { value: 'accepted', label: es ? '✅ Sí, aceptó' : '✅ Accepted', color: '#22c55e' },
-                { value: 'pending',  label: es ? '⏳ Pensando' : '⏳ Thinking', color: '#f59e0b' },
-                { value: 'declined', label: es ? '❌ No aceptó' : '❌ Declined', color: '#ef4444' },
+                { value: 'accepted', label: t('repairs.diagnosisAccepted'), color: '#22c55e' },
+                { value: 'pending',  label: t('repairs.diagnosisPending'), color: '#f59e0b' },
+                { value: 'declined', label: t('repairs.diagnosisDeclined'), color: '#ef4444' },
               ].map((opt) => (
                 <button
                   key={opt.value}
@@ -1335,13 +1310,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             )}
             <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.625rem' }}>
               <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.5rem', fontWeight: 600 }}>
-                ⚡ {es ? 'Acciones Rápidas' : 'Quick Actions'}
+                ⚡ {t('repairs.quickActions')}
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 {/* Round R2: canonical snake_case comparisons; setStatusAndPrint persists canonical. */}
                 {normalizeRepairStatus(form.status) !== REPAIR_STATUS.RECEIVED && normalizeRepairStatus(form.status) !== REPAIR_STATUS.PICKED_UP && (
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStatusAndPrint(REPAIR_STATUS.RECEIVED)}>
-                    📥 {es ? 'Recibido + Imprimir' : 'Received + Print'}
+                    📥 {t('repairs.receivedAndPrint')}
                   </button>
                 )}
                 <button type="button"
@@ -1349,7 +1324,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   onClick={() => setStatusAndPrint(REPAIR_STATUS.PICKED_UP)}
                   disabled={normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP}
                   style={{ opacity: normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? 0.7 : 1 }}>
-                  ✅ {normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? (es ? '✓ Completado' : '✓ Completed') : (es ? 'Completado + Imprimir' : 'Complete + Print')}
+                  ✅ {normalizeRepairStatus(form.status) === REPAIR_STATUS.PICKED_UP ? t('repairs.completedShortCheck') : t('repairs.completePrint')}
                 </button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
                   const depositCents = (repair as any)?.depositAmount || 0;
@@ -1360,29 +1335,29 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                     setStatusAndPrint(REPAIR_STATUS.CANCELLED);
                   }
                 }}>
-                  ❌ {es ? 'Cancelar + Imprimir' : 'Cancel + Print'}
+                  ❌ {t('repairs.cancelAndPrint')}
                 </button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => printTicket()}>
-                  🖨️ {es ? 'Imprimir' : 'Print'}
+                  🖨️ {t('repairs.printShort')}
                 </button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => printWarranty()}
-                  title={es ? 'Imprimir garantía de reparación' : 'Print repair warranty certificate'}
+                  title={t('repairs.warrantyTitle')}
                   style={{ background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.3)', color: '#34d399' }}>
-                  🛡️ {es ? 'Garantía' : 'Warranty'}
+                  🛡️ {t('repairs.warrantyShort')}
                 </button>
                 {balance > 0 && repair && onCollectBalance && (
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => {
                     onCollectBalance(repair);
                     handleClose();
                   }}>
-                    💰 ${balance.toFixed(2)} {es ? 'Cobrar' : 'Collect'}
+                    💰 ${balance.toFixed(2)} {t('repairs.collect')}
                   </button>
                 )}
               </div>
             </div>
             <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.625rem' }}>
               <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={() => printTicket(buildPayload(), true)}>
-                📝 {es ? 'Imprimir Solo Notas (Sin Precios)' : 'Print Notes Only (No Prices)'}
+                📝 {t('repairs.printNotesOnly')}
               </button>
             </div>
           </>
@@ -1406,11 +1381,11 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             upd('model', ''); upd('imei', ''); upd('issue', ''); upd('diagnosis', '');
             upd('parts', []); upd('laborCost', 0); upd('deposit', 0); upd('notes', ''); upd('internalNotes', '');
           }} className="btn btn-secondary" style={{ flex: 0.7 }}>
-            🗑️ {es ? 'Limpiar' : 'Clear'}
+            🗑️ {t('repairs.clear')}
           </button>
         )}
         <button type="button" onClick={handleSubmit} className="btn btn-primary" style={{ flex: 1 }}>
-          ✓ {isEdit ? (L.save || 'Save') : (es ? 'Crear Ticket' : 'Create Ticket')}
+          ✓ {isEdit ? (L.save || 'Save') : t('repairs.createTicket')}
         </button>
       </div>
 
