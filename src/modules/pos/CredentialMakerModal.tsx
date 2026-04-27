@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { Modal, SearchInput, ConfirmDialog } from '@/components/ui';
 import type { Customer } from '@/store/types';
@@ -15,16 +15,18 @@ import { persist } from '@/services/persist';
 import { openPrintWindow } from '@/hooks/usePrint';
 import JsBarcode from 'jsbarcode';
 
+type TFn = (key: string, ...args: any[]) => string;
+
 // ── Credential Card (printable) ───────────────────────────
 
 function CredentialCard({
   customer,
   settings,
-  es,
+  t,
 }: {
   customer: Customer;
   settings: { storeName?: string; storePhone?: string; storeWebsite?: string; customerNumberPrefix?: string; credentialBgColor?: string; credentialFooterColor?: string };
-  es: boolean;
+  t: TFn;
 }) {
   const barcodeRef = useRef<SVGSVGElement>(null);
   const customerCode = customer.customerNumber ||
@@ -98,7 +100,7 @@ function CredentialCard({
               <div style={{
                 fontSize: '13px', fontWeight: 'bold', color: 'white',
                 position: 'absolute', bottom: '8px', textAlign: 'center',
-              }}>{es ? 'Foto' : 'Photo'}</div>
+              }}>{t('credentialMaker.cardPhotoLabel')}</div>
             </div>
           )}
         </div>
@@ -153,12 +155,11 @@ interface Props {
 
 export default function CredentialMakerModal({ open, onClose }: Props) {
   const {
-    state: { customers, settings, lang },
+    state: { customers, settings },
     setCustomers,
   } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
-  const L = getLabels(lang);
+  const { t } = useTranslation();
 
   const [credentialSearch, setCredentialSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -242,9 +243,7 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
       } catch (err) {
         if (cancelled) return;
         console.error('Camera error:', err);
-        toast(es
-          ? 'No se pudo acceder a la cámara. Verifica permisos.'
-          : 'Could not access camera. Check permissions.', 'error');
+        toast(t('credentialMaker.cameraError'), 'error');
         setShowCamera(false);
       }
     })();
@@ -256,7 +255,7 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
         streamRef.current = null;
       }
     };
-  }, [showCamera, lang]);
+  }, [showCamera, t]);
 
   // Reset on close
   const handleClose = () => {
@@ -319,16 +318,16 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
   if (!selectedCustomer && !showCamera) {
     return (
       <>
-        <Modal open={open} onClose={handleClose} title={`📇 ${L.credentialModalTitle || 'Generate Customer Credential'}`} size="max-w-xl">
+        <Modal open={open} onClose={handleClose} title={`📇 ${t('credentialModalTitle')}`} size="max-w-xl">
           {/* Search input */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.5rem', display: 'block' }}>
-              {L.searchCustomerLabel || 'Search Customer'}
+            <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'block' }}>
+              {t('searchCustomerLabel')}
             </label>
             <input
               type="text"
               className="input"
-              placeholder={L.typeCustomer || 'Type customer name or phone...'}
+              placeholder={t('typeCustomer')}
               value={credentialSearch}
               onChange={(e) => setCredentialSearch(e.target.value)}
               autoFocus
@@ -338,9 +337,9 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
 
           {/* No search yet */}
           {!credentialSearch.trim() && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
               <div style={{ fontSize: '3rem', opacity: 0.3, marginBottom: '0.75rem' }}>🔍</div>
-              <p>{es ? 'Escribe el nombre o teléfono del cliente' : 'Type customer name or phone'}</p>
+              <p>{t('credentialMaker.typeCustomerHint')}</p>
             </div>
           )}
 
@@ -355,17 +354,17 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
                   style={{
                     width: '100%', padding: '1rem', textAlign: 'left', cursor: 'pointer',
                     marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px',
+                    alignItems: 'center', background: 'var(--bg-input)',
+                    border: '1px solid var(--border-default)', borderRadius: '12px',
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, color: '#a5b4fc' }}>{customer.name}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-accent-soft)' }}>{customer.name}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                       {customer.phone?.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3') || ''}
                     </div>
                     {customer.customerNumber && (
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         #{customer.customerNumber}
                       </div>
                     )}
@@ -373,8 +372,8 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
                   <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>🪪</span>
                 </button>
               )) : (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                  {L.noMatches || 'No matches'}
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  {t('noMatches')}
                 </div>
               )}
             </div>
@@ -384,13 +383,10 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
         {/* Photo confirmation dialog */}
         <ConfirmDialog
           open={showPhotoConfirm}
-          title={es ? '📸 Tomar Foto' : '📸 Take Photo'}
-          message={es
-            ? '¿Desea tomar una foto para la credencial?\n\n✅ SÍ = Abrir cámara\n❌ NO = Imprimir sin foto'
-            : 'Would you like to take a photo for the credential?\n\nYES = Open camera\nNO = Print without photo'
-          }
-          confirmLabel={es ? 'Sí, tomar foto' : 'Yes, take photo'}
-          cancelLabel={es ? 'No, sin foto' : 'No, without photo'}
+          title={t('credentialMaker.takePhotoTitle')}
+          message={t('credentialMaker.takePhotoMessage')}
+          confirmLabel={t('credentialMaker.takePhotoYes')}
+          cancelLabel={t('credentialMaker.takePhotoNo')}
           onConfirm={() => handlePhotoConfirm(true)}
           onCancel={() => handlePhotoConfirm(false)}
         />
@@ -401,7 +397,7 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
   // ── Phase 2: Camera ─────────────────────────────────────
   if (showCamera && selectedCustomer) {
     return (
-      <Modal open={true} onClose={stopCamera} title={`📸 ${es ? 'Tomar Foto' : 'Take Photo'} — ${selectedCustomer.name}`} size="max-w-xl">
+      <Modal open={true} onClose={stopCamera} title={`${t('credentialMaker.takePhotoTitle')} — ${selectedCustomer.name}`} size="max-w-xl">
         <div style={{ textAlign: 'center' }}>
           <video
             ref={videoRef}
@@ -409,7 +405,7 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
             playsInline
             style={{
               width: '100%', maxWidth: '400px', borderRadius: '8px',
-              border: '2px solid rgba(255,255,255,0.2)',
+              border: '2px solid var(--border-strong)',
             }}
           />
           <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -417,10 +413,10 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
 
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
           <button onClick={stopCamera} className="btn btn-secondary" style={{ flex: 1 }}>
-            {es ? 'Cancelar' : 'Cancel'}
+            {t('cancel')}
           </button>
           <button onClick={capturePhoto} className="btn btn-primary" style={{ flex: 1 }}>
-            📸 {es ? 'Capturar' : 'Capture'}
+            📸 {t('credentialMaker.capture')}
           </button>
         </div>
       </Modal>
@@ -430,10 +426,10 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
   // ── Phase 3: Show Credential Card ───────────────────────
   if (selectedCustomer && !showCamera) {
     return (
-      <Modal open={true} onClose={handleClose} title={`📇 ${L.customerCredential || 'Customer Credential'}`} size="max-w-xl">
+      <Modal open={true} onClose={handleClose} title={`📇 ${t('customerCredential')}`} size="max-w-xl">
         <>
           <div ref={printAreaRef}>
-            <CredentialCard customer={selectedCustomer} settings={settings} es={es} />
+            <CredentialCard customer={selectedCustomer} settings={settings} t={t} />
           </div>
 
           {/* DataCard printer instructions */}
@@ -443,27 +439,25 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
             borderRadius: '6px', fontSize: '0.875rem',
           }}>
             <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-              🖨️ {es ? 'Configuración de Impresión:' : 'Print Settings:'}
+              🖨️ {t('credentialMaker.printSettingsHeader')}
             </div>
             <div style={{ opacity: 0.9 }}>
-              {es
-                ? 'En el diálogo de impresión: Selecciona tu impresora de credenciales → Más opciones → Escala: 100% (Sin escalar)'
-                : 'In print dialog: Select your credential printer → More Settings → Scale: 100% (No scaling)'}
+              {t('credentialMaker.printSettingsBody')}
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
             <button onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>
-              {L.close || 'Close'}
+              {t('close')}
             </button>
             <button
               onClick={() => { setShowCamera(true); }}
               className="btn btn-warning" style={{ flex: 1 }}
             >
-              📸 {es ? 'Retomar Foto' : 'Retake Photo'}
+              📸 {t('credentialMaker.retakePhoto')}
             </button>
             <button onClick={handlePrint} className="btn btn-primary" style={{ flex: 1 }}>
-              🖨️ {L.generateCredential || 'Print Credential'}
+              🖨️ {t('generateCredential')}
             </button>
           </div>
         </>

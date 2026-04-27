@@ -25,6 +25,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { formatCurrency } from '@/utils/currency';
 import { normalizeCarrier, normalizePhone, formatPhone } from '@/utils/normalize';
@@ -86,8 +87,9 @@ export default function PhonePaymentModal({
   open, onClose, settings, cart, setCart, customers, setCustomers, sales, lang, L,
   setSelectedCustomer: propagateSelectedCustomer,
 }: Props) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const { toast } = useToast();
+  // lang and L kept vestigial — passed to CustomerFormModal (not yet migrated). V3 cleanup.
 
   // ── Tab ───────────────────────────────────────────────────
   const [modalTab, setModalTab] = useState<'payment' | 'activation'>('payment');
@@ -598,12 +600,7 @@ export default function PhonePaymentModal({
       // "AT&T - " with empty phoneNumber.
       // v2: refactored to use isValidPhone helper for DRY validation.
       if (!isValidPhone(phoneNumber)) {
-        toast(
-          es
-            ? 'El número de teléfono debe tener 10 dígitos'
-            : 'Phone number must be 10 digits',
-          'error',
-        );
+        toast(t('phonePay.errPhoneTenDigits'), 'error');
         return [];
       }
       const digits = sanitizePhone(phoneNumber);
@@ -637,7 +634,7 @@ export default function PhonePaymentModal({
     // or the customer gets double-charged.
     return items;
   }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount,
-      firstName, lastName, breakdown, es, toast]);
+      firstName, lastName, breakdown, t, toast]);
 
   // ── Add to Customers ─────────────────────────────────────
   // ── Open customer form (add new or edit existing) ────────
@@ -672,12 +669,7 @@ export default function PhonePaymentModal({
     // value would be persisted must pass isValidPhone.
     const phoneToPersist = data.phone || phoneNumber || '';
     if (!isValidPhone(phoneToPersist)) {
-      toast(
-        es
-          ? 'El teléfono del cliente debe tener 10 dígitos'
-          : 'Customer phone must be 10 digits',
-        'error',
-      );
+      toast(t('phonePay.errCustomerPhoneTenDigits'), 'error');
       return;
     }
 
@@ -805,16 +797,16 @@ export default function PhonePaymentModal({
     const line = lines.find((l) => l.id === lineId);
     if (!line) return;
     if (!line.carrier) {
-      toast(es ? 'Selecciona carrier para esta línea' : 'Pick a carrier for this line', 'error');
+      toast(t('phonePay.errPickCarrierLine'), 'error');
       return;
     }
     if (!isValidPhone(line.number)) {
-      toast(es ? 'Número inválido (10 dígitos)' : 'Invalid phone (10 digits)', 'error');
+      toast(t('phonePay.errInvalidPhoneShort'), 'error');
       return;
     }
     const amt = parseFloat(line.amount);
     if (!amt || amt <= 0) {
-      toast(es ? 'Monto inválido' : 'Invalid amount', 'error');
+      toast(t('phonePay.errInvalidAmount'), 'error');
       return;
     }
 
@@ -868,7 +860,7 @@ export default function PhonePaymentModal({
       }
       return remaining;
     });
-  }, [lines, firstName, lastName, settings, setCart, onClose, es, toast, selectedCustomer, propagateSelectedCustomer]);
+  }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer]);
 
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
@@ -944,7 +936,7 @@ export default function PhonePaymentModal({
     if (planPriceCents > 0) {
       newItems.push({
         id: generateId(),
-        name: `📱 ${es ? 'Plan' : 'Plan'} ${normalizedCarrier}${planLabel}`,
+        name: `📱 ${t('phonePay.itemPlanName')} ${normalizedCarrier}${planLabel}`,
         category: 'phone_payment',
         price: planPriceCents,
         qty: 1,
@@ -965,7 +957,7 @@ export default function PhonePaymentModal({
     if (amountCents > 0) {
       newItems.push({
         id: generateId(),
-        name: `⚡ ${es ? 'Cargo de Activación' : 'Activation Fee'} ${normalizedCarrier}${planLabel}`,
+        name: `⚡ ${t('phonePay.itemActivationFeeName')} ${normalizedCarrier}${planLabel}`,
         category: 'activation',
         price: amountCents,
         qty: 1,
@@ -1022,7 +1014,7 @@ export default function PhonePaymentModal({
     reset();
     onClose();
   }, [canAddActivation, actCarrier, actPhone, actPlan, actPlanPrice, actAmount, actNotes, actSpiff,
-      actCommissionCents, settings, setCart, onClose, es, firstName, lastName,
+      actCommissionCents, settings, setCart, onClose, t, firstName, lastName,
       selectedCustomer, propagateSelectedCustomer]);
 
   const handleOpenActivationPortal = () => {
@@ -1051,7 +1043,7 @@ export default function PhonePaymentModal({
     <Modal
       open={open}
       onClose={handleClose}
-      title={`📱 ${es ? 'Telefonía' : 'Phone Services'}`}
+      title={`📱 ${t('phonePay.modalTitle')}`}
       size="max-w-xl"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1059,22 +1051,22 @@ export default function PhonePaymentModal({
         {/* ── Tab switcher ─────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '0.375rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.625rem', padding: '0.25rem' }}>
           {[
-            { id: 'payment',    label: es ? '💳 Pago de Factura' : '💳 Bill Payment' },
-            { id: 'activation', label: es ? '⚡ Nueva Activación' : '⚡ New Activation' },
-          ].map((t) => (
+            { id: 'payment',    label: t('phonePay.tabBillPayment') },
+            { id: 'activation', label: t('phonePay.tabActivation') },
+          ].map((tab) => (
             <button
-              key={t.id}
-              onClick={() => setModalTab(t.id as any)}
+              key={tab.id}
+              onClick={() => setModalTab(tab.id as any)}
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer',
-                fontWeight: modalTab === t.id ? 700 : 400, fontSize: '0.82rem',
+                fontWeight: modalTab === tab.id ? 700 : 400, fontSize: '0.82rem',
                 border: 'none',
-                background: modalTab === t.id ? 'rgba(102,126,234,0.25)' : 'transparent',
-                color: modalTab === t.id ? '#a5b4fc' : '#64748b',
+                background: modalTab === tab.id ? 'rgba(102,126,234,0.25)' : 'transparent',
+                color: modalTab === tab.id ? '#a5b4fc' : '#64748b',
                 transition: 'all 0.15s',
               }}
             >
-              {t.label}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -1096,11 +1088,11 @@ export default function PhonePaymentModal({
                 marginBottom: '0.5rem',
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
               }}>
-                🔍 <span>{es ? 'Buscar cliente (nombre, teléfono, #)' : 'Search customer (name, phone, #)'}</span>
+                🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
               </div>
               <input
                 className="input"
-                placeholder={es ? 'Escribe para buscar...' : 'Start typing...'}
+                placeholder={t('phonePay.searchCustomerPlaceholder')}
                 value={custSearch}
                 onChange={(e) => {
                   setCustSearch(e.target.value);
@@ -1147,26 +1139,26 @@ export default function PhonePaymentModal({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Nombre' : 'First name'}
+                  {t('phonePay.firstNameLower')}
                 </label>
                 <input className="input" value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder={es ? 'Nombre' : 'First'} />
+                  placeholder={t('phonePay.firstNamePlaceholderLower')} />
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Apellido' : 'Last name'}
+                  {t('phonePay.lastNameLower')}
                 </label>
                 <input className="input" value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder={es ? 'Apellido' : 'Last'} />
+                  placeholder={t('phonePay.lastNamePlaceholderLower')} />
               </div>
             </div>
 
             {/* Carrier selector */}
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
-                {es ? 'Carrier *' : 'Carrier *'}
+                Carrier *
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                 {carriers.map((c) => {
@@ -1198,7 +1190,7 @@ export default function PhonePaymentModal({
               }}>
                 <span style={{ fontSize: '1.1rem' }}>💰</span>
                 <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-                  {es ? 'Comisión estimada' : 'Est. commission'}:
+                  {t('phonePay.estCommission')}:
                   <strong style={{ color: '#22c55e', marginLeft: '0.35rem' }}>
                     {((settings.carrierCommissions?.[normalizeCarrier(actCarrier)] ?? 0) * 100).toFixed(0)}%
                     {actCommissionCents > 0 && ` = ${formatCurrency(actCommissionCents)}`}
@@ -1212,7 +1204,7 @@ export default function PhonePaymentModal({
                       borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.72rem',
                       color: '#a5b4fc', fontWeight: 600,
                     }}>
-                    🔗 {es ? 'Abrir Portal' : 'Open Portal'}
+                    🔗 {t('phonePay.openPortal')}
                   </button>
                 )}
               </div>
@@ -1231,7 +1223,7 @@ export default function PhonePaymentModal({
                 <div style={{ fontSize: '0.82rem', color: '#94a3b8', flex: 1 }}>
                   <strong style={{ color: '#fbbf24' }}>Spiff</strong>
                   <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: '#64748b' }}>
-                    {es ? '(bono interno del carrier — no cobrado al cliente)' : '(internal carrier bonus — not charged to customer)'}
+                    {t('phonePay.spiffHint')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1258,7 +1250,7 @@ export default function PhonePaymentModal({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Número de teléfono *' : 'Phone number *'}
+                  {t('phonePay.phoneNumberStarLabel')}
                 </label>
                 <input
                   className="input"
@@ -1272,19 +1264,19 @@ export default function PhonePaymentModal({
                 />
                 {actPhone && !actPhoneValid && (
                   <div style={{ fontSize: '0.68rem', color: '#f87171', marginTop: '0.2rem' }}>
-                    {es ? '10 dígitos requeridos' : '10 digits required'}
+                    {t('phonePay.tenDigitsRequired')}
                   </div>
                 )}
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Plan / descripción' : 'Plan / description'}
+                  {t('phonePay.planDescription')}
                 </label>
                 <input
                   className="input"
                   value={actPlan}
                   onChange={(e) => setActPlan(e.target.value)}
-                  placeholder={es ? 'ej. Plan $45 Unlimited' : 'e.g. $45 Unlimited Plan'}
+                  placeholder={t('phonePay.planPlaceholder')}
                   list="activation-plan-presets"
                 />
                 <datalist id="activation-plan-presets">
@@ -1297,24 +1289,24 @@ export default function PhonePaymentModal({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Costo del plan ($)' : 'Plan price ($)'}
+                  {t('phonePay.planPrice')}
                 </label>
                 <input className="input" type="number" min="0" step="0.01"
                   value={actPlanPrice} onChange={(e) => setActPlanPrice(e.target.value)}
                   placeholder="0.00" />
                 <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  {es ? 'Primer mes del plan' : 'First month of plan'}
+                  {t('phonePay.firstMonthHint')}
                 </p>
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {es ? 'Cargo de activación ($) *' : 'Activation fee ($) *'}
+                  {t('phonePay.activationFeeLabel')}
                 </label>
                 <input className="input" type="number" min="0" step="0.01"
                   value={actAmount} onChange={(e) => setActAmount(e.target.value)}
                   placeholder="0.00" />
                 <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  {es ? 'SIM / setup' : 'SIM / setup'}
+                  SIM / setup
                 </p>
               </div>
             </div>
@@ -1322,11 +1314,11 @@ export default function PhonePaymentModal({
             {/* Notes */}
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                {es ? 'Notas internas' : 'Internal notes'}
+                {t('phonePay.internalNotes')}
               </label>
               <input className="input" value={actNotes}
                 onChange={(e) => setActNotes(e.target.value)}
-                placeholder={es ? 'IMEI, notas de activación...' : 'IMEI, activation notes...'} />
+                placeholder={t('phonePay.internalNotesPlaceholder')} />
             </div>
 
             {/* Add to cart */}
@@ -1336,7 +1328,7 @@ export default function PhonePaymentModal({
               className="btn btn-success"
               style={{ fontSize: '1rem', padding: '0.75rem', marginTop: '0.25rem' }}
             >
-              🛒 {es ? 'Agregar al Carrito' : 'Add to Cart'}
+              🛒 {t('addToCart')}
               {(() => {
                 const plan = parseFloat(actPlanPrice) || 0;
                 const fee  = parseFloat(actAmount) || 0;
@@ -1367,11 +1359,11 @@ export default function PhonePaymentModal({
             marginBottom: '0.5rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
-            🔍 <span>{es ? 'Buscar cliente (nombre, teléfono, #)' : 'Search customer (name, phone, #)'}</span>
+            🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
           </div>
           <input
             className="input"
-            placeholder={es ? 'Escribe para buscar...' : 'Start typing...'}
+            placeholder={t('phonePay.searchCustomerPlaceholder')}
             value={custSearch}
             onChange={(e) => {
               setCustSearch(e.target.value);
@@ -1413,7 +1405,7 @@ export default function PhonePaymentModal({
               <span style={{ color: '#22c55e' }}>✓ {selectedCustomer.name}</span>
               {hasKnownLines && (
                 <span style={{ color: '#a5b4fc' }}>
-                  · {knownLines.length} {es ? 'línea(s) conocida(s)' : `known line${knownLines.length > 1 ? 's' : ''}`}
+                  · {knownLines.length} {t('phonePay.knownLineCount', knownLines.length)}
                 </span>
               )}
               {/* R-PHONE-FAMILY-SWITCHCUSTOMER: explicit "change customer" button.
@@ -1448,7 +1440,7 @@ export default function PhonePaymentModal({
                   cursor: 'pointer',
                 }}
               >
-                × {es ? 'Cambiar cliente' : 'Change customer'}
+                {t('phonePay.changeCustomer')}
               </button>
             </div>
           )}
@@ -1457,7 +1449,7 @@ export default function PhonePaymentModal({
         {/* ── Carrier Buttons ─────────────────────────────── */}
         <div>
           <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.5rem' }}>
-            {es ? 'Seleccionar Carrier' : 'Select Carrier'}
+            {t('phonePay.selectCarrier')}
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
             {carriers.map((c) => {
@@ -1500,14 +1492,14 @@ export default function PhonePaymentModal({
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a5b4fc' }}>
-                📋 {es ? 'Líneas conocidas' : 'Known lines'} — {selectedCustomer?.name}
+                📋 {t('phonePay.knownLines')} — {selectedCustomer?.name}
               </span>
               {selectedKnownCount > 0 && (
                 <span style={{
                   fontSize: '0.7rem', background: 'rgba(102,126,234,0.3)',
                   color: '#c7d2fe', padding: '0.15rem 0.5rem', borderRadius: '999px',
                 }}>
-                  {selectedKnownCount} {es ? 'seleccionada(s)' : 'selected'}
+                  {t('phonePay.knownLinesSelectedCount', selectedKnownCount)}
                 </span>
               )}
             </div>
@@ -1539,7 +1531,7 @@ export default function PhonePaymentModal({
                         e.stopPropagation();
                         autoCopyPhone(norm);
                       }}
-                      title={es ? 'Click para copiar' : 'Click to copy'}
+                      title={t('phonePay.clickToCopy')}
                       style={{
                         fontSize: '0.9rem', fontFamily: 'monospace',
                         color: copiedPhone === norm ? '#22c55e' : (isChecked ? '#e2e8f0' : '#94a3b8'),
@@ -1549,12 +1541,12 @@ export default function PhonePaymentModal({
                         userSelect: 'all',
                       }}
                     >
-                      {copiedPhone === norm ? `✓ ${es ? 'Copiado!' : 'Copied!'}` : formatPhone(norm)}
+                      {copiedPhone === norm ? `✓ ${t('phonePay.copiedExclaim')}` : formatPhone(norm)}
                     </span>
                     {/* Copied badge when checked */}
                     {isChecked && copiedPhone === norm && (
                       <span style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 600, flexShrink: 0 }}>
-                        📋 {es ? 'Listo' : 'Ready'}
+                        📋 {t('phonePay.ready')}
                       </span>
                     )}
                   </div>
@@ -1571,13 +1563,13 @@ export default function PhonePaymentModal({
                 fontSize: '0.82rem',
               }}>
                 <span style={{ color: '#64748b' }}>
-                  {selectedKnownCount} {es ? 'líneas' : 'lines'}
+                  {selectedKnownCount} {t('phonePay.linesPlural')}
                 </span>
                 <span style={{ color: '#a5b4fc', fontWeight: 700 }}>
                   ${Object.values(selectedKnownLines)
                     .reduce((s, v) => s + (parseFloat(v) || 0), 0)
                     .toFixed(2)}
-                  {' '}{es ? 'total' : 'total'}
+                  {' '}{t('phonePay.totalShort')}
                 </span>
               </div>
             )}
@@ -1651,10 +1643,10 @@ export default function PhonePaymentModal({
               />
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isMultiLine ? '#a5b4fc' : '#e2e8f0' }}>
-                  👨‍👩‍👧 {es ? 'Plan Familiar / Multi-Línea' : 'Family Plan / Multi-Line'}
+                  👨‍👩‍👧 {t('phonePay.familyPlanTitle')}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  {es ? 'Agregar múltiples líneas a la vez' : 'Add multiple lines at once'}
+                  {t('phonePay.familyPlanSubtitle')}
                 </div>
               </div>
             </label>
@@ -1663,7 +1655,7 @@ export default function PhonePaymentModal({
             {isMultiLine ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-                  {es ? 'Líneas' : 'Lines'}
+                  {t('phonePay.lines')}
                 </label>
                 {lines.map((line, i) => {
                   const lineCarrierColor = line.carrier ? (CARRIER_COLORS[line.carrier] || '#667eea') : '#64748b';
@@ -1702,7 +1694,7 @@ export default function PhonePaymentModal({
                           // auto-copy-to-clipboard behavior for multi-line entries.
                           autoCopyPhone(clean);
                         }}
-                        placeholder={es ? 'Número' : 'Phone'}
+                        placeholder={t('phonePay.phonePlaceholder')}
                         className="input" style={{ flex: 1, minWidth: '110px' }}
                       />
                       {/* R-PHONE-FAMILY-COPYBTN: manual copy per-line for Family Plan.
@@ -1719,24 +1711,14 @@ export default function PhonePaymentModal({
                               const clean = sanitizePhone(line.number);
                               if (!isValidPhone(clean)) return;
                               navigator.clipboard.writeText(clean).then(() => {
-                                toast(
-                                  es
-                                    ? `Número copiado: ${formatPhone(clean)}`
-                                    : `Number copied: ${formatPhone(clean)}`,
-                                  'success',
-                                );
+                                toast(t('phonePay.numberCopied', formatPhone(clean)), 'success');
                               }).catch(() => {
-                                toast(
-                                  es
-                                    ? 'No se pudo copiar al portapapeles'
-                                    : 'Could not copy to clipboard',
-                                  'error',
-                                );
+                                toast(t('phonePay.couldNotCopy'), 'error');
                               });
                             }}
                             disabled={!lineValid}
-                            title={es ? 'Copiar número' : 'Copy number'}
-                            aria-label={es ? 'Copiar número al portapapeles' : 'Copy number to clipboard'}
+                            title={t('phonePay.copyNumberTitle')}
+                            aria-label={t('phonePay.copyNumberAria')}
                             style={{
                               background: 'rgba(100,116,139,0.12)',
                               color: '#94a3b8',
@@ -1765,7 +1747,7 @@ export default function PhonePaymentModal({
                           borderColor: line.carrier ? `${lineCarrierColor}66` : undefined,
                         }}
                       >
-                        <option value="">{es ? 'Carrier…' : 'Carrier…'}</option>
+                        <option value="">{t('phonePay.carrierShort')}</option>
                         {carriers.map((c) => (
                           <option key={c} value={c}>{c}</option>
                         ))}
@@ -1788,8 +1770,8 @@ export default function PhonePaymentModal({
                         onClick={() => handlePortalForLine(line.id)}
                         disabled={!lineReady}
                         title={lineReady
-                          ? (es ? `Abrir portal de ${line.carrier}` : `Open ${line.carrier} portal`)
-                          : (es ? 'Faltan datos en la línea' : 'Missing line data')}
+                          ? t('phonePay.openCarrierPortal', line.carrier)
+                          : t('phonePay.missingLineData')}
                         style={{
                           background: lineReady ? lineCarrierColor : 'rgba(255,255,255,0.05)',
                           color: lineReady ? '#fff' : '#475569',
@@ -1814,11 +1796,11 @@ export default function PhonePaymentModal({
                 })}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <button onClick={addLine} className="btn btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }}>
-                    + {es ? 'Agregar Línea' : 'Add Line'}
+                    + {t('phonePay.addLine')}
                   </button>
                   {validLines.length > 0 && (
                     <span style={{ fontSize: '0.75rem', color: '#34d399' }}>
-                      {validLines.length} {es ? 'línea(s) lista(s)' : `line${validLines.length > 1 ? 's' : ''} ready`}
+                      {t('phonePay.linesReadyCount', validLines.length)}
                     </span>
                   )}
                 </div>
@@ -1826,7 +1808,7 @@ export default function PhonePaymentModal({
             ) : !hasKnownLines ? (
               <div>
                 <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>
-                  {es ? 'Número de Teléfono' : 'Phone Number'}
+                  {t('phonePay.phoneNumberLabel')}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -1851,7 +1833,7 @@ export default function PhonePaymentModal({
                       color: copiedPhone === sanitizePhone(phoneNumber) ? '#22c55e' : '#475569',
                       transition: 'all 0.2s', pointerEvents: 'none',
                     }}>
-                      {copiedPhone === sanitizePhone(phoneNumber) ? '✓ Copied' : ''}
+                      {copiedPhone === sanitizePhone(phoneNumber) ? `✓ ${t('phonePay.copiedShort')}` : ''}
                     </span>
                   )}
                 </div>
@@ -1868,14 +1850,14 @@ export default function PhonePaymentModal({
         {hasKnownLines && !isMultiLine && (
           <details style={{ fontSize: '0.8rem' }}>
             <summary style={{ cursor: 'pointer', color: '#64748b', userSelect: 'none', padding: '0.25rem 0' }}>
-              + {es ? 'Agregar número nuevo' : 'Add a new number'}
+              + {t('phonePay.addNewNumber')}
             </summary>
             <div style={{ paddingTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
               <input
                 type="tel"
                 className="input"
                 style={{ flex: 1 }}
-                placeholder={es ? 'Número nuevo' : 'New number'}
+                placeholder={t('phonePay.newNumberPlaceholder')}
                 value={newLinePhone}
                 inputMode="numeric"
                 maxLength={10}
@@ -1906,13 +1888,13 @@ export default function PhonePaymentModal({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>
-              {es ? 'Nombre' : 'First Name'}
+              {t('phonePay.firstNameUpper')}
             </label>
             <input className="input" placeholder="John" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </div>
           <div>
             <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>
-              {es ? 'Apellido' : 'Last Name'}
+              {t('phonePay.lastNameUpper')}
             </label>
             <input className="input" placeholder="Doe" value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </div>
@@ -1925,7 +1907,7 @@ export default function PhonePaymentModal({
             fontWeight: 700, marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
           }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#667eea', display: 'inline-block' }} />
-            {es ? 'PORTAL DE PAGO' : 'PAYMENT PORTAL'}
+            {t('phonePay.paymentPortalHeader')}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
             {PORTALS.map((p) => {
@@ -1956,7 +1938,7 @@ export default function PhonePaymentModal({
         {!isMultiLine && (
           <div>
             <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>
-              {es ? 'Monto de Pago ($)' : 'Payment Amount ($)'}
+              {t('phonePay.paymentAmount')}
             </label>
             <input
               type="number"
@@ -1970,9 +1952,7 @@ export default function PhonePaymentModal({
             />
             {hasKnownLines && selectedKnownCount === 1 && (
               <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', textAlign: 'center' }}>
-                {es
-                  ? '↑ Este monto se aplica automáticamente a la línea seleccionada arriba'
-                  : '↑ This amount is auto-applied to the selected line above'}
+                {t('phonePay.amountAutoApplied')}
               </div>
             )}
           </div>
@@ -1995,11 +1975,11 @@ export default function PhonePaymentModal({
           }}>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#22c55e', fontWeight: 700, fontSize: '0.88rem' }}>
-                💰 {es ? 'Tu Comisión' : 'Your Commission'}
+                💰 {t('phonePay.yourCommission')}
               </div>
               {breakdown.commissionBreakdown.length === 1 ? (
                 <div style={{ fontSize: '0.72rem', color: '#86efac', marginTop: '0.15rem' }}>
-                  {breakdown.commissionBreakdown[0].carrier}: {(breakdown.commissionBreakdown[0].rate * 100).toFixed(0)}% {es ? 'comisión' : 'commission'}
+                  {breakdown.commissionBreakdown[0].carrier}: {(breakdown.commissionBreakdown[0].rate * 100).toFixed(0)}% {t('phonePay.commissionLabel')}
                 </div>
               ) : (
                 <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
@@ -2031,15 +2011,15 @@ export default function PhonePaymentModal({
             fontSize: '0.88rem',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#cbd5e1' }}>
-              <span>{es ? 'Pago de Factura' : 'Bill Payment'}{breakdown.lineCount > 1 ? ` (${breakdown.lineCount} ${es ? 'líneas' : 'lines'})` : ''}:</span>
+              <span>{t('phonePay.billPaymentLabel')}{breakdown.lineCount > 1 ? ` (${breakdown.lineCount} ${t('phonePay.linesPlural')})` : ''}:</span>
               <span style={{ fontWeight: 600 }}>${breakdown.subtotal.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#94a3b8' }}>
-              <span>{es ? 'Impuesto de Servicios' : 'Utility Users Tax'} ({(breakdown.utilRate * 100).toFixed(2)}%):</span>
+              <span>{t('phonePay.utilityUsersTax')} ({(breakdown.utilRate * 100).toFixed(2)}%):</span>
               <span>+${breakdown.utilityTax.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#94a3b8' }}>
-              <span>{es ? 'Recargo Móvil CA' : 'CA Mobility Fee'}{breakdown.lineCount > 1 ? ` × ${breakdown.lineCount}` : ''}:</span>
+              <span>{t('phonePay.caMobilityFee')}{breakdown.lineCount > 1 ? ` × ${breakdown.lineCount}` : ''}:</span>
               <span>+${breakdown.mobilityTot.toFixed(2)}</span>
             </div>
             {/* CC fee row removed — Cart.tsx is the source of truth. */}
@@ -2049,7 +2029,7 @@ export default function PhonePaymentModal({
               borderTop: '1px solid rgba(59,130,246,0.3)',
               fontSize: '1.05rem', fontWeight: 800, color: '#93c5fd',
             }}>
-              <span>{es ? 'Total a Cobrar' : 'Total to Charge'}:</span>
+              <span>{t('phonePay.totalToCharge')}:</span>
               <span>${breakdown.total.toFixed(2)}</span>
             </div>
           </div>
@@ -2068,13 +2048,13 @@ export default function PhonePaymentModal({
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.15rem',
           }}
           title={selectedCustomer
-            ? (es ? 'Actualizar información del cliente' : 'Update customer information')
-            : (es ? 'Agregar este número a Clientes' : 'Add this number to Customers')}>
+            ? t('phonePay.updateCustomerTitle')
+            : t('phonePay.addToCustomersTitle')}>
             <span>{selectedCustomer ? '✏️' : '👤'}</span>
             <span>
               {selectedCustomer
-                ? (es ? 'Actualizar Cliente' : 'Update Customer')
-                : (es ? 'Agregar Cliente' : 'Add to Customers')}
+                ? t('phonePay.updateCustomerBtn')
+                : t('phonePay.addToCustomersBtn')}
             </span>
           </button>
 
@@ -2085,7 +2065,7 @@ export default function PhonePaymentModal({
             color: '#94a3b8', cursor: 'pointer',
             fontSize: '0.85rem', fontWeight: 600,
           }}>
-            {es ? 'Cancelar' : 'Cancel'}
+            {t('cancel')}
           </button>
 
           <button onClick={reset} style={{
@@ -2093,7 +2073,7 @@ export default function PhonePaymentModal({
             border: '1px solid rgba(255,255,255,0.15)',
             background: 'rgba(255,255,255,0.06)',
             color: '#94a3b8', cursor: 'pointer', fontSize: '0.85rem',
-          }} title={es ? 'Limpiar' : 'Clear'}>
+          }} title={t('clear')}>
             🗑️
           </button>
 
@@ -2105,7 +2085,7 @@ export default function PhonePaymentModal({
             cursor: carrier ? 'pointer' : 'not-allowed',
             fontSize: '0.85rem', fontWeight: 600,
           }}>
-            {es ? 'Portal' : 'Portal'}
+            Portal
           </button>
 
           <button onClick={handleAddToCart} disabled={!canAddToCart} style={{
@@ -2119,7 +2099,7 @@ export default function PhonePaymentModal({
             fontSize: '0.9rem', fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
           }}>
-            {es ? 'Agregar al Carrito' : 'Add to Cart'} →
+            {t('addToCart')} →
           </button>
         </div>
 
@@ -2155,7 +2135,7 @@ export default function PhonePaymentModal({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
-                  📞 {es ? 'Selecciona Línea' : 'Select Line'}
+                  📞 {t('phonePay.selectLine')}
                 </h3>
                 <button onClick={() => setPhoneSelectorCustomer(null)} style={{
                   background: 'none', border: 'none', color: '#94a3b8',
@@ -2163,9 +2143,7 @@ export default function PhonePaymentModal({
                 }}>✕</button>
               </div>
               <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '0.75rem' }}>
-                {es
-                  ? `${c.name} tiene ${validPhones.length} líneas. ¿Cuál vas a usar?`
-                  : `${c.name} has ${validPhones.length} lines. Which one?`}
+                {t('phonePay.customerHasLinesPrompt', c.name, validPhones.length)}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {validPhones.map((p, idx) => {
@@ -2228,7 +2206,7 @@ export default function PhonePaymentModal({
                   fontSize: '0.85rem',
                 }}
               >
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('cancel')}
               </button>
             </div>
           </div>

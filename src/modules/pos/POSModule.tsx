@@ -7,6 +7,7 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog, SearchInput, Modal } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
 import { formatCurrency } from '@/utils/currency';
 import { normalizePhone } from '@/utils/normalize';
@@ -60,7 +61,8 @@ export default function POSModule() {
   } = useApp();
 
   const { toast } = useToast();
-  const L = getLabels(lang);
+  const { t } = useTranslation();
+  const L = getLabels(lang); // kept for prop drilling to PhonePaymentModal (not yet migrated)
 
   // ── Stale-closure guards: ref-mirrors of state arrays so back-to-back
   // updates within handleCompleteSale (and from rapid scanner input in addToCart)
@@ -240,7 +242,7 @@ export default function POSModule() {
       // Stock guard — blocks ALL entry points (ProductGrid, search, scanner).
       // Services are exempt: getStock() returns 999 for service category.
       if (getStock(item) <= 0) {
-        toast(L.outOfStock || 'Out of stock', 'warning');
+        toast(t('outOfStock'), 'warning');
         return;
       }
       const currentCart = cartRef.current;
@@ -248,7 +250,7 @@ export default function POSModule() {
 
       if (existing) {
         if (existing.qty >= getStock(item)) {
-          toast(L.notEnoughStock || 'Not enough stock!', 'warning');
+          toast(t('notEnoughStock'), 'warning');
           return;
         }
         const next = currentCart.map((c) =>
@@ -309,10 +311,7 @@ export default function POSModule() {
         }
       }
 
-      toast(
-        lang === 'es' ? `${item.name} agregado` : `${item.name} added`,
-        'success',
-      );
+      toast(t('pos.itemAdded', item.name), 'success');
     },
     [setCart, activeCategory, customCategories, getStock, toast, L, inventory, lang],
   );
@@ -536,12 +535,7 @@ export default function POSModule() {
         // only 'cancelled' is checked.
         const freshStatus = String(repair.status || '').toLowerCase();
         if (freshStatus === 'cancelled') {
-          toast(
-            lang === 'es'
-              ? 'La reparación fue cancelada. El pago no se procesó.'
-              : 'Repair was cancelled. Payment was not processed.',
-            'error',
-          );
+          toast(t('pos.repairCancelledPayment'), 'error');
           return;
         }
 
@@ -672,12 +666,7 @@ export default function POSModule() {
         // forfeited between cart-add and checkout commit.
         const freshStatus = String(layaway.status || '').toLowerCase();
         if (freshStatus === 'cancelled' || freshStatus === 'forfeited') {
-          toast(
-            lang === 'es'
-              ? 'Este apartado fue cancelado. No se puede completar la venta.'
-              : 'This layaway was cancelled. Cannot complete sale.',
-            'error',
-          );
+          toast(t('pos.layawayCancelledSale'), 'error');
           return;
         }
         const newPaid = (layaway.paidAmount || 0) + paidCents;
@@ -722,12 +711,7 @@ export default function POSModule() {
       // 7. Show receipt
       setShowReceipt(true);
 
-      toast(
-        lang === 'es'
-          ? `Venta ${sale.invoiceNumber} completada!`
-          : `Sale ${sale.invoiceNumber} completed!`,
-        'success',
-      );
+      toast(t('pos.saleCompleted', sale.invoiceNumber), 'success');
     },
     [
       setSales, setInventory, setCustomers,
@@ -772,12 +756,7 @@ export default function POSModule() {
     // Mirrors the guards from PaymentModal slim (employee + payment
     // sufficiency) so behavior matches for non-phone sales.
     if (!currentEmployee) {
-      toast(
-        lang === 'es'
-          ? 'Selecciona un empleado antes de completar la venta'
-          : 'Select an employee before completing the sale',
-        'error',
-      );
+      toast(t('pos.selectEmployeeFirst'), 'error');
       return;
     }
 
@@ -791,12 +770,7 @@ export default function POSModule() {
     );
     if (paidCents < totals.total) {
       const shortBy = totals.total - paidCents;
-      toast(
-        lang === 'es'
-          ? `Pago insuficiente — falta $${(shortBy / 100).toFixed(2)}`
-          : `Insufficient payment — short by $${(shortBy / 100).toFixed(2)}`,
-        'error',
-      );
+      toast(t('paymentModal.insufficientPayment', formatCurrency(shortBy)), 'error');
       return;
     }
 
@@ -833,7 +807,7 @@ export default function POSModule() {
     setDiscount({ amount: 0, type: 'percent', reason: '' });
     setSelectedCustomer(null);
     setShowClearConfirm(false);
-    toast(lang === 'es' ? 'Carrito vacío' : 'Cart cleared', 'info');
+    toast(t('pos.cartCleared'), 'info');
   }, [setCart, toast, lang]);
 
   // ── Search persistence ──────────────────────────────────
@@ -855,16 +829,16 @@ export default function POSModule() {
       const catId = activeCategory.slice('custom:'.length);
       const cat = customCategories.find((c) => c.id === catId);
       return {
-        title: cat ? (lang === 'es' && cat.labelEs ? cat.labelEs : cat.label) : 'Category',
-        subtitle: cat?.description || L.selectItemsToAdd || '',
+        title: cat ? (lang === 'es' && cat.labelEs ? cat.labelEs : cat.label) : t('pos.categoryFallback'),
+        subtitle: cat?.description || t('selectItemsToAdd'),
       };
     }
 
     const titles: Record<string, { title: string; subtitle: string }> = {
-      accessories: { title: L.qaAccessories, subtitle: L.qaAccessoriesDesc },
-      cellphones: { title: L.qaCellphones, subtitle: L.qaCellphonesDesc },
-      services: { title: L.qaServices, subtitle: L.qaServicesDesc },
-      international: { title: L.internationalTopUp, subtitle: L.selectProviderAmount || '' },
+      accessories: { title: t('qaAccessories'), subtitle: t('qaAccessoriesDesc') },
+      cellphones: { title: t('qaCellphones'), subtitle: t('qaCellphonesDesc') },
+      services: { title: t('qaServices'), subtitle: t('qaServicesDesc') },
+      international: { title: t('internationalTopUp'), subtitle: t('selectProviderAmount') },
     };
 
     return titles[activeCategory] || { title: activeCategory, subtitle: '' };
@@ -880,24 +854,24 @@ export default function POSModule() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-2xl font-bold text-white">
-                {L.searchResults || 'Search Results'}
+                {t('searchResults')}
               </h2>
               <p className="text-sm text-slate-400">
-                {searchResults.length} {lang === 'es' ? 'resultado(s)' : (searchResults.length === 1 ? 'item found' : 'items found')}
+                {t('pos.resultsCount', searchResults.length)}
               </p>
             </div>
             <button
               onClick={() => handleSearchChange('')}
               className="btn btn-secondary btn-sm"
             >
-              ✕ {L.clearSearch || 'Clear Search'}
+              ✕ {t('clearSearch')}
             </button>
           </div>
 
           <SearchInput
             value={searchTerm}
             onChange={handleSearchChange}
-            placeholder={L.searchPlaceholder}
+            placeholder={t('searchPlaceholder')}
             className="mb-4"
             autoFocus
           />
@@ -906,7 +880,7 @@ export default function POSModule() {
             {searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                 <span className="text-5xl mb-4">🔍</span>
-                <p className="font-medium">{L.noMatches || 'No matches'}</p>
+                <p className="font-medium">{t('noMatches')}</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -925,7 +899,7 @@ export default function POSModule() {
                     <p className="text-base font-bold text-emerald-400">
                       {formatCurrency(item.price)}
                     </p>
-                    <p className="text-xs text-slate-500">{item.qty} in stock</p>
+                    <p className="text-xs text-slate-500">{item.qty} {t('pos.inStock')}</p>
                   </button>
                 ))}
               </div>
@@ -1021,14 +995,14 @@ export default function POSModule() {
           <div style={{
             position: 'absolute', bottom: '1rem', left: '50%', transform: 'translateX(-50%)',
             zIndex: 50, width: '420px', maxWidth: '90vw',
-            background: '#1e293b', border: '1px solid rgba(99,102,241,0.4)',
+            background: 'var(--bg-secondary)', border: '1px solid rgba(99,102,241,0.4)',
             borderRadius: '0.875rem', padding: '0.875rem 1rem', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a5b4fc' }}>
-                📦 {lang === 'es' ? '¿Agregar accesorios?' : 'Add accessories?'}
+                📦 {t('pos.bundleSuggestion')}
               </span>
-              <button onClick={() => setBundleSuggestion([])} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
+              <button onClick={() => setBundleSuggestion([])} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
               {bundleSuggestion.map((acc) => (
@@ -1040,9 +1014,9 @@ export default function POSModule() {
                   }}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.5rem',
-                    cursor: 'pointer', fontSize: '0.75rem', color: '#e2e8f0', textAlign: 'left', gap: '0.4rem',
+                    padding: '0.4rem 0.6rem', background: 'var(--bg-input)',
+                    border: '1px solid var(--border-default)', borderRadius: '0.5rem',
+                    cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-primary)', textAlign: 'left', gap: '0.4rem',
                   }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</span>
@@ -1141,7 +1115,7 @@ export default function POSModule() {
             setCustomCategories(updated);
             saveLocal('pos_custom_categories', updated);
             setShowAddCategory(false);
-            toast(lang === 'es' ? 'Categoría creada' : 'Category created', 'success');
+            toast(t('pos.categoryCreated'), 'success');
           }}
           onClose={() => setShowAddCategory(false)}
         />
@@ -1149,11 +1123,11 @@ export default function POSModule() {
 
       <ConfirmDialog
         open={showClearConfirm}
-        title={L.clearCartConfirm || 'Clear cart?'}
-        message={L.clearCartConfirm || 'Clear entire cart?'}
+        title={t('clearCartConfirm')}
+        message={t('clearCartConfirm')}
         variant="danger"
-        confirmLabel={L.clear || 'Clear'}
-        cancelLabel={L.cancel || 'Cancel'}
+        confirmLabel={t('clear')}
+        cancelLabel={t('cancel')}
         onConfirm={handleClearCart}
         onCancel={() => setShowClearConfirm(false)}
       />
@@ -1166,7 +1140,7 @@ export default function POSModule() {
             >
             <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">
-                👤 {L.selectCustomerOptional}
+                👤 {t('selectCustomerOptional')}
               </h2>
               <button
                 onClick={() => setShowCustomerSearch(false)}
@@ -1180,7 +1154,7 @@ export default function POSModule() {
               <SearchInput
                 value={customerSearchQ}
                 onChange={setCustomerSearchQ}
-                placeholder={L.typeCustomer || 'Search customers…'}
+                placeholder={t('typeCustomer')}
                 autoFocus
                 className="mb-3"
               />
@@ -1194,7 +1168,7 @@ export default function POSModule() {
                   }}
                   className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-slate-400"
                 >
-                  🚶 {lang === 'es' ? 'Sin cliente' : 'Walk-in (no customer)'}
+                  🚶 {t('pos.walkInOption')}
                 </button>
 
                 {customerResults.map((c) => (
@@ -1215,7 +1189,7 @@ export default function POSModule() {
                         {c.phone}
                         {c.storeCredit > 0 && (
                           <span className="text-emerald-400 ml-2">
-                            Credit: {formatCurrency(c.storeCredit)}
+                            {t('pos.creditPrefix')} {formatCurrency(c.storeCredit)}
                           </span>
                         )}
                       </p>
@@ -1225,7 +1199,7 @@ export default function POSModule() {
 
                 {customerResults.length === 0 && customerSearchQ.trim() && (
                   <p className="text-center text-slate-500 text-sm py-4">
-                    {L.noMatches || 'No matches'}
+                    {t('noMatches')}
                   </p>
                 )}
               </div>
@@ -1276,12 +1250,7 @@ export default function POSModule() {
           }
           setCart([...cart, ...items]);
           setShowTopUp(false);
-          toast(
-            lang === 'es'
-              ? `${items.length} recarga(s) agregada(s) al carrito`
-              : `${items.length} top-up(s) added to cart`,
-            'success',
-          );
+          toast(t('pos.topUpsAdded', items.length), 'success');
         }}
       />
     </>
@@ -1294,7 +1263,8 @@ function AddCategoryModal({ lang, onSave, onClose }: {
   onSave: (cat: CustomCategory) => void;
   onClose: () => void;
 }) {
-  const es = lang === 'es';
+  void lang; // vestigial — kept for parent compat
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     label: '', labelEs: '', icon: '📦', category: 'accessory', taxMode: 'sales' as const,
   });
@@ -1303,8 +1273,8 @@ function AddCategoryModal({ lang, onSave, onClose }: {
   const ICONS = ['📦','🔌','🎧','🖥️','📱','🔋','💡','🎮','⌚','💻','🖨️','🔧','🛍️','✨'];
 
   const handleSave = () => {
-    if (!form.label.trim()) { setErr(es ? 'Nombre requerido' : 'Name required'); return; }
-    if (!form.category.trim()) { setErr(es ? 'Categoría de inventario requerida' : 'Inventory category required'); return; }
+    if (!form.label.trim()) { setErr(t('addCategory.errorNameRequired')); return; }
+    if (!form.category.trim()) { setErr(t('addCategory.errorCategoryRequired')); return; }
     onSave({
       id: `cat_${Date.now()}`,
       label: form.label.trim(),
@@ -1316,21 +1286,21 @@ function AddCategoryModal({ lang, onSave, onClose }: {
   };
 
   return (
-    <Modal open onClose={onClose} title={es ? '➕ Nueva Categoría' : '➕ New Category'} size="max-w-sm">
+    <Modal open onClose={onClose} title={t('addCategory.modalTitle')} size="max-w-sm">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
 
         {/* Icon picker */}
         <div>
-          <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-            {es ? 'Ícono' : 'Icon'}
+          <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+            {t('addCategory.icon')}
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
             {ICONS.map((icon) => (
               <button key={icon} type="button" onClick={() => setForm({ ...form, icon })}
                 style={{
                   fontSize: '1.25rem', padding: '0.35rem', borderRadius: '0.5rem', cursor: 'pointer',
-                  border: form.icon === icon ? '2px solid #667eea' : '1px solid rgba(255,255,255,0.12)',
-                  background: form.icon === icon ? 'rgba(102,126,234,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: form.icon === icon ? '2px solid #667eea' : '1px solid var(--border-default)',
+                  background: form.icon === icon ? 'rgba(102,126,234,0.15)' : 'var(--bg-input)',
                 }}>
                 {icon}
               </button>
@@ -1348,14 +1318,14 @@ function AddCategoryModal({ lang, onSave, onClose }: {
         {/* Name */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              {es ? 'Nombre (EN) *' : 'Name (EN) *'}
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+              {t('addCategory.nameEn')}
             </label>
             <input className="input" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Accessories" autoFocus />
           </div>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              {es ? 'Nombre (ES)' : 'Name (ES)'}
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+              {t('addCategory.nameEs')}
             </label>
             <input className="input" value={form.labelEs} onChange={(e) => setForm({ ...form, labelEs: e.target.value })} placeholder="Accesorios" />
           </div>
@@ -1363,38 +1333,38 @@ function AddCategoryModal({ lang, onSave, onClose }: {
 
         {/* Inventory category */}
         <div>
-          <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-            {es ? 'Categoría de Inventario *' : 'Inventory Category *'}
+          <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+            {t('addCategory.inventoryCategory')}
           </label>
           <input className="input" value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
-            placeholder={es ? 'ej: accessory, part, service' : 'e.g. accessory, part, service'} />
-          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.2rem' }}>
-            {es ? 'Filtra los productos del inventario por esta categoría' : 'Filters inventory products by this category'}
+            placeholder={t('addCategory.inventoryCategoryPlaceholder')} />
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+            {t('addCategory.inventoryCategoryHint')}
           </div>
         </div>
 
         {/* Tax mode */}
         <div>
-          <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            {es ? 'Modo de Impuesto' : 'Tax Mode'}
+          <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+            {t('addCategory.taxMode')}
           </label>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             {[
-              { v: 'sales', label: es ? '💰 Ventas' : '💰 Sales Tax' },
-              { v: 'phone_payment', label: es ? '📱 Telefonía' : '📱 Phone' },
-              { v: 'none', label: es ? '🚫 Sin impuesto' : '🚫 No Tax' },
-            ].map((t) => (
-              <button key={t.v} type="button"
-                onClick={() => setForm({ ...form, taxMode: t.v as any })}
+              { v: 'sales', label: t('addCategory.taxModeSales') },
+              { v: 'phone_payment', label: t('addCategory.taxModePhone') },
+              { v: 'none', label: t('addCategory.taxModeNone') },
+            ].map((opt) => (
+              <button key={opt.v} type="button"
+                onClick={() => setForm({ ...form, taxMode: opt.v as any })}
                 style={{
                   flex: 1, padding: '0.4rem 0.25rem', borderRadius: '0.5rem', cursor: 'pointer',
-                  fontSize: '0.72rem', fontWeight: form.taxMode === t.v ? 700 : 400,
-                  border: `1px solid ${form.taxMode === t.v ? '#667eea' : 'rgba(255,255,255,0.1)'}`,
-                  background: form.taxMode === t.v ? 'rgba(102,126,234,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: form.taxMode === t.v ? '#a5b4fc' : '#94a3b8',
+                  fontSize: '0.72rem', fontWeight: form.taxMode === opt.v ? 700 : 400,
+                  border: `1px solid ${form.taxMode === opt.v ? '#667eea' : 'var(--border-default)'}`,
+                  background: form.taxMode === opt.v ? 'rgba(102,126,234,0.15)' : 'var(--bg-input)',
+                  color: form.taxMode === opt.v ? '#a5b4fc' : 'var(--text-secondary)',
                 }}>
-                {t.label}
+                {opt.label}
               </button>
             ))}
           </div>
@@ -1406,12 +1376,12 @@ function AddCategoryModal({ lang, onSave, onClose }: {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-default)' }}>
           <button onClick={onClose} className="btn btn-secondary" style={{ flex: 1 }}>
-            {es ? 'Cancelar' : 'Cancel'}
+            {t('cancel')}
           </button>
           <button onClick={handleSave} className="btn btn-primary" style={{ flex: 1 }}>
-            ✓ {es ? 'Crear Categoría' : 'Create Category'}
+            ✓ {t('addCategory.createButton')}
           </button>
         </div>
       </div>

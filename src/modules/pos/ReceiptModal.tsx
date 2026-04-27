@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
@@ -83,9 +84,10 @@ interface ReceiptModalProps {
 }
 
 export default function ReceiptModal({ open, sale, settings, onClose, customers, setCustomers, setSales, sales, lang, L }: ReceiptModalProps) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const { printHtml } = usePrint();
   const { toast } = useToast();
+  // lang and L kept vestigial — parent compat; helper generateReceiptHtml still uses lang
   const [qrSvg, setQrSvg] = useState<string>('');
   // R-COMMS-SMS-HARD-DISABLE: removed `sending` state and `smsConfigured`
   // derived flag — both were used exclusively by the post-sale SMS button.
@@ -325,7 +327,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`🧾 Receipt — ${sale.invoiceNumber}`} size="max-w-md">
+    <Modal open={open} onClose={onClose} title={`🧾 ${t('receiptModal.modalTitle')} — ${sale.invoiceNumber}`} size="max-w-md">
       {/* 4×6 Preview — single source of truth via generateReceiptHtml */}
       <iframe
         srcDoc={previewHtml}
@@ -359,10 +361,10 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
               <span style={{ fontSize: '1.25rem' }}>✅</span>
               <div>
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#22c55e' }}>
-                  {es ? 'Puntos asignados a' : 'Points assigned to'} {assignedCustomer.name}
+                  {t('receiptModal.pointsAssignedTo')} {assignedCustomer.name}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  +{salePoints} pts · {es ? 'Total' : 'Total'}: {(assignedCustomer.loyaltyPoints || 0) + salePoints} pts
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  +{salePoints} pts · {t('total')}: {(assignedCustomer.loyaltyPoints || 0) + salePoints} pts
                 </div>
               </div>
             </div>
@@ -372,9 +374,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
                 <span style={{ fontSize: '1rem' }}>🎁</span>
                 <div style={{ fontSize: '0.82rem', color: '#fbbf24', fontWeight: 600 }}>
-                  {es
-                    ? `¿Asignar esta venta a un cliente? +${salePoints} puntos`
-                    : `Assign this sale to a customer? +${salePoints} pts`}
+                  {t('receiptModal.assignSalePrompt', salePoints)}
                 </div>
               </div>
 
@@ -382,7 +382,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                 <input
                   className="input"
                   style={{ fontSize: '0.85rem' }}
-                  placeholder={es ? 'Buscar cliente por nombre o teléfono...' : 'Search customer by name or phone...'}
+                  placeholder={t('receiptModal.searchCustomerPlaceholder')}
                   value={assignSearch}
                   onChange={(e) => setAssignSearch(e.target.value)}
                   autoComplete="off"
@@ -392,7 +392,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                 {assignResults.length > 0 && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                    background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border-strong)',
                     borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden',
                   }}>
                     {assignResults.map((c) => (
@@ -402,15 +402,15 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                         style={{
                           width: '100%', textAlign: 'left', padding: '0.5rem 0.875rem',
                           background: 'transparent', border: 'none', cursor: 'pointer',
-                          color: '#e2e8f0', fontSize: '0.82rem',
+                          color: 'var(--text-primary)', fontSize: '0.82rem',
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          borderBottom: '1px solid var(--border-default)',
                         }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(102,126,234,0.15)')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
                         <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                           {c.phone} · {c.loyaltyPoints || 0} pts
                         </span>
                       </button>
@@ -424,7 +424,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                         color: '#a5b4fc', fontSize: '0.82rem', fontWeight: 600,
                       }}
                     >
-                      + {es ? `Crear "${assignSearch}" y asignar` : `Create "${assignSearch}" and assign`}
+                      + {t('receiptModal.createAndAssign', assignSearch)}
                     </button>
                   </div>
                 )}
@@ -440,7 +440,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                       fontSize: '0.82rem', fontWeight: 600, textAlign: 'left',
                     }}
                   >
-                    + {es ? `Crear cliente "${assignSearch}" y asignar` : `Create customer "${assignSearch}" & assign`}
+                    + {t('receiptModal.createCustomerAndAssign', assignSearch)}
                   </button>
                 )}
               </div>
@@ -451,7 +451,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 
       {/* ── Print options (collapsible) ── */}
       <div style={{
-        borderTop: '1px solid rgba(255,255,255,0.1)',
+        borderTop: '1px solid var(--border-default)',
         paddingTop: 12,
         marginTop: 12,
       }}>
@@ -461,7 +461,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#cbd5e1',
+            color: 'var(--text-primary)',
             fontSize: '0.85rem',
             fontWeight: 600,
             cursor: 'pointer',
@@ -474,14 +474,14 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
           }}
         >
           <span style={{ display: 'inline-block', width: 12, transition: 'transform 0.2s', transform: optionsExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
-          Print options
+          {t('receiptModal.printOptions')}
         </button>
         {optionsExpanded && (
           <div style={{
             marginTop: 8,
             padding: 12,
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border-default)',
             borderRadius: 6,
             display: 'flex',
             flexDirection: 'column',
@@ -489,27 +489,27 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
           }}>
             {/* Printer dropdown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>
-                Printer
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {t('receiptModal.printer')}
               </label>
               <select
                 value={selectedPrinter}
                 onChange={(e) => setSelectedPrinter(e.target.value)}
                 style={{
-                  background: '#1e293b',
-                  color: '#f1f5f9',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-default)',
                   borderRadius: 4,
                   padding: '6px 8px',
                   fontSize: '0.85rem',
                 }}
               >
                 {printers.length === 0 ? (
-                  <option value="">No printers detected</option>
+                  <option value="">{t('receiptModal.noPrinters')}</option>
                 ) : (
                   printers.map((p) => (
                     <option key={p.name} value={p.name}>
-                      {p.displayName || p.name}{p.isDefault ? ' (system default)' : ''}
+                      {p.displayName || p.name}{p.isDefault ? ` ${t('receiptModal.systemDefault')}` : ''}
                     </option>
                   ))
                 )}
@@ -517,8 +517,8 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
             </div>
             {/* Copies input */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>
-                Copies
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {t('receiptModal.copies')}
               </label>
               <input
                 type="number"
@@ -530,9 +530,9 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                   setCopies(isNaN(n) || n < 1 ? 1 : Math.min(99, n));
                 }}
                 style={{
-                  background: '#1e293b',
-                  color: '#f1f5f9',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-default)',
                   borderRadius: 4,
                   padding: '6px 8px',
                   fontSize: '0.85rem',
@@ -546,12 +546,12 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 
       {/* Actions */}
       <div className="flex gap-3 mt-4">
-        <button onClick={onClose} className="btn btn-secondary flex-1">{L.close || 'Close'}</button>
+        <button onClick={onClose} className="btn btn-secondary flex-1">{t('close')}</button>
         {settings.waEnabled !== false && (sale?.customerPhone || assignedCustomer?.phone) && (
           <button
             onClick={() => {
               const phone = sale?.customerPhone || assignedCustomer?.phone || '';
-              const name = sale?.customerName || assignedCustomer?.name || 'Customer';
+              const name = sale?.customerName || assignedCustomer?.name || t('receiptModal.customerFallback');
               const msg = buildWaMessage('thankYou', {
                 customerName: name,
                 storeName: settings.storeName || 'Go Cellular',
@@ -568,7 +568,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
         {/* R-COMMS-SMS-HARD-DISABLE: post-sale SMS button removed.
             WhatsApp button above is now the sole comm channel here. */}
         <button onClick={handlePrint} className="btn btn-primary flex-1">
-          🖨️ {L.print || 'Print Receipt (4×6)'}
+          🖨️ {t('receiptModal.printReceipt')}
         </button>
       </div>
     </Modal>
