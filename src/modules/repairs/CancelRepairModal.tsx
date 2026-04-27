@@ -2,6 +2,7 @@
 // Asks what to do with the deposit when cancelling a repair that has one.
 import { useState } from 'react';
 import { Modal } from '@/components/ui';
+import { useTranslation } from '@/i18n';
 import type { Repair } from '@/store/types';
 
 interface CancelRepairModalProps {
@@ -24,7 +25,8 @@ export default function CancelRepairModal({
   onConfirm,
   onClose,
 }: CancelRepairModalProps) {
-  const es = lang === 'es';
+  void lang; // vestigial — V3 cleanup
+  const { t } = useTranslation();
   const depositCents = repair.depositAmount || 0;
   const depositDisplay = (depositCents / 100).toFixed(2);
   const device = repair.device || (repair as any).model || 'Device';
@@ -42,12 +44,12 @@ export default function CancelRepairModal({
 
   return (
     // Round R1 F2: canonical <Modal> (body-scroll lock, ESC/X close, focus trap, a11y).
-    <Modal open onClose={onClose} size="max-w-md" title={`⚠️ ${es ? 'Cancelar Reparación' : 'Cancel Repair'}`}>
+    <Modal open onClose={onClose} size="max-w-md" title={`⚠️ ${t('cancelRepair.modalTitle')}`}>
       {/* Ticket Info */}
       <div style={{ background: '#0f172a', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
-        <div><strong>{es ? 'Ticket' : 'Ticket'}:</strong> {ticket}</div>
-        <div><strong>{es ? 'Cliente' : 'Customer'}:</strong> {customerName}</div>
-        <div><strong>{es ? 'Dispositivo' : 'Device'}:</strong> {device}</div>
+        <div><strong>Ticket:</strong> {ticket}</div>
+        <div><strong>{t('customer')}:</strong> {customerName}</div>
+        <div><strong>{t('device')}:</strong> {device}</div>
       </div>
 
       {/* Deposit Display */}
@@ -62,12 +64,12 @@ export default function CancelRepairModal({
         color: '#fbbf24',
         textAlign: 'center',
       }}>
-        {es ? 'Depósito cobrado' : 'Deposit paid'}: ${depositDisplay}
+        {t('cancelRepair.depositPaid')}: ${depositDisplay}
       </div>
 
       {/* Question */}
       <div style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#cbd5e1' }}>
-        {es ? '¿Qué hacemos con el depósito?' : 'What happens to the deposit?'}
+        {t('cancelRepair.question')}
       </div>
 
       {/* Options */}
@@ -86,9 +88,9 @@ export default function CancelRepairModal({
             cursor: customerHasPhone ? 'pointer' : 'not-allowed',
             opacity: customerHasPhone ? 1 : 0.6,
           }}>
-          <div style={{ fontWeight: 600 }}>💳 {es ? 'Crédito de tienda' : 'Store Credit'}</div>
+          <div style={{ fontWeight: 600 }}>💳 {t('cancelRepair.storeCredit')}</div>
           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            ${depositDisplay} — {es ? 'Cliente puede usarlo en futura compra' : 'Customer can use on future purchase'}
+            ${depositDisplay} — {t('cancelRepair.storeCreditDesc')}
           </div>
         </button>
 
@@ -104,9 +106,9 @@ export default function CancelRepairModal({
             textAlign: 'left',
             cursor: 'pointer',
           }}>
-          <div style={{ fontWeight: 600 }}>💵 {es ? 'Reembolso en efectivo' : 'Cash Refund'}</div>
+          <div style={{ fontWeight: 600 }}>💵 {t('cancelRepair.cashRefund')}</div>
           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            ${depositDisplay} — {es ? 'Crea venta anulada en reports' : 'Creates voided sale in reports'}
+            ${depositDisplay} — {t('cancelRepair.cashRefundDesc')}
           </div>
         </button>
 
@@ -122,9 +124,9 @@ export default function CancelRepairModal({
             textAlign: 'left',
             cursor: 'pointer',
           }}>
-          <div style={{ fontWeight: 600 }}>💰 {es ? 'Quedarse con depósito' : 'Keep deposit (forfeit)'}</div>
+          <div style={{ fontWeight: 600 }}>💰 {t('cancelRepair.keepDeposit')}</div>
           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            {es ? 'Requiere motivo por escrito' : 'Requires written reason'}
+            {t('cancelRepair.keepDepositDesc')}
           </div>
         </button>
       </div>
@@ -135,7 +137,7 @@ export default function CancelRepairModal({
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={es ? 'Motivo (requerido, min 10 caracteres)...' : 'Reason (required, min 10 chars)...'}
+            placeholder={t('cancelRepair.reasonPlaceholder')}
             style={{
               width: '100%',
               minHeight: '80px',
@@ -150,7 +152,7 @@ export default function CancelRepairModal({
             }}
           />
           <div style={{ fontSize: '0.7rem', color: note.trim().length >= 10 ? '#22c55e' : '#f87171', marginTop: '0.25rem' }}>
-            {note.trim().length}/10 {es ? 'caracteres mínimos' : 'chars min'}
+            {note.trim().length}/10 {t('cancelRepair.charsMin')}
           </div>
         </div>
       )}
@@ -162,7 +164,7 @@ export default function CancelRepairModal({
           className="btn btn-secondary btn-sm"
           onClick={onClose}
           style={{ padding: '0.5rem 1rem' }}>
-          {es ? 'Nunca mind' : 'Never mind'}
+          {t('cancelRepair.neverMind')}
         </button>
         <button
           type="button"
@@ -174,7 +176,7 @@ export default function CancelRepairModal({
             opacity: isValid ? 1 : 0.5,
             cursor: isValid ? 'pointer' : 'not-allowed',
           }}>
-          {es ? 'Confirmar' : 'Confirm'}
+          {t('confirm')}
         </button>
       </div>
     </Modal>

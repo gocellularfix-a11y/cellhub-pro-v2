@@ -7,6 +7,7 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -62,9 +63,10 @@ export default function RepairModule() {
   } = useApp();
 
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
-  const L = getLabels(lang);
+  const L = getLabels(lang); // kept — passed to RepairModal + TicketCard prop drilling
 
   const [search, setSearch] = useState(globalSearchTerm || '');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -385,12 +387,7 @@ export default function RepairModule() {
           matchedCustomerId = existing.id;
           // Customer exists — notify if name differs
           if (existing.name.toLowerCase() !== repairData.customerName.toLowerCase()) {
-            toast(
-              lang === 'es'
-                ? `Cliente existente encontrado: ${existing.name}`
-                : `Existing customer found: ${existing.name}`,
-              'info',
-            );
+            toast(t('repairs.existingCustomerFound', existing.name), 'info');
           }
         } else {
           const repairFirstName = (repairData as { firstName?: string }).firstName || repairData.customerName.trim().split(/\s+/)[0] || '';
@@ -523,12 +520,12 @@ export default function RepairModule() {
           // checkEditHistoryStatus was already enforced in the modal, but re-check
           // defensively in case of concurrent writes bumping history to cap.
           if (checkEditHistoryStatus(updated.editHistory) === 'full') {
-            toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+            toast(t('repairs.errHistoryFullShort'), 'error');
             return;
           }
           const newHistory = appendEditEntry(updated.editHistory, entry);
           if (newHistory === null) {
-            toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+            toast(t('repairs.errHistoryFullShort'), 'error');
             return;
           }
           updated.editHistory = newHistory;
@@ -550,7 +547,7 @@ export default function RepairModule() {
         // R-COMMS-SMS-HARD-DISABLE: removed proactive status-change SMS block.
         // WhatsApp button on TicketCard remains the manual comm channel.
 
-        toast(L.saved || 'Saved!', 'success');
+        toast(t('saved'), 'success');
       } else {
         // Create new — ticket number matching original format
         const now = new Date();
@@ -574,12 +571,7 @@ export default function RepairModule() {
           while (repairsRef.current.some((r) => (r as any).ticketNumber === ticketNum)) {
             ticketNum = genTicketNum();
             if (++ticketAttempts > 10) {
-              toast(
-                lang === 'es'
-                  ? 'No se pudo generar ticket único. Reintente.'
-                  : 'Could not generate unique ticket. Retry.',
-                'error',
-              );
+              toast(t('repairs.couldNotGenTicket'), 'error');
               return;
             }
           }
@@ -590,12 +582,7 @@ export default function RepairModule() {
         while (repairsRef.current.some((r) => (r as any).trackingToken === trackingToken)) {
           trackingToken = genTrackingToken();
           if (++tokenAttempts > 10) {
-            toast(
-              lang === 'es'
-                ? 'No se pudo generar token único. Reintente.'
-                : 'Could not generate unique token. Retry.',
-              'error',
-            );
+            toast(t('repairs.couldNotGenToken'), 'error');
             return;
           }
         }
@@ -699,14 +686,9 @@ export default function RepairModule() {
             ticketNumber: ticketNum,
             isTaxable,
           });
-          toast(
-            lang === 'es'
-              ? `Reparación creada. Depósito ${formatCurrency(depositAmt)} agregado al carrito.`
-              : `Repair created. Deposit ${formatCurrency(depositAmt)} added to cart. Go to POS.`,
-            'info'
-          );
+          toast(t('repairs.depositAddedToCart', formatCurrency(depositAmt)), 'info');
         } else {
-          toast(L.repairCreated || 'Repair ticket created!', 'success');
+          toast(t('repairs.repairCreated'), 'success');
         }
 
         // Auto-print repair ticket on creation.
@@ -771,12 +753,7 @@ export default function RepairModule() {
         setCustomers(nextCustomers);
         persist.customer(updatedCustomer.id, updatedCustomer as unknown as Record<string, unknown>);
       } else {
-        toast(
-          lang === 'es'
-            ? '⚠️ No se identificó al cliente. Aplica crédito manualmente.'
-            : '⚠️ Customer not matched. Apply credit manually.',
-          'warning'
-        );
+        toast(t('repairs.customerNotMatched'), 'warning');
       }
     } else if (choice.method === 'cash' && depositCents > 0) {
       const refundSale: Sale = {
@@ -859,15 +836,9 @@ export default function RepairModule() {
 
     // 3. Toast feedback
     const msg = {
-      store_credit: lang === 'es'
-        ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} store credit added.`,
-      cash: lang === 'es'
-        ? `Cancelado. Reembolso $${(depositCents/100).toFixed(2)} registrado.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} cash refund recorded.`,
-      forfeit: lang === 'es'
-        ? `Cancelado. Depósito retenido.`
-        : `Cancelled. Deposit forfeited.`,
+      store_credit: t('repairs.cancelledStoreCreditAdded', formatCurrency(depositCents)),
+      cash: t('repairs.cancelledCashRefundRecorded', formatCurrency(depositCents)),
+      forfeit: t('repairs.cancelledForfeited'),
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
@@ -891,12 +862,7 @@ export default function RepairModule() {
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
       }
 
-      toast(
-        lang === 'es'
-          ? `$${(combinedCents / 100).toFixed(2)} en carrito para este ticket`
-          : `$${(combinedCents / 100).toFixed(2)} in cart for this ticket`,
-        'info',
-      );
+      toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'info');
     },
     [consolidateCartForRepair, dispatch, toast, lang],
   );
@@ -911,7 +877,7 @@ export default function RepairModule() {
       repairsRef.current = next;
       setRepairs(next);
       persist.repair(updated.id, updated as unknown as Record<string, unknown>);
-      toast(lang === 'es' ? 'Reparación completada' : 'Repair completed', 'success');
+      toast(t('repairs.repairCompleted'), 'success');
       return;
     }
     setCompleteConfirm(repair);
@@ -975,8 +941,8 @@ export default function RepairModule() {
     setCompleteConfirm(null);
     toast(
       (repair.balance || 0) > 0
-        ? (lang === 'es' ? 'Balance agregado al carrito. Ve a POS.' : 'Balance added to cart. Go to POS.')
-        : (lang === 'es' ? 'Reparación completada' : 'Repair completed'),
+        ? t('repairs.balanceAddedGoToPOS')
+        : t('repairs.repairCompleted'),
       'success',
     );
   }, [completeConfirm, consolidateCartForRepair, setRepairs, dispatch, toast, lang, settings.taxRate]);
@@ -992,12 +958,7 @@ export default function RepairModule() {
     // can't update any entity on reconciliation.
     const hasPendingCart = cartRef.current.some((item) => item.repairId === deleteConfirm.id);
     if (hasPendingCart) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar: hay items de este ticket en el carrito. Limpia el carrito primero.'
-          : 'Cannot delete: this ticket has items in cart. Clear the cart first.',
-        'error',
-      );
+      toast(t('repairs.cantDeletePendingCart'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -1010,12 +971,7 @@ export default function RepairModule() {
     // Round R2: canonical comparison via normalizer.
     const isCompleted = normalizeRepairStatus(deleteConfirm.status) === REPAIR_STATUS.PICKED_UP;
     if (hasDeposit || isCompleted) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar reparaciones pagadas o completadas. Usa "Cancelar" para reembolsar.'
-          : 'Cannot delete paid or completed repairs. Use "Cancel" to refund.',
-        'error',
-      );
+      toast(t('repairs.cantDeletePaid'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -1026,7 +982,7 @@ export default function RepairModule() {
     setRepairs(next);
     remove.repair(deleteConfirm.id);
     setDeleteConfirm(null);
-    toast(lang === 'es' ? 'Reparación eliminada' : 'Repair deleted', 'success');
+    toast(t('repairs.repairDeleted'), 'success');
   }, [deleteConfirm, setRepairs, toast, lang]);
 
   // ── Render ──────────────────────────────────────────────
@@ -1118,12 +1074,12 @@ export default function RepairModule() {
               onComplete={() => handleCompleteRequest(repair)}
               completeLabel={
                 normalizeRepairStatus(repair.status) === REPAIR_STATUS.CANCELLED
-                  ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
+                  ? t('repairs.cancelledLabel')
                   : normalizeRepairStatus(repair.status) === REPAIR_STATUS.PICKED_UP
-                  ? (lang === 'es' ? '✓ Completado' : '✓ Completed')
+                  ? t('repairs.completedLabel')
                   : (repair.balance || 0) > 0
-                  ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(repair.balance)}` : `Complete / Collect ${formatCurrency(repair.balance)}`)
-                  : (lang === 'es' ? 'Completar' : 'Complete')
+                  ? t('repairs.completeCollect', formatCurrency(repair.balance))
+                  : t('repairs.complete')
               }
               completeDisabled={isDoneRepairStatus(repair.status)}
               completeVariant={normalizeRepairStatus(repair.status) === REPAIR_STATUS.PICKED_UP ? 'green' : 'amber'}
@@ -1154,7 +1110,7 @@ export default function RepairModule() {
                         background: 'rgba(251, 191, 36, 0.15)',
                         color: '#fbbf24',
                       }}
-                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                      title={t('repairs.viewEditHistory')}
                     >
                       🕐 {repair.editHistory.length}
                     </span>
@@ -1177,8 +1133,7 @@ export default function RepairModule() {
                         border: '1px solid rgba(16, 185, 129, 0.3)',
                         fontWeight: 600,
                       }}
-                    >
-                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                    >                      {t('repairs.markRefunded')}
                     </button>
                   )}
                 </>
@@ -1195,9 +1150,7 @@ export default function RepairModule() {
                 onClick={() => setVisibleCount((n) => n + 50)}
                 className="btn btn-secondary btn-sm"
               >
-                {lang === 'es'
-                  ? `Mostrar más (${filtered.length - visibleCount} restantes)`
-                  : `Show more (${filtered.length - visibleCount} remaining)`}
+                {t('repairs.showMore', filtered.length - visibleCount)}
               </button>
             </div>
           )}
@@ -1205,7 +1158,7 @@ export default function RepairModule() {
 
       {depositModalRepair && (
         <DepositModal
-          title={lang === 'es' ? `Depósito — ${(depositModalRepair as any).ticketNumber || depositModalRepair.id.slice(-6).toUpperCase()}` : `Deposit — ${(depositModalRepair as any).ticketNumber || depositModalRepair.id.slice(-6).toUpperCase()}`}
+          title={t('repairs.depositTitle', (depositModalRepair as any).ticketNumber || depositModalRepair.id.slice(-6).toUpperCase())}
           itemLabel={`${[(depositModalRepair as any).brand, (depositModalRepair as any).model].filter(Boolean).join(' ') || depositModalRepair.device} — ${depositModalRepair.issue || 'Repair'}`}
           itemPrice={((depositModalRepair as any).subtotal || depositModalRepair.estimatedCost || 0) / 100}
           taxRate={settings.taxRate ?? 0.0925}
@@ -1240,12 +1193,7 @@ export default function RepairModule() {
               }
 
               setDepositModalRepair(null);
-              toast(
-                lang === 'es'
-                  ? `$${(combinedCents / 100).toFixed(2)} en carrito para este ticket`
-                  : `$${(combinedCents / 100).toFixed(2)} in cart for this ticket`,
-                'success',
-              );
+              toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'success');
             } finally {
               // Reset guard on next tick so future confirmations work.
               setTimeout(() => setIsConsolidating(false), 100);
@@ -1288,13 +1236,11 @@ export default function RepairModule() {
       {deleteConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Eliminar reparación' : 'Delete repair'}
-          message={lang === 'es'
-            ? `¿Eliminar ticket ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6)}? Esta acción no se puede deshacer.`
-            : `Delete ticket ${(deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6)}? This cannot be undone.`}
+          title={t('repairs.deleteTitle')}
+          message={t('repairs.deleteConfirm', (deleteConfirm as any).ticketNumber || deleteConfirm.id.slice(-6))}
           variant="danger"
-          confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('delete')}
+          cancelLabel={t('cancel')}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteConfirm(null)}
         />
@@ -1303,17 +1249,15 @@ export default function RepairModule() {
       {completeConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Completar reparación' : 'Complete repair'}
+          title={t('repairs.completeTitle')}
           message={
             (completeConfirm.balance || 0) > 0
-              ? (lang === 'es'
-                  ? `¿Marcar completa y cobrar saldo de ${formatCurrency(completeConfirm.balance)}?`
-                  : `Mark as complete and collect balance of ${formatCurrency(completeConfirm.balance)}?`)
-              : (lang === 'es' ? '¿Marcar como completa?' : 'Mark as complete?')
+              ? t('repairs.completeWithBalance', formatCurrency(completeConfirm.balance))
+              : t('repairs.completeSimple')
           }
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Confirmar' : 'Confirm'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('confirm')}
+          cancelLabel={t('cancel')}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
         />
@@ -1334,7 +1278,7 @@ export default function RepairModule() {
       {printChoiceTarget && (
         <Modal
           open
-          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          title={t('repairs.printTicketTitle')}
           onClose={() => setPrintChoiceTarget(null)}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1349,7 +1293,7 @@ export default function RepairModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+              {t('repairs.printCurrentCorrected')}
             </button>
             <button
               className="btn btn-secondary"
@@ -1377,14 +1321,14 @@ export default function RepairModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+              {t('repairs.printOriginalPreEdits')}
             </button>
             <button
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => setPrintChoiceTarget(null)}
             >
-              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              {t('cancel')}
             </button>
           </div>
         </Modal>
@@ -1394,14 +1338,10 @@ export default function RepairModule() {
       {refundConfirmTarget && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
-          message={
-            lang === 'es'
-              ? `¿Confirmar que el reembolso de $${((refundConfirmTarget.refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
-              : `Confirm that the $${((refundConfirmTarget.refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
-          }
-          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          title={t('repairs.markRefundedTitle')}
+          message={t('repairs.markRefundedConfirm', formatCurrency(refundConfirmTarget.refundOwedAmount || 0))}
+          confirmLabel={t('repairs.yesRefunded')}
+          cancelLabel={t('cancel')}
           onConfirm={() => {
             const target = refundConfirmTarget;
             // F7-FIX-v2: double-refund guard (rapid double-click or stale state).
@@ -1466,10 +1406,7 @@ export default function RepairModule() {
               persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
             }
 
-            toast(
-              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
-              'success',
-            );
+            toast(t('repairs.refundMarkedSuccess'), 'success');
             setRefundConfirmTarget(null);
           }}
           onCancel={() => setRefundConfirmTarget(null)}
