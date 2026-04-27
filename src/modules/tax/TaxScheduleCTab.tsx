@@ -7,8 +7,8 @@
 // ============================================================
 
 import { useMemo } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, emptyScheduleC, dollarsToCents, centsToDollars } from './taxData';
 import { inputStyle, labelStyle, cardBox } from './taxStyles';
 
@@ -16,44 +16,43 @@ interface Props {
   year: number;
 }
 
-// Field metadata: [key, EN label, ES label]. Order matches IRS Schedule C.
-const FIELDS: Array<[string, string, string]> = [
-  ['advertising',      'Advertising',                 'Publicidad'],
-  ['carAndTruck',      'Car & Truck Expenses',        'Auto y Camión'],
-  ['commissions',      'Commissions & Fees',          'Comisiones y Fees'],
-  ['contractLabor',    'Contract Labor',              'Contratistas'],
-  ['depletion',        'Depletion',                   'Agotamiento'],
-  ['depreciation',     'Depreciation',                'Depreciación'],
-  ['employeeBenefits', 'Employee Benefit Programs',   'Beneficios a Empleados'],
-  ['insurance',        'Insurance (not health)',      'Seguros (no médicos)'],
-  ['mortgageInterest', 'Mortgage Interest',           'Intereses Hipotecarios'],
-  ['otherInterest',    'Other Interest',              'Otros Intereses'],
-  ['legalProfessional','Legal & Professional',        'Legal y Profesional'],
-  ['officeExpense',    'Office Expense',              'Gastos de Oficina'],
-  ['pensionProfit',    'Pension / Profit Sharing',    'Pensión / Reparto'],
-  ['rentVehicles',     'Rent — Vehicles / Equipment', 'Renta — Vehículos / Equipo'],
-  ['rentProperty',     'Rent — Other Property',       'Renta — Otra Propiedad'],
-  ['repairs',          'Repairs & Maintenance',       'Reparaciones y Mantenimiento'],
-  ['supplies',         'Supplies',                    'Suministros'],
-  ['taxesLicenses',    'Taxes & Licenses',            'Impuestos y Licencias'],
-  ['travel',           'Travel',                      'Viajes'],
-  ['meals',            'Meals (50% deductible)',      'Comidas (50% deducible)'],
-  ['utilities',        'Utilities',                   'Servicios (luz, agua)'],
-  ['wages',            'Wages',                       'Salarios'],
-  ['otherExpenses',    'Other Expenses',              'Otros Gastos'],
-  ['homeOffice',       'Home Office (Line 30)',       'Oficina en Casa (Línea 30)'],
+// Field keys: order matches IRS Schedule C. Labels resolved via t('taxScheduleC.<key>').
+const FIELD_KEYS: string[] = [
+  'advertising',
+  'carAndTruck',
+  'commissions',
+  'contractLabor',
+  'depletion',
+  'depreciation',
+  'employeeBenefits',
+  'insurance',
+  'mortgageInterest',
+  'otherInterest',
+  'legalProfessional',
+  'officeExpense',
+  'pensionProfit',
+  'rentVehicles',
+  'rentProperty',
+  'repairs',
+  'supplies',
+  'taxesLicenses',
+  'travel',
+  'meals',
+  'utilities',
+  'wages',
+  'otherExpenses',
+  'homeOffice',
 ];
 
 export default function TaxScheduleCTab({ year }: Props) {
-  const { state: { lang } } = useApp();
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const tax = useTaxYear(year);
   const sc = tax.data.scheduleC ?? emptyScheduleC();
 
   const nonNeg = (cents: number) => Math.max(0, cents);
 
   const total = useMemo(
-    () => FIELDS.reduce((sum, [key]) => sum + (sc as unknown as Record<string, number>)[key], 0),
+    () => FIELD_KEYS.reduce((sum, key) => sum + (sc as unknown as Record<string, number>)[key], 0),
     [sc],
   );
 
@@ -62,12 +61,10 @@ export default function TaxScheduleCTab({ year }: Props) {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'Schedule C — Ganancias/Pérdidas del Negocio' : 'Schedule C — Profit/Loss from Business'} — {year}
+          {t('taxScheduleC.title', year)}
         </div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-          {es
-            ? 'Totales por categoría. Guarda automáticamente. Para sole-proprietors — partnerships usan 1065.'
-            : 'Category totals. Auto-saves. For sole-proprietors — partnerships file 1065.'}
+          {t('taxScheduleC.subtitle')}
         </div>
       </div>
 
@@ -78,9 +75,9 @@ export default function TaxScheduleCTab({ year }: Props) {
           gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '0.75rem 1rem',
         }}>
-          {FIELDS.map(([key, enLabel, esLabel]) => (
+          {FIELD_KEYS.map((key) => (
             <div key={key}>
-              <label style={labelStyle}>{es ? esLabel : enLabel} ($)</label>
+              <label style={labelStyle}>{t(`taxScheduleC.${key}`)} ($)</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -103,7 +100,7 @@ export default function TaxScheduleCTab({ year }: Props) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '1rem', fontWeight: 700, color: '#cbd5e1' }}>
-            {es ? 'Total Gastos Schedule C' : 'Total Schedule C Expenses'}
+            {t('taxScheduleC.totalLabel')}
           </span>
           <span style={{
             fontSize: '1.4rem',

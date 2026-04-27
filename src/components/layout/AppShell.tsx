@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 
@@ -26,7 +27,8 @@ const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/Purcha
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
+  void lang; // kept for prop-API parity; useTranslation drives locale
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -36,19 +38,17 @@ function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: strin
     >
       <div style={{ fontSize: '4rem' }}>🔐</div>
       <div style={{ fontSize: '1.15rem', color: '#94a3b8', fontWeight: 600 }}>
-        {es ? 'Requiere PIN de Administrador' : 'Admin PIN Required'}
+        {t('appShell.adminPinRequired')}
       </div>
       <p style={{ fontSize: '0.82rem', color: '#475569', maxWidth: '280px', textAlign: 'center' }}>
-        {es
-          ? 'Esta sección solo es accesible para administradores y gerentes.'
-          : 'This section is only accessible to admins and managers.'}
+        {t('appShell.adminOnlyHint')}
       </p>
       <button
         className="btn btn-primary"
         style={{ marginTop: '0.5rem', padding: '0.7rem 2rem', fontSize: '0.95rem' }}
         onClick={(e) => { e.stopPropagation(); onUnlock(); }}
       >
-        🔑 {es ? 'Ingresar PIN' : 'Enter PIN'}
+        🔑 {t('appShell.enterPin')}
       </button>
     </div>
   );

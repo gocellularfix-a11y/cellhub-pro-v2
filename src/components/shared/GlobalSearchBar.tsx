@@ -21,6 +21,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
@@ -139,7 +140,8 @@ export default function GlobalSearchBar({
   } = useApp();
 
   const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t } = useTranslation();
+  void lang; // kept for getLabels drilling; useTranslation drives locale
 
   // STANDALONE mode: own state. SYNCED mode: mirror caller's state.
   const [internalSearch, setInternalSearch] = useState('');
@@ -304,16 +306,12 @@ export default function GlobalSearchBar({
       <SearchInput
         value={search}
         onChange={handleChange}
-        placeholder={placeholder || L.searchPlaceholder || (es
-          ? 'Buscar clientes, teléfonos, accesorios, SKU…'
-          : 'Search customers, phones, accessories, SKU…')}
+        placeholder={placeholder || L.searchPlaceholder || t('globalSearch.placeholderDefault')}
       />
 
       {showTip && (
         <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.35rem' }}>
-          {L.globalSearchTip || (es
-            ? 'Tip: Esta búsqueda es global a todos los módulos.'
-            : 'Tip: This search is shared across modules.')}
+          {L.globalSearchTip || t('globalSearch.tip')}
         </div>
       )}
 
@@ -333,12 +331,8 @@ export default function GlobalSearchBar({
             paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)',
           }}>
             {totalResults > 0
-              ? (es
-                ? `${totalResults} resultado${totalResults !== 1 ? 's' : ''} para "${q}"`
-                : `${totalResults} result${totalResults !== 1 ? 's' : ''} for "${q}"`)
-              : (es
-                ? `Sin resultados para "${q}"`
-                : `No results for "${q}"`)
+              ? t('globalSearch.resultsFor', totalResults, q)
+              : t('globalSearch.noResultsFor', q)
             }
           </div>
 
@@ -359,7 +353,7 @@ export default function GlobalSearchBar({
               <SearchResultBtn key={i.id}
                 primary={i.name}
                 secondary={i.sku || ''}
-                badge={i.qty > 0 ? `${i.qty} ${es ? 'en stock' : 'in stock'}` : (es ? 'Agotado' : 'Out')}
+                badge={i.qty > 0 ? t('globalSearch.inStockBadge', i.qty) : t('globalSearch.outOfStockBadge')}
                 badgeColor={i.qty > 0 ? undefined : 'rgba(239,68,68,0.3)'}
                 onClick={() => { goTo(i.qty > 0 ? 'pos' : 'inventory', i.name, i.id); clearSearch(); }}
               />
@@ -402,7 +396,7 @@ export default function GlobalSearchBar({
             {saleMatches.map((s) => (
               <SearchResultBtn key={s.id}
                 primary={s.invoiceNumber}
-                secondary={s.customerName || (es ? 'Mostrador' : 'Walk-in')}
+                secondary={s.customerName || t('globalSearch.walkIn')}
                 badge={formatCurrency(s.total)}
                 onClick={() => { goTo('reports', s.invoiceNumber, s.id); clearSearch(); }}
               />
@@ -439,12 +433,12 @@ export default function GlobalSearchBar({
               the row when ExpensesModule eventually gets its own tab, since
               ExpensesModule already has useHighlightRecord wired (r-global-search). */}
           <SearchSection
-            label={es ? 'Gastos' : 'Expenses'}
+            label={t('globalSearch.expensesLabel')}
             count={expenseMatches.length}
           >
             {expenseMatches.map((e) => (
               <SearchResultBtn key={e.id}
-                primary={e.vendor || e.description || (es ? 'Sin descripción' : 'No description')}
+                primary={e.vendor || e.description || t('globalSearch.noDescription')}
                 secondary={e.description !== e.vendor ? e.description : ''}
                 badge={formatCurrency(e.amount)}
                 onClick={() => { goTo('tax', e.vendor, e.id); clearSearch(); }}
@@ -454,9 +448,7 @@ export default function GlobalSearchBar({
 
           {totalResults === 0 && (
             <div style={{ textAlign: 'center', padding: '1rem', color: '#64748b', fontSize: '0.85rem' }}>
-              {es
-                ? 'No se encontraron coincidencias en ningún módulo.'
-                : 'No matches found across any module.'}
+              {t('globalSearch.noMatchesAcrossModules')}
             </div>
           )}
         </div>

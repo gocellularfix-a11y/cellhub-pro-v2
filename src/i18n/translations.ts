@@ -3324,4 +3324,86 @@ export const translations: TranslationDictionary = {
   'settings.firebase.configSaved':         { en: 'Config saved',                 es: 'Configuración guardada',         pt: 'Configuração salva' },
   'settings.firebase.saveFailed':          { en: 'Error saving configuration.',  es: 'Error al guardar la configuración.', pt: 'Erro ao salvar a configuração.' },
   'settings.firebase.validateSave':        { en: 'Validate and save',            es: 'Validar y guardar',              pt: 'Validar e salvar' },
+
+  // ── AppShell (admin lock screen) ───────────────────────────
+  'appShell.adminPinRequired': { en: 'Admin PIN Required', es: 'Requiere PIN de Administrador', pt: 'PIN de Administrador Necessário' },
+  'appShell.adminOnlyHint': {
+    en: 'This section is only accessible to admins and managers.',
+    es: 'Esta sección solo es accesible para administradores y gerentes.',
+    pt: 'Esta seção só é acessível a administradores e gerentes.',
+  },
+  'appShell.enterPin': { en: 'Enter PIN', es: 'Ingresar PIN', pt: 'Inserir PIN' },
+
+  // ── GlobalSearchBar (shared) ───────────────────────────────
+  'globalSearch.placeholderDefault': {
+    en: 'Search customers, phones, accessories, SKU…',
+    es: 'Buscar clientes, teléfonos, accesorios, SKU…',
+    pt: 'Buscar clientes, telefones, acessórios, SKU…',
+  },
+  'globalSearch.tip': {
+    en: 'Tip: This search is shared across modules.',
+    es: 'Tip: Esta búsqueda es global a todos los módulos.',
+    pt: 'Dica: Esta busca é compartilhada entre módulos.',
+  },
+  'globalSearch.resultsFor': {
+    en: (n: number, q: string) => `${n} result${n !== 1 ? 's' : ''} for "${q}"`,
+    es: (n: number, q: string) => `${n} resultado${n !== 1 ? 's' : ''} para "${q}"`,
+    pt: (n: number, q: string) => `${n} resultado${n !== 1 ? 's' : ''} para "${q}"`,
+  },
+  'globalSearch.noResultsFor': {
+    en: (q: string) => `No results for "${q}"`,
+    es: (q: string) => `Sin resultados para "${q}"`,
+    pt: (q: string) => `Sem resultados para "${q}"`,
+  },
+  'globalSearch.inStockBadge': {
+    en: (qty: number) => `${qty} in stock`,
+    es: (qty: number) => `${qty} en stock`,
+    pt: (qty: number) => `${qty} em estoque`,
+  },
+  'globalSearch.outOfStockBadge':         { en: 'Out',            es: 'Agotado',        pt: 'Esgotado' },
+  'globalSearch.walkIn':                  { en: 'Walk-in',        es: 'Mostrador',      pt: 'Balcão' },
+  'globalSearch.expensesLabel':           { en: 'Expenses',       es: 'Gastos',         pt: 'Despesas' },
+  'globalSearch.noDescription':           { en: 'No description', es: 'Sin descripción',pt: 'Sem descrição' },
+  'globalSearch.noMatchesAcrossModules': {
+    en: 'No matches found across any module.',
+    es: 'No se encontraron coincidencias en ningún módulo.',
+    pt: 'Nenhuma correspondência encontrada em nenhum módulo.',
+  },
+
+  // ── TaxScheduleCTab (IRS Schedule C — 24 line items) ───────
+  'taxScheduleC.title': {
+    en: (year: number) => `Schedule C — Profit/Loss from Business — ${year}`,
+    es: (year: number) => `Schedule C — Ganancias/Pérdidas del Negocio — ${year}`,
+    pt: (year: number) => `Schedule C — Lucros/Perdas do Negócio — ${year}`,
+  },
+  'taxScheduleC.subtitle': {
+    en: 'Category totals. Auto-saves. For sole-proprietors — partnerships file 1065.',
+    es: 'Totales por categoría. Guarda automáticamente. Para sole-proprietors — partnerships usan 1065.',
+    pt: 'Totais por categoria. Salva automaticamente. Para sole-proprietors — partnerships usam 1065.',
+  },
+  'taxScheduleC.totalLabel':        { en: 'Total Schedule C Expenses',     es: 'Total Gastos Schedule C',          pt: 'Total Despesas Schedule C' },
+  'taxScheduleC.advertising':       { en: 'Advertising',                   es: 'Publicidad',                       pt: 'Publicidade' },
+  'taxScheduleC.carAndTruck':       { en: 'Car & Truck Expenses',          es: 'Auto y Camión',                    pt: 'Despesas de Carro e Caminhão' },
+  'taxScheduleC.commissions':       { en: 'Commissions & Fees',            es: 'Comisiones y Fees',                pt: 'Comissões e Taxas' },
+  'taxScheduleC.contractLabor':     { en: 'Contract Labor',                es: 'Contratistas',                     pt: 'Mão de Obra Contratada' },
+  'taxScheduleC.depletion':         { en: 'Depletion',                     es: 'Agotamiento',                      pt: 'Exaustão' },
+  'taxScheduleC.depreciation':      { en: 'Depreciation',                  es: 'Depreciación',                     pt: 'Depreciação' },
+  'taxScheduleC.employeeBenefits':  { en: 'Employee Benefit Programs',     es: 'Beneficios a Empleados',           pt: 'Programas de Benefícios a Funcionários' },
+  'taxScheduleC.insurance':         { en: 'Insurance (not health)',        es: 'Seguros (no médicos)',             pt: 'Seguros (não-saúde)' },
+  'taxScheduleC.mortgageInterest':  { en: 'Mortgage Interest',             es: 'Intereses Hipotecarios',           pt: 'Juros Hipotecários' },
+  'taxScheduleC.otherInterest':     { en: 'Other Interest',                es: 'Otros Intereses',                  pt: 'Outros Juros' },
+  'taxScheduleC.legalProfessional': { en: 'Legal & Professional',          es: 'Legal y Profesional',              pt: 'Jurídico e Profissional' },
+  'taxScheduleC.officeExpense':     { en: 'Office Expense',                es: 'Gastos de Oficina',                pt: 'Despesas de Escritório' },
+  'taxScheduleC.pensionProfit':     { en: 'Pension / Profit Sharing',      es: 'Pensión / Reparto',                pt: 'Pensão / Participação nos Lucros' },
+  'taxScheduleC.rentVehicles':      { en: 'Rent — Vehicles / Equipment',   es: 'Renta — Vehículos / Equipo',       pt: 'Aluguel — Veículos / Equipamentos' },
+  'taxScheduleC.rentProperty':      { en: 'Rent — Other Property',         es: 'Renta — Otra Propiedad',           pt: 'Aluguel — Outra Propriedade' },
+  'taxScheduleC.repairs':           { en: 'Repairs & Maintenance',         es: 'Reparaciones y Mantenimiento',     pt: 'Reparos e Manutenção' },
+  'taxScheduleC.supplies':          { en: 'Supplies',                      es: 'Suministros',                      pt: 'Suprimentos' },
+  'taxScheduleC.taxesLicenses':     { en: 'Taxes & Licenses',              es: 'Impuestos y Licencias',            pt: 'Impostos e Licenças' },
+  'taxScheduleC.travel':            { en: 'Travel',                        es: 'Viajes',                           pt: 'Viagens' },
+  'taxScheduleC.meals':             { en: 'Meals (50% deductible)',        es: 'Comidas (50% deducible)',          pt: 'Refeições (50% dedutível)' },
+  'taxScheduleC.utilities':         { en: 'Utilities',                     es: 'Servicios (luz, agua)',            pt: 'Utilidades (luz, água)' },
+  'taxScheduleC.wages':             { en: 'Wages',                         es: 'Salarios',                         pt: 'Salários' },
+  'taxScheduleC.otherExpenses':     { en: 'Other Expenses',                es: 'Otros Gastos',                     pt: 'Outras Despesas' },
+  'taxScheduleC.homeOffice':        { en: 'Home Office (Line 30)',         es: 'Oficina en Casa (Línea 30)',       pt: 'Home Office (Linha 30)' },
 };
