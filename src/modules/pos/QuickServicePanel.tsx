@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { generateId } from '@/utils/dates';
 import { formatCurrency, toCents } from '@/utils/currency';
 import { forwardTaxFromBase } from '@/utils/depositTax';
+import { useTranslation } from '@/i18n';
 import type { CartItem } from '@/store/types';
 
 interface QuickServicePanelProps {
@@ -20,14 +21,15 @@ interface QuickServicePanelProps {
 
 type ServiceType = 'repair' | 'unlock' | 'activation';
 
-const SERVICE_CONFIG: Record<ServiceType, { emoji: string; en: string; es: string; r: number; g: number; b: number }> = {
-  repair:     { emoji: '🔧', en: 'Repair',     es: 'Reparación',  r: 251, g: 146, b: 60  },
-  unlock:     { emoji: '🔓', en: 'Unlock',     es: 'Desbloqueo',  r: 139, g: 92,  b: 246 },
-  activation: { emoji: '📶', en: 'Activation', es: 'Activación',  r: 16,  g: 185, b: 129 },
+const SERVICE_CONFIG: Record<ServiceType, { emoji: string; labelKey: string; r: number; g: number; b: number }> = {
+  repair:     { emoji: '🔧', labelKey: 'quickServicePanel.service.repair',     r: 251, g: 146, b: 60  },
+  unlock:     { emoji: '🔓', labelKey: 'quickServicePanel.service.unlock',     r: 139, g: 92,  b: 246 },
+  activation: { emoji: '📶', labelKey: 'quickServicePanel.service.activation', r: 16,  g: 185, b: 129 },
 };
 
 export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }: QuickServicePanelProps) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
+  // lang prop kept for parent compat — vestigial after migration
   const [selected, setSelected] = useState<ServiceType | null>(null);
   const [amount, setAmount] = useState('');
   const [taxable, setTaxable] = useState(false);
@@ -41,7 +43,7 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
   const handleAddToCart = () => {
     if (subtotalCents <= 0 || !selected) return;
     const cfg = SERVICE_CONFIG[selected];
-    const label = es ? cfg.es : cfg.en;
+    const label = t(cfg.labelKey);
 
     const cartItem: CartItem = {
       id: generateId(),
@@ -68,23 +70,23 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
         <button
           onClick={onBack}
           style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border-default)',
             borderRadius: '8px',
-            color: '#94a3b8',
+            color: 'var(--text-secondary)',
             padding: '0.5rem 0.75rem',
             cursor: 'pointer',
             fontSize: '0.85rem',
           }}
         >
-          ← {es ? 'Atrás' : 'Back'}
+          ← {t('quickServicePanel.back')}
         </button>
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>
-            ⚡ {es ? 'Cobro Rápido de Servicios' : 'Quick Service Charge'}
+            ⚡ {t('quickServicePanel.title')}
           </h2>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.25rem 0 0' }}>
-            {es ? 'Selecciona el tipo de servicio' : 'Select service type'}
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            {t('quickServicePanel.subtitle')}
           </p>
         </div>
       </div>
@@ -138,7 +140,7 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
                 textTransform: 'uppercase',
                 letterSpacing: '0.03em',
               }}>
-                {es ? cfg.es : cfg.en}
+                {t(cfg.labelKey)}
               </div>
             </button>
           );
@@ -149,14 +151,14 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
       {selected && (
         <div style={{
           padding: '1.5rem',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border-default)',
           borderRadius: '16px',
         }}>
           {/* Amount input */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              {es ? 'Monto ($)' : 'Amount ($)'} *
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+              {t('quickServicePanel.amountLabel')} *
             </label>
             <input
               type="number"
@@ -173,15 +175,15 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
 
           {/* Optional description */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              {es ? 'Descripción (opcional)' : 'Description (optional)'}
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+              {t('quickServicePanel.descriptionLabel')}
             </label>
             <input
               type="text"
               className="input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={es ? 'Ej: iPhone 13 screen repair' : 'e.g. iPhone 13 screen repair'}
+              placeholder={t('quickServicePanel.descriptionPlaceholder')}
             />
           </div>
 
@@ -191,9 +193,9 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
             alignItems: 'center',
             gap: '0.5rem',
             padding: '0.6rem 0.75rem',
-            background: 'rgba(255,255,255,0.03)',
+            background: 'var(--bg-input)',
             borderRadius: '8px',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--border-default)',
             marginBottom: '1.25rem',
           }}>
             <input
@@ -203,8 +205,8 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
               onChange={(e) => setTaxable(e.target.checked)}
               style={{ cursor: 'pointer' }}
             />
-            <label htmlFor="quick-service-tax" style={{ fontSize: '0.85rem', color: '#cbd5e1', cursor: 'pointer', flex: 1 }}>
-              {es ? `Cobrar impuesto (${(taxRate * 100).toFixed(2)}%)` : `Charge sales tax (${(taxRate * 100).toFixed(2)}%)`}
+            <label htmlFor="quick-service-tax" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', flex: 1 }}>
+              {t('quickServicePanel.chargeTaxRate', (taxRate * 100).toFixed(2))}
             </label>
             {taxable && subtotalCents > 0 && (
               <span style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 600 }}>
@@ -225,8 +227,8 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
               borderRadius: '10px',
               marginBottom: '1rem',
             }}>
-              <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>
-                {es ? 'Total:' : 'Total:'}
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600 }}>
+                {t('quickServicePanel.totalLabel')}
               </span>
               <span style={{ color: '#10b981', fontSize: '1.25rem', fontWeight: 800 }}>
                 {formatCurrency(fwd.totalCents)}
@@ -246,16 +248,16 @@ export default function QuickServicePanel({ lang, taxRate, onAddToCart, onBack }
               opacity: subtotalCents <= 0 ? 0.4 : 1,
             }}
           >
-            🛒 {es ? 'Agregar al Carrito' : 'Add to Cart'}
+            🛒 {t('addToCart')}
           </button>
         </div>
       )}
 
       {/* Empty state when no service selected */}
       {!selected && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           <div style={{ fontSize: '3rem', opacity: 0.3, marginBottom: '0.75rem' }}>👆</div>
-          <p>{es ? 'Selecciona un servicio para continuar' : 'Select a service to continue'}</p>
+          <p>{t('quickServicePanel.emptyHint')}</p>
         </div>
       )}
     </div>

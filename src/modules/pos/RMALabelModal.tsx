@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { openPrintWindow } from '@/hooks/usePrint';
@@ -34,9 +34,8 @@ interface Props {
 }
 
 export default function RMALabelModal({ open, onClose }: Props) {
-  const { state: { lang, settings } } = useApp();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { state: { settings } } = useApp();
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   // Recipient form
@@ -94,9 +93,9 @@ export default function RMALabelModal({ open, onClose }: Props) {
           return;
         }
       }
-      toast(es ? 'No hay imagen en portapapeles.' : 'No image in clipboard.', 'warning');
+      toast(t('rmaLabel.noClipboardImage'), 'warning');
     } catch {
-      toast(es ? 'Error al pegar imagen.' : 'Error pasting image.', 'error');
+      toast(t('rmaLabel.errorPasting'), 'error');
     }
   };
 
@@ -104,11 +103,11 @@ export default function RMALabelModal({ open, onClose }: Props) {
 
   const handleGenerate = () => {
     if (!recipientName || !recipientAddress || !recipientCity || !recipientState || !recipientZip) {
-      toast(es ? 'Completa los datos del destinatario.' : 'Please fill in recipient details.', 'warning');
+      toast(t('rmaLabel.fillRecipient'), 'warning');
       return;
     }
     if (validEntries.length === 0) {
-      toast(es ? 'Ingresa al menos un número RMA.' : 'Enter at least one RMA number.', 'warning');
+      toast(t('rmaLabel.atLeastOneRMA'), 'warning');
       return;
     }
 
@@ -154,14 +153,14 @@ export default function RMALabelModal({ open, onClose }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`📦 ${es ? 'Etiquetas RMA - Devolución' : 'RMA Return Labels'}`} size="max-w-2xl">
+    <Modal open={open} onClose={onClose} title={`📦 ${t('rmaLabel.modalTitle')}`} size="max-w-2xl">
       {/* SENDER (Fixed) */}
       <div style={{
         background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)',
         borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1rem',
       }}>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6ee7b7', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {es ? '📍 Remitente (Fijo)' : '📍 Sender (Fixed)'}
+          {t('rmaLabel.senderFixed')}
         </div>
         <div style={{ fontWeight: 700 }}>
           {settings.storeName || 'GO CELLULAR'} · {settings.storeAddress || '516 N MILPAS ST, SANTA BARBARA CA 93103'}
@@ -178,18 +177,18 @@ export default function RMALabelModal({ open, onClose }: Props) {
           <button onClick={() => setShowManageTab(false)} style={{
             flex: 1, padding: '0.45rem 0', borderRadius: '0.4rem', fontWeight: 700,
             fontSize: '0.82rem', cursor: 'pointer', border: 'none',
-            background: !showManageTab ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)',
-            color: !showManageTab ? '#93c5fd' : '#94a3b8',
+            background: !showManageTab ? 'rgba(59,130,246,0.3)' : 'var(--bg-input)',
+            color: !showManageTab ? '#93c5fd' : 'var(--text-secondary)',
           }}>
-            🏢 {es ? 'Seleccionar Empresa' : 'Select Company'}
+            🏢 {t('rmaLabel.selectCompany')}
           </button>
           <button onClick={() => setShowManageTab(true)} style={{
             flex: 1, padding: '0.45rem 0', borderRadius: '0.4rem', fontWeight: 700,
             fontSize: '0.82rem', cursor: 'pointer', border: 'none',
-            background: showManageTab ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.05)',
-            color: showManageTab ? '#6ee7b7' : '#94a3b8',
+            background: showManageTab ? 'rgba(16,185,129,0.3)' : 'var(--bg-input)',
+            color: showManageTab ? '#6ee7b7' : 'var(--text-secondary)',
           }}>
-            ➕ {es ? 'Guardar Empresa Nueva' : 'Save New Company'}
+            ➕ {t('rmaLabel.saveNewCompany')}
           </button>
         </div>
 
@@ -197,8 +196,8 @@ export default function RMALabelModal({ open, onClose }: Props) {
         {!showManageTab && (
           <div>
             {companies.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
-                {es ? 'No hay empresas guardadas.' : 'No companies saved yet.'}
+              <div style={{ textAlign: 'center', padding: '0.75rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                {t('rmaLabel.noSavedCompanies')}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
@@ -209,12 +208,12 @@ export default function RMALabelModal({ open, onClose }: Props) {
                       style={{
                         flex: 1, textAlign: 'left', padding: '0.5rem 0.75rem',
                         borderRadius: '0.4rem', cursor: 'pointer',
-                        border: recipientName === co.name ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                        background: recipientName === co.name ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)',
+                        border: recipientName === co.name ? '2px solid #3b82f6' : '1px solid var(--border-default)',
+                        background: recipientName === co.name ? 'rgba(59,130,246,0.2)' : 'var(--bg-input)',
                       }}
                     >
-                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: recipientName === co.name ? '#93c5fd' : '#e2e8f0' }}>{co.name}</div>
-                      <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: '0.1rem' }}>{co.address}, {co.city} {co.state} {co.zip}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: recipientName === co.name ? '#93c5fd' : 'var(--text-primary)' }}>{co.name}</div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>{co.address}, {co.city} {co.state} {co.zip}</div>
                     </button>
                     <button className="btn btn-danger btn-sm" style={{ padding: '0.25rem 0.4rem', flexShrink: 0 }}
                       onClick={() => setDeleteConfirm(co.id)}>
@@ -230,12 +229,12 @@ export default function RMALabelModal({ open, onClose }: Props) {
         {/* Tab: Save new */}
         {showManageTab && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <input className="input" placeholder={es ? '🏢 Nombre de la empresa *' : '🏢 Company name *'}
+            <input className="input" placeholder={t('rmaLabel.companyNamePlaceholder')}
               value={newCompany.name} onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })} />
-            <input className="input" placeholder={es ? '🏠 Dirección *' : '🏠 Street address *'}
+            <input className="input" placeholder={t('rmaLabel.streetAddressPlaceholder')}
               value={newCompany.address} onChange={(e) => setNewCompany({ ...newCompany, address: e.target.value })} />
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.5rem' }}>
-              <input className="input" placeholder={es ? 'Ciudad *' : 'City *'}
+              <input className="input" placeholder={t('rmaLabel.cityPlaceholder')}
                 value={newCompany.city} onChange={(e) => setNewCompany({ ...newCompany, city: e.target.value })} />
               <input className="input" placeholder="State" maxLength={2}
                 value={newCompany.state} onChange={(e) => setNewCompany({ ...newCompany, state: e.target.value.toUpperCase() })}
@@ -245,7 +244,7 @@ export default function RMALabelModal({ open, onClose }: Props) {
             </div>
             <button className="btn btn-success" style={{ width: '100%', marginTop: '0.25rem' }} onClick={() => {
               if (!newCompany.name.trim() || !newCompany.address.trim() || !newCompany.city.trim()) {
-                toast(es ? 'Nombre, dirección y ciudad son requeridos.' : 'Name, address and city are required.', 'warning');
+                toast(t('rmaLabel.nameAddressCityRequired'), 'warning');
                 return;
               }
               const co = { ...newCompany, id: Date.now() };
@@ -254,23 +253,23 @@ export default function RMALabelModal({ open, onClose }: Props) {
               setNewCompany({ name: '', address: '', city: '', state: '', zip: '' });
               setShowManageTab(false);
             }}>
-              ✅ {es ? 'Guardar Empresa' : 'Save Company'}
+              ✅ {t('rmaLabel.saveCompany')}
             </button>
           </div>
         )}
 
         {/* Editable recipient fields */}
-        <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {es ? '✏️ Dirección del destinatario (editable)' : '✏️ Recipient address (editable)'}
+        <div style={{ marginTop: '0.75rem', borderTop: '1px solid var(--border-default)', paddingTop: '0.75rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {t('rmaLabel.recipientHeader')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <input className="input" placeholder={es ? 'Nombre / Empresa *' : 'Name / Company *'}
+            <input className="input" placeholder={t('rmaLabel.namePlaceholder')}
               value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
-            <input className="input" placeholder={es ? 'Dirección *' : 'Address *'}
+            <input className="input" placeholder={t('rmaLabel.addressPlaceholder')}
               value={recipientAddress} onChange={(e) => setRecipientAddress(e.target.value)} />
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.5rem' }}>
-              <input className="input" placeholder={es ? 'Ciudad *' : 'City *'}
+              <input className="input" placeholder={t('rmaLabel.cityPlaceholder')}
                 value={recipientCity} onChange={(e) => setRecipientCity(e.target.value)} />
               <input className="input" placeholder="State" maxLength={2}
                 value={recipientState} onChange={(e) => setRecipientState(e.target.value.toUpperCase())}
@@ -286,10 +285,10 @@ export default function RMALabelModal({ open, onClose }: Props) {
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
           <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-            🔖 {es ? `Artículos RMA (${entries.length})` : `RMA Items (${entries.length})`}
+            🔖 {t('rmaLabel.itemsCount', entries.length)}
           </div>
           <button className="btn btn-success btn-sm" onClick={addEntry}>
-            ➕ {es ? 'Agregar RMA' : 'Add RMA'}
+            ➕ {t('rmaLabel.addRMA')}
           </button>
         </div>
 
@@ -308,10 +307,10 @@ export default function RMALabelModal({ open, onClose }: Props) {
               )}
             </div>
             <input className="input" style={{ fontFamily: 'monospace', fontWeight: 700, marginBottom: '0.4rem' }}
-              placeholder={es ? 'Número RMA *  (ej. RMA-12345)' : 'RMA Number *  (e.g. RMA-12345)'}
+              placeholder={t('rmaLabel.rmaNumberPlaceholder')}
               value={entry.rmaNumber} onChange={(e) => updateEntry(entry.id, 'rmaNumber', e.target.value)} />
             <input className="input" style={{ marginBottom: '0.4rem' }}
-              placeholder={es ? 'Descripción / Notas (opcional)' : 'Description / Notes (optional)'}
+              placeholder={t('rmaLabel.rmaNotesPlaceholder')}
               value={entry.notes} onChange={(e) => updateEntry(entry.id, 'notes', e.target.value)} />
 
             {/* QR */}
@@ -322,7 +321,7 @@ export default function RMALabelModal({ open, onClose }: Props) {
                   background: 'rgba(139,92,246,0.1)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem',
                 }}>
                   <img src={entry.qrCode} alt="QR" style={{ width: '36px', height: '36px', objectFit: 'contain', background: 'white', borderRadius: '2px' }} />
-                  <span style={{ fontSize: '0.75rem', color: '#a78bfa', flex: 1 }}>✓ QR {es ? 'cargado' : 'loaded'}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#a78bfa', flex: 1 }}>✓ QR {t('rmaLabel.qrLoaded')}</span>
                   <button className="btn btn-danger btn-sm" style={{ padding: '0.1rem 0.3rem' }}
                     onClick={() => updateEntry(entry.id, 'qrCode', '')}>✕</button>
                 </div>
@@ -332,12 +331,12 @@ export default function RMALabelModal({ open, onClose }: Props) {
                     <input type="file" accept="image/*" style={{ display: 'none' }}
                       onChange={(e) => { if (e.target.files?.[0]) handleQRUpload(entry.id, e.target.files[0]); }} />
                     <div className="btn btn-secondary btn-sm" style={{ width: '100%', cursor: 'pointer', fontSize: '0.78rem' }}>
-                      📤 {es ? 'QR Imagen' : 'QR Image'}
+                      📤 {t('rmaLabel.qrImage')}
                     </div>
                   </label>
                   <button className="btn btn-secondary btn-sm" style={{ flex: 1, fontSize: '0.78rem' }}
                     onClick={() => handleQRPaste(entry.id)}>
-                    📋 {es ? 'Pegar QR' : 'Paste QR'}
+                    📋 {t('rmaLabel.pasteQR')}
                   </button>
                 </>
               )}
@@ -349,17 +348,14 @@ export default function RMALabelModal({ open, onClose }: Props) {
       {/* Generate button */}
       <button className="btn btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem' }}
         onClick={handleGenerate}>
-        📄 {es
-          ? `Generar ${validEntries.length} Etiqueta(s) PDF 4x6`
-          : `Generate ${validEntries.length} PDF Label(s) 4x6`
-        }
+        📄 {t('rmaLabel.generateButton', validEntries.length)}
       </button>
 
       {/* Delete confirm */}
       <ConfirmDialog
         open={deleteConfirm !== null}
-        title={es ? '¿Eliminar empresa?' : 'Delete company?'}
-        message={es ? 'Esta acción no se puede deshacer.' : 'This action cannot be undone.'}
+        title={t('rmaLabel.deleteCompanyTitle')}
+        message={t('rmaLabel.deleteCompanyMessage')}
         variant="danger"
         onConfirm={() => {
           if (deleteConfirm !== null) saveCompanies(companies.filter((c) => c.id !== deleteConfirm));
