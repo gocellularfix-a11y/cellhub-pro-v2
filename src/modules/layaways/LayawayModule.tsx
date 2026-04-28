@@ -62,7 +62,7 @@ export default function LayawayModule() {
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   const [showImeiWarning, setShowImeiWarning]   = useState(false);
   const skipImeiCheckRef                        = useRef(false);
@@ -719,7 +719,7 @@ export default function LayawayModule() {
         customerPhone: l.customerPhone,
         items: [{
           id: generateId(),
-          name: `${(l as any).itemDescription || l.items?.[0]?.name || 'Layaway'} — ${t('layaway.cancelRefundName')}`,
+          name: `${(l as any).itemDescription || l.items?.[0]?.name || t('layaway.cartItemName')} — ${t('layaway.cancelRefundName')}`,
           category: 'service' as any,
           price: -depositCents,
           qty: 1,
@@ -1106,7 +1106,7 @@ export default function LayawayModule() {
                                   itemDescription: r.itemDescription || l.items?.[0]?.name || '',
                                   balance: balDollars > 0 ? `$${balDollars.toFixed(2)}` : undefined,
                                 },
-                                lang === 'es' ? 'es' : 'en',
+                                locale === 'es' ? 'es' : 'en',
                               )
                             )}
                           >
@@ -1163,7 +1163,7 @@ export default function LayawayModule() {
                   CustomerSearchHeader for explicit "Select Customer" button. */}
               <CustomerSearchHeader
                 customers={customers}
-                lang={lang === 'es' ? 'es' : 'en'}
+                lang={locale === 'es' ? 'es' : 'en'}
                 onSelect={(c) => {
                   const parts = c.name.trim().split(/\s+/);
                   setForm({
@@ -1390,7 +1390,7 @@ export default function LayawayModule() {
         return (
         <DepositModal
           title={t('layaway.collectTitle', (depositTarget as any).ticketNumber || '')}
-          itemLabel={(depositTarget as any).itemDescription || depositTarget.items?.[0]?.name || 'Layaway Item'}
+          itemLabel={(depositTarget as any).itemDescription || depositTarget.items?.[0]?.name || t('layaway.cartItemName')}
           itemPrice={(firstItemPrice > 0 ? firstItemPrice : totalPreTax) / 100}
           taxRate={taxRate}
           taxable={(depositTarget as any).taxable || false}
