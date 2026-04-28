@@ -450,6 +450,23 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
 }) {
   const { t } = useTranslation();
   const isEdit = !!employee;
+  const MOD_LABELS: Record<string, string> = {
+    dashboard:     t('nav.dashboard'),
+    pos:           t('nav.pointOfSale'),
+    inventory:     t('nav.inventory'),
+    repairs:       t('nav.repairs'),
+    unlocks:       t('nav.unlocks'),
+    specialOrders: t('nav.specialOrder'),
+    layaways:      t('nav.layaways'),
+    returns:       t('nav.returns'),
+    customers:     t('nav.customers'),
+    appointments:  t('nav.appointments'),
+    intelligence:  t('nav.intelligence'),
+    purchaseOrders:t('nav.purchaseOrders'),
+    reports:       t('nav.reports'),
+    tax:           t('nav.caTaxReports'),
+    settings:      t('nav.settings'),
+  };
   // Round 24 — M3 fix: DO NOT spread the whole employee object into form state.
   // That would bleed plaintext PIN, SSN, clockLog, etc. into React devtools.
   // Instead, pick only whitelisted form fields and start PIN blank on edit.
@@ -644,7 +661,7 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                       }}
                       style={{ width: '1rem', height: '1rem', accentColor: '#3b82f6' }}
                     />
-                    <span>{mod.icon} {mod.label}</span>
+                    <span>{mod.icon} {MOD_LABELS[mod.id] ?? mod.label}</span>
                   </label>
                 ))}
               </div>

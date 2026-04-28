@@ -1372,10 +1372,10 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             Void = status voided, Refund = negative-total audit refund sale.
             Round 10.1 fix 4: singular/plural-correct labels. */}
         <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#475569' }}>
-          {stats.cleanSalesCount} {pluralize(stats.cleanSalesCount, locale === 'es' ? 'venta' : 'sale', locale === 'es' ? 'ventas' : 'sales')}
-          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} {pluralize(stats.refundedCount, locale === 'es' ? 'reembolsada' : 'refunded', locale === 'es' ? 'reembolsadas' : 'refunded')}</span>}
-          {stats.voidedCount > 0 && <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>• {stats.voidedCount} {pluralize(stats.voidedCount, locale === 'es' ? 'anulación' : 'void', locale === 'es' ? 'anulaciones' : 'voids')}</span>}
-          {stats.refundSalesCount > 0 && <span style={{ color: '#fb923c', marginLeft: '0.5rem' }}>• {stats.refundSalesCount} {pluralize(stats.refundSalesCount, locale === 'es' ? 'reembolso' : 'refund', locale === 'es' ? 'reembolsos' : 'refunds')}</span>}
+          {stats.cleanSalesCount} {pluralize(stats.cleanSalesCount, locale === 'es' ? 'venta' : locale === 'pt' ? 'venda' : 'sale', locale === 'es' ? 'ventas' : locale === 'pt' ? 'vendas' : 'sales')}
+          {stats.refundedCount > 0 && <span style={{ color: '#f97316', marginLeft: '0.5rem' }}>• {stats.refundedCount} {pluralize(stats.refundedCount, locale === 'es' ? 'reembolsada' : locale === 'pt' ? 'reembolsada' : 'refunded', locale === 'es' ? 'reembolsadas' : locale === 'pt' ? 'reembolsadas' : 'refunded')}</span>}
+          {stats.voidedCount > 0 && <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>• {stats.voidedCount} {pluralize(stats.voidedCount, locale === 'es' ? 'anulación' : locale === 'pt' ? 'anulação' : 'void', locale === 'es' ? 'anulaciones' : locale === 'pt' ? 'anulações' : 'voids')}</span>}
+          {stats.refundSalesCount > 0 && <span style={{ color: '#fb923c', marginLeft: '0.5rem' }}>• {stats.refundSalesCount} {pluralize(stats.refundSalesCount, locale === 'es' ? 'reembolso' : locale === 'pt' ? 'reembolso' : 'refund', locale === 'es' ? 'reembolsos' : locale === 'pt' ? 'reembolsos' : 'refunds')}</span>}
         </div>
       </div>
 
