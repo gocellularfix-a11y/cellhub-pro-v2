@@ -4283,4 +4283,11 @@ export const translations: TranslationDictionary = {
 
   // ── Search ────────────────────────────────────────────────
   'search.noResultsFor':    { en: 'No results for', es: 'Sin resultados para', pt: 'Sem resultados para' },
+
+  // ── Quick Actions (POS grid) ──────────────────────────────
+  'quick.notepad':      { en: 'Notepad',       es: 'Bloc de Notas',  pt: 'Bloco de Notas' },
+  'quick.labelPrinter': { en: 'Label Printer', es: 'Impres. Etiq.',  pt: 'Impr. Etiqueta' },
+
+  // ── Reports ───────────────────────────────────────────────
+  'reports.noTransactions': { en: 'No transactions in this period', es: 'Sin transacciones en este período', pt: 'Nenhuma transação neste período' },
 };

@@ -1629,7 +1629,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               <div style={{ padding: '0.75rem' }}>
                 {stats.categoriesByRevenue.length === 0 ? (
                   // Round 10.1 fix 3: clearer empty-state copy; card chrome stays.
-                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{locale === 'es' ? 'Sin transacciones en este período' : 'No transactions in this period'}</p>
+                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{t('reports.noTransactions')}</p>
                 ) : (() => {
                   const maxRev = Math.max(...stats.categoriesByRevenue.map((c) => c.revenueCents), 1);
                   return stats.categoriesByRevenue.map((cat) => (
@@ -1905,7 +1905,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
               {displayedTx.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '2.5rem', color: '#475569', fontSize: '0.875rem' }}>
-                  {locale === 'es' ? 'Sin transacciones en este período' : 'No transactions for this period'}
+                  {t('reports.noTransactions')}
                 </div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
