@@ -18,6 +18,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { formatPhone } from '@/utils/normalize';
+import { useTranslation } from '@/i18n';
 
 interface SearchResult {
   id: string;
@@ -62,6 +63,7 @@ export default function GlobalSearch() {
   } = state as any;
 
   const es = lang === 'es';
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -314,7 +316,7 @@ export default function GlobalSearch() {
                 padding: '2rem', textAlign: 'center',
                 color: '#475569', fontSize: '0.9rem',
               }}>
-                {es ? 'Sin resultados para' : 'No results for'}{' '}
+                {t('search.noResultsFor')}{' '}
                 <span style={{ color: '#94a3b8' }}>"{query}"</span>
               </div>
             ) : results.map((r, i) => (
@@ -370,12 +372,12 @@ export default function GlobalSearch() {
             display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
           }}>
             {[
-              { icon: '👤', label: es ? 'Clientes' : 'Customers' },
-              { icon: '📦', label: es ? 'Inventario' : 'Inventory' },
-              { icon: '🔧', label: es ? 'Reparaciones' : 'Repairs' },
-              { icon: '🔓', label: 'Unlocks' },
-              { icon: '🧾', label: es ? 'Facturas' : 'Invoices' },
-              { icon: '📋', label: es ? 'Pedidos' : 'Orders' },
+              { icon: '👤', label: t('nav.customers') },
+              { icon: '📦', label: t('nav.inventory') },
+              { icon: '🔧', label: t('nav.repairs') },
+              { icon: '🔓', label: t('nav.unlocks') },
+              { icon: '🧾', label: t('invoice') },
+              { icon: '📋', label: t('nav.specialOrder') },
             ].map((h) => (
               <span key={h.label} style={{
                 fontSize: '0.72rem', color: '#475569',

@@ -30,6 +30,15 @@ export default function InventoryModule() {
   const { printHtml } = usePrint();
   const { t, locale } = useTranslation();
 
+  const CONDITION_LABELS: Record<string, string> = {
+    New: t('condition.new'),
+    Excellent: t('condition.excellent'),
+    Good: t('condition.good'),
+    Fair: t('condition.fair'),
+    Refurbished: t('condition.refurbished'),
+    'For Parts': t('condition.forParts'),
+  };
+
   const [search, setSearch] = useState(inventorySearchTerm || '');
 
   // Consume cross-module search term once on mount
@@ -396,7 +405,7 @@ export default function InventoryModule() {
           >
             {conditions.map((c) => (
               <option key={c} value={c}>
-                {c === 'All' ? t('inventory.allConditions') : c}
+                {c === 'All' ? t('inventory.allConditions') : (CONDITION_LABELS[c] ?? c)}
               </option>
             ))}
           </select>
@@ -840,6 +849,14 @@ function InventoryFormModal({
   ];
 
   const CONDITIONS = ['New', 'Excellent', 'Good', 'Fair', 'Refurbished', 'For Parts'];
+  const CONDITION_LABELS: Record<string, string> = {
+    New: t('condition.new'),
+    Excellent: t('condition.excellent'),
+    Good: t('condition.good'),
+    Fair: t('condition.fair'),
+    Refurbished: t('condition.refurbished'),
+    'For Parts': t('condition.forParts'),
+  };
 
   return (
     <>
@@ -1150,7 +1167,7 @@ function InventoryFormModal({
               value={form.condition}
               onChange={(e) => setForm({ ...form, condition: e.target.value })}
             >
-              {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {CONDITIONS.map((c) => <option key={c} value={c}>{CONDITION_LABELS[c] ?? c}</option>)}
             </select>
           </div>
           )}

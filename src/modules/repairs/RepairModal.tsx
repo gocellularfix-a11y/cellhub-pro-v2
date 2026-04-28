@@ -72,71 +72,6 @@ interface Props {
   lang: string;
 }
 
-const ISSUES_EN = [
-  { icon: '📱', label: 'Cracked Screen',  value: 'Cracked / broken screen' },
-  { icon: '🔋', label: 'Battery',         value: 'Battery not charging / drains fast' },
-  { icon: '💧', label: 'Water Damage',    value: 'Water / liquid damage' },
-  { icon: '🔌', label: 'Charging Port',   value: 'Charging port not working' },
-  { icon: '🔇', label: 'No Sound',        value: 'No sound / speaker not working' },
-  { icon: '📷', label: 'Camera',          value: 'Camera not working / blurry photos' },
-  { icon: '📶', label: 'No Signal',       value: 'No signal / not connecting to network' },
-  { icon: '🔘', label: 'Buttons',         value: 'Buttons not responding (power/volume)' },
-  { icon: '🌡️', label: 'Overheating',    value: 'Phone overheating' },
-  { icon: '🖥️', label: "Won't Turn On",  value: "Won't turn on / black screen" },
-  { icon: '📡', label: 'WiFi/Bluetooth', value: 'WiFi or Bluetooth not working' },
-  { icon: '🔑', label: 'Unlock',          value: 'Account unlock / iCloud / FRP bypass' },
-  { icon: '💾', label: 'Storage Full',    value: 'Storage full / no space' },
-  { icon: '🎤', label: 'Microphone',      value: 'Microphone not working / no sound from mic' },
-  { icon: '🔧', label: 'Diagnostic',      value: 'General device diagnostic' },
-];
-
-const ISSUES_ES = [
-  { icon: '📱', label: 'Pantalla Rota',   value: 'Pantalla rota / agrietada' },
-  { icon: '🔋', label: 'Batería',          value: 'Batería no carga / se agota rápido' },
-  { icon: '💧', label: 'Daño de Agua',    value: 'Daño por agua / líquido' },
-  { icon: '🔌', label: 'Puerto de Carga', value: 'Puerto de carga no funciona' },
-  { icon: '🔇', label: 'Sin Sonido',      value: 'Sin sonido / bocina no funciona' },
-  { icon: '📷', label: 'Cámara',           value: 'Cámara no funciona / fotos borrosas' },
-  { icon: '📶', label: 'Sin Señal',        value: 'Sin señal / no conecta a red' },
-  { icon: '🔘', label: 'Botones',          value: 'Botones no responden (power/volumen)' },
-  { icon: '🌡️', label: 'Se Calienta',    value: 'Teléfono se sobrecalienta' },
-  { icon: '🖥️', label: 'No Enciende',    value: 'No enciende / pantalla negra' },
-  { icon: '📡', label: 'WiFi/Bluetooth', value: 'WiFi o Bluetooth no funciona' },
-  { icon: '🔑', label: 'Desbloquear',     value: 'Desbloqueo de cuenta / iCloud / FRP' },
-  { icon: '💾', label: 'Sin Espacio',     value: 'Sin espacio de almacenamiento' },
-  { icon: '🎤', label: 'Micrófono',       value: 'Micrófono no funciona / no escuchan' },
-  { icon: '🔧', label: 'Diagnóstico',     value: 'Diagnóstico general del dispositivo' },
-];
-
-const DIAG_EN = [
-  { icon: '🔄', label: 'Replace Screen',    value: 'Replace screen' },
-  { icon: '🔋', label: 'Replace Battery',   value: 'Replace battery' },
-  { icon: '🔌', label: 'Clean Port',        value: 'Clean / repair charging port' },
-  { icon: '💧', label: 'Board Cleaning',    value: 'Board cleaning for water damage' },
-  { icon: '🎵', label: 'Replace Speaker',   value: 'Replace speaker / earpiece' },
-  { icon: '📷', label: 'Replace Camera',    value: 'Replace camera module' },
-  { icon: '🔘', label: 'Fix Button',        value: 'Repair power / volume button' },
-  { icon: '🖥️', label: 'Full Diagnostic', value: 'Full device diagnostic' },
-  { icon: '🔑', label: 'Remove Account',    value: 'Remove iCloud / Google FRP account' },
-  { icon: '💾', label: 'Free Storage',      value: 'Free up storage / delete files' },
-  { icon: '⚙️', label: 'Restore SW',       value: 'Software restore / OS update' },
-  { icon: '🎤', label: 'Replace Mic',       value: 'Replace microphone' },
-];
-
-const DIAG_ES = [
-  { icon: '🔄', label: 'Reemplazar Pantalla', value: 'Reemplazar pantalla' },
-  { icon: '🔋', label: 'Cambiar Batería',      value: 'Cambiar batería' },
-  { icon: '🔌', label: 'Limpiar Puerto',       value: 'Limpiar/reparar puerto de carga' },
-  { icon: '💧', label: 'Limpiar Placa',        value: 'Limpieza de placa por daño de agua' },
-  { icon: '🎵', label: 'Cambiar Bocina',       value: 'Cambiar bocina / altavoz' },
-  { icon: '📷', label: 'Cambiar Cámara',       value: 'Reemplazar módulo de cámara' },
-  { icon: '🔘', label: 'Reparar Botón',        value: 'Reparar botón de encendido/volumen' },
-  { icon: '🖥️', label: 'Diagnóstico',        value: 'Diagnóstico completo del dispositivo' },
-  { icon: '🔑', label: 'Eliminar Cuenta',      value: 'Eliminar cuenta iCloud / Google FRP' },
-  { icon: '💾', label: 'Liberar Espacio',      value: 'Liberar espacio / eliminar archivos' },
-  { icon: '⚙️', label: 'Restaurar SW',        value: 'Restaurar software / actualizar sistema' },
-  { icon: '🎤', label: 'Cambiar Micrófono',    value: 'Reemplazar micrófono' },
-];
 
 function PillButton({ icon, label, selected, onToggle, color = '#a5b4fc' }: {
   icon: string; label: string; selected: boolean; onToggle: () => void; color?: string;
@@ -707,8 +642,37 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     [inventory]
   );
 
-  const issues = lang === 'es' ? ISSUES_ES : ISSUES_EN;
-  const diagOptions = lang === 'es' ? DIAG_ES : DIAG_EN;
+  const issues = [
+    { icon: '📱', label: t('repair.issue.crackedScreen.label'),  value: t('repair.issue.crackedScreen.value') },
+    { icon: '🔋', label: t('repair.issue.battery.label'),        value: t('repair.issue.battery.value') },
+    { icon: '💧', label: t('repair.issue.waterDamage.label'),    value: t('repair.issue.waterDamage.value') },
+    { icon: '🔌', label: t('repair.issue.chargingPort.label'),   value: t('repair.issue.chargingPort.value') },
+    { icon: '🔇', label: t('repair.issue.noSound.label'),        value: t('repair.issue.noSound.value') },
+    { icon: '📷', label: t('repair.issue.camera.label'),         value: t('repair.issue.camera.value') },
+    { icon: '📶', label: t('repair.issue.noSignal.label'),       value: t('repair.issue.noSignal.value') },
+    { icon: '🔘', label: t('repair.issue.buttons.label'),        value: t('repair.issue.buttons.value') },
+    { icon: '🌡️', label: t('repair.issue.overheating.label'),   value: t('repair.issue.overheating.value') },
+    { icon: '🖥️', label: t('repair.issue.wontTurnOn.label'),    value: t('repair.issue.wontTurnOn.value') },
+    { icon: '📡', label: t('repair.issue.wifiBluetooth.label'),  value: t('repair.issue.wifiBluetooth.value') },
+    { icon: '🔑', label: t('repair.issue.unlock.label'),         value: t('repair.issue.unlock.value') },
+    { icon: '💾', label: t('repair.issue.storageFull.label'),    value: t('repair.issue.storageFull.value') },
+    { icon: '🎤', label: t('repair.issue.microphone.label'),     value: t('repair.issue.microphone.value') },
+    { icon: '🔧', label: t('repair.issue.diagnostic.label'),     value: t('repair.issue.diagnostic.value') },
+  ];
+  const diagOptions = [
+    { icon: '🔄', label: t('repair.diag.replaceScreen.label'),   value: t('repair.diag.replaceScreen.value') },
+    { icon: '🔋', label: t('repair.diag.replaceBattery.label'),  value: t('repair.diag.replaceBattery.value') },
+    { icon: '🔌', label: t('repair.diag.cleanPort.label'),       value: t('repair.diag.cleanPort.value') },
+    { icon: '💧', label: t('repair.diag.boardCleaning.label'),   value: t('repair.diag.boardCleaning.value') },
+    { icon: '🎵', label: t('repair.diag.replaceSpeaker.label'),  value: t('repair.diag.replaceSpeaker.value') },
+    { icon: '📷', label: t('repair.diag.replaceCamera.label'),   value: t('repair.diag.replaceCamera.value') },
+    { icon: '🔘', label: t('repair.diag.fixButton.label'),       value: t('repair.diag.fixButton.value') },
+    { icon: '🖥️', label: t('repair.diag.fullDiagnostic.label'), value: t('repair.diag.fullDiagnostic.value') },
+    { icon: '🔑', label: t('repair.diag.removeAccount.label'),   value: t('repair.diag.removeAccount.value') },
+    { icon: '💾', label: t('repair.diag.freeStorage.label'),     value: t('repair.diag.freeStorage.value') },
+    { icon: '⚙️', label: t('repair.diag.restoreSW.label'),      value: t('repair.diag.restoreSW.value') },
+    { icon: '🎤', label: t('repair.diag.replaceMic.label'),      value: t('repair.diag.replaceMic.value') },
+  ];
 
   return (
     <Modal open onClose={handleClose}

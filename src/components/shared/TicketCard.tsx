@@ -73,6 +73,16 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   extraBadges,
 }, ref) {
   const { t } = useTranslation();
+  const PRIORITY_LABELS: Record<string, string> = {
+    Normal: t('priority.normal'),
+    normal: t('priority.normal'),
+    Low: t('priority.low'),
+    low: t('priority.low'),
+    High: t('priority.high'),
+    high: t('priority.high'),
+    Urgent: t('priority.urgent'),
+    urgent: t('priority.urgent'),
+  };
   return (
     <div
       ref={ref}
@@ -95,7 +105,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                 priority === 'urgent' || priority === 'Urgent' ? 'badge-danger' :
                 priority === 'high' || priority === 'High' ? 'badge-warning' : 'badge-neutral'
               }`}>
-                {priority}
+                {PRIORITY_LABELS[priority] ?? priority}
               </span>
             )}
             {extraBadges}

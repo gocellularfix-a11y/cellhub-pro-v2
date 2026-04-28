@@ -1001,7 +1001,7 @@ export default function UnlockModule() {
   return (
     <>
       <TicketListLayout
-        title={L.unlocks || 'Unlocks'}
+        title={t('unlocks.moduleTitle')}
         icon="🔓"
         statuses={STATUSES}
         activeStatus={filterStatus}
@@ -1017,17 +1017,17 @@ export default function UnlockModule() {
           />
         }
         stats={[
-          { label: L.activeUnlocks || 'Active', value: activeCount, color: 'text-purple-400' },
-          { label: L.completed || 'Completed', value: unlocks.filter((u) => normalizeStatus(u.status) === 'completed').length, color: 'text-emerald-400' },
-          { label: L.total || 'Total', value: unlocks.length },
+          { label: t('unlocks.statActive'), value: activeCount, color: 'text-purple-400' },
+          { label: t('unlocks.statCompleted'), value: unlocks.filter((u) => normalizeStatus(u.status) === 'completed').length, color: 'text-emerald-400' },
+          { label: t('unlocks.statTotal'), value: unlocks.length },
         ]}
         onNew={openNew}
-        newLabel={L.newUnlock || 'New Unlock'}
+        newLabel={t('unlocks.newUnlock')}
       >
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-500">
             <span className="text-4xl block mb-3">🔓</span>
-            <p>No unlocks found</p>
+            <p>{t('unlocks.noResults')}</p>
           </div>
         ) : (
           filtered.slice(0, visibleCount).map((u) => (
