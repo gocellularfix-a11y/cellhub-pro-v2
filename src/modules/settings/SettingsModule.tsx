@@ -19,22 +19,6 @@ import FirebaseSetupModal from './FirebaseSetupModal';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
 
-const SECTIONS = [
-  { id: 'store',       icon: '🏪',  label: 'Store Info' },
-  { id: 'multistore',  icon: '🏬',  label: 'Multi-Store' },
-  { id: 'taxes',       icon: '💰',  label: 'Tax Rates & Fees' },
-  // r-settings-2b1: commissions tab unifies carriers + top-ups (moved out of
-  // the taxes tab where they were embedded for historical reasons). The 5
-  // sub-sections (carrier commissions, spiffs, phone carriers, payment
-  // portals, international top-ups) all share the "commission income" theme.
-  { id: 'commissions', icon: '💰',  label: 'Commission Income' },
-  { id: 'hardware',    icon: '🖨️', label: 'Hardware' },
-  // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
-  { id: 'whatsapp',    icon: '💬',  label: 'WhatsApp' },
-  { id: 'ai',          icon: '🤖',  label: 'AI Assistant' },
-  { id: 'employees',   icon: '👥',  label: 'Employees' },
-  { id: 'backup',      icon: '💾',  label: 'Backup & Restore' },
-];
 
 // ── Field/Toggle helpers — HOISTED (r26 fix C1) ──────────────
 // Previously these were declared inside SettingsModule(), which
@@ -242,6 +226,19 @@ export default function SettingsModule() {
   // that the chosen name becomes detectedPrinters[0].
   const [scanningPrinters, setScanningPrinters] = useState(false);
   const { t, locale } = useTranslation();
+  const SECTIONS = [
+    { id: 'store',       icon: '🏪',  label: t('settings.nav.store') },
+    { id: 'multistore',  icon: '🏬',  label: t('settings.nav.multistore') },
+    { id: 'taxes',       icon: '💰',  label: t('settings.nav.taxes') },
+    // r-settings-2b1: commissions tab unifies carriers + top-ups
+    { id: 'commissions', icon: '💰',  label: t('settings.nav.commissions') },
+    { id: 'hardware',    icon: '🖨️', label: t('settings.nav.hardware') },
+    // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
+    { id: 'whatsapp',    icon: '💬',  label: t('settings.nav.whatsapp') },
+    { id: 'ai',          icon: '🤖',  label: t('settings.nav.ai') },
+    { id: 'employees',   icon: '👥',  label: t('settings.nav.employees') },
+    { id: 'backup',      icon: '💾',  label: t('settings.nav.backup') },
+  ];
 
   // R-COMMS-SMS-INFRA-CLEANUP: smsWizardOpen state removed (Wizard retired).
 
