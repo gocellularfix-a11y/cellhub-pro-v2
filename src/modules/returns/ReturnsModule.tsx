@@ -308,7 +308,7 @@ export default function ReturnsModule() {
     Object.entries(selectedItems).reduce((sum, [id, sel]) => {
       const item = returnableItems.find((i) => i.id === id);
       if (!item?.taxable) return sum;
-      return sum + forwardTaxFromBase(effectivePriceCents(item) * sel.qty, taxRate, true).taxCents / 100;
+      return sum + rc(forwardTaxFromBase(effectivePriceCents(item) * sel.qty, taxRate, true).taxCents / 100);
     }, 0), [selectedItems, returnableItems, taxRate, effectivePriceCents]);
 
   const returnTotal = rc(returnSubtotal + returnTax);
