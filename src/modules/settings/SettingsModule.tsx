@@ -1508,7 +1508,7 @@ export default function SettingsModule() {
           )}
 
           {activeSection === 'employees' && (
-            <EmployeeSection employees={employees} setEmployees={setEmployees} lang={lang} L={L} settings={settings} currentEmployee={currentEmployee} />
+            <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
           )}
 
           {activeSection === 'backup' && (

@@ -8,6 +8,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
 import { hashPin, isHashed } from '@/utils/pinHash';
 import { usePrint } from '@/hooks/usePrint';
@@ -64,18 +65,16 @@ function pickFormFields(emp: any): Record<string, unknown> {
 interface Props {
   employees: Employee[];
   setEmployees: (e: Employee[]) => void;
-  lang: string;
-  L: Record<string, any>;
   settings?: any;
   currentEmployee?: any;
 }
 
 const MODAL_SECTIONS = [
-  { id: 'personal',    icon: '👤', label: 'Personal' },
-  { id: 'employment',  icon: '💼', label: 'Employment' },
-  { id: 'legal',       icon: '📄', label: 'Legal' },
-  { id: 'skills',      icon: '⚙️',  label: 'Skills' },
-  { id: 'notes',       icon: '📝', label: 'Notes' },
+  { id: 'personal',    icon: '👤', key: 'employees.section.personal' },
+  { id: 'employment',  icon: '💼', key: 'employees.section.employment' },
+  { id: 'legal',       icon: '📄', key: 'employees.section.legal' },
+  { id: 'skills',      icon: '⚙️',  key: 'employees.section.skills' },
+  { id: 'notes',       icon: '📝', key: 'employees.section.notes' },
 ];
 
 // Round 24: role is canonical lowercase EmployeeRole; money in cents;
@@ -224,8 +223,8 @@ function buildOnboardingHTML(emp: any, settings: any, blank = false) {
 
 // ── Main component ────────────────────────────────────────
 
-export default function EmployeeSection({ employees, setEmployees, lang, L, settings, currentEmployee }: Props) {
-  const es = lang === 'es';
+export default function EmployeeSection({ employees, setEmployees, settings, currentEmployee }: Props) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const { printHtml } = usePrint();
 
@@ -283,7 +282,7 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
     const turningOff = target.active;
     if (turningOff) {
       if (currentEmployee?.id === id) {
-        toast(es ? 'No puedes desactivarte a ti mismo' : "You can't deactivate yourself", 'error');
+        toast(t('employees.cantDeactivateSelf'), 'error');
         return;
       }
       if (target.role === 'owner') {
@@ -291,7 +290,7 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
           (e) => e.active && e.role === 'owner' && e.id !== id,
         ).length;
         if (remainingActiveOwners === 0) {
-          toast(es ? 'Debe quedar al menos un dueño activo' : 'At least one active owner must remain', 'error');
+          toast(t('employees.cantDeactivateLastOwner'), 'error');
           return;
         }
       }
@@ -301,24 +300,21 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
     setEmployees(toggled);
     const emp = toggled.find((e) => e.id === id);
     if (emp) persist.employee(emp.id, emp as unknown as Record<string, unknown>);
-  }, [setEmployees, currentEmployee, es, toast]);
+  }, [setEmployees, currentEmployee, t, toast]);
 
   const handleDelete = useCallback((id: string) => {
     // Round 24 — C6: block self-delete and last-owner delete.
     const target = employeesRef.current.find((e) => e.id === id);
     if (!target) { setDeleteConfirm(null); return; }
     if (currentEmployee?.id === id) {
-      toast(es ? 'No puedes eliminarte a ti mismo' : "You can't delete yourself", 'error');
+      toast(t('employees.cantDeleteSelf'), 'error');
       setDeleteConfirm(null);
       return;
     }
     if (target.role === 'owner') {
       const remainingOwners = employeesRef.current.filter((e) => e.role === 'owner' && e.id !== id).length;
       if (remainingOwners === 0) {
-        toast(
-          es ? 'Debe quedar al menos un dueño en el sistema' : 'At least one owner must remain in the system',
-          'error',
-        );
+        toast(t('employees.cantDeleteLastOwner'), 'error');
         setDeleteConfirm(null);
         return;
       }
@@ -328,8 +324,8 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
     setEmployees(nextEmployees);
     remove.employee(id);
     setDeleteConfirm(null);
-    toast(es ? 'Empleado eliminado' : 'Employee deleted', 'success');
-  }, [setEmployees, currentEmployee, es, toast]);
+    toast(t('employees.deleted'), 'success');
+  }, [setEmployees, currentEmployee, t, toast]);
 
   const openModal = (emp: any = null) => {
     setEditEmployee(emp);
@@ -342,26 +338,26 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
       await printHtml(html, { silent: false, printer: settings?.detectedPrinters?.[0] });
     } catch (err) {
       console.error('[Employees] Print failed:', err);
-      toast(es ? 'Error al imprimir' : 'Print failed', 'error');
+      toast(t('employees.printError'), 'error');
     }
-  }, [settings, printHtml, toast, es]);
+  }, [settings, printHtml, toast, t]);
 
   return (
     <>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-          👥 {es ? 'Empleados' : 'Employees'}
+          👥 {t('employees.title')}
         </h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             onClick={() => handlePrintOnboarding(null, true)}
             style={{ padding: '0.45rem 0.875rem', borderRadius: '0.5rem', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.1)', color: '#34d399', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
           >
-            🖨️ {es ? 'Forma en Blanco' : 'Blank Form'}
+            🖨️ {t('employees.blankForm')}
           </button>
           <button onClick={() => openModal(null)} className="btn btn-primary btn-sm">
-            + {es ? 'Nuevo Empleado' : 'New Employee'}
+            + {t('employees.newEmployee')}
           </button>
         </div>
       </div>
@@ -371,14 +367,14 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              {['Name', 'Role', 'Position', 'Start Date', 'Docs', 'PIN', 'Status', 'Actions'].map((h) => (
-                <th key={h} style={{ textAlign: 'left', padding: '0.625rem 0.875rem', color: '#64748b', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+              {['employees.col.name', 'employees.col.role', 'employees.col.position', 'employees.col.startDate', 'employees.col.docs', 'employees.col.pin', 'employees.col.status', 'employees.col.actions'].map((key) => (
+                <th key={key} style={{ textAlign: 'left', padding: '0.625rem 0.875rem', color: '#64748b', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t(key)}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {employees.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: '#475569' }}>No employees yet. Add your first employee.</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: '#475569' }}>{t('employees.empty')}</td></tr>
             )}
             {employees.map((emp: any) => {
               const docsCount = [emp.docsW4, emp.docsI9, emp.docsIDCopy, emp.docsDirectDeposit, emp.docsHandbook].filter(Boolean).length;
@@ -405,18 +401,18 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
                       onClick={() => toggleActive(emp.id)}
                       style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, background: emp.active ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: emp.active ? '#22c55e' : '#ef4444' }}
                     >
-                      {emp.active ? (es ? 'Activo' : 'Active') : (es ? 'Inactivo' : 'Inactive')}
+                      {emp.active ? t('employees.active') : t('employees.inactive')}
                     </button>
                   </td>
                   <td style={{ padding: '0.625rem 0.875rem' }}>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button onClick={() => openModal(emp)} className="btn btn-ghost btn-sm" title="Edit">✏️</button>
+                      <button onClick={() => openModal(emp)} className="btn btn-ghost btn-sm" title={t('employees.titleEdit')}>✏️</button>
                       <button
                         onClick={() => handlePrintOnboarding(emp, false)}
                         style={{ padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.1)', color: '#34d399', cursor: 'pointer', fontSize: '0.75rem' }}
-                        title="Print onboarding form"
+                        title={t('employees.titlePrint')}
                       >🖨️</button>
-                      <button onClick={() => setDeleteConfirm(emp.id)} className="btn btn-ghost btn-sm text-red-400" title="Delete">🗑️</button>
+                      <button onClick={() => setDeleteConfirm(emp.id)} className="btn btn-ghost btn-sm text-red-400" title={t('employees.titleDelete')}>🗑️</button>
                     </div>
                   </td>
                 </tr>
@@ -431,15 +427,14 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
           employee={editEmployee}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditEmployee(null); }}
-          lang={lang} L={L}
         />,
         document.body
       )}
 
       <ConfirmDialog
         open={!!deleteConfirm}
-        title={es ? 'Eliminar Empleado' : 'Delete Employee'}
-        message={es ? '¿Eliminar este empleado? Esta acción no se puede deshacer.' : 'Delete this employee? This action cannot be undone.'}
+        title={t('employees.deleteEmployee')}
+        message={t('employees.deleteMsg')}
         variant="danger"
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
@@ -450,10 +445,10 @@ export default function EmployeeSection({ employees, setEmployees, lang, L, sett
 
 // ── Employee Form Modal ───────────────────────────────────
 
-function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
-  employee: any; onSave: (d: any) => void; onClose: () => void; lang: string; L: any;
+function EmployeeFormModal({ employee, onSave, onClose }: {
+  employee: any; onSave: (d: any) => void; onClose: () => void;
 }) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const isEdit = !!employee;
   // Round 24 — M3 fix: DO NOT spread the whole employee object into form state.
   // That would bleed plaintext PIN, SSN, clockLog, etc. into React devtools.
@@ -478,16 +473,16 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
 
   const handleSubmit = () => {
     setValidationError(null);
-    if (!form.name.trim()) { setValidationError(es ? 'Nombre requerido' : 'Name is required'); return; }
+    if (!form.name.trim()) { setValidationError(t('employees.validation.nameRequired')); return; }
     // On CREATE, PIN is required (min 4 digits).
     // On EDIT, PIN may be blank (preserves existing) OR if provided must be ≥4 digits.
     if (!isEdit) {
       if (!form.pin || form.pin.length < 4) {
-        setValidationError(es ? 'PIN de 4 dígitos requerido' : '4-digit PIN required');
+        setValidationError(t('employees.validation.pinRequired'));
         return;
       }
     } else if (form.pin && form.pin.length > 0 && form.pin.length < 4) {
-      setValidationError(es ? 'El nuevo PIN debe tener al menos 4 dígitos' : 'New PIN must be at least 4 digits');
+      setValidationError(t('employees.validation.pinMin'));
       return;
     }
     onSave(form);
@@ -524,7 +519,7 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
 
   return (
     <Modal open onClose={onClose}
-      title={`${employee ? '✏️' : '👤'} ${employee ? (es ? 'Editar Empleado' : 'Edit Employee') : (es ? 'Nuevo Empleado' : 'New Employee')}`}
+      title={`${employee ? '✏️' : '👤'} ${employee ? t('employees.editEmployee') : t('employees.newEmployee')}`}
       size="max-w-2xl"
     >
       {/* Section tabs */}
@@ -536,7 +531,7 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
             background: activeSection === s.id ? 'rgba(99,102,241,0.25)' : 'transparent',
             color: activeSection === s.id ? '#818cf8' : '#64748b',
           }}>
-            {s.icon} {s.label}
+            {s.icon} {t(s.key)}
           </button>
         ))}
       </div>
@@ -549,13 +544,13 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                  {es ? 'Nombre' : 'Name'} * <span style={{ color: '#f87171', fontSize: '0.68rem' }}>(display name)</span>
+                  {t('employees.form.name')} * <span style={{ color: '#f87171', fontSize: '0.68rem' }}>{t('employees.form.displayName')}</span>
                 </label>
                 <input className="input" value={form.name} onChange={(e) => upd('name', e.target.value)} placeholder="Juan Pérez" autoFocus />
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                  PIN (4 digits) {isEdit ? <span style={{ color: '#64748b', fontSize: '0.68rem' }}>({es ? 'en blanco para mantener' : 'blank to keep existing'})</span> : '*'}
+                  {t('employees.form.pin')} {isEdit ? <span style={{ color: '#64748b', fontSize: '0.68rem' }}>{t('employees.form.pinBlank')}</span> : '*'}
                 </label>
                 <input type="password" className="input"
                   value={form.pin} onChange={(e) => upd('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
@@ -565,14 +560,14 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-              <F label={es ? 'Teléfono' : 'Phone'} field="phone" type="tel" placeholder="(805) 555-0100" />
-              <F label="Email" field="email" type="email" placeholder="juan@email.com" />
-              <F label={es ? 'Fecha de nacimiento' : 'Date of birth'} field="dob" type="date" />
+              <F label={t('employees.form.phone')} field="phone" type="tel" placeholder="(805) 555-0100" />
+              <F label={t('employees.form.email')} field="email" type="email" placeholder="juan@email.com" />
+              <F label={t('employees.form.dob')} field="dob" type="date" />
             </div>
-            <F label={es ? 'Dirección' : 'Home address'} field="address" placeholder="123 Main St, Santa Barbara, CA 93101" />
+            <F label={t('employees.form.address')} field="address" placeholder="123 Main St, Santa Barbara, CA 93101" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <F label={es ? 'Contacto emergencia' : 'Emergency contact'} field="emergencyName" placeholder="Maria Pérez" />
-              <F label={es ? 'Teléfono emergencia' : 'Emergency phone'} field="emergencyPhone" type="tel" placeholder="(805) 555-0199" />
+              <F label={t('employees.form.emergencyContact')} field="emergencyName" placeholder="Maria Pérez" />
+              <F label={t('employees.form.emergencyPhone')} field="emergencyPhone" type="tel" placeholder="(805) 555-0199" />
             </div>
           </div>
         )}
@@ -581,27 +576,27 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
         {activeSection === 'employment' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-              <F label={es ? 'Posición' : 'Position'} field="position"
+              <F label={t('employees.form.position')} field="position"
                 options={['Sales Associate','Repair Technician','Lead Technician','Assistant Manager','Store Manager']} />
-              <F label={es ? 'Tipo' : 'Employment type'} field="employmentType"
+              <F label={t('employees.form.employmentType')} field="employmentType"
                 options={['Full-time','Part-time','Seasonal']} />
-              <F label={es ? 'Fecha inicio' : 'Start date'} field="startDate" type="date" />
+              <F label={t('employees.form.startDate')} field="startDate" type="date" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Salario ($/hr)' : 'Pay rate ($/hr)'}</label>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('employees.form.payRate')}</label>
                 <input type="number" className="input" step="0.01" min="0"
                   value={((form.hourlyRateCents ?? 0) / 100).toFixed(2)}
                   onChange={(e) => upd('hourlyRateCents', Math.round((parseFloat(e.target.value) || 0) * 100))}
                   placeholder="17.00" />
               </div>
-              <F label={es ? 'Pago cada' : 'Pay schedule'} field="paySchedule"
+              <F label={t('employees.form.paySchedule')} field="paySchedule"
                 options={['Weekly','Bi-weekly','Semi-monthly']} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <F label={es ? 'Horario' : 'Schedule / Hours'} field="scheduledHours" placeholder="Mon–Fri 10am–6pm" />
+              <F label={t('employees.form.schedule')} field="scheduledHours" placeholder="Mon–Fri 10am–6pm" />
               <div>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Comisión (%)' : 'Commission (%)'}</label>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('employees.form.commission')}</label>
                 <input type="number" className="input" step="0.1" min="0" max="100"
                   value={((form.commissionRate ?? 0) * 100).toFixed(1)}
                   onChange={(e) => upd('commissionRate', (parseFloat(e.target.value) || 0) / 100)} />
@@ -609,7 +604,7 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{es ? 'Rol en sistema' : 'System role'}</label>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('employees.form.systemRole')}</label>
                 <select className="select" value={form.role} onChange={(e) => {
                   const newRole = e.target.value as EmployeeRole;
                   upd('role', newRole);
@@ -620,20 +615,18 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
                   }
                 }}>
                   {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{es ? r.es : r.en}</option>
+                    <option key={r.value} value={r.value}>{t(`employees.role.${r.value}`)}</option>
                   ))}
                 </select>
                 <p style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  {es
-                    ? 'El rol controla qué pestañas ve el empleado.'
-                    : 'Role controls which tabs this employee can see.'}
+                  {t('employees.form.roleHint')}
                 </p>
               </div>
-              <F label={es ? 'Idiomas' : 'Languages spoken'} field="languages" placeholder="English, Spanish" />
+              <F label={t('employees.form.languages')} field="languages" placeholder="English, Spanish" />
             </div>
             <div style={{ marginTop: '0.25rem' }}>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.375rem', fontWeight: 600 }}>
-                {es ? 'Módulos accesibles' : 'Module access'}
+                {t('employees.form.moduleAccess')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem 1rem' }}>
                 {ASSIGNABLE_MODULES.map((mod) => (
@@ -656,9 +649,7 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
                 ))}
               </div>
               <p style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.375rem' }}>
-                {es
-                  ? 'Deja vacío para usar los módulos del rol por defecto.'
-                  : 'Leave empty to use default modules from the role.'}
+                {t('employees.form.moduleHint')}
               </p>
             </div>
           </div>
@@ -668,7 +659,7 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
         {activeSection === 'legal' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <div style={{ padding: '0.625rem 0.75rem', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '0.5rem', fontSize: '0.78rem', color: '#fbbf24' }}>
-              ⚠️ {es ? 'SSN/ITIN se almacena localmente. No compartir sin autorización.' : 'SSN/ITIN stored locally only. Do not share without authorization.'}
+              ⚠️ {t('employees.form.ssnWarning')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
@@ -689,14 +680,14 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
             </div>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
-                {es ? 'Documentos recibidos' : 'Documents received'}
+                {t('employees.form.docsReceived')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                 <Cb field="docsW4" label="W-4 signed" />
                 <Cb field="docsI9" label="I-9 completed" />
-                <Cb field="docsIDCopy" label={es ? 'Copias de ID archivadas' : 'ID copies on file'} />
+                <Cb field="docsIDCopy" label={t('employees.form.docsIdCopy')} />
                 <Cb field="docsDirectDeposit" label="Direct deposit form" />
-                <Cb field="docsHandbook" label={es ? 'Manual empleado firmado' : 'Employee handbook signed'} />
+                <Cb field="docsHandbook" label={t('employees.form.docsHandbook')} />
               </div>
             </div>
           </div>
@@ -707,22 +698,20 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: '0.5rem' }}>
-                🔧 {es ? 'Habilidades de reparación' : 'Repair skills'}
+                🔧 {t('employees.form.skillsTitle')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 1rem' }}>
-                <Cb field="skillScreen" label={es ? 'Cambio de pantalla' : 'Screen replacement'} />
-                <Cb field="skillBattery" label={es ? 'Cambio de batería' : 'Battery replacement'} />
-                <Cb field="skillCharging" label={es ? 'Puerto de carga' : 'Charging port repair'} />
-                <Cb field="skillWater" label={es ? 'Daño por agua' : 'Water damage'} />
-                <Cb field="skillUnlock" label="Unlocking / flashing" />
-                <Cb field="skillData" label={es ? 'Transferencia de datos' : 'Data transfer'} />
+                <Cb field="skillScreen" label={t('employees.form.skillScreen')} />
+                <Cb field="skillBattery" label={t('employees.form.skillBattery')} />
+                <Cb field="skillCharging" label={t('employees.form.skillCharging')} />
+                <Cb field="skillWater" label={t('employees.form.skillWater')} />
+                <Cb field="skillUnlock" label={t('employees.form.skillUnlock')} />
+                <Cb field="skillData" label={t('employees.form.skillData')} />
               </div>
             </div>
             {/* Round 24: Access is controlled by Role (Employment tab), not per-checkbox. */}
             <div style={{ padding: '0.625rem 0.75rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '0.5rem', fontSize: '0.75rem', color: '#a5b4fc' }}>
-              🔐 {es
-                ? 'El acceso a módulos se controla por el rol del empleado (pestaña Employment). Cambia el rol allí para ajustar permisos.'
-                : 'Module access is controlled by the employee role (Employment tab). Change the role there to adjust permissions.'}
+              🔐 {t('employees.form.accessNote')}
             </div>
           </div>
         )}
@@ -732,19 +721,19 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                {es ? 'Notas internas (solo manager)' : 'Internal notes (manager only)'}
+                {t('employees.form.managerNotes')}
               </label>
               <textarea className="textarea" rows={5}
                 value={form.managerNotes || ''}
                 onChange={(e) => upd('managerNotes', e.target.value)}
-                placeholder={es ? 'Referido por... Experiencia previa en... Período de prueba hasta...' : 'Referred by... Previous experience at... Trial period until...'}
+                placeholder={t('employees.form.notesPlaceholder')}
                 style={{ resize: 'vertical', minHeight: '100px' }}
               />
             </div>
             {/* Hiring checklist summary */}
             <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '0.5rem' }}>
               <div style={{ fontSize: '0.75rem', color: '#6ee7b7', fontWeight: 700, marginBottom: '0.4rem' }}>
-                📋 {es ? 'Resumen de contratación' : 'Hiring checklist'}
+                📋 {t('employees.form.hiringChecklist')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', fontSize: '0.78rem' }}>
                 {[['docsW4','W-4'],['docsI9','I-9'],['docsIDCopy','ID copy'],['docsDirectDeposit','Direct deposit'],['docsHandbook','Handbook']].map(([f, lbl]) => (
@@ -776,9 +765,9 @@ function EmployeeFormModal({ employee, onSave, onClose, lang, L }: {
           </div>
         )}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={onClose} className="btn btn-secondary">{L.cancel || 'Cancel'}</button>
+          <button onClick={onClose} className="btn btn-secondary">{t('employees.form.cancel')}</button>
           <button onClick={handleSubmit} className="btn btn-primary">
-            ✓ {employee ? (L.save || 'Save') : (L.create || 'Create')}
+            ✓ {employee ? t('employees.form.save') : t('employees.form.create')}
           </button>
         </div>
       </div>
