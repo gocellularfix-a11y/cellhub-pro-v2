@@ -20,6 +20,7 @@ import type { Customer, Appointment, AppointmentStatus } from '@/store/types';
 import { usePrint } from '@/hooks/usePrint';
 import { escHtml } from '@/utils/escHtml';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
+import { useTranslation } from '@/i18n';
 
 // Re-export for any legacy consumer
 export type { Appointment, AppointmentStatus };
@@ -32,13 +33,6 @@ const STATUS_BADGE: Record<AppointmentStatus, string> = {
   no_show:   'badge-neutral',
 };
 
-const STATUS_LABEL: Record<AppointmentStatus, { en: string; es: string }> = {
-  scheduled: { en: 'Scheduled', es: 'Programada' },
-  arrived:   { en: 'Arrived',   es: 'Llegó' },
-  converted: { en: 'Converted', es: 'Convertida' },
-  cancelled: { en: 'Cancelled', es: 'Cancelada' },
-  no_show:   { en: 'No Show',   es: 'No apareció' },
-};
 
 export default function AppointmentsModule() {
   const {
@@ -47,7 +41,16 @@ export default function AppointmentsModule() {
   } = useApp();
   const { toast } = useToast();
   const { printHtml } = usePrint();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
+  const es = locale === 'es';
+  const dateLoc = ({ en: 'en-US', es: 'es-MX', pt: 'pt-BR' } as Record<string, string>)[locale] ?? 'en-US';
+  const APPT_STATUS_LABELS: Record<string, string> = {
+    scheduled: t('appt.status.scheduled'),
+    arrived:   t('appt.status.arrived'),
+    converted: t('appt.status.converted'),
+    cancelled: t('appt.status.cancelled'),
+    no_show:   t('appt.status.noShow'),
+  };
 
   // Anti-stale-closure refs (canonical pattern — setters don't accept updater fns)
   const appointmentsRef = useRef(appointments);
@@ -110,11 +113,11 @@ export default function AppointmentsModule() {
 
   const printAppointmentTicket = useCallback((appt: Appointment) => {
     const dateStr = new Date(appt.estimatedDropOff).toLocaleDateString(
-      es ? 'es-MX' : 'en-US',
+      dateLoc,
       { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
     );
     const timeStr = new Date(appt.estimatedDropOff).toLocaleTimeString(
-      es ? 'es-MX' : 'en-US',
+      dateLoc,
       { hour: 'numeric', minute: '2-digit' }
     );
     const lines: string[] = [];
@@ -153,17 +156,17 @@ export default function AppointmentsModule() {
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Appointment ${escHtml(appt.id.slice(-8))}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${escHtml(text)}</pre></body></html>`;
 
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
-    toast(es ? 'Imprimiendo cita...' : 'Printing appointment...', 'info');
-  }, [settings, es, printHtml, toast]);
+    toast(t('appt.toastPrinting'), 'info');
+  }, [settings, es, dateLoc, printHtml, toast, t]);
 
   const sendAppointmentWhatsApp = useCallback((appt: Appointment) => {
     if (!appt.customerPhone) return;
     const dateStr = new Date(appt.estimatedDropOff).toLocaleDateString(
-      es ? 'es-MX' : 'en-US',
+      dateLoc,
       { weekday: 'short', month: 'short', day: 'numeric' }
     );
     const timeStr = new Date(appt.estimatedDropOff).toLocaleTimeString(
-      es ? 'es-MX' : 'en-US',
+      dateLoc,
       { hour: 'numeric', minute: '2-digit' }
     );
     const msg = buildWaMessage(
@@ -178,7 +181,7 @@ export default function AppointmentsModule() {
       es ? 'es' : 'en',
     );
     openWhatsApp(appt.customerPhone, msg);
-  }, [settings, es]);
+  }, [settings, es, dateLoc]);
 
   const handleSave = useCallback((data: Partial<Appointment>) => {
     const rawFirst = (data as any).firstName as string | undefined;
@@ -255,7 +258,7 @@ export default function AppointmentsModule() {
       appointmentsRef.current = nextAppts;
       setAppointments(nextAppts);
       persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
-      toast(es ? 'Cita actualizada' : 'Appointment updated', 'success');
+      toast(t('appt.toastUpdated'), 'success');
     } else {
       // R-COMMS-CONSENT-UNIFY: sendConfirmationSms write + TCPA-gated SMS dispatch
       // removed in Round 1; schema field removed in Round 3.
@@ -279,12 +282,12 @@ export default function AppointmentsModule() {
       setAppointments(nextAppts);
       persist.appointment(appt.id, appt as unknown as Record<string, unknown>);
 
-      toast(es ? 'Cita creada' : 'Appointment created', 'success');
+      toast(t('appt.toastCreated'), 'success');
       setPostSaveModal(appt);
     }
     setShowModal(false);
     setEditAppt(null);
-  }, [editAppt, setCustomers, currentEmployee, settings, es, setAppointments, toast]);
+  }, [editAppt, setCustomers, currentEmployee, settings, setAppointments, toast, t]);
 
   const markArrived = useCallback((appt: Appointment) => {
     const updated: Appointment = { ...appt, status: 'arrived', updatedAt: new Date().toISOString() };
@@ -292,8 +295,8 @@ export default function AppointmentsModule() {
     appointmentsRef.current = nextAppts;
     setAppointments(nextAppts);
     persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
-    toast(es ? `${appt.customerName} llegó` : `${appt.customerName} arrived`, 'success');
-  }, [setAppointments, es, toast]);
+    toast(t('appt.toastArrived', appt.customerName), 'success');
+  }, [setAppointments, toast, t]);
 
   const convertToRepair = useCallback((appt: Appointment) => {
     // Guard: prevent double-conversion (double-click or stale UI)
@@ -379,11 +382,8 @@ export default function AppointmentsModule() {
     setAppointments(nextAppts);
     persist.appointment(updatedAppt.id, updatedAppt as unknown as Record<string, unknown>);
 
-    toast(
-      es ? `Ticket de reparación creado — ${newRepair.ticketNumber}` : `Repair ticket created — ${newRepair.ticketNumber}`,
-      'success',
-    );
-  }, [currentEmployee, setRepairs, setAppointments, es, toast]);
+    toast(t('appt.toastRepairCreated', newRepair.ticketNumber), 'success');
+  }, [currentEmployee, setRepairs, setAppointments, toast, t]);
 
   const cancelAppt = useCallback((id: string) => {
     const target = appointmentsRef.current.find((a) => a.id === id);
@@ -394,8 +394,8 @@ export default function AppointmentsModule() {
     setAppointments(nextAppts);
     persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
     setDeleteConfirm(null);
-    toast(es ? 'Cita cancelada' : 'Appointment cancelled', 'info');
-  }, [setAppointments, es, toast]);
+    toast(t('appt.toastCancelled'), 'info');
+  }, [setAppointments, toast, t]);
 
   // ── Render ───────────────────────────────────────────────
 
@@ -405,39 +405,39 @@ export default function AppointmentsModule() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">📅 {es ? 'Citas' : 'Appointments'}</h1>
-            <p className="text-xs text-slate-500 mt-0.5">{es ? 'Pre-registro de drop-offs' : 'Pre-check-in for drop-offs'}</p>
+            <h1 className="text-2xl font-bold text-white">📅 {t('appt.title')}</h1>
+            <p className="text-xs text-slate-500 mt-0.5">{t('appt.subtitle')}</p>
           </div>
           <button onClick={() => { setEditAppt(null); setShowModal(true); }} className="btn btn-primary">
-            + {es ? 'Nueva Cita' : 'New Appointment'}
+            + {t('appt.newBtn')}
           </button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{es ? 'Hoy' : 'Today'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('appt.statTodayLabel')}</p>
             <p className={`text-2xl font-bold mt-1 ${todayCount > 0 ? 'text-amber-400' : 'text-slate-500'}`}>{todayCount}</p>
-            <p className="text-xs text-slate-500">{es ? 'pendientes' : 'scheduled'}</p>
+            <p className="text-xs text-slate-500">{t('appt.statTodaySub')}</p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{es ? 'Llegaron' : 'Arrived'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('appt.statArrivedLabel')}</p>
             <p className={`text-2xl font-bold mt-1 ${arrivedCount > 0 ? 'text-orange-400' : 'text-slate-500'}`}>{arrivedCount}</p>
-            <p className="text-xs text-slate-500">{es ? 'esperando ticket' : 'awaiting ticket'}</p>
+            <p className="text-xs text-slate-500">{t('appt.statArrivedSub')}</p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{es ? 'Convertidas' : 'Converted'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('appt.statConvertedLabel')}</p>
             <p className="text-2xl font-bold mt-1 text-emerald-400">
               {appointments.filter((a) => a.status === 'converted').length}
             </p>
-            <p className="text-xs text-slate-500">{es ? 'este mes' : 'this month'}</p>
+            <p className="text-xs text-slate-500">{t('appt.statConvertedSub')}</p>
           </div>
         </div>
 
         <GlobalSearchBar
           localValue={search}
           onLocalChange={setSearch}
-          placeholder={es ? 'Buscar citas por cliente, dispositivo...' : 'Search appointments by customer, device...'}
+          placeholder={t('appt.searchPlaceholder')}
         />
 
         {/* Filter tabs */}
@@ -450,7 +450,7 @@ export default function AppointmentsModule() {
                 filter === s ? 'bg-brand-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'
               }`}
             >
-              {s === 'all' ? (es ? 'Todas' : 'All') : (STATUS_LABEL[s]?.[lang as 'en' | 'es'] || s)}
+              {s === 'all' ? t('appt.filterAll') : (APPT_STATUS_LABELS[s] ?? s)}
               {' '}
               <span className="opacity-60">({appointments.filter((a) => s === 'all' || a.status === s).length})</span>
             </button>
@@ -462,7 +462,7 @@ export default function AppointmentsModule() {
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
               <span className="text-4xl block mb-3">📅</span>
-              <p>{es ? 'No hay citas' : 'No appointments'}</p>
+              <p>{t('appt.noAppointments')}</p>
             </div>
           ) : (
             filtered.map((appt) => {
@@ -479,35 +479,35 @@ export default function AppointmentsModule() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold text-white">{appt.customerName}</span>
                         <span className={`badge ${STATUS_BADGE[appt.status]}`}>
-                          {STATUS_LABEL[appt.status]?.[lang as 'en' | 'es'] || appt.status}
+                          {APPT_STATUS_LABELS[appt.status] ?? appt.status}
                         </span>
-                        {isOverdue && <span className="badge badge-danger">{es ? 'Atrasada' : 'Overdue'}</span>}
+                        {isOverdue && <span className="badge badge-danger">{t('appt.overdue')}</span>}
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">{formatPhone(appt.customerPhone)}</p>
                       <p className="text-sm text-slate-300 mt-1">{appt.device} — {appt.issue}</p>
                       {appt.notes && <p className="text-xs text-slate-500 mt-0.5 italic">{appt.notes}</p>}
                       <p className="text-xs text-slate-500 mt-1">
-                        🕐 {dropOff.toLocaleDateString(es ? 'es-MX' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        🕐 {dropOff.toLocaleDateString(dateLoc, { weekday: 'short', month: 'short', day: 'numeric' })}
                         {' · '}
-                        {dropOff.toLocaleTimeString(es ? 'es-MX' : 'en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {dropOff.toLocaleTimeString(dateLoc, { hour: 'numeric', minute: '2-digit' })}
                       </p>
                     </div>
                     <div className="flex flex-col gap-1 flex-shrink-0">
                       {appt.status === 'scheduled' && (
                         <button onClick={() => markArrived(appt)} className="btn btn-sm" style={{ background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)', fontSize: '0.72rem' }}>
-                          ✅ {es ? 'Llegó' : 'Arrived'}
+                          ✅ {t('appt.btnArrived')}
                         </button>
                       )}
                       {appt.status === 'arrived' && (
                         <button onClick={() => convertToRepair(appt)} className="btn btn-sm btn-primary" style={{ fontSize: '0.72rem' }}>
-                          🔧 {es ? 'Crear Ticket' : 'Create Ticket'}
+                          🔧 {t('appt.btnCreateTicket')}
                         </button>
                       )}
                       <button onClick={() => { setEditAppt(appt); setShowModal(true); }} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
-                        ✏️ {es ? 'Editar' : 'Edit'}
+                        ✏️ {t('appt.btnEdit')}
                       </button>
                       <button onClick={() => printAppointmentTicket(appt)} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
-                        🖨️ {es ? 'Imprimir' : 'Print'}
+                        🖨️ {t('appt.btnPrint')}
                       </button>
                       {settings.waEnabled !== false && appt.customerPhone && (
                         <button onClick={() => sendAppointmentWhatsApp(appt)} className="btn btn-sm" style={{ background: 'rgba(37,211,102,0.15)', color: '#25d366', border: '1px solid rgba(37,211,102,0.3)', fontSize: '0.72rem' }}>
@@ -516,7 +516,7 @@ export default function AppointmentsModule() {
                       )}
                       {appt.status !== 'cancelled' && appt.status !== 'converted' && (
                         <button onClick={() => setDeleteConfirm(appt.id)} className="btn btn-ghost btn-sm text-red-400" style={{ fontSize: '0.72rem' }}>
-                          ✕ {es ? 'Cancelar' : 'Cancel'}
+                          ✕ {t('appt.btnCancel')}
                         </button>
                       )}
                     </div>
@@ -536,8 +536,6 @@ export default function AppointmentsModule() {
           setCustomers={setCustomers}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditAppt(null); }}
-          lang={lang}
-          es={es}
         />
       )}
 
@@ -545,15 +543,13 @@ export default function AppointmentsModule() {
       <Modal
         open={!!postSaveModal}
         onClose={() => setPostSaveModal(null)}
-        title={es ? '¿Cómo notificar al cliente?' : 'How to notify customer?'}
+        title={t('appt.notifyTitle')}
         size="max-w-sm"
       >
         {postSaveModal && (
           <div>
             <p className="text-sm text-slate-400 mb-4">
-              {es
-                ? `Cita de ${postSaveModal.customerName} guardada.`
-                : `${postSaveModal.customerName}'s appointment saved.`}
+              {t('appt.notifySaved', postSaveModal.customerName)}
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -563,7 +559,7 @@ export default function AppointmentsModule() {
                   setPostSaveModal(null);
                 }}
               >
-                🖨️ {es ? 'Imprimir comprobante' : 'Print receipt'}
+                🖨️ {t('appt.btnPrintReceipt')}
               </button>
               {settings.waEnabled !== false && postSaveModal.customerPhone && (
                 <button
@@ -574,14 +570,14 @@ export default function AppointmentsModule() {
                     setPostSaveModal(null);
                   }}
                 >
-                  📱 {es ? 'Enviar por WhatsApp' : 'Send via WhatsApp'}
+                  📱 {t('appt.btnWhatsApp')}
                 </button>
               )}
               <button
                 className="btn btn-ghost"
                 onClick={() => setPostSaveModal(null)}
               >
-                {es ? 'Omitir' : 'Skip'}
+                {t('appt.btnSkip')}
               </button>
             </div>
           </div>
@@ -590,8 +586,8 @@ export default function AppointmentsModule() {
 
       <ConfirmDialog
         open={!!deleteConfirm}
-        title={es ? 'Cancelar cita' : 'Cancel appointment'}
-        message={es ? '¿Cancelar esta cita?' : 'Cancel this appointment?'}
+        title={t('appt.cancelTitle')}
+        message={t('appt.cancelMsg')}
         variant="danger"
         onConfirm={() => deleteConfirm && cancelAppt(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
@@ -602,16 +598,15 @@ export default function AppointmentsModule() {
 
 // ── Form Modal ────────────────────────────────────────────
 
-function AppointmentFormModal({ appointment, customers, setCustomers, onSave, onClose, lang, es }: {
+function AppointmentFormModal({ appointment, customers, setCustomers, onSave, onClose }: {
   appointment: Appointment | null;
   customers: Customer[];
   setCustomers: (c: Customer[]) => void;
   onSave: (data: Partial<Appointment>) => void;
   onClose: () => void;
-  lang: string;
-  es: boolean;
 }) {
-  void lang;
+  const { t, locale } = useTranslation();
+  const apptLang: 'en' | 'es' = locale === 'pt' ? 'en' : locale as 'en' | 'es';
   const defaultDT = () => {
     const d = new Date();
     d.setMinutes(0, 0, 0);
@@ -676,15 +671,15 @@ function AppointmentFormModal({ appointment, customers, setCustomers, onSave, on
   };
 
   return (
-    <Modal open onClose={onClose} title={`📅 ${appointment ? (es ? 'Editar Cita' : 'Edit Appointment') : (es ? 'Nueva Cita' : 'New Appointment')}`} size="max-w-md">
+    <Modal open onClose={onClose} title={`📅 ${appointment ? t('appt.modalTitleEdit') : t('appt.modalTitleNew')}`} size="max-w-md">
       <div className="space-y-3">
         {/* r-customer-picker-sweep: shared CustomerPicker replaces free-text inputs */}
         <CustomerPicker
           customers={customers}
           selectedCustomer={selectedCustomer}
           onSelect={handleSelectCustomer}
-          lang={lang as 'en' | 'es'}
-          placeholder={es ? 'Buscar cliente…' : 'Search customer…'}
+          lang={apptLang}
+          placeholder={t('appt.formSearchCustomer')}
           onCreateCustomer={(newCust) => {
             try {
               const updated = [...customers, newCust];
@@ -697,54 +692,52 @@ function AppointmentFormModal({ appointment, customers, setCustomers, onSave, on
           <>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">{es ? 'Nombre *' : 'First Name *'}</label>
-                <input className="input" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder={es ? 'Jorge' : 'John'} />
+                <label className="text-xs text-slate-400 block mb-1">{t('appt.formFirstName')}</label>
+                <input className="input" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder={t('appt.formFirstNamePh')} />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1">{es ? 'Apellido' : 'Last Name'}</label>
-                <input className="input" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder={es ? 'Ochoa' : 'Doe'} />
+                <label className="text-xs text-slate-400 block mb-1">{t('appt.formLastName')}</label>
+                <input className="input" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder={t('appt.formLastNamePh')} />
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{es ? 'Teléfono' : 'Phone'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('appt.formPhone')}</label>
               <input className="input" type="tel" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} placeholder="(555) 123-4567" />
             </div>
           </>
         )}
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Dispositivo' : 'Device'} *</label>
-          <input className="input" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} placeholder={es ? 'Ej: iPhone 13, Samsung S22...' : 'e.g. iPhone 13, Samsung S22...'} />
+          <label className="text-xs text-slate-400 block mb-1">{t('appt.formDevice')} *</label>
+          <input className="input" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} placeholder={t('appt.formDevicePh')} />
         </div>
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Problema' : 'Issue'} *</label>
-          <input className="input" value={form.issue} onChange={(e) => setForm({ ...form, issue: e.target.value })} placeholder={es ? 'Ej: Pantalla rota, no enciende...' : 'e.g. Cracked screen, won\'t turn on...'} />
+          <label className="text-xs text-slate-400 block mb-1">{t('appt.formIssue')} *</label>
+          <input className="input" value={form.issue} onChange={(e) => setForm({ ...form, issue: e.target.value })} placeholder={t('appt.formIssuePh')} />
         </div>
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Fecha y hora de entrega' : 'Drop-off date & time'}</label>
+          <label className="text-xs text-slate-400 block mb-1">{t('appt.formDropOff')}</label>
           <input className="input" type="datetime-local" value={form.estimatedDropOff} onChange={(e) => setForm({ ...form, estimatedDropOff: e.target.value })} />
         </div>
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Notas adicionales' : 'Additional notes'}</label>
+          <label className="text-xs text-slate-400 block mb-1">{t('appt.formNotes')}</label>
           <textarea
             className="textarea"
             rows={2}
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder={es ? 'Detalles adicionales, color, accesorios...' : 'Additional details, color, accessories...'}
+            placeholder={t('appt.formNotesPh')}
           />
           <p className="text-[10px] text-amber-400/70 mt-1">
-            {es
-              ? '⚠️ No escribas contraseñas aquí. Anótalas en papel.'
-              : '⚠️ Do not write passwords here. Write them on paper.'}
+            {t('appt.formPasswordWarning')}
           </p>
         </div>
         {/* R-COMMS-CONSENT-UNIFY: "Send confirmation SMS" checkbox removed in Round 1;
             Appointment.sendConfirmationSms schema field removed in Round 3. */}
       </div>
       <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
-        <button onClick={onClose} className="btn btn-secondary flex-1">{es ? 'Cancelar' : 'Cancel'}</button>
+        <button onClick={onClose} className="btn btn-secondary flex-1">{t('appt.btnCancel')}</button>
         <button onClick={handleSubmit} className="btn btn-primary flex-1">
-          {appointment ? (es ? 'Guardar' : 'Save') : (es ? 'Crear Cita' : 'Create Appointment')}
+          {appointment ? t('appt.btnSave') : t('appt.btnCreate')}
         </button>
       </div>
     </Modal>
