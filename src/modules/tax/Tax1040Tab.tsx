@@ -7,8 +7,8 @@
 // ============================================================
 
 import { useState } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, emptyForm1040, dollarsToCents, centsToDollars } from './taxData';
 import {
   inputStyle, labelStyle, thStyle, tdStyle, iconBtnStyle,
@@ -22,18 +22,19 @@ interface Props {
 
 type FilingStatus = Tax1040Data['filingStatus'];
 
-const FILING_STATUS_OPTIONS: Array<[FilingStatus, string, string]> = [
-  ['single',  'Single',                         'Soltero/a'],
-  ['married', 'Married Filing Jointly',         'Casado/a Conjunto'],
-  ['mfs',     'Married Filing Separately',      'Casado/a por Separado'],
-  ['hoh',     'Head of Household',              'Cabeza de Familia'],
-  ['qw',      'Qualifying Widow(er)',           'Viudo/a Calificado/a'],
-];
+const FILING_STATUS_VALUES: FilingStatus[] = ['single', 'married', 'mfs', 'hoh', 'qw'];
+
+const FS_KEY_MAP: Record<FilingStatus, string> = {
+  single: 'tax1040.fsSingle',
+  married: 'tax1040.fsMarried',
+  mfs: 'tax1040.fsMfs',
+  hoh: 'tax1040.fsHoh',
+  qw: 'tax1040.fsQw',
+};
 
 export default function Tax1040Tab({ year }: Props) {
-  const { state: { lang } } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
   const f = tax.data.form1040 ?? emptyForm1040();
   const dependents = tax.data.dependents ?? [];
@@ -41,13 +42,12 @@ export default function Tax1040Tab({ year }: Props) {
   const nonNeg = (cents: number) => Math.max(0, cents);
 
   // Helpers to shorten the repeated input pattern for money fields
-  const MoneyField = ({ fieldKey, enLabel, esLabel }: {
+  const MoneyField = ({ fieldKey, labelKey }: {
     fieldKey: keyof Tax1040Data;
-    enLabel: string;
-    esLabel: string;
+    labelKey: string;
   }) => (
     <div>
-      <label style={labelStyle}>{es ? esLabel : enLabel} ($)</label>
+      <label style={labelStyle}>{t(labelKey)} ($)</label>
       <input
         type="text"
         inputMode="decimal"
@@ -59,14 +59,13 @@ export default function Tax1040Tab({ year }: Props) {
     </div>
   );
 
-  const TextField = ({ fieldKey, enLabel, esLabel, required }: {
+  const TextField = ({ fieldKey, labelKey, required }: {
     fieldKey: keyof Tax1040Data;
-    enLabel: string;
-    esLabel: string;
+    labelKey: string;
     required?: boolean;
   }) => (
     <div>
-      <label style={labelStyle}>{es ? esLabel : enLabel}{required && ' *'}</label>
+      <label style={labelStyle}>{t(labelKey)}{required && ' *'}</label>
       <input
         type="text"
         style={inputStyle}
@@ -110,7 +109,7 @@ export default function Tax1040Tab({ year }: Props) {
 
   const handleSaveDep = () => {
     if (!depForm.firstName.trim() || !depForm.lastName.trim() || !depForm.relationship.trim()) {
-      toast(es ? 'Nombre, apellido y relación son requeridos' : 'First name, last name, and relationship are required', 'error');
+      toast(t('tax1040.errNameRelRequired'), 'error');
       return;
     }
     const payload = {
@@ -134,68 +133,68 @@ export default function Tax1040Tab({ year }: Props) {
     setDepConfirmDelete(null);
   };
 
+  const dateLocale = locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US';
+
   return (
     <div>
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'Formulario 1040 — Personal' : 'Form 1040 — Personal'} — {year}
+          {t('tax1040.title', year)}
         </div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-          {es
-            ? 'Declaración de impuestos personal. Los datos se guardan automáticamente.'
-            : 'Personal income tax return. Auto-saves on every change.'}
+          {t('tax1040.subtitle')}
         </div>
       </div>
 
       {/* ── Section 1: Filer info ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Información del Declarante' : 'Filer Information'} />
+        <SectionHeader label={t('tax1040.filerInfoHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-          <TextField fieldKey="firstName" enLabel="First Name" esLabel="Nombre" required />
-          <TextField fieldKey="lastName" enLabel="Last Name" esLabel="Apellido" required />
+          <TextField fieldKey="firstName" labelKey="tax1040.firstName" required />
+          <TextField fieldKey="lastName" labelKey="tax1040.lastName" required />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-          <TextField fieldKey="ssn" enLabel="SSN" esLabel="SSN" />
-          <TextField fieldKey="address" enLabel="Street Address" esLabel="Dirección" />
+          <TextField fieldKey="ssn" labelKey="tax1040.ssn" />
+          <TextField fieldKey="address" labelKey="tax1040.address" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem' }}>
-          <TextField fieldKey="city" enLabel="City" esLabel="Ciudad" />
-          <TextField fieldKey="state" enLabel="State" esLabel="Estado" />
-          <TextField fieldKey="zip" enLabel="ZIP" esLabel="Código Postal" />
+          <TextField fieldKey="city" labelKey="tax1040.city" />
+          <TextField fieldKey="state" labelKey="tax1040.state" />
+          <TextField fieldKey="zip" labelKey="tax1040.zip" />
         </div>
       </div>
 
       {/* ── Section 2: Spouse info (only if married) ── */}
       {isMarried && (
         <div style={cardBox}>
-          <SectionHeader label={es ? 'Información del Cónyuge' : 'Spouse Information'} />
+          <SectionHeader label={t('tax1040.spouseInfoHeader')} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-            <TextField fieldKey="spouseFirstName" enLabel="Spouse First Name" esLabel="Nombre del Cónyuge" />
-            <TextField fieldKey="spouseLastName" enLabel="Spouse Last Name" esLabel="Apellido del Cónyuge" />
-            <TextField fieldKey="spouseSsn" enLabel="Spouse SSN" esLabel="SSN del Cónyuge" />
+            <TextField fieldKey="spouseFirstName" labelKey="tax1040.spouseFirstName" />
+            <TextField fieldKey="spouseLastName" labelKey="tax1040.spouseLastName" />
+            <TextField fieldKey="spouseSsn" labelKey="tax1040.spouseSsn" />
           </div>
         </div>
       )}
 
       {/* ── Section 3: Filing details ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Detalles de Declaración' : 'Filing Details'} />
+        <SectionHeader label={t('tax1040.filingDetailsHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={labelStyle}>{es ? 'Estado Civil Fiscal' : 'Filing Status'} *</label>
+            <label style={labelStyle}>{t('tax1040.filingStatus')} *</label>
             <select
               style={inputStyle}
               value={f.filingStatus}
               onChange={(e) => tax.updateForm1040({ filingStatus: e.target.value as FilingStatus })}
             >
-              {FILING_STATUS_OPTIONS.map(([val, en, esLabel]) => (
-                <option key={val} value={val}>{es ? esLabel : en}</option>
+              {FILING_STATUS_VALUES.map((val) => (
+                <option key={val} value={val}>{t(FS_KEY_MAP[val])}</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={labelStyle}>{es ? 'Dependientes (conteo)' : 'Dependents (count)'}</label>
+            <label style={labelStyle}>{t('tax1040.dependentsCount')}</label>
             <input
               type="number"
               min="0"
@@ -212,7 +211,7 @@ export default function Tax1040Tab({ year }: Props) {
                 onChange={(e) => tax.updateForm1040({ useStandardDeduction: e.target.checked })}
                 style={{ width: '16px', height: '16px', accentColor: '#22d3ee' }}
               />
-              {es ? 'Deducción Estándar' : 'Standard Deduction'}
+              {t('tax1040.standardDeduction')}
             </label>
           </div>
         </div>
@@ -220,67 +219,67 @@ export default function Tax1040Tab({ year }: Props) {
 
       {/* ── Section 4: Income ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Ingresos' : 'Income'} />
+        <SectionHeader label={t('tax1040.incomeHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <MoneyField fieldKey="wages" enLabel="Wages, Salaries, Tips" esLabel="Salarios / Propinas" />
-          <MoneyField fieldKey="interestDividends" enLabel="Interest & Dividends" esLabel="Intereses y Dividendos" />
-          <MoneyField fieldKey="capitalGains" enLabel="Capital Gains" esLabel="Ganancias de Capital" />
-          <MoneyField fieldKey="otherIncome1040" enLabel="Other Income" esLabel="Otros Ingresos" />
+          <MoneyField fieldKey="wages" labelKey="tax1040.wages" />
+          <MoneyField fieldKey="interestDividends" labelKey="tax1040.interestDividends" />
+          <MoneyField fieldKey="capitalGains" labelKey="tax1040.capitalGains" />
+          <MoneyField fieldKey="otherIncome1040" labelKey="tax1040.otherIncome1040" />
         </div>
       </div>
 
       {/* ── Section 5: Adjustments ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Ajustes al Ingreso' : 'Adjustments to Income'} />
+        <SectionHeader label={t('tax1040.adjustmentsHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <MoneyField fieldKey="iraDeduction" enLabel="IRA Deduction" esLabel="Deducción IRA" />
-          <MoneyField fieldKey="studentLoanInterest" enLabel="Student Loan Interest" esLabel="Intereses Préstamos Estudiantiles" />
-          <MoneyField fieldKey="hsaDeduction" enLabel="HSA Deduction" esLabel="Deducción HSA" />
-          <MoneyField fieldKey="otherAdjustments" enLabel="Other Adjustments" esLabel="Otros Ajustes" />
+          <MoneyField fieldKey="iraDeduction" labelKey="tax1040.iraDeduction" />
+          <MoneyField fieldKey="studentLoanInterest" labelKey="tax1040.studentLoanInterest" />
+          <MoneyField fieldKey="hsaDeduction" labelKey="tax1040.hsaDeduction" />
+          <MoneyField fieldKey="otherAdjustments" labelKey="tax1040.otherAdjustments" />
         </div>
       </div>
 
       {/* ── Section 6: Deductions (only if !useStandardDeduction) ── */}
       {!f.useStandardDeduction && (
         <div style={cardBox}>
-          <SectionHeader label={es ? 'Deducciones Detalladas' : 'Itemized Deductions'} />
+          <SectionHeader label={t('tax1040.itemizedHeader')} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <MoneyField fieldKey="itemizedDeductions" enLabel="Itemized Deductions Total" esLabel="Total Deducciones Detalladas" />
+            <MoneyField fieldKey="itemizedDeductions" labelKey="tax1040.itemizedTotal" />
           </div>
         </div>
       )}
 
       {/* ── Section 7: Credits ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Créditos' : 'Credits'} />
+        <SectionHeader label={t('tax1040.creditsHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-          <MoneyField fieldKey="childTaxCredit" enLabel="Child Tax Credit" esLabel="Crédito por Hijos" />
-          <MoneyField fieldKey="earnedIncomeCredit" enLabel="Earned Income Credit" esLabel="Crédito Ingreso Ganado" />
-          <MoneyField fieldKey="otherCredits" enLabel="Other Credits" esLabel="Otros Créditos" />
+          <MoneyField fieldKey="childTaxCredit" labelKey="tax1040.childTaxCredit" />
+          <MoneyField fieldKey="earnedIncomeCredit" labelKey="tax1040.earnedIncomeCredit" />
+          <MoneyField fieldKey="otherCredits" labelKey="tax1040.otherCredits" />
         </div>
       </div>
 
       {/* ── Section 8: Withholding & Estimated Payments ── */}
       <div style={cardBox}>
-        <SectionHeader label={es ? 'Retenciones y Pagos Estimados' : 'Withholding & Estimated Payments'} />
+        <SectionHeader label={t('tax1040.withholdingHeader')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-          <MoneyField fieldKey="federalWithholding" enLabel="Federal Withholding (W-2)" esLabel="Retención Federal (W-2)" />
+          <MoneyField fieldKey="federalWithholding" labelKey="tax1040.federalWithholding" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
-          <MoneyField fieldKey="q1Payment" enLabel="Q1 Payment" esLabel="Pago Q1" />
-          <MoneyField fieldKey="q2Payment" enLabel="Q2 Payment" esLabel="Pago Q2" />
-          <MoneyField fieldKey="q3Payment" enLabel="Q3 Payment" esLabel="Pago Q3" />
-          <MoneyField fieldKey="q4Payment" enLabel="Q4 Payment" esLabel="Pago Q4" />
+          <MoneyField fieldKey="q1Payment" labelKey="tax1040.q1Payment" />
+          <MoneyField fieldKey="q2Payment" labelKey="tax1040.q2Payment" />
+          <MoneyField fieldKey="q3Payment" labelKey="tax1040.q3Payment" />
+          <MoneyField fieldKey="q4Payment" labelKey="tax1040.q4Payment" />
         </div>
       </div>
 
       {/* ── Section 9: Dependents table ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'Dependientes' : 'Dependents'}
+          {t('tax1040.dependentsHeader')}
         </div>
         <button onClick={openAddDep} style={btnAddStyle}>
-          + {es ? 'Agregar Dependiente' : 'Add Dependent'}
+          + {t('tax1040.addDependentBtn')}
         </button>
       </div>
 
@@ -294,7 +293,7 @@ export default function Tax1040Tab({ year }: Props) {
         }}>
           <div style={{ fontSize: '1.5rem', marginBottom: '0.4rem' }}>👨‍👩‍👧</div>
           <div style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>
-            {es ? 'No hay dependientes registrados' : 'No dependents recorded yet'}
+            {t('tax1040.noDependents')}
           </div>
         </div>
       ) : (
@@ -307,11 +306,11 @@ export default function Tax1040Tab({ year }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <th style={thStyle}>{es ? 'Nombre' : 'Name'}</th>
-                <th style={thStyle}>{es ? 'Fecha Nacimiento' : 'Date of Birth'}</th>
-                <th style={thStyle}>{es ? 'Relación' : 'Relationship'}</th>
+                <th style={thStyle}>{t('tax1040.thName')}</th>
+                <th style={thStyle}>{t('tax1040.thDob')}</th>
+                <th style={thStyle}>{t('tax1040.thRelationship')}</th>
                 <th style={thStyle}>SSN</th>
-                <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{es ? 'Acciones' : 'Actions'}</th>
+                <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{t('tax1040.thActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -321,14 +320,14 @@ export default function Tax1040Tab({ year }: Props) {
                     {d.firstName} {d.lastName}
                   </td>
                   <td style={tdStyle}>
-                    {d.dateOfBirth ? new Date(d.dateOfBirth).toLocaleDateString(es ? 'es-MX' : 'en-US') : '—'}
+                    {d.dateOfBirth ? new Date(d.dateOfBirth).toLocaleDateString(dateLocale) : '—'}
                   </td>
                   <td style={tdStyle}>{d.relationship}</td>
                   <td style={{ ...tdStyle, fontFamily: 'ui-monospace, monospace' }}>{d.ssn || '—'}</td>
                   <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
-                      <button onClick={() => openEditDep(d)} style={iconBtnStyle('blue')} title={es ? 'Editar' : 'Edit'}>✏️</button>
-                      <button onClick={() => setDepConfirmDelete(d.id)} style={iconBtnStyle('red')} title={es ? 'Borrar' : 'Delete'}>🗑</button>
+                      <button onClick={() => openEditDep(d)} style={iconBtnStyle('blue')} title={t('tax1040.editIcon')}>✏️</button>
+                      <button onClick={() => setDepConfirmDelete(d.id)} style={iconBtnStyle('red')} title={t('tax1040.deleteIcon')}>🗑</button>
                     </div>
                   </td>
                 </tr>
@@ -343,12 +342,12 @@ export default function Tax1040Tab({ year }: Props) {
         <div onClick={() => setDepShowModal(false)} style={modalOverlay}>
           <div onClick={(e) => e.stopPropagation()} style={modalCard}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
-              {depEditing ? (es ? '✏️ Editar Dependiente' : '✏️ Edit Dependent') : (es ? '+ Agregar Dependiente' : '+ Add Dependent')}
+              {depEditing ? t('tax1040.editDepTitle') : t('tax1040.addDepTitle')}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Nombre' : 'First Name'} *</label>
+                <label style={labelStyle}>{t('tax1040.firstName')} *</label>
                 <input
                   style={inputStyle}
                   value={depForm.firstName}
@@ -357,7 +356,7 @@ export default function Tax1040Tab({ year }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Apellido' : 'Last Name'} *</label>
+                <label style={labelStyle}>{t('tax1040.lastName')} *</label>
                 <input
                   style={inputStyle}
                   value={depForm.lastName}
@@ -368,7 +367,7 @@ export default function Tax1040Tab({ year }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Fecha de Nacimiento' : 'Date of Birth'}</label>
+                <label style={labelStyle}>{t('tax1040.dobLabel')}</label>
                 <input
                   type="date"
                   style={inputStyle}
@@ -388,24 +387,24 @@ export default function Tax1040Tab({ year }: Props) {
             </div>
 
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={labelStyle}>{es ? 'Relación' : 'Relationship'} *</label>
+              <label style={labelStyle}>{t('tax1040.relRel')} *</label>
               <select
                 style={inputStyle}
                 value={depForm.relationship}
                 onChange={(e) => setDepForm({ ...depForm, relationship: e.target.value })}
               >
-                <option value="Child">{es ? 'Hijo/a' : 'Child'}</option>
-                <option value="Stepchild">{es ? 'Hijastro/a' : 'Stepchild'}</option>
-                <option value="Foster Child">{es ? 'Hijo/a de Acogida' : 'Foster Child'}</option>
-                <option value="Grandchild">{es ? 'Nieto/a' : 'Grandchild'}</option>
-                <option value="Parent">{es ? 'Padre/Madre' : 'Parent'}</option>
-                <option value="Other">{es ? 'Otro' : 'Other'}</option>
+                <option value="Child">{t('tax1040.relChild')}</option>
+                <option value="Stepchild">{t('tax1040.relStepchild')}</option>
+                <option value="Foster Child">{t('tax1040.relFosterChild')}</option>
+                <option value="Grandchild">{t('tax1040.relGrandchild')}</option>
+                <option value="Parent">{t('tax1040.relParent')}</option>
+                <option value="Other">{t('tax1040.relOther')}</option>
               </select>
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button onClick={() => setDepShowModal(false)} style={btnSecondaryStyle}>
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('tax1040.cancel')}
               </button>
               <button
                 onClick={handleSaveDep}
@@ -416,7 +415,7 @@ export default function Tax1040Tab({ year }: Props) {
                   cursor: (!depForm.firstName.trim() || !depForm.lastName.trim()) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {es ? '💾 Guardar' : '💾 Save'}
+                {t('tax1040.save')}
               </button>
             </div>
           </div>
@@ -429,17 +428,17 @@ export default function Tax1040Tab({ year }: Props) {
           <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, maxWidth: '420px', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.5rem' }}>
-              {es ? '¿Borrar este dependiente?' : 'Delete this dependent?'}
+              {t('tax1040.deleteDepTitle')}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
-              {es ? 'Esta acción no se puede deshacer.' : "This can't be undone."}
+              {t('tax1040.cantUndo')}
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
               <button onClick={() => setDepConfirmDelete(null)} style={btnSecondaryStyle}>
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('tax1040.cancel')}
               </button>
               <button onClick={() => handleDeleteDep(depConfirmDelete)} style={{ ...btnPrimaryStyle, background: '#dc2626', color: 'white' }}>
-                🗑 {es ? 'Borrar' : 'Delete'}
+                🗑 {t('tax1040.delete')}
               </button>
             </div>
           </div>

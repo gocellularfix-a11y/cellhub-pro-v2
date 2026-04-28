@@ -5,9 +5,9 @@
 // ============================================================
 
 import { useState } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, INCOME_CATEGORIES, dollarsToCents, centsToDollars, todayISO } from './taxData';
 import {
   inputStyle, labelStyle, thStyle, tdStyle, iconBtnStyle,
@@ -21,9 +21,8 @@ interface Props {
 }
 
 export default function TaxIncomeTab({ year, posProfitCents }: Props) {
-  const { state: { lang } } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
 
   const [editing, setEditing] = useState<TaxIncomeEntry | null>(null);
@@ -63,7 +62,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
     // Entries with $0 have no accounting meaning and would clutter the tax filing.
     const amountCents = dollarsToCents(form.amount);
     if (amountCents <= 0) {
-      toast(es ? 'El monto debe ser mayor a $0' : 'Amount must be greater than $0', 'error');
+      toast(t('taxIncome.errAmountGreaterZero'), 'error');
       return;
     }
 
@@ -71,12 +70,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
     // Otherwise the entry would silently disappear from view (year filter excludes it).
     const formYear = new Date(form.date).getFullYear();
     if (formYear !== year) {
-      toast(
-        es
-          ? `La fecha debe estar dentro del año fiscal ${year} (1 ene – 31 dic, ${year})`
-          : `Date must be within fiscal year ${year} (Jan 1 – Dec 31, ${year})`,
-        'error',
-      );
+      toast(t('taxIncome.errDateOutsideYear', year), 'error');
       return;
     }
 
@@ -100,8 +94,13 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
   const returnsAdjustment = tax.data.adjustments.returnsRefunds;
   const totalNetIncome = posProfitCents + tax.totalManualIncome + otherIncome - returnsAdjustment;
 
-  const catLabel = (val: TaxIncomeCategory) =>
-    INCOME_CATEGORIES.find((c) => c.value === val)?.[es ? 'es' : 'en'] ?? val;
+  const catLabel = (val: TaxIncomeCategory) => {
+    const cat = INCOME_CATEGORIES.find((c) => c.value === val);
+    if (!cat) return val;
+    return locale === 'es' ? cat.es : cat.en;
+  };
+
+  const dateLocale = locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US';
 
   return (
     <div>
@@ -109,14 +108,14 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-            {es ? 'Ingresos' : 'Income'} — {year}
+            {t('taxIncome.title', year)}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-            {es ? 'POS automático + entradas manuales editables' : 'Auto POS + editable manual entries'}
+            {t('taxIncome.subtitle')}
           </div>
         </div>
         <button onClick={openAdd} style={btnAddStyle}>
-          + {es ? 'Agregar Ingreso' : 'Add Income'}
+          + {t('taxIncome.addBtn')}
         </button>
       </div>
 
@@ -124,23 +123,21 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
       <div style={{ ...cardBox, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#86efac' }}>
-            🛒 {es ? 'Ingreso del POS (Auto-calculado)' : 'POS Income (Auto-Calculated)'}
+            🛒 {t('taxIncome.posCardTitle')}
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
             {formatCurrency(posProfitCents)}
           </div>
         </div>
         <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5 }}>
-          {es
-            ? 'Esto se calcula automáticamente de las ventas del POS, repairs y unlocks. No es editable aquí — para modificarlo, edita las ventas individuales.'
-            : 'Auto-calculated from POS sales, repairs and unlocks. Not editable here — to modify, edit individual sales.'}
+          {t('taxIncome.posCardSub')}
         </div>
       </div>
 
       {/* Manual income table */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'Ingresos Manuales' : 'Manual Income Entries'}
+          {t('taxIncome.manualEntriesHeader')}
         </div>
         {sortedIncome.length === 0 ? (
           <div style={{
@@ -152,13 +149,13 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
           }}>
             <div style={{ fontSize: '1.6rem', marginBottom: '0.4rem' }}>💰</div>
             <div style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.25rem' }}>
-              {es ? 'No hay ingresos manuales' : 'No manual income entries'}
+              {t('taxIncome.noEntriesTitle')}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.6 }}>
-              {es ? 'Usa esto para:' : 'Use this for:'}<br/>
-              • {es ? 'Comisiones de Pagos (AT&T, Verizon, T-Mobile)' : 'Payment Commissions (AT&T, Verizon, T-Mobile)'}<br/>
-              • {es ? 'Ingresos en efectivo no capturados en POS' : 'Cash income not captured in POS'}<br/>
-              • {es ? 'Otros ingresos del negocio' : 'Other business income'}
+              {t('taxIncome.useThisFor')}<br/>
+              • {t('taxIncome.usePaymentCommissions')}<br/>
+              • {t('taxIncome.useCashIncome')}<br/>
+              • {t('taxIncome.useOtherIncome')}
             </div>
           </div>
         ) : (
@@ -171,11 +168,11 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                  <th style={thStyle}>{es ? 'Fecha' : 'Date'}</th>
-                  <th style={thStyle}>{es ? 'Fuente' : 'Source'}</th>
-                  <th style={thStyle}>{es ? 'Categoría' : 'Category'}</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>{es ? 'Monto' : 'Amount'}</th>
-                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{es ? 'Acciones' : 'Actions'}</th>
+                  <th style={thStyle}>{t('taxIncome.thDate')}</th>
+                  <th style={thStyle}>{t('taxIncome.thSource')}</th>
+                  <th style={thStyle}>{t('taxIncome.thCategory')}</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>{t('taxIncome.thAmount')}</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{t('taxIncome.thActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -186,7 +183,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
                       background: isPassThrough ? 'rgba(168,85,247,0.04)' : 'transparent',
                       borderTop: '1px solid rgba(255,255,255,0.05)',
                     }}>
-                      <td style={tdStyle}>{new Date(inc.date).toLocaleDateString(es ? 'es-MX' : 'en-US')}</td>
+                      <td style={tdStyle}>{new Date(inc.date).toLocaleDateString(dateLocale)}</td>
                       <td style={{ ...tdStyle, fontWeight: 600, color: '#e2e8f0' }}>{inc.source}</td>
                       <td style={tdStyle}>
                         {catLabel(inc.category)}
@@ -194,7 +191,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: isPassThrough ? '#a78bfa' : '#22c55e' }}>
                         {formatCurrency(inc.amount)}
-                        {isPassThrough && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{es ? '(excluido)' : '(excluded)'}</div>}
+                        {isPassThrough && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{t('taxIncome.passExcluded')}</div>}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
@@ -210,18 +207,18 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
           </div>
         )}
         <div style={{ marginTop: '0.5rem', textAlign: 'right', fontSize: '0.85rem', color: '#cbd5e1' }}>
-          {es ? 'Total Manual:' : 'Total Manual:'} <strong style={{ color: '#22c55e' }}>{formatCurrency(tax.totalManualIncome)}</strong>
+          {t('taxIncome.totalManual')} <strong style={{ color: '#22c55e' }}>{formatCurrency(tax.totalManualIncome)}</strong>
         </div>
       </div>
 
       {/* Adjustments */}
       <div style={cardBox}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'Ajustes' : 'Adjustments'}
+          {t('taxIncome.adjustmentsHeader')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={labelStyle}>{es ? 'Otros Ingresos' : 'Other Income'} ($)</label>
+            <label style={labelStyle}>{t('taxIncome.otherIncome')} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -231,7 +228,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
             />
           </div>
           <div>
-            <label style={labelStyle}>{es ? 'Devoluciones / Reembolsos' : 'Returns / Refunds'} ($)</label>
+            <label style={labelStyle}>{t('taxIncome.returnsRefunds')} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -252,14 +249,14 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '1rem', fontWeight: 700, color: '#cbd5e1' }}>
-            {es ? 'Ingreso Total Neto' : 'Total Income (Net)'}
+            {t('taxIncome.totalNet')}
           </span>
           <span style={{ fontSize: '1.7rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
             {formatCurrency(totalNetIncome)}
           </span>
         </div>
         <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#94a3b8' }}>
-          POS: {formatCurrency(posProfitCents)} + {es ? 'Manual' : 'Manual'}: {formatCurrency(tax.totalManualIncome)} + {es ? 'Otros' : 'Other'}: {formatCurrency(otherIncome)} − {es ? 'Devoluciones' : 'Returns'}: {formatCurrency(returnsAdjustment)}
+          POS: {formatCurrency(posProfitCents)} + {t('taxIncome.summaryManualLabel')}: {formatCurrency(tax.totalManualIncome)} + {t('taxIncome.summaryOtherLabel')}: {formatCurrency(otherIncome)} − {t('taxIncome.summaryReturnsLabel')}: {formatCurrency(returnsAdjustment)}
         </div>
       </div>
 
@@ -268,37 +265,37 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
         <div onClick={() => setShowModal(false)} style={modalOverlay}>
           <div onClick={(e) => e.stopPropagation()} style={modalCard}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
-              {editing ? (es ? '✏️ Editar Ingreso' : '✏️ Edit Income') : (es ? '+ Agregar Ingreso' : '+ Add Income')}
+              {editing ? t('taxIncome.editTitle') : t('taxIncome.addTitle')}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Fecha' : 'Date'} *</label>
+                <label style={labelStyle}>{t('taxIncome.dateLabel')} *</label>
                 <input type="date" style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Monto' : 'Amount'} ($) *</label>
+                <label style={labelStyle}>{t('taxIncome.amountLabel')} ($) *</label>
                 <input type="text" inputMode="decimal" style={inputStyle} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" />
               </div>
             </div>
 
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Fuente / Cliente' : 'Source / Customer'} *</label>
-              <input style={inputStyle} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} placeholder={es ? 'AT&T, walk-in, etc.' : 'AT&T, walk-in, etc.'} autoFocus />
+              <label style={labelStyle}>{t('taxIncome.sourceLabel')} *</label>
+              <input style={inputStyle} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} placeholder={t('taxIncome.sourcePlaceholder')} autoFocus />
             </div>
 
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Categoría' : 'Category'} *</label>
+              <label style={labelStyle}>{t('taxIncome.categoryLabel')} *</label>
               <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as TaxIncomeCategory })}>
-                <option value="">{es ? 'Seleccionar...' : 'Select...'}</option>
+                <option value="">{t('taxIncome.selectPlaceholder')}</option>
                 {INCOME_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>{es ? c.es : c.en}</option>
+                  <option key={c.value} value={c.value}>{locale === 'es' ? c.es : c.en}</option>
                 ))}
               </select>
             </div>
 
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={labelStyle}>{es ? 'Notas' : 'Notes'}</label>
+              <label style={labelStyle}>{t('taxIncome.notesLabel')}</label>
               <textarea
                 style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }}
                 value={form.notes}
@@ -316,12 +313,12 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
                 fontSize: '0.72rem',
                 color: '#c4b5fd',
               }}>
-                ⊘ {es ? 'Pass-through. NO se contará como ingreso del 1065.' : 'Pass-through. Will NOT count as 1065 income.'}
+                ⊘ {t('taxIncome.passThroughHint')}
               </div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={btnSecondaryStyle}>{es ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={() => setShowModal(false)} style={btnSecondaryStyle}>{t('taxIncome.cancel')}</button>
               <button
                 onClick={handleSave}
                 disabled={!form.source.trim() || !form.category || !form.amount}
@@ -330,7 +327,7 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
                   opacity: (!form.source.trim() || !form.category || !form.amount) ? 0.5 : 1,
                   cursor: (!form.source.trim() || !form.category || !form.amount) ? 'not-allowed' : 'pointer',
                 }}
-              >💾 {es ? 'Guardar' : 'Save'}</button>
+              >💾 {t('taxIncome.save')}</button>
             </div>
           </div>
         </div>
@@ -342,12 +339,12 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
           <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, maxWidth: '420px', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.5rem' }}>
-              {es ? '¿Borrar este ingreso?' : 'Delete this income entry?'}
+              {t('taxIncome.deleteConfirmTitle')}
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
-              <button onClick={() => setConfirmDelete(null)} style={btnSecondaryStyle}>{es ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={() => setConfirmDelete(null)} style={btnSecondaryStyle}>{t('taxIncome.cancel')}</button>
               <button onClick={() => { tax.deleteIncome(confirmDelete); setConfirmDelete(null); }} style={{ ...btnPrimaryStyle, background: '#dc2626', color: 'white' }}>
-                🗑 {es ? 'Borrar' : 'Delete'}
+                🗑 {t('taxIncome.delete')}
               </button>
             </div>
           </div>

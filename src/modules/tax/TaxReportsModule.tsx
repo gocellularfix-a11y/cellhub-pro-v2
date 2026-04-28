@@ -10,6 +10,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { toDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
@@ -119,7 +120,8 @@ export default function TaxReportsModule() {
   const { state: { sales, repairs, unlocks, inventory, employees, settings, lang, expenses }, setExpenses } = useApp();
   const { toast } = useToast();
   const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
+  const es = locale === 'es';
   const { printHtml } = usePrint();
 
   // r-print-audit: print the current section in a standalone window instead
@@ -768,7 +770,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
   // ── Render ────────────────────────────────────────────────
   const NAV = [
-    { id: 'ca_tax',  icon: '🏛️', label: lang === 'es' ? 'Impuestos' : 'Taxes',        sub: 'CDTFA Quarterly' },
+    { id: 'ca_tax',  icon: '🏛️', label: t('tax.taxesNav'),        sub: 'CDTFA Quarterly' },
     { id: 'f1065',   icon: '📊', label: '1065 / K-1 / 1040',  sub: 'Federal Returns' },
     { id: 'w9',      icon: '📋', label: 'W-9 Form',            sub: 'Contractor TIN' },
   ];
@@ -807,11 +809,11 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '0.2rem' }}>{lang === 'es' ? 'Impuestos' : 'Taxes'}</h1>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '0.2rem' }}>{t('tax.taxesNav')}</h1>
                 <p style={{ fontSize: '0.8rem', color: '#64748b' }}>California Sales Tax · Quarterly</p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => printSection(es ? 'Reporte de Impuestos' : 'Tax Report')} className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>🖨️ Print Report</button>
+                <button onClick={() => printSection(t('tax.taxReportTitle'))} className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>🖨️ Print Report</button>
                 {/* r29b-1: removed dead "Export Report" button (had no onClick handler) */}
               </div>
             </div>
@@ -939,10 +941,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                   // when permission is denied (HTTPS issues, iframes, mobile browsers).
                   try {
                     await navigator.clipboard.writeText(text);
-                    toast(es ? 'Copiado al portapapeles' : 'Copied to clipboard', 'success');
+                    toast(t('tax.copiedClipboard'), 'success');
                   } catch (err) {
                     console.warn('[Tax] clipboard.writeText failed:', err);
-                    toast(es ? 'No se pudo copiar — permisos denegados' : 'Could not copy — permission denied', 'error');
+                    toast(t('tax.copyClipboardError'), 'error');
                   }
                 }}>📋 Copy Payment Info</button>
               </div>
@@ -965,8 +967,8 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>📋 Taxes Collected</div>
                   {[
                     [`Sales Tax (${((settings.taxRate||0.0925)*100).toFixed(4)}%):`, formatCurrency(caTax.productTax)],
-                    [`${es ? 'Impuesto Servicios Públicos' : 'Utility Users Tax'} (${((settings.utilityUsersTax||0.055)*100).toFixed(2)}%):`, formatCurrency(caTax.phoneTax)],
-                    [`${es ? 'Cargo Movilidad CA' : 'CA Mobility/911 Fee'} ($${(settings.mobileSurcharge||0.41).toFixed(2)} ea):`, formatCurrency(caTax.phoneSurcharge)],
+                    [`${t('tax.utilityUsersTax')} (${((settings.utilityUsersTax||0.055)*100).toFixed(2)}%):`, formatCurrency(caTax.phoneTax)],
+                    [`${t('tax.caMobilityFee')} ($${(settings.mobileSurcharge||0.41).toFixed(2)} ea):`, formatCurrency(caTax.phoneSurcharge)],
                     ['Total Tax Collected:', formatCurrency(caTax.totalTaxDue)],
                   ].map(([l, v]) => (
                     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -987,18 +989,18 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               {/* Payment summary box */}
               <div style={{ margin: '0 1rem 1rem', padding: '0.75rem', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '0.5rem', fontSize: '0.78rem' }}>
                 <div style={{ color: '#86efac', fontWeight: 700, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-                  $ {es ? 'Total Adeudado a CDTFA' : 'Total Due to CDTFA'}: {formatCurrency(caTax.totalTaxDue)}
+                  $ {t('tax.totalDueCDTFA')}: {formatCurrency(caTax.totalTaxDue)}
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginBottom: '0.4rem' }}>
-                  {es ? 'Se reporta en 3 formularios separados:' : 'Reported on 3 separate CDTFA forms:'}
+                  {t('tax.cdtfaForms3Header')}
                 </div>
                 <div style={{ color: '#cbd5e1', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(34,197,94,0.3)' }}>
-                  <div>• <strong>CDTFA-401</strong> ({es ? 'Impuesto de Venta' : 'Sales Tax'}): {formatCurrency(caTax.salesTax)}</div>
+                  <div>• <strong>CDTFA-401</strong> ({t('tax.cdtfa401Label')}): {formatCurrency(caTax.salesTax)}</div>
                   <div>• <strong>CDTFA-501-LA</strong> (UUT Prepaid MTS → City of SB): {formatCurrency(caTax.utilityTaxTotal)}</div>
-                  <div>• <strong>ETUS Return</strong> (911/988 + {es ? 'Movilidad' : 'Mobility'}): {formatCurrency(caTax.mobileSurchargeTotal)}</div>
+                  <div>• <strong>ETUS Return</strong> (911/988 + {t('tax.mobilityLabel')}): {formatCurrency(caTax.mobileSurchargeTotal)}</div>
                 </div>
                 <div style={{ color: '#94a3b8', marginTop: '0.5rem', fontSize: '0.7rem' }}>
-                  {es ? 'Vencimiento: fin del mes siguiente al cierre del trimestre' : 'Due Date: End of month following quarter end'}
+                  {t('tax.dueDateHint')}
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>onlineservices.cdtfa.ca.gov</div>
               </div>
@@ -1113,7 +1115,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     <div>
                       <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Schedule A COGS (manual)</div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.cogsV1)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{es ? 'Solo entradas del Tax Center' : 'Tax Center entries only'}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.taxCenterEntriesOnly')}</div>
                     </div>
                     <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
                     <div>
@@ -1131,7 +1133,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
                 <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.15)', borderRadius: '0.625rem' }}>
                   <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.35rem' }}>
-                    {es ? 'Cómo se calcula el COGS' : 'How COGS is calculated'}
+                    {t('tax.howCogsCalculated')}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.5 }}>
                     {es
@@ -1160,19 +1162,19 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             {/* ── 1065 tab ── */}
             {f1065Tab === 'f1065' && (
               <div>
-                <InfoBox color="blue">Form 1065 — U.S. Return of Partnership Income. EIN: {settings.partnership?.ein || (es ? '(configurar en Members)' : '(set in Members tab)')} · Due March 15 (ext. Sept 15 via Form 7004).</InfoBox>
+                <InfoBox color="blue">Form 1065 — U.S. Return of Partnership Income. EIN: {settings.partnership?.ein || t('tax.einSetInMembers')} · Due March 15 (ext. Sept 15 via Form 7004).</InfoBox>
                 <Card title="Page 1 — Income">
-                  <Row label={es ? 'Línea 1a — Recibos brutos / ventas (POS)' : 'Line 1a — Gross receipts / sales (POS)'} value={formatCurrency(annual.productGross + annual.repairRevenue)} />
+                  <Row label={t('tax.line1aGross')} value={formatCurrency(annual.productGross + annual.repairRevenue)} />
                   {annual.taxAdjustments.returnsRefunds > 0 && (
-                    <Row label={es ? 'Línea 1b — Devoluciones y reembolsos' : 'Line 1b — Returns and allowances'} value={`(${formatCurrency(annual.taxAdjustments.returnsRefunds)})`} color="#f87171" />
+                    <Row label={t('tax.line1bReturns')} value={`(${formatCurrency(annual.taxAdjustments.returnsRefunds)})`} color="#f87171" />
                   )}
-                  <Row label={es ? 'Línea 1c — Balance' : 'Line 1c — Balance'} value={formatCurrency(annual.productGross + annual.repairRevenue - annual.taxAdjustments.returnsRefunds)} />
-                  <Row label={es ? 'Línea 2 — Costo de bienes vendidos (Schedule A)' : 'Line 2 — Cost of goods sold (Schedule A)'} value={`(${formatCurrency(annual.productCOGS + annual.repairCOGS + Math.max(0, annual.taxCOGS))})`} color="#f87171" />
-                  <Row label={es ? 'Línea 3 — Ganancia bruta' : 'Line 3 — Gross profit'} value={formatCurrency(annual.productGross + annual.repairRevenue - annual.taxAdjustments.returnsRefunds - annual.productCOGS - annual.repairCOGS - Math.max(0, annual.taxCOGS))} color="#22c55e" bold />
+                  <Row label={t('tax.line1cBalance')} value={formatCurrency(annual.productGross + annual.repairRevenue - annual.taxAdjustments.returnsRefunds)} />
+                  <Row label={t('tax.line2COGS')} value={`(${formatCurrency(annual.productCOGS + annual.repairCOGS + Math.max(0, annual.taxCOGS))})`} color="#f87171" />
+                  <Row label={t('tax.line3GrossProfit')} value={formatCurrency(annual.productGross + annual.repairRevenue - annual.taxAdjustments.returnsRefunds - annual.productCOGS - annual.repairCOGS - Math.max(0, annual.taxCOGS))} color="#22c55e" bold />
                   {(annual.phoneNetCommission > 0 || annual.taxIncomeAdditional > 0 || annual.taxAdjustments.otherIncome > 0) && (
-                    <Row label={es ? 'Línea 7 — Otros ingresos (comisiones carrier + manual)' : 'Line 7 — Other income (carrier commissions + manual)'} value={formatCurrency(annual.phoneNetCommission + annual.taxIncomeAdditional + annual.taxAdjustments.otherIncome)} color="#22c55e" />
+                    <Row label={t('tax.line7OtherIncome')} value={formatCurrency(annual.phoneNetCommission + annual.taxIncomeAdditional + annual.taxAdjustments.otherIncome)} color="#22c55e" />
                   )}
-                  <Row label={es ? 'Línea 8 — Ingreso total' : 'Line 8 — Total income'} value={formatCurrency(annual.adjustedTotalIncome)} color="#22c55e" bold />
+                  <Row label={t('tax.line8TotalIncome')} value={formatCurrency(annual.adjustedTotalIncome)} color="#22c55e" bold />
                 </Card>
                 <Card title="Page 1 — Deductions">
                   {annual.yearExpenses.length === 0 && annual.taxExpensesDeductible === 0 && annual.guaranteedPaymentsTotal === 0 ? (
@@ -1185,7 +1187,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     <>
                       {annual.guaranteedPaymentsTotal > 0 && (
                         <Row
-                          label={es ? 'Línea 10 — Pagos garantizados a socios' : 'Line 10 — Guaranteed payments to partners'}
+                          label={t('tax.line10GuaranteedPayments')}
                           value={formatCurrency(annual.guaranteedPaymentsTotal)}
                           color="#f87171"
                         />
@@ -1200,17 +1202,17 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                       ))}
                       {annual.taxExpensesDeductible > 0 && (
                         <Row
-                          label={es ? 'Gastos del Tax Center (deducibles)' : 'Tax Center expenses (deductible)'}
+                          label={t('tax.taxCenterExpensesDeductible')}
                           value={formatCurrency(annual.taxExpensesDeductible)}
                           color="#f87171"
                         />
                       )}
                     </>
                   )}
-                  <Row label={es ? 'Total deducciones (línea 21)' : 'Total deductions (line 21)'} value={formatCurrency(annual.manualTotal + annual.guaranteedPaymentsTotal)} color="#f87171" bold />
+                  <Row label={t('tax.totalDeductionsL21')} value={formatCurrency(annual.manualTotal + annual.guaranteedPaymentsTotal)} color="#f87171" bold />
                 </Card>
                 <Card title="Ordinary Business Income">
-                  <Row label={es ? 'Ingreso/(pérdida) ordinaria del negocio — Línea 23' : 'Ordinary business income / (loss) — Line 23'} value={formatCurrency(annual.netProfit)} color={annual.netProfit >= 0 ? '#22c55e' : '#f87171'} bold />
+                  <Row label={t('tax.line23OrdinaryIncome')} value={formatCurrency(annual.netProfit)} color={annual.netProfit >= 0 ? '#22c55e' : '#f87171'} bold />
                 </Card>
               </div>
             )}
@@ -1234,7 +1236,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                       }}>
                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
                         <div style={{ fontSize: '0.9rem', color: '#fcd34d', fontWeight: 700, marginBottom: '0.4rem' }}>
-                          {es ? 'No hay socios configurados' : 'No partnership members configured'}
+                          {t('tax.noPartnershipMembers')}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.875rem' }}>
                           {es
@@ -1254,7 +1256,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                             cursor: 'pointer',
                           }}
                         >
-                          {es ? '→ Ir a Members' : '→ Go to Members'}
+                          {t('tax.goToMembers')}
                         </button>
                       </div>
                     );
@@ -1266,9 +1268,9 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     const k1 = calcMemberK1(m, annual.netProfit);
                     return (
                       <Card key={m.id} title={`K-1 — ${m.name}`}>
-                        <Row label="Partner's SSN / ITIN" value={m.ssn || (es ? '(no configurado)' : '(not set)')} />
+                        <Row label="Partner's SSN / ITIN" value={m.ssn || t('tax.notSet')} />
                         {m.ein && <Row label="Partner's EIN (entity)" value={m.ein} />}
-                        <Row label="Partnership EIN" value={partnership?.ein || (es ? '(configurar arriba)' : '(set above)')} />
+                        <Row label="Partnership EIN" value={partnership?.ein || t('tax.setAbove')} />
                         <Row label="Partnership Name" value={partnership?.legalName || '(not set)'} />
                         <Row label="Profit sharing %" value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} />
                         <Row label="Loss sharing %" value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} />
@@ -1328,7 +1330,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                       }}>
                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
                         <div style={{ fontSize: '0.9rem', color: '#fcd34d', fontWeight: 700, marginBottom: '0.4rem' }}>
-                          {es ? 'No hay socios configurados' : 'No partnership members configured'}
+                          {t('tax.noPartnershipMembers')}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.875rem' }}>
                           {es
@@ -1348,7 +1350,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                             cursor: 'pointer',
                           }}
                         >
-                          {es ? '→ Ir a Members' : '→ Go to Members'}
+                          {t('tax.goToMembers')}
                         </button>
                       </div>
                     );

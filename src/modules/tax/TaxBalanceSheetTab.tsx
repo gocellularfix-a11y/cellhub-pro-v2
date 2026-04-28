@@ -6,8 +6,8 @@
 // ============================================================
 
 import { useMemo } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, emptyBalanceSheet, dollarsToCents, centsToDollars } from './taxData';
 import { inputStyle, labelStyle, cardBox } from './taxStyles';
 import type { TaxBalanceSheet } from '@/store/types';
@@ -16,30 +16,29 @@ interface Props {
   year: number;
 }
 
-// [baseKey, EN label, ES label] — each produces two fields: <base>Begin, <base>End.
-const ASSET_LINES: Array<[string, string, string]> = [
-  ['cash',                'Cash',                       'Efectivo'],
-  ['accountsReceivable',  'Accounts Receivable',        'Cuentas por Cobrar'],
-  ['inventory',           'Inventory',                  'Inventario'],
-  ['otherCurrentAssets',  'Other Current Assets',       'Otros Activos Corrientes'],
-  ['buildings',           'Buildings & Depreciable',    'Edificios y Depreciables'],
-  ['accDepreciation',     'Accumulated Depreciation',   'Depreciación Acumulada'],
-  ['land',                'Land',                       'Terreno'],
-  ['otherAssets',         'Other Assets',               'Otros Activos'],
+// [baseKey, EN, ES, PT] — each produces two fields: <base>Begin, <base>End.
+const ASSET_LINES: Array<[string, string, string, string]> = [
+  ['cash',                'Cash',                       'Efectivo',                   'Caixa'],
+  ['accountsReceivable',  'Accounts Receivable',        'Cuentas por Cobrar',         'Contas a Receber'],
+  ['inventory',           'Inventory',                  'Inventario',                 'Estoque'],
+  ['otherCurrentAssets',  'Other Current Assets',       'Otros Activos Corrientes',   'Outros Ativos Correntes'],
+  ['buildings',           'Buildings & Depreciable',    'Edificios y Depreciables',   'Edifícios e Depreciáveis'],
+  ['accDepreciation',     'Accumulated Depreciation',   'Depreciación Acumulada',     'Depreciação Acumulada'],
+  ['land',                'Land',                       'Terreno',                    'Terra'],
+  ['otherAssets',         'Other Assets',               'Otros Activos',              'Outros Ativos'],
 ];
 
-const LIABILITY_LINES: Array<[string, string, string]> = [
-  ['accountsPayable',     'Accounts Payable',           'Cuentas por Pagar'],
-  ['shortTermDebt',       'Short-Term Debt',            'Deuda Corto Plazo'],
-  ['longTermDebt',        'Long-Term Debt',             'Deuda Largo Plazo'],
-  ['otherLiabilities',    'Other Liabilities',          'Otros Pasivos'],
+const LIABILITY_LINES: Array<[string, string, string, string]> = [
+  ['accountsPayable',     'Accounts Payable',           'Cuentas por Pagar',          'Contas a Pagar'],
+  ['shortTermDebt',       'Short-Term Debt',            'Deuda Corto Plazo',          'Dívida de Curto Prazo'],
+  ['longTermDebt',        'Long-Term Debt',             'Deuda Largo Plazo',          'Dívida de Longo Prazo'],
+  ['otherLiabilities',    'Other Liabilities',          'Otros Pasivos',              'Outros Passivos'],
 ];
 
 type BSKey = keyof TaxBalanceSheet;
 
 export default function TaxBalanceSheetTab({ year }: Props) {
-  const { state: { lang } } = useApp();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
   const bs = tax.data.balanceSheet ?? emptyBalanceSheet();
 
@@ -94,12 +93,10 @@ export default function TaxBalanceSheetTab({ year }: Props) {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'Schedule L — Balance General' : 'Schedule L — Balance Sheet'} — {year}
+          {t('taxBS.title', year)}
         </div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-          {es
-            ? 'Form 1065. Requerido si ingresos ≥ $250K o activos ≥ $1M. Valores al inicio y fin del año.'
-            : 'Form 1065. Required if receipts ≥ $250K or assets ≥ $1M. Beginning + ending year values.'}
+          {t('taxBS.subtitle')}
         </div>
       </div>
 
@@ -116,8 +113,8 @@ export default function TaxBalanceSheetTab({ year }: Props) {
         letterSpacing: '0.04em',
       }}>
         <span></span>
-        <span>{es ? 'Inicio del Año ($)' : 'Beginning of Year ($)'}</span>
-        <span>{es ? 'Fin del Año ($)' : 'End of Year ($)'}</span>
+        <span>{t('taxBS.beginningOfYear')}</span>
+        <span>{t('taxBS.endOfYear')}</span>
       </div>
 
       {/* ── Assets ── */}
@@ -130,10 +127,10 @@ export default function TaxBalanceSheetTab({ year }: Props) {
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
         }}>
-          {es ? 'Activos' : 'Assets'}
+          {t('taxBS.assetsHeader')}
         </div>
-        {ASSET_LINES.map(([k, en, esLabel]) => (
-          <Row key={k} baseKey={k} label={es ? esLabel : en} />
+        {ASSET_LINES.map(([k, en, esLabel, pt]) => (
+          <Row key={k} baseKey={k} label={locale === 'pt' ? pt : locale === 'es' ? esLabel : en} />
         ))}
 
         {/* Asset totals */}
@@ -148,7 +145,7 @@ export default function TaxBalanceSheetTab({ year }: Props) {
           fontWeight: 700,
           color: '#bfdbfe',
         }}>
-          <span>{es ? 'Total Activos' : 'Total Assets'}</span>
+          <span>{t('taxBS.totalAssets')}</span>
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>{formatCurrency(totals.assetBegin)}</span>
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>{formatCurrency(totals.assetEnd)}</span>
         </div>
@@ -164,10 +161,10 @@ export default function TaxBalanceSheetTab({ year }: Props) {
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
         }}>
-          {es ? 'Pasivos' : 'Liabilities'}
+          {t('taxBS.liabilitiesHeader')}
         </div>
-        {LIABILITY_LINES.map(([k, en, esLabel]) => (
-          <Row key={k} baseKey={k} label={es ? esLabel : en} />
+        {LIABILITY_LINES.map(([k, en, esLabel, pt]) => (
+          <Row key={k} baseKey={k} label={locale === 'pt' ? pt : locale === 'es' ? esLabel : en} />
         ))}
 
         {/* Liability totals */}
@@ -182,7 +179,7 @@ export default function TaxBalanceSheetTab({ year }: Props) {
           fontWeight: 700,
           color: '#fecaca',
         }}>
-          <span>{es ? 'Total Pasivos' : 'Total Liabilities'}</span>
+          <span>{t('taxBS.totalLiabilities')}</span>
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>{formatCurrency(totals.liabBegin)}</span>
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>{formatCurrency(totals.liabEnd)}</span>
         </div>
@@ -203,7 +200,7 @@ export default function TaxBalanceSheetTab({ year }: Props) {
           fontWeight: 700,
           color: '#cbd5e1',
         }}>
-          <span>{es ? "Capital de Socios (Activos − Pasivos)" : "Partners' Equity (Assets − Liabilities)"}</span>
+          <span>{t('taxBS.partnersEquity')}</span>
           <span style={{
             fontFamily: 'ui-monospace, monospace',
             color: totals.equityBegin >= 0 ? '#86efac' : '#fca5a5',
