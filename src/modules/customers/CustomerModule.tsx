@@ -26,12 +26,11 @@ export default function CustomerModule() {
   // forced extra re-renders.
   const app = useApp();
   const { state, setCustomers, dispatch } = app;
-  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm } = state;
+  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns } = state;
 
-  // returns and appointments live in localStorage (not AppState yet) — to be
-  // lifted into the store in a future phase. For now we read them untyped and
-  // narrow to a minimal shape inside getCustomerHistory below.
-  const returns_      = (state as unknown as { returns?: unknown[] }).returns      || [];
+  // customerReturns now lives in AppState (hydrated at boot via SET_CUSTOMER_RETURNS).
+  const returns_      = customerReturns || [];
+  // appointments still in localStorage pending a future store lift.
   const appointments_ = (state as unknown as { appointments?: unknown[] }).appointments || [];
 
   const { toast } = useToast();

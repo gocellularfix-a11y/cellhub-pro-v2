@@ -21,6 +21,7 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { generateId } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
+import { forwardTaxFromBase } from '@/utils/depositTax';
 import { persist, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
 import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem } from '@/store/types';
@@ -307,7 +308,7 @@ export default function ReturnsModule() {
     Object.entries(selectedItems).reduce((sum, [id, sel]) => {
       const item = returnableItems.find((i) => i.id === id);
       if (!item?.taxable) return sum;
-      return sum + rc((effectivePriceCents(item) / 100) * sel.qty * taxRate);
+      return sum + forwardTaxFromBase(effectivePriceCents(item) * sel.qty, taxRate, true).taxCents / 100;
     }, 0), [selectedItems, returnableItems, taxRate, effectivePriceCents]);
 
   const returnTotal = rc(returnSubtotal + returnTax);
@@ -346,7 +347,7 @@ export default function ReturnsModule() {
       const item = returnableItems.find((i) => i.id === id);
       const priceCents    = item ? effectivePriceCents(item) : 0;
       const subtotalCents = priceCents * sel.qty;
-      const taxCents      = item?.taxable ? Math.round(subtotalCents * taxRate) : 0;
+      const taxCents      = item?.taxable ? forwardTaxFromBase(subtotalCents, taxRate, true).taxCents : 0;
       const totalCents    = subtotalCents + taxCents;
       return {
         id: item?.id,
@@ -543,6 +544,27 @@ export default function ReturnsModule() {
         setCustomers(updatedCustomers);
       } else {
         toast(t('returns.creditApplyManually'), 'warning');
+      }
+    }
+
+    // Phase 6b: loyalty points reversal.
+    // Mirror the POS earn formula: 1 pt per $1 of non-phone_payment/top_up items.
+    // Only runs if loyalty is enabled and a customer is linked to the original sale.
+    if (settings.loyaltyEnabled && foundSale?.customerId) {
+      const returnedBase = returnItems
+        .filter((i) => (i as any).category !== 'phone_payment' && (i as any).category !== 'top_up')
+        .reduce((s, i) => s + i.subtotalCents, 0);
+      const ptsToReverse = Math.trunc(returnedBase / 100);
+      if (ptsToReverse > 0) {
+        const saleCustomerId = foundSale.customerId;
+        const updatedCustomers = customersRef.current.map((c) => {
+          if (c.id !== saleCustomerId) return c;
+          const updated = { ...c, loyaltyPoints: Math.max(0, (c.loyaltyPoints || 0) - ptsToReverse) };
+          persist.customer(updated.id, updated as unknown as Record<string, unknown>);
+          return updated;
+        });
+        customersRef.current = updatedCustomers;
+        setCustomers(updatedCustomers);
       }
     }
 
@@ -827,16 +849,20 @@ export default function ReturnsModule() {
       reason: vendorReason, resolution: vendorResolution, notes: vendorNotes,
       employeeName: currentEmployee?.name || '', createdAt: new Date().toISOString(),
     };
-    // Round 19: read from inventoryRef.current (anti stale-closure)
-    const updatedInv = inventoryRef.current.map((i) => {
-      if (i.id !== vendorItem.id) return i;
-      const newQty = Math.max(0, i.qty - vendorQty);
-      return { ...i, qty: newQty };
-    });
-    inventoryRef.current = updatedInv;
-    setInventory(updatedInv);
-    const updated = updatedInv.find((i) => i.id === vendorItem.id);
-    if (updated) persist.inventory(updated.id, updated as unknown as Record<string, unknown>);
+    // Round 19: read from inventoryRef.current (anti stale-closure).
+    // Fix 7: replacement resolution means the vendor is sending a new unit —
+    // the defective item was already removed from shelf, so inventory stays.
+    if (vendorResolution !== 'replacement') {
+      const updatedInv = inventoryRef.current.map((i) => {
+        if (i.id !== vendorItem.id) return i;
+        const newQty = Math.max(0, i.qty - vendorQty);
+        return { ...i, qty: newQty };
+      });
+      inventoryRef.current = updatedInv;
+      setInventory(updatedInv);
+      const updated = updatedInv.find((i) => i.id === vendorItem.id);
+      if (updated) persist.inventory(updated.id, updated as unknown as Record<string, unknown>);
+    }
     // r-pkg-b3: persist via Firestore + update state via ref-safe pattern
     const vHistory = [rec, ...vendorReturnsRef.current];
     vendorReturnsRef.current = vHistory;

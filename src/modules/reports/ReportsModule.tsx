@@ -276,7 +276,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns },
     dispatch,
   } = useApp();
 
@@ -297,6 +297,7 @@ export default function ReportsModule() {
   const safeUnlocks: Unlock[] = Array.isArray(unlocks) ? unlocks : [];
   const safeSpecialOrders: SpecialOrder[] = Array.isArray(specialOrders) ? specialOrders : [];
   const safeLayaways: Layaway[] = Array.isArray(layaways) ? layaways : [];
+  const safeVendorReturns = Array.isArray(vendorReturns) ? vendorReturns : [];
 
   // ── State ─────────────────────────────────────────────────
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly' | 'range' | 'returning'>('daily');
@@ -377,12 +378,30 @@ export default function ReportsModule() {
     [safeUnlocks, inRange]
   );
 
-  // ── Returns (legacy localStorage bridge) ──────────────────
-  // Re-load on period change. loadReturns() reads localStorage synchronously;
-  // periodRange is in deps as an explicit refresh trigger (not because the
-  // function uses it). Pattern kept intentional — returns are edited rarely.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const allReturns = useMemo(() => loadReturns(), [periodRange.start.getTime(), periodRange.end.getTime()]);
+  const filteredVendorReturns = useMemo(() =>
+    safeVendorReturns.filter((v) => inRange((v as any).createdAt)),
+    [safeVendorReturns, inRange]
+  );
+
+  // ── Returns (live AppState — replaces legacy localStorage bridge) ──
+  const allReturns = useMemo((): NormalizedReturn[] => {
+    const src = Array.isArray(customerReturns) ? customerReturns : [];
+    return src.map((r) => ({
+      id: r.id,
+      returnNumber: r.returnNumber || '',
+      originalInvoice: r.originalInvoice || '',
+      originalSaleId: r.originalSaleId,
+      customerName: r.customerName || '',
+      reason: r.reason || '',
+      resolution: r.resolution || '',
+      createdAt: toDateSafe(r.createdAt),
+      // Canonical cents fields always present on new records; fall back to
+      // legacy dollar fields for old records created before Round 9 migration.
+      subtotalCents: r.subtotalCents ?? Math.round((r.subtotal || 0) * 100),
+      taxCents: r.taxCents ?? Math.round((r.taxRefunded || 0) * 100),
+      totalCents: r.totalCents ?? Math.round((r.total || 0) * 100),
+    }));
+  }, [customerReturns]);
 
   /** Returns that happened during this period (net daily view). */
   const returnsInPeriod = useMemo(() =>
@@ -832,6 +851,13 @@ export default function ReportsModule() {
       standaloneUnlockRevenueCents += rev;
     }
 
+    // Fix 1: vendor returns reduce COGS (returned stock no longer a cost).
+    const vendorReturnCogsCents = filteredVendorReturns.reduce(
+      (s, v) => s + ((v as any).totalValueCents || Math.round(((v as any).totalValue || 0) * 100)),
+      0,
+    );
+    totalCostCents = Math.max(0, totalCostCents - vendorReturnCogsCents);
+
     // Round 10.1 fix 2: Gross excludes status==='refunded' AND negative-total
     // refund audit sales. Returns are subtracted separately via returnsFromPeriodSales,
     // so including refund sales here would double-deduct.
@@ -844,6 +870,10 @@ export default function ReportsModule() {
     }, 0) + standaloneUnlockRevenueCents;
     const totalReturnsCents = returnsFromPeriodSales.reduce((s, r) => s + r.totalCents, 0);
     const netRevenueCents = grossRevenueCents - totalReturnsCents;
+
+    // Fix 3: tax collected must net out the tax that was refunded on returns.
+    const returnsTaxCents = returnsFromPeriodSales.reduce((s, r) => s + r.taxCents, 0);
+    salesTaxCents = Math.max(0, salesTaxCents - returnsTaxCents);
 
     const subtotalBeforeTaxCents = salesSubtotalCents - salesDiscountCents + standaloneUnlockRevenueCents;
 
@@ -922,7 +952,7 @@ export default function ReportsModule() {
       topEmployees,
       phonePaymentsByProvider,
     };
-  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale]);
+  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, filteredVendorReturns, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale]);
 
   // ── Round 10 fix 1: Cash tripartite (In / Out / Net) ──────
   // Gross "Cash" previously equalled "Cash In" only, hiding real cash drawer

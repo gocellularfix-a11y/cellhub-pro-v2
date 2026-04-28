@@ -1364,6 +1364,13 @@ export default function RepairModule() {
             //    gross revenue. Originals stay untouched — this is a PARTIAL
             //    refund from a price edit, not a cancellation.
             if (refundAmountCents > 0) {
+              // Fix 4: split refund amount into base + tax so Reports tax
+              // totals net correctly. refundOwedAmount is the all-in amount
+              // the customer overpaid (base + any tax portion).
+              const repairTaxable = !!(updated as any).taxable;
+              const taxRateForRefund = settings.taxRate ?? 0.0925;
+              const { baseCents: refundBaseCents, taxCents: refundTaxCents } =
+                reverseTaxFromPayment(refundAmountCents, taxRateForRefund, repairTaxable);
               const refundSale: Sale = {
                 id: generateId(),
                 storeId: (updated as any).storeId,
@@ -1375,14 +1382,15 @@ export default function RepairModule() {
                   id: generateId(),
                   name: `${updated.device || 'Repair'} — ${t('repairs.postEditRefundSuffix')}`,
                   category: 'service' as any,
-                  price: -refundAmountCents,
+                  price: -refundBaseCents,
                   qty: 1,
-                  taxable: false,
+                  taxable: repairTaxable,
                   cbeEligible: false,
                   repairId: updated.id,
                 }],
-                subtotal: -refundAmountCents,
-                taxAmount: 0,
+                subtotal: -refundBaseCents,
+                taxAmount: -refundTaxCents,
+                salesTax: -refundTaxCents,
                 cbeTotal: 0,
                 total: -refundAmountCents,
                 paymentMethod: 'Cash' as any,
