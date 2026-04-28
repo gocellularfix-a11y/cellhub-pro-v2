@@ -113,14 +113,18 @@ export default function UnlockModule() {
   const translateStatus = useCallback(
     (s: string) => {
       const map: Record<string, string> = {
-        All: L.all, Received: L.received, Processing: L.processing,
-        'Code Received': L.codeReceived || 'Code Received',
-        Completed: L.completed, Cancelled: L.cancelled, Failed: L.failed || 'Failed',
+        All: t('unlocks.filter.all'),
+        Received: t('unlocks.status.received'),
+        Processing: t('unlocks.status.processing'),
+        'Code Received': t('unlocks.status.codeReceived'),
+        Completed: t('unlocks.status.completed'),
+        Cancelled: t('unlocks.status.cancelled'),
+        Failed: t('unlocks.status.failed'),
         'Refund Pending': t('unlocks.status.refundPending'),
         'Refunded': t('unlocks.status.refunded'),
       };
       return map[s] || s;
-    }, [L],
+    }, [t],
   );
 
   const normalizeStatus = (s: string) => s.toLowerCase().replace(/ /g, '_');

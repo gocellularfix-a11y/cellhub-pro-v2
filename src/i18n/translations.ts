@@ -3086,4 +3086,13 @@ export const translations: TranslationDictionary = {
   'repairs.status.ready':            { en: 'Ready',         es: 'Listo',              pt: 'Pronto' },
   'repairs.status.completed':        { en: 'Completed',     es: 'Completado',         pt: 'Concluído' },
   'repairs.status.cancelled':        { en: 'Cancelled',     es: 'Cancelado',          pt: 'Cancelado' },
+
+  'unlocks.filter.all':              { en: 'All',           es: 'Todos',              pt: 'Todos' },
+
+  'unlocks.status.received':         { en: 'Received',      es: 'Recibido',           pt: 'Recebido' },
+  'unlocks.status.processing':       { en: 'Processing',    es: 'En Proceso',         pt: 'Em Processamento' },
+  'unlocks.status.codeReceived':     { en: 'Code Received', es: 'Código Recibido',    pt: 'Código Recebido' },
+  'unlocks.status.completed':        { en: 'Completed',     es: 'Completado',         pt: 'Concluído' },
+  'unlocks.status.cancelled':        { en: 'Cancelled',     es: 'Cancelado',          pt: 'Cancelado' },
+  'unlocks.status.failed':           { en: 'Failed',        es: 'Fallido',            pt: 'Falhou' },
 };
