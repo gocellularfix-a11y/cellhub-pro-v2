@@ -350,7 +350,7 @@ export default function ReturnsModule() {
       const totalCents    = subtotalCents + taxCents;
       return {
         id: item?.id,
-        name: item?.name || 'Unknown',
+        name: item?.name || t('returns.unknownItem'),
         qty: sel.qty,
         // canonical cents
         priceCents, subtotalCents, taxCents, totalCents,
@@ -369,7 +369,7 @@ export default function ReturnsModule() {
     const returnRecord: CustomerReturn = {
       id: generateId(),
       returnNumber,
-      originalInvoice: foundSale?.invoiceNumber || 'N/A',
+      originalInvoice: foundSale?.invoiceNumber || t('returns.na'),
       originalSaleId: foundSale?.id || null,
       customerName: foundSale?.customerName || t('returns.noInvoice'),
       customerPhone: foundSale?.customerPhone || '',
@@ -993,7 +993,7 @@ export default function ReturnsModule() {
                         style={{ textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', color: '#e2e8f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            <span style={{ fontWeight: 700, color: '#a5b4fc', marginRight: '0.75rem' }}>{s.invoiceNumber || 'N/A'}</span>
+                            <span style={{ fontWeight: 700, color: '#a5b4fc', marginRight: '0.75rem' }}>{s.invoiceNumber || t('returns.na')}</span>
                             <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{fd(s.createdAt)}</span>
                           </div>
                           <span style={{ fontWeight: 700, color: '#10b981' }}>{fc(s.total)}</span>
@@ -1040,7 +1040,7 @@ export default function ReturnsModule() {
               {/* Sale summary */}
               <div className="glass-card p-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#a5b4fc' }}>{foundSale.invoiceNumber || 'N/A'}</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#a5b4fc' }}>{foundSale.invoiceNumber || t('returns.na')}</div>
                   <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
                     {foundSale.customerName || '—'} · {fd(foundSale.createdAt)} · {fc(foundSale.total)}
                   </div>
@@ -1201,7 +1201,7 @@ export default function ReturnsModule() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                     <div>
                       <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{selectedCount} {t('returns.itemsSelected')}</div>
-                      {returnTax > 0 && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subtotal: ${returnSubtotal.toFixed(2)} + tax: ${returnTax.toFixed(2)}</div>}
+                      {returnTax > 0 && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{t('returns.subtotalLine', returnSubtotal.toFixed(2), returnTax.toFixed(2))}</div>}
                     </div>
                     <div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ef4444' }}>−${returnTotal.toFixed(2)}</div>
@@ -1228,7 +1228,7 @@ export default function ReturnsModule() {
           <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem' }}>
             <div style={{ fontWeight: 700, color: '#f87171', fontSize: '1.1rem' }}>−${returnTotal.toFixed(2)}</div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-              {foundSale?.invoiceNumber || 'N/A'} · {selectedCount} {t('returns.items')} ·{' '}
+              {foundSale?.invoiceNumber || t('returns.na')} · {selectedCount} {t('returns.items')} ·{' '}
               {resolution === 'cash' ? t('returns.resCashShort') :
                resolution === 'card' ? t('returns.resCardShort') :
                resolution === 'store_credit' ? t('returns.resStoreCreditShort') :

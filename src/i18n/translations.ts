@@ -2589,6 +2589,13 @@ export const translations: TranslationDictionary = {
   },
   'returns.searchAgain':             { en: 'Search again',          es: 'Buscar otra',                 pt: 'Buscar outra' },
   'returns.selectItems':             { en: 'Select items to return', es: 'Selecciona artículos a devolver', pt: 'Selecione itens para devolver' },
+  'returns.na':                        { en: 'N/A',             es: 'N/A',                         pt: 'N/A' },
+  'returns.unknownItem':               { en: 'Unknown',         es: 'Desconocido',                 pt: 'Desconhecido' },
+  'returns.subtotalLine': {
+    en: (sub: string, tax: string) => `Subtotal: $${sub} + tax: $${tax}`,
+    es: (sub: string, tax: string) => `Subtotal: $${sub} + impuesto: $${tax}`,
+    pt: (sub: string, tax: string) => `Subtotal: $${sub} + imposto: $${tax}`,
+  },
   'returns.selectAtLeastOne':       { en: 'Select at least one item.', es: 'Selecciona al menos un artículo.', pt: 'Selecione pelo menos um item.' },
   'returns.noReturnableItems':       { en: 'No returnable items in this sale.', es: 'No hay artículos retornables en esta venta.', pt: 'Nenhum item retornável nesta venda.' },
   'returns.tax':                     { en: 'tax',                   es: 'impuesto',                    pt: 'imposto' },
