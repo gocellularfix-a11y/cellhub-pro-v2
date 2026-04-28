@@ -3077,4 +3077,13 @@ export const translations: TranslationDictionary = {
   'ticket.collectBalance': { en: 'Collect',        es: 'Cobrar',          pt: 'Cobrar' },
   'ticket.print':          { en: 'Print',          es: 'Imprimir',        pt: 'Imprimir' },
   'ticket.delete':         { en: 'Delete',         es: 'Eliminar',        pt: 'Excluir' },
+
+  'repairs.filter.all':              { en: 'All',           es: 'Todos',              pt: 'Todos' },
+
+  'repairs.status.received':         { en: 'Received',      es: 'Recibido',           pt: 'Recebido' },
+  'repairs.status.inProgress':       { en: 'In Progress',   es: 'En Progreso',        pt: 'Em Andamento' },
+  'repairs.status.waitingParts':     { en: 'Waiting Parts', es: 'Esperando Partes',   pt: 'Aguardando Peças' },
+  'repairs.status.ready':            { en: 'Ready',         es: 'Listo',              pt: 'Pronto' },
+  'repairs.status.completed':        { en: 'Completed',     es: 'Completado',         pt: 'Concluído' },
+  'repairs.status.cancelled':        { en: 'Cancelled',     es: 'Cancelado',          pt: 'Cancelado' },
 };
