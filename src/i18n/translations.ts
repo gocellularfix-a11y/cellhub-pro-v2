@@ -667,7 +667,11 @@ export const translations: TranslationDictionary = {
   'qaInternationalTopUp': { en: 'International Top Up', es: 'Recarga Internacional', pt: 'Recarga Internacional' },
   'qaInternationalTopUpDesc': { en: 'Boss Revolution • Tila TopUp', es: 'Boss Revolution • Tila TopUp', pt: 'Boss Revolution • Tila TopUp' },
   'qaServices': { en: 'Services', es: 'Servicios', pt: 'Serviços' },
-  'qaServicesDesc': { en: 'Repairs & unlocking services', es: 'Reparaciones y desbloqueos', pt: 'Reparos e serviços de desbloqueio' },
+  'qaServicesDesc':    { en: 'Repairs & unlocking services',      es: 'Reparaciones y desbloqueos',         pt: 'Reparos e serviços de desbloqueio' },
+  'notepadDesc':       { en: 'Write and print quick notes',       es: 'Escribe e imprime notas rápidas',    pt: 'Escreva e imprima notas rápidas' },
+  'estimatesDesc':     { en: 'Quick estimate with receipt',       es: 'Estimado rápido con recibo',         pt: 'Orçamento rápido com recibo' },
+  'rmaLabelDesc':      { en: 'Create return shipping label 4×6', es: 'Crea etiqueta de devolución 4×6',   pt: 'Criar etiqueta de devolução 4×6' },
+  'labelPrinterDesc':  { en: 'Paste & print 4×6 labels',         es: 'Pega e imprime etiquetas 4×6',       pt: 'Cole e imprima etiquetas 4×6' },
   'qty': { en: 'Qty', es: 'Cant', pt: 'Qtd' },
   'qtyOrdered': { en: 'Qty Ordered', es: 'Ordenado', pt: 'Qtd Pedida' },
   'qtyPending': { en: 'Qty Pending', es: 'Pendiente', pt: 'Qtd Pendente' },
@@ -4160,8 +4164,12 @@ export const translations: TranslationDictionary = {
   'ai.qpSmsRepair':         { en: "Draft an SMS for a customer whose repair is ready",       es: "Redacta un SMS para avisar que la reparación está lista",  pt: "Redigir SMS para avisar que o reparo está pronto" },
   'ai.qpTopSellers':        { en: "What are my top selling items this month?",               es: "¿Cuáles son mis productos más vendidos este mes?",         pt: "Quais são meus produtos mais vendidos este mês?" },
   'ai.qpCbe':               { en: "Explain CBE fees for CA",                                 es: "Explícame los cobros CBE de California",                   pt: "Explique as taxas CBE da Califórnia" },
+  'ai.assistantTitle':      { en: 'AI Assistant',                                             es: 'Asistente AI',                                             pt: 'Assistente AI' },
+  'ai.configuredReady':     { en: 'AI Assistant is configured and ready',                    es: 'Asistente AI configurado y listo',                          pt: 'Assistente AI configurado e pronto' },
+  'ai.addKeyPrompt':        { en: 'Add an API key above to enable AI Assistant',             es: 'Agrega una API key arriba para habilitar el Asistente AI', pt: 'Adicione uma API key acima para habilitar o Assistente AI' },
 
   // ── Intelligence module ───────────────────────────────────
+  'intelligence.tryQuestion': { en: 'Try a question:',        es: 'Prueba con una pregunta:', pt: 'Experimente uma pergunta:' },
   'intelligence.customerHistory':         { en: 'Customer History',          es: 'Historial de Cliente',                    pt: 'Histórico do Cliente' },
   'intelligence.searchPlaceholder':       { en: 'Name, phone or customer number…', es: 'Nombre, teléfono o número de cliente…', pt: 'Nome, telefone ou número do cliente…' },
   'intelligence.noMatches':               { en: 'No matches',                es: 'Sin resultados',                          pt: 'Sem resultados' },
@@ -4282,7 +4290,14 @@ export const translations: TranslationDictionary = {
   'unlocks.noResults':      { en: 'No unlocks found', es: 'Sin desbloqueos encontrados', pt: 'Nenhum desbloqueio encontrado' },
 
   // ── Search ────────────────────────────────────────────────
-  'search.noResultsFor':    { en: 'No results for', es: 'Sin resultados para', pt: 'Sem resultados para' },
+  'search.noResultsFor':    { en: 'No results for',  es: 'Sin resultados para', pt: 'Sem resultados para' },
+  'search.badgeCustomer':   { en: 'Customer',        es: 'Cliente',             pt: 'Cliente' },
+  'search.balance':         { en: 'Balance',         es: 'Saldo',               pt: 'Saldo' },
+  'search.invoice':         { en: 'Invoice',         es: 'Factura',             pt: 'Fatura' },
+  'search.badgeSale':       { en: 'Sale',            es: 'Venta',               pt: 'Venda' },
+  'search.navigate':        { en: 'navigate',        es: 'navegar',             pt: 'navegar' },
+  'search.open':            { en: 'open',            es: 'abrir',               pt: 'abrir' },
+  'search.results':         { en: 'result(s)',       es: 'resultado(s)',         pt: 'resultado(s)' },
 
   // ── Appointments module ───────────────────────────────────
   'appt.title':                  { en: 'Appointments',                      es: 'Citas',                                 pt: 'Agendamentos' },

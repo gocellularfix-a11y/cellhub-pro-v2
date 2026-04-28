@@ -97,7 +97,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 ? (
-          <EmptyState es={locale === 'es'} onSuggestion={handleSuggestion} />
+          <EmptyState onSuggestion={handleSuggestion} />
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} />)
         )}
@@ -153,30 +153,19 @@ function MessageBubble({ msg, es }: { msg: ChatMessage; es: boolean }) {
 }
 
 // ── Empty state with suggestions ────────────────────────────
-function EmptyState({ es, onSuggestion }: { es: boolean; onSuggestion: (s: string) => void }) {
-  const suggestions = es
-    ? [
-      'cómo van las ventas',
-      'qué vendo más',
-      'qué me falta',
-      'cómo está la tienda',
-      'reparaciones atrasadas',
-      'ayuda',
-    ]
-    : [
-      'how are sales',
-      'top items',
-      'what do I need',
-      'store health',
-      'overdue repairs',
-      'help',
-    ];
+function EmptyState({ onSuggestion }: { es?: boolean; onSuggestion: (s: string) => void }) {
+  const { t, locale } = useTranslation();
+  const suggestions = locale === 'es'
+    ? ['cómo van las ventas', 'qué vendo más', 'qué me falta', 'cómo está la tienda', 'reparaciones atrasadas', 'ayuda']
+    : locale === 'pt'
+    ? ['como estão as vendas', 'itens mais vendidos', 'o que preciso', 'saúde da loja', 'reparos atrasados', 'ajuda']
+    : ['how are sales', 'top items', 'what do I need', 'store health', 'overdue repairs', 'help'];
 
   return (
     <div className="text-center py-6">
       <div className="text-4xl mb-2">💬</div>
       <p className="text-sm text-slate-300 mb-4">
-        {es ? 'Prueba con una pregunta:' : 'Try a question:'}
+        {t('intelligence.tryQuestion')}
       </p>
       <div className="flex flex-wrap gap-2 justify-center">
         {suggestions.map((s) => (

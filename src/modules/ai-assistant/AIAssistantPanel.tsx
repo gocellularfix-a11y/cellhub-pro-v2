@@ -1001,7 +1001,7 @@ export default function AIAssistantPanel() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
-              AI Assistant
+              {t('ai.assistantTitle')}
             </div>
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
               {hasApiKey

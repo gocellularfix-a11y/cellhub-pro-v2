@@ -1293,7 +1293,7 @@ export default function SettingsModule() {
 
           {activeSection === 'ai' && (
             <div className="space-y-5">
-              <h2 className="text-lg font-semibold text-white mb-4">🤖 AI Assistant</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">🤖 {t('ai.assistantTitle')}</h2>
               {/* Provider selector */}
               <div>
                 <label className="text-xs text-slate-400 block mb-2">AI Provider</label>
@@ -1425,7 +1425,7 @@ export default function SettingsModule() {
                         flexShrink: 0,
                       }} />
                       <span style={{ fontSize: '0.8rem', color: hasKey ? '#86efac' : '#fbbf24' }}>
-                        {hasKey ? 'AI Assistant is configured and ready' : 'Add an API key above to enable AI Assistant'}
+                        {hasKey ? t('ai.configuredReady') : t('ai.addKeyPrompt')}
                       </span>
                     </>
                   );

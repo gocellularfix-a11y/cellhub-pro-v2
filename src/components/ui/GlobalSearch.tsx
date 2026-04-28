@@ -113,7 +113,7 @@ export default function GlobalSearch() {
         secondary: formatPhone(c.phone) || c.email || '',
         tertiary: c.customerNumber,
         tab: 'customers',
-        badge: es ? 'Cliente' : 'Customer',
+        badge: t('search.badgeCustomer'),
         badgeColor: '#667eea',
       });
     });
@@ -167,7 +167,7 @@ export default function GlobalSearch() {
         id: `lay-${l.id}`, icon: '📅',
         primary: `${l.customerName} — ${l.itemDescription || ''}`,
         secondary: formatPhone(l.customerPhone),
-        tertiary: l.balance ? `${es ? 'Saldo' : 'Balance'}: ${money(l.balance)}` : '',
+        tertiary: l.balance ? `${t('search.balance')}: ${money(l.balance)}` : '',
         tab: 'layaways',
         badge: l.status,
         badgeColor: statusColor(l.status),
@@ -194,11 +194,11 @@ export default function GlobalSearch() {
           matchesSearch(q, s.invoiceNumber, s.customerName, s.customerPhone)) {
         out.push({
           id: `sale-${s.id}`, icon: '🧾',
-          primary: `${es ? 'Factura' : 'Invoice'} ${s.invoiceNumber}`,
+          primary: `${t('search.invoice')} ${s.invoiceNumber}`,
           secondary: s.customerName || '',
           tertiary: money(s.total || 0),
           tab: 'reports',
-          badge: es ? 'Venta' : 'Sale',
+          badge: t('search.badgeSale'),
           badgeColor: '#10b981',
         });
       }
@@ -390,7 +390,7 @@ export default function GlobalSearch() {
               </span>
             ))}
             <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#334155', alignSelf: 'center' }}>
-              ↑↓ {es ? 'navegar' : 'navigate'} · ↵ {es ? 'abrir' : 'open'}
+              ↑↓ {t('search.navigate')} · ↵ {t('search.open')}
             </span>
           </div>
         )}
@@ -401,7 +401,7 @@ export default function GlobalSearch() {
             display: 'flex', justifyContent: 'space-between',
             fontSize: '0.68rem', color: '#334155',
           }}>
-            <span>{results.length} {es ? 'resultado(s)' : `result${results.length > 1 ? 's' : ''}`}</span>
+            <span>{results.length} {t('search.results')}</span>
             <span>↑↓ · ↵ · esc</span>
           </div>
         )}
