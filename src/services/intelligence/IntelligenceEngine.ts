@@ -27,7 +27,7 @@ import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations
 
 export interface EngineConfig {
   storeId?: string;
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   thresholds?: typeof DEFAULT_THRESHOLDS;
   enableAlerts: boolean;
   enableScoring: boolean;
@@ -328,14 +328,15 @@ export class IntelligenceEngine {
     else if (score >= 40) grade = 'D';
     else grade = 'F';
 
+    const lang = this.config.lang;
     const factors: string[] = [];
-    if (salesTrend.trend === 'up') factors.push('Revenue trending up');
-    if (deadStock.length > 0) factors.push(`${deadStock.length} dead stock items`);
-    if (reorderAlerts.length > 0) factors.push(`${reorderAlerts.length} reorder alerts`);
-    if (overdueRepairs.length > 0) factors.push(`${overdueRepairs.length} overdue repairs`);
-    if (atRiskCustomers.length > 0) factors.push(`${atRiskCustomers.length} at-risk customers`);
+    if (salesTrend.trend === 'up') factors.push(lang === 'es' ? 'Ingresos en aumento' : lang === 'pt' ? 'Receita em alta' : 'Revenue trending up');
+    if (deadStock.length > 0) factors.push(lang === 'es' ? `${deadStock.length} artículos sin movimiento` : lang === 'pt' ? `${deadStock.length} itens sem giro` : `${deadStock.length} dead stock items`);
+    if (reorderAlerts.length > 0) factors.push(lang === 'es' ? `${reorderAlerts.length} alertas de reorden` : lang === 'pt' ? `${reorderAlerts.length} alertas de reposição` : `${reorderAlerts.length} reorder alerts`);
+    if (overdueRepairs.length > 0) factors.push(lang === 'es' ? `${overdueRepairs.length} reparaciones vencidas` : lang === 'pt' ? `${overdueRepairs.length} reparos em atraso` : `${overdueRepairs.length} overdue repairs`);
+    if (atRiskCustomers.length > 0) factors.push(lang === 'es' ? `${atRiskCustomers.length} clientes en riesgo` : lang === 'pt' ? `${atRiskCustomers.length} clientes em risco` : `${atRiskCustomers.length} at-risk customers`);
 
-    const title = this.config.lang === 'es' ? 'Salud de la Tienda' : 'Store Health';
+    const title = lang === 'es' ? 'Salud de la Tienda' : lang === 'pt' ? 'Saúde da Loja' : 'Store Health';
     const titleEs = 'Salud de la Tienda';
 
     return {

@@ -2,13 +2,14 @@
 import { useMemo } from 'react';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, NlgSummary } from '@/services/intelligence';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 
 interface IntelligenceDashboardProps {
   report: IntelligenceReport | null;
   healthScore: StoreHealthScore | null;
   kpiDashboard: KPIDashboard | null;
   insights: Insight[];
-  lang?: 'en' | 'es';
+  lang?: 'en' | 'es' | 'pt';
   onRefresh?: () => void;
   // R-INTEL-NLG-F4: optional natural-language summary block rendered above KPIs.
   nlgSummary?: NlgSummary | null;
@@ -23,6 +24,8 @@ export default function IntelligenceDashboard({
   onRefresh,
   nlgSummary,
 }: IntelligenceDashboardProps) {
+  const { t } = useTranslation();
+
   const getSeverityColor = (severity: Insight['severity']) => {
     switch (severity) {
       case 'critical': return 'bg-red-500/20 border-red-500 text-red-400';
@@ -84,9 +87,9 @@ export default function IntelligenceDashboard({
         <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-slate-200">{healthScore.title}</h3>
+              <h3 className="text-lg font-semibold text-slate-200">{t('intelligence.storeHealthTitle')}</h3>
               <p className="text-sm text-slate-400">
-                {lang === 'es' ? 'Puntuación general de la tienda' : 'Overall store health score'}
+                {t('intelligence.overallHealthScore')}
               </p>
             </div>
             <div className="text-right">
@@ -114,7 +117,7 @@ export default function IntelligenceDashboard({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
             <p className="text-xs text-slate-400 uppercase">
-              {lang === 'es' ? 'Ingresos' : 'Revenue'}
+              {t('intelligence.kpiRevenue')}
             </p>
             <p className="text-xl font-bold text-slate-200">
               {formatCurrency(kpiDashboard.revenue.current)}
@@ -123,35 +126,35 @@ export default function IntelligenceDashboard({
           </div>
           <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
             <p className="text-xs text-slate-400 uppercase">
-              {lang === 'es' ? 'Transacciones' : 'Transactions'}
+              {t('intelligence.kpiTransactions')}
             </p>
             <p className="text-xl font-bold text-slate-200">
               {kpiDashboard.transactions.count}
             </p>
             <p className="text-sm text-slate-400">
-              {lang === 'es' ? 'Promedio:' : 'Avg:'} {formatCurrency(kpiDashboard.transactions.avgSize)}
+              {t('intelligence.kpiAvg')} {formatCurrency(kpiDashboard.transactions.avgSize)}
             </p>
           </div>
           <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
             <p className="text-xs text-slate-400 uppercase">
-              {lang === 'es' ? 'Inventario' : 'Inventory'}
+              {t('intelligence.kpiInventory')}
             </p>
             <p className="text-xl font-bold text-slate-200">
               {kpiDashboard.inventory.totalItems}
             </p>
             <p className="text-sm text-slate-400">
-              {lang === 'es' ? 'Stock bajo:' : 'Low stock:'} {kpiDashboard.inventory.lowStockCount}
+              {t('intelligence.kpiLowStock')} {kpiDashboard.inventory.lowStockCount}
             </p>
           </div>
           <div className="bg-surface-800 rounded-lg p-4 border border-surface-700">
             <p className="text-xs text-slate-400 uppercase">
-              {lang === 'es' ? 'Clientes' : 'Customers'}
+              {t('intelligence.kpiCustomers')}
             </p>
             <p className="text-xl font-bold text-slate-200">
               {kpiDashboard.customers.total}
             </p>
             <p className="text-sm text-slate-400">
-              +{kpiDashboard.customers.new} {lang === 'es' ? 'nuevos' : 'new'}
+              +{kpiDashboard.customers.new} {t('intelligence.kpiNew')}
             </p>
           </div>
         </div>
@@ -161,10 +164,10 @@ export default function IntelligenceDashboard({
         <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden">
           <div className="p-3 border-b border-surface-700 flex items-center justify-between">
             <h3 className="font-semibold text-slate-200">
-              {lang === 'es' ? 'Insights' : 'Insights'}
+              Insights
             </h3>
             <span className="text-xs text-slate-400">
-              {insights.length} {lang === 'es' ? 'insights encontrados' : 'found'}
+              {insights.length} {t('intelligence.insightsFound')}
             </span>
           </div>
           <div className="divide-y divide-surface-700 max-h-96 overflow-y-auto">
@@ -193,14 +196,14 @@ export default function IntelligenceDashboard({
                   </div>
                   {insight.actionLabel && (
                     <button className="ml-2 px-2 py-1 text-xs rounded bg-surface-700 hover:bg-surface-600 text-slate-300">
-                      {lang === 'es' ? insight.actionLabelEs || insight.actionLabel : insight.actionLabel}
+                      {lang === 'es' ? (insight.actionLabelEs || insight.actionLabel) : insight.actionLabel}
                     </button>
                   )}
                 </div>
                 <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
                   <span>{insight.category}</span>
                   <span>•</span>
-                  <span>{Math.round(insight.confidence * 100)}% {lang === 'es' ? 'confianza' : 'confidence'}</span>
+                  <span>{Math.round(insight.confidence * 100)}% {t('intelligence.confidence')}</span>
                 </div>
               </div>
             ))}
@@ -212,7 +215,7 @@ export default function IntelligenceDashboard({
         <div className="bg-surface-800 rounded-lg border border-surface-700">
           <div className="p-3 border-b border-surface-700">
             <h3 className="font-semibold text-slate-200">
-              {lang === 'es' ? 'Artículos Más Vendidos' : 'Top Selling Items'}
+              {t('intelligence.topSellingItems')}
             </h3>
           </div>
           <div className="divide-y divide-surface-700">
@@ -224,7 +227,7 @@ export default function IntelligenceDashboard({
                 </div>
                 <div className="text-right">
                   <p className="text-slate-200">{formatCurrency(item.revenue)}</p>
-                  <p className="text-xs text-slate-400">{item.quantity} {lang === 'es' ? 'unidades' : 'units'}</p>
+                  <p className="text-xs text-slate-400">{item.quantity} {t('intelligence.units')}</p>
                 </div>
               </div>
             ))}
@@ -238,7 +241,7 @@ export default function IntelligenceDashboard({
             onClick={onRefresh}
             className="px-4 py-2 bg-surface-700 hover:bg-surface-600 rounded-lg text-slate-200 text-sm"
           >
-            {lang === 'es' ? 'Actualizar' : 'Refresh'}
+            {t('intelligence.refresh')}
           </button>
         </div>
       )}

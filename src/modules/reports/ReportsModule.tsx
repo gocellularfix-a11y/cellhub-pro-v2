@@ -1332,7 +1332,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             📥 {t('reports.export')}
           </button>
           <button onClick={printReport} className="btn" style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc', padding: '0.45rem 0.9rem', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
-            🖨️ {locale === 'es' ? 'Imprimir' : 'Print'}
+            🖨️ {t('print')}
           </button>
         </div>
       </div>
@@ -1347,7 +1347,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               color: reportType === type ? '#818cf8' : '#64748b',
               border: '1px solid ' + (reportType === type ? 'rgba(129,140,248,0.4)' : 'rgba(255,255,255,0.08)'),
               cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textTransform: 'capitalize',
-            }}>{locale === 'es' ? (type === 'daily' ? 'Hoy' : type === 'weekly' ? 'Semana' : 'Mes') : type}</button>
+            }}>{locale === 'es' ? (type === 'daily' ? 'Hoy' : type === 'weekly' ? 'Semana' : 'Mes') : locale === 'pt' ? (type === 'daily' ? 'Hoje' : type === 'weekly' ? 'Semana' : 'Mês') : type}</button>
           ))}
           <button onClick={() => setReportType('returning')} style={{
             padding: '0.4rem 0.8rem', borderRadius: '0.4rem',
@@ -1355,7 +1355,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             color: reportType === 'returning' ? '#c084fc' : '#64748b',
             border: '1px solid ' + (reportType === 'returning' ? 'rgba(192,132,252,0.4)' : 'rgba(255,255,255,0.08)'),
             cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-          }}>👥 {locale === 'es' ? 'Recurrentes' : 'Returning'}</button>
+          }}>👥 {t('reports.returning')}</button>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
           <input type="date" className="input" value={startDate}
@@ -1394,25 +1394,25 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               );
               return (
                 <>
-                  {countCard(locale === 'es' ? 'Total Clientes' : 'Total Customers', customerAnalysis.totalCustomers, '', '#e2e8f0')}
-                  {countCard(locale === 'es' ? 'Recurrentes' : 'Returning', customerAnalysis.returningCount, `${customerAnalysis.returningRate.toFixed(1)}%`, '#22c55e')}
-                  {countCard(locale === 'es' ? 'Nuevos' : 'New', customerAnalysis.newCount, '', '#60a5fa')}
-                  {countCard(locale === 'es' ? 'Visitas Prom.' : 'Avg Visits', customerAnalysis.avgVisitsReturning.toFixed(1), locale === 'es' ? 'recurrentes' : 'returning', '#a78bfa')}
-                  {statCard(locale === 'es' ? 'Ingresos Recur.' : 'Returning Rev', customerAnalysis.totalRevenueReturningCents, '', '#22c55e')}
-                  {statCard(locale === 'es' ? 'Gasto Prom.' : 'Avg Spend', customerAnalysis.avgSpendReturningCents, locale === 'es' ? 'recurrentes' : 'returning', '#fb923c')}
+                  {countCard(t('reports.totalCustomers'), customerAnalysis.totalCustomers, '', '#e2e8f0')}
+                  {countCard(t('reports.returning'), customerAnalysis.returningCount, `${customerAnalysis.returningRate.toFixed(1)}%`, '#22c55e')}
+                  {countCard(t('reports.new'), customerAnalysis.newCount, '', '#60a5fa')}
+                  {countCard(t('reports.avgVisits'), customerAnalysis.avgVisitsReturning.toFixed(1), locale === 'es' ? 'recurrentes' : locale === 'pt' ? 'recorrentes' : 'returning', '#a78bfa')}
+                  {statCard(t('reports.returningRev'), customerAnalysis.totalRevenueReturningCents, '', '#22c55e')}
+                  {statCard(t('reports.avgSpend'), customerAnalysis.avgSpendReturningCents, locale === 'es' ? 'recurrentes' : locale === 'pt' ? 'recorrentes' : 'returning', '#fb923c')}
                 </>
               );
             })()}
           </div>
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
             <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
-              🏆 {locale === 'es' ? 'Top Clientes Recurrentes' : 'Top Returning Customers'}
+              🏆 {t('reports.topReturningCustomers')}
             </div>
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    {[locale === 'es' ? 'Cliente' : 'Customer', locale === 'es' ? 'Teléfono' : 'Phone', locale === 'es' ? 'Visitas' : 'Visits', locale === 'es' ? 'Total Gastado' : 'Total Spent', locale === 'es' ? 'Última' : 'Last'].map((h) => (
+                    {[locale === 'es' ? 'Cliente' : locale === 'pt' ? 'Cliente' : 'Customer', locale === 'es' ? 'Teléfono' : locale === 'pt' ? 'Telefone' : 'Phone', locale === 'es' ? 'Visitas' : locale === 'pt' ? 'Visitas' : 'Visits', locale === 'es' ? 'Total Gastado' : locale === 'pt' ? 'Total Gasto' : 'Total Spent', locale === 'es' ? 'Última' : locale === 'pt' ? 'Última' : 'Last'].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
@@ -1436,23 +1436,23 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         <>
           {/* ── Stat cards: Gross / Returns / Net / Profit / Tax / Cash (tripartite) / Card ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
-            {statCard(locale === 'es' ? 'Bruto' : 'Gross Revenue', stats.grossRevenueCents, `${stats.cleanSalesCount} ${pluralize(stats.cleanSalesCount, locale === 'es' ? 'venta' : 'sale', locale === 'es' ? 'ventas' : 'sales')}`, '#e2e8f0')}
-            {statCard(locale === 'es' ? 'Devoluciones' : 'Returns', stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${pluralize(returnsFromPeriodSales.length, locale === 'es' ? 'devolución' : 'return', locale === 'es' ? 'devoluciones' : 'returns')}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
-            {statCard(locale === 'es' ? 'Neto' : 'Net Revenue', stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${locale === 'es' ? 'retenido' : 'retained'}` : '—', '#22c55e')}
-            {statCard(locale === 'es' ? 'Ganancia' : 'Profit', stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
-            {statCard(locale === 'es' ? 'Impuesto' : 'Tax', stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
+            {statCard(t('reports.grossRevenue'), stats.grossRevenueCents, `${stats.cleanSalesCount} ${pluralize(stats.cleanSalesCount, locale === 'es' ? 'venta' : locale === 'pt' ? 'venda' : 'sale', locale === 'es' ? 'ventas' : locale === 'pt' ? 'vendas' : 'sales')}`, '#e2e8f0')}
+            {statCard(t('reports.returns'), stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${pluralize(returnsFromPeriodSales.length, locale === 'es' ? 'devolución' : locale === 'pt' ? 'devolução' : 'return', locale === 'es' ? 'devoluciones' : locale === 'pt' ? 'devoluções' : 'returns')}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
+            {statCard(t('reports.netRevenue'), stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${locale === 'es' ? 'retenido' : locale === 'pt' ? 'retido' : 'retained'}` : '—', '#22c55e')}
+            {statCard(t('reports.profit'), stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
+            {statCard(t('reports.taxStat'), stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
             {/* Round 10 fix 1: Cash tripartite (In / Out / Net) single card — amber chrome preserved. */}
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
               <div style={{ fontSize: '0.72rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-                💵 {locale === 'es' ? 'Efectivo' : 'Cash'}
+                💵 {t('reports.cashStat')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.35rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{locale === 'es' ? 'Entra' : 'In'}</span>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{t('reports.cashIn')}</span>
                   <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fbbf24' }}>{formatCurrency(cashBreakdown.cashIn)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{locale === 'es' ? 'Sale' : 'Out'}</span>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{t('reports.cashOut')}</span>
                   <span style={{ fontSize: '0.95rem', fontWeight: 700, color: cashBreakdown.cashOut > 0 ? '#ef4444' : '#64748b' }}>
                     {cashBreakdown.cashOut > 0 ? '-' : ''}{formatCurrency(cashBreakdown.cashOut)}
                   </span>
@@ -1461,7 +1461,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                   display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                   paddingTop: '0.3rem', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '0.15rem',
                 }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#e2e8f0' }}>{locale === 'es' ? 'Neto' : 'Net'}</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#e2e8f0' }}>{t('reports.cashNet')}</span>
                   <span style={{
                     fontSize: '1.05rem', fontWeight: 800,
                     color: cashBreakdown.net >= 0 ? '#22c55e' : '#ef4444',
@@ -1471,8 +1471,8 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                 </div>
               </div>
             </div>
-            {statCard(locale === 'es' ? 'Tarjeta' : 'Card', stats.cardCents, '', '#a78bfa')}
-            {stats.storeCreditCents > 0 && statCard(locale === 'es' ? 'Crédito' : 'Store Credit', stats.storeCreditCents, '', '#c084fc')}
+            {statCard(t('reports.card'), stats.cardCents, '', '#a78bfa')}
+            {stats.storeCreditCents > 0 && statCard(t('reports.storeCredit'), stats.storeCreditCents, '', '#c084fc')}
           </div>
 
           {/* ── Diagnosis Conversion (when repairs have outcomes) ── */}
@@ -1486,14 +1486,14 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             return (
               <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '0.875rem 1rem' }}>
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: '0.75rem', textTransform: 'uppercase' }}>
-                  📊 {locale === 'es' ? 'Conversión de Diagnósticos' : 'Diagnosis Conversion'}
+                  📊 {t('reports.diagnosisConversion')}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
                   {[
-                    { v: `${convRate}%`, l: locale === 'es' ? 'Conversión' : 'Conv. rate', c: parseInt(convRate) >= 70 ? '#22c55e' : parseInt(convRate) >= 50 ? '#f59e0b' : '#ef4444' },
-                    { v: accepted, l: locale === 'es' ? 'Aceptados' : 'Accepted', c: '#22c55e' },
-                    { v: pending, l: locale === 'es' ? 'Pendientes' : 'Pending', c: '#f59e0b' },
-                    { v: declined, l: locale === 'es' ? 'Rechazados' : 'Declined', c: '#ef4444' },
+                    { v: `${convRate}%`, l: locale === 'es' ? 'Conversión' : locale === 'pt' ? 'Conversão' : 'Conv. rate', c: parseInt(convRate) >= 70 ? '#22c55e' : parseInt(convRate) >= 50 ? '#f59e0b' : '#ef4444' },
+                    { v: accepted, l: locale === 'es' ? 'Aceptados' : locale === 'pt' ? 'Aceitos' : 'Accepted', c: '#22c55e' },
+                    { v: pending, l: locale === 'es' ? 'Pendientes' : locale === 'pt' ? 'Pendentes' : 'Pending', c: '#f59e0b' },
+                    { v: declined, l: locale === 'es' ? 'Rechazados' : locale === 'pt' ? 'Recusados' : 'Declined', c: '#ef4444' },
                   ].map((m, i) => (
                     <div key={i} style={{ textAlign: 'center', padding: '0.6rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
                       <div style={{ fontSize: '1.4rem', fontWeight: 800, color: m.c }}>{m.v}</div>
@@ -1510,14 +1510,14 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             <div style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.75rem', overflow: 'hidden' }}>
               <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(239,68,68,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fca5a5' }}>
-                  ↩️ {locale === 'es' ? 'Devoluciones del Período' : 'Returns This Period'}
+                  ↩️ {t('reports.returnsThisPeriod')}
                 </span>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fca5a5' }}>-{formatCurrency(stats.totalReturnsCents)}</span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
-                    {[locale === 'es' ? '# Return' : 'Return #', locale === 'es' ? 'Factura Orig.' : 'Original Invoice', locale === 'es' ? 'Cliente' : 'Customer', locale === 'es' ? 'Razón' : 'Reason', locale === 'es' ? 'Fecha' : 'Date', locale === 'es' ? 'Reembolso' : 'Refund'].map((h) => (
+                    {[locale === 'es' ? '# Return' : locale === 'pt' ? '# Devolução' : 'Return #', locale === 'es' ? 'Factura Orig.' : locale === 'pt' ? 'Fatura Orig.' : 'Original Invoice', locale === 'es' ? 'Cliente' : locale === 'pt' ? 'Cliente' : 'Customer', locale === 'es' ? 'Razón' : locale === 'pt' ? 'Motivo' : 'Reason', locale === 'es' ? 'Fecha' : locale === 'pt' ? 'Data' : 'Date', locale === 'es' ? 'Reembolso' : locale === 'pt' ? 'Reembolso' : 'Refund'].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
@@ -1542,18 +1542,18 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
           {Object.keys(stats.phonePaymentsByProvider).length > 0 && (
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
               <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
-                📱 {locale === 'es' ? 'Pagos por Proveedor' : 'Phone Payments by Provider'}
+                📱 {t('reports.phonePaymentsByProvider')}
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     {[
-                      locale === 'es' ? 'Proveedor' : 'Provider',
-                      locale === 'es' ? 'Pagos' : 'Count',
+                      locale === 'es' ? 'Proveedor' : locale === 'pt' ? 'Operadora' : 'Provider',
+                      locale === 'es' ? 'Pagos' : locale === 'pt' ? 'Pagamentos' : 'Count',
                       'Total',
-                      locale === 'es' ? 'Ganancia' : 'Profit',
-                      locale === 'es' ? 'Margen' : 'Margin',
-                      locale === 'es' ? 'Números únicos' : 'Unique Numbers',
+                      locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit',
+                      locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin',
+                      locale === 'es' ? 'Números únicos' : locale === 'pt' ? 'Números únicos' : 'Unique Numbers',
                     ].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
@@ -1610,7 +1610,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                           {totalMarginPct.toFixed(1)}%
                         </td>
                         <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>
-                          {allUnique.size} {locale === 'es' ? 'únicos' : 'unique'}
+                          {allUnique.size} {locale === 'es' ? 'únicos' : locale === 'pt' ? 'únicos' : 'unique'}
                         </td>
                       </tr>
                     );
@@ -1667,7 +1667,7 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               </div>
               <div style={{ padding: '0.75rem' }}>
                 {stats.topEmployees.length === 0 ? (
-                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{locale === 'es' ? 'Sin datos' : 'No data'}</p>
+                  <p style={{ fontSize: '0.82rem', color: '#475569', textAlign: 'center', padding: '1rem' }}>{t('reports.noData')}</p>
                 ) : stats.topEmployees.map((e) => (
                   <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div>
@@ -1707,10 +1707,10 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             <div style={{ background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '0.75rem', overflow: 'hidden' }}>
               <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(239, 68, 68, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fca5a5' }}>
-                  ❌ {locale === 'es' ? 'Cancelaciones' : 'Cancellations'}
+                  ❌ {t('reports.cancellations')}
                 </span>
                 <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>
-                  {cancellationsInPeriod.length} {locale === 'es' ? 'cancelaciones' : 'cancellations'}
+                  {cancellationsInPeriod.length} {locale === 'es' ? 'cancelaciones' : locale === 'pt' ? 'cancelamentos' : 'cancellations'}
                 </span>
               </div>
 
@@ -1725,19 +1725,19 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
               }}>
                 {cancellationTotals.storeCredit > 0 && (
                   <div>
-                    <span style={{ color: '#9ca3af' }}>💳 {locale === 'es' ? 'Crédito tienda' : 'Store credit'}: </span>
+                    <span style={{ color: '#9ca3af' }}>💳 {t('reports.storeCreditRefund')}: </span>
                     <span style={{ fontWeight: 700, color: '#60a5fa' }}>{formatCurrency(cancellationTotals.storeCredit)}</span>
                   </div>
                 )}
                 {cancellationTotals.cash > 0 && (
                   <div>
-                    <span style={{ color: '#9ca3af' }}>💵 {locale === 'es' ? 'Efectivo' : 'Cash refund'}: </span>
+                    <span style={{ color: '#9ca3af' }}>💵 {t('reports.cashRefund')}: </span>
                     <span style={{ fontWeight: 700, color: '#fbbf24' }}>{formatCurrency(cancellationTotals.cash)}</span>
                   </div>
                 )}
                 {cancellationTotals.forfeit > 0 && (
                   <div>
-                    <span style={{ color: '#9ca3af' }}>💰 {locale === 'es' ? 'Retenido' : 'Forfeit'}: </span>
+                    <span style={{ color: '#9ca3af' }}>💰 {t('reports.forfeit')}: </span>
                     <span style={{ fontWeight: 700, color: '#a3e635' }}>{formatCurrency(cancellationTotals.forfeit)}</span>
                   </div>
                 )}
@@ -1749,17 +1749,17 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                   <thead style={{ position: 'sticky', top: 0, background: 'rgba(15, 23, 42, 0.95)' }}>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                       {[
-                        locale === 'es' ? 'Tipo' : 'Type',
-                        locale === 'es' ? 'Ref.' : 'Ref.',
-                        locale === 'es' ? 'Cliente' : 'Customer',
-                        locale === 'es' ? 'Artículo' : 'Item',
-                        locale === 'es' ? 'Método' : 'Method',
-                        locale === 'es' ? 'Monto' : 'Amount',
-                        locale === 'es' ? 'Fecha' : 'Date',
+                        locale === 'es' ? 'Tipo' : locale === 'pt' ? 'Tipo' : 'Type',
+                        'Ref.',
+                        locale === 'es' ? 'Cliente' : locale === 'pt' ? 'Cliente' : 'Customer',
+                        locale === 'es' ? 'Artículo' : locale === 'pt' ? 'Item' : 'Item',
+                        locale === 'es' ? 'Método' : locale === 'pt' ? 'Método' : 'Method',
+                        locale === 'es' ? 'Monto' : locale === 'pt' ? 'Valor' : 'Amount',
+                        locale === 'es' ? 'Fecha' : locale === 'pt' ? 'Data' : 'Date',
                         '',
                       ].map((h, i) => (
                         <th key={h + i} style={{
-                          textAlign: h === (locale === 'es' ? 'Monto' : 'Amount') ? 'right' : 'left',
+                          textAlign: h === (locale === 'es' ? 'Monto' : locale === 'pt' ? 'Valor' : 'Amount') ? 'right' : 'left',
                           padding: '0.5rem 0.75rem',
                           color: '#9ca3af',
                           fontSize: '0.66rem',
@@ -1772,13 +1772,13 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                   <tbody>
                     {cancellationsInPeriod.map((c) => {
                       const methodLabel = ({
-                        store_credit: { text: locale === 'es' ? 'Crédito' : 'Credit', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.15)' },
-                        cash: { text: locale === 'es' ? 'Efectivo' : 'Cash', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
-                        forfeit: { text: locale === 'es' ? 'Retenido' : 'Forfeit', color: '#a3e635', bg: 'rgba(163, 230, 53, 0.15)' },
-                        unknown: { text: locale === 'es' ? 'Desconocido' : 'Unknown', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)' },
+                        store_credit: { text: locale === 'es' ? 'Crédito' : locale === 'pt' ? 'Crédito' : 'Credit', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.15)' },
+                        cash: { text: locale === 'es' ? 'Efectivo' : locale === 'pt' ? 'Dinheiro' : 'Cash', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+                        forfeit: { text: locale === 'es' ? 'Retenido' : locale === 'pt' ? 'Retido' : 'Forfeit', color: '#a3e635', bg: 'rgba(163, 230, 53, 0.15)' },
+                        unknown: { text: locale === 'es' ? 'Desconocido' : locale === 'pt' ? 'Desconhecido' : 'Unknown', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)' },
                       } as const)[c.refundMethod] || { text: '?', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)' };
 
-                      const dateStr = toDateSafe(c.cancelledAt)?.toLocaleString(locale === 'es' ? 'es-MX' : 'en-US', {
+                      const dateStr = toDateSafe(c.cancelledAt)?.toLocaleString(locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US', {
                         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
                       }) || '';
 

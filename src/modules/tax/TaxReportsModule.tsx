@@ -781,7 +781,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
       {/* ── Left Sidebar ─────────────────────────────────── */}
       <div style={{ width: '200px', flexShrink: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.875rem', padding: '0.5rem 0', alignSelf: 'flex-start', position: 'sticky', top: 0 }}>
         <div style={{ padding: '0.625rem 1rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.07)', marginBottom: '0.25rem' }}>
-          <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em' }}>TAX CENTER</div>
+          <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em' }}>{t('tax.taxCenter')}</div>
         </div>
         {NAV.map((n) => (
           <button key={n.id} onClick={() => setActiveSection(n.id)} style={{ width: '100%', textAlign: 'left', padding: '0.6rem 1rem', background: activeSection === n.id ? 'rgba(102,126,234,0.15)' : 'transparent', border: 'none', borderLeft: `3px solid ${activeSection === n.id ? '#667eea' : 'transparent'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -792,7 +792,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
           </button>
         ))}
         <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: '0.5rem' }}>
-          <label style={{ fontSize: '0.65rem', color: '#475569', display: 'block', marginBottom: '0.3rem' }}>Tax Year</label>
+          <label style={{ fontSize: '0.65rem', color: '#475569', display: 'block', marginBottom: '0.3rem' }}>{t('tax.taxYear')}</label>
           <select value={selectedYear} onChange={(e) => setSelectedYear(+e.target.value)} className="select" style={{ width: '100%', fontSize: '0.8rem' }}>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
@@ -810,10 +810,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '0.2rem' }}>{t('tax.taxesNav')}</h1>
-                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>California Sales Tax · Quarterly</p>
+                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>{t('tax.caSalesTaxQuarterly')}</p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => printSection(t('tax.taxReportTitle'))} className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>🖨️ Print Report</button>
+                <button onClick={() => printSection(t('tax.taxReportTitle'))} className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>🖨️ {t('tax.printReport')}</button>
                 {/* r29b-1: removed dead "Export Report" button (had no onClick handler) */}
               </div>
             </div>
@@ -821,13 +821,13 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             {/* Quarter + Year */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <div>
-                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>Select Quarter</label>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>{t('tax.selectQuarter')}</label>
                 <select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value)} className="select">
                   {QUARTERS.map((q) => <option key={q.id} value={q.id}>{q.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>Select Year</label>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>{t('tax.selectYear')}</label>
                 <select value={selectedYear} onChange={(e) => setSelectedYear(+e.target.value)} className="select">
                   {years.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
@@ -836,29 +836,29 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
             {/* 4 stat cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
-              <StatCard label="Gross Sales" value={formatCurrency(caTax.totalRevenue)} sub={`${caTax.qSales.length} transactions`} />
-              <StatCard label="Taxable Sales" value={formatCurrency(caTax.productRevenue)} sub="Before 9.25% tax" color="#60a5fa" />
-              <StatCard label="Tax Rate" value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} sub="CA Sales Tax" color="#a78bfa" />
-              <StatCard label="Tax to Remit" value={formatCurrency(caTax.productTax)} sub={`Sales tax ${((settings.taxRate ?? 0.0925)*100).toFixed(2)}% only`} color="#f87171" />
+              <StatCard label={t('tax.grossSalesStat')} value={formatCurrency(caTax.totalRevenue)} sub={`${caTax.qSales.length} transactions`} />
+              <StatCard label={t('tax.taxableSales')} value={formatCurrency(caTax.productRevenue)} sub="Before 9.25% tax" color="#60a5fa" />
+              <StatCard label={t('tax.taxRateStat')} value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} sub="CA Sales Tax" color="#a78bfa" />
+              <StatCard label={t('tax.taxToRemit')} value={formatCurrency(caTax.productTax)} sub={`Sales tax ${((settings.taxRate ?? 0.0925)*100).toFixed(2)}% only`} color="#f87171" />
             </div>
 
             {/* Transaction Breakdown table */}
-            <Card title="📊 Transaction Breakdown">
+            <Card title={`📊 ${t('tax.transactionBreakdown')}`}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>TRANSACTION TYPE</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>COUNT</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>REVENUE</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>TAXES & FEES</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>{t('tax.transactionType')}</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>{t('tax.countHeader')}</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>{t('tax.revenueHeader')}</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>{t('tax.taxesAndFees')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { icon: '🛒', name: 'Product Sales', sub: 'Phones, accessories, cases, etc.', count: caTax.productCount, rev: caTax.productRevenue, tax: caTax.productTax, taxLabel: 'Sales tax' },
-                    { icon: '📱', name: 'Phone Bill Payments', sub: 'AT&T, T-Mobile, Verizon, etc.', count: caTax.phoneCount, rev: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, taxLabel: `Utility: ${formatCurrency(caTax.phoneTax)}\nCA Fee: ${formatCurrency(caTax.phoneSurcharge)}` },
-                    { icon: '🔧', name: 'Repair Services', sub: 'Completed repairs', count: caTax.qRepairs.length, rev: caTax.repairRevenue, tax: 0, taxLabel: 'No tax (Service)' },
-                    { icon: '🔓', name: 'Unlock Services', sub: 'Completed unlocks', count: caTax.qUnlocks.length, rev: caTax.unlockRevenue, tax: 0, taxLabel: 'No tax' },
+                    { icon: '🛒', name: t('tax.productSales'), sub: 'Phones, accessories, cases, etc.', count: caTax.productCount, rev: caTax.productRevenue, tax: caTax.productTax, taxLabel: 'Sales tax' },
+                    { icon: '📱', name: t('tax.phoneBillPayments'), sub: 'AT&T, T-Mobile, Verizon, etc.', count: caTax.phoneCount, rev: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, taxLabel: `Utility: ${formatCurrency(caTax.phoneTax)}\nCA Fee: ${formatCurrency(caTax.phoneSurcharge)}` },
+                    { icon: '🔧', name: t('tax.repairServices'), sub: 'Completed repairs', count: caTax.qRepairs.length, rev: caTax.repairRevenue, tax: 0, taxLabel: 'No tax (Service)' },
+                    { icon: '🔓', name: t('tax.unlockServices'), sub: 'Completed unlocks', count: caTax.qUnlocks.length, rev: caTax.unlockRevenue, tax: 0, taxLabel: 'No tax' },
                   ].map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td style={{ padding: '0.75rem' }}>
@@ -902,12 +902,12 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             </Card>
 
             {/* Revenue Breakdown bars */}
-            <Card title="Revenue Breakdown by Category">
+            <Card title={t('tax.revenueBreakdownByCategory')}>
               {[
-                { label: 'Product Sales', sub: `${caTax.productCount} transactions`, value: caTax.productRevenue, tax: caTax.productTax, total: caTax.totalRevenue },
-                { label: 'Repair Services', sub: `${caTax.qRepairs.length} repairs`, value: caTax.repairRevenue, tax: 0, total: caTax.totalRevenue },
-                { label: 'Unlock Services', sub: `${caTax.qUnlocks.length} unlocks`, value: caTax.unlockRevenue, tax: 0, total: caTax.totalRevenue },
-                { label: 'Phone Payments', sub: `${caTax.phoneCount} payments`, value: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, total: caTax.totalRevenue },
+                { label: t('tax.productSales'), sub: `${caTax.productCount} transactions`, value: caTax.productRevenue, tax: caTax.productTax, total: caTax.totalRevenue },
+                { label: t('tax.repairServices'), sub: `${caTax.qRepairs.length} repairs`, value: caTax.repairRevenue, tax: 0, total: caTax.totalRevenue },
+                { label: t('tax.unlockServices'), sub: `${caTax.qUnlocks.length} unlocks`, value: caTax.unlockRevenue, tax: 0, total: caTax.totalRevenue },
+                { label: t('tax.phonePayments'), sub: `${caTax.phoneCount} payments`, value: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, total: caTax.totalRevenue },
               ].map((item, i) => (
                 <div key={i} style={{ marginBottom: '0.875rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>

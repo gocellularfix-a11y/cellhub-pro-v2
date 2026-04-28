@@ -26,6 +26,7 @@ export default function IntelligenceModule() {
     currentStoreId, consolidatedView,
   } = state;
   const { locale, t } = useTranslation();
+  const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
   const apiLang: 'es' | 'en' = locale === 'pt' ? 'en' : locale as 'es' | 'en';
 
   // Force-refresh trigger — bumped by onRefresh to recompute.
@@ -44,7 +45,7 @@ export default function IntelligenceModule() {
       inventory,
       repairs,
       {
-        lang: apiLang,
+        lang: engineLang,
         storeId: consolidatedView ? undefined : currentStoreId,
         enableAlerts: true,
         enableScoring: true,
@@ -167,7 +168,7 @@ export default function IntelligenceModule() {
         healthScore={result.healthScore}
         kpiDashboard={result.kpiDashboard}
         insights={result.insights}
-        lang={apiLang}
+        lang={engineLang}
         onRefresh={handleRefresh}
         nlgSummary={nlgSummary}
       />
