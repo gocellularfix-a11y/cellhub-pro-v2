@@ -522,8 +522,8 @@ export default function SettingsModule() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field settings={settings} update={update} label="Invoice Prefix" settingsKey="invoicePrefix" placeholder="INV" />
-                <Field settings={settings} update={update} label="Customer # Prefix" settingsKey="customerNumberPrefix" placeholder="GC" />
+                <Field settings={settings} update={update} label={t('settings.invoicePrefix')} settingsKey="invoicePrefix" placeholder="INV" />
+                <Field settings={settings} update={update} label={t('settings.customerNumPrefix')} settingsKey="customerNumberPrefix" placeholder="GC" />
               </div>
               {/* r27: adminPin edited here is plaintext at the input boundary, but
                   the boot migration in App.tsx hashes it on the next launch. Long-term
@@ -550,12 +550,12 @@ export default function SettingsModule() {
               </div>
 
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-3">CBE (Covered Battery-Embedded) Fees</h3>
-                <Toggle settings={settings} update={update} label="Enable CBE Fee Collection" settingsKey="cbeFeeEnabled" />
+                <h3 className="text-sm font-semibold text-white mb-3">{t('settings.cbeFees')}</h3>
+                <Toggle settings={settings} update={update} label={t('settings.cbeFeeEnable')} settingsKey="cbeFeeEnabled" />
                 <div className="grid grid-cols-3 gap-3 mt-3">
-                  <Field settings={settings} update={update} label="CBE Rate" settingsKey="cbeFeeRate" type="number" step="0.001" placeholder="0.015" />
-                  <Field settings={settings} update={update} label="Max per Unit ($)" settingsKey="cbeFeeMax" type="number" step="0.01" placeholder="15.00" />
-                  <Field settings={settings} update={update} label="Screen Fee ($)" settingsKey="screenFeeAmount" type="number" step="0.01" placeholder="0.50" />
+                  <Field settings={settings} update={update} label={t('settings.cbeRate')} settingsKey="cbeFeeRate" type="number" step="0.001" placeholder="0.015" />
+                  <Field settings={settings} update={update} label={t('settings.cbeFeeMax')} settingsKey="cbeFeeMax" type="number" step="0.01" placeholder="15.00" />
+                  <Field settings={settings} update={update} label={t('settings.screenFee')} settingsKey="screenFeeAmount" type="number" step="0.01" placeholder="0.50" />
                 </div>
               </div>
 
@@ -1162,7 +1162,7 @@ export default function SettingsModule() {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white mb-4">{t('settings.hardware.title')}</h2>
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Paper Size</label>
+                <label className="text-xs text-slate-400 block mb-1">{t('paperSizeLabel')}</label>
                 <select value={settings.paperSize} onChange={(e) => update('paperSize', e.target.value)} className="select">
                   <option value="4x6">4×6 Thermal</option>
                   <option value="80mm">80mm Thermal</option>
@@ -1293,7 +1293,7 @@ export default function SettingsModule() {
               <h2 className="text-lg font-semibold text-white mb-4">🤖 {t('ai.assistantTitle')}</h2>
               {/* Provider selector */}
               <div>
-                <label className="text-xs text-slate-400 block mb-2">AI Provider</label>
+                <label className="text-xs text-slate-400 block mb-2">{t('settings.aiProvider')}</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   {([
                     { id: 'claude',  label: 'Claude',   emoji: '🟣', sub: 'Anthropic' },
@@ -1327,7 +1327,7 @@ export default function SettingsModule() {
                 <div className="space-y-3">
                   <Field settings={settings} update={update} label="Claude API Key" settingsKey="claudeApiKey" type="password" placeholder="sk-ant-api03-..." />
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">Model</label>
+                    <label className="text-xs text-slate-400 block mb-1">{t('model')}</label>
                     <select
                       value={settings.claudeModel || 'claude-sonnet-4-6'}
                       onChange={(e) => update('claudeModel', e.target.value)}
@@ -1349,7 +1349,7 @@ export default function SettingsModule() {
                 <div className="space-y-3">
                   <Field settings={settings} update={update} label="OpenAI API Key" settingsKey="openaiApiKey" type="password" placeholder="sk-..." />
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">Model</label>
+                    <label className="text-xs text-slate-400 block mb-1">{t('model')}</label>
                     <select
                       value={settings.openaiModel || 'gpt-4o'}
                       onChange={(e) => update('openaiModel', e.target.value)}
@@ -1372,7 +1372,7 @@ export default function SettingsModule() {
                 <div className="space-y-3">
                   <Field settings={settings} update={update} label="Gemini API Key" settingsKey="geminiApiKey" type="password" placeholder="AIza..." />
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">Model</label>
+                    <label className="text-xs text-slate-400 block mb-1">{t('model')}</label>
                     <select
                       value={settings.geminiModel || 'gemini-1.5-flash'}
                       onChange={(e) => update('geminiModel', e.target.value)}

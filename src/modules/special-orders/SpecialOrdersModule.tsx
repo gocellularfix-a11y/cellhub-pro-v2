@@ -787,7 +787,7 @@ export default function SpecialOrdersModule() {
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-500">
             <span className="text-4xl block mb-3">📋</span>
-            <p>No special orders found</p>
+            <p>{t('so.noResults')}</p>
           </div>
         ) : (
           filtered.slice(0, visibleCount).map((o) => (

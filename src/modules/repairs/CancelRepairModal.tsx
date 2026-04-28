@@ -47,7 +47,7 @@ export default function CancelRepairModal({
     <Modal open onClose={onClose} size="max-w-md" title={`⚠️ ${t('cancelRepair.modalTitle')}`}>
       {/* Ticket Info */}
       <div style={{ background: '#0f172a', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
-        <div><strong>Ticket:</strong> {ticket}</div>
+        <div><strong>{t('cancelRepair.ticket')}:</strong> {ticket}</div>
         <div><strong>{t('customer')}:</strong> {customerName}</div>
         <div><strong>{t('device')}:</strong> {device}</div>
       </div>

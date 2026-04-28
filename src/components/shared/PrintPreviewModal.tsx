@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from '@/i18n';
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -45,6 +46,7 @@ export default function PrintPreviewModal({
   initialCopies,
   initialLandscape,
 }: PrintPreviewModalProps) {
+  const { t } = useTranslation();
   // ── State ─────────────────────────────────────────────────
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => {
@@ -160,7 +162,7 @@ export default function PrintPreviewModal({
                   {p.displayName || p.name}{p.isDefault ? ' ★' : ''}
                 </option>
               ))}
-              {printers.length === 0 && <option value="">No printers found</option>}
+              {printers.length === 0 && <option value="">{t('print.noPrintersFound')}</option>}
             </select>
           </Field>
 

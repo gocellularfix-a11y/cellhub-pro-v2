@@ -127,7 +127,7 @@ export default function BarcodeActionModal() {
             <div style={{ marginTop: '0.625rem', fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
               {sale.customerName && <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{sale.customerName}</div>}
               <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.25rem' }}>
-                <span>Total: <strong style={{ color: '#22c55e' }}>{formatCurrency(sale.total)}</strong></span>
+                <span>{t('total')} <strong style={{ color: '#22c55e' }}>{formatCurrency(sale.total)}</strong></span>
                 <span>{sale.paymentMethod}</span>
               </div>
               {hasBalance && (

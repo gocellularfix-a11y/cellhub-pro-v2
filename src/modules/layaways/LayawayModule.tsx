@@ -1077,9 +1077,9 @@ export default function LayawayModule() {
                     </div>
                     {/* Right — amounts */}
                     <div style={{ textAlign: 'right', minWidth: '145px', flexShrink: 0 }}>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Subtotal: <span style={{ color: '#e2e8f0' }}>${subDollars.toFixed(2)}</span></div>
-                      {r.taxable && taxDollars > 0 && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Tax: <span style={{ color: '#e2e8f0' }}>${taxDollars.toFixed(2)}</span></div>}
-                      <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>Total: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>${totalDollars.toFixed(2)}</span></div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('subtotal')}: <span style={{ color: '#e2e8f0' }}>${subDollars.toFixed(2)}</span></div>
+                      {r.taxable && taxDollars > 0 && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('tax')}: <span style={{ color: '#e2e8f0' }}>${taxDollars.toFixed(2)}</span></div>}
+                      <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{t('total')} <span style={{ color: '#e2e8f0', fontWeight: 600 }}>${totalDollars.toFixed(2)}</span></div>
                       <div style={{ fontSize: '0.78rem', color: '#10b981' }}>{t('layaway.paid')}: ${paidDollars.toFixed(2)}</div>
                       <div style={{ fontSize: '1rem', fontWeight: 800, color: balDollars > 0 ? '#f59e0b' : '#10b981' }}>Balance: ${balDollars.toFixed(2)}</div>
                     </div>

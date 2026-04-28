@@ -1598,7 +1598,8 @@ export const translations: TranslationDictionary = {
   'cancelRepair.keepDeposit': { en: 'Keep deposit (forfeit)', es: 'Quedarse con depósito', pt: 'Reter depósito' },
   'cancelRepair.keepDepositDesc': { en: 'Requires written reason', es: 'Requiere motivo por escrito', pt: 'Requer motivo por escrito' },
   'cancelRepair.reasonPlaceholder': { en: 'Reason (required, min 10 chars)...', es: 'Motivo (requerido, min 10 caracteres)...', pt: 'Motivo (obrigatório, min 10 caracteres)...' },
-  'cancelRepair.charsMin': { en: 'chars min', es: 'caracteres mínimos', pt: 'caracteres mínimos' },
+  'cancelRepair.charsMin':  { en: 'chars min',  es: 'caracteres mínimos', pt: 'caracteres mínimos' },
+  'cancelRepair.ticket':    { en: 'Ticket',     es: 'Ticket',             pt: 'Ticket' },
   'cancelRepair.neverMind': { en: 'Never mind', es: 'Nunca mind', pt: 'Deixa pra lá' },
   'repairs.existingCustomerFound': {
     en: (name: string) => `Existing customer found: ${name}`,
@@ -1996,6 +1997,7 @@ export const translations: TranslationDictionary = {
   'so.balanceAddedToCart':{ en: 'Balance added to cart. Go to POS.', es: 'Balance agregado al carrito. Ve a POS.', pt: 'Saldo adicionado ao carrinho. Vá ao PDV.' },
   'so.orderDeleted':      { en: 'Order deleted',                 es: 'Pedido eliminado',                   pt: 'Pedido excluído' },
   'so.errorDeleteInCart': { en: 'Cannot delete: this order has items in cart. Clear the cart first.', es: 'No se puede eliminar: hay items de este pedido en el carrito. Limpia el carrito primero.', pt: 'Não é possível excluir: este pedido tem itens no carrinho. Limpe o carrinho primeiro.' },
+  'so.noResults':         { en: 'No special orders found', es: 'Sin órdenes especiales', pt: 'Nenhum pedido especial encontrado' },
   'so.errorDeletePaid':   { en: 'Cannot delete paid or received orders. Use "Cancel" to refund.', es: 'No se puede eliminar pedidos pagados o recibidos. Usa "Cancelar" para reembolsar.', pt: 'Não é possível excluir pedidos pagos ou recebidos. Use "Cancelar" para reembolsar.' },
   'so.refundProcessed':   { en: 'Refund marked as processed.',   es: 'Reembolso marcado como procesado.',   pt: 'Reembolso marcado como processado.' },
   'so.depositInCart': {
@@ -3134,6 +3136,17 @@ export const translations: TranslationDictionary = {
   'settings.store.trackingDesc':           { en: 'The app generates a unique link per ticket. Customers scan the QR to see real-time repair status.', es: 'La app genera un link único por ticket. El cliente puede escanear el QR para ver el estado de su reparación en tiempo real.', pt: 'O app gera um link único por ticket. O cliente pode escanear o QR para ver o status do reparo.' },
 
   // Taxes section
+  'settings.invoicePrefix':     { en: 'Invoice Prefix',                     es: 'Prefijo de Factura',                  pt: 'Prefixo de Fatura' },
+  'settings.customerNumPrefix':{ en: 'Customer # Prefix',                   es: 'Prefijo Núm. Cliente',                pt: 'Prefixo Núm. Cliente' },
+  'settings.cbeFees':          { en: 'CBE (Covered Battery-Embedded) Fees', es: 'Cargos CBE (Batería Cubierta)',        pt: 'Taxas CBE (Bateria Coberta)' },
+  'settings.cbeFeeEnable':     { en: 'Enable CBE Fee Collection',           es: 'Habilitar cobro de tarifas CBE',      pt: 'Habilitar cobrança de taxas CBE' },
+  'settings.cbeRate':          { en: 'CBE Rate',                            es: 'Tasa CBE',                            pt: 'Taxa CBE' },
+  'settings.cbeFeeMax':        { en: 'Max per Unit ($)',                    es: 'Máx por Unidad ($)',                  pt: 'Máx por Unidade (US$)' },
+  'settings.screenFee':        { en: 'Screen Fee ($)',                      es: 'Cargo de Pantalla ($)',               pt: 'Taxa de Tela (US$)' },
+  'settings.aiProvider':       { en: 'AI Provider',                         es: 'Proveedor de IA',                     pt: 'Provedor de IA' },
+  'settings.currentBadge':     { en: 'Current',                             es: 'Actual',                              pt: 'Atual' },
+  'settings.timezone':         { en: 'Timezone',                            es: 'Zona Horaria',                        pt: 'Fuso Horário' },
+  'print.noPrintersFound':     { en: 'No printers found',                   es: 'No se encontraron impresoras',        pt: 'Nenhuma impressora encontrada' },
   'settings.taxes.title':                  { en: 'Tax Rates & Fees',            es: 'Tasas de Impuesto y Cargos',    pt: 'Taxas de Imposto e Tarifas' },
   'settings.taxes.creditCardFeeDesc':      { en: 'Fixed credit card fee per transaction. Ex: 5.00 = $5.00. Cashiers can override at checkout.', es: 'Cargo fijo por tarjeta. Ej: 5.00 = $5.00 por transacción.', pt: 'Tarifa fixa de cartão por transação. Ex: 5.00 = $5.00.' },
   'settings.taxes.returnPolicyDays':       { en: 'Return Policy (days)',         es: 'Política de Devolución (días)', pt: 'Política de Devolução (dias)' },

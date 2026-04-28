@@ -814,7 +814,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>IMEI</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('imei')}</label>
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <input className="input" style={{ flex: 1, fontFamily: 'monospace' }} value={form.imei}
                   onChange={(e) => upd('imei', e.target.value)} placeholder={t('repairs.imeiPlaceholder')} maxLength={15} />
@@ -828,7 +828,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               <input className="input" value={form.password} onChange={(e) => upd('password', e.target.value)} placeholder={t('repairs.passwordPlaceholder')} />
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>Carrier</label>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('carrier')}</label>
               <AutocompleteInput
                 value={form.carrier}
                 onChange={(val) => upd('carrier', val)}
@@ -1150,7 +1150,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         {/* ── Status, Priority, Details ─────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>Status</label>
+            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('status')}</label>
             {/* Round R2: UI labels stay friendly; values persist as canonical snake_case. */}
             <select className="select" value={normalizeRepairStatus(form.status) || REPAIR_STATUS.RECEIVED} onChange={(e) => upd('status', e.target.value)}>
               {orderedRepairStatusOptions.map((s) => {
@@ -1170,7 +1170,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>Priority</label>
+            <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('priority')}</label>
             <select className="select" value={form.priority} onChange={(e) => upd('priority', e.target.value)}>
               {['Low','Normal','High','Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
             </select>

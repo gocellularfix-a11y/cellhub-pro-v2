@@ -121,7 +121,7 @@ export default function StoreManagement({ lang }: StoreManagementProps) {
                     <div className="flex items-center gap-2 mb-1">
                       <p className="text-sm text-white font-medium">{store.name}</p>
                       {isCurrent && (
-                        <span className="badge badge-success text-[10px]">Current</span>
+                        <span className="badge badge-success text-[10px]">{t('settings.currentBadge')}</span>
                       )}
                     </div>
                     <p className="text-xs text-slate-500">{store.address}</p>
@@ -173,7 +173,7 @@ export default function StoreManagement({ lang }: StoreManagementProps) {
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" />
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">Email</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('email')}</label>
               <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" />
             </div>
           </div>
@@ -192,7 +192,7 @@ export default function StoreManagement({ lang }: StoreManagementProps) {
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Timezone</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('settings.timezone')}</label>
             <select value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className="select">
               <option value="America/Los_Angeles">Pacific (LA)</option>
               <option value="America/Denver">Mountain (Denver)</option>

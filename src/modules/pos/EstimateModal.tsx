@@ -176,7 +176,7 @@ export default function EstimateModal({ open, onClose }: Props) {
           padding: '1.25rem', marginBottom: '1rem',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Subtotal:</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('subtotal')}:</span>
             <span style={{ fontWeight: 600 }}>{formatCurrency(fwd.baseCents)}</span>
           </div>
           {taxable && (
@@ -189,7 +189,7 @@ export default function EstimateModal({ open, onClose }: Props) {
             borderTop: '1px solid var(--border-default)', paddingTop: '0.5rem',
             marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between',
           }}>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#60a5fa' }}>TOTAL:</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#60a5fa' }}>{t('total').toUpperCase()}</span>
             <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(fwd.totalCents)}</span>
           </div>
         </div>
