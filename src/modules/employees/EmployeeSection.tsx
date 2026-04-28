@@ -546,7 +546,7 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
                   {t('employees.form.name')} * <span style={{ color: '#f87171', fontSize: '0.68rem' }}>{t('employees.form.displayName')}</span>
                 </label>
-                <input className="input" value={form.name} onChange={(e) => upd('name', e.target.value)} placeholder="Juan Pérez" autoFocus />
+                <input className="input" value={form.name} onChange={(e) => upd('name', e.target.value)} placeholder={t('employees.form.namePlaceholder')} autoFocus />
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
@@ -554,20 +554,20 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                 </label>
                 <input type="password" className="input"
                   value={form.pin} onChange={(e) => upd('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  maxLength={4} placeholder={isEdit ? '••••' : '0000'}
+                  maxLength={4} placeholder={isEdit ? t('employees.form.pinPlaceholderEdit') : t('employees.form.pinPlaceholderNew')}
                   autoComplete="new-password"
                   style={{ fontFamily: 'Courier New, monospace', fontSize: '1.25rem', letterSpacing: '0.8em', textAlign: 'center' }} />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-              <F label={t('employees.form.phone')} field="phone" type="tel" placeholder="(805) 555-0100" />
-              <F label={t('employees.form.email')} field="email" type="email" placeholder="juan@email.com" />
+              <F label={t('employees.form.phone')} field="phone" type="tel" placeholder={t('employees.form.phonePlaceholder')} />
+              <F label={t('employees.form.email')} field="email" type="email" placeholder={t('employees.form.emailPlaceholder')} />
               <F label={t('employees.form.dob')} field="dob" type="date" />
             </div>
-            <F label={t('employees.form.address')} field="address" placeholder="123 Main St, Santa Barbara, CA 93101" />
+            <F label={t('employees.form.address')} field="address" placeholder={t('employees.form.addressPlaceholder')} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <F label={t('employees.form.emergencyContact')} field="emergencyName" placeholder="Maria Pérez" />
-              <F label={t('employees.form.emergencyPhone')} field="emergencyPhone" type="tel" placeholder="(805) 555-0199" />
+              <F label={t('employees.form.emergencyContact')} field="emergencyName" placeholder={t('employees.form.emergencyNamePlaceholder')} />
+              <F label={t('employees.form.emergencyPhone')} field="emergencyPhone" type="tel" placeholder={t('employees.form.emergencyPhonePlaceholder')} />
             </div>
           </div>
         )}
@@ -577,9 +577,9 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
               <F label={t('employees.form.position')} field="position"
-                options={['Sales Associate','Repair Technician','Lead Technician','Assistant Manager','Store Manager']} />
+                options={[t('employees.option.position.salesAssociate'), t('employees.option.position.repairTech'), t('employees.option.position.leadTech'), t('employees.option.position.assistantManager'), t('employees.option.position.storeManager')]} />
               <F label={t('employees.form.employmentType')} field="employmentType"
-                options={['Full-time','Part-time','Seasonal']} />
+                options={[t('employees.option.employmentType.fullTime'), t('employees.option.employmentType.partTime'), t('employees.option.employmentType.seasonal')]} />
               <F label={t('employees.form.startDate')} field="startDate" type="date" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -588,13 +588,13 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                 <input type="number" className="input" step="0.01" min="0"
                   value={((form.hourlyRateCents ?? 0) / 100).toFixed(2)}
                   onChange={(e) => upd('hourlyRateCents', Math.round((parseFloat(e.target.value) || 0) * 100))}
-                  placeholder="17.00" />
+                  placeholder={t('employees.form.payRatePlaceholder')} />
               </div>
               <F label={t('employees.form.paySchedule')} field="paySchedule"
-                options={['Weekly','Bi-weekly','Semi-monthly']} />
+                options={[t('employees.option.paySchedule.weekly'), t('employees.option.paySchedule.biweekly'), t('employees.option.paySchedule.semimonthly')]} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <F label={t('employees.form.schedule')} field="scheduledHours" placeholder="Mon–Fri 10am–6pm" />
+              <F label={t('employees.form.schedule')} field="scheduledHours" placeholder={t('employees.form.schedulePlaceholder')} />
               <div>
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('employees.form.commission')}</label>
                 <input type="number" className="input" step="0.1" min="0" max="100"
@@ -622,7 +622,7 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                   {t('employees.form.roleHint')}
                 </p>
               </div>
-              <F label={t('employees.form.languages')} field="languages" placeholder="English, Spanish" />
+              <F label={t('employees.form.languages')} field="languages" placeholder={t('employees.form.languagesPlaceholder')} />
             </div>
             <div style={{ marginTop: '0.25rem' }}>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.375rem', fontWeight: 600 }}>
@@ -666,27 +666,27 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
                 <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>SSN / ITIN</label>
                 <input type="password" className="input"
                   value={form.ssn || ''} onChange={(e) => upd('ssn', e.target.value)}
-                  placeholder="XXX-XX-XXXX"
+                  placeholder={t('employees.form.ssnPlaceholder')}
                   style={{ fontFamily: 'Courier New, monospace', letterSpacing: '0.15em' }} />
               </div>
-              <F label="W-4 Filing Status" field="w4Status"
-                options={['','Single','Married filing jointly','Head of household']} />
+              <F label={t('employees.form.w4Status')} field="w4Status"
+                options={['', t('employees.option.w4.single'), t('employees.option.w4.married'), t('employees.option.w4.headOfHousehold')]} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <F label="I-9 Work Authorization" field="i9Authorization"
-                options={['','U.S. Citizen','Lawful Permanent Resident','Work Visa','Other authorized']} />
-              <F label="ID Document Type" field="idDocumentType"
-                options={["","Driver's License + SS Card","Passport","Passport Card","Permanent Resident Card","Employment Auth. Document"]} />
+              <F label={t('employees.form.i9Auth')} field="i9Authorization"
+                options={['', t('employees.option.i9.usCitizen'), t('employees.option.i9.permanentResident'), t('employees.option.i9.workVisa'), t('employees.option.i9.otherAuthorized')]} />
+              <F label={t('employees.form.idDocType')} field="idDocumentType"
+                options={['', t('employees.option.idDoc.driverLicense'), t('employees.option.idDoc.passport'), t('employees.option.idDoc.passportCard'), t('employees.option.idDoc.greenCard'), t('employees.option.idDoc.ead')]} />
             </div>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
                 {t('employees.form.docsReceived')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                <Cb field="docsW4" label="W-4 signed" />
-                <Cb field="docsI9" label="I-9 completed" />
+                <Cb field="docsW4" label={t('employees.docs.w4')} />
+                <Cb field="docsI9" label={t('employees.docs.i9')} />
                 <Cb field="docsIDCopy" label={t('employees.form.docsIdCopy')} />
-                <Cb field="docsDirectDeposit" label="Direct deposit form" />
+                <Cb field="docsDirectDeposit" label={t('employees.docs.directDeposit')} />
                 <Cb field="docsHandbook" label={t('employees.form.docsHandbook')} />
               </div>
             </div>

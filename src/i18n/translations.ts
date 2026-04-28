@@ -2962,4 +2962,50 @@ export const translations: TranslationDictionary = {
   'employees.role.sales':           { en: 'Sales',                  es: 'Ventas',                     pt: 'Vendas' },
   'employees.role.technician':      { en: 'Technician',             es: 'Técnico',                    pt: 'Técnico' },
   'employees.role.cashier':         { en: 'Cashier',                es: 'Cajero/a',                   pt: 'Caixa' },
+
+  'employees.form.namePlaceholder':     { en: 'Juan Pérez',             es: 'Juan Pérez',                 pt: 'João Silva' },
+  'employees.form.pinPlaceholderNew':   { en: '0000',                   es: '0000',                       pt: '0000' },
+  'employees.form.pinPlaceholderEdit':  { en: '••••',                   es: '••••',                       pt: '••••' },
+  'employees.form.phonePlaceholder':    { en: '(805) 555-0100',         es: '(805) 555-0100',             pt: '(805) 555-0100' },
+  'employees.form.emailPlaceholder':    { en: 'juan@email.com',         es: 'juan@email.com',             pt: 'joao@email.com' },
+  'employees.form.addressPlaceholder':  { en: '123 Main St, Santa Barbara, CA 93101', es: '123 Calle Principal, Santa Barbara, CA 93101', pt: '123 Rua Principal, Santa Barbara, CA 93101' },
+  'employees.form.emergencyNamePlaceholder': { en: 'Maria Pérez',       es: 'Maria Pérez',                pt: 'Maria Silva' },
+  'employees.form.emergencyPhonePlaceholder': { en: '(805) 555-0199',   es: '(805) 555-0199',             pt: '(805) 555-0199' },
+  'employees.form.payRatePlaceholder':  { en: '17.00',                  es: '17.00',                      pt: '17.00' },
+  'employees.form.schedulePlaceholder': { en: 'Mon–Fri 10am–6pm',       es: 'Lun–Vie 10am–6pm',           pt: 'Seg–Sex 10h–18h' },
+  'employees.form.languagesPlaceholder': { en: 'English, Spanish',      es: 'Inglés, Español',            pt: 'Inglês, Espanhol' },
+  'employees.form.ssnPlaceholder':      { en: 'XXX-XX-XXXX',            es: 'XXX-XX-XXXX',                pt: 'XXX-XX-XXXX' },
+
+  'employees.option.position.salesAssociate':   { en: 'Sales Associate',       es: 'Asociado de Ventas',         pt: 'Associado de Vendas' },
+  'employees.option.position.repairTech':       { en: 'Repair Technician',     es: 'Técnico de Reparación',      pt: 'Técnico de Reparo' },
+  'employees.option.position.leadTech':         { en: 'Lead Technician',       es: 'Técnico Principal',          pt: 'Técnico Principal' },
+  'employees.option.position.assistantManager': { en: 'Assistant Manager',     es: 'Asistente de Gerente',       pt: 'Gerente Assistente' },
+  'employees.option.position.storeManager':     { en: 'Store Manager',         es: 'Gerente de Tienda',          pt: 'Gerente de Loja' },
+
+  'employees.option.employmentType.fullTime':   { en: 'Full-time',             es: 'Tiempo Completo',            pt: 'Tempo Integral' },
+  'employees.option.employmentType.partTime':   { en: 'Part-time',             es: 'Medio Tiempo',               pt: 'Meio Período' },
+  'employees.option.employmentType.seasonal':   { en: 'Seasonal',              es: 'Temporal',                   pt: 'Sazonal' },
+
+  'employees.option.paySchedule.weekly':        { en: 'Weekly',                es: 'Semanal',                    pt: 'Semanal' },
+  'employees.option.paySchedule.biweekly':      { en: 'Bi-weekly',             es: 'Quincenal',                  pt: 'Quinzenal' },
+  'employees.option.paySchedule.semimonthly':   { en: 'Semi-monthly',          es: 'Dos veces al mes',           pt: 'Duas vezes por mês' },
+
+  'employees.option.w4.single':                 { en: 'Single',                es: 'Soltero/a',                  pt: 'Solteiro/a' },
+  'employees.option.w4.married':                { en: 'Married filing jointly', es: 'Casado/a',                 pt: 'Casado/a' },
+  'employees.option.w4.headOfHousehold':        { en: 'Head of household',     es: 'Jefe de Familia',            pt: 'Chefe de Família' },
+
+  'employees.option.i9.usCitizen':              { en: 'U.S. Citizen',          es: 'Ciudadano de EE.UU.',        pt: 'Cidadão dos EUA' },
+  'employees.option.i9.permanentResident':      { en: 'Lawful Permanent Resident', es: 'Residente Permanente',   pt: 'Residente Permanente' },
+  'employees.option.i9.workVisa':               { en: 'Work Visa',             es: 'Visa de Trabajo',            pt: 'Visto de Trabalho' },
+  'employees.option.i9.otherAuthorized':        { en: 'Other authorized',      es: 'Otro autorizado',            pt: 'Outro autorizado' },
+
+  'employees.option.idDoc.driverLicense':       { en: "Driver's License + SS Card", es: 'Licencia + Tarjeta SS', pt: 'Carteira de Motorista + SS' },
+  'employees.option.idDoc.passport':            { en: 'Passport',              es: 'Pasaporte',                  pt: 'Passaporte' },
+  'employees.option.idDoc.passportCard':        { en: 'Passport Card',         es: 'Tarjeta de Pasaporte',       pt: 'Cartão de Passaporte' },
+  'employees.option.idDoc.greenCard':           { en: 'Permanent Resident Card', es: 'Tarjeta de Residente',    pt: 'Cartão de Residente' },
+  'employees.option.idDoc.ead':                 { en: 'Employment Auth. Document', es: 'Doc. Autorización Empleo', pt: 'Doc. de Autorização' },
+
+  'employees.docs.w4':                          { en: 'W-4 signed',            es: 'W-4 firmado',                pt: 'W-4 assinado' },
+  'employees.docs.i9':                          { en: 'I-9 completed',         es: 'I-9 completado',             pt: 'I-9 completado' },
+  'employees.docs.directDeposit':               { en: 'Direct deposit form',   es: 'Formulario depósito directo', pt: 'Formulário depósito direto' },
 };
