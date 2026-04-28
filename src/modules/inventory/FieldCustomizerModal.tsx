@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ConfirmDialog } from '@/components/ui';
+import { useTranslation } from '@/i18n';
 import type {
   InventoryFieldConfig,
   CustomInventoryField,
@@ -68,17 +69,18 @@ const BUILTIN_FIELDS: Array<{
   id: keyof InventoryFieldConfig['defaults'];
   labelEn: string;
   labelEs: string;
+  labelPt: string;
   canBeRequired: boolean;
 }> = [
-  { id: 'sku',         labelEn: 'IMEI / SKU',    labelEs: 'IMEI / SKU',    canBeRequired: true  },
-  { id: 'category',    labelEn: 'Category',      labelEs: 'Categoría',     canBeRequired: true  },
-  { id: 'condition',   labelEn: 'Condition',     labelEs: 'Condición',     canBeRequired: false },
-  { id: 'cost',        labelEn: 'Cost',          labelEs: 'Costo',         canBeRequired: false },
-  { id: 'price',       labelEn: 'Price',         labelEs: 'Precio',        canBeRequired: true  },
-  { id: 'qty',         labelEn: 'Quantity',      labelEs: 'Cantidad',      canBeRequired: false },
-  { id: 'supplier',    labelEn: 'Supplier',      labelEs: 'Proveedor',     canBeRequired: false },
-  { id: 'brand',       labelEn: 'Brand',         labelEs: 'Marca',         canBeRequired: false },
-  { id: 'description', labelEn: 'Description',   labelEs: 'Descripción',   canBeRequired: false },
+  { id: 'sku',         labelEn: 'IMEI / SKU',    labelEs: 'IMEI / SKU',    labelPt: 'IMEI / SKU',      canBeRequired: true  },
+  { id: 'category',    labelEn: 'Category',      labelEs: 'Categoría',     labelPt: 'Categoria',       canBeRequired: true  },
+  { id: 'condition',   labelEn: 'Condition',     labelEs: 'Condición',     labelPt: 'Condição',        canBeRequired: false },
+  { id: 'cost',        labelEn: 'Cost',          labelEs: 'Costo',         labelPt: 'Custo',           canBeRequired: false },
+  { id: 'price',       labelEn: 'Price',         labelEs: 'Precio',        labelPt: 'Preço',           canBeRequired: true  },
+  { id: 'qty',         labelEn: 'Quantity',      labelEs: 'Cantidad',      labelPt: 'Quantidade',      canBeRequired: false },
+  { id: 'supplier',    labelEn: 'Supplier',      labelEs: 'Proveedor',     labelPt: 'Fornecedor',      canBeRequired: false },
+  { id: 'brand',       labelEn: 'Brand',         labelEs: 'Marca',         labelPt: 'Marca',           canBeRequired: false },
+  { id: 'description', labelEn: 'Description',   labelEs: 'Descripción',   labelPt: 'Descrição',       canBeRequired: false },
 ];
 
 // ── The Modal ────────────────────────────────────────────
@@ -98,7 +100,9 @@ export default function FieldCustomizerModal({
   onSave,
   lang,
 }: FieldCustomizerModalProps) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
+  const builtinLabel = (f: typeof BUILTIN_FIELDS[number]): string =>
+    lang === 'pt' ? f.labelPt : lang === 'es' ? f.labelEs : f.labelEn;
 
   // Local editable copy
   const [draft, setDraft] = useState<InventoryFieldConfig>(() => resolveFieldConfig(config));
@@ -169,7 +173,7 @@ export default function FieldCustomizerModal({
       <Modal
         open={open}
         onClose={onClose}
-        title={`⚙️ ${es ? 'Personalizar Campos' : 'Customize Fields'}`}
+        title={`⚙️ ${t('inventory.fields.title')}`}
         size="max-w-2xl"
       >
         <div style={{ maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
@@ -184,15 +188,13 @@ export default function FieldCustomizerModal({
             color: '#a5f3fc',
             lineHeight: 1.5,
           }}>
-            💡 {es
-              ? 'Configura qué campos aparecen en el formulario de Inventory. Puedes ocultar los que no uses y agregar campos personalizados según tu negocio (ej: Talla, Color, Número de serie).'
-              : 'Configure which fields appear in the Inventory form. Hide the ones you don\'t use and add custom fields for your business (e.g. Size, Color, Serial Number).'}
+            💡 {t('inventory.fields.infoBanner')}
           </div>
 
           {/* ── Built-in fields ── */}
           <div style={{ marginBottom: '1.5rem' }}>
             <h3 style={sectionTitleStyle}>
-              {es ? 'Campos Predefinidos' : 'Built-in Fields'}
+              {t('inventory.fields.builtin')}
             </h3>
             <div style={{
               background: 'rgba(255,255,255,0.03)',
@@ -210,13 +212,13 @@ export default function FieldCustomizerModal({
                 opacity: 0.6,
               }}>
                 <div style={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 500 }}>
-                  🔒 {es ? 'Nombre' : 'Name'}
+                  🔒 {t('inventory.name')}
                   <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: '0.5rem' }}>
-                    ({es ? 'requerido siempre' : 'always required'})
+                    ({t('inventory.fields.alwaysRequired')})
                   </span>
                 </div>
                 <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                  {es ? 'No se puede desactivar' : 'Cannot be disabled'}
+                  {t('inventory.fields.cannotDisable')}
                 </div>
               </div>
 
@@ -243,7 +245,7 @@ export default function FieldCustomizerModal({
                           color: state.visible !== false ? '#e2e8f0' : '#64748b',
                           fontWeight: 500,
                         }}>
-                          {es ? f.labelEs : f.labelEn}
+                          {builtinLabel(f)}
                         </span>
                       </label>
                     </div>
@@ -256,7 +258,7 @@ export default function FieldCustomizerModal({
                           style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                         />
                         <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                          {es ? 'Requerido' : 'Required'}
+                          {t('inventory.fields.required')}
                         </span>
                       </label>
                     )}
@@ -270,7 +272,7 @@ export default function FieldCustomizerModal({
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>
-                {es ? 'Campos Personalizados' : 'Custom Fields'}
+                {t('inventory.fields.custom')}
                 <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: '0.5rem', fontWeight: 400 }}>
                   ({draft.customFields.length})
                 </span>
@@ -279,7 +281,7 @@ export default function FieldCustomizerModal({
                 onClick={() => setShowAddField(true)}
                 style={primaryButtonStyle}
               >
-                + {es ? 'Agregar Campo' : 'Add Field'}
+                {t('inventory.fields.addField')}
               </button>
             </div>
 
@@ -293,9 +295,7 @@ export default function FieldCustomizerModal({
                 fontSize: '0.78rem',
                 color: '#64748b',
               }}>
-                {es
-                  ? 'Sin campos personalizados. Agrega uno para capturar datos específicos de tu negocio.'
-                  : 'No custom fields yet. Add one to capture business-specific data.'}
+                {t('inventory.fields.noCustom')}
               </div>
             ) : (
               <div style={{
@@ -315,19 +315,19 @@ export default function FieldCustomizerModal({
                     <span style={{ fontSize: '1.1rem' }}>{typeIcon(field.type)}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 600 }}>
-                        {es && field.labelEs ? field.labelEs : field.label}
+                        {lang === 'es' && field.labelEs ? field.labelEs : field.label}
                         {field.required && <span style={{ color: '#f87171', marginLeft: '0.25rem' }}>*</span>}
                       </div>
                       <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                        {typeLabel(field.type, es)}
-                        {field.type === 'dropdown' && field.options && ` · ${field.options.length} ${es ? 'opciones' : 'options'}`}
+                        {typeLabel(field.type, t)}
+                        {field.type === 'dropdown' && field.options && ` · ${t('inventory.fields.options', field.options.length)}`}
                       </div>
                     </div>
                     <button
                       onClick={() => handleMoveField(field.id, -1)}
                       disabled={idx === 0}
                       style={{ ...iconButtonStyle, opacity: idx === 0 ? 0.3 : 1 }}
-                      title={es ? 'Mover arriba' : 'Move up'}
+                      title={t('inventory.fields.moveUp')}
                     >
                       ↑
                     </button>
@@ -335,21 +335,21 @@ export default function FieldCustomizerModal({
                       onClick={() => handleMoveField(field.id, 1)}
                       disabled={idx === draft.customFields.length - 1}
                       style={{ ...iconButtonStyle, opacity: idx === draft.customFields.length - 1 ? 0.3 : 1 }}
-                      title={es ? 'Mover abajo' : 'Move down'}
+                      title={t('inventory.fields.moveDown')}
                     >
                       ↓
                     </button>
                     <button
                       onClick={() => setEditingFieldId(field.id)}
                       style={iconButtonStyle}
-                      title={es ? 'Editar' : 'Edit'}
+                      title={t('inventory.edit')}
                     >
                       ✏️
                     </button>
                     <button
                       onClick={() => handleRemoveField(field.id)}
                       style={{ ...iconButtonStyle, color: '#f87171' }}
-                      title={es ? 'Eliminar' : 'Delete'}
+                      title={t('inventory.delete')}
                     >
                       🗑️
                     </button>
@@ -382,14 +382,14 @@ export default function FieldCustomizerModal({
               cursor: 'pointer',
             }}
           >
-            {es ? '↺ Restablecer' : '↺ Reset to defaults'}
+            {t('inventory.fields.reset')}
           </button>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button onClick={onClose} className="btn btn-secondary">
-              {es ? 'Cancelar' : 'Cancel'}
+              {t('inventory.form.cancel')}
             </button>
             <button onClick={handleSave} className="btn btn-primary">
-              💾 {es ? 'Guardar' : 'Save'}
+              {t('inventory.form.save')}
             </button>
           </div>
         </div>
@@ -407,20 +407,17 @@ export default function FieldCustomizerModal({
             setShowAddField(false);
             setEditingFieldId(null);
           }}
-          lang={lang}
         />
       )}
 
       {/* Reset confirmation */}
       <ConfirmDialog
         open={showResetConfirm}
-        title={es ? '¿Restablecer?' : 'Reset?'}
-        message={es
-          ? 'Esto eliminará todos los campos personalizados y restaurará la visibilidad predeterminada. ¿Continuar?'
-          : 'This will remove all custom fields and restore default visibility. Continue?'}
+        title={t('inventory.fields.resetTitle')}
+        message={t('inventory.fields.resetMsg')}
         variant="danger"
-        confirmLabel={es ? 'Sí, restablecer' : 'Yes, reset'}
-        cancelLabel={es ? 'Cancelar' : 'Cancel'}
+        confirmLabel={t('inventory.fields.resetConfirm')}
+        cancelLabel={t('inventory.form.cancel')}
         onConfirm={handleResetAll}
         onCancel={() => setShowResetConfirm(false)}
       />
@@ -434,11 +431,10 @@ interface FieldEditorModalProps {
   existing?: CustomInventoryField;
   onSave: (field: CustomInventoryField) => void;
   onClose: () => void;
-  lang: string;
 }
 
-function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalProps) {
-  const es = lang === 'es';
+function FieldEditorModal({ existing, onSave, onClose }: FieldEditorModalProps) {
+  const { t } = useTranslation();
   const isEdit = !!existing;
 
   const [label, setLabel] = useState(existing?.label || '');
@@ -471,15 +467,15 @@ function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalP
       open
       onClose={onClose}
       title={isEdit
-        ? `✏️ ${es ? 'Editar Campo' : 'Edit Field'}`
-        : `➕ ${es ? 'Nuevo Campo' : 'New Field'}`}
+        ? `✏️ ${t('inventory.fieldEditor.editField')}`
+        : `➕ ${t('inventory.fieldEditor.newField')}`}
       size="max-w-md"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
         {/* Label EN */}
         <div>
           <label style={labelStyle}>
-            {es ? 'Etiqueta (Inglés)' : 'Label (English)'} *
+            {t('inventory.fieldEditor.labelEn')} *
           </label>
           <input
             className="input"
@@ -493,39 +489,39 @@ function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalP
         {/* Label ES */}
         <div>
           <label style={labelStyle}>
-            {es ? 'Etiqueta (Español)' : 'Label (Spanish)'}
+            {t('inventory.fieldEditor.labelEs')}
           </label>
           <input
             className="input"
             value={labelEs}
             onChange={(e) => setLabelEs(e.target.value)}
-            placeholder={es ? 'Ej: Color, Talla, Número de Serie' : 'optional'}
+            placeholder={t('inventory.fieldEditor.hintText')}
           />
         </div>
 
         {/* Type selector */}
         <div>
           <label style={labelStyle}>
-            {es ? 'Tipo' : 'Type'} *
+            {t('inventory.fieldEditor.type')} *
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            {(['text', 'number', 'date', 'dropdown'] as CustomFieldType[]).map((t) => (
+            {(['text', 'number', 'date', 'dropdown'] as CustomFieldType[]).map((fieldType) => (
               <button
-                key={t}
-                onClick={() => setType(t)}
+                key={fieldType}
+                onClick={() => setType(fieldType)}
                 style={{
                   padding: '0.6rem',
                   borderRadius: '0.5rem',
-                  border: type === t ? '2px solid #22d3ee' : '1px solid rgba(255,255,255,0.1)',
-                  background: type === t ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: type === t ? '#67e8f9' : '#cbd5e1',
+                  border: type === fieldType ? '2px solid #22d3ee' : '1px solid rgba(255,255,255,0.1)',
+                  background: type === fieldType ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.04)',
+                  color: type === fieldType ? '#67e8f9' : '#cbd5e1',
                   fontSize: '0.82rem',
-                  fontWeight: type === t ? 700 : 500,
+                  fontWeight: type === fieldType ? 700 : 500,
                   cursor: 'pointer',
                   textAlign: 'left',
                 }}
               >
-                {typeIcon(t)} {typeLabel(t, es)}
+                {typeIcon(fieldType)} {typeLabel(fieldType, t)}
               </button>
             ))}
           </div>
@@ -535,13 +531,13 @@ function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalP
         {type === 'dropdown' && (
           <div>
             <label style={labelStyle}>
-              {es ? 'Opciones (una por línea)' : 'Options (one per line)'} *
+              {t('inventory.fieldEditor.optionsLabel')} *
             </label>
             <textarea
               className="input"
               value={optionsText}
               onChange={(e) => setOptionsText(e.target.value)}
-              placeholder={es ? 'Pequeño\nMediano\nGrande' : 'Small\nMedium\nLarge'}
+              placeholder={t('inventory.fieldEditor.optionsPlaceholder')}
               rows={5}
               style={{ resize: 'vertical', minHeight: '100px', fontFamily: 'inherit' }}
             />
@@ -552,13 +548,13 @@ function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalP
         {type !== 'date' && type !== 'dropdown' && (
           <div>
             <label style={labelStyle}>
-              {es ? 'Placeholder (opcional)' : 'Placeholder (optional)'}
+              {t('inventory.fieldEditor.placeholderLabel')}
             </label>
             <input
               className="input"
               value={placeholder}
               onChange={(e) => setPlaceholder(e.target.value)}
-              placeholder={es ? 'Texto de ayuda...' : 'Hint text...'}
+              placeholder={t('inventory.fieldEditor.hintText')}
             />
           </div>
         )}
@@ -572,21 +568,21 @@ function FieldEditorModal({ existing, onSave, onClose, lang }: FieldEditorModalP
             style={{ width: '16px', height: '16px' }}
           />
           <span style={{ fontSize: '0.82rem', color: '#e2e8f0' }}>
-            {es ? 'Campo requerido' : 'Required field'}
+            {t('inventory.fieldEditor.requiredField')}
           </span>
         </label>
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
           <button onClick={onClose} className="btn btn-secondary">
-            {es ? 'Cancelar' : 'Cancel'}
+            {t('inventory.form.cancel')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={!label.trim() || (type === 'dropdown' && !optionsText.trim())}
             className="btn btn-primary"
           >
-            {isEdit ? (es ? '💾 Guardar' : '💾 Save') : `+ ${es ? 'Agregar' : 'Add'}`}
+            {isEdit ? t('inventory.form.save') : `+ ${t('inventory.add')}`}
           </button>
         </div>
       </div>
@@ -605,13 +601,8 @@ function typeIcon(type: CustomFieldType): string {
   }
 }
 
-function typeLabel(type: CustomFieldType, es: boolean): string {
-  switch (type) {
-    case 'text':     return es ? 'Texto' : 'Text';
-    case 'number':   return es ? 'Número' : 'Number';
-    case 'date':     return es ? 'Fecha' : 'Date';
-    case 'dropdown': return es ? 'Lista' : 'Dropdown';
-  }
+function typeLabel(type: CustomFieldType, t: (key: string) => string): string {
+  return t(`inventory.fieldType.${type}`);
 }
 
 // ── Styles ───────────────────────────────────────────────

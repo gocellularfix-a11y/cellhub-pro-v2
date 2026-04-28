@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
@@ -28,7 +28,7 @@ export default function InventoryModule() {
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
   const { printHtml } = usePrint();
-  const L = getLabels(lang);
+  const { t, locale } = useTranslation();
 
   const [search, setSearch] = useState(inventorySearchTerm || '');
 
@@ -72,7 +72,7 @@ export default function InventoryModule() {
       const key = normCat(cat);
       if (!seen.has(key)) seen.set(key, key.charAt(0).toUpperCase() + key.slice(1));
     }
-    return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, lang === 'es' ? 'es' : 'en'))];
+    return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, locale))];
   }, [inventory, lang]);
 
   // ── Conditions from data (plus static defaults) ─────────
@@ -88,7 +88,7 @@ export default function InventoryModule() {
       const key = cond.toLowerCase();
       if (!seen.has(key)) seen.set(key, cond);
     }
-    return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, lang === 'es' ? 'es' : 'en'))];
+    return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, locale))];
   }, [inventory, lang]);
 
   // ── Filtered list ───────────────────────────────────────
@@ -100,7 +100,7 @@ export default function InventoryModule() {
         if (showLowStockOnly && item.qty > (settings.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD)) return false;
         return matchesSearch(search, item.name, item.sku, item.barcode, item.imei, item.category);
       })
-      .sort((a, b) => a.name.localeCompare(b.name, lang === 'es' ? 'es' : 'en'));
+      .sort((a, b) => a.name.localeCompare(b.name, locale));
   }, [inventory, filterCategory, filterCondition, showLowStockOnly, search, settings.lowStockThreshold, lang]);
 
   // ── Stats ───────────────────────────────────────────────
@@ -153,7 +153,7 @@ export default function InventoryModule() {
         inventoryRef.current = next;  // immediately update ref so next call sees it
         setInventory(next);
         persist.inventory(updatedItem.id, updatedItem as unknown as Record<string, unknown>);
-        toast(L.saved || 'Saved!', 'success');
+        toast(t('inventory.saved'), 'success');
         setShowModal(false);
         setEditItem(null);
       } else {
@@ -170,12 +170,7 @@ export default function InventoryModule() {
           const existingImei = (existingMatch.imei || '').trim();
           if (incomingImei && existingImei && incomingImei !== existingImei) {
             existing = null; // fall through to "create new item" branch
-            toast(
-              lang === 'es'
-                ? 'SKU existe pero IMEI diferente — creando item nuevo'
-                : 'SKU exists but IMEI differs — creating new item',
-              'info',
-            );
+            toast(t('inventory.skuDiffImei'), 'info');
           }
         }
 
@@ -193,12 +188,7 @@ export default function InventoryModule() {
           inventoryRef.current = next;
           setInventory(next);
           persist.inventory(mergedItem.id, mergedItem as unknown as Record<string, unknown>);
-          toast(
-            lang === 'es'
-              ? `+${addedQty} agregado a ${existing.name} (total: ${mergedItem.qty})`
-              : `+${addedQty} added to ${existing.name} (total: ${mergedItem.qty})`,
-            'success',
-          );
+          toast(t('inventory.qtyAdded', addedQty, existing.name, mergedItem.qty), 'success');
           return;
         }
 
@@ -224,11 +214,11 @@ export default function InventoryModule() {
         inventoryRef.current = next;
         setInventory(next);
         persist.inventory(newItem.id, newItem as unknown as Record<string, unknown>);
-        toast(lang === 'es' ? 'Artículo agregado' : 'Item added!', 'success');
+        toast(t('inventory.itemAdded'), 'success');
         // Keep modal open for adding more items
       }
     },
-    [editItem, setInventory, toast, lang, L],
+    [editItem, setInventory, toast, t],
   );
 
   const handleDelete = useCallback(
@@ -237,17 +227,17 @@ export default function InventoryModule() {
       inventoryRef.current = next;
       setInventory(next);
       remove.inventory(id);
-      toast(lang === 'es' ? 'Eliminado' : 'Deleted', 'info');
+      toast(t('inventory.deleted'), 'info');
       setDeleteConfirm(null);
     },
-    [setInventory, toast, lang],
+    [setInventory, toast, t],
   );
 
   const handleQuickRestock = useCallback(
     (id: string) => {
       const target = inventoryRef.current.find((i) => i.id === id);
       if (target && isServiceCategory(target.category)) {
-        toast(lang === 'es' ? 'Los servicios no tienen stock' : "Services don't have stock", 'warning');
+        toast(t('inventory.noStockService'), 'warning');
         return;
       }
       const next = inventoryRef.current.map((i) => i.id === id ? { ...i, qty: i.qty + 1 } : i);
@@ -255,16 +245,16 @@ export default function InventoryModule() {
       setInventory(next);
       const ri = next.find((i) => i.id === id);
       if (ri) persist.inventory(ri.id, ri as unknown as Record<string, unknown>);
-      toast('+1 stock', 'success');
+      toast(t('inventory.quickRestock'), 'success');
     },
-    [setInventory, toast, lang],
+    [setInventory, toast, t],
   );
 
   const addToCart = useCallback(
     (item: InventoryItem) => {
       // Use isServiceCategory so Spanish-tagged "servicio" items can also be sold OOS
       if (item.qty <= 0 && !isServiceCategory(item.category)) {
-        toast(L.notEnoughStock || 'Out of stock', 'warning');
+        toast(t('inventory.notEnoughStock'), 'warning');
         return;
       }
       const cartItem = {
@@ -278,7 +268,7 @@ export default function InventoryModule() {
       setCart([...cart, cartItem]);
       toast(`${item.name} → cart`, 'success');
     },
-    [cart, setCart, toast, L],
+    [cart, setCart, toast, t],
   );
 
   return (
@@ -286,20 +276,20 @@ export default function InventoryModule() {
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">📦 {L.inventory}</h1>
+          <h1 className="text-2xl font-bold text-white">📦 {t('inventory.title')}</h1>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => setShowFieldCustomizer(true)}
               className="btn btn-secondary"
-              title={lang === 'es' ? 'Personalizar campos del formulario' : 'Customize form fields'}
+              title={t('inventory.customizeTitle')}
             >
-              ⚙️ {lang === 'es' ? 'Campos' : 'Fields'}
+              ⚙️ {t('inventory.fieldsBtn')}
             </button>
             <button
               onClick={() => { setEditItem(null); setShowModal(true); }}
               className="btn btn-primary"
             >
-              + {L.add || 'Add Item'}
+              + {t('inventory.addItem')}
             </button>
           </div>
         </div>
@@ -307,23 +297,23 @@ export default function InventoryModule() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">Total Items</p>
+            <p className="text-xs text-slate-400 uppercase">{t('inventory.totalItems')}</p>
             <p className="text-2xl font-bold text-white mt-1">{inventory.length}</p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">Retail Value</p>
+            <p className="text-xs text-slate-400 uppercase">{t('inventory.retailValue')}</p>
             <p className="text-2xl font-bold text-emerald-400 mt-1">{formatCurrency(totalValue)}</p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">Profit Potential</p>
+            <p className="text-xs text-slate-400 uppercase">{t('inventory.profitPotential')}</p>
             <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(totalValue - totalCost)}</p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{L.lowStock}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('inventory.lowStock')}</p>
             <p className={`text-2xl font-bold mt-1 ${lowStockCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
               {lowStockCount}
             </p>
-            <p className="text-xs text-slate-500">{outOfStockCount} out of stock</p>
+            <p className="text-xs text-slate-500">{t('inventory.outOfStockCount', outOfStockCount)}</p>
           </div>
         </div>
 
@@ -339,14 +329,14 @@ export default function InventoryModule() {
             <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.75rem', padding: '0.875rem 1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>
-                  🛒 {lang === 'es' ? `Lista de reorden — ${reorderItems.length} item${reorderItems.length > 1 ? 's' : ''}` : `Reorder list — ${reorderItems.length} item${reorderItems.length > 1 ? 's' : ''}`}
+                  🛒 {t('inventory.reorderList', reorderItems.length)}
                 </span>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     onClick={() => navigator.clipboard.writeText(listText)}
                     style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '0.375rem', color: '#94a3b8', cursor: 'pointer' }}
                   >
-                    📋 {lang === 'es' ? 'Copiar lista' : 'Copy list'}
+                    📋 {t('inventory.copyList')}
                   </button>
                   <button
                     onClick={() => {
@@ -358,7 +348,7 @@ export default function InventoryModule() {
                     }}
                     style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '0.375rem', color: '#94a3b8', cursor: 'pointer' }}
                   >
-                    🖨️ {lang === 'es' ? 'Imprimir' : 'Print'}
+                    🖨️ {t('inventory.print')}
                   </button>
                 </div>
               </div>
@@ -376,7 +366,7 @@ export default function InventoryModule() {
                 ))}
                 {reorderItems.length > 12 && (
                   <div style={{ color: '#64748b', fontSize: '0.72rem', padding: '0.35rem 0.6rem' }}>
-                    + {reorderItems.length - 12} {lang === 'es' ? 'más' : 'more'} — {lang === 'es' ? 'activar filtro "Stock Bajo"' : 'enable Low Stock filter to see all'}
+                    {t('inventory.reorderMore', reorderItems.length - 12)}
                   </div>
                 )}
               </div>
@@ -403,11 +393,10 @@ export default function InventoryModule() {
             value={filterCondition}
             onChange={(e) => setFilterCondition(e.target.value)}
             className="ml-2 px-2 py-1 rounded-lg text-xs bg-white/5 text-slate-300 border border-white/10"
-            title={lang === 'es' ? 'Filtrar por condición' : 'Filter by condition'}
           >
             {conditions.map((c) => (
               <option key={c} value={c}>
-                {c === 'All' ? (lang === 'es' ? 'Todas las Condiciones' : 'All Conditions') : c}
+                {c === 'All' ? t('inventory.allConditions') : c}
               </option>
             ))}
           </select>
@@ -418,7 +407,7 @@ export default function InventoryModule() {
               onChange={(e) => setShowLowStockOnly(e.target.checked)}
               className="rounded border-white/20 bg-white/5"
             />
-            {L.lowStock || 'Low Stock Only'}
+            {t('inventory.lowStock')}
           </label>
         </div>
 
@@ -431,7 +420,7 @@ export default function InventoryModule() {
           localValue={search}
           onLocalChange={setSearch}
           excludeCollection="inventory"
-          placeholder={L.searchPlaceholder || 'Search inventory…'}
+          placeholder={t('inventory.searchPlaceholder')}
         />
 
         {/* Table */}
@@ -439,20 +428,20 @@ export default function InventoryModule() {
           <table className="table">
             <thead>
               <tr>
-                <th>SKU/IMEI</th>
-                <th>{L.name || 'Name'}</th>
-                <th>Category</th>
-                <th className="text-right">Cost</th>
-                <th className="text-right">Price</th>
-                <th className="text-right">Qty</th>
-                <th className="text-right">Actions</th>
+                <th>{t('inventory.skuImei')}</th>
+                <th>{t('inventory.name')}</th>
+                <th>{t('inventory.category')}</th>
+                <th className="text-right">{t('inventory.cost')}</th>
+                <th className="text-right">{t('inventory.price')}</th>
+                <th className="text-right">{t('inventory.qty')}</th>
+                <th className="text-right">{t('inventory.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-slate-500">
-                    {L.noResultsFound || 'No items found'}
+                    {t('inventory.noItemsFound')}
                   </td>
                 </tr>
               ) : (
@@ -499,15 +488,11 @@ export default function InventoryModule() {
           allPurchaseOrders={purchaseOrders}
           fieldConfig={fieldConfig}
           onAddCategory={(newCat) => {
-            toast(
-              (lang === 'es' ? 'Nueva categoría: ' : 'New category: ') + newCat,
-              'success',
-            );
+            toast(t('inventory.categoryAdded', newCat), 'success');
           }}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditItem(null); }}
           lang={lang}
-          L={L}
           settings={settings}
         />
       )}
@@ -523,18 +508,15 @@ export default function InventoryModule() {
           dispatch({ type: 'SET_SETTINGS', payload: { inventoryFieldConfig: newConfig } });
           // Persist to Firebase/localStorage
           persistSettings(updatedSettings as unknown as Record<string, unknown>);
-          toast(
-            lang === 'es' ? '⚙️ Campos actualizados' : '⚙️ Fields updated',
-            'success',
-          );
+          toast(t('inventory.fieldsUpdated'), 'success');
         }}
       />
 
       {/* Delete confirm */}
       <ConfirmDialog
         open={!!deleteConfirm}
-        title={L.delete || 'Delete'}
-        message={L.deleteConfirm || 'Delete this item?'}
+        title={t('inventory.delete')}
+        message={t('inventory.deleteConfirm')}
         variant="danger"
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
@@ -556,7 +538,6 @@ function InventoryFormModal({
   onSave,
   onClose,
   lang,
-  L,
   settings,
 }: {
   item: InventoryItem | null;
@@ -569,10 +550,9 @@ function InventoryFormModal({
   onSave: (data: Partial<InventoryItem>, opts?: { skipMerge?: boolean }) => void;
   onClose: () => void;
   lang: string;
-  L: Record<string, any>;
   settings: { detectedPrinters?: string[] };
 }) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const isEdit = !!item;
   const { toast } = useToast();
   const { printHtml } = usePrint();
@@ -678,14 +658,14 @@ function InventoryFormModal({
             price: saleItem.price || 0,
             cost: saleItem.cost || 0,
             qty: saleItem.qty || 1,
-            customerName: sale.customerName || (es ? 'Walk-in' : 'Walk-in'),
+            customerName: sale.customerName || 'Walk-in',
           });
         }
       }
     }
     matches.sort((a, b) => b.date.localeCompare(a.date));
     return matches.slice(0, 8);
-  }, [form.name, allSales, es]);
+  }, [form.name, allSales]);
 
   // ── Purchase History from POs (v1 parity) ─────────────
   // "Cuánto pagué la última vez que metí este modelo" — cross-references
@@ -717,7 +697,7 @@ function InventoryFormModal({
             date: dateStr,
             cost: poItem.cost || 0,
             qty: poItem.qtyReceived || poItem.qtyOrdered || 0,
-            vendor: po.vendor || (es ? 'Proveedor' : 'Vendor'),
+            vendor: po.vendor || t('inventory.form.vendor'),
             poNumber: po.poNumber || '',
           });
         }
@@ -725,7 +705,7 @@ function InventoryFormModal({
     }
     matches.sort((a, b) => b.date.localeCompare(a.date));
     return matches.slice(0, 8);
-  }, [form.name, allPurchaseOrders, es]);
+  }, [form.name, allPurchaseOrders, t]);
 
   // ── Add Category inline ────────────────────────────────
   const [showAddCat, setShowAddCat] = useState(false);
@@ -836,7 +816,7 @@ function InventoryFormModal({
 
   const handleSubmit = () => {
     if (!form.name.trim()) {
-      toast(es ? 'Falta el nombre del artículo' : 'Item name is required', 'error');
+      toast(t('inventory.form.itemNameRequired'), 'error');
       return;
     }
     if (form.price <= 0 && !isServiceLikeCategory(form.category)) {
@@ -851,12 +831,12 @@ function InventoryFormModal({
   const isLoss = form.cost > 0 && form.price > 0 && form.cost > form.price;
 
   const CATEGORIES = [
-    { value: 'phone',     label: es ? 'Teléfonos' : 'Phones' },
-    { value: 'accessory', label: es ? 'Accesorios' : 'Accessories' },
-    { value: 'part',      label: es ? 'Partes' : 'Parts' },
-    { value: 'service',   label: es ? 'Servicios' : 'Services' },
-    { value: 'top_up',    label: es ? 'Top Up' : 'Top Up' },
-    { value: 'other',     label: es ? 'Otro' : 'Other' },
+    { value: 'phone',     label: t('inventory.form.cat.phones') },
+    { value: 'accessory', label: t('inventory.form.cat.accessories') },
+    { value: 'part',      label: t('inventory.form.cat.parts') },
+    { value: 'service',   label: t('inventory.form.cat.services') },
+    { value: 'top_up',    label: 'Top Up' },
+    { value: 'other',     label: t('inventory.form.cat.other') },
   ];
 
   const CONDITIONS = ['New', 'Excellent', 'Good', 'Fair', 'Refurbished', 'For Parts'];
@@ -866,7 +846,7 @@ function InventoryFormModal({
     <Modal
       open
       onClose={onClose}
-      title={isEdit ? `✏️ ${es ? 'Editar Artículo' : 'Edit Item'}` : `📦 ${es ? 'Nuevo Artículo' : 'New Item'}`}
+      title={isEdit ? `✏️ ${t('inventory.form.editTitle')}` : `📦 ${t('inventory.form.newTitle')}`}
       size="max-w-lg"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: '68vh', overflowY: 'auto', paddingRight: '2px' }}>
@@ -899,7 +879,7 @@ function InventoryFormModal({
                 whiteSpace: 'nowrap',
               }}
             >
-              {es ? 'Generar' : 'Generate'}
+              {t('inventory.form.generate')}
             </button>
             <button
               onClick={handleLabel}
@@ -911,7 +891,7 @@ function InventoryFormModal({
                 whiteSpace: 'nowrap',
               }}
             >
-              🏷️ {es ? 'Etiqueta' : 'Label'}
+              🏷️ {t('inventory.form.labelBtn')}
             </button>
           </div>
         </div>
@@ -921,7 +901,7 @@ function InventoryFormModal({
         {show('sku') && (
         <div>
           <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            IMEI <span style={{ color: '#64748b', fontWeight: 400 }}>({es ? 'opcional, para teléfonos' : 'optional, for phones'})</span>
+            IMEI <span style={{ color: '#64748b', fontWeight: 400 }}>({t('inventory.form.imeiOptional')})</span>
           </label>
           <input
             className="input"
@@ -943,21 +923,19 @@ function InventoryFormModal({
             color: '#fde68a',
             lineHeight: 1.4,
           }}>
-            ⚠️ <strong>{es ? 'SKU ya existe' : 'SKU already exists'}</strong> —{' '}
-            {es
-              ? `"${duplicateItem.name}" (stock actual: ${duplicateItem.qty}). Si guardas, SOLO la cantidad se sumará al existente. Los demás campos del item original NO cambiarán. Cambia el SKU si es un artículo distinto.`
-              : `"${duplicateItem.name}" (current stock: ${duplicateItem.qty}). On save, ONLY the quantity will be added to the existing item. Name/price/cost will NOT change. Change SKU if it's a different item.`}
+            ⚠️ <strong>{t('inventory.form.skuExists')}</strong> —{' '}
+            {t('inventory.form.skuExistsDesc', duplicateItem.name, duplicateItem.qty)}
           </div>
         )}
 
         {/* Item Name */}
         <div style={{ position: 'relative' }}>
           <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            {es ? 'Nombre del Artículo' : 'Item Name'} *
+            {t('inventory.form.itemName')} *
           </label>
           <input
             className="input"
-            placeholder={es ? 'Ej: iPhone 13 Pro Max 128GB' : 'Example: iPhone 13 Pro Max 128GB'}
+            placeholder={t('inventory.form.itemNamePlaceholder')}
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             onFocus={() => setActiveSuggestField('name')}
@@ -986,7 +964,7 @@ function InventoryFormModal({
             padding: '0.6rem 0.75rem',
           }}>
             <div style={{ fontSize: '0.72rem', color: '#fb923c', fontWeight: 700, marginBottom: '0.4rem' }}>
-              🛒 {es ? 'Historial de Compras' : 'Purchase History'} ({purchaseHistory.length})
+              🛒 {t('inventory.form.purchaseHistory')} ({purchaseHistory.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '140px', overflowY: 'auto' }}>
               {purchaseHistory.map((ph, idx) => (
@@ -1009,10 +987,10 @@ function InventoryFormModal({
               return (
                 <>
                   <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(251,146,60,0.25)', display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
-                    <span style={{ color: '#64748b' }}>{es ? 'Último' : 'Last'}: <strong style={{ color: '#fdba74' }}>{formatCurrency(lastCost)}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Prom' : 'Avg'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Mín' : 'Min'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Máx' : 'Max'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.last')}: <strong style={{ color: '#fdba74' }}>{formatCurrency(lastCost)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.avg')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.min')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.max')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
                   </div>
                   <button
                     type="button"
@@ -1030,7 +1008,7 @@ function InventoryFormModal({
                       cursor: 'pointer',
                     }}
                   >
-                    📋 {es ? `Usar último cost ${formatCurrency(lastCost)}` : `Use last cost ${formatCurrency(lastCost)}`}
+                    📋 {t('inventory.form.useLastCost', formatCurrency(lastCost))}
                   </button>
                 </>
               );
@@ -1047,7 +1025,7 @@ function InventoryFormModal({
             padding: '0.6rem 0.75rem',
           }}>
             <div style={{ fontSize: '0.72rem', color: '#67e8f9', fontWeight: 700, marginBottom: '0.4rem' }}>
-              💰 {es ? 'Historial de Ventas' : 'Sales History'} ({priceHistory.length})
+              💰 {t('inventory.form.salesHistory')} ({priceHistory.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '140px', overflowY: 'auto' }}>
               {priceHistory.map((ph, idx) => (
@@ -1068,10 +1046,10 @@ function InventoryFormModal({
               return (
                 <>
                   <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(34,211,238,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
-                    <span style={{ color: '#64748b' }}>{es ? 'Último' : 'Last'}: <strong style={{ color: '#86efac' }}>{formatCurrency(lastPrice)}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Prom' : 'Avg'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Mín' : 'Min'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
-                    <span style={{ color: '#64748b' }}>{es ? 'Máx' : 'Max'}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.last')}: <strong style={{ color: '#86efac' }}>{formatCurrency(lastPrice)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.avg')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(Math.round(avg))}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.min')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(min)}</strong></span>
+                    <span style={{ color: '#64748b' }}>{t('inventory.form.max')}: <strong style={{ color: '#cbd5e1' }}>{formatCurrency(max)}</strong></span>
                   </div>
                   <button
                     type="button"
@@ -1089,7 +1067,7 @@ function InventoryFormModal({
                       cursor: 'pointer',
                     }}
                   >
-                    📋 {es ? `Usar último precio ${formatCurrency(lastPrice)}` : `Use last price ${formatCurrency(lastPrice)}`}
+                    📋 {t('inventory.form.useLastPrice', formatCurrency(lastPrice))}
                   </button>
                 </>
               );
@@ -1103,7 +1081,7 @@ function InventoryFormModal({
           {show('category') && (
           <div>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Categoría' : 'Category'}{req('category') && ' *'}
+              {t('inventory.category')}{req('category') && ' *'}
             </label>
             {!showAddCat ? (
               <select
@@ -1123,14 +1101,14 @@ function InventoryFormModal({
                 {CATEGORIES.filter((c) => !categories.includes(c.value)).map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
-                <option value="__add__">+ {es ? 'Agregar nueva...' : 'Add new...'}</option>
+                <option value="__add__">{t('inventory.form.addNew')}</option>
               </select>
             ) : (
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <input
                   className="input"
                   style={{ flex: 1 }}
-                  placeholder={es ? 'Nombre de categoría' : 'Category name'}
+                  placeholder={t('inventory.form.catNamePlaceholder')}
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   autoFocus
@@ -1165,7 +1143,7 @@ function InventoryFormModal({
           {show('condition') && (
           <div>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Condición' : 'Condition'}{req('condition') && ' *'}
+              {t('inventory.form.condition')}{req('condition') && ' *'}
             </label>
             <select
               className="select"
@@ -1185,11 +1163,11 @@ function InventoryFormModal({
           {show('supplier') && (
           <div style={{ position: 'relative' }}>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Proveedor' : 'Supplier'}{req('supplier') && ' *'}
+              {t('inventory.form.supplier')}{req('supplier') && ' *'}
             </label>
             <input
               className="input"
-              placeholder={es ? 'Vendedor / Proveedor' : 'Vendor / Supplier'}
+              placeholder={t('inventory.form.vendorPlaceholder')}
               value={form.supplier}
               onChange={(e) => setForm({ ...form, supplier: e.target.value })}
               onFocus={() => setActiveSuggestField('supplier')}
@@ -1210,7 +1188,7 @@ function InventoryFormModal({
           {show('brand') && (
           <div style={{ position: 'relative' }}>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Marca' : 'Brand'}{req('brand') && ' *'}
+              {t('inventory.form.brand')}{req('brand') && ' *'}
             </label>
             <input
               className="input"
@@ -1241,7 +1219,7 @@ function InventoryFormModal({
           {show('cost') && (
           <div>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Costo' : 'Cost'}{req('cost') && ' *'}
+              {t('inventory.cost')}{req('cost') && ' *'}
             </label>
             <input
               type="number"
@@ -1256,7 +1234,7 @@ function InventoryFormModal({
           {show('price') && (
           <div>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Precio' : 'Price'}{req('price') && ' *'}
+              {t('inventory.price')}{req('price') && ' *'}
             </label>
             <input
               type="number"
@@ -1271,7 +1249,7 @@ function InventoryFormModal({
           {show('qty') && (
           <div>
             <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-              {es ? 'Cantidad' : 'Quantity'}{req('qty') && ' *'}
+              {t('inventory.form.quantity')}{req('qty') && ' *'}
             </label>
             <input
               type="number"
@@ -1296,9 +1274,7 @@ function InventoryFormModal({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              {isLoss
-                ? (es ? 'Pérdida potencial' : 'Potential loss')
-                : (es ? 'Ganancia potencial' : 'Potential profit')}
+              {isLoss ? t('inventory.form.potentialLoss') : t('inventory.form.potentialProfit')}
             </span>
             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: marginDollars >= 0 ? '#22c55e' : '#ef4444' }}>
               {marginDollars >= 0 ? '+' : ''}{formatCurrency(marginDollars)}
@@ -1311,12 +1287,12 @@ function InventoryFormModal({
         {show('description') && (
         <div>
           <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            {es ? 'Notas' : 'Notes'}{req('description') && ' *'}
+            {t('inventory.form.notes')}{req('description') && ' *'}
           </label>
           <textarea
             className="textarea"
             rows={2}
-            placeholder={es ? 'Notas opcionales...' : 'Any notes (optional)'}
+            placeholder={t('inventory.form.notesPlaceholder')}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             style={{ resize: 'vertical' }}
@@ -1336,10 +1312,10 @@ function InventoryFormModal({
             borderRadius: '0.5rem',
           }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#67e8f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              {es ? '✨ Campos Personalizados' : '✨ Custom Fields'}
+              {t('inventory.form.customFields')}
             </div>
             {fieldConfig.customFields.map((cf) => {
-              const displayLabel = es && cf.labelEs ? cf.labelEs : cf.label;
+              const displayLabel = lang === 'es' && cf.labelEs ? cf.labelEs : cf.label;
               const value = form.customFields[cf.id] ?? '';
               return (
                 <div key={cf.id}>
@@ -1379,7 +1355,7 @@ function InventoryFormModal({
                       onChange={(e) => updateCustomField(cf.id, e.target.value)}
                     >
                       <option value="">
-                        {es ? '-- Selecciona --' : '-- Select --'}
+                        {t('inventory.form.customSelect')}
                       </option>
                       {(cf.options || []).map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
@@ -1395,9 +1371,9 @@ function InventoryFormModal({
         {/* Checkboxes: Taxable, CBE, Screen Fee */}
         <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
           {[
-            { key: 'taxable', label: es ? 'Impuesto' : 'Taxable' },
+            { key: 'taxable', label: t('inventory.form.taxable') },
             { key: 'cbeEligible', label: 'CBE Fee' },
-            { key: 'screenFeeEligible', label: es ? 'Cuota Pantalla' : 'Screen Fee' },
+            { key: 'screenFeeEligible', label: t('inventory.form.screenFee') },
           ].map(({ key, label }) => (
             <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.82rem', color: '#94a3b8' }}>
               <input
@@ -1418,7 +1394,7 @@ function InventoryFormModal({
             border: '1px solid rgba(102,126,234,0.2)', borderRadius: '0.5rem',
           }}>
             <label style={{ fontSize: '0.82rem', color: '#a5b4fc', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              📦 {es ? 'Modo Lote — ¿Cuántos artículos?' : 'Batch Mode — How many items?'}
+              {t('inventory.form.batchCount')}
             </label>
             <input
               type="number"
@@ -1436,7 +1412,7 @@ function InventoryFormModal({
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         {/* Cancel */}
         <button onClick={onClose} className="btn btn-secondary" style={{ flex: 1 }}>
-          {es ? 'Cancelar' : 'Cancel'}
+          {t('inventory.form.cancel')}
         </button>
 
         {/* Clear */}
@@ -1449,9 +1425,9 @@ function InventoryFormModal({
             color: '#94a3b8', cursor: 'pointer', fontSize: '0.82rem',
             display: 'flex', alignItems: 'center', gap: '0.35rem',
           }}
-          title={es ? 'Limpiar' : 'Clear'}
+          title={t('inventory.form.clear')}
         >
-          🗑️ {es ? 'Limpiar' : 'Clear'}
+          🗑️ {t('inventory.form.clear')}
         </button>
 
         {/* Batch Mode — only on new items */}
@@ -1467,7 +1443,7 @@ function InventoryFormModal({
               display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap',
             }}
           >
-            📦 {es ? 'Lote' : 'Batch Mode'}
+            📦 {t('inventory.form.batchModeBtn')}
           </button>
         )}
 
@@ -1479,19 +1455,17 @@ function InventoryFormModal({
           style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
         >
           {isEdit ? (
-            <>{es ? '💾 Guardar' : '💾 Save'}</>
+            <>{t('inventory.form.save')}</>
           ) : (
-            <>✓ {batchMode ? `${es ? 'Agregar' : 'Add'} ${batchCount}` : (es ? 'Agregar Artículo' : 'Add Item')}</>
+            <>✓ {batchMode ? `${t('inventory.add')} ${batchCount}` : t('inventory.addItem')}</>
           )}
         </button>
       </div>
     </Modal>
     <ConfirmDialog
       open={zeroPriceConfirm}
-      title={es ? 'Precio $0' : 'Zero Price'}
-      message={es
-        ? '⚠️ El precio es $0. ¿Guardar de todas formas? El artículo será gratis en el carrito.'
-        : '⚠️ Price is $0. Save anyway? Item will be free in the cart.'}
+      title={t('inventory.form.zeroPriceTitle')}
+      message={t('inventory.form.zeroPriceMsg')}
       variant="warning"
       onConfirm={() => { setZeroPriceConfirm(false); doSubmit(); }}
       onCancel={() => setZeroPriceConfirm(false)}
