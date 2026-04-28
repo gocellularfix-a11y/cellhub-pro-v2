@@ -7,6 +7,7 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { Modal, SearchInput, AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { normalizePhone } from '@/utils/normalize';
@@ -59,6 +60,7 @@ export default function UnlockModule() {
   } = useApp();
 
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
   const L = getLabels(lang);
@@ -114,8 +116,8 @@ export default function UnlockModule() {
         All: L.all, Received: L.received, Processing: L.processing,
         'Code Received': L.codeReceived || 'Code Received',
         Completed: L.completed, Cancelled: L.cancelled, Failed: L.failed || 'Failed',
-        'Refund Pending': lang === 'es' ? 'Reembolso Pendiente' : 'Refund Pending',
-        'Refunded': lang === 'es' ? 'Reembolsado' : 'Refunded',
+        'Refund Pending': t('unlocks.status.refundPending'),
+        'Refunded': t('unlocks.status.refunded'),
       };
       return map[s] || s;
     }, [L],
@@ -252,7 +254,7 @@ export default function UnlockModule() {
     const split = reverseTaxFromPayment(combinedCents, taxRate, isTaxable);
     const consolidatedItem: CartItem = {
       id: generateId(),
-      name: `${device} — ${lang === 'es' ? 'Desbloqueo' : 'Unlock'}`,
+      name: `${device} — ${t('unlocks.cartItemName')}`,
       category: 'service',
       price: split.baseCents,
       qty: 1,
@@ -283,12 +285,11 @@ export default function UnlockModule() {
     const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
-    const es = lang === 'es';
     const fmt = (v: unknown) => v == null ? '' : String(v);
     const money = (cents: unknown) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
-    const typeLabel = (t?: string) => {
-      if (!t) return '';
-      return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[t] || t;
+    const typeLabel = (tp?: string) => {
+      if (!tp) return '';
+      return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[tp] || tp;
     };
 
     const corrected = !!displayOverride?.corrected;
@@ -298,7 +299,7 @@ export default function UnlockModule() {
       const prior = snap[field];
       const current = (unlock as any)[field];
       if (prior == null || prior === '' || prior === current) return '';
-      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      if (typeof prior === 'number') return t('unlocks.print.previously', money(prior));
       return '';
     };
 
@@ -309,37 +310,37 @@ export default function UnlockModule() {
     if (storePhone) lines.push(storePhone);
     lines.push('----------------------------------------');
     if (corrected) {
-      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
-      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push(t('unlocks.print.correctedReceipt'));
+      lines.push(`${t('unlocks.print.correctedLabel')}: ${new Date().toLocaleString()}`);
       lines.push('----------------------------------------');
     }
     lines.push(`UNLOCK TICKET: ${ticketNum}`);
     lines.push(`STATUS: ${fmt(unlock.status)}`);
-    lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
+    lines.push(`${t('unlocks.print.date')}: ${new Date().toLocaleString()}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'CLIENTE' : 'CUSTOMER'}: ${fmt(unlock.customerName)}`);
-    if (unlock.customerPhone) lines.push(`${es ? 'TEL' : 'PHONE'}: ${fmt(unlock.customerPhone)}`);
+    lines.push(`${t('unlocks.print.customer')}: ${fmt(unlock.customerName)}`);
+    if (unlock.customerPhone) lines.push(`${t('unlocks.print.phone')}: ${fmt(unlock.customerPhone)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'DISPOSITIVO' : 'DEVICE'}: ${fmt(unlock.device)}`);
+    lines.push(`${t('unlocks.print.device')}: ${fmt(unlock.device)}`);
     if (unlock.carrier) lines.push(`CARRIER: ${fmt(unlock.carrier)}`);
     if (unlock.imei) lines.push(`IMEI: ${fmt(unlock.imei)}`);
     if (unlock.unlockType) lines.push(`TYPE: ${typeLabel(unlock.unlockType as string)}`);
     if (unlock.supplier) lines.push(`SUPPLIER: ${fmt(unlock.supplier)}`);
     if (unlock.unlockCode) lines.push(`CODE: ${fmt(unlock.unlockCode)}`);
     lines.push('----------------------------------------');
-    if (unlock.orderDate) lines.push(`ORDERED: ${fmt(unlock.orderDate)}`);
-    if (unlock.completionDate) lines.push(`COMPLETED: ${fmt(unlock.completionDate)}`);
+    if (unlock.orderDate) lines.push(`${t('unlocks.print.ordered')}: ${fmt(unlock.orderDate)}`);
+    if (unlock.completionDate) lines.push(`${t('unlocks.print.completed')}: ${fmt(unlock.completionDate)}`);
     lines.push('----------------------------------------');
     lines.push(`PRICE: ${money(unlock.price || 0)}${previously('price')}`);
     lines.push(`DEPOSIT: ${money(unlock.depositAmount || 0)}${previously('depositAmount')}`);
     lines.push(`BALANCE: ${money(unlock.balance || 0)}${previously('balance')}`);
     // R-EDIT-AUDIT F4.5: show refund owed on corrected receipt when reason='refund'.
     if (corrected && ((unlock as any).refundOwedAmount || 0) > 0) {
-      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money((unlock as any).refundOwedAmount)}`);
+      lines.push(`${t('unlocks.print.refundOwed')}: ${money((unlock as any).refundOwedAmount)}`);
     }
     lines.push('----------------------------------------');
     if (unlock.notes) {
-      lines.push('NOTES:');
+      lines.push(t('unlocks.print.notes'));
       lines.push(fmt(unlock.notes));
     }
     const content = lines.filter(Boolean).join('\n');
@@ -427,13 +428,13 @@ export default function UnlockModule() {
       sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
     };
     if (checkEditHistoryStatus(updated.editHistory) === 'full') {
-      toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+      toast(t('unlocks.errHistoryFullShort'), 'error');
       setIsSaving(false);
       return;
     }
     const newHistory = appendEditEntry(updated.editHistory, entry);
     if (newHistory === null) {
-      toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+      toast(t('unlocks.errHistoryFullShort'), 'error');
       setIsSaving(false);
       return;
     }
@@ -451,10 +452,7 @@ export default function UnlockModule() {
       });
     }
 
-    toast(
-      lang === 'es' ? 'Ticket actualizado con registro de auditoría.' : 'Ticket updated with audit trail.',
-      'success',
-    );
+    toast(t('unlocks.ticketUpdatedAudit'), 'success');
     handleClose();
   };
 
@@ -476,17 +474,17 @@ export default function UnlockModule() {
     const lastName  = (form.lastName  as string || '').trim();
     const customerName = `${firstName} ${lastName}`.trim();
     if (!customerName) {
-      toast(lang === 'es' ? 'Nombre del cliente requerido' : 'Customer name required', 'error');
+      toast(t('unlocks.errCustomerNameRequired'), 'error');
       setIsSaving(false);
       return;
     }
     if (!form.customerPhone?.trim()) {
-      toast(lang === 'es' ? 'Teléfono requerido' : 'Phone required', 'error');
+      toast(t('unlocks.errPhoneRequired'), 'error');
       setIsSaving(false);
       return;
     }
     if (!form.device?.trim()) {
-      toast(lang === 'es' ? 'Dispositivo requerido' : 'Device required', 'error');
+      toast(t('unlocks.errDeviceRequired'), 'error');
       setIsSaving(false);
       return;
     }
@@ -503,7 +501,7 @@ export default function UnlockModule() {
     const balance = _t.balanceCents;
 
     if (depositCents > _t.totalWithTaxCents + 1) {
-      toast(lang === 'es' ? 'El depósito no puede exceder el total' : 'Deposit cannot exceed total', 'error');
+      toast(t('unlocks.errDepositExceedsTotal'), 'error');
       setIsSaving(false);
       return;
     }
@@ -516,12 +514,7 @@ export default function UnlockModule() {
       const existing = customers.find((c) => normalizePhone(c.phone) === phone);
       if (existing) {
         if (existing.name.toLowerCase() !== customerName.toLowerCase()) {
-          toast(
-            lang === 'es'
-              ? `Cliente existente encontrado: ${existing.name}`
-              : `Existing customer found: ${existing.name}`,
-            'info',
-          );
+          toast(t('unlocks.existingCustomerFound', existing.name), 'info');
         }
       } else if (customerName) {
         const newCust: Customer = {
@@ -567,45 +560,29 @@ export default function UnlockModule() {
       if (isLocked) {
         const fresh = unlocksRef.current.find((u) => u.id === editUnlock.id);
         if (!fresh) {
-          toast(lang === 'es' ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+          toast(t('unlocks.errTicketDeletedExternal'), 'error');
           handleClose();
           return;
         }
         const freshNorm = normalizeStatus(fresh.status);
         if (freshNorm === 'cancelled' || freshNorm === 'refunded') {
-          toast(
-            lang === 'es' ? 'Ticket cancelado/reembolsado. No se puede editar.' : 'Ticket cancelled/refunded. Cannot edit.',
-            'error',
-          );
+          toast(t('unlocks.errTicketCancelledRefunded'), 'error');
           handleClose();
           return;
         }
         if (fresh.updatedAt && editUnlock.updatedAt && String(fresh.updatedAt) !== String(editUnlock.updatedAt)) {
-          toast(
-            lang === 'es'
-              ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
-              : 'Ticket modified on another station. Reload and try again.',
-            'error',
-          );
+          toast(t('unlocks.errTicketModifiedOtherStation'), 'error');
           handleClose();
           return;
         }
         const historyStatus = checkEditHistoryStatus(fresh.editHistory);
         if (historyStatus === 'full') {
-          toast(
-            lang === 'es' ? 'Historial de ediciones lleno (100). Contacta al administrador.' : 'Edit history full (100). Contact admin.',
-            'error',
-          );
+          toast(t('unlocks.errHistoryFull'), 'error');
           setIsSaving(false);
           return;
         }
         if (historyStatus === 'warning') {
-          toast(
-            lang === 'es'
-              ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
-              : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
-            'warning',
-          );
+          toast(t('unlocks.warningHistoryStatus', fresh.editHistory?.length || 0), 'warning');
         }
 
         // Build reference (fresh entity, cents) + current (form → cents) for diff.
@@ -719,21 +696,16 @@ export default function UnlockModule() {
           }
         }
 
-        toast(
-          lang === 'es'
-            ? `Desbloqueo creado. Depósito ${formatCurrency(depositCents)} agregado al carrito.`
-            : `Unlock created. Deposit ${formatCurrency(depositCents)} added to cart.`,
-          'info',
-        );
+        toast(t('unlocks.unlockCreatedDepositCart', formatCurrency(depositCents)), 'info');
       } else {
-        toast(L.unlockCreated || 'Unlock created!', 'success');
+        toast(t('unlocks.unlockCreated'), 'success');
       }
     }
 
     setShowModal(false);
     setEditUnlock(null);
     setIsSaving(false);
-  }, [form, editUnlock, customers, settings, currentEmployee, lang, L,
+  }, [form, editUnlock, customers, settings, currentEmployee, lang, L, t,
       setUnlocks, setCustomers, setCart, toast, consolidateCartForUnlock, dispatch,
       // R-EDIT-AUDIT F4.3: audit deps — isLocked + isSaving guard reads, applyAuditSave closure.
       isLocked, isSaving]);
@@ -762,13 +734,8 @@ export default function UnlockModule() {
       }
     }
 
-    toast(
-      lang === 'es'
-        ? `$${(combinedCents / 100).toFixed(2)} en carrito para este desbloqueo`
-        : `$${(combinedCents / 100).toFixed(2)} in cart for this unlock`,
-      'info',
-    );
-  }, [consolidateCartForUnlock, dispatch, lang, toast]);
+    toast(t('unlocks.inCartForUnlock', `$${(combinedCents / 100).toFixed(2)}`), 'info');
+  }, [consolidateCartForUnlock, dispatch, lang, t, toast]);
 
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
@@ -802,12 +769,7 @@ export default function UnlockModule() {
         setCustomers(nextCustomers);
         persist.customer(updatedCustomer.id, updatedCustomer as unknown as Record<string, unknown>);
       } else {
-        toast(
-          lang === 'es'
-            ? '⚠️ No se identificó al cliente. Aplica crédito manualmente.'
-            : '⚠️ Customer not matched. Apply credit manually.',
-          'warning',
-        );
+        toast(t('unlocks.customerNotMatched'), 'warning');
       }
     } else if (choice.method === 'cash' && depositCents > 0) {
       // R9-1: mark original sale(s) containing this unlock as refunded.
@@ -836,7 +798,7 @@ export default function UnlockModule() {
         customerPhone: unlock.customerPhone,
         items: [{
           id: generateId(),
-          name: `${unlock.device || 'Unlock'} — ${lang === 'es' ? 'Reembolso cancelación' : 'Cancellation refund'}`,
+          name: `${unlock.device || t('unlocks.cartItemName')} — ${t('unlocks.cancelRefundName')}`,
           category: 'service' as any,
           price: -depositCents,
           qty: 1,
@@ -883,18 +845,15 @@ export default function UnlockModule() {
     setUnlocks(nextUnlocks);
     persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
 
+    const amt = `$${(depositCents / 100).toFixed(2)}`;
     const msg = {
-      store_credit: lang === 'es'
-        ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} store credit added.`,
-      cash: lang === 'es'
-        ? `Cancelado. Reembolso $${(depositCents/100).toFixed(2)} registrado.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} cash refund recorded.`,
-      forfeit: lang === 'es' ? 'Cancelado. Depósito retenido.' : 'Cancelled. Deposit forfeited.',
+      store_credit: t('unlocks.cancelledStoreCreditAdded', amt),
+      cash: t('unlocks.cancelledCashRefundRecorded', amt),
+      forfeit: t('unlocks.cancelledForfeited'),
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, setCustomers, setUnlocks, setSales, currentEmployee, toast]);
+  }, [lang, t, setCustomers, setUnlocks, setSales, currentEmployee, toast]);
 
   const handleComplete = useCallback((unlock: Unlock) => {
     const balance = unlock.balance || 0;
@@ -906,11 +865,11 @@ export default function UnlockModule() {
       unlocksRef.current = next;
       setUnlocks(next);
       persist.unlock(updated.id, updated as unknown as Record<string, unknown>);
-      toast(lang === 'es' ? 'Desbloqueo completado' : 'Unlock completed', 'success');
+      toast(t('unlocks.unlockCompleted'), 'success');
       return;
     }
     setCompleteConfirm(unlock);
-  }, [setUnlocks, toast, lang]);
+  }, [setUnlocks, t, toast, lang]);
 
   const handleCompleteConfirmed = useCallback(() => {
     const unlock = completeConfirm;
@@ -950,11 +909,11 @@ export default function UnlockModule() {
     setCompleteConfirm(null);
     toast(
       (unlock.balance || 0) > 0
-        ? (lang === 'es' ? 'Balance agregado al carrito. Ve a POS.' : 'Balance added to cart. Go to POS.')
-        : (lang === 'es' ? 'Desbloqueo completado' : 'Unlock completed'),
+        ? t('unlocks.balanceAddedGoToPOS')
+        : t('unlocks.unlockCompleted'),
       'success',
     );
-  }, [completeConfirm, consolidateCartForUnlock, setUnlocks, dispatch, settings, toast, lang]);
+  }, [completeConfirm, consolidateCartForUnlock, setUnlocks, dispatch, settings, t, toast, lang]);
 
   // R-COMMS-SMS-HARD-DISABLE: handleSMSButton callback removed.
   // TicketCard onWhatsApp prop is the live manual comm path.
@@ -964,12 +923,7 @@ export default function UnlockModule() {
 
     const hasPendingCart = cartRef.current.some((item) => item.unlockId === deleteConfirm.id);
     if (hasPendingCart) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar: hay items en el carrito.'
-          : 'Cannot delete: has cart items.',
-        'error',
-      );
+      toast(t('unlocks.cantDeleteCartItems'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -977,12 +931,7 @@ export default function UnlockModule() {
     const hasDeposit = (deleteConfirm.depositAmount || 0) > 0;
     const isCompleted = ['Completed', 'Code Received'].includes(deleteConfirm.status);
     if (hasDeposit || isCompleted) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar desbloqueos pagados o completados. Usa "Cancelar".'
-          : 'Cannot delete paid or completed unlocks. Use "Cancel".',
-        'error',
-      );
+      toast(t('unlocks.cantDeletePaidCompleted'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -992,8 +941,8 @@ export default function UnlockModule() {
     setUnlocks(next);
     remove.unlock(deleteConfirm.id);
     setDeleteConfirm(null);
-    toast(lang === 'es' ? 'Desbloqueo eliminado' : 'Unlock deleted', 'success');
-  }, [deleteConfirm, setUnlocks, toast, lang]);
+    toast(t('unlocks.unlockDeleted'), 'success');
+  }, [deleteConfirm, setUnlocks, t, toast, lang]);
 
   // ── Print 4x6 thermal ticket ─────────────────────────────
   const printTicket = useCallback(() => {
@@ -1005,9 +954,9 @@ export default function UnlockModule() {
     const customerName = `${firstName} ${lastName}`.trim() || form.customerName || '';
     const fmt = (v: unknown) => v == null ? '' : String(v);
     const money = (v: number) => `$${(v / 100).toFixed(2)}`;
-    const typeLabel = (t?: string) => {
-      if (!t) return '';
-      return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[t] || t;
+    const typeLabel = (tp?: string) => {
+      if (!tp) return '';
+      return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[tp] || tp;
     };
     const ticketNum = editUnlock ? editUnlock.id.slice(-8).toUpperCase() : 'NEW';
     const lines = [
@@ -1015,26 +964,26 @@ export default function UnlockModule() {
       storePhone, '----------------------------------------',
       `UNLOCK TICKET: ${ticketNum}`,
       `STATUS: ${fmt(form.status)}`,
-      `DATE: ${new Date().toLocaleString()}`,
+      `${t('unlocks.print.date')}: ${new Date().toLocaleString()}`,
       '----------------------------------------',
-      `CUSTOMER: ${customerName}`,
-      form.customerPhone ? `PHONE: ${fmt(form.customerPhone)}` : '',
+      `${t('unlocks.print.customer')}: ${customerName}`,
+      form.customerPhone ? `${t('unlocks.print.phone')}: ${fmt(form.customerPhone)}` : '',
       '----------------------------------------',
-      `DEVICE: ${fmt(form.device)}`,
+      `${t('unlocks.print.device')}: ${fmt(form.device)}`,
       `CARRIER: ${fmt(form.carrier)}`,
       form.imei ? `IMEI: ${fmt(form.imei)}` : '',
       form.unlockType ? `TYPE: ${typeLabel(form.unlockType as string)}` : '',
       form.supplier ? `SUPPLIER: ${fmt(form.supplier)}` : '',
       form.unlockCode ? `CODE: ${fmt(form.unlockCode)}` : '',
       '----------------------------------------',
-      form.orderDate ? `ORDERED: ${fmt(form.orderDate)}` : '',
-      form.completionDate ? `COMPLETED: ${fmt(form.completionDate)}` : '',
+      form.orderDate ? `${t('unlocks.print.ordered')}: ${fmt(form.orderDate)}` : '',
+      form.completionDate ? `${t('unlocks.print.completed')}: ${fmt(form.completionDate)}` : '',
       '----------------------------------------',
       `PRICE: ${money(Math.round((form.price || 0) * 100))}`,
       `DEPOSIT: ${money(Math.round((form.depositAmount || 0) * 100))}`,
       `BALANCE: ${money(Math.max(0, Math.round(((form.price || 0) - (form.depositAmount || 0)) * 100)))}`,
       '----------------------------------------',
-      form.notes ? 'NOTES:' : '',
+      form.notes ? t('unlocks.print.notes') : '',
       form.notes ? fmt(form.notes) : '',
     ].filter(Boolean);
     const content = lines.join('\n');
@@ -1060,7 +1009,7 @@ export default function UnlockModule() {
             localValue={search}
             onLocalChange={(s) => { setSearch(s); setVisibleCount(50); }}
             excludeCollection="unlocks"
-            placeholder={lang === 'es' ? 'Buscar cliente, dispositivo, IMEI, operador…' : 'Search customer, device, IMEI, carrier…'}
+            placeholder={t('unlocks.searchPlaceholder')}
           />
         }
         stats={[
@@ -1103,14 +1052,14 @@ export default function UnlockModule() {
               onComplete={() => handleComplete(u)}
               completeLabel={
                 u.status === 'Cancelled'
-                  ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
+                  ? t('unlocks.cancelledLabel')
                   : u.status === 'Completed'
-                  ? (lang === 'es' ? '✓ Completado' : '✓ Completed')
+                  ? t('unlocks.completedLabel')
                   : u.status === 'Code Received'
-                  ? (lang === 'es' ? 'Código Recibido' : 'Code Received')
+                  ? t('unlocks.codeReceivedLabel')
                   : (u.balance || 0) > 0
-                  ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(u.balance)}` : `Complete / Collect ${formatCurrency(u.balance)}`)
-                  : (lang === 'es' ? 'Marcar completado' : 'Mark completed')
+                  ? t('unlocks.completeCollect', formatCurrency(u.balance))
+                  : t('unlocks.markCompleted')
               }
               completeDisabled={['Cancelled', 'Completed', 'Refunded'].includes(u.status)}
               completeVariant={u.status === 'Completed' ? 'green' : 'amber'}
@@ -1141,7 +1090,7 @@ export default function UnlockModule() {
                         background: 'rgba(251, 191, 36, 0.15)',
                         color: '#fbbf24',
                       }}
-                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                      title={t('unlocks.viewEditHistory')}
                     >
                       🕐 {u.editHistory.length}
                     </span>
@@ -1165,7 +1114,7 @@ export default function UnlockModule() {
                         fontWeight: 600,
                       }}
                     >
-                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                      {t('unlocks.markRefunded')}
                     </button>
                   )}
                 </>
@@ -1197,9 +1146,7 @@ export default function UnlockModule() {
                 onClick={() => setVisibleCount((n) => n + 50)}
                 className="btn btn-secondary btn-sm"
               >
-                {lang === 'es'
-                  ? `Mostrar más (${filtered.length - visibleCount} restantes)`
-                  : `Show more (${filtered.length - visibleCount} remaining)`}
+                {t('unlocks.showMore', filtered.length - visibleCount)}
               </button>
             </div>
           )}
@@ -1209,7 +1156,7 @@ export default function UnlockModule() {
       <Modal
         open={showModal}
         onClose={handleClose}
-        title={`🔓 ${editUnlock ? 'Edit Unlock' : 'New Unlock'}`}
+        title={t(editUnlock ? 'unlocks.modalTitleEdit' : 'unlocks.modalTitleNew')}
         size="max-w-lg"
       >
         <div className="space-y-3">
@@ -1226,11 +1173,7 @@ export default function UnlockModule() {
               fontSize: '0.85rem',
             }}>
               <span>⚠️</span>
-              <span>
-                {lang === 'es'
-                  ? 'Editando ticket completado. Los cambios se registrarán.'
-                  : 'Editing completed ticket. Changes will be logged.'}
-              </span>
+              <span>{t('unlocks.editingCompletedBanner')}</span>
             </div>
           )}
 
@@ -1254,7 +1197,7 @@ export default function UnlockModule() {
           >
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Nombre *' : 'First Name *'}</label>
+                <label className="text-xs text-slate-400 block mb-1">{t('unlocks.firstNameLabel')}</label>
                 <AutocompleteInput
                   value={(form.firstName as string) || ''}
                   onChange={(val) => setForm({ ...form, firstName: val })}
@@ -1264,12 +1207,12 @@ export default function UnlockModule() {
                       customerPhone: (opt.data as Customer)?.phone || form.customerPhone || '' });
                   }}
                   options={firstNameOptions}
-                  placeholder={lang === 'es' ? 'Jorge' : 'John'}
+                  placeholder={t('unlocks.firstNamePlaceholder')}
                   maxResults={6}
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Apellido' : 'Last Name'}</label>
+                <label className="text-xs text-slate-400 block mb-1">{t('unlocks.lastNameLabel')}</label>
                 <AutocompleteInput
                   value={(form.lastName as string) || ''}
                   onChange={(val) => setForm({ ...form, lastName: val })}
@@ -1279,7 +1222,7 @@ export default function UnlockModule() {
                       customerPhone: (opt.data as Customer)?.phone || form.customerPhone || '' });
                   }}
                   options={lastNameOptions}
-                  placeholder={lang === 'es' ? 'Ochoa' : 'Doe'}
+                  placeholder={t('unlocks.lastNamePlaceholder')}
                   maxResults={6}
                 />
               </div>
@@ -1359,7 +1302,7 @@ export default function UnlockModule() {
                   <span
                     onClick={pin.requestUnlock}
                     style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
-                    title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                    title={t('unlocks.unlockWithPin')}
                   >🔒</span>
                 )}
               </div>
@@ -1384,7 +1327,7 @@ export default function UnlockModule() {
                   <span
                     onClick={pin.requestUnlock}
                     style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
-                    title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                    title={t('unlocks.unlockWithPin')}
                   >🔒</span>
                 )}
               </div>
@@ -1409,7 +1352,7 @@ export default function UnlockModule() {
               </div>
               {editUnlock && (
                 <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  {lang === 'es' ? 'Depósito bloqueado — se cobra solo vía POS' : 'Deposit locked — collected via POS'}
+                  {t('unlocks.depositLockedMsg')}
                 </p>
               )}
             </div>
@@ -1418,7 +1361,7 @@ export default function UnlockModule() {
           {/* Unlock type + supplier */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Tipo de desbloqueo' : 'Unlock Type'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('unlocks.unlockTypeLabel')}</label>
               <select
                 value={form.unlockType || ''}
                 onChange={(e) => setForm({ ...form, unlockType: e.target.value as UnlockType })}
@@ -1432,7 +1375,7 @@ export default function UnlockModule() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Proveedor' : 'Supplier'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('supplier')}</label>
               <input
                 value={form.supplier || ''}
                 onChange={(e) => setForm({ ...form, supplier: e.target.value })}
@@ -1445,8 +1388,8 @@ export default function UnlockModule() {
           {/* Unlock code */}
           <div>
             <label className="text-xs text-slate-400 block mb-1">
-              {lang === 'es' ? 'Código de desbloqueo' : 'Unlock Code'}
-              <span className="text-slate-500 ml-1">({lang === 'es' ? 'del proveedor' : 'from supplier'})</span>
+              {t('unlockCode')}
+              <span className="text-slate-500 ml-1">{t('unlocks.unlockCodeFromSupplier')}</span>
             </label>
             <input
               value={form.unlockCode || ''}
@@ -1460,7 +1403,7 @@ export default function UnlockModule() {
           {/* Dates + status */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Fecha de orden' : 'Order Date'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('unlocks.orderDateLabel')}</label>
               <input
                 type="date"
                 value={form.orderDate || ''}
@@ -1469,7 +1412,7 @@ export default function UnlockModule() {
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Fecha completado' : 'Completion Date'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('unlocks.completionDateLabel')}</label>
               <input
                 type="date"
                 value={form.completionDate || ''}
@@ -1504,17 +1447,17 @@ export default function UnlockModule() {
             />
             <label htmlFor="unlock-taxable" style={{ fontSize: '0.82rem', color: '#cbd5e1', cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}>
               {isLocked && !pin.editUnlocked && '🔒 '}
-              {lang === 'es' ? `Aplicar impuesto (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)` : `Apply tax (${((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%)`}
+              {t('unlocks.applyTaxLabel', ((settings.taxRate ?? 0.0925) * 100).toFixed(2))}
             </label>
             {isLocked && !pin.editUnlocked ? (
               <span
                 onClick={pin.requestUnlock}
                 style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
-                title={lang === 'es' ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                title={t('unlocks.unlockWithPin')}
               >🔒</span>
             ) : (
               <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto' }}>
-                {lang === 'es' ? 'Por defecto OFF' : 'Default OFF'}
+                {t('unlocks.defaultOff')}
               </span>
             )}
           </div>
@@ -1556,7 +1499,7 @@ export default function UnlockModule() {
         </div>
         {editUnlock && editUnlock.status === 'Completed' && (
           <div style={{ padding: '0.75rem', marginTop: '1rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '0.5rem', fontSize: '0.82rem', color: '#93c5fd' }}>
-            ℹ️ {lang === 'es' ? 'Desbloqueo completado. Para devoluciones, usa el módulo Returns.' : 'Unlock completed. For refunds, use the Returns module.'}
+            ℹ️ {t('unlocks.completedNote')}
           </div>
         )}
         <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
@@ -1570,13 +1513,13 @@ export default function UnlockModule() {
                 setCancelTarget(target);
               }}
               className="btn btn-danger flex-1"
-              title={lang === 'es' ? 'Cancelar desbloqueo y decidir sobre depósito' : 'Cancel unlock and resolve deposit'}
+              title={t('unlocks.cancelUnlockTitle')}
             >
-              ❌ {lang === 'es' ? 'Cancelar Desbloqueo' : 'Cancel Unlock'}
+              {t('unlocks.cancelUnlockBtn')}
             </button>
           )}
-          <button onClick={printTicket} className="btn btn-secondary flex-1" title={lang === 'es' ? 'Imprimir ticket 4x6' : 'Print 4x6 ticket'}>
-            🖨️ {lang === 'es' ? 'Imprimir' : 'Print'}
+          <button onClick={printTicket} className="btn btn-secondary flex-1" title={t('unlocks.print4x6Title')}>
+            🖨️ {t('print')}
           </button>
           <button onClick={handleSave} className="btn btn-primary flex-1">{editUnlock ? L.save : L.create}</button>
         </div>
@@ -1603,7 +1546,7 @@ export default function UnlockModule() {
       {/* COLLECT BALANCE MODAL */}
       {depositModalUnlock && (
         <DepositModal
-          title={lang === 'es' ? `Desbloqueo ${depositModalUnlock.id.slice(-8).toUpperCase()} — Cobrar` : `Unlock ${depositModalUnlock.id.slice(-8).toUpperCase()} — Collect`}
+          title={t('unlocks.depositModalCollect', depositModalUnlock.id.slice(-8).toUpperCase())}
           itemLabel={`${depositModalUnlock.device} (${depositModalUnlock.carrier}) — Unlock`}
           itemPrice={(depositModalUnlock.price || 0) / 100}
           taxRate={settings.taxRate ?? 0.0925}
@@ -1644,12 +1587,7 @@ export default function UnlockModule() {
               }
 
               setDepositModalUnlock(null);
-              toast(
-                lang === 'es'
-                  ? `$${(combinedCents / 100).toFixed(2)} en carrito`
-                  : `$${(combinedCents / 100).toFixed(2)} in cart`,
-                'success',
-              );
+              toast(t('unlocks.cartAdded', `$${(combinedCents / 100).toFixed(2)}`), 'success');
             } finally {
               setTimeout(() => setIsConsolidating(false), 100);
             }
@@ -1671,11 +1609,11 @@ export default function UnlockModule() {
       {deleteConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Eliminar desbloqueo' : 'Delete unlock'}
-          message={lang === 'es' ? '¿Eliminar este desbloqueo?' : 'Delete this unlock?'}
+          title={t('unlocks.deleteTitle')}
+          message={t('unlocks.deleteConfirm')}
           variant="danger"
-          confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('delete')}
+          cancelLabel={t('cancel')}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteConfirm(null)}
         />
@@ -1684,17 +1622,15 @@ export default function UnlockModule() {
       {completeConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Completar desbloqueo' : 'Complete unlock'}
+          title={t('unlocks.completeTitle')}
           message={
             (completeConfirm.balance || 0) > 0
-              ? (lang === 'es'
-                  ? `¿Marcar completado y cobrar saldo de ${formatCurrency(completeConfirm.balance)}?`
-                  : `Mark completed and collect balance of ${formatCurrency(completeConfirm.balance)}?`)
-              : (lang === 'es' ? '¿Marcar como completado?' : 'Mark as completed?')
+              ? t('unlocks.completeWithBalance', formatCurrency(completeConfirm.balance))
+              : t('unlocks.completeSimple')
           }
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Confirmar' : 'Confirm'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('confirm')}
+          cancelLabel={t('cancel')}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
         />
@@ -1715,7 +1651,7 @@ export default function UnlockModule() {
       {printChoiceTarget && (
         <Modal
           open
-          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          title={t('unlocks.printTicketTitle')}
           onClose={() => setPrintChoiceTarget(null)}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1730,7 +1666,7 @@ export default function UnlockModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+              {t('unlocks.printCurrentCorrected')}
             </button>
             <button
               className="btn btn-secondary"
@@ -1755,14 +1691,14 @@ export default function UnlockModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+              {t('unlocks.printOriginalPreEdits')}
             </button>
             <button
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => setPrintChoiceTarget(null)}
             >
-              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              {t('cancel')}
             </button>
           </div>
         </Modal>
@@ -1772,14 +1708,10 @@ export default function UnlockModule() {
       {refundConfirmTarget && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
-          message={
-            lang === 'es'
-              ? `¿Confirmar que el reembolso de $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
-              : `Confirm that the $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
-          }
-          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          title={t('unlocks.markRefundedTitle')}
+          message={t('unlocks.markRefundedConfirm', (((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2))}
+          confirmLabel={t('unlocks.yesRefunded')}
+          cancelLabel={t('cancel')}
           onConfirm={() => {
             const target = refundConfirmTarget;
             // F7-FIX-v2: double-refund guard.
@@ -1815,7 +1747,7 @@ export default function UnlockModule() {
                 customerPhone: updated.customerPhone || '',
                 items: [{
                   id: generateId(),
-                  name: `${updated.device || 'Unlock'} — ${lang === 'es' ? 'Reembolso post-edición' : 'Post-edit refund'}`,
+                  name: `${updated.device || t('unlocks.cartItemName')} — ${t('unlocks.postEditRefundName')}`,
                   category: 'service' as any,
                   price: -refundAmountCents,
                   qty: 1,
@@ -1841,10 +1773,7 @@ export default function UnlockModule() {
               persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
             }
 
-            toast(
-              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
-              'success',
-            );
+            toast(t('unlocks.refundMarkedSuccess'), 'success');
             setRefundConfirmTarget(null);
           }}
           onCancel={() => setRefundConfirmTarget(null)}

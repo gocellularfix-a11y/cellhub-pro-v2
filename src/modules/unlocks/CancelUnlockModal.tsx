@@ -2,6 +2,7 @@
 // Asks what to do with the deposit when cancelling an unlock that has one.
 import { useState } from 'react';
 import type { Unlock } from '@/store/types';
+import { useTranslation } from '@/i18n';
 
 interface CancelUnlockModalProps {
   unlock: Unlock;
@@ -19,14 +20,15 @@ export default function CancelUnlockModal({
   unlock,
   customerHasPhone,
   customerName,
-  lang,
+  lang: _lang,
   onConfirm,
   onClose,
 }: CancelUnlockModalProps) {
-  const es = lang === 'es';
+  void _lang; // vestigial — V3 cleanup
+  const { t } = useTranslation();
   const depositCents = unlock.depositAmount || 0;
   const depositDisplay = (depositCents / 100).toFixed(2);
-  const item = `${unlock.device || (es ? 'Dispositivo' : 'Device')}${unlock.carrier ? ` (${unlock.carrier})` : ''}`;
+  const item = `${unlock.device || t('device')}${unlock.carrier ? ` (${unlock.carrier})` : ''}`;
   const ticket = unlock.id?.slice(-6).toUpperCase() || 'N/A';
 
   const [method, setMethod] = useState<'store_credit' | 'cash' | 'forfeit'>('store_credit');
@@ -56,14 +58,14 @@ export default function CancelUnlockModal({
       }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem', color: '#f87171' }}>
-          ⚠️ {es ? 'Cancelar Desbloqueo' : 'Cancel Unlock'}
+          ⚠️ {t('unlocks.cancel.modalTitle')}
         </div>
 
         {/* Ticket Info */}
         <div style={{ background: '#0f172a', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
-          <div><strong>{es ? 'Desbloqueo' : 'Unlock'}:</strong> {ticket}</div>
-          <div><strong>{es ? 'Cliente' : 'Customer'}:</strong> {customerName}</div>
-          <div><strong>{es ? 'Dispositivo' : 'Device'}:</strong> {item}</div>
+          <div><strong>{t('quickServicePanel.service.unlock')}:</strong> {ticket}</div>
+          <div><strong>{t('customer')}:</strong> {customerName}</div>
+          <div><strong>{t('device')}:</strong> {item}</div>
         </div>
 
         {/* Deposit Display */}
@@ -78,12 +80,12 @@ export default function CancelUnlockModal({
           color: '#fbbf24',
           textAlign: 'center',
         }}>
-          {es ? 'Depósito cobrado' : 'Deposit paid'}: ${depositDisplay}
+          {t('unlocks.cancel.depositPaid', depositDisplay)}
         </div>
 
         {/* Question */}
         <div style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#cbd5e1' }}>
-          {es ? '¿Qué hacemos con el depósito?' : 'What happens to the deposit?'}
+          {t('unlocks.cancel.depositQuestion')}
         </div>
 
         {/* Options */}
@@ -102,9 +104,9 @@ export default function CancelUnlockModal({
               cursor: customerHasPhone ? 'pointer' : 'not-allowed',
               opacity: customerHasPhone ? 1 : 0.6,
             }}>
-            <div style={{ fontWeight: 600 }}>💳 {es ? 'Crédito de tienda' : 'Store Credit'}</div>
+            <div style={{ fontWeight: 600 }}>{t('unlocks.cancel.storeCredit')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              ${depositDisplay} — {es ? 'Cliente puede usarlo en futura compra' : 'Customer can use on future purchase'}
+              {t('unlocks.cancel.storeCreditDesc', depositDisplay)}
             </div>
           </button>
 
@@ -120,9 +122,9 @@ export default function CancelUnlockModal({
               textAlign: 'left',
               cursor: 'pointer',
             }}>
-            <div style={{ fontWeight: 600 }}>💵 {es ? 'Reembolso en efectivo' : 'Cash Refund'}</div>
+            <div style={{ fontWeight: 600 }}>{t('unlocks.cancel.cashRefund')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              ${depositDisplay} — {es ? 'Crea venta anulada en reports' : 'Creates voided sale in reports'}
+              {t('unlocks.cancel.cashRefundDesc', depositDisplay)}
             </div>
           </button>
 
@@ -138,9 +140,9 @@ export default function CancelUnlockModal({
               textAlign: 'left',
               cursor: 'pointer',
             }}>
-            <div style={{ fontWeight: 600 }}>💰 {es ? 'Quedarse con depósito' : 'Keep deposit (forfeit)'}</div>
+            <div style={{ fontWeight: 600 }}>{t('unlocks.cancel.forfeit')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              {es ? 'Requiere motivo por escrito' : 'Requires written reason'}
+              {t('unlocks.cancel.forfeitDesc')}
             </div>
           </button>
         </div>
@@ -151,7 +153,7 @@ export default function CancelUnlockModal({
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={es ? 'Motivo (requerido, min 10 caracteres)...' : 'Reason (required, min 10 chars)...'}
+              placeholder={t('unlocks.cancel.reasonPlaceholder')}
               style={{
                 width: '100%',
                 minHeight: '80px',
@@ -166,7 +168,7 @@ export default function CancelUnlockModal({
               }}
             />
             <div style={{ fontSize: '0.7rem', color: note.trim().length >= 10 ? '#22c55e' : '#f87171', marginTop: '0.25rem' }}>
-              {note.trim().length}/10 {es ? 'caracteres mínimos' : 'chars min'}
+              {t('unlocks.cancel.charsMin', note.trim().length)}
             </div>
           </div>
         )}
@@ -178,7 +180,7 @@ export default function CancelUnlockModal({
             className="btn btn-secondary btn-sm"
             onClick={onClose}
             style={{ padding: '0.5rem 1rem' }}>
-            {es ? 'Nunca mind' : 'Never mind'}
+            {t('unlocks.cancel.nevermind')}
           </button>
           <button
             type="button"
@@ -190,7 +192,7 @@ export default function CancelUnlockModal({
               opacity: isValid ? 1 : 0.5,
               cursor: isValid ? 'pointer' : 'not-allowed',
             }}>
-            {es ? 'Confirmar' : 'Confirm'}
+            {t('confirm')}
           </button>
         </div>
       </div>
