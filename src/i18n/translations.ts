@@ -1966,4 +1966,210 @@ export const translations: TranslationDictionary = {
   // Form placeholder examples
   'unlocks.firstNamePlaceholder': { en: 'John', es: 'Jorge', pt: 'João' },
   'unlocks.lastNamePlaceholder': { en: 'Doe', es: 'Ochoa', pt: 'Silva' },
+
+  // ── Special Orders module ─────────────────────────────────
+  // Status labels
+  'so.status.ordered':   { en: 'Ordered',    es: 'Ordenado',    pt: 'Encomendado' },
+  'so.status.inTransit': { en: 'In Transit',  es: 'En Tránsito', pt: 'Em Trânsito' },
+  'so.status.received':  { en: 'Received',    es: 'Recibido',    pt: 'Recebido' },
+  'so.status.ready':     { en: 'Ready',       es: 'Listo',       pt: 'Pronto' },
+  'so.status.pickedUp':  { en: 'Picked Up',   es: 'Entregado',   pt: 'Retirado' },
+
+  // Cart / sale item names
+  'so.cartItemName':       { en: 'Special Order',        es: 'Pedido Especial',          pt: 'Pedido Especial' },
+  'so.cancelRefundName':   { en: 'Cancellation refund',  es: 'Reembolso cancelación',     pt: 'Reembolso de cancelamento' },
+  'so.postEditRefundName': { en: 'Post-edit refund',     es: 'Reembolso post-edición',    pt: 'Reembolso pós-edição' },
+
+  // Toasts
+  'so.errorPhoneDigits': { en: 'Phone must be 10 digits', es: 'Teléfono debe ser 10 dígitos', pt: 'Telefone deve ter 10 dígitos' },
+  'so.createdWithDeposit': {
+    en: (amt: string) => `Special order created. Deposit ${amt} added to cart.`,
+    es: (amt: string) => `Pedido creado. Depósito ${amt} agregado al carrito.`,
+    pt: (amt: string) => `Pedido criado. Depósito ${amt} adicionado ao carrinho.`,
+  },
+  'so.editHistoryFull':   { en: 'Edit history full (100).',     es: 'Historial lleno (100).',             pt: 'Histórico cheio (100).' },
+  'so.orderCompleted':    { en: 'Order completed',               es: 'Pedido completado',                  pt: 'Pedido concluído' },
+  'so.balanceAddedToCart':{ en: 'Balance added to cart. Go to POS.', es: 'Balance agregado al carrito. Ve a POS.', pt: 'Saldo adicionado ao carrinho. Vá ao PDV.' },
+  'so.orderDeleted':      { en: 'Order deleted',                 es: 'Pedido eliminado',                   pt: 'Pedido excluído' },
+  'so.errorDeleteInCart': { en: 'Cannot delete: this order has items in cart. Clear the cart first.', es: 'No se puede eliminar: hay items de este pedido en el carrito. Limpia el carrito primero.', pt: 'Não é possível excluir: este pedido tem itens no carrinho. Limpe o carrinho primeiro.' },
+  'so.errorDeletePaid':   { en: 'Cannot delete paid or received orders. Use "Cancel" to refund.', es: 'No se puede eliminar pedidos pagados o recibidos. Usa "Cancelar" para reembolsar.', pt: 'Não é possível excluir pedidos pagos ou recebidos. Use "Cancelar" para reembolsar.' },
+  'so.refundProcessed':   { en: 'Refund marked as processed.',   es: 'Reembolso marcado como procesado.',   pt: 'Reembolso marcado como processado.' },
+  'so.depositInCart': {
+    en: (amt: string) => `$${amt} in cart for this order`,
+    es: (amt: string) => `$${amt} en carrito para este pedido`,
+    pt: (amt: string) => `$${amt} no carrinho para este pedido`,
+  },
+
+  // Cancel flow — toasts
+  'so.cancel.customerNotMatched': {
+    en: '⚠️ Customer not matched. Apply credit manually.',
+    es: '⚠️ No se identificó al cliente. Aplica crédito manualmente.',
+    pt: '⚠️ Cliente não identificado. Aplique crédito manualmente.',
+  },
+  'so.cancel.toastStoreCredit': {
+    en: (amt: string) => `Cancelled. $${amt} store credit added.`,
+    es: (amt: string) => `Cancelado. Crédito $${amt} agregado al cliente.`,
+    pt: (amt: string) => `Cancelado. Crédito $${amt} adicionado ao cliente.`,
+  },
+  'so.cancel.toastCash': {
+    en: (amt: string) => `Cancelled. $${amt} cash refund recorded.`,
+    es: (amt: string) => `Cancelado. Reembolso $${amt} registrado.`,
+    pt: (amt: string) => `Cancelado. Reembolso $${amt} registrado.`,
+  },
+  'so.cancel.toastForfeit': { en: 'Cancelled. Deposit forfeited.', es: 'Cancelado. Depósito retenido.', pt: 'Cancelado. Depósito retido.' },
+
+  // Search / UI badges / buttons
+  'so.searchPlaceholder': { en: 'Search customer, item, supplier…', es: 'Buscar cliente, artículo, proveedor…', pt: 'Buscar cliente, item, fornecedor…' },
+  'so.viewEditHistory':   { en: 'View edit history',       es: 'Ver historial de ediciones',   pt: 'Ver histórico de edições' },
+  'so.markRefunded':      { en: '✅ Mark Refunded',         es: '✅ Marcar Reembolsado',         pt: '✅ Marcar como Reembolsado' },
+  'so.showMore': {
+    en: (n: number) => `Show more (${n} remaining)`,
+    es: (n: number) => `Mostrar más (${n} restantes)`,
+    pt: (n: number) => `Mostrar mais (${n} restantes)`,
+  },
+
+  // TicketCard completeLabel variants
+  'so.labelCancelled':    { en: 'Cancelled',      es: 'Cancelado',       pt: 'Cancelado' },
+  'so.labelPickedUp':     { en: '✓ Picked up',    es: '✓ Entregado',     pt: '✓ Retirado' },
+  'so.labelCompleteCollect': {
+    en: (amt: string) => `Complete / Collect ${amt}`,
+    es: (amt: string) => `Completar / Cobrar ${amt}`,
+    pt: (amt: string) => `Concluir / Cobrar ${amt}`,
+  },
+  'so.labelMarkPickedUp': { en: 'Mark picked up', es: 'Marcar entregado', pt: 'Marcar como retirado' },
+
+  // DepositModal
+  'so.collectPaymentTitle': { en: 'Collect Special Order Payment', es: 'Cobrar Pedido Especial', pt: 'Cobrar Pedido Especial' },
+
+  // ConfirmDialogs
+  'so.confirmDelete.title':   { en: 'Delete order',                                      es: 'Eliminar pedido',                                       pt: 'Excluir pedido' },
+  'so.confirmDelete.message': { en: 'Delete this order? This cannot be undone.',          es: '¿Eliminar este pedido? Esta acción no se puede deshacer.', pt: 'Excluir este pedido? Esta ação não pode ser desfeita.' },
+  'so.confirmDelete.confirm': { en: 'Delete',                                             es: 'Eliminar',                                              pt: 'Excluir' },
+  'so.confirmComplete.title': { en: 'Complete order',                                     es: 'Completar pedido',                                      pt: 'Concluir pedido' },
+  'so.confirmComplete.message': {
+    en: (amt: string) => `Mark picked up and collect balance of ${amt}?`,
+    es: (amt: string) => `¿Marcar entregado y cobrar saldo de ${amt}?`,
+    pt: (amt: string) => `Marcar como retirado e cobrar saldo de ${amt}?`,
+  },
+  'so.confirmComplete.messageNoBalance': { en: 'Mark as picked up?', es: '¿Marcar como entregado?', pt: 'Marcar como retirado?' },
+
+  // Print choice dialog
+  'so.printTicket':   { en: 'Print Ticket',             es: 'Imprimir Ticket',             pt: 'Imprimir Ticket' },
+  'so.printCurrent':  { en: '📄 Current (corrected)',   es: '📄 Actual (corregido)',        pt: '📄 Atual (corrigido)' },
+  'so.printOriginal': { en: '📋 Original (pre-edits)',  es: '📋 Original (pre-ediciones)',  pt: '📋 Original (pré-edições)' },
+
+  // Refund confirm dialog
+  'so.confirmRefund.title': { en: 'Confirm Refund', es: 'Confirmar Reembolso', pt: 'Confirmar Reembolso' },
+  'so.confirmRefund.message': {
+    en: (amt: string) => `Confirm that the $${amt} refund was processed?`,
+    es: (amt: string) => `¿Confirmar que el reembolso de $${amt} fue procesado?`,
+    pt: (amt: string) => `Confirmar que o reembolso de $${amt} foi processado?`,
+  },
+  'so.confirmRefund.confirm': { en: 'Yes, Refunded', es: 'Sí, Reembolsado', pt: 'Sim, Reembolsado' },
+
+  // Print receipt labels (thermal)
+  'so.print.previously': {
+    en: (val: string) => ` (previously: ${val})`,
+    es: (val: string) => ` (antes: ${val})`,
+    pt: (val: string) => ` (antes: ${val})`,
+  },
+  'so.print.correctedReceipt': { en: '*** CORRECTED RECEIPT ***', es: '*** RECIBO CORREGIDO ***',  pt: '*** RECIBO CORRIGIDO ***' },
+  'so.print.corrected':        { en: 'CORRECTED',   es: 'CORREGIDO',     pt: 'CORRIGIDO' },
+  'so.print.title':            { en: 'SPECIAL ORDER', es: 'PEDIDO ESPECIAL', pt: 'PEDIDO ESPECIAL' },
+  'so.print.date':             { en: 'DATE',          es: 'FECHA',          pt: 'DATA' },
+  'so.print.customer':         { en: 'CUSTOMER',      es: 'CLIENTE',        pt: 'CLIENTE' },
+  'so.print.phone':            { en: 'PHONE',         es: 'TEL',            pt: 'TEL' },
+  'so.print.item':             { en: 'ITEM',          es: 'ARTÍCULO',       pt: 'ITEM' },
+  'so.print.supplier':         { en: 'SUPPLIER',      es: 'PROVEEDOR',      pt: 'FORNECEDOR' },
+  'so.print.estArrival':       { en: 'EST. ARRIVAL',  es: 'LLEGADA EST',    pt: 'CHEGADA EST.' },
+  'so.print.price':            { en: 'PRICE',         es: 'PRECIO',         pt: 'PREÇO' },
+  'so.print.deposit':          { en: 'DEPOSIT',       es: 'DEPÓSITO',       pt: 'DEPÓSITO' },
+  'so.print.balance':          { en: 'BALANCE',       es: 'BALANCE',        pt: 'SALDO' },
+  'so.print.refundOwed':       { en: 'REFUND OWED',   es: 'REEMBOLSO ADEUDADO', pt: 'REEMBOLSO DEVIDO' },
+  'so.print.notes':            { en: 'NOTES',         es: 'NOTAS',          pt: 'NOTAS' },
+
+  // CancelSpecialOrderModal
+  'so.cancel.modalTitle':    { en: 'Cancel Special Order',         es: 'Cancelar Pedido Especial',        pt: 'Cancelar Pedido Especial' },
+  'so.cancel.orderLabel':    { en: 'Order',                        es: 'Pedido',                          pt: 'Pedido' },
+  'so.cancel.customerLabel': { en: 'Customer',                     es: 'Cliente',                         pt: 'Cliente' },
+  'so.cancel.itemLabel':     { en: 'Item',                         es: 'Artículo',                        pt: 'Item' },
+  'so.cancel.depositPaid': {
+    en: (amt: string) => `Deposit paid: $${amt}`,
+    es: (amt: string) => `Depósito cobrado: $${amt}`,
+    pt: (amt: string) => `Depósito pago: $${amt}`,
+  },
+  'so.cancel.depositQuestion': { en: 'What happens to the deposit?', es: '¿Qué hacemos con el depósito?', pt: 'O que fazemos com o depósito?' },
+  'so.cancel.storeCredit':     { en: '💳 Store Credit',             es: '💳 Crédito de tienda',            pt: '💳 Crédito na loja' },
+  'so.cancel.storeCreditDesc': {
+    en: (amt: string) => `$${amt} — Customer can use on future purchase`,
+    es: (amt: string) => `$${amt} — Cliente puede usarlo en futura compra`,
+    pt: (amt: string) => `$${amt} — Cliente pode usar em compra futura`,
+  },
+  'so.cancel.cashRefund':    { en: '💵 Cash Refund',                es: '💵 Reembolso en efectivo',        pt: '💵 Reembolso em dinheiro' },
+  'so.cancel.cashRefundDesc': {
+    en: (amt: string) => `$${amt} — Creates voided sale in reports`,
+    es: (amt: string) => `$${amt} — Crea venta anulada en reports`,
+    pt: (amt: string) => `$${amt} — Cria venda anulada em relatórios`,
+  },
+  'so.cancel.forfeit':            { en: '💰 Keep deposit (forfeit)',          es: '💰 Quedarse con depósito',           pt: '💰 Manter depósito (perda)' },
+  'so.cancel.forfeitDesc':        { en: 'Requires written reason',             es: 'Requiere motivo por escrito',        pt: 'Requer motivo por escrito' },
+  'so.cancel.reasonPlaceholder':  { en: 'Reason (required, min 10 chars)...', es: 'Motivo (requerido, min 10 caracteres)...', pt: 'Motivo (obrigatório, mín. 10 caracteres)...' },
+  'so.cancel.charsMin': {
+    en: (n: number) => `${n}/10 chars min`,
+    es: (n: number) => `${n}/10 caracteres mínimos`,
+    pt: (n: number) => `${n}/10 caracteres mínimos`,
+  },
+  'so.cancel.nevermind': { en: 'Never mind', es: 'No importa', pt: 'Não importa' },
+
+  // SpecialOrderModal (inner component)
+  'so.modal.editTitle':              { en: 'Edit Special Order',           es: 'Editar Pedido',                     pt: 'Editar Pedido Especial' },
+  'so.modal.newTitle':               { en: 'New Special Order',            es: 'Nuevo Pedido Especial',              pt: 'Novo Pedido Especial' },
+  'so.modal.editingCompletedTicket': { en: 'Editing completed ticket. Changes will be logged.', es: 'Editando ticket completado. Los cambios se registrarán.', pt: 'Editando ticket concluído. As alterações serão registradas.' },
+  'so.modal.deletedExternally':      { en: 'Ticket deleted externally.',   es: 'Ticket eliminado externamente.',     pt: 'Ticket excluído externamente.' },
+  'so.modal.ticketCancelledCannotEdit': { en: 'Ticket cancelled/refunded. Cannot edit.', es: 'Ticket cancelado/reembolsado. No se puede editar.', pt: 'Ticket cancelado/reembolsado. Não é possível editar.' },
+  'so.modal.ticketModifiedOtherStation': { en: 'Ticket modified on another station. Reload and try again.', es: 'Ticket modificado en otra estación. Recarga e intenta de nuevo.', pt: 'Ticket modificado em outra estação. Recarregue e tente novamente.' },
+  'so.modal.editHistoryFull': { en: 'Edit history full (100). Contact admin.', es: 'Historial de ediciones lleno (100). Contacta al administrador.', pt: 'Histórico de edições cheio (100). Contate o administrador.' },
+  'so.modal.editHistoryWarning': {
+    en: (n: number) => `Warning: ${n}/100 edits recorded.`,
+    es: (n: number) => `Advertencia: ${n}/100 ediciones registradas.`,
+    pt: (n: number) => `Aviso: ${n}/100 edições registradas.`,
+  },
+  'so.modal.firstName':           { en: 'First Name *',                es: 'Nombre *',                          pt: 'Nome *' },
+  'so.modal.firstNamePlaceholder':{ en: 'John',                        es: 'Jorge',                             pt: 'João' },
+  'so.modal.lastName':            { en: 'Last Name',                   es: 'Apellido',                          pt: 'Sobrenome' },
+  'so.modal.lastNamePlaceholder': { en: 'Doe',                         es: 'Ochoa',                             pt: 'Silva' },
+  'so.modal.phone':               { en: 'Phone',                       es: 'Teléfono',                          pt: 'Telefone' },
+  'so.modal.itemDesc':            { en: 'Item / Description *',        es: 'Artículo / Descripción *',          pt: 'Item / Descrição *' },
+  'so.modal.itemDescPlaceholder': { en: 'iPhone 15 Pro 256GB Blue',    es: 'iPhone 15 Pro 256GB Azul',          pt: 'iPhone 15 Pro 256GB Azul' },
+  'so.modal.supplier':            { en: 'Supplier',                    es: 'Proveedor',                         pt: 'Fornecedor' },
+  'so.modal.supplierPlaceholder': { en: 'Supplier name',               es: 'Nombre del proveedor',              pt: 'Nome do fornecedor' },
+  'so.modal.status':              { en: 'Status',                      es: 'Estado',                            pt: 'Status' },
+  'so.modal.cost':                { en: 'Cost ($)',                    es: 'Costo ($)',                         pt: 'Custo ($)' },
+  'so.modal.price':               { en: 'Price ($) *',                 es: 'Precio ($) *',                      pt: 'Preço ($) *' },
+  'so.modal.deposit':             { en: 'Deposit ($)',                 es: 'Depósito ($)',                      pt: 'Depósito ($)' },
+  'so.modal.unlockWithPin':       { en: 'Unlock with PIN',             es: 'Desbloquear con PIN',               pt: 'Desbloquear com PIN' },
+  'so.modal.depositLocked':       { en: 'Deposit locked — collected via POS', es: 'Depósito bloqueado — se cobra solo vía POS', pt: 'Depósito bloqueado — cobrado via PDV' },
+  'so.modal.orderDeliveredHint':  { en: 'Order already delivered. For refunds, use the Returns module.', es: 'Pedido ya entregado. Para devoluciones, usa el módulo Returns.', pt: 'Pedido já entregue. Para devoluções, use o módulo Returns.' },
+  'so.modal.chargeSalesTax': {
+    en: (rate: string) => `Charge sales tax (${rate}%)`,
+    es: (rate: string) => `Cobrar impuestos (${rate}%)`,
+    pt: (rate: string) => `Cobrar imposto de venda (${rate}%)`,
+  },
+  'so.modal.costLabel':    { en: 'Cost',     es: 'Costo',      pt: 'Custo' },
+  'so.modal.profit':       { en: 'Profit',   es: 'Ganancia',   pt: 'Lucro' },
+  'so.modal.priceLabel':   { en: 'Price',    es: 'Precio',     pt: 'Preço' },
+  'so.modal.taxLabel':     { en: 'Tax',      es: 'Impuestos',  pt: 'Imposto' },
+  'so.modal.total':        { en: 'Total',    es: 'Total',      pt: 'Total' },
+  'so.modal.depositLabel': { en: 'Deposit',  es: 'Depósito',   pt: 'Depósito' },
+  'so.modal.balanceLabel': { en: 'Balance',  es: 'Balance',    pt: 'Saldo' },
+  'so.modal.depositBreakdown': {
+    en: (total: string, sub: string, tax: string) => `Deposit $${total} breakdown: $${sub} subtotal + $${tax} tax`,
+    es: (total: string, sub: string, tax: string) => `Del depósito $${total}: $${sub} subtotal + $${tax} impuestos`,
+    pt: (total: string, sub: string, tax: string) => `Depósito $${total}: $${sub} subtotal + $${tax} imposto`,
+  },
+  'so.modal.estArrival':        { en: 'Est. Arrival',              es: 'Llegada Estimada',                pt: 'Chegada Estimada' },
+  'so.modal.notes':             { en: 'Notes',                     es: 'Notas',                           pt: 'Notas' },
+  'so.modal.notesPlaceholder':  { en: 'Additional notes...',       es: 'Notas adicionales...',            pt: 'Notas adicionais...' },
+  'so.modal.depositAutoCart':   { en: 'Deposit will be automatically added to cart.', es: 'El depósito se agregará al carrito automáticamente.', pt: 'O depósito será adicionado ao carrinho automaticamente.' },
+  'so.modal.cancelOrder':       { en: 'Cancel Order',              es: 'Cancelar Pedido',                 pt: 'Cancelar Pedido' },
 };

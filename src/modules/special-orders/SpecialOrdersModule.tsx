@@ -10,6 +10,7 @@ import { Modal, AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, remove } from '@/services/persist';
 import DepositModal from '@/components/DepositModal';
@@ -58,6 +59,7 @@ export default function SpecialOrdersModule() {
   } = useApp();
 
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
   const L = getLabels(lang);
@@ -144,7 +146,7 @@ export default function SpecialOrdersModule() {
     const split = reverseTaxFromPayment(combinedCents, taxRate, isTaxable);
     const consolidatedItem: CartItem = {
       id: generateId(),
-      name: `${lang === 'es' ? 'Pedido Especial' : 'Special Order'} — ${itemDescription}`,
+      name: `${t('so.cartItemName')} — ${itemDescription}`,
       category: 'service',
       price: split.baseCents,
       qty: 1,
@@ -162,21 +164,21 @@ export default function SpecialOrdersModule() {
     setCart(nextCart);
 
     return { combinedCents };
-  }, [settings.taxRate, lang, setCart]);
+  }, [settings.taxRate, t, setCart]);
 
   const translateStatus = useCallback(
     (s: string) => {
       const map: Record<string, string> = {
-        All: L.all,
-        Ordered:     lang === 'es' ? 'Ordenado'   : 'Ordered',
-        'In Transit': lang === 'es' ? 'En Tránsito' : 'In Transit',
-        Received:    lang === 'es' ? 'Recibido'   : 'Received',
-        Ready:       lang === 'es' ? 'Listo'       : 'Ready',
-        'Picked Up': lang === 'es' ? 'Entregado'  : 'Picked Up',
-        Cancelled:   L.cancelled,
+        All:          L.all,
+        Ordered:      t('so.status.ordered'),
+        'In Transit': t('so.status.inTransit'),
+        Received:     t('so.status.received'),
+        Ready:        t('so.status.ready'),
+        'Picked Up':  t('so.status.pickedUp'),
+        Cancelled:    L.cancelled,
       };
       return map[s] || s;
-    }, [L, lang],
+    }, [L, t],
   );
 
   // FIX Bug 1+2: normalize both sides so each tab only matches its own status
@@ -231,7 +233,6 @@ export default function SpecialOrdersModule() {
     const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
-    const es = lang === 'es';
     const fmt = (v: unknown) => v == null ? '' : String(v);
     const money = (cents: unknown) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
 
@@ -242,7 +243,7 @@ export default function SpecialOrdersModule() {
       const prior = snap[field];
       const current = (order as any)[field];
       if (prior == null || prior === '' || prior === current) return '';
-      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      if (typeof prior === 'number') return t('so.print.previously', money(prior));
       return '';
     };
 
@@ -253,32 +254,32 @@ export default function SpecialOrdersModule() {
     if (storePhone) lines.push(storePhone);
     lines.push('----------------------------------------');
     if (corrected) {
-      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
-      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push(t('so.print.correctedReceipt'));
+      lines.push(`${t('so.print.corrected')}: ${new Date().toLocaleString()}`);
       lines.push('----------------------------------------');
     }
-    lines.push(es ? 'PEDIDO ESPECIAL' : 'SPECIAL ORDER');
+    lines.push(t('so.print.title'));
     lines.push(`TICKET: ${ticketNum}`);
     lines.push(`STATUS: ${fmt(order.status)}`);
-    lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
+    lines.push(`${t('so.print.date')}: ${new Date().toLocaleString()}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'CLIENTE' : 'CUSTOMER'}: ${fmt(order.customerName)}`);
-    if (order.customerPhone) lines.push(`${es ? 'TEL' : 'PHONE'}: ${fmt(order.customerPhone)}`);
+    lines.push(`${t('so.print.customer')}: ${fmt(order.customerName)}`);
+    if (order.customerPhone) lines.push(`${t('so.print.phone')}: ${fmt(order.customerPhone)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'ARTÍCULO' : 'ITEM'}: ${fmt(order.itemDescription)}`);
-    if (order.supplier) lines.push(`${es ? 'PROVEEDOR' : 'SUPPLIER'}: ${fmt(order.supplier)}`);
-    if (order.estimatedArrival) lines.push(`${es ? 'LLEGADA EST' : 'EST. ARRIVAL'}: ${fmt(order.estimatedArrival)}`);
+    lines.push(`${t('so.print.item')}: ${fmt(order.itemDescription)}`);
+    if (order.supplier) lines.push(`${t('so.print.supplier')}: ${fmt(order.supplier)}`);
+    if (order.estimatedArrival) lines.push(`${t('so.print.estArrival')}: ${fmt(order.estimatedArrival)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'PRECIO' : 'PRICE'}: ${money(order.price || 0)}${previously('price')}`);
-    lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(order.depositAmount || 0)}${previously('depositAmount')}`);
-    lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(order.balance || 0)}${previously('balance')}`);
+    lines.push(`${t('so.print.price')}: ${money(order.price || 0)}${previously('price')}`);
+    lines.push(`${t('so.print.deposit')}: ${money(order.depositAmount || 0)}${previously('depositAmount')}`);
+    lines.push(`${t('so.print.balance')}: ${money(order.balance || 0)}${previously('balance')}`);
     // R-EDIT-AUDIT F5: show refund owed on corrected receipt when reason='refund'.
     if (corrected && ((order as any).refundOwedAmount || 0) > 0) {
-      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money((order as any).refundOwedAmount)}`);
+      lines.push(`${t('so.print.refundOwed')}: ${money((order as any).refundOwedAmount)}`);
     }
     lines.push('----------------------------------------');
     if (order.notes) {
-      lines.push(`${es ? 'NOTAS' : 'NOTES'}: ${fmt(order.notes)}`);
+      lines.push(`${t('so.print.notes')}: ${fmt(order.notes)}`);
     }
 
     const content = lines.filter(Boolean).join('\n');
@@ -287,7 +288,7 @@ export default function SpecialOrdersModule() {
       silent: false,
       printer: settings.detectedPrinters?.[0],
     });
-  }, [settings, lang, printHtml]);
+  }, [settings, t, printHtml]);
 
   const handleSave = useCallback((auditMeta?: {
     reason: EditReason;
@@ -299,7 +300,7 @@ export default function SpecialOrdersModule() {
     const customerName = `${firstName} ${lastName}`.trim();
     if (!customerName || !form.itemDescription?.trim()) return;
     const phoneLen = ((form as any).customerPhone || '').replace(/\D/g, '').length;
-    if (phoneLen > 0 && phoneLen !== 10) { toast(lang === 'es' ? 'Teléfono debe ser 10 dígitos' : 'Phone must be 10 digits', 'error'); return; }
+    if (phoneLen > 0 && phoneLen !== 10) { toast(t('so.errorPhoneDigits'), 'error'); return; }
 
     const price = Math.round((parseFloat(form.price as any) || 0) * 100);
     const deposit = Math.round((parseFloat(form.depositAmount as any) || 0) * 100);
@@ -432,12 +433,12 @@ export default function SpecialOrdersModule() {
           sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
         };
         if (checkEditHistoryStatus(updated.editHistory) === 'full') {
-          toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+          toast(t('so.editHistoryFull'), 'error');
           return;
         }
         const newHistory = appendEditEntry(updated.editHistory, entry);
         if (newHistory === null) {
-          toast(lang === 'es' ? 'Historial lleno (100).' : 'Edit history full (100).', 'error');
+          toast(t('so.editHistoryFull'), 'error');
           return;
         }
         updated.editHistory = newHistory;
@@ -526,12 +527,7 @@ export default function SpecialOrdersModule() {
           dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
         }
 
-        toast(
-          lang === 'es'
-            ? `Pedido creado. Depósito ${formatCurrency(deposit)} agregado al carrito.`
-            : `Special order created. Deposit ${formatCurrency(deposit)} added to cart.`,
-          'info',
-        );
+        toast(t('so.createdWithDeposit', formatCurrency(deposit)), 'info');
       } else {
         toast(L.specialOrderCreated || 'Special order created!', 'success');
       }
@@ -539,7 +535,7 @@ export default function SpecialOrdersModule() {
 
     setShowModal(false);
     setEditOrder(null);
-  }, [form, editOrder, settings, currentEmployee, lang, L,
+  }, [form, editOrder, settings, currentEmployee, t, L,
       setSpecialOrders, setCustomers, setCart, toast,
       consolidateCartForSpecialOrder, dispatch,
       // R-EDIT-AUDIT F5: audit reprint dep.
@@ -585,12 +581,7 @@ export default function SpecialOrdersModule() {
         setCustomers(nextCustomers);
         persist.customer(updatedCustomer.id, updatedCustomer as unknown as Record<string, unknown>);
       } else {
-        toast(
-          lang === 'es'
-            ? '⚠️ No se identificó al cliente. Aplica crédito manualmente.'
-            : '⚠️ Customer not matched. Apply credit manually.',
-          'warning',
-        );
+        toast(t('so.cancel.customerNotMatched'), 'warning');
       }
     } else if (choice.method === 'cash' && depositCents > 0) {
       const refundSale: Sale = {
@@ -602,7 +593,7 @@ export default function SpecialOrdersModule() {
         customerPhone: order.customerPhone,
         items: [{
           id: generateId(),
-          name: `${order.itemDescription || 'Special Order'} — ${lang === 'es' ? 'Reembolso cancelación' : 'Cancellation refund'}`,
+          name: `${order.itemDescription || t('so.cartItemName')} — ${t('so.cancelRefundName')}`,
           category: 'service' as any,
           price: -depositCents,
           qty: 1,
@@ -669,20 +660,15 @@ export default function SpecialOrdersModule() {
     setSpecialOrders(nextOrders);
     persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
 
+    const amtDisplay = (depositCents / 100).toFixed(2);
     const msg = {
-      store_credit: lang === 'es'
-        ? `Cancelado. Crédito $${(depositCents/100).toFixed(2)} agregado al cliente.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} store credit added.`,
-      cash: lang === 'es'
-        ? `Cancelado. Reembolso $${(depositCents/100).toFixed(2)} registrado.`
-        : `Cancelled. $${(depositCents/100).toFixed(2)} cash refund recorded.`,
-      forfeit: lang === 'es'
-        ? 'Cancelado. Depósito retenido.'
-        : 'Cancelled. Deposit forfeited.',
+      store_credit: t('so.cancel.toastStoreCredit', amtDisplay),
+      cash:         t('so.cancel.toastCash',        amtDisplay),
+      forfeit:      t('so.cancel.toastForfeit'),
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, setCustomers, setSales, setSpecialOrders, toast, currentEmployee]);
+  }, [t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee]);
 
   const handleComplete = useCallback((order: SpecialOrder) => {
     const balance = order.balance || 0;
@@ -694,11 +680,11 @@ export default function SpecialOrdersModule() {
       specialOrdersRef.current = next;
       setSpecialOrders(next);
       persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
-      toast(lang === 'es' ? 'Pedido completado' : 'Order completed', 'success');
+      toast(t('so.orderCompleted'), 'success');
       return;
     }
     setCompleteConfirm(order);
-  }, [setSpecialOrders, toast, lang]);
+  }, [setSpecialOrders, toast, t]);
 
   const handleCompleteConfirmed = useCallback(() => {
     const order = completeConfirm;
@@ -737,11 +723,11 @@ export default function SpecialOrdersModule() {
     setCompleteConfirm(null);
     toast(
       (order.balance || 0) > 0
-        ? (lang === 'es' ? 'Balance agregado al carrito. Ve a POS.' : 'Balance added to cart. Go to POS.')
-        : (lang === 'es' ? 'Pedido completado' : 'Order completed'),
+        ? t('so.balanceAddedToCart')
+        : t('so.orderCompleted'),
       'success',
     );
-  }, [completeConfirm, consolidateCartForSpecialOrder, setSpecialOrders, dispatch, toast, lang]);
+  }, [completeConfirm, consolidateCartForSpecialOrder, setSpecialOrders, dispatch, toast, t]);
 
   // R-COMMS-SMS-INFRA-CLEANUP: handleSMS stub callback removed
   // (was a placeholder toast; SMS sending retired entirely).
@@ -752,12 +738,7 @@ export default function SpecialOrdersModule() {
     // GUARD 1: prevent delete if SO has pending cart items.
     const hasPendingCart = cartRef.current.some((item) => item.specialOrderId === deleteConfirm.id);
     if (hasPendingCart) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar: hay items de este pedido en el carrito. Limpia el carrito primero.'
-          : 'Cannot delete: this order has items in cart. Clear the cart first.',
-        'error',
-      );
+      toast(t('so.errorDeleteInCart'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -766,12 +747,7 @@ export default function SpecialOrdersModule() {
     const hasDeposit = (deleteConfirm.depositAmount || 0) > 0;
     const isCompleted = ['picked_up', 'received', 'ready'].includes(normalizeStatus(deleteConfirm.status));
     if (hasDeposit || isCompleted) {
-      toast(
-        lang === 'es'
-          ? 'No se puede eliminar pedidos pagados o recibidos. Usa "Cancelar" para reembolsar.'
-          : 'Cannot delete paid or received orders. Use "Cancel" to refund.',
-        'error',
-      );
+      toast(t('so.errorDeletePaid'), 'error');
       setDeleteConfirm(null);
       return;
     }
@@ -781,8 +757,8 @@ export default function SpecialOrdersModule() {
     setSpecialOrders(next);
     remove.specialOrder(deleteConfirm.id);
     setDeleteConfirm(null);
-    toast(lang === 'es' ? 'Pedido eliminado' : 'Order deleted', 'success');
-  }, [deleteConfirm, setSpecialOrders, toast, lang]);
+    toast(t('so.orderDeleted'), 'success');
+  }, [deleteConfirm, setSpecialOrders, toast, t]);
 
   return (
     <>
@@ -799,7 +775,7 @@ export default function SpecialOrdersModule() {
             localValue={search}
             onLocalChange={(s) => { setSearch(s); setVisibleCount(50); }}
             excludeCollection="specialOrders"
-            placeholder={lang === 'es' ? 'Buscar cliente, artículo, proveedor…' : 'Search customer, item, supplier…'}
+            placeholder={t('so.searchPlaceholder')}
           />
         }
         stats={[
@@ -857,12 +833,12 @@ export default function SpecialOrdersModule() {
               onComplete={() => handleComplete(o)}
               completeLabel={
                 normalizeStatus(o.status) === 'cancelled'
-                  ? (lang === 'es' ? 'Cancelado' : 'Cancelled')
+                  ? t('so.labelCancelled')
                   : normalizeStatus(o.status) === 'picked_up'
-                  ? (lang === 'es' ? '✓ Entregado' : '✓ Picked up')
+                  ? t('so.labelPickedUp')
                   : (o.balance || 0) > 0
-                  ? (lang === 'es' ? `Completar / Cobrar ${formatCurrency(o.balance)}` : `Complete / Collect ${formatCurrency(o.balance)}`)
-                  : (lang === 'es' ? 'Marcar entregado' : 'Mark picked up')
+                  ? t('so.labelCompleteCollect', formatCurrency(o.balance))
+                  : t('so.labelMarkPickedUp')
               }
               completeDisabled={['cancelled', 'picked_up', 'refunded'].includes(normalizeStatus(o.status))}
               completeVariant={normalizeStatus(o.status) === 'picked_up' ? 'green' : 'amber'}
@@ -893,7 +869,7 @@ export default function SpecialOrdersModule() {
                         background: 'rgba(251, 191, 36, 0.15)',
                         color: '#fbbf24',
                       }}
-                      title={lang === 'es' ? 'Ver historial de ediciones' : 'View edit history'}
+                      title={t('so.viewEditHistory')}
                     >
                       🕐 {o.editHistory.length}
                     </span>
@@ -917,7 +893,7 @@ export default function SpecialOrdersModule() {
                         fontWeight: 600,
                       }}
                     >
-                      {lang === 'es' ? '✅ Marcar Reembolsado' : '✅ Mark Refunded'}
+                      {t('so.markRefunded')}
                     </button>
                   )}
                 </>
@@ -934,9 +910,7 @@ export default function SpecialOrdersModule() {
                 onClick={() => setVisibleCount((n) => n + 50)}
                 className="btn btn-secondary btn-sm"
               >
-                {lang === 'es'
-                  ? `Mostrar más (${filtered.length - visibleCount} restantes)`
-                  : `Show more (${filtered.length - visibleCount} remaining)`}
+                {t('so.showMore', filtered.length - visibleCount)}
               </button>
             </div>
           )}
@@ -964,7 +938,7 @@ export default function SpecialOrdersModule() {
       )}
       {depositModalOrder && (
         <DepositModal
-          title={lang === 'es' ? 'Cobrar Pedido Especial' : 'Collect Special Order Payment'}
+          title={t('so.collectPaymentTitle')}
           itemLabel={depositModalOrder.itemDescription || 'Special Order'}
           itemPrice={(depositModalOrder.price || 0) / 100}
           taxRate={settings.taxRate ?? 0.0925}
@@ -1007,12 +981,7 @@ export default function SpecialOrdersModule() {
               }
 
               setDepositModalOrder(null);
-              toast(
-                lang === 'es'
-                  ? `$${(combinedCents / 100).toFixed(2)} en carrito para este pedido`
-                  : `$${(combinedCents / 100).toFixed(2)} in cart for this order`,
-                'success',
-              );
+              toast(t('so.depositInCart', (combinedCents / 100).toFixed(2)), 'success');
             } finally {
               setTimeout(() => setIsConsolidating(false), 100);
             }
@@ -1034,13 +1003,11 @@ export default function SpecialOrdersModule() {
       {deleteConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Eliminar pedido' : 'Delete order'}
-          message={lang === 'es'
-            ? '¿Eliminar este pedido? Esta acción no se puede deshacer.'
-            : 'Delete this order? This cannot be undone.'}
+          title={t('so.confirmDelete.title')}
+          message={t('so.confirmDelete.message')}
           variant="danger"
-          confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('so.confirmDelete.confirm')}
+          cancelLabel={t('cancel')}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteConfirm(null)}
         />
@@ -1049,17 +1016,15 @@ export default function SpecialOrdersModule() {
       {completeConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Completar pedido' : 'Complete order'}
+          title={t('so.confirmComplete.title')}
           message={
             (completeConfirm.balance || 0) > 0
-              ? (lang === 'es'
-                  ? `¿Marcar entregado y cobrar saldo de ${formatCurrency(completeConfirm.balance)}?`
-                  : `Mark picked up and collect balance of ${formatCurrency(completeConfirm.balance)}?`)
-              : (lang === 'es' ? '¿Marcar como entregado?' : 'Mark as picked up?')
+              ? t('so.confirmComplete.message', formatCurrency(completeConfirm.balance))
+              : t('so.confirmComplete.messageNoBalance')
           }
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Confirmar' : 'Confirm'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('confirm')}
+          cancelLabel={t('cancel')}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
         />
@@ -1080,7 +1045,7 @@ export default function SpecialOrdersModule() {
       {printChoiceTarget && (
         <Modal
           open
-          title={lang === 'es' ? 'Imprimir Ticket' : 'Print Ticket'}
+          title={t('so.printTicket')}
           onClose={() => setPrintChoiceTarget(null)}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1095,7 +1060,7 @@ export default function SpecialOrdersModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📄 Actual (corregido)' : '📄 Current (corrected)'}
+              {t('so.printCurrent')}
             </button>
             <button
               className="btn btn-secondary"
@@ -1122,14 +1087,14 @@ export default function SpecialOrdersModule() {
                 setPrintChoiceTarget(null);
               }}
             >
-              {lang === 'es' ? '📋 Original (pre-ediciones)' : '📋 Original (pre-edits)'}
+              {t('so.printOriginal')}
             </button>
             <button
               className="btn btn-secondary"
               style={{ width: '100%' }}
               onClick={() => setPrintChoiceTarget(null)}
             >
-              {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              {t('cancel')}
             </button>
           </div>
         </Modal>
@@ -1139,14 +1104,10 @@ export default function SpecialOrdersModule() {
       {refundConfirmTarget && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Confirmar Reembolso' : 'Confirm Refund'}
-          message={
-            lang === 'es'
-              ? `¿Confirmar que el reembolso de $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} fue procesado?`
-              : `Confirm that the $${(((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2)} refund was processed?`
-          }
-          confirmLabel={lang === 'es' ? 'Sí, Reembolsado' : 'Yes, Refunded'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          title={t('so.confirmRefund.title')}
+          message={t('so.confirmRefund.message', (((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2))}
+          confirmLabel={t('so.confirmRefund.confirm')}
+          cancelLabel={t('cancel')}
           onConfirm={() => {
             const target = refundConfirmTarget;
             // F7-FIX-v2: double-refund guard.
@@ -1182,7 +1143,7 @@ export default function SpecialOrdersModule() {
                 customerPhone: updated.customerPhone || '',
                 items: [{
                   id: generateId(),
-                  name: `${updated.itemDescription || 'Special Order'} — ${lang === 'es' ? 'Reembolso post-edición' : 'Post-edit refund'}`,
+                  name: `${updated.itemDescription || t('so.cartItemName')} — ${t('so.postEditRefundName')}`,
                   category: 'service' as any,
                   price: -refundAmountCents,
                   qty: 1,
@@ -1208,10 +1169,7 @@ export default function SpecialOrdersModule() {
               persist.sale(refundSale.id, refundSale as unknown as Record<string, unknown>);
             }
 
-            toast(
-              lang === 'es' ? 'Reembolso marcado como procesado.' : 'Refund marked as processed.',
-              'success',
-            );
+            toast(t('so.refundProcessed'), 'success');
             setRefundConfirmTarget(null);
           }}
           onCancel={() => setRefundConfirmTarget(null)}
@@ -1250,8 +1208,8 @@ interface SpecialOrderModalProps {
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
 function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L, allOrders }: SpecialOrderModalProps) {
-  const es = lang === 'es';
   const { toast } = useToast();
+  const { t } = useTranslation();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
 
   // R-EDIT-AUDIT F5: normalize helper matches the module's lowercase/snake convention.
@@ -1342,46 +1300,30 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
     setIsSaving(true);
     const fresh = (allOrders || []).find((o) => o.id === editOrder.id);
     if (!fresh) {
-      toast(es ? 'Ticket eliminado externamente.' : 'Ticket deleted externally.', 'error');
+      toast(t('so.modal.deletedExternally'), 'error');
       handleClose();
       return;
     }
     const freshNorm = normalizeStatus(fresh.status);
     if (freshNorm === 'cancelled' || freshNorm === 'refunded') {
-      toast(
-        es ? 'Ticket cancelado/reembolsado. No se puede editar.' : 'Ticket cancelled/refunded. Cannot edit.',
-        'error',
-      );
+      toast(t('so.modal.ticketCancelledCannotEdit'), 'error');
       handleClose();
       return;
     }
     if (fresh.updatedAt && editOrder.updatedAt && String(fresh.updatedAt) !== String(editOrder.updatedAt)) {
-      toast(
-        es
-          ? 'Ticket modificado en otra estación. Recarga e intenta de nuevo.'
-          : 'Ticket modified on another station. Reload and try again.',
-        'error',
-      );
+      toast(t('so.modal.ticketModifiedOtherStation'), 'error');
       handleClose();
       return;
     }
 
     const historyStatus = checkEditHistoryStatus(fresh.editHistory);
     if (historyStatus === 'full') {
-      toast(
-        es ? 'Historial de ediciones lleno (100). Contacta al administrador.' : 'Edit history full (100). Contact admin.',
-        'error',
-      );
+      toast(t('so.modal.editHistoryFull'), 'error');
       setIsSaving(false);
       return;
     }
     if (historyStatus === 'warning') {
-      toast(
-        es
-          ? `Advertencia: ${fresh.editHistory?.length || 0}/100 ediciones registradas.`
-          : `Warning: ${fresh.editHistory?.length || 0}/100 edits recorded.`,
-        'warning',
-      );
+      toast(t('so.modal.editHistoryWarning', fresh.editHistory?.length || 0), 'warning');
     }
 
     // Form stores money as dollar strings/numbers; convert to cents for diff.
@@ -1453,7 +1395,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
         {/* Header */}
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontWeight: 700 }}>
-            📋 {editOrder ? (es ? 'Editar Pedido' : 'Edit Special Order') : (es ? 'Nuevo Pedido Especial' : 'New Special Order')}
+            📋 {editOrder ? t('so.modal.editTitle') : t('so.modal.newTitle')}
           </h3>
           <button onClick={handleClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
         </div>
@@ -1475,9 +1417,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
             }}>
               <span>⚠️</span>
               <span>
-                {es
-                  ? 'Editando ticket completado. Los cambios se registrarán.'
-                  : 'Editing completed ticket. Changes will be logged.'}
+                {t('so.modal.editingCompletedTicket')}
               </span>
             </div>
           )}
@@ -1487,7 +1427,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               CustomerSearchHeader for explicit "Select Customer" button. */}
           <CustomerSearchHeader
             customers={customers}
-            lang={es ? 'es' : 'en'}
+            lang={lang === 'es' ? 'es' : 'en'}
             onSelect={(c) => {
               const parts = c.name.trim().split(/\s+/);
               setForm({
@@ -1501,7 +1441,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           >
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label className="label">👤 {es ? 'Nombre *' : 'First Name *'}</label>
+                <label className="label">👤 {t('so.modal.firstName')}</label>
                 <AutocompleteInput
                   value={(form as any).firstName || ''}
                   onChange={(val) => setForm({ ...form, firstName: val } as any)}
@@ -1512,12 +1452,12 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                     } as any);
                   }}
                   options={firstNameOptions}
-                  placeholder={es ? 'Jorge' : 'John'}
+                  placeholder={t('so.modal.firstNamePlaceholder')}
                   maxResults={6}
                 />
               </div>
               <div>
-                <label className="label">{es ? 'Apellido' : 'Last Name'}</label>
+                <label className="label">{t('so.modal.lastName')}</label>
                 <AutocompleteInput
                   value={(form as any).lastName || ''}
                   onChange={(val) => setForm({ ...form, lastName: val } as any)}
@@ -1528,7 +1468,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                     } as any);
                   }}
                   options={lastNameOptions}
-                  placeholder={es ? 'Ochoa' : 'Doe'}
+                  placeholder={t('so.modal.lastNamePlaceholder')}
                   maxResults={6}
                 />
               </div>
@@ -1536,7 +1476,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
             {/* Phone */}
             <div style={{ marginTop: '0.75rem' }}>
-              <label className="label">📞 {es ? 'Teléfono' : 'Phone'}</label>
+              <label className="label">📞 {t('so.modal.phone')}</label>
               <AutocompleteInput
                 type="tel"
                 value={form.customerPhone || ''}
@@ -1557,26 +1497,26 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
           {/* Item */}
           <div>
-            <label className="label">📦 {es ? 'Artículo / Descripción' : 'Item / Description'} *</label>
+            <label className="label">📦 {t('so.modal.itemDesc')}</label>
             <AutocompleteInput
               value={form.itemDescription || ''}
               onChange={(val) => upd('itemDescription', val)}
               onSelect={(opt) => upd('itemDescription', opt.value)}
               options={itemOptions}
-              placeholder={es ? 'iPhone 15 Pro 256GB Azul' : 'iPhone 15 Pro 256GB Blue'}
+              placeholder={t('so.modal.itemDescPlaceholder')}
               maxResults={8}
             />
           </div>
 
           {/* Supplier */}
           <div>
-            <label className="label">🏭 {es ? 'Proveedor' : 'Supplier'}</label>
-            <input className="input" value={form.supplier || ''} onChange={(e) => upd('supplier', e.target.value)} placeholder={es ? 'Nombre del proveedor' : 'Supplier name'} />
+            <label className="label">🏭 {t('so.modal.supplier')}</label>
+            <input className="input" value={form.supplier || ''} onChange={(e) => upd('supplier', e.target.value)} placeholder={t('so.modal.supplierPlaceholder')} />
           </div>
 
           {/* Status */}
           <div>
-            <label className="label">{es ? 'Estado' : 'Status'}</label>
+            <label className="label">{t('so.modal.status')}</label>
             <select className="select" value={form.status || 'ordered'} onChange={(e) => upd('status', e.target.value)}>
               {SPECIAL_ORDER_STATUSES.map((s) => (
                 <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
@@ -1588,7 +1528,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label className="label">
-                {isLocked && !pin.editUnlocked && '🔒 '}💵 {es ? 'Costo ($)' : 'Cost ($)'}
+                {isLocked && !pin.editUnlocked && '🔒 '}💵 {t('so.modal.cost')}
               </label>
               {/* R-EDIT-AUDIT F5.2: lock cost on completed tickets. */}
               <div style={{ position: 'relative' }}>
@@ -1604,14 +1544,14 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   <span
                     onClick={pin.requestUnlock}
                     style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
-                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                    title={t('so.modal.unlockWithPin')}
                   >🔒</span>
                 )}
               </div>
             </div>
             <div>
               <label className="label">
-                {isLocked && !pin.editUnlocked && '🔒 '}🏷️ {es ? 'Precio ($)' : 'Price ($)'} *
+                {isLocked && !pin.editUnlocked && '🔒 '}🏷️ {t('so.modal.price')}
               </label>
               {/* R-EDIT-AUDIT F5.2: lock price on completed tickets. */}
               <div style={{ position: 'relative' }}>
@@ -1626,13 +1566,13 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   <span
                     onClick={pin.requestUnlock}
                     style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '1rem' }}
-                    title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                    title={t('so.modal.unlockWithPin')}
                   >🔒</span>
                 )}
               </div>
             </div>
             <div>
-              <label className="label">💰 {es ? 'Depósito ($)' : 'Deposit ($)'}</label>
+              <label className="label">💰 {t('so.modal.deposit')}</label>
               <div style={{ position: 'relative' }}>
                 <input
                   className="input" type="number" step="0.01" min="0"
@@ -1650,7 +1590,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               </div>
               {editOrder && (
                 <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  {es ? 'Depósito bloqueado — se cobra solo vía POS' : 'Deposit locked — collected via POS'}
+                  {t('so.modal.depositLocked')}
                 </p>
               )}
             </div>
@@ -1666,9 +1606,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               fontSize: '0.82rem',
               color: '#93c5fd',
             }}>
-              ℹ️ {es
-                ? 'Pedido ya entregado. Para devoluciones, usa el módulo Returns.'
-                : 'Order already delivered. For refunds, use the Returns module.'}
+              ℹ️ {t('so.modal.orderDeliveredHint')}
             </div>
           )}
 
@@ -1685,13 +1623,13 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               />
               <span>
                 {isLocked && !pin.editUnlocked && '🔒 '}
-                🧾 {es ? `Cobrar impuestos (${(taxRate * 100).toFixed(2)}%)` : `Charge sales tax (${(taxRate * 100).toFixed(2)}%)`}
+                🧾 {t('so.modal.chargeSalesTax', (taxRate * 100).toFixed(2))}
               </span>
               {isLocked && !pin.editUnlocked && (
                 <span
                   onClick={pin.requestUnlock}
                   style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: '0.9rem' }}
-                  title={es ? 'Desbloquear con PIN' : 'Unlock with PIN'}
+                  title={t('so.modal.unlockWithPin')}
                 >🔒</span>
               )}
             </label>
@@ -1703,39 +1641,41 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               {costC > 0 && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', padding: '0.2rem 0' }}>
-                    <span>{es ? 'Costo' : 'Cost'}:</span><span>${(costC / 100).toFixed(2)}</span>
+                    <span>{t('so.modal.costLabel')}:</span><span>${(costC / 100).toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: profitC >= 0 ? '#10b981' : '#ef4444', padding: '0.2rem 0', fontWeight: 700 }}>
-                    <span>📈 {es ? 'Ganancia' : 'Profit'}:</span>
+                    <span>📈 {t('so.modal.profit')}:</span>
                     <span>${(profitC / 100).toFixed(2)} {priceC > 0 && costC > 0 && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({((profitC / priceC) * 100).toFixed(1)}%)</span>}</span>
                   </div>
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '0.3rem 0' }} />
                 </>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', padding: '0.2rem 0' }}>
-                <span>{es ? 'Precio' : 'Price'}:</span><span>${(priceC / 100).toFixed(2)}</span>
+                <span>{t('so.modal.priceLabel')}:</span><span>${(priceC / 100).toFixed(2)}</span>
               </div>
               {taxable && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', padding: '0.2rem 0' }}>
-                  <span>+ {es ? 'Impuestos' : 'Tax'} ({(taxRate * 100).toFixed(2)}%):</span><span>+${(taxC / 100).toFixed(2)}</span>
+                  <span>+ {t('so.modal.taxLabel')} ({(taxRate * 100).toFixed(2)}%):</span><span>+${(taxC / 100).toFixed(2)}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#fff', padding: '0.25rem 0', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '0.2rem' }}>
-                <span>{es ? 'Total' : 'Total'}:</span><span>${(totalC / 100).toFixed(2)}</span>
+                <span>{t('so.modal.total')}:</span><span>${(totalC / 100).toFixed(2)}</span>
               </div>
               {depositC > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', padding: '0.2rem 0' }}>
-                  <span>− {es ? 'Depósito' : 'Deposit'}:</span><span>−${(depositC / 100).toFixed(2)}</span>
+                  <span>− {t('so.modal.depositLabel')}:</span><span>−${(depositC / 100).toFixed(2)}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: balanceC > 0 ? '#f59e0b' : '#10b981', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.35rem', marginTop: '0.25rem', fontSize: '1rem' }}>
-                <span>= {es ? 'Balance' : 'Balance'}:</span><span>${(balanceC / 100).toFixed(2)}</span>
+                <span>= {t('so.modal.balanceLabel')}:</span><span>${(balanceC / 100).toFixed(2)}</span>
               </div>
               {taxable && depositC > 0 && (
                 <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(59,130,246,0.08)', borderRadius: '0.4rem', fontSize: '0.72rem', color: '#93c5fd' }}>
-                  💡 {es
-                    ? `Del depósito $${(depositC / 100).toFixed(2)}: $${((depositC / (1 + taxRate)) / 100).toFixed(2)} subtotal + $${((depositC - depositC / (1 + taxRate)) / 100).toFixed(2)} impuestos`
-                    : `Deposit $${(depositC / 100).toFixed(2)} breakdown: $${((depositC / (1 + taxRate)) / 100).toFixed(2)} subtotal + $${((depositC - depositC / (1 + taxRate)) / 100).toFixed(2)} tax`}
+                  💡 {t('so.modal.depositBreakdown',
+                    (depositC / 100).toFixed(2),
+                    ((depositC / (1 + taxRate)) / 100).toFixed(2),
+                    ((depositC - depositC / (1 + taxRate)) / 100).toFixed(2),
+                  )}
                 </div>
               )}
             </div>
@@ -1743,19 +1683,19 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
           {/* Estimated arrival */}
           <div>
-            <label className="label">📅 {es ? 'Llegada Estimada' : 'Est. Arrival'}</label>
+            <label className="label">📅 {t('so.modal.estArrival')}</label>
             <input className="input" type="date" value={form.estimatedArrival || ''} onChange={(e) => upd('estimatedArrival', e.target.value)} />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="label">📝 {es ? 'Notas' : 'Notes'}</label>
-            <textarea className="input" rows={2} value={form.notes || ''} onChange={(e) => upd('notes', e.target.value)} placeholder={es ? 'Notas adicionales...' : 'Additional notes...'} style={{ resize: 'vertical' }} />
+            <label className="label">📝 {t('so.modal.notes')}</label>
+            <textarea className="input" rows={2} value={form.notes || ''} onChange={(e) => upd('notes', e.target.value)} placeholder={t('so.modal.notesPlaceholder')} style={{ resize: 'vertical' }} />
           </div>
 
           {!editOrder && depositC > 0 && (
             <div style={{ padding: '0.65rem 0.875rem', background: 'rgba(16,185,129,0.1)', borderRadius: '0.5rem', border: '1px solid rgba(16,185,129,0.3)', fontSize: '0.82rem', color: '#10b981' }}>
-              💡 {es ? 'El depósito se agregará al carrito automáticamente.' : 'Deposit will be automatically added to cart.'}
+              💡 {t('so.modal.depositAutoCart')}
             </div>
           )}
         </div>
@@ -1777,7 +1717,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               style={{ flex: 1, color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
               onClick={() => { handleClose(); onRequestCancel(editOrder); }}
             >
-              ❌ {es ? 'Cancelar Pedido' : 'Cancel Order'}
+              ❌ {t('so.modal.cancelOrder')}
             </button>
           )}
           {/* R-EDIT-AUDIT F5.3: save routes through handleSubmit to pick up the
