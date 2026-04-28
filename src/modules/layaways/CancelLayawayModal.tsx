@@ -2,12 +2,12 @@
 // Asks what to do with the deposit when cancelling a layaway that has one.
 import { useState } from 'react';
 import type { Layaway } from '@/store/types';
+import { useTranslation } from '@/i18n';
 
 interface CancelLayawayModalProps {
   layaway: Layaway;
   customerHasPhone: boolean;
   customerName: string;
-  lang: string;
   onConfirm: (choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
@@ -19,14 +19,13 @@ export default function CancelLayawayModal({
   layaway,
   customerHasPhone,
   customerName,
-  lang,
   onConfirm,
   onClose,
 }: CancelLayawayModalProps) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const depositCents = layaway.paidAmount || 0;
   const depositDisplay = (depositCents / 100).toFixed(2);
-  const item = (layaway as any).itemDescription || layaway.items?.[0]?.name || (es ? 'Artículo' : 'Item');
+  const item = (layaway as any).itemDescription || layaway.items?.[0]?.name || t('layaway.cancel.itemLabel');
   const ticket = (layaway as any).ticketNumber || layaway.id?.slice(-6).toUpperCase() || 'N/A';
 
   const [method, setMethod] = useState<'store_credit' | 'cash' | 'forfeit'>('store_credit');
@@ -60,14 +59,14 @@ export default function CancelLayawayModal({
       }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem', color: '#f87171' }}>
-          ⚠️ {es ? 'Cancelar Apartado' : 'Cancel Layaway'}
+          ⚠️ {t('layaway.cancel.title')}
         </div>
 
         {/* Ticket Info */}
         <div style={{ background: '#0f172a', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
-          <div><strong>{es ? 'Apartado' : 'Layaway'}:</strong> {ticket}</div>
-          <div><strong>{es ? 'Cliente' : 'Customer'}:</strong> {customerName}</div>
-          <div><strong>{es ? 'Artículo' : 'Item'}:</strong> {item}</div>
+          <div><strong>{t('layaway.cancel.layawayLabel')}:</strong> {ticket}</div>
+          <div><strong>{t('layaway.cancel.customerLabel')}:</strong> {customerName}</div>
+          <div><strong>{t('layaway.cancel.itemLabel')}:</strong> {item}</div>
         </div>
 
         {/* Deposit Display */}
@@ -82,12 +81,12 @@ export default function CancelLayawayModal({
           color: '#fbbf24',
           textAlign: 'center',
         }}>
-          {es ? 'Depósito cobrado' : 'Deposit paid'}: ${depositDisplay}
+          {t('layaway.cancel.depositPaid', depositDisplay)}
         </div>
 
         {/* Question */}
         <div style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#cbd5e1' }}>
-          {es ? '¿Qué hacemos con el depósito?' : 'What happens to the deposit?'}
+          {t('layaway.cancel.question')}
         </div>
 
         {/* Options */}
@@ -106,9 +105,9 @@ export default function CancelLayawayModal({
               cursor: customerHasPhone ? 'pointer' : 'not-allowed',
               opacity: customerHasPhone ? 1 : 0.6,
             }}>
-            <div style={{ fontWeight: 600 }}>💳 {es ? 'Crédito de tienda' : 'Store Credit'}</div>
+            <div style={{ fontWeight: 600 }}>{t('layaway.cancel.storeCredit')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              ${depositDisplay} — {es ? 'Cliente puede usarlo en futura compra' : 'Customer can use on future purchase'}
+              {t('layaway.cancel.storeCreditDesc', depositDisplay)}
             </div>
           </button>
 
@@ -124,9 +123,9 @@ export default function CancelLayawayModal({
               textAlign: 'left',
               cursor: 'pointer',
             }}>
-            <div style={{ fontWeight: 600 }}>💵 {es ? 'Reembolso en efectivo' : 'Cash Refund'}</div>
+            <div style={{ fontWeight: 600 }}>{t('layaway.cancel.cashRefund')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              ${depositDisplay} — {es ? 'Crea venta anulada en reports' : 'Creates voided sale in reports'}
+              {t('layaway.cancel.cashRefundDesc', depositDisplay)}
             </div>
           </button>
 
@@ -142,9 +141,9 @@ export default function CancelLayawayModal({
               textAlign: 'left',
               cursor: 'pointer',
             }}>
-            <div style={{ fontWeight: 600 }}>💰 {es ? 'Quedarse con depósito' : 'Keep deposit (forfeit)'}</div>
+            <div style={{ fontWeight: 600 }}>{t('layaway.cancel.forfeit')}</div>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              {es ? 'Requiere motivo por escrito' : 'Requires written reason'}
+              {t('layaway.cancel.forfeitDesc')}
             </div>
           </button>
         </div>
@@ -155,7 +154,7 @@ export default function CancelLayawayModal({
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={es ? 'Motivo (requerido, min 10 caracteres)...' : 'Reason (required, min 10 chars)...'}
+              placeholder={t('layaway.cancel.reasonPlaceholder')}
               style={{
                 width: '100%',
                 minHeight: '80px',
@@ -170,7 +169,7 @@ export default function CancelLayawayModal({
               }}
             />
             <div style={{ fontSize: '0.7rem', color: note.trim().length >= 10 ? '#22c55e' : '#f87171', marginTop: '0.25rem' }}>
-              {note.trim().length}/10 {es ? 'caracteres mínimos' : 'chars min'}
+              {t('layaway.cancel.charsMin', note.trim().length)}
             </div>
           </div>
         )}
@@ -182,7 +181,7 @@ export default function CancelLayawayModal({
             className="btn btn-secondary btn-sm"
             onClick={onClose}
             style={{ padding: '0.5rem 1rem' }}>
-            {es ? 'Cancelar' : 'Never mind'}
+            {t('layaway.cancel.nevermind')}
           </button>
           <button
             type="button"
@@ -195,7 +194,7 @@ export default function CancelLayawayModal({
               opacity: (isValid && !isConfirming) ? 1 : 0.5,
               cursor: (isValid && !isConfirming) ? 'pointer' : 'not-allowed',
             }}>
-            {isConfirming ? (es ? 'Confirmando...' : 'Confirming...') : (es ? 'Confirmar' : 'Confirm')}
+            {isConfirming ? t('layaway.cancel.confirming') : t('layaway.cancel.confirm')}
           </button>
         </div>
       </div>
