@@ -770,9 +770,9 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
   // ── Render ────────────────────────────────────────────────
   const NAV = [
-    { id: 'ca_tax',  icon: '🏛️', label: t('tax.taxesNav'),        sub: 'CDTFA Quarterly' },
-    { id: 'f1065',   icon: '📊', label: '1065 / K-1 / 1040',  sub: 'Federal Returns' },
-    { id: 'w9',      icon: '📋', label: 'W-9 Form',            sub: 'Contractor TIN' },
+    { id: 'ca_tax',  icon: '🏛️', label: t('tax.taxesNav'),        sub: t('tax.cdtfaQuarterlySub') },
+    { id: 'f1065',   icon: '📊', label: '1065 / K-1 / 1040',  sub: t('tax.federalReturnsSub') },
+    { id: 'w9',      icon: '📋', label: 'W-9 Form',            sub: t('tax.contractorTinSub') },
   ];
 
   return (
@@ -836,10 +836,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
 
             {/* 4 stat cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
-              <StatCard label={t('tax.grossSalesStat')} value={formatCurrency(caTax.totalRevenue)} sub={`${caTax.qSales.length} transactions`} />
-              <StatCard label={t('tax.taxableSales')} value={formatCurrency(caTax.productRevenue)} sub="Before 9.25% tax" color="#60a5fa" />
-              <StatCard label={t('tax.taxRateStat')} value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} sub="CA Sales Tax" color="#a78bfa" />
-              <StatCard label={t('tax.taxToRemit')} value={formatCurrency(caTax.productTax)} sub={`Sales tax ${((settings.taxRate ?? 0.0925)*100).toFixed(2)}% only`} color="#f87171" />
+              <StatCard label={t('tax.grossSalesStat')} value={formatCurrency(caTax.totalRevenue)} sub={t('tax.transactionsSub', caTax.qSales.length)} />
+              <StatCard label={t('tax.taxableSales')} value={formatCurrency(caTax.productRevenue)} sub={t('tax.beforeTaxSub')} color="#60a5fa" />
+              <StatCard label={t('tax.taxRateStat')} value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} sub={t('caSalesTax')} color="#a78bfa" />
+              <StatCard label={t('tax.taxToRemit')} value={formatCurrency(caTax.productTax)} sub={t('tax.salesTaxOnlySub', ((settings.taxRate ?? 0.0925)*100).toFixed(2))} color="#f87171" />
             </div>
 
             {/* Transaction Breakdown table */}
@@ -855,10 +855,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                 </thead>
                 <tbody>
                   {[
-                    { icon: '🛒', name: t('tax.productSales'), sub: 'Phones, accessories, cases, etc.', count: caTax.productCount, rev: caTax.productRevenue, tax: caTax.productTax, taxLabel: 'Sales tax' },
+                    { icon: '🛒', name: t('tax.productSales'), sub: t('tax.phonesAccessories'), count: caTax.productCount, rev: caTax.productRevenue, tax: caTax.productTax, taxLabel: t('tax.salesTaxTaxLabel') },
                     { icon: '📱', name: t('tax.phoneBillPayments'), sub: 'AT&T, T-Mobile, Verizon, etc.', count: caTax.phoneCount, rev: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, taxLabel: `Utility: ${formatCurrency(caTax.phoneTax)}\nCA Fee: ${formatCurrency(caTax.phoneSurcharge)}` },
-                    { icon: '🔧', name: t('tax.repairServices'), sub: 'Completed repairs', count: caTax.qRepairs.length, rev: caTax.repairRevenue, tax: 0, taxLabel: 'No tax (Service)' },
-                    { icon: '🔓', name: t('tax.unlockServices'), sub: 'Completed unlocks', count: caTax.qUnlocks.length, rev: caTax.unlockRevenue, tax: 0, taxLabel: 'No tax' },
+                    { icon: '🔧', name: t('tax.repairServices'), sub: t('tax.completedRepairs'), count: caTax.qRepairs.length, rev: caTax.repairRevenue, tax: 0, taxLabel: t('tax.noTaxService') },
+                    { icon: '🔓', name: t('tax.unlockServices'), sub: t('tax.completedUnlocks'), count: caTax.qUnlocks.length, rev: caTax.unlockRevenue, tax: 0, taxLabel: t('tax.noTax') },
                   ].map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td style={{ padding: '0.75rem' }}>
@@ -890,7 +890,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     const totTax = rows.reduce((s, r) => s + r.tax, 0);
                     return (
                       <tr style={{ background: 'rgba(255,255,255,0.04)', fontWeight: 700 }}>
-                        <td style={{ padding: '0.75rem', color: '#e2e8f0' }}>Total:</td>
+                        <td style={{ padding: '0.75rem', color: '#e2e8f0' }}>{t('tax.totalLabel')}</td>
                         <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{totCount}</td>
                         <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{formatCurrency(totRev)}</td>
                         <td style={{ textAlign: 'right', padding: '0.75rem', color: '#f87171' }}>{formatCurrency(totTax)}</td>
@@ -904,15 +904,15 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             {/* Revenue Breakdown bars */}
             <Card title={t('tax.revenueBreakdownByCategory')}>
               {[
-                { label: t('tax.productSales'), sub: `${caTax.productCount} transactions`, value: caTax.productRevenue, tax: caTax.productTax, total: caTax.totalRevenue },
-                { label: t('tax.repairServices'), sub: `${caTax.qRepairs.length} repairs`, value: caTax.repairRevenue, tax: 0, total: caTax.totalRevenue },
-                { label: t('tax.unlockServices'), sub: `${caTax.qUnlocks.length} unlocks`, value: caTax.unlockRevenue, tax: 0, total: caTax.totalRevenue },
-                { label: t('tax.phonePayments'), sub: `${caTax.phoneCount} payments`, value: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, total: caTax.totalRevenue },
+                { label: t('tax.productSales'), sub: t('tax.transactionsSub', caTax.productCount), value: caTax.productRevenue, tax: caTax.productTax, total: caTax.totalRevenue },
+                { label: t('tax.repairServices'), sub: t('tax.repairsSub', caTax.qRepairs.length), value: caTax.repairRevenue, tax: 0, total: caTax.totalRevenue },
+                { label: t('tax.unlockServices'), sub: t('tax.unlocksSub', caTax.qUnlocks.length), value: caTax.unlockRevenue, tax: 0, total: caTax.totalRevenue },
+                { label: t('tax.phonePayments'), sub: t('tax.paymentsSub', caTax.phoneCount), value: caTax.phoneRevenue, tax: caTax.phoneTax + caTax.phoneSurcharge, total: caTax.totalRevenue },
               ].map((item, i) => (
                 <div key={i} style={{ marginBottom: '0.875rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                     <div><div style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>{item.label}</div><div style={{ fontSize: '0.7rem', color: '#475569' }}>{item.sub}</div></div>
-                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(item.value)}</div><div style={{ fontSize: '0.7rem', color: '#f87171' }}>Tax: {formatCurrency(item.tax)}</div></div>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(item.value)}</div><div style={{ fontSize: '0.7rem', color: '#f87171' }}>{t('tax.taxPrefixLabel')} {formatCurrency(item.tax)}</div></div>
                   </div>
                   <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${item.total > 0 ? (item.value / item.total * 100) : 0}%`, background: 'linear-gradient(90deg, #667eea, #22c55e)', borderRadius: '3px', transition: 'width 0.5s' }} />
@@ -922,19 +922,19 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             </Card>
 
             {/* California CDTFA Form Summary */}
-            <Card title="📋 California CDTFA Form Summary">
-              <Row label="Line 1 – Total Sales Subject to Tax:" value={formatCurrency(caTax.productRevenue)} bold />
-              <Row label="Line 2 – Tax Rate:" value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} />
-              <Row label="Line 3 – Amount of Tax:" value={formatCurrency(caTax.productTax)} color="#f87171" bold />
+            <Card title={t('californiaCdtfaFormSummary')}>
+              <Row label={t('tax.cdtfaLine1')} value={formatCurrency(caTax.productRevenue)} bold />
+              <Row label={t('tax.cdtfaLine2')} value={`${((settings.taxRate ?? 0.0925)*100).toFixed(4)}%`} />
+              <Row label={t('tax.cdtfaLine3')} value={formatCurrency(caTax.productTax)} color="#f87171" bold />
               <InfoBox color="amber">
-                ℹ️ Reminder: This is your total tax collected for {selectedQuarter} {selectedYear}. File your return with California CDTFA by the due date (usually end of the month following the quarter).
+                {t('tax.cdtfaReminder', selectedQuarter, selectedYear)}
               </InfoBox>
             </Card>
 
             {/* Payment Reference Information */}
             <Card noPad>
               <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fbbf24' }}>💰 Payment Reference Information</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fbbf24' }}>{t('tax.paymentRefInfo')}</div>
                 <button className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem' }} onClick={async () => {
                   const text = `Product Sales (Taxable): ${formatCurrency(caTax.productRevenue)}\nPhone Bill Payments (Utility): ${formatCurrency(caTax.phoneRevenue)}\nSales Tax (${((settings.taxRate||0.0925)*100).toFixed(2)}%): ${formatCurrency(caTax.productTax)}\nUtility Tax: ${formatCurrency(caTax.phoneTax)}\nTotal Tax: ${formatCurrency(caTax.totalTaxDue)}`;
                   // r29b-1: try/catch + toast feedback. Clipboard API can reject silently
@@ -946,17 +946,17 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     console.warn('[Tax] clipboard.writeText failed:', err);
                     toast(t('tax.copyClipboardError'), 'error');
                   }
-                }}>📋 Copy Payment Info</button>
+                }}>{t('tax.copyPaymentInfoBtn')}</button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '1rem', gap: '1rem' }}>
                 <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>📊 Sales Breakdown</div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>{t('tax.salesBreakdownTitle')}</div>
                   {[
-                    ['Product Sales (Taxable):', formatCurrency(caTax.productRevenue)],
-                    ['Phone Bill Payments (Utility):', formatCurrency(caTax.phoneRevenue)],
-                    ['Repair Services (No Tax):', formatCurrency(caTax.repairRevenue)],
-                    ['Unlock Services (No Tax):', formatCurrency(caTax.unlockRevenue)],
-                    ['Total Gross Sales:', formatCurrency(caTax.totalRevenue)],
+                    [t('tax.productSalesTaxable'), formatCurrency(caTax.productRevenue)],
+                    [t('tax.phoneBillPaymentsUtility'), formatCurrency(caTax.phoneRevenue)],
+                    [t('tax.repairServicesNoTax'), formatCurrency(caTax.repairRevenue)],
+                    [t('tax.unlockServicesNoTax'), formatCurrency(caTax.unlockRevenue)],
+                    [t('tax.totalGrossSales'), formatCurrency(caTax.totalRevenue)],
                   ].map(([l, v]) => (
                     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <span style={{ color: '#94a3b8' }}>{l}</span><span style={{ color: '#e2e8f0', fontWeight: 600 }}>{v}</span>
@@ -964,12 +964,12 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                   ))}
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>📋 Taxes Collected</div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>{t('tax.taxesCollectedTitle')}</div>
                   {[
-                    [`Sales Tax (${((settings.taxRate||0.0925)*100).toFixed(4)}%):`, formatCurrency(caTax.productTax)],
+                    [`${t('tax.salesTaxTaxLabel')} (${((settings.taxRate||0.0925)*100).toFixed(4)}%):`, formatCurrency(caTax.productTax)],
                     [`${t('tax.utilityUsersTax')} (${((settings.utilityUsersTax||0.055)*100).toFixed(2)}%):`, formatCurrency(caTax.phoneTax)],
                     [`${t('tax.caMobilityFee')} ($${(settings.mobileSurcharge||0.41).toFixed(2)} ea):`, formatCurrency(caTax.phoneSurcharge)],
-                    ['Total Tax Collected:', formatCurrency(caTax.totalTaxDue)],
+                    [t('tax.totalTaxCollectedRow'), formatCurrency(caTax.totalTaxDue)],
                   ].map(([l, v]) => (
                     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <span style={{ color: '#94a3b8' }}>{l}</span><span style={{ color: '#f87171', fontWeight: 600 }}>{v}</span>
@@ -980,10 +980,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               {/* CDTFA mini form */}
               <div style={{ margin: '0 1rem 1rem', padding: '0.75rem', background: 'rgba(102,126,234,0.06)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '0.5rem', fontSize: '0.78rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <div><span style={{ color: '#64748b' }}>Line 1 – Total Sales/Purchases:</span> <span style={{ color: '#e2e8f0' }}>{formatCurrency(caTax.totalRevenue)}</span></div>
-                  <div><span style={{ color: '#64748b' }}>Line 2 – Taxable Sales (before tax):</span> <span style={{ color: '#e2e8f0' }}>{formatCurrency(caTax.productRevenue)}</span></div>
-                  <div><span style={{ color: '#64748b' }}>Line 3 – Tax Rate:</span> <span style={{ color: '#e2e8f0' }}>{((settings.taxRate||0.0925)*100).toFixed(4)}%</span></div>
-                  <div><span style={{ color: '#64748b' }}>Line 4 – Sales Tax Due:</span> <span style={{ color: '#f87171', fontWeight: 700 }}>{formatCurrency(caTax.productTax)}</span></div>
+                  <div><span style={{ color: '#64748b' }}>{t('tax.cdtfaMiniLine1')}</span> <span style={{ color: '#e2e8f0' }}>{formatCurrency(caTax.totalRevenue)}</span></div>
+                  <div><span style={{ color: '#64748b' }}>{t('tax.cdtfaMiniLine2')}</span> <span style={{ color: '#e2e8f0' }}>{formatCurrency(caTax.productRevenue)}</span></div>
+                  <div><span style={{ color: '#64748b' }}>{t('tax.cdtfaMiniLine3')}</span> <span style={{ color: '#e2e8f0' }}>{((settings.taxRate||0.0925)*100).toFixed(4)}%</span></div>
+                  <div><span style={{ color: '#64748b' }}>{t('tax.cdtfaMiniLine4')}</span> <span style={{ color: '#f87171', fontWeight: 700 }}>{formatCurrency(caTax.productTax)}</span></div>
                 </div>
               </div>
               {/* Payment summary box */}
@@ -1007,19 +1007,25 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             </Card>
 
             {/* Monthly Breakdown */}
-            <Card title="Monthly Breakdown">
+            <Card title={t('tax.monthlyBreakdown')}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    {['MONTH','TRANSACTIONS','GROSS SALES','TAXABLE AMOUNT','TAX COLLECTED'].map((h) => (
-                      <th key={h} style={{ textAlign: h === 'MONTH' ? 'left' : 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.7rem' }}>{h}</th>
+                    {[
+                      { key: 'month', label: t('tax.monthHeader') },
+                      { key: 'transactions', label: t('tax.transactionsHeader') },
+                      { key: 'gross', label: t('tax.grossSalesHeader') },
+                      { key: 'taxable', label: t('tax.taxableAmountHeader') },
+                      { key: 'tax', label: t('tax.taxCollectedHeader') },
+                    ].map((h) => (
+                      <th key={h.key} style={{ textAlign: h.key === 'month' ? 'left' : 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 600, fontSize: '0.7rem' }}>{h.label}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {caTax.monthly.map((m) => (
                     <tr key={m.month} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '0.625rem 0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{m.month}</td>
+                      <td style={{ padding: '0.625rem 0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{t(m.month.toLowerCase())}</td>
                       <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#94a3b8' }}>{m.transactions}</td>
                       <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#e2e8f0' }}>{formatCurrency(m.gross)}</td>
                       <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#e2e8f0' }}>{formatCurrency(m.taxable)}</td>
@@ -1027,7 +1033,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     </tr>
                   ))}
                   <tr style={{ background: 'rgba(255,255,255,0.04)', fontWeight: 700 }}>
-                    <td style={{ padding: '0.625rem 0.75rem', color: '#e2e8f0' }}>TOTAL</td>
+                    <td style={{ padding: '0.625rem 0.75rem', color: '#e2e8f0' }}>{t('tax.totalRow')}</td>
                     <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#e2e8f0' }}>{caTax.monthly.reduce((s,m)=>s+m.transactions,0)}</td>
                     <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#22c55e' }}>{formatCurrency(caTax.monthly.reduce((s,m)=>s+m.gross,0))}</td>
                     <td style={{ textAlign: 'right', padding: '0.625rem 0.75rem', color: '#22c55e' }}>{formatCurrency(caTax.monthly.reduce((s,m)=>s+m.taxable,0))}</td>
@@ -1047,10 +1053,10 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.875rem' }}>
               <div>
                 <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', marginBottom: '0.2rem' }}>1065 / K-1 / 1040</h1>
-                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Federal Partnership Return · Tax Year {selectedYear}</p>
+                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>{t('tax.federalTaxYear', selectedYear)}</p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => printSection('1065 / K-1 / 1040')} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>🖨️ Print Package</button>
+                <button onClick={() => printSection('1065 / K-1 / 1040')} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>🖨️ {t('tax.printPackage')}</button>
                 {/* r29b-1: removed dead "Export Year-End Package" button (had no onClick handler) */}
               </div>
             </div>
@@ -1073,61 +1079,61 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
             {f1065Tab === 'overview' && (
               <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
-                  <StatCard label="POS Revenue" value={formatCurrency(annual.productGross + annual.phoneGross + annual.repairRevenue)} sub={`${annual.ySales.length} transactions`} color="#22c55e" />
-                  <StatCard label="POS COGS (auto)" value={formatCurrency(annual.productCOGS + annual.repairCOGS + annual.phonePaidToCarrier)} sub={`Inventory $${((annual.productCOGS + annual.repairCOGS) / 100).toFixed(0)} + Carriers $${(annual.phonePaidToCarrier / 100).toFixed(0)}`} color="#f87171" />
-                  <StatCard label="POS Profit" value={formatCurrency(annual.totalIncome)} sub="Revenue − Cost" color="#60a5fa" />
-                  <StatCard label="Manual Income" value={formatCurrency(annual.taxIncomeAdditional)} sub={`${(settings.taxData?.byYear?.[String(selectedYear)]?.income ?? []).length} entries`} color="#94a3b8" />
+                  <StatCard label={t('tax.posRevenue')} value={formatCurrency(annual.productGross + annual.phoneGross + annual.repairRevenue)} sub={t('tax.transactionsSub', annual.ySales.length)} color="#22c55e" />
+                  <StatCard label={t('tax.posCogs')} value={formatCurrency(annual.productCOGS + annual.repairCOGS + annual.phonePaidToCarrier)} sub={t('tax.inventoryCarriersSub', ((annual.productCOGS + annual.repairCOGS) / 100).toFixed(0), (annual.phonePaidToCarrier / 100).toFixed(0))} color="#f87171" />
+                  <StatCard label={t('tax.posProfit')} value={formatCurrency(annual.totalIncome)} sub={t('tax.revenueCostSub')} color="#60a5fa" />
+                  <StatCard label={t('tax.manualIncome')} value={formatCurrency(annual.taxIncomeAdditional)} sub={t('tax.entriesSub', (settings.taxData?.byYear?.[String(selectedYear)]?.income ?? []).length)} color="#94a3b8" />
                 </div>
 
-                <Card title="POS Revenue Breakdown">
+                <Card title={t('tax.posRevenueBreakdown')}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem' }}>
                     <div style={{ padding: '0.875rem', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)', borderRadius: '0.625rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700, marginBottom: '0.35rem' }}>💛 Phone Payments</div>
+                      <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700, marginBottom: '0.35rem' }}>{t('tax.phonePaymentsCard')}</div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{formatCurrency(annual.phoneNetCommission)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>Gross collected: {formatCurrency(annual.phoneGross)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Paid to carrier: {formatCurrency(annual.phonePaidToCarrier)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Net commission kept: {formatCurrency(annual.phoneNetCommission)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>{t('tax.grossCollected')} {formatCurrency(annual.phoneGross)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.paidToCarrier')} {formatCurrency(annual.phonePaidToCarrier)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.netCommissionKept')} {formatCurrency(annual.phoneNetCommission)}</div>
                     </div>
                     <div style={{ padding: '0.875rem', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: '0.625rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 700, marginBottom: '0.35rem' }}>🔧 Repair Profit</div>
+                      <div style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 700, marginBottom: '0.35rem' }}>{t('tax.repairProfitCard')}</div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{formatCurrency(annual.repairRevenue - annual.repairCOGS)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>Revenue: {formatCurrency(annual.repairRevenue)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Parts cost: {formatCurrency(annual.repairCOGS)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>{t('tax.revenueLabel')} {formatCurrency(annual.repairRevenue)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.partsCostLabel')} {formatCurrency(annual.repairCOGS)}</div>
                     </div>
                     <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.15)', borderRadius: '0.625rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, marginBottom: '0.35rem' }}>🛒 Product/Service Profit</div>
+                      <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, marginBottom: '0.35rem' }}>{t('tax.productServiceProfit')}</div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{formatCurrency(annual.productProfit)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>Revenue: {formatCurrency(annual.productGross)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Cost: {formatCurrency(annual.productCOGS)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>{t('tax.revenueLabel')} {formatCurrency(annual.productGross)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.costLabel')} {formatCurrency(annual.productCOGS)}</div>
                     </div>
                   </div>
                 </Card>
 
                 <div style={{ textAlign: 'center', padding: '2rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>Tax Year {selectedYear} Summary</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>{t('tax.taxYearSummary', selectedYear)}</div>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '2.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Income</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('tax.totalIncomeLabel')}</div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: '#22c55e' }}>{formatCurrency(annual.displayTotalIncome)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>POS profit + Manual income</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.posPlusManual')}</div>
                     </div>
                     <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Schedule A COGS (manual)</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('tax.scheduleACogs')}</div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.cogsV1)}</div>
                       <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.taxCenterEntriesOnly')}</div>
                     </div>
                     <div style={{ fontSize: '1.5rem', color: '#475569' }}>−</div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Operating Expenses</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('tax.operatingExpenses')}</div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f87171' }}>{formatCurrency(annual.operatingExpensesV1)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Rent, utilities, payroll, etc.</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t('tax.rentUtilitiesEtc')}</div>
                     </div>
                   </div>
                   <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Net Profit (Loss)</div>
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{t('tax.netProfitLoss')}</div>
                     <div style={{ fontSize: '2.5rem', fontWeight: 900, color: annual.netProfit >= 0 ? '#22c55e' : '#f87171' }}>{formatCurrency(annual.netProfit)}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✓ Taxable income</div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{t('tax.taxableIncome')}</div>
                   </div>
                 </div>
 
@@ -1136,9 +1142,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                     {t('tax.howCogsCalculated')}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.5 }}>
-                    {es
-                      ? 'El Formulario 1065 Línea 2 combina POS COGS (auto, de las ventas) + Schedule A COGS (manual, del Tax Center). La mayoría de shops solo necesita POS COGS. Usa Schedule A para compras fuera del POS como mayoristas o proveedores externos.'
-                      : 'Form 1065 Line 2 combines POS COGS (auto, from sales) + Schedule A COGS (manual, from Tax Center). Most shops only need POS COGS. Use Schedule A for non-POS purchases like wholesale or off-system suppliers.'}
+                    {t('tax.cogsExplanation')}
                   </div>
                 </div>
               </div>

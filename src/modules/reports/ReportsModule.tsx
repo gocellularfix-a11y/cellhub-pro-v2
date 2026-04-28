@@ -489,9 +489,9 @@ export default function ReportsModule() {
       rows.push({
         id: so.id,
         type: 'special_order',
-        typeLabel: locale === 'es' ? 'Pedido Especial' : 'Special Order',
+        typeLabel: locale === 'es' ? 'Pedido Especial' : locale === 'pt' ? 'Pedido Especial' : 'Special Order',
         reference: so.id.slice(-8).toUpperCase(),
-        customerName: so.customerName || (locale === 'es' ? 'Sin nombre' : 'No name'),
+        customerName: so.customerName || (locale === 'es' ? 'Sin nombre' : locale === 'pt' ? 'Sem nome' : 'No name'),
         itemDescription: so.itemDescription || '',
         refundAmountCents: (so as any).depositRefundAmount || 0,
         refundMethod: (so as any).depositRefundMethod || 'unknown',
@@ -508,9 +508,9 @@ export default function ReportsModule() {
       rows.push({
         id: r.id,
         type: 'repair',
-        typeLabel: locale === 'es' ? 'Reparación' : 'Repair',
+        typeLabel: locale === 'es' ? 'Reparación' : locale === 'pt' ? 'Reparo' : 'Repair',
         reference: ((r as any).ticketNumber || r.id.slice(-8)).toString().toUpperCase(),
-        customerName: r.customerName || (locale === 'es' ? 'Sin nombre' : 'No name'),
+        customerName: r.customerName || (locale === 'es' ? 'Sin nombre' : locale === 'pt' ? 'Sem nome' : 'No name'),
         itemDescription: [r.device, r.issue].filter(Boolean).join(' — '),
         refundAmountCents: (r as any).depositRefundAmount || 0,
         refundMethod: (r as any).depositRefundMethod || 'unknown',
@@ -527,9 +527,9 @@ export default function ReportsModule() {
       rows.push({
         id: u.id,
         type: 'unlock',
-        typeLabel: locale === 'es' ? 'Desbloqueo' : 'Unlock',
+        typeLabel: locale === 'es' ? 'Desbloqueo' : locale === 'pt' ? 'Desbloqueio' : 'Unlock',
         reference: u.id.slice(-8).toUpperCase(),
-        customerName: u.customerName || (locale === 'es' ? 'Sin nombre' : 'No name'),
+        customerName: u.customerName || (locale === 'es' ? 'Sin nombre' : locale === 'pt' ? 'Sem nome' : 'No name'),
         itemDescription: `${u.device || ''} ${u.carrier ? `(${u.carrier})` : ''}`.trim(),
         refundAmountCents: (u as any).depositRefundAmount || 0,
         refundMethod: (u as any).depositRefundMethod || 'unknown',
@@ -1056,7 +1056,7 @@ export default function ReportsModule() {
           id: `${sale.id}-${item.id || `idx${(sale.items || []).indexOf(item)}`}`,
           createdAt: sale.createdAt,
           invoiceNumber: sale.invoiceNumber || sale.id || '',
-          customerName: sale.customerName || (locale === 'es' ? 'Walk-in' : 'Walk-in'),
+          customerName: sale.customerName || (locale === 'es' ? 'Mostrador' : locale === 'pt' ? 'Balcão' : 'Walk-in'),
           employeeName: sale.employeeName || '',
           carrier: normalizeCarrierName(carrierName),
           phoneNumber: phoneNum,
@@ -1251,29 +1251,29 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
 <h1>Sales Report — ${escHtml(storeName)}</h1>
 <p style="color:#666;margin-bottom:12px">${escHtml(dateLabel)} | Generated: ${escHtml(new Date().toLocaleString())}</p>
 <div class="summary">
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Bruto' : 'Gross'}</div><div class="value">${formatCurrency(stats.grossRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Devoluciones' : 'Returns'}</div><div class="value" style="color:#dc2626">-${formatCurrency(stats.totalReturnsCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Neto' : 'Net'}</div><div class="value">${formatCurrency(stats.netRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Ganancia' : 'Profit'}</div><div class="value" style="color:#16a34a">${formatCurrency(stats.totalProfitCents)}</div></div>
+  <div class="summary-box"><div class="label">${locale === 'es' ? 'Bruto' : locale === 'pt' ? 'Bruto' : 'Gross'}</div><div class="value">${formatCurrency(stats.grossRevenueCents)}</div></div>
+  <div class="summary-box"><div class="label">${locale === 'es' ? 'Devoluciones' : locale === 'pt' ? 'Devoluções' : 'Returns'}</div><div class="value" style="color:#dc2626">-${formatCurrency(stats.totalReturnsCents)}</div></div>
+  <div class="summary-box"><div class="label">${locale === 'es' ? 'Neto' : locale === 'pt' ? 'Líquido' : 'Net'}</div><div class="value">${formatCurrency(stats.netRevenueCents)}</div></div>
+  <div class="summary-box"><div class="label">${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</div><div class="value" style="color:#16a34a">${formatCurrency(stats.totalProfitCents)}</div></div>
 </div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:8.5pt">
-  <div><span style="color:#666">${locale === 'es' ? 'Impuesto:' : 'Tax:'}</span> <strong>${formatCurrency(stats.taxCollectedCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Efectivo:' : 'Cash:'}</span> <strong>${formatCurrency(stats.cashCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Tarjeta:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
+  <div><span style="color:#666">${locale === 'es' ? 'Impuesto:' : locale === 'pt' ? 'Imposto:' : 'Tax:'}</span> <strong>${formatCurrency(stats.taxCollectedCents)}</strong></div>
+  <div><span style="color:#666">${locale === 'es' ? 'Efectivo:' : locale === 'pt' ? 'Dinheiro:' : 'Cash:'}</span> <strong>${formatCurrency(stats.cashCents)}</strong></div>
+  <div><span style="color:#666">${locale === 'es' ? 'Tarjeta:' : locale === 'pt' ? 'Cartão:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
 </div>
-<h2>${locale === 'es' ? 'Pagos por Proveedor' : 'Phone Payments by Provider'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Proveedor' : 'Provider'}</th><th>${locale === 'es' ? 'Cant.' : 'Count'}</th><th>Total</th><th>${locale === 'es' ? 'Ganancia' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : 'Margin'}</th></tr></thead>
+<h2>${locale === 'es' ? 'Pagos por Proveedor' : locale === 'pt' ? 'Pagamentos por Provedor' : 'Phone Payments by Provider'}</h2>
+<table><thead><tr><th>${locale === 'es' ? 'Proveedor' : locale === 'pt' ? 'Provedor' : 'Provider'}</th><th>${locale === 'es' ? 'Cant.' : locale === 'pt' ? 'Qtd.' : 'Count'}</th><th>Total</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
 <tbody>${ppRows}${ppTotalRow}</tbody></table>
-<h2>${locale === 'es' ? 'Ventas por Categoría' : 'Sales by Category'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Categoría' : 'Category'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : 'Revenue'}</th><th>${locale === 'es' ? 'Ganancia' : 'Profit'}</th><th>Margin</th></tr></thead>
+<h2>${locale === 'es' ? 'Ventas por Categoría' : locale === 'pt' ? 'Vendas por Categoria' : 'Sales by Category'}</h2>
+<table><thead><tr><th>${locale === 'es' ? 'Categoría' : locale === 'pt' ? 'Categoria' : 'Category'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
 <tbody>${catRows}</tbody></table>
-<h2>${locale === 'es' ? 'Empleados' : 'Employees'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Empleado' : 'Employee'}</th><th>${locale === 'es' ? 'Trans.' : 'Trans.'}</th><th>${locale === 'es' ? 'Ventas' : 'Revenue'}</th></tr></thead>
+<h2>${locale === 'es' ? 'Empleados' : locale === 'pt' ? 'Funcionários' : 'Employees'}</h2>
+<table><thead><tr><th>${locale === 'es' ? 'Empleado' : locale === 'pt' ? 'Funcionário' : 'Employee'}</th><th>${locale === 'es' ? 'Trans.' : locale === 'pt' ? 'Trans.' : 'Trans.'}</th><th>${locale === 'es' ? 'Ventas' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
 <tbody>${empRows}</tbody></table>
-<h2>${locale === 'es' ? 'Más Vendidos' : 'Top Items'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Artículo' : 'Item'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : 'Revenue'}</th></tr></thead>
+<h2>${locale === 'es' ? 'Más Vendidos' : locale === 'pt' ? 'Mais Vendidos' : 'Top Items'}</h2>
+<table><thead><tr><th>${locale === 'es' ? 'Artículo' : locale === 'pt' ? 'Item' : 'Item'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
 <tbody>${itemRows}</tbody></table>
-<div class="grand">${locale === 'es' ? 'TOTAL NETO' : 'NET TOTAL'}: ${formatCurrency(stats.netRevenueCents)}</div>
+<div class="grand">${locale === 'es' ? 'TOTAL NETO' : locale === 'pt' ? 'TOTAL LÍQUIDO' : 'NET TOTAL'}: ${formatCurrency(stats.netRevenueCents)}</div>
 <p style="font-size:7.5pt;color:#999;margin-top:8px;text-align:center">${escHtml(storeName)} | CellHub Pro</p>
 </body></html>`;
     openPrintWindow(html);

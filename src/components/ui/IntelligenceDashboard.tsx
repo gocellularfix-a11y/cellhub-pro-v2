@@ -164,7 +164,7 @@ export default function IntelligenceDashboard({
         <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden">
           <div className="p-3 border-b border-surface-700 flex items-center justify-between">
             <h3 className="font-semibold text-slate-200">
-              Insights
+              {t('intelligence.insights')}
             </h3>
             <span className="text-xs text-slate-400">
               {insights.length} {t('intelligence.insightsFound')}

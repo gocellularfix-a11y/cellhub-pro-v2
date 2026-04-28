@@ -239,7 +239,7 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
         <MetricTile
           label={t('intelligence.businessProfit')}
           value={formatCurrency(history.profit)}
-          sub={`${history.margin.toFixed(1)}% margin`}
+          sub={t('intelligence.marginLabel', history.margin.toFixed(1))}
           accent="emerald"
         />
         <MetricTile
@@ -273,7 +273,7 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
         />
         <InfoRow
           icon="🔓"
-          label="Unlocks"
+          label={t('intelligence.unlocks')}
           value={String(history.linkedEntities.unlockCount)}
         />
         <InfoRow
