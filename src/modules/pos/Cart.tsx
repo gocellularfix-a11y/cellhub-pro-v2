@@ -101,7 +101,7 @@ export default function Cart({
     const base = cart
       .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
       .reduce((sum, i) => sum + i.price * i.qty, 0);
-    return Math.floor(base / 100);
+    return Math.trunc(base / 100);
   }, [cart, settings.loyaltyEnabled]);
 
   if (cart.length === 0) {

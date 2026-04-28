@@ -97,7 +97,13 @@ export function reverseTaxFromPayment(
     return { baseCents: payment, taxCents: 0 };
   }
 
-  const baseCents = Math.round(payment / (1 + rate));
+  let baseCents = Math.round(payment / (1 + rate));
+  // Penny-correction: ensure forward(base) == payment, not payment±1.
+  // Math.round on division can produce a base where round(base*rate) ≠ payment-base.
+  const forwardCheck = baseCents + Math.round(baseCents * rate);
+  if (forwardCheck !== payment) {
+    baseCents += payment > forwardCheck ? 1 : -1;
+  }
   const taxCents = payment - baseCents;
   return { baseCents, taxCents };
 }

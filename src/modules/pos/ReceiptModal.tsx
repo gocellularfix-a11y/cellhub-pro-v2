@@ -121,7 +121,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 
   // Compute pts for this sale (same formula as POSModule)
   const salePoints = sale
-    ? Math.floor(
+    ? Math.trunc(
         sale.items
           .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
           .reduce((s, i) => s + i.price * i.qty, 0) / 100

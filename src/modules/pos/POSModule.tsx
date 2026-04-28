@@ -396,7 +396,7 @@ export default function POSModule() {
           .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
           .reduce((sum, i) => sum + i.price * i.qty, 0);
         // 1 loyalty point per $1 spent (loyaltyBase is in cents → divide by 100)
-        const pts = Math.floor(loyaltyBase / 100);
+        const pts = Math.trunc(loyaltyBase / 100);
         if (pts > 0) {
           workingCustomer = {
             ...workingCustomer,
