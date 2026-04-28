@@ -4191,6 +4191,16 @@ export const translations: TranslationDictionary = {
   'intelligence.chatPlaceholder':         { en: 'Ex: "history of John" or "how are sales"', es: 'Ej: "historial de Juan" o "cómo van las ventas"', pt: 'Ex: "histórico de João" ou "como estão as vendas"' },
   'intelligence.send':                    { en: 'Send',                      es: 'Enviar',                                  pt: 'Enviar' },
 
+  // ── Shared status labels ─────────────────────────────────
+  'status.received':      { en: 'Received',       es: 'Recibido',             pt: 'Recebido' },
+  'status.inProgress':    { en: 'In Progress',    es: 'En Progreso',          pt: 'Em Progresso' },
+  'status.waitingParts':  { en: 'Waiting Parts',  es: 'Esperando Piezas',     pt: 'Aguardando Peças' },
+  'status.ready':         { en: 'Ready',          es: 'Listo',                pt: 'Pronto' },
+  'status.completed':     { en: 'Completed',      es: 'Completado',           pt: 'Concluído' },
+  'status.cancelled':     { en: 'Cancelled',      es: 'Cancelado',            pt: 'Cancelado' },
+  'status.refundPending': { en: 'Refund Pending', es: 'Reembolso Pendiente',  pt: 'Reembolso Pendente' },
+  'status.refunded':      { en: 'Refunded',       es: 'Reembolsado',          pt: 'Reembolsado' },
+
   // ── Condition labels (inventory) ─────────────────────────
   'condition.new':          { en: 'New',          es: 'Nuevo',          pt: 'Novo' },
   'condition.excellent':    { en: 'Excellent',    es: 'Excelente',      pt: 'Excelente' },

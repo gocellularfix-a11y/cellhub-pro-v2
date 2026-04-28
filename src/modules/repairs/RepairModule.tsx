@@ -7,6 +7,7 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui';
 import { useTranslation } from '@/i18n';
+import { STATUS_LABELS } from '@/i18n/statusMap';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -149,16 +150,13 @@ export default function RepairModule() {
   // Round R2: map canonical snake_case keys → i18n display labels.
   const translateStatus = useCallback(
     (status: string) => {
+      const labels = STATUS_LABELS(t);
       const map: Record<string, string> = {
         All: t('repairs.filter.all'),
-        [REPAIR_STATUS.RECEIVED]:      t('repairs.status.received'),
-        [REPAIR_STATUS.IN_PROGRESS]:   t('repairs.status.inProgress'),
-        [REPAIR_STATUS.WAITING_PARTS]: t('repairs.status.waitingParts'),
-        [REPAIR_STATUS.READY]:         t('repairs.status.ready'),
-        [REPAIR_STATUS.PICKED_UP]:     t('repairs.status.completed'),
-        [REPAIR_STATUS.CANCELLED]:     t('repairs.status.cancelled'),
+        ...labels,
+        [REPAIR_STATUS.PICKED_UP]: labels.completed,
       };
-      return map[status] || status;
+      return map[status] ?? status;
     },
     [t],
   );
