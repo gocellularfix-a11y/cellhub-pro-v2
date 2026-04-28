@@ -6,13 +6,14 @@ import { useState } from 'react';
 import { useMultiStore } from '@/store/MultiStoreProvider';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import type { StoreProfile } from '@/store/multiStoreTypes';
+import { useTranslation } from '@/i18n';
 
 interface StoreManagementProps {
   lang: string;
-  L: Record<string, any>;
 }
 
-export default function StoreManagement({ lang, L }: StoreManagementProps) {
+export default function StoreManagement({ lang }: StoreManagementProps) {
+  const { t } = useTranslation();
   const {
     state: { stores, currentStore, registration, enabled, consolidatedView },
     addStore, updateStore, deactivateStore, registerComputer, setConsolidatedView,
@@ -63,16 +64,16 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">🏪 {lang === 'es' ? 'Multi-Tienda' : 'Multi-Store'}</h2>
+        <h2 className="text-lg font-semibold text-white">{t('settings.multistore.title')}</h2>
         <button onClick={openAdd} className="btn btn-primary btn-sm">
-          + {lang === 'es' ? 'Nueva Tienda' : 'Add Store'}
+          + {t('settings.multistore.addStore')}
         </button>
       </div>
 
       {/* Current registration */}
       {registration && currentStore && (
         <div className="rounded-lg bg-brand-500/10 border border-brand-500/20 p-4">
-          <p className="text-xs text-slate-400 uppercase mb-1">{lang === 'es' ? 'Esta computadora' : 'This Computer'}</p>
+          <p className="text-xs text-slate-400 uppercase mb-1">{t('settings.multistore.thisComputer')}</p>
           <p className="text-sm text-white font-medium">
             📍 {currentStore.name}
             <span className="text-slate-500 ml-2">({registration.computerName})</span>
@@ -84,7 +85,7 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
       {enabled && (
         <label className="flex items-center justify-between py-2 cursor-pointer">
           <span className="text-sm text-slate-300">
-            {lang === 'es' ? 'Vista consolidada (todas las tiendas)' : 'Consolidated view (all stores)'}
+            {t('settings.multistore.consolidatedView')}
           </span>
           <div
             className={`w-10 h-5 rounded-full transition-all relative cursor-pointer ${consolidatedView ? 'bg-brand-500' : 'bg-white/20'}`}
@@ -100,9 +101,9 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
         {activeStores.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <span className="text-3xl block mb-2">🏪</span>
-            <p className="text-sm">{lang === 'es' ? 'No hay tiendas configuradas' : 'No stores configured'}</p>
+            <p className="text-sm">{t('settings.multistore.noStores')}</p>
             <p className="text-xs text-slate-600 mt-1">
-              {lang === 'es' ? 'Agrega tu primera tienda para empezar' : 'Add your first store to get started'}
+              {t('settings.multistore.addFirst')}
             </p>
           </div>
         ) : (
@@ -154,21 +155,21 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
       <Modal
         open={showAddModal}
         onClose={() => { setShowAddModal(false); setEditStore(null); }}
-        title={`🏪 ${editStore ? (lang === 'es' ? 'Editar Tienda' : 'Edit Store') : (lang === 'es' ? 'Nueva Tienda' : 'New Store')}`}
+        title={`🏪 ${editStore ? t('settings.multistore.editTitle') : t('settings.multistore.newTitle')}`}
         size="max-w-md"
       >
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Nombre de la tienda' : 'Store Name'} *</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.storeName')} *</label>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="Go Cellular — Main" autoFocus />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Dirección' : 'Address'}</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.storeAddress')}</label>
             <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" placeholder="516 N. Milpas St., Santa Barbara, CA 93103" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Teléfono' : 'Phone'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.storePhone')}</label>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" />
             </div>
             <div>
@@ -178,15 +179,15 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Tasa de Impuesto' : 'Tax Rate'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.taxRate')}</label>
               <input type="number" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: parseFloat(e.target.value) || 0 })} className="input" step="0.0001" />
               <p className="text-xs text-slate-500 mt-0.5">{(form.taxRate * 100).toFixed(2)}%</p>
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">{lang === 'es' ? 'Inventario' : 'Inventory Mode'}</label>
+              <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.inventoryMode')}</label>
               <select value={form.inventoryMode} onChange={(e) => setForm({ ...form, inventoryMode: e.target.value as any })} className="select">
-                <option value="shared">{lang === 'es' ? 'Compartido' : 'Shared across stores'}</option>
-                <option value="per_store">{lang === 'es' ? 'Por tienda' : 'Per store (separate)'}</option>
+                <option value="shared">{t('settings.multistore.inventoryShared')}</option>
+                <option value="per_store">{t('settings.multistore.inventoryPerStore')}</option>
               </select>
             </div>
           </div>
@@ -201,15 +202,15 @@ export default function StoreManagement({ lang, L }: StoreManagementProps) {
           </div>
         </div>
         <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
-          <button onClick={() => setShowAddModal(false)} className="btn btn-secondary flex-1">{L.cancel}</button>
-          <button onClick={handleSave} className="btn btn-primary flex-1">{editStore ? L.save : L.create}</button>
+          <button onClick={() => setShowAddModal(false)} className="btn btn-secondary flex-1">{t('settings.multistore.cancel')}</button>
+          <button onClick={handleSave} className="btn btn-primary flex-1">{editStore ? t('settings.multistore.save') : t('settings.multistore.create')}</button>
         </div>
       </Modal>
 
       <ConfirmDialog
         open={!!deleteConfirm}
-        title={lang === 'es' ? 'Desactivar Tienda' : 'Deactivate Store'}
-        message={lang === 'es' ? '¿Desactivar esta tienda? Los datos se conservarán.' : 'Deactivate this store? Data will be preserved.'}
+        title={t('settings.multistore.deactivateTitle')}
+        message={t('settings.multistore.deactivateMessage')}
         variant="danger"
         onConfirm={() => { if (deleteConfirm) deactivateStore(deleteConfirm); setDeleteConfirm(null); }}
         onCancel={() => setDeleteConfirm(null)}

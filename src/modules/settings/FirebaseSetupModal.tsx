@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { saveFirebaseConfig } from '@/config/firebase';
 import type { FirebaseConfig } from '@/store/types';
+import { useTranslation } from '@/i18n';
 
 interface FirebaseSetupModalProps {
   lang: string;
@@ -23,11 +24,10 @@ type Step = 'ask_has_project' | 'instructions' | 'paste_config';
 
 export default function FirebaseSetupModal({ lang, onClose, onComplete }: FirebaseSetupModalProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>('ask_has_project');
   const [configJson, setConfigJson] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
-
-  const es = lang === 'es';
 
   const handleValidateAndSave = () => {
     setValidationError(null);
@@ -51,15 +51,13 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
           .replace(/'/g, '"');
         parsed = JSON.parse(normalized);
       } catch {
-        setValidationError(es
-          ? 'JSON inválido. Copia el bloque firebaseConfig completo desde la consola de Firebase.'
-          : 'Invalid JSON. Copy the full firebaseConfig block from the Firebase console.');
+        setValidationError(t('settings.firebase.invalidJson'));
         return;
       }
     }
 
     if (!parsed || typeof parsed !== 'object') {
-      setValidationError(es ? 'Formato no reconocido.' : 'Unrecognized format.');
+      setValidationError(t('settings.firebase.unknownFormat'));
       return;
     }
 
@@ -67,9 +65,7 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
     const required: (keyof FirebaseConfig)[] = ['apiKey', 'projectId', 'appId'];
     const missing = required.filter((k) => !parsed![k]);
     if (missing.length > 0) {
-      setValidationError(es
-        ? `Faltan campos requeridos: ${missing.join(', ')}`
-        : `Missing required fields: ${missing.join(', ')}`);
+      setValidationError(t('settings.firebase.missingFields', missing.join(', ')));
       return;
     }
 
@@ -86,10 +82,10 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
 
     try {
       saveFirebaseConfig(finalConfig);
-      toast(es ? 'Configuración guardada' : 'Config saved', 'success');
+      toast(t('settings.firebase.configSaved'), 'success');
       onComplete();
     } catch {
-      setValidationError(es ? 'Error al guardar la configuración.' : 'Error saving configuration.');
+      setValidationError(t('settings.firebase.saveFailed'));
     }
   };
 
@@ -97,7 +93,7 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
     <Modal
       open
       onClose={onClose}
-      title={es ? '☁️ Configurar Sincronización en la Nube' : '☁️ Set up Cloud Sync'}
+      title={t('settings.firebase.title')}
       size="max-w-2xl"
     >
       <div style={{ padding: '0.5rem', maxWidth: 620 }}>
@@ -105,12 +101,10 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
         {step === 'ask_has_project' && (
           <>
             <p style={{ fontSize: '0.95rem', marginBottom: '1rem', color: '#e5e7eb' }}>
-              {es
-                ? 'La sincronización en la nube usa Firebase de Google para respaldar tus datos y compartirlos entre múltiples dispositivos.'
-                : 'Cloud sync uses Google Firebase to back up your data and share it across multiple devices.'}
+              {t('settings.firebase.intro')}
             </p>
             <p style={{ fontSize: '0.95rem', marginBottom: '1.5rem', fontWeight: 600 }}>
-              {es ? '¿Ya tienes un proyecto Firebase?' : 'Do you already have a Firebase project?'}
+              {t('settings.firebase.hasProject')}
             </p>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
@@ -118,14 +112,14 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
                 className="btn btn-primary"
                 style={{ flex: 1 }}
               >
-                {es ? 'Sí, tengo la configuración' : 'Yes, I have the config'}
+                {t('settings.firebase.yesHaveConfig')}
               </button>
               <button
                 onClick={() => setStep('instructions')}
                 className="btn btn-secondary"
                 style={{ flex: 1 }}
               >
-                {es ? 'No, ayúdame a crearlo' : 'No, help me create one'}
+                {t('settings.firebase.noHelp')}
               </button>
             </div>
           </>
@@ -134,36 +128,36 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
         {step === 'instructions' && (
           <>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-              {es ? 'Cómo crear un proyecto Firebase' : 'How to create a Firebase project'}
+              {t('settings.firebase.howToCreate')}
             </h3>
             <ol style={{ fontSize: '0.88rem', lineHeight: 1.6, color: '#d1d5db', paddingLeft: '1.25rem' }}>
               <li style={{ marginBottom: '0.5rem' }}>
-                {es
+                {lang === 'es'
                   ? <>Abre <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" style={{ color: '#60a5fa' }}>console.firebase.google.com</a> e inicia sesión con tu cuenta de Google.</>
                   : <>Open <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" style={{ color: '#60a5fa' }}>console.firebase.google.com</a> and sign in with your Google account.</>}
               </li>
               <li style={{ marginBottom: '0.5rem' }}>
-                {es ? 'Click en "Agregar proyecto" y ponle un nombre (ej: "mi-tienda-pos").' : 'Click "Add project" and give it a name (e.g. "my-shop-pos").'}
+                {t('settings.firebase.step2')}
               </li>
               <li style={{ marginBottom: '0.5rem' }}>
-                {es ? 'Una vez creado, click en el ícono de Web (</>). Registra la app con cualquier nombre.' : 'Once created, click the Web icon (</>). Register the app with any name.'}
+                {t('settings.firebase.step3')}
               </li>
               <li style={{ marginBottom: '0.5rem' }}>
-                {es ? 'Firebase mostrará un bloque de código con "firebaseConfig". Copia ese bloque COMPLETO.' : 'Firebase will show a code block with "firebaseConfig". Copy that ENTIRE block.'}
+                {t('settings.firebase.step4')}
               </li>
               <li style={{ marginBottom: '0.5rem' }}>
-                {es ? 'En el menú izquierdo: Firestore Database → Crear base de datos → Modo de prueba o Modo producción.' : 'In the left menu: Firestore Database → Create database → Test mode or Production mode.'}
+                {t('settings.firebase.step5')}
               </li>
               <li>
-                {es ? 'Vuelve aquí y pega la configuración en el siguiente paso.' : 'Come back here and paste the config in the next step.'}
+                {t('settings.firebase.step6')}
               </li>
             </ol>
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
               <button onClick={() => setStep('ask_has_project')} className="btn btn-secondary">
-                {es ? '← Atrás' : '← Back'}
+                {t('settings.firebase.back')}
               </button>
               <button onClick={() => setStep('paste_config')} className="btn btn-primary" style={{ flex: 1 }}>
-                {es ? 'Ya tengo mi config →' : 'I have my config →'}
+                {t('settings.firebase.haveConfig')}
               </button>
             </div>
           </>
@@ -172,12 +166,10 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
         {step === 'paste_config' && (
           <>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-              {es ? 'Pega la configuración de Firebase' : 'Paste your Firebase config'}
+              {t('settings.firebase.pasteTitle')}
             </h3>
             <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginBottom: '0.75rem' }}>
-              {es
-                ? 'Pega el bloque completo que copiaste de la consola de Firebase. Se acepta formato JSON u objeto JavaScript.'
-                : 'Paste the entire block you copied from the Firebase console. Accepts JSON or JS object format.'}
+              {t('settings.firebase.pasteDesc')}
             </p>
             <textarea
               value={configJson}
@@ -210,7 +202,7 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
             )}
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
               <button onClick={() => setStep('ask_has_project')} className="btn btn-secondary">
-                {es ? '← Atrás' : '← Back'}
+                {t('settings.firebase.back')}
               </button>
               <button
                 onClick={handleValidateAndSave}
@@ -218,7 +210,7 @@ export default function FirebaseSetupModal({ lang, onClose, onComplete }: Fireba
                 style={{ flex: 1 }}
                 disabled={!configJson.trim()}
               >
-                {es ? 'Validar y guardar' : 'Validate and save'}
+                {t('settings.firebase.validateSave')}
               </button>
             </div>
           </>

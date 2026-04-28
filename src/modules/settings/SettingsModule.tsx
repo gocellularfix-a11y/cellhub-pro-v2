@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { Modal, ConfirmDialog } from '@/components/ui';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { exportBackup, importBackup } from '@/services/storage';
 import { persistSettings } from '@/services/persist';
 import { sanitizeToBMP } from '@/services/whatsapp';
@@ -241,15 +241,14 @@ export default function SettingsModule() {
   // the user picks a name from the dropdown, the array is reorganized so
   // that the chosen name becomes detectedPrinters[0].
   const [scanningPrinters, setScanningPrinters] = useState(false);
+  const { t, locale } = useTranslation();
 
   // R-COMMS-SMS-INFRA-CLEANUP: smsWizardOpen state removed (Wizard retired).
 
   const scanForPrinters = useCallback(async () => {
     if (!isElectron()) {
       toast(
-        lang === 'es'
-          ? 'La detección de impresoras solo funciona en la app de escritorio.'
-          : 'Printer detection is only available in the desktop app.',
+        t('settings.hardware.desktopOnly'),
         'info',
       );
       return;
@@ -283,31 +282,25 @@ export default function SettingsModule() {
 
       if (scannedNames.length === 0) {
         toast(
-          lang === 'es'
-            ? 'No se detectaron impresoras. Verifica que estén conectadas y encendidas.'
-            : 'No printers detected. Check that they are connected and powered on.',
+          t('settings.hardware.noPrintersFound'),
           'info',
         );
       } else {
         toast(
-          lang === 'es'
-            ? `${scannedNames.length} impresora(s) detectada(s)`
-            : `${scannedNames.length} printer(s) detected`,
+          t('settings.hardware.printersDetected', scannedNames.length),
           'success',
         );
       }
     } catch (err) {
       console.error('[scanForPrinters] failed:', err);
       toast(
-        lang === 'es'
-          ? 'Error al escanear impresoras'
-          : 'Failed to scan printers',
+        t('settings.hardware.scanFailed'),
         'error',
       );
     } finally {
       setScanningPrinters(false);
     }
-  }, [settings.detectedPrinters, setSettings, toast, lang]);
+  }, [settings.detectedPrinters, setSettings, toast, t]);
 
   const selectPrinter = useCallback((name: string) => {
     const current = settings.detectedPrinters || [];
@@ -317,14 +310,24 @@ export default function SettingsModule() {
     setSettings({ detectedPrinters: reordered });
     persistSettings({ detectedPrinters: reordered });
     toast(
-      lang === 'es'
-        ? `Impresora seleccionada: ${name}`
-        : `Selected printer: ${name}`,
+      t('settings.hardware.printerSelected', name),
       'success',
     );
-  }, [settings.detectedPrinters, setSettings, toast, lang]);
-  const L = getLabels(lang);
+  }, [settings.detectedPrinters, setSettings, toast, t]);
+
   const [activeSection, setActiveSection] = useState('store');
+
+  const sectionLabels: Record<string, string> = {
+    store:       t('settings.nav.store'),
+    multistore:  t('settings.nav.multistore'),
+    taxes:       t('settings.nav.taxes'),
+    commissions: t('settings.nav.commissions'),
+    hardware:    t('settings.nav.hardware'),
+    whatsapp:    t('settings.nav.whatsapp'),
+    ai:          t('settings.nav.ai'),
+    employees:   t('settings.nav.employees'),
+    backup:      t('settings.nav.backup'),
+  };
 
   // ── Confirm modal (replaces confirm/alert/prompt) ────────
   const [confirmModal, setConfirmModal] = useState<{
@@ -436,10 +439,9 @@ export default function SettingsModule() {
         const text = await file.text();
         const data = JSON.parse(text);
         const result = await importBackup(data);
-        const es = lang === 'es';
 
         if (!result.success) {
-          toast(es ? `Error al importar: ${result.error}` : `Import failed: ${result.error}`, 'error');
+          toast(t('settings.backup.importError', result.error), 'error');
           return;
         }
 
@@ -452,13 +454,10 @@ export default function SettingsModule() {
             wasLegacy: true,
           });
         } else if (result.normalization) {
-          toast(es
-            ? '✅ Importación completa — datos legacy v1 convertidos a formato v2.'
-            : '✅ Import complete — legacy v1 data converted to v2 format.',
-            'success');
+          toast(t('settings.backup.legacyConverted'), 'success');
           setTimeout(() => window.location.reload(), 1500);
         } else {
-          toast(L.backupImportedSuccess || (es ? '✅ Importación completa' : '✅ Import complete'), 'success');
+          toast(t('settings.backup.importedSuccess'), 'success');
           setTimeout(() => window.location.reload(), 1500);
         }
       } catch (err) {
@@ -466,11 +465,11 @@ export default function SettingsModule() {
       }
     };
     input.click();
-  }, [toast, L, lang]);
+  }, [toast, t]);
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">⚙️ {L.settings}</h1>
+      <h1 className="text-2xl font-bold text-white">⚙️ {t('settings.title')}</h1>
 
       <div className="flex gap-6">
         {/* Sidebar nav */}
@@ -478,7 +477,7 @@ export default function SettingsModule() {
           {SECTIONS.map((s) => (
             <button key={s.id} onClick={() => setActiveSection(s.id)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${activeSection === s.id ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:bg-white/5'}`}>
-              {s.icon} {s.label}
+              {s.icon} {sectionLabels[s.id]}
             </button>
           ))}
         </div>
@@ -487,48 +486,42 @@ export default function SettingsModule() {
         <div className="flex-1 glass-card p-6">
           {activeSection === 'store' && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white mb-4">{L.storeInformationTitle || 'Store Information'}</h2>
-              <Field settings={settings} update={update} label={L.storeName || 'Store Name'} settingsKey="storeName" placeholder="Go Cellular" />
-              <Field settings={settings} update={update} label={L.storeAddress || 'Address'} settingsKey="storeAddress" placeholder="516 N. Milpas St., Santa Barbara, CA 93103" />
+              <h2 className="text-lg font-semibold text-white mb-4">{t('settings.store.title')}</h2>
+              <Field settings={settings} update={update} label={t('settings.store.name')} settingsKey="storeName" placeholder="Go Cellular" />
+              <Field settings={settings} update={update} label={t('settings.store.address')} settingsKey="storeAddress" placeholder="516 N. Milpas St., Santa Barbara, CA 93103" />
               <div className="grid grid-cols-2 gap-3">
-                <Field settings={settings} update={update} label={L.storePhone || 'Phone'} settingsKey="storePhone" placeholder="(805) 845-5855" />
+                <Field settings={settings} update={update} label={t('settings.store.phone')} settingsKey="storePhone" placeholder="(805) 845-5855" />
                 <Field settings={settings} update={update} label="Email" settingsKey="storeEmail" placeholder="gocellularfix@gmail.com" />
               </div>
               <UrlField settings={settings} update={update} label="Website" settingsKey="storeWebsite" placeholder="gocellularsb.com" />
               <Field settings={settings} update={update} label="Business Hours" settingsKey="businessHours" placeholder="Mon-Sat: 10AM-7PM" />
-              <Field settings={settings} update={update} label={L.receiptFooter || 'Receipt Footer'} settingsKey="receiptFooter" />
+              <Field settings={settings} update={update} label={t('settings.store.receiptFooter')} settingsKey="receiptFooter" />
               <Field settings={settings} update={update} label="Warranty Text" settingsKey="warrantyText" />
               <Field settings={settings} update={update} label="Return Policy" settingsKey="returnPolicy" />
               <div className="border-t border-white/10 pt-4 space-y-3">
-                <h3 className="text-sm font-semibold text-white">
-                  ⭐ {L.showReviewQr || 'Google Reviews QR on Receipts'}
-                </h3>
-                <Toggle settings={settings} update={update} label={L.showReviewQr || 'Show Google Reviews QR on Receipts'} settingsKey="showReviewQr" />
+                <h3 className="text-sm font-semibold text-white">⭐ {t('settings.store.showReviewQr')}</h3>
+                <Toggle settings={settings} update={update} label={t('settings.store.showReviewQr')} settingsKey="showReviewQr" />
                 {settings.showReviewQr && (
                   <UrlField
                     settings={settings}
                     update={update}
-                    label={L.googleReviewUrl || 'Google Review Link'}
+                    label={t('settings.store.googleReviewUrl')}
                     settingsKey="googleReviewUrl"
                     placeholder="https://g.page/r/CThz_PIcQfrrEBM/review"
                   />
                 )}
               </div>
               <div className="border-t border-white/10 pt-4 space-y-3">
-                <h3 className="text-sm font-semibold text-white">
-                  🔗 {L.repairTrackingLink || 'Customer Repair Tracking'}
-                </h3>
+                <h3 className="text-sm font-semibold text-white">🔗 {t('settings.store.repairTrackingLink')}</h3>
                 <UrlField
                   settings={settings}
                   update={update}
-                  label={L.repairStatusBaseUrl || 'Repair Status Page URL'}
+                  label={t('settings.store.repairStatusBaseUrl')}
                   settingsKey="repairStatusBaseUrl"
                   placeholder="https://cellhubpro.com/repair-status.html"
                 />
                 <p className="text-xs text-slate-400">
-                  {lang === 'es'
-                    ? 'La app genera un link único por ticket. El cliente puede escanear el QR para ver el estado de su reparación en tiempo real.'
-                    : 'The app generates a unique link per ticket. Customers scan the QR to see real-time repair status.'}
+                  {t('settings.store.trackingDesc')}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -545,7 +538,7 @@ export default function SettingsModule() {
 
           {activeSection === 'taxes' && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white mb-4">{L.taxRatesFeesTitle || 'Tax Rates & Fees'}</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">{t('settings.taxes.title')}</h2>
               <div className="grid grid-cols-2 gap-3">
                 <Field settings={settings} update={update} label="Sales Tax Rate" settingsKey="taxRate" type="number" step="0.0001" placeholder="0.0925" />
                 <Field settings={settings} update={update} label="Utility Users Tax" settingsKey="utilityUsersTax" type="number" step="0.001" placeholder="0.055" />
@@ -554,13 +547,9 @@ export default function SettingsModule() {
                 <Field settings={settings} update={update} label="Mobile Surcharge ($)" settingsKey="mobileSurcharge" type="number" step="0.01" placeholder="0.41" />
                 <Field settings={settings} update={update} label="Credit Card Fee ($)" settingsKey="creditCardFee" type="number" step="0.01" placeholder="5.00" />
               </div>
-              <p className="text-xs text-slate-500 -mt-2">
-                {lang === 'es'
-                  ? 'Cargo fijo por tarjeta. Ej: 5.00 = $5.00 por transacción.'
-                  : 'Fixed credit card fee per transaction. Ex: 5.00 = $5.00. Cashiers can override at checkout.'}
-              </p>
+              <p className="text-xs text-slate-500 -mt-2">{t('settings.taxes.creditCardFeeDesc')}</p>
               <div className="grid grid-cols-2 gap-3">
-                <Field settings={settings} update={update} label={lang === 'es' ? 'Política de Devolución (días)' : 'Return Policy (days)'} settingsKey="returnPolicyDays" type="number" step="1" min="0" placeholder="30" />
+                <Field settings={settings} update={update} label={t('settings.taxes.returnPolicyDays')} settingsKey="returnPolicyDays" type="number" step="1" min="0" placeholder="30" />
               </div>
 
               <div className="border-t border-white/10 pt-4">
@@ -575,7 +564,7 @@ export default function SettingsModule() {
 
               {/* ── 📊 Tax Calculation Examples ────────────────────── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-3">📊 {lang === 'es' ? 'Ejemplos de Cálculo' : 'Tax Calculation Examples'}</h3>
+                <h3 className="text-sm font-semibold text-white mb-3">📊 {t('settings.taxes.examples.title')}</h3>
                 <div className="space-y-3">
                   {(() => {
                     const sr = settings.taxRate ?? 0.0925;
@@ -584,27 +573,27 @@ export default function SettingsModule() {
                     return (
                       <>
                         <div className="p-3 rounded-lg bg-white/5 text-sm">
-                          <div className="font-semibold text-white mb-2">📱 {lang === 'es' ? 'Ejemplo: Funda de Celular' : 'Phone Case Example'}</div>
+                          <div className="font-semibold text-white mb-2">📱 {t('settings.taxes.examples.phoneCaseTitle')}</div>
                           <div className="text-slate-400 space-y-0.5 text-xs">
-                            <div>{lang === 'es' ? 'Precio' : 'Product Price'}: $20.00</div>
+                            <div>{t('settings.taxes.examples.productPrice')}: $20.00</div>
                             <div>({(sr * 100).toFixed(4)}%): ${(20 * sr).toFixed(2)}</div>
                             <div className="text-emerald-400 font-bold pt-1">{lang === 'es' ? 'Total' : 'Total'}: ${(20 + 20 * sr).toFixed(2)}</div>
                           </div>
                         </div>
                         <div className="p-3 rounded-lg bg-white/5 text-sm">
-                          <div className="font-semibold text-white mb-2">📞 {lang === 'es' ? 'Ejemplo: Pago de Teléfono' : 'Bill Payment Example'}</div>
+                          <div className="font-semibold text-white mb-2">📞 {t('settings.taxes.examples.billTitle')}</div>
                           <div className="text-slate-400 space-y-0.5 text-xs">
-                            <div>{lang === 'es' ? 'Monto' : 'Payment Amount'} ($): $50.00</div>
+                            <div>{t('settings.taxes.examples.amount')} ($): $50.00</div>
                             <div>({(ut * 100).toFixed(2)}%): ${(50 * ut).toFixed(2)}</div>
-                            <div>{lang === 'es' ? 'Recargo Móvil CA' : 'CA Mobility Fee'}: ${ms.toFixed(2)}</div>
+                            <div>{t('settings.taxes.examples.caFee')}: ${ms.toFixed(2)}</div>
                             <div className="text-emerald-400 font-bold pt-1">{lang === 'es' ? 'Total' : 'Total'}: ${(50 + 50 * ut + ms).toFixed(2)}</div>
                           </div>
                         </div>
                         <div className="p-3 rounded-lg bg-white/5 text-sm">
-                          <div className="font-semibold text-white mb-2">🔧 {lang === 'es' ? 'Ejemplo: Servicio de Reparación' : 'Repair Service Example'}</div>
+                          <div className="font-semibold text-white mb-2">🔧 {t('settings.taxes.examples.repairTitle')}</div>
                           <div className="text-slate-400 space-y-0.5 text-xs">
-                            <div>{lang === 'es' ? 'Precio del Servicio' : 'Service Price'}: $100.00</div>
-                            <div className="italic">{lang === 'es' ? 'Sin impuestos (solo mano de obra)' : 'No tax (labor only — parts are taxable)'}</div>
+                            <div>{t('settings.taxes.examples.servicePrice')}: $100.00</div>
+                            <div className="italic">{t('settings.taxes.examples.noTax')}</div>
                             <div className="text-emerald-400 font-bold pt-1">{lang === 'es' ? 'Total' : 'Total'}: $100.00</div>
                           </div>
                         </div>
@@ -613,7 +602,7 @@ export default function SettingsModule() {
                   })()}
                 </div>
                 <div className="mt-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 text-center">
-                  ✓ {lang === 'es' ? 'Todos los cambios se guardan automáticamente.' : 'All changes are saved automatically.'}
+                  ✓ {t('settings.taxes.autoSaved')}
                 </div>
               </div>
             </div>
@@ -621,24 +610,16 @@ export default function SettingsModule() {
 
           {activeSection === 'commissions' && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white mb-4">💰 {lang === 'es' ? 'Ingresos por Comisión' : 'Commission Income'}</h2>
-              <p className="text-xs text-slate-500 mb-2">
-                {lang === 'es'
-                  ? 'Comisiones que ganas por pagos de operadores wireless (carriers) y por recargas internacionales (top-ups). Configura cada operador y proveedor para que CellHub Pro reporte tu income real.'
-                  : 'Commissions you earn from wireless carrier payments and international top-ups. Configure each carrier and provider so CellHub Pro reports your actual income accurately.'}
-              </p>
+              <h2 className="text-lg font-semibold text-white mb-4">💰 {t('settings.commissions.title')}</h2>
+              <p className="text-xs text-slate-500 mb-2">{t('settings.commissions.desc')}</p>
               {/* ── 💰 Carrier Commission Rates ───────────────────── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-1">💰 {lang === 'es' ? 'Comisiones por Operador' : 'Carrier Commission Rates'}</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Configura cuánto ganas de comisión por cada pago de operador. Esto es lo que ganas, no lo que cobras al cliente.'
-                    : 'Configure how much commission you earn from each carrier payment. This is your earnings, not what you charge the customer.'}
-                </p>
+                <h3 className="text-sm font-semibold text-white mb-1">💰 {t('settings.commissions.carrierRates.title')}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.carrierRates.desc')}</p>
                 {/* Default fallback rate (used when a carrier has no rate set) */}
                 <div className="flex items-center gap-3 p-2 mb-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
                   <span className="flex-1 text-sm text-amber-200">
-                    {lang === 'es' ? 'Comisión por defecto (fallback)' : 'Default Commission (fallback)'}
+                    {t('settings.commissions.defaultRate')}
                   </span>
                   <div className="flex items-center gap-1">
                     <input
@@ -657,7 +638,7 @@ export default function SettingsModule() {
                     <span className="text-xs text-slate-400">%</span>
                   </div>
                   <span className="text-xs text-amber-300/70 w-40 text-right">
-                    {lang === 'es' ? 'Si carrier no tiene rate' : 'When carrier has no rate'}
+                    {t('settings.commissions.noRateSet')}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -686,14 +667,14 @@ export default function SettingsModule() {
                           <span className="text-xs text-slate-400">%</span>
                         </div>
                         <span className="text-xs text-slate-500 w-40 text-right">
-                          {lang === 'es' ? 'Ej: $100 pago = $' : 'Ex: $100 payment = $'}{(rate * 100).toFixed(2)}
+                          {t('settings.commissions.examplePrefix')}{(rate * 100).toFixed(2)}
                         </span>
                       </div>
                     );
                   })}
                   {(settings.phoneCarriers || []).length === 0 && (
                     <p className="text-xs text-slate-500 italic">
-                      {lang === 'es' ? 'Agrega operadores en la sección de abajo.' : 'Add carriers in the section below.'}
+                      {t('settings.commissions.addCarriersFirst')}
                     </p>
                   )}
                 </div>
@@ -701,20 +682,16 @@ export default function SettingsModule() {
 
               {/* ── 🎯 Activation Spiffs ──────────────────────── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-1">🎯 {lang === 'es' ? 'Bonos por Activación (Spiffs)' : 'Activation Spiffs'}</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Bonos que el carrier te paga por nuevas activaciones. Son income interno (no se cobra al cliente). Si están habilitados, se trackean y se reportan en Taxes.'
-                    : 'Bonuses the carrier pays you for new activations. Internal income (not charged to customer). When enabled, they are tracked and reported in Taxes.'}
-                </p>
-                <Toggle settings={settings} update={update} label={lang === 'es' ? 'Habilitar tracking de spiffs' : 'Enable spiff tracking'} settingsKey="trackActivationSpiffs" />
+                <h3 className="text-sm font-semibold text-white mb-1">🎯 {t('settings.commissions.spiffs.title')}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.spiffs.desc')}</p>
+                <Toggle settings={settings} update={update} label={t('settings.commissions.spiffs.enableTracking')} settingsKey="trackActivationSpiffs" />
 
                 {settings.trackActivationSpiffs && (
                   <>
                     <div className="mt-3 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20">
                       <div className="flex items-center gap-3">
                         <span className="flex-1 text-sm text-amber-200">
-                          {lang === 'es' ? '% reportable a impuestos' : 'Taxable portion'}
+                          {t('settings.commissions.spiffs.taxablePortion')}
                         </span>
                         <div className="flex items-center gap-1">
                           <input
@@ -735,15 +712,13 @@ export default function SettingsModule() {
                         </div>
                       </div>
                       <p className="text-xs text-amber-300/60 mt-1">
-                        {lang === 'es'
-                          ? 'Default 100% — todo el spiff cuenta como income reportable.'
-                          : 'Default 100% — entire spiff counts as reportable income.'}
+                        {t('settings.commissions.spiffs.taxableDesc')}
                       </p>
                     </div>
 
                     <div className="mt-3 space-y-2">
                       <p className="text-xs text-slate-400">
-                        {lang === 'es' ? 'Monto default por carrier (editable por transacción):' : 'Default amount per carrier (editable per transaction):'}
+                        {t('settings.commissions.spiffs.defaultPerCarrier')}
                       </p>
                       {(settings.phoneCarriers || []).map((carrier) => {
                         const amount = settings.carrierSpiffs?.[carrier] ?? 0;
@@ -773,7 +748,7 @@ export default function SettingsModule() {
                       })}
                       {(settings.phoneCarriers || []).length === 0 && (
                         <p className="text-xs text-slate-500 italic">
-                          {lang === 'es' ? 'Agrega operadores primero.' : 'Add carriers first.'}
+                          {t('settings.commissions.spiffs.addCarriersFirst')}
                         </p>
                       )}
                     </div>
@@ -783,12 +758,8 @@ export default function SettingsModule() {
 
               {/* ── 📱 Phone Carriers & Payment Portals ──────────── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-1">📱 {lang === 'es' ? 'Operadores y Portales de Pago' : 'Phone Carriers & Payment Portals'}</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Gestiona los operadores y configura las URLs de los portales de pago. Cada operador puede tener su propio link para pagos externos.'
-                    : 'Manage carriers and configure payment portal URLs. Each carrier can have its own portal link for external payments.'}
-                </p>
+                <h3 className="text-sm font-semibold text-white mb-1">📱 {t('settings.commissions.carriers.title')}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.carriers.desc')}</p>
                 <div className="space-y-2">
                   {(settings.phoneCarriers || []).map((carrier, idx) => {
                     const url = settings.carrierPortalUrls?.[carrier] || '';
@@ -808,9 +779,7 @@ export default function SettingsModule() {
                                 );
                                 if (collidesAt !== -1) {
                                   toast(
-                                    lang === 'es'
-                                      ? `Ya existe un operador llamado "${newName}"`
-                                      : `A carrier named "${newName}" already exists`,
+                                    t('settings.commissions.carriers.collision', newName),
                                     'error',
                                   );
                                   return;
@@ -871,10 +840,10 @@ export default function SettingsModule() {
                               };
                               setSettings(delta);
                               persistSettings(delta as Record<string, unknown>);
-                              toast(lang === 'es' ? 'Operador eliminado' : 'Carrier removed', 'info');
+                              toast(t('settings.commissions.carriers.removed'), 'info');
                             }}
                             className="btn btn-ghost btn-sm text-red-400"
-                            title={lang === 'es' ? 'Eliminar' : 'Remove'}
+                            title={t('settings.commissions.carriers.removeTitle')}
                           >
                             🗑️
                           </button>
@@ -901,9 +870,7 @@ export default function SettingsModule() {
                               onClick={() => {
                                 if (!url.toLowerCase().startsWith('https://')) {
                                   toast(
-                                    lang === 'es'
-                                      ? 'URL inválida — debe empezar con https://'
-                                      : 'Invalid URL — must start with https://',
+                                    t('settings.commissions.carriers.invalidUrl'),
                                     'error',
                                   );
                                   return;
@@ -911,7 +878,7 @@ export default function SettingsModule() {
                                 window.open(url, '_blank', 'noopener,noreferrer');
                               }}
                               className="btn btn-ghost btn-sm"
-                              title={lang === 'es' ? 'Abrir portal' : 'Open portal'}
+                              title={t('settings.commissions.carriers.openPortal')}
                             >
                               🔗
                             </button>
@@ -919,9 +886,7 @@ export default function SettingsModule() {
                         </div>
                         {url && !url.toLowerCase().startsWith('https://') && (
                           <p className="text-xs text-red-400 mt-1" style={{ paddingLeft: '58px' }}>
-                            {lang === 'es'
-                              ? 'Debe empezar con https://'
-                              : 'Must start with https://'}
+                            {t('settings.commissions.carriers.httpsRequired')}
                           </p>
                         )}
                       </div>
@@ -943,19 +908,15 @@ export default function SettingsModule() {
                     className="btn btn-secondary btn-sm"
                     style={{ width: '100%' }}
                   >
-                    + {lang === 'es' ? 'Agregar Operador' : 'Add Carrier'}
+                    + {t('settings.commissions.carriers.addCarrier')}
                   </button>
                 </div>
               </div>
 
               {/* ── 🌐 Payment Portals (4 wireless retail processors) ── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-1">🌐 {lang === 'es' ? 'Portales de Pago' : 'Payment Portals'}</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Procesadores externos donde se hacen los pagos de los operadores. WebPOS, QPay, VidaPay, H2O, etc. Edita los nombres, colores, emoji, y palabras clave para auto-resaltar el portal cuando seleccionas un operador en el modal de Pagos.'
-                    : 'External processors where carrier payments are made. WebPOS, QPay, VidaPay, H2O, etc. Edit names, colors, emoji, and match keywords to auto-highlight the right portal when a carrier is selected in the Phone Payment modal.'}
-                </p>
+                <h3 className="text-sm font-semibold text-white mb-1">🌐 {t('settings.commissions.portals.title')}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.portals.desc')}</p>
                 <div className="space-y-2">
                   {(((settings as any).paymentPortals as PaymentPortal[]) || DEFAULT_PAYMENT_PORTALS).map((portal, idx) => {
                     const updatePortal = (patch: Partial<PaymentPortal>) => {
@@ -971,7 +932,7 @@ export default function SettingsModule() {
                       // r26 C4: delta only
                       setSettings({ paymentPortals: next } as any);
                       persistSettings({ paymentPortals: next } as Record<string, unknown>);
-                      toast(lang === 'es' ? 'Portal eliminado' : 'Portal removed', 'info');
+                      toast(t('settings.commissions.portals.removed'), 'info');
                     };
                     return (
                       <div key={`${portal.id}-${idx}`} className="p-3 rounded-lg bg-white/5 space-y-2" style={{ borderLeft: `3px solid ${portal.color}` }}>
@@ -998,12 +959,12 @@ export default function SettingsModule() {
                             value={portal.color}
                             onChange={(e) => updatePortal({ color: e.target.value })}
                             style={{ width: '38px', height: '34px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.4rem', cursor: 'pointer', background: 'transparent' }}
-                            title={lang === 'es' ? 'Color' : 'Color'}
+                            title="Color"
                           />
                           <button
                             onClick={removePortal}
                             className="btn btn-ghost btn-sm text-red-400"
-                            title={lang === 'es' ? 'Eliminar' : 'Remove'}
+                            title={t('settings.commissions.portals.removeTitle')}
                           >
                             🗑️
                           </button>
@@ -1011,7 +972,7 @@ export default function SettingsModule() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-xs text-slate-500 block mb-0.5">
-                              {lang === 'es' ? 'Operadores asociados (coma)' : 'Match carriers (comma)'}
+                              {t('settings.commissions.portals.matchCarriers')}
                             </label>
                             <input
                               type="text"
@@ -1024,7 +985,7 @@ export default function SettingsModule() {
                           </div>
                           <div>
                             <label className="text-xs text-slate-500 block mb-0.5">
-                              {lang === 'es' ? 'Fragmentos de URL (coma)' : 'Match URL snippets (comma)'}
+                              {t('settings.commissions.portals.matchUrls')}
                             </label>
                             <input
                               type="text"
@@ -1062,13 +1023,11 @@ export default function SettingsModule() {
                     className="btn btn-secondary btn-sm"
                     style={{ width: '100%' }}
                   >
-                    + {lang === 'es' ? 'Agregar Portal' : 'Add Portal'}
+                    + {t('settings.commissions.portals.addPortal')}
                   </button>
                   {((settings as any).paymentPortals as PaymentPortal[] | undefined)?.length === undefined && (
                     <p className="text-xs text-slate-600 mt-1">
-                      💡 {lang === 'es'
-                        ? 'Mostrando los 4 portales por defecto. Modifica cualquiera para personalizar.'
-                        : 'Showing 4 default portals. Edit any one to customize.'}
+                      💡 {t('settings.commissions.portals.defaultsHint')}
                     </p>
                   )}
                 </div>
@@ -1076,12 +1035,8 @@ export default function SettingsModule() {
 
               {/* ── 🌎 International Top-Up Providers ──────────────── */}
               <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-white mb-1">🌎 {lang === 'es' ? 'Proveedores de Recarga Internacional' : 'International Top-Up Providers'}</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Lista de proveedores de recarga internacional (Telcel, Movistar, etc.). Agrega, elimina o reordena.'
-                    : 'List of international recharge providers (Telcel, Movistar, etc.). Add, remove, or reorder.'}
-                </p>
+                <h3 className="text-sm font-semibold text-white mb-1">🌎 {t('settings.commissions.topup.title')}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.topup.desc')}</p>
                 <div className="space-y-2">
                   {(settings.topUpProviders || []).map((provider, idx) => {
                     // r-settings-2a5: per-provider commission rate. Same shape
@@ -1108,9 +1063,7 @@ export default function SettingsModule() {
                                 );
                                 if (collidesAt !== -1) {
                                   toast(
-                                    lang === 'es'
-                                      ? `Ya existe un proveedor llamado "${newName}"`
-                                      : `A provider named "${newName}" already exists`,
+                                    t('settings.commissions.topup.collision', newName),
                                     'error',
                                   );
                                   return;
@@ -1169,7 +1122,7 @@ export default function SettingsModule() {
                               };
                               setSettings(delta as any);
                               persistSettings(delta as Record<string, unknown>);
-                              toast(lang === 'es' ? 'Proveedor eliminado' : 'Provider removed', 'info');
+                              toast(t('settings.commissions.topup.removed'), 'info');
                             }}
                             className="btn btn-ghost btn-sm text-red-400"
                           >
@@ -1178,9 +1131,7 @@ export default function SettingsModule() {
                         </div>
                         {isUnconfigured && (
                           <p className="text-xs text-amber-400" style={{ paddingLeft: '20px' }}>
-                            ⚠️ {lang === 'es'
-                              ? 'Rate por defecto. Configurar el real para precisión fiscal.'
-                              : 'Default rate. Configure the real one for tax accuracy.'}
+                            ⚠️ {t('settings.commissions.topup.defaultRateWarning')}
                           </p>
                         )}
                       </div>
@@ -1203,7 +1154,7 @@ export default function SettingsModule() {
                     className="btn btn-secondary btn-sm"
                     style={{ width: '100%' }}
                   >
-                    + {lang === 'es' ? 'Agregar Proveedor' : 'Add Top-Up Provider'}
+                    + {t('settings.commissions.topup.addProvider')}
                   </button>
                 </div>
               </div>
@@ -1212,7 +1163,7 @@ export default function SettingsModule() {
 
           {activeSection === 'hardware' && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white mb-4">{L.hardwareDevicesTitle || 'Hardware & Devices'}</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">{t('settings.hardware.title')}</h2>
               <div>
                 <label className="text-xs text-slate-400 block mb-1">Paper Size</label>
                 <select value={settings.paperSize} onChange={(e) => update('paperSize', e.target.value)} className="select">
@@ -1225,13 +1176,9 @@ export default function SettingsModule() {
               {/* ── 🖨️ Receipt Printer — r-settings-2b2 A-04 ─────── */}
               <div className="border-t border-white/10 pt-4">
                 <h3 className="text-sm font-semibold text-white mb-2">
-                  🖨️ {L.receiptPrinterTitle || 'Receipt Printer'}
+                  🖨️ {t('settings.hardware.printerTitle')}
                 </h3>
-                <p className="text-xs text-slate-400 mb-3">
-                  {lang === 'es'
-                    ? 'Selecciona la impresora predeterminada para recibos, etiquetas, y tickets de reparación.'
-                    : 'Select the default printer for receipts, labels, and repair tickets.'}
-                </p>
+                <p className="text-xs text-slate-400 mb-3">{t('settings.hardware.printerDesc')}</p>
 
                 <div className="flex items-center gap-2 mb-3">
                   <button
@@ -1240,39 +1187,31 @@ export default function SettingsModule() {
                     disabled={scanningPrinters || !isElectron()}
                     className="btn btn-secondary btn-sm"
                   >
-                    {scanningPrinters
-                      ? (lang === 'es' ? '⏳ Escaneando...' : '⏳ Scanning...')
-                      : (lang === 'es' ? '🔍 Escanear Impresoras' : '🔍 Scan for Printers')}
+                    {scanningPrinters ? t('settings.hardware.scanning') : t('settings.hardware.scan')}
                   </button>
                   {(settings.detectedPrinters || []).length > 0 && (
                     <span className="text-xs text-slate-400">
-                      {lang === 'es'
-                        ? `${(settings.detectedPrinters || []).length} detectada(s)`
-                        : `${(settings.detectedPrinters || []).length} detected`}
+                      {t('settings.hardware.nDetected', (settings.detectedPrinters || []).length)}
                     </span>
                   )}
                 </div>
 
                 {!isElectron() && (
                   <div className="text-xs text-amber-400 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                    ⚠️ {lang === 'es'
-                      ? 'La detección de impresoras solo funciona en la app de escritorio. En el navegador, los trabajos de impresión usan el diálogo estándar del navegador.'
-                      : 'Printer detection is only available in the desktop app. In browser mode, print jobs use the standard browser dialog.'}
+                    ⚠️ {t('settings.hardware.browserWarning')}
                   </div>
                 )}
 
                 {isElectron() && (settings.detectedPrinters || []).length === 0 && (
                   <p className="text-xs text-slate-500">
-                    {lang === 'es'
-                      ? 'Aún no se han escaneado impresoras. Haz clic en "Escanear Impresoras" arriba.'
-                      : 'No printers scanned yet. Click "Scan for Printers" above.'}
+                    {t('settings.hardware.noPrintersYet')}
                   </p>
                 )}
 
                 {isElectron() && (settings.detectedPrinters || []).length > 0 && (
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">
-                      {lang === 'es' ? 'Impresora predeterminada' : 'Default printer'}
+                      {t('settings.hardware.defaultPrinter')}
                     </label>
                     <select
                       value={(settings.detectedPrinters || [])[0] || ''}
@@ -1284,9 +1223,7 @@ export default function SettingsModule() {
                       ))}
                     </select>
                     <p className="text-xs text-emerald-400 mt-1">
-                      ✓ {lang === 'es'
-                        ? `Usando: ${(settings.detectedPrinters || [])[0]}`
-                        : `Using: ${(settings.detectedPrinters || [])[0]}`}
+                      ✓ {t('settings.hardware.usingPrinter', (settings.detectedPrinters || [])[0])}
                     </p>
                   </div>
                 )}
@@ -1308,30 +1245,24 @@ export default function SettingsModule() {
           {activeSection === 'whatsapp' && (
             <div className="space-y-5">
               <h2 className="text-lg font-semibold text-white mb-1">💬 WhatsApp</h2>
-              <p className="text-slate-400 text-sm mb-4">
-                {lang === 'es'
-                  ? 'Botones wa.me que abren WhatsApp con mensajes pre-escritos. Sin costo, sin API.'
-                  : 'wa.me buttons that open WhatsApp with pre-filled messages. Free, no API needed.'}
-              </p>
+              <p className="text-slate-400 text-sm mb-4">{t('settings.whatsapp.desc')}</p>
 
-              <Toggle settings={settings} update={update} label={lang === 'es' ? 'Mostrar botón WhatsApp en tickets' : 'Show WhatsApp button on tickets'} settingsKey="waEnabled" />
+              <Toggle settings={settings} update={update} label={t('settings.whatsapp.showButton')} settingsKey="waEnabled" />
 
               <div className="border-t border-white/10 pt-4 space-y-1">
                 <p className="text-xs text-slate-500 mb-3">
-                  {lang === 'es'
-                    ? 'Variables disponibles: {nombre/name}, {dispositivo/device}, {balance}, {ticket}, {articulo/item}, {tienda/store}, {telefono/phone}'
-                    : 'Available variables: {name}, {device}, {balance}, {ticket}, {item}, {store}, {phone}'}
+                  {t('settings.whatsapp.variablesHint')}
                   <br />
-                  {lang === 'es' ? 'Deja en blanco para usar el template por default.' : 'Leave blank to use the built-in default template.'}
+                  {t('settings.whatsapp.leaveBlank')}
                 </p>
 
                 {([
-                  { key: 'waTemplateRepairReady',        label: lang === 'es' ? '✅ Reparación lista' : '✅ Repair ready' },
-                  { key: 'waTemplateRepairReceived',      label: lang === 'es' ? '📥 Reparación recibida' : '📥 Repair received' },
-                  { key: 'waTemplateBalanceDue',          label: lang === 'es' ? '💰 Balance pendiente' : '💰 Balance due' },
-                  { key: 'waTemplateSpecialOrderReady',   label: lang === 'es' ? '📦 Orden especial llegó' : '📦 Special order ready' },
-                  { key: 'waTemplateLayawayReminder',     label: lang === 'es' ? '🏷️ Recordatorio apartado' : '🏷️ Layaway reminder' },
-                  { key: 'waTemplateThankYou',            label: lang === 'es' ? '😊 Gracias' : '😊 Thank you' },
+                  { key: 'waTemplateRepairReady',        label: t('settings.whatsapp.template.repairReady') },
+                  { key: 'waTemplateRepairReceived',      label: t('settings.whatsapp.template.repairReceived') },
+                  { key: 'waTemplateBalanceDue',          label: t('settings.whatsapp.template.balanceDue') },
+                  { key: 'waTemplateSpecialOrderReady',   label: t('settings.whatsapp.template.specialOrderReady') },
+                  { key: 'waTemplateLayawayReminder',     label: t('settings.whatsapp.template.layawayReminder') },
+                  { key: 'waTemplateThankYou',            label: t('settings.whatsapp.template.thankYou') },
                 ] as Array<{ key: keyof typeof settings; label: string }>).map(({ key, label }) => (
                   <div key={String(key)} className="space-y-1">
                     <label className="label">{label}</label>
@@ -1351,7 +1282,7 @@ export default function SettingsModule() {
                         }
                         update(key as string, safe);
                       }}
-                      placeholder={lang === 'es' ? 'Deja en blanco para el default...' : 'Leave blank for default...'}
+                      placeholder={t('settings.whatsapp.placeholder')}
                       style={{ resize: 'vertical', fontFamily: 'inherit' }}
                     />
                   </div>
@@ -1504,7 +1435,7 @@ export default function SettingsModule() {
           )}
 
           {activeSection === 'multistore' && (
-            <StoreManagement lang={lang} L={L} />
+            <StoreManagement lang={lang} />
           )}
 
           {activeSection === 'employees' && (
@@ -1514,13 +1445,13 @@ export default function SettingsModule() {
           {activeSection === 'backup' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-                {L.backupRestoreTitle || 'Backup & Restore'}
+                {t('settings.backup.title')}
               </h2>
 
               {/* r-new-7: Cloud Sync (Firebase) — opt-in with guided setup. */}
               <div style={{ border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(255,255,255,0.03)', borderRadius: '0.75rem', padding: '1.25rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, marginTop: 0, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  ☁️ {lang === 'es' ? 'Sincronización en la Nube' : 'Cloud Sync'}
+                  ☁️ {t('settings.backup.cloudSync.title')}
                   <span style={{
                     fontSize: '0.68rem',
                     fontWeight: 500,
@@ -1529,13 +1460,11 @@ export default function SettingsModule() {
                     background: 'rgba(139, 92, 246, 0.15)',
                     color: '#a78bfa',
                   }}>
-                    {lang === 'es' ? 'Avanzado' : 'Advanced'}
+                    {t('settings.backup.cloudSync.advanced')}
                   </span>
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '1rem', lineHeight: 1.5 }}>
-                  {lang === 'es'
-                    ? 'Respalda tus datos en Firebase (Google Cloud) y sincronízalos entre múltiples dispositivos de tu negocio. Opcional — la app funciona completamente offline sin esto.'
-                    : 'Back up your data to Firebase (Google Cloud) and sync across multiple devices for your business. Optional — the app works fully offline without this.'}
+                  {t('settings.backup.cloudSync.desc')}
                 </p>
 
                 <label style={{
@@ -1556,15 +1485,15 @@ export default function SettingsModule() {
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '0.92rem', fontWeight: 500 }}>
-                      {lang === 'es' ? 'Activar sincronización con Firebase' : 'Enable Firebase cloud sync'}
+                      {t('settings.backup.cloudSync.enable')}
                     </div>
                     {(settings as any).cloudSyncEnabled ? (
                       <div style={{ fontSize: '0.78rem', color: '#10b981', marginTop: '0.2rem' }}>
-                        ✓ {lang === 'es' ? 'Activo — cambios se respaldan en la nube' : 'Active — changes back up to the cloud'}
+                        {t('settings.backup.cloudSync.active')}
                       </div>
                     ) : (
                       <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: '0.2rem' }}>
-                        {lang === 'es' ? 'Desactivado — datos solo guardados localmente' : 'Disabled — data stored locally only'}
+                        {t('settings.backup.cloudSync.disabled')}
                       </div>
                     )}
                   </div>
@@ -1576,7 +1505,7 @@ export default function SettingsModule() {
                       onClick={() => setShowFirebaseSetup(true)}
                       className="btn btn-secondary btn-sm"
                     >
-                      {lang === 'es' ? 'Cambiar configuración de Firebase' : 'Change Firebase config'}
+                      {t('settings.backup.cloudSync.changeConfig')}
                     </button>
                   </div>
                 )}
@@ -1606,7 +1535,7 @@ export default function SettingsModule() {
                   <div style={{ border: `1px solid ${color}40`, background: `${color}08`, borderRadius: '0.75rem', padding: '1rem' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
                       <h3 style={{ fontWeight:600, color, margin:0, fontSize:'0.9rem' }}>
-                        💾 {lang === 'es' ? 'Almacenamiento Local' : 'Local Storage Usage'}
+                        {t('settings.backup.storage.title')}
                       </h3>
                       <span style={{ fontSize:'0.82rem', fontWeight:700, color }}>
                         {fmt(totalBytes)} / 5 MB &nbsp;({pct.toFixed(1)}%)
@@ -1630,12 +1559,12 @@ export default function SettingsModule() {
                     </div>
                     {pct >= 75 && (
                       <div style={{ marginTop:'0.75rem', padding:'0.5rem 0.75rem', background:'rgba(239,68,68,0.1)', borderRadius:'8px', fontSize:'0.78rem', color:'#fca5a5' }}>
-                        ⚠️ {lang === 'es' ? 'Almacenamiento alto. Exporta un backup y limpia ventas antiguas.' : 'Storage getting high. Export a backup and archive old sales data.'}
+                        ⚠️ {t('settings.backup.storage.high')}
                       </div>
                     )}
                     {pct < 50 && (
                       <div style={{ marginTop:'0.75rem', fontSize:'0.75rem', color:'#64748b' }}>
-                        ✅ {lang === 'es' ? 'Almacenamiento en buen estado. Firebase respalda tus datos en la nube.' : 'Storage is healthy. Firebase also backs up your data in the cloud.'}
+                        ✅ {t('settings.backup.storage.healthy')}
                       </div>
                     )}
                   </div>
@@ -1645,7 +1574,7 @@ export default function SettingsModule() {
               {/* ── Export / Import ── */}
               <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(5,150,105,0.08))', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '0.75rem', padding: '1rem' }}>
                 <h3 style={{ fontWeight: 700, color: '#34d399', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
-                  📦 {lang === 'es' ? 'Exportar / Importar Datos' : 'Export / Import Data'}
+                  {t('settings.backup.exportImport.title')}
                 </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                   <button onClick={() => {
@@ -1659,18 +1588,18 @@ export default function SettingsModule() {
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a'); a.href = url; a.download = `Daily_Transactions_${today}.json`; a.click();
                       URL.revokeObjectURL(url);
-                      toast(lang === 'es' ? 'Transacciones de hoy exportadas!' : "Today's transactions exported!", 'success');
+                      toast(t('settings.backup.todayExported'), 'success');
                     } catch (e) {
                       console.error('Export today failed:', e);
-                      toast(lang === 'es' ? 'Error al exportar' : 'Export failed', 'error');
+                      toast(t('settings.backup.exportFailed'), 'error');
                     }
                   }} className="btn btn-secondary">
-                    📤 {lang === 'es' ? 'Exportar Hoy' : 'Export Today'}
+                    {t('settings.backup.exportToday')}
                   </button>
                   {/* Auto-backup folder */}
                 <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.5rem' }}>
                   <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: 600 }}>
-                    📁 {lang === 'es' ? 'Carpeta de Auto-Backup (al cerrar)' : 'Auto-Backup Folder (on close)'}
+                    {t('settings.backup.autoBackupFolder')}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <input
@@ -1686,28 +1615,26 @@ export default function SettingsModule() {
                           const folder = await window.electronAPI.setBackupFolder();
                           if (folder) toast(`Backup folder: ${folder}`, 'success');
                         } else {
-                          toast(lang === 'es' ? 'Solo disponible en Electron' : 'Only available in Electron app', 'warning');
+                          toast(t('settings.backup.electronOnly'), 'warning');
                         }
                       }}
                       className="btn btn-secondary"
                       style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                     >
-                      📂 {lang === 'es' ? 'Cambiar' : 'Browse'}
+                      {t('settings.backup.browse')}
                     </button>
                   </div>
                 </div>
 
                 <button onClick={handleExport} className="btn btn-primary">
-                    💾 {lang === 'es' ? 'Respaldo Completo' : 'Full Backup'}
+                    {t('settings.backup.fullBackup')}
                   </button>
                 </div>
                 <button onClick={handleImport} className="btn btn-secondary" style={{ width: '100%' }}>
-                  📥 {lang === 'es' ? 'Importar Respaldo' : 'Import Backup'}
+                  {t('settings.backup.importBackup')}
                 </button>
                 <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
-                  {lang === 'es'
-                    ? 'Los respaldos incluyen: ventas, clientes, inventario, reparaciones, desbloqueos, pedidos especiales, apartados, órdenes de compra, empleados y configuración.'
-                    : 'Backups include: sales, customers, inventory, repairs, unlocks, special orders, layaways, purchase orders, employees, and settings.'}
+                  {t('settings.backup.includesDesc')}
                 </div>
               </div>
 
@@ -1715,12 +1642,10 @@ export default function SettingsModule() {
               {/* FIX: renamed from "Firebase Data Manager" — these buttons only clear localStorage, NOT Firestore */}
               <div style={{ border: '2px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)', borderRadius: '0.75rem', padding: '1rem' }}>
                 <h3 style={{ fontWeight: 600, color: '#f87171', marginBottom: '0.5rem', fontSize: '0.95rem' }}>
-                  🗄️ {lang === 'es' ? 'Limpiar Caché Local' : 'Clear Local Cache'}
+                  {t('settings.backup.clearCache.title')}
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1rem' }}>
-                  {lang === 'es'
-                    ? 'Limpia el caché local de una colección. Los datos en Firebase (nube) no se eliminan — se resincronizan al recargar.'
-                    : 'Clears the local cache for a collection. Cloud data in Firebase is NOT deleted — it re-syncs on reload.'}
+                  {t('settings.backup.clearCache.desc')}
                 </p>
                 {/* r-settings-1 B-10/B-11: appointments added. employees + settings
                     intentionally NOT included — clearing them locally is too destructive
@@ -1740,14 +1665,12 @@ export default function SettingsModule() {
                     <button key={key}
                       style={{ border: `1px solid ${color}40`, color, background: `${color}10`, padding: '0.3rem 0.6rem', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.78rem' }}
                       onClick={() => requireConfirm({
-                        title: lang === 'es' ? `¿Limpiar caché de ${label}?` : `Clear ${label} cache?`,
-                        body: lang === 'es'
-                          ? `Esto limpia el caché local de "${label}". Los datos en Firebase NO se borran.`
-                          : `This clears the local cache for "${label}". Firebase cloud data is NOT deleted.`,
-                        confirmWord: lang === 'es' ? 'LIMPIAR' : 'CLEAR',
+                        title: t('settings.backup.clearCache.confirmTitle', label),
+                        body: t('settings.backup.clearCache.confirmBody', label),
+                        confirmWord: t('settings.backup.clearCache.confirmWord'),
                         onConfirm: () => {
                           try { localStorage.removeItem('cellhub_' + key); } catch {}
-                          toast(lang === 'es' ? `Caché de ${label} limpiado. Recarga para sincronizar.` : `${label} cache cleared. Reload to re-sync.`, 'success');
+                          toast(t('settings.backup.clearCache.cleared', label), 'success');
                         },
                       })}>
                       🗑️ {label}
@@ -1755,7 +1678,7 @@ export default function SettingsModule() {
                   ))}
                 </div>
                 <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#fca5a5' }}>
-                  ⚠️ {lang === 'es' ? 'Exporta un backup antes de limpiar.' : 'Export a backup before clearing.'}
+                  ⚠️ {t('settings.backup.clearCache.exportFirst')}
                 </div>
               </div>
 
@@ -1769,30 +1692,26 @@ export default function SettingsModule() {
                   <span style={{ fontSize: '1.5rem' }}>☢️</span>
                   <div>
                     <h3 style={{ fontWeight: 700, color: '#ef4444', margin: 0, fontSize: '1rem' }}>
-                      {lang === 'es' ? 'ZONA DE PELIGRO — Restablecer App' : 'DANGER ZONE — Factory Reset'}
+                      {t('settings.backup.dangerZone.title')}
                     </h3>
                     <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0.2rem 0 0' }}>
-                      {lang === 'es'
-                        ? 'Elimina TODOS los datos locales: ventas, clientes, inventario, reparaciones, empleados, configuración. No se puede deshacer.'
-                        : 'Deletes ALL local data: sales, customers, inventory, repairs, employees, settings. Cannot be undone.'}
+                      {t('settings.backup.dangerZone.desc')}
                     </p>
                   </div>
                 </div>
                 {/* FIX: replaced confirm()/alert()/prompt() with requireConfirm modal */}
                 <button
                   onClick={() => requireConfirm({
-                    title: lang === 'es' ? '☢️ Restablecer App' : '☢️ Factory Reset',
-                    body: lang === 'es'
-                      ? 'Esto eliminará TODOS los datos locales (ventas, clientes, inventario, reparaciones, empleados, configuración). Los datos en Firebase se resincronizan al recargar. Esta acción no se puede deshacer.'
-                      : 'This will delete ALL local data (sales, customers, inventory, repairs, employees, settings). Firebase cloud data will re-sync on reload. This cannot be undone.',
-                    confirmWord: lang === 'es' ? 'RESETEAR' : 'RESET',
+                    title: t('settings.backup.dangerZone.confirmTitle'),
+                    body: t('settings.backup.dangerZone.confirmBody'),
+                    confirmWord: t('settings.backup.dangerZone.confirmWord'),
                     onConfirm: () => {
                       const keys = Object.keys(localStorage).filter(k => k.startsWith('cellhub_'));
                       keys.forEach(k => localStorage.removeItem(k));
                       ['customer_returns','vendor_returns','sharedFolderPath','lang','cellhub_lang'].forEach(k => {
                         try { localStorage.removeItem(k); } catch {}
                       });
-                      toast(lang === 'es' ? 'Datos eliminados. Recargando...' : 'Data deleted. Reloading...', 'success');
+                      toast(t('settings.backup.dangerZone.deleted'), 'success');
                       setTimeout(() => window.location.reload(), 1500);
                     },
                   })}
@@ -1808,12 +1727,10 @@ export default function SettingsModule() {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.25)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.12)'; }}
                 >
-                  ☢️ {lang === 'es' ? 'Restablecer App (Borrar Todo)' : 'Factory Reset (Delete All Data)'}
+                  {t('settings.backup.dangerZone.button')}
                 </button>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: '#7f1d1d', textAlign: 'center' }}>
-                  {lang === 'es'
-                    ? '💡 Exporta un respaldo completo antes de continuar.'
-                    : '💡 Export a full backup before proceeding.'}
+                  {t('settings.backup.dangerZone.exportFirst')}
                 </div>
               </div>
             </div>
@@ -1832,9 +1749,7 @@ export default function SettingsModule() {
             {confirmModal.confirmWord && (
               <div>
                 <label style={{ fontSize: '0.78rem', color: '#64748b', display: 'block', marginBottom: '0.4rem' }}>
-                  {lang === 'es'
-                    ? `Escribe "${confirmModal.confirmWord}" para confirmar:`
-                    : `Type "${confirmModal.confirmWord}" to confirm:`}
+                  {t('settings.confirm.typeToConfirm', confirmModal.confirmWord)}
                 </label>
                 <input
                   className="input"
@@ -1848,7 +1763,7 @@ export default function SettingsModule() {
             )}
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setConfirmModal(null)}>
-                {lang === 'es' ? 'Cancelar' : 'Cancel'}
+                {t('settings.confirm.cancel')}
               </button>
               <button
                 className="btn"
@@ -1864,7 +1779,7 @@ export default function SettingsModule() {
                   setConfirmModal(null);
                 }}
               >
-                {lang === 'es' ? 'Confirmar' : 'Confirm'}
+                {t('settings.confirm.confirm')}
               </button>
             </div>
           </div>
@@ -1875,13 +1790,11 @@ export default function SettingsModule() {
       {cloudToggleTarget === 'on' && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Activar sincronización en la nube' : 'Enable cloud sync'}
-          message={lang === 'es'
-            ? 'La app iniciará la sincronización con Firebase. Si no has configurado Firebase, te guiaremos en el proceso. Deberás reiniciar la app para completar.'
-            : 'The app will start syncing with Firebase. If you haven\'t configured Firebase yet, we\'ll walk you through it. You will need to restart to complete.'}
+          title={t('settings.cloudSync.enableTitle')}
+          message={t('settings.cloudSync.enableMessage')}
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Continuar' : 'Continue'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('settings.cloudSync.continue')}
+          cancelLabel={t('settings.confirm.cancel')}
           onConfirm={() => {
             const hasConfig = !!localStorage.getItem('cellhub_firebase_config');
             if (!hasConfig) {
@@ -1902,13 +1815,11 @@ export default function SettingsModule() {
       {cloudToggleTarget === 'off' && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Desactivar sincronización en la nube' : 'Disable cloud sync'}
-          message={lang === 'es'
-            ? 'Tus datos locales no se pierden. Cambios nuevos no se respaldarán en Firebase hasta reactivar. Deberás reiniciar la app.'
-            : 'Your local data is preserved. New changes won\'t back up to Firebase until re-enabled. You will need to restart the app.'}
+          title={t('settings.cloudSync.disableTitle')}
+          message={t('settings.cloudSync.disableMessage')}
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Desactivar' : 'Disable'}
-          cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+          confirmLabel={t('settings.cloudSync.disable')}
+          cancelLabel={t('settings.confirm.cancel')}
           onConfirm={() => {
             setSettings({ cloudSyncEnabled: false } as any);
             persistSettings({ cloudSyncEnabled: false } as Record<string, unknown>);
@@ -1937,13 +1848,11 @@ export default function SettingsModule() {
       {showRestartPrompt && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Reiniciar la app' : 'Restart the app'}
-          message={lang === 'es'
-            ? `Sincronización ${showRestartPrompt === 'enabled' ? 'activada' : 'desactivada'}. Reinicia la app para aplicar los cambios.`
-            : `Cloud sync ${showRestartPrompt}. Restart the app to apply the changes.`}
+          title={t('settings.cloudSync.restartTitle')}
+          message={showRestartPrompt === 'enabled' ? t('settings.cloudSync.restartEnabled') : t('settings.cloudSync.restartDisabled')}
           variant="default"
           confirmLabel="OK"
-          cancelLabel={lang === 'es' ? 'Cerrar' : 'Close'}
+          cancelLabel={t('settings.cloudSync.close')}
           onConfirm={() => setShowRestartPrompt(null)}
           onCancel={() => setShowRestartPrompt(null)}
         />
@@ -1959,20 +1868,20 @@ export default function SettingsModule() {
             setImportResultModal(null);
             window.location.reload();
           }}
-          title={lang === 'es' ? '✅ Importación completa' : '✅ Import complete'}
+          title={t('settings.import.complete')}
           size="max-w-2xl"
         >
           <div className="space-y-4 text-sm">
             <div>
               <h3 className="font-semibold text-white mb-2">
-                {lang === 'es' ? 'Colecciones normalizadas' : 'Collections normalized'}
+                {t('settings.import.collectionsNormalized')}
               </h3>
               <ul className="space-y-1 text-slate-300">
                 {Object.entries(importResultModal.stats).map(([key, s]) => (
                   <li key={key}>
                     <strong className="text-slate-100">{key}:</strong>{' '}
-                    {s.total} ({s.converted} {lang === 'es' ? 'convertidos' : 'converted'},{' '}
-                    {s.passthrough} {lang === 'es' ? 'pasados' : 'passthrough'})
+                    {s.total} ({s.converted} {t('settings.import.converted')},{' '}
+                    {s.passthrough} {t('settings.import.passthrough')})
                   </li>
                 ))}
               </ul>
@@ -1981,7 +1890,7 @@ export default function SettingsModule() {
             {importResultModal.warnings.length > 0 && (
               <div>
                 <h3 className="font-semibold text-amber-300 mb-2">
-                  ⚠️ {lang === 'es' ? 'Advertencias' : 'Warnings'} ({importResultModal.warnings.length})
+                  ⚠️ {t('settings.import.warnings')} ({importResultModal.warnings.length})
                 </h3>
                 <ul className="space-y-1 text-amber-200 text-xs max-h-48 overflow-y-auto">
                   {importResultModal.warnings.map((w, i) => (
@@ -1992,9 +1901,7 @@ export default function SettingsModule() {
             )}
 
             <p className="text-xs text-slate-400 pt-2 border-t border-white/10">
-              {lang === 'es'
-                ? 'Al cerrar esta ventana la app se recargará para mostrar los datos importados.'
-                : 'Closing this window will reload the app to show the imported data.'}
+              {t('settings.import.closeReloads')}
             </p>
           </div>
         </Modal>
