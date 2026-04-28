@@ -25,7 +25,8 @@ export default function IntelligenceModule() {
     specialOrders, unlocks, layaways, customerReturns,
     currentStoreId, consolidatedView,
   } = state;
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
+  const apiLang: 'es' | 'en' = locale === 'pt' ? 'en' : locale as 'es' | 'en';
 
   // Force-refresh trigger — bumped by onRefresh to recompute.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -43,7 +44,7 @@ export default function IntelligenceModule() {
       inventory,
       repairs,
       {
-        lang: (locale === 'es' ? 'es' : 'en'),
+        lang: apiLang,
         storeId: consolidatedView ? undefined : currentStoreId,
         enableAlerts: true,
         enableScoring: true,
@@ -63,8 +64,8 @@ export default function IntelligenceModule() {
 
   // R-INTEL-NLG-F4: natural-language summary derived from the analyzed result.
   const nlgSummary = useMemo(
-    () => summarizeDashboard(result, locale === 'es' ? 'es' : 'en'),
-    [result, locale],
+    () => summarizeDashboard(result, apiLang),
+    [result, apiLang],
   );
 
   const handleRefresh = useCallback(() => {
@@ -91,7 +92,7 @@ export default function IntelligenceModule() {
       <IntelligenceChat
         engine={engine}
         customers={customers}
-        lang={locale === 'es' ? 'es' : 'en'}
+        lang={apiLang}
       />
 
       {/* ── Customer Lookup Card (R-INTEL-CUSTOMER-HISTORY) ─── */}
@@ -99,12 +100,10 @@ export default function IntelligenceModule() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-200">
-              🔍 {locale === 'es' ? 'Historial de Cliente' : 'Customer History'}
+              🔍 {t('intelligence.customerHistory')}
             </h3>
             <p className="text-xs text-slate-400">
-              {locale === 'es'
-                ? 'Busca un cliente para ver su historial completo'
-                : 'Search a customer to view their full history'}
+              {t('intelligence.searchPlaceholder')}
             </p>
           </div>
           {selectedCustomerId && (
@@ -115,7 +114,7 @@ export default function IntelligenceModule() {
               }}
               className="px-2 py-1 text-xs rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
             >
-              {locale === 'es' ? 'Limpiar' : 'Clear'}
+              {t('intelligence.clear')}
             </button>
           )}
         </div>
@@ -126,7 +125,7 @@ export default function IntelligenceModule() {
               type="text"
               value={lookupQuery}
               onChange={(e) => setLookupQuery(e.target.value)}
-              placeholder={locale === 'es' ? 'Nombre, teléfono o número de cliente…' : 'Name, phone or customer number…'}
+              placeholder={t('intelligence.searchPlaceholder')}
               className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
@@ -153,7 +152,7 @@ export default function IntelligenceModule() {
 
             {lookupQuery.trim().length >= 2 && matches.length === 0 && (
               <div className="mt-2 text-xs text-slate-500 px-1">
-                {locale === 'es' ? 'Sin resultados' : 'No matches'}
+                {t('intelligence.noMatches')}
               </div>
             )}
           </div>
@@ -168,7 +167,7 @@ export default function IntelligenceModule() {
         healthScore={result.healthScore}
         kpiDashboard={result.kpiDashboard}
         insights={result.insights}
-        lang={locale === 'es' ? 'es' : 'en'}
+        lang={apiLang}
         onRefresh={handleRefresh}
         nlgSummary={nlgSummary}
       />
@@ -182,14 +181,16 @@ interface CustomerHistoryCardProps {
 }
 
 function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
+  const apiLang: 'es' | 'en' = locale === 'pt' ? 'en' : locale as 'es' | 'en';
+  const dateLoc = ({ en: 'en-US', es: 'es-MX', pt: 'pt-BR' } as Record<string, string>)[locale] ?? 'en-US';
   const fmtDate = (d: Date | null) =>
-    d ? d.toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+    d ? d.toLocaleDateString(dateLoc, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
   const lowCostCoverage = history.costCoverage < 0.5 && history.visitCount > 0;
 
   // R-INTEL-NLG-F4: one-sentence narrative summary.
-  const summarySentence = summarizeCustomerHistory(history, locale === 'es' ? 'es' : 'en');
+  const summarySentence = summarizeCustomerHistory(history, apiLang);
 
   return (
     <div className="space-y-4">
@@ -212,8 +213,8 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
             </div>
           </div>
           <div className="text-right text-xs text-slate-400">
-            <div>{locale === 'es' ? 'Primera visita' : 'First visit'}: {fmtDate(history.firstVisit)}</div>
-            <div>{locale === 'es' ? 'Última visita' : 'Last visit'}: {fmtDate(history.lastVisit)}</div>
+            <div>{t('intelligence.firstVisit')}: {fmtDate(history.firstVisit)}</div>
+            <div>{t('intelligence.lastVisit')}: {fmtDate(history.lastVisit)}</div>
           </div>
         </div>
       </div>
@@ -221,39 +222,37 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
       {/* Metrics grid — 4 top-line numbers */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MetricTile
-          label={locale === 'es' ? 'Transacciones' : 'Transactions'}
+          label={t('intelligence.transactions')}
           value={String(history.visitCount)}
           sub={history.avgDaysBetweenVisits !== null
-            ? (locale === 'es' ? `Cada ${history.avgDaysBetweenVisits} días` : `Every ${history.avgDaysBetweenVisits} days`)
+            ? t('intelligence.everyXDays', history.avgDaysBetweenVisits)
             : undefined}
         />
         <MetricTile
-          label={locale === 'es' ? 'Total Gastado' : 'Total Spent'}
+          label={t('intelligence.totalSpent')}
           value={formatCurrency(history.netRevenue)}
           sub={history.totalRefunded > 0
-            ? (locale === 'es' ? `Reembolsos: ${formatCurrency(history.totalRefunded)}` : `Refunded: ${formatCurrency(history.totalRefunded)}`)
+            ? t('intelligence.refundedX', formatCurrency(history.totalRefunded))
             : undefined}
         />
         <MetricTile
-          label={locale === 'es' ? 'Profit del Negocio' : 'Business Profit'}
+          label={t('intelligence.businessProfit')}
           value={formatCurrency(history.profit)}
           sub={`${history.margin.toFixed(1)}% margin`}
           accent="emerald"
         />
         <MetricTile
-          label={locale === 'es' ? 'Ticket Promedio' : 'Avg Ticket'}
+          label={t('intelligence.avgTicket')}
           value={formatCurrency(history.avgTicket)}
           sub={history.preferredPaymentMethod
-            ? (locale === 'es' ? `Prefiere: ${history.preferredPaymentMethod}` : `Prefers: ${history.preferredPaymentMethod}`)
+            ? t('intelligence.prefersX', history.preferredPaymentMethod)
             : undefined}
         />
       </div>
 
       {lowCostCoverage && (
         <div className="text-xs rounded px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-300">
-          ⚠️ {locale === 'es'
-            ? `Profit aproximado — solo ${Math.round(history.costCoverage * 100)}% de las ventas tienen cost registrado.`
-            : `Approximate profit — only ${Math.round(history.costCoverage * 100)}% of sales have cost recorded.`}
+          ⚠️ {t('intelligence.approxProfit', Math.round(history.costCoverage * 100))}
         </div>
       )}
 
@@ -261,14 +260,14 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
         <InfoRow
           icon="🔧"
-          label={locale === 'es' ? 'Reparaciones' : 'Repairs'}
+          label={t('intelligence.repairs')}
           value={history.linkedEntities.repairCount > 0
             ? `${history.linkedEntities.repairCount} (${formatCurrency(history.linkedEntities.repairTotalValue)})`
             : '0'}
         />
         <InfoRow
           icon="📦"
-          label={locale === 'es' ? 'Pedidos Especiales' : 'Special Orders'}
+          label={t('intelligence.specialOrders')}
           value={String(history.linkedEntities.specialOrderCount)}
         />
         <InfoRow
@@ -278,24 +277,24 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
         />
         <InfoRow
           icon="🏷️"
-          label={locale === 'es' ? 'Apartados' : 'Layaways'}
+          label={t('intelligence.layaways')}
           value={String(history.linkedEntities.layawayCount)}
         />
         <InfoRow
           icon="🎁"
-          label={locale === 'es' ? 'Puntos Lealtad' : 'Loyalty Points'}
+          label={t('intelligence.loyaltyPoints')}
           value={history.customer.loyaltyPoints.toLocaleString()}
         />
         <InfoRow
           icon="💳"
-          label={locale === 'es' ? 'Crédito Tienda' : 'Store Credit'}
+          label={t('intelligence.storeCredit')}
           value={formatCurrency(history.customer.storeCredit)}
         />
       </div>
 
       {history.linkedEntities.activeBalance > 0 && (
         <div className="text-xs rounded px-3 py-2 bg-red-500/10 border border-red-500/30 text-red-300">
-          💰 {locale === 'es' ? 'Balance pendiente' : 'Outstanding balance'}: <strong>{formatCurrency(history.linkedEntities.activeBalance)}</strong>
+          💰 {t('intelligence.outstandingBalance')}: <strong>{formatCurrency(history.linkedEntities.activeBalance)}</strong>
         </div>
       )}
 
@@ -303,7 +302,7 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
       {history.topItems.length > 0 && (
         <div>
           <h5 className="text-sm font-semibold text-slate-300 mb-2">
-            {locale === 'es' ? 'Top 5 artículos comprados' : 'Top 5 items purchased'}
+            {t('intelligence.top5Items')}
           </h5>
           <div className="rounded border border-surface-700 divide-y divide-surface-700">
             {history.topItems.map((item, idx) => (
@@ -314,14 +313,14 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
                 </div>
                 <div className="text-right">
                   <div className="text-slate-200">{formatCurrency(item.revenue)}</div>
-                  <div className="text-xs text-slate-500">{item.quantity} {locale === 'es' ? 'uds' : 'qty'}</div>
+                  <div className="text-xs text-slate-500">{item.quantity} {t('intelligence.qty')}</div>
                 </div>
               </div>
             ))}
           </div>
           {history.topCategoryByProfit && (
             <div className="text-xs text-slate-400 mt-2">
-              {locale === 'es' ? 'Categoría más rentable' : 'Most profitable category'}: <strong>{history.topCategoryByProfit}</strong> ({formatCurrency(history.topCategoryProfit)})
+              {t('intelligence.mostProfitableCategory')}: <strong>{history.topCategoryByProfit}</strong> ({formatCurrency(history.topCategoryProfit)})
             </div>
           )}
         </div>
@@ -329,7 +328,7 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
 
       {history.visitCount === 0 && (
         <div className="text-sm text-slate-500 italic text-center py-4">
-          {locale === 'es' ? 'Sin ventas registradas para este cliente.' : 'No sales recorded for this customer.'}
+          {t('intelligence.noSalesForCustomer')}
         </div>
       )}
     </div>

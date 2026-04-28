@@ -29,7 +29,7 @@ interface ChatMessage {
 }
 
 export default function IntelligenceChat({ engine, customers, lang }: Props) {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -78,12 +78,10 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
       <div className="px-4 py-3 border-b border-surface-700 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-200">
-            💬 {locale === 'es' ? 'Pregúntale a tu Tienda' : 'Ask Your Shop'}
+            💬 {t('intelligence.askYourShop')}
           </h3>
           <p className="text-xs text-slate-400">
-            {locale === 'es'
-              ? 'Respuestas locales, sin APIs externas. Escribe "ayuda" para ver qué puedo responder.'
-              : 'Local answers, no external APIs. Type "help" to see what I can answer.'}
+            {t('intelligence.chatDescription')}
           </p>
         </div>
         {messages.length > 0 && (
@@ -91,7 +89,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
             onClick={clearChat}
             className="text-xs px-2 py-1 rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
           >
-            {locale === 'es' ? 'Limpiar' : 'Clear'}
+            {t('intelligence.clear')}
           </button>
         )}
       </div>
@@ -112,9 +110,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={locale === 'es'
-            ? 'Ej: "historial de Juan" o "cómo van las ventas"'
-            : 'Ex: "history of John" or "how are sales"'}
+          placeholder={t('intelligence.chatPlaceholder')}
           className="flex-1 bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
         />
         <button
@@ -122,7 +118,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
           disabled={!input.trim()}
           className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-surface-700 disabled:text-slate-500 text-white text-sm font-medium"
         >
-          {locale === 'es' ? 'Enviar' : 'Send'}
+          {t('intelligence.send')}
         </button>
       </form>
     </div>

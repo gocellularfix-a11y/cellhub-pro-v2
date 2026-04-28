@@ -484,8 +484,8 @@ Remember: you are embedded in a working store. The operator is likely on the sal
 
 // ── Proactive Insights Generator ─────────────────────────
 
-function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsight[] {
-  const { sales, repairs, inventory, customers, layaways, lang: locale, settings } = state;
+function buildInsights(state: ReturnType<typeof useApp>['state'], t: (key: string, ...args: any[]) => string): ProactiveInsight[] {
+  const { sales, repairs, inventory, customers, layaways, settings } = state;
   const insights: ProactiveInsight[] = [];
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -502,10 +502,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'ready-repairs',
       icon: '🔧',
       severity: 'warning',
-      text: locale === 'es'
-        ? `${readyRepairs.length} reparación(es) lista(s) — avisa a los clientes`
-        : `${readyRepairs.length} repair(s) ready — notify customers`,
-      action: locale === 'es' ? 'Ver reparaciones' : 'View repairs',
+      text: t('ai.insightRepairsReady', readyRepairs.length),
+      action: t('ai.viewRepairs'),
       actionTab: 'repairs',
     });
   }
@@ -522,10 +520,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'overdue-repairs',
       icon: '⏰',
       severity: 'warning',
-      text: locale === 'es'
-        ? `${overdueRepairs.length} reparación(es) sin actualizar en 3+ días`
-        : `${overdueRepairs.length} repair(s) with no update in 3+ days`,
-      action: locale === 'es' ? 'Ver reparaciones' : 'View repairs',
+      text: t('ai.insightRepairsOverdue', overdueRepairs.length),
+      action: t('ai.viewRepairs'),
       actionTab: 'repairs',
     });
   }
@@ -537,10 +533,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'out-of-stock',
       icon: '🚫',
       severity: 'warning',
-      text: locale === 'es'
-        ? `${outOfStock.length} producto(s) sin stock`
-        : `${outOfStock.length} item(s) out of stock`,
-      action: locale === 'es' ? 'Ver inventario' : 'View inventory',
+      text: t('ai.insightOutOfStock', outOfStock.length),
+      action: t('ai.viewInventory'),
       actionTab: 'inventory',
     });
   }
@@ -552,10 +546,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'low-stock',
       icon: '📦',
       severity: 'warning',
-      text: locale === 'es'
-        ? `${lowStock.length} producto(s) con stock bajo`
-        : `${lowStock.length} item(s) low in stock`,
-      action: locale === 'es' ? 'Ver inventario' : 'View inventory',
+      text: t('ai.insightLowStock', lowStock.length),
+      action: t('ai.viewInventory'),
       actionTab: 'inventory',
     });
   }
@@ -570,10 +562,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'lapsed-customers',
       icon: '👤',
       severity: 'info',
-      text: locale === 'es'
-        ? `${lapsedCount} clientes sin visita en 30+ días — oportunidad de reactivar`
-        : `${lapsedCount} customers haven't visited in 30+ days — opportunity to re-engage`,
-      action: locale === 'es' ? 'Ver clientes' : 'View customers',
+      text: t('ai.insightLapsedCustomers', lapsedCount),
+      action: t('ai.viewCustomers'),
       actionTab: 'customers',
     });
   }
@@ -589,10 +579,8 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'overdue-layaways',
       icon: '📅',
       severity: 'warning',
-      text: locale === 'es'
-        ? `${overdueLayaways.length} apartado(s) vencido(s)`
-        : `${overdueLayaways.length} overdue layaway(s)`,
-      action: locale === 'es' ? 'Ver apartados' : 'View layaways',
+      text: t('ai.insightOverdueLayaways', overdueLayaways.length),
+      action: t('ai.viewLayaways'),
       actionTab: 'layaways',
     });
   }
@@ -605,9 +593,7 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'today-revenue',
       icon: '💰',
       severity: 'success',
-      text: locale === 'es'
-        ? `Hoy: ${formatCurrency(rev)} en ${todaySales.length} transacción(es)`
-        : `Today: ${formatCurrency(rev)} across ${todaySales.length} transaction(s)`,
+      text: t('ai.insightTodayRevenue', formatCurrency(rev), todaySales.length),
     });
   }
 
@@ -705,26 +691,6 @@ function InsightCard({ insight, onAction }: { insight: ProactiveInsight; onActio
 
 // ── Quick Prompts ─────────────────────────────────────────
 
-const QUICK_PROMPTS_EN = [
-  "🔍 Scan store — full business report",
-  "What repairs are ready for pickup?",
-  "Which items are low in stock?",
-  "How were sales this week vs last week?",
-  "Which customers haven't visited in 30 days?",
-  "Draft an SMS for a customer whose repair is ready",
-  "What are my top selling items this month?",
-  "Explain CBE fees for CA",
-];
-const QUICK_PROMPTS_ES = [
-  "🔍 Escanear tienda — reporte completo",
-  "¿Qué reparaciones están listas para recoger?",
-  "¿Qué productos tienen poco stock?",
-  "¿Cómo fueron las ventas esta semana vs la anterior?",
-  "¿Qué clientes no han venido en 30 días?",
-  "Redacta un SMS para avisar que la reparación está lista",
-  "¿Cuáles son mis productos más vendidos este mes?",
-  "Explícame los cobros CBE de California",
-];
 
 // ── Main Panel ────────────────────────────────────────────
 
@@ -747,8 +713,11 @@ export default function AIAssistantPanel() {
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  const quickPrompts = locale === 'es' ? QUICK_PROMPTS_ES : QUICK_PROMPTS_EN;
-  const insights = useMemo(() => buildInsights(state), [state]);
+  const quickPrompts = [
+    t('ai.qpScanStore'), t('ai.qpRepairsReady'), t('ai.qpLowStock'), t('ai.qpWeeklySales'),
+    t('ai.qpLapsedCustomers'), t('ai.qpSmsRepair'), t('ai.qpTopSellers'), t('ai.qpCbe'),
+  ];
+  const insights = useMemo(() => buildInsights(state, t), [state, t]);
   // Round 25 — M1: systemPrompt is expensive to build (O(n) over all collections)
   // and the panel doesn't display it. Build lazily inside sendMessage instead of
   // recomputing on every state tick. Read state via ref to stay fresh without re-memoing.
@@ -1037,14 +1006,14 @@ export default function AIAssistantPanel() {
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
               {hasApiKey
                 ? `Connected · ${providerLabel}`
-                : (locale === 'es' ? 'Sin API key — configura en Ajustes' : 'No API key — configure in Settings')}
+                : t('ai.noApiKey')}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.25rem' }}>
             {messages.length > 0 && (
               <button
                 onClick={handleClear}
-                title={locale === 'es' ? 'Borrar historial' : 'Clear history'}
+                title={t('ai.clearHistory')}
                 style={{
                   background: 'transparent', border: 'none', color: '#475569',
                   cursor: 'pointer', padding: '0.35rem', borderRadius: '6px',
@@ -1085,11 +1054,10 @@ export default function AIAssistantPanel() {
           }}>
             <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
             <span>
-              {locale === 'es'
-                ? 'Para usar el Asistente AI, agrega tu Claude API key en '
-                : 'To use AI Assistant, add your Claude API key in '}
+              {t('ai.setupBannerPre')}
+              {' '}
               <strong style={{ color: '#fcd34d' }}>
-                {locale === 'es' ? 'Ajustes → IA' : 'Settings → AI'}
+                {t('ai.settingsPath')}
               </strong>.
             </span>
           </div>
@@ -1099,7 +1067,7 @@ export default function AIAssistantPanel() {
         {insights.length > 0 && (
           <div style={{ padding: '0.75rem 0.875rem 0', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              {locale === 'es' ? 'ATENCIÓN' : 'ATTENTION'}
+              {t('ai.attention')}
             </div>
             {insights.map((ins) => (
               <InsightCard key={ins.id} insight={ins} onAction={handleInsightAction} />
@@ -1124,12 +1092,10 @@ export default function AIAssistantPanel() {
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.6 }}>🤖</div>
               <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b', marginBottom: '0.4rem' }}>
-                {locale === 'es' ? '¡Hola! Soy tu asistente de negocios.' : "Hi! I'm your business assistant."}
+                {t('ai.greeting')}
               </p>
               <p style={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
-                {locale === 'es'
-                  ? 'Pregúntame sobre ventas, reparaciones, inventario, o cualquier cosa del negocio.'
-                  : 'Ask me about sales, repairs, inventory, or anything about your store.'}
+                {t('ai.greetingSub')}
               </p>
             </div>
           )}
@@ -1161,7 +1127,7 @@ export default function AIAssistantPanel() {
         {showQuickPrompts && messages.length === 0 && (
           <div style={{ padding: '0 0.875rem 0.5rem', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              {locale === 'es' ? 'PREGUNTAS RÁPIDAS' : 'QUICK PROMPTS'}
+              {t('ai.quickPrompts')}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {quickPrompts.map((prompt) => (
@@ -1226,8 +1192,8 @@ export default function AIAssistantPanel() {
               onKeyDown={handleKeyDown}
               placeholder={
                 hasApiKey
-                  ? (locale === 'es' ? 'Escribe tu pregunta… (Enter para enviar)' : 'Ask anything… (Enter to send)')
-                  : (locale === 'es' ? 'Configura la API key primero' : 'Configure API key first')
+                  ? t('ai.placeholder')
+                  : t('ai.placeholderNoKey')
               }
               disabled={!hasApiKey || loading}
               rows={1}
@@ -1270,8 +1236,8 @@ export default function AIAssistantPanel() {
             </button>
           </div>
           <div style={{ fontSize: '0.62rem', color: '#334155', marginTop: '0.35rem', textAlign: 'center' }}>
-            {locale === 'es' ? 'Shift+Enter para nueva línea' : 'Shift+Enter for new line'}
-            {messages.length > 0 && ` • ${messages.length} ${locale === 'es' ? 'mensajes' : 'messages'}`}
+            {t('ai.shiftEnter')}
+            {messages.length > 0 && ` • ${messages.length} ${t('ai.messages')}`}
           </div>
         </div>
       </div>
