@@ -535,7 +535,7 @@ export default function PurchaseOrdersModule() {
                 />
               </div>
               <div>
-                <label className="label">{t('vendor')} *</label>
+                <label className="label">{t('po.vendorContact')} *</label>
                 <input
                   className="input"
                   value={form.vendor || ''}

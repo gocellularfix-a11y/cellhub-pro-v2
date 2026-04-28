@@ -358,7 +358,7 @@ export default function ExpensesModule() {
           {/* Table header */}
           <div className="hidden md:grid grid-cols-[90px_1fr_140px_100px_100px_80px] gap-3 px-4 text-xs text-slate-500 font-semibold uppercase tracking-wider">
             <span>{t('expenses.date')}</span>
-            <span>{t('vendor')}</span>
+            <span>{t('expenses.vendorLabel')}</span>
             <span>{t('expenses.category')}</span>
             <span>{t('expenses.payment')}</span>
             <span className="text-right">{t('expenses.amount')}</span>
