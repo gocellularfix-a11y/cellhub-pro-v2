@@ -9,7 +9,6 @@ import { useToast } from '@/components/ui/Toast';
 import { Modal, AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
-import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, remove } from '@/services/persist';
@@ -62,7 +61,6 @@ export default function SpecialOrdersModule() {
   const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
-  const L = getLabels(lang);
 
   const [search, setSearch] = useState(globalSearchTerm || '');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -169,16 +167,16 @@ export default function SpecialOrdersModule() {
   const translateStatus = useCallback(
     (s: string) => {
       const map: Record<string, string> = {
-        All:          L.all,
+        All:          t('so.all'),
         Ordered:      t('so.status.ordered'),
         'In Transit': t('so.status.inTransit'),
         Received:     t('so.status.received'),
         Ready:        t('so.status.ready'),
         'Picked Up':  t('so.status.pickedUp'),
-        Cancelled:    L.cancelled,
+        Cancelled:    t('so.cancelled'),
       };
       return map[s] || s;
-    }, [L, t],
+    }, [t],
   );
 
   // FIX Bug 1+2: normalize both sides so each tab only matches its own status
@@ -467,7 +465,7 @@ export default function SpecialOrdersModule() {
         }
       }
 
-      toast(L.saved || 'Saved!', 'success');
+      toast(t('so.saved'), 'success');
     } else {
       const newOrder: SpecialOrder = {
         id: generateId(), ...form, customerName,
@@ -529,13 +527,13 @@ export default function SpecialOrdersModule() {
 
         toast(t('so.createdWithDeposit', formatCurrency(deposit)), 'info');
       } else {
-        toast(L.specialOrderCreated || 'Special order created!', 'success');
+        toast(t('so.specialOrderCreated'), 'success');
       }
     }
 
     setShowModal(false);
     setEditOrder(null);
-  }, [form, editOrder, settings, currentEmployee, t, L,
+  }, [form, editOrder, settings, currentEmployee, t,
       setSpecialOrders, setCustomers, setCart, toast,
       consolidateCartForSpecialOrder, dispatch,
       // R-EDIT-AUDIT F5: audit reprint dep.
@@ -763,7 +761,7 @@ export default function SpecialOrdersModule() {
   return (
     <>
       <TicketListLayout
-        title={L.specialOrders || 'Special Orders'}
+        title={t('so.title')}
         icon="📋"
         statuses={STATUSES}
         activeStatus={filterStatus}
@@ -779,12 +777,12 @@ export default function SpecialOrdersModule() {
           />
         }
         stats={[
-          { label: L.active || 'Active', value: activeCount, color: 'text-blue-400' },
-          { label: L.completed || 'Completed', value: specialOrders.filter((o) => normalizeStatus(o.status) === 'picked_up').length, color: 'text-emerald-400' },
-          { label: L.total || 'Total', value: specialOrders.length },
+          { label: t('so.active'), value: activeCount, color: 'text-blue-400' },
+          { label: t('so.completed'), value: specialOrders.filter((o) => normalizeStatus(o.status) === 'picked_up').length, color: 'text-emerald-400' },
+          { label: t('so.total'), value: specialOrders.length },
         ]}
         onNew={openNew}
-        newLabel={L.newOrder || 'New Order'}
+        newLabel={t('so.newOrder')}
       >
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-500">
@@ -899,7 +897,7 @@ export default function SpecialOrdersModule() {
                 </>
               }
               lang={lang}
-              L={L}
+              L={{ deposit: t('deposit'), balance: t('balance'), inCart: t('inCart'), complete: t('complete'), print: t('print'), delete: t('delete') }}
             />
           ))
         )}
@@ -932,7 +930,6 @@ export default function SpecialOrdersModule() {
           }}
           onClose={() => { setShowModal(false); setEditOrder(null); }}
           lang={lang}
-          L={L}
           allOrders={specialOrders}
         />
       )}
@@ -1007,7 +1004,7 @@ export default function SpecialOrdersModule() {
           message={t('so.confirmDelete.message')}
           variant="danger"
           confirmLabel={t('so.confirmDelete.confirm')}
-          cancelLabel={t('cancel')}
+          cancelLabel={t('so.cancelBtn')}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteConfirm(null)}
         />
@@ -1023,8 +1020,8 @@ export default function SpecialOrdersModule() {
               : t('so.confirmComplete.messageNoBalance')
           }
           variant="warning"
-          confirmLabel={t('confirm')}
-          cancelLabel={t('cancel')}
+          confirmLabel={t('so.confirmBtn')}
+          cancelLabel={t('so.cancelBtn')}
           onConfirm={handleCompleteConfirmed}
           onCancel={() => setCompleteConfirm(null)}
         />
@@ -1094,7 +1091,7 @@ export default function SpecialOrdersModule() {
               style={{ width: '100%' }}
               onClick={() => setPrintChoiceTarget(null)}
             >
-              {t('cancel')}
+              {t('so.cancelBtn')}
             </button>
           </div>
         </Modal>
@@ -1107,7 +1104,7 @@ export default function SpecialOrdersModule() {
           title={t('so.confirmRefund.title')}
           message={t('so.confirmRefund.message', (((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2))}
           confirmLabel={t('so.confirmRefund.confirm')}
-          cancelLabel={t('cancel')}
+          cancelLabel={t('so.cancelBtn')}
           onConfirm={() => {
             const target = refundConfirmTarget;
             // F7-FIX-v2: double-refund guard.
@@ -1199,7 +1196,6 @@ interface SpecialOrderModalProps {
   onRequestCancel?: (order: SpecialOrder) => void;
   onClose: () => void;
   lang: string;
-  L: Record<string, any>;
   // R-EDIT-AUDIT F5: freshest orders list for stale check on locked edits.
   allOrders: SpecialOrder[];
 }
@@ -1207,7 +1203,7 @@ interface SpecialOrderModalProps {
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, L, allOrders }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, allOrders }: SpecialOrderModalProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
@@ -1702,7 +1698,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
         {/* Footer */}
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleClose}>{L.cancel || 'Cancel'}</button>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleClose}>{t('so.cancelBtn')}</button>
           {/* r-new-4 port: Cancel Order with disposition. Only shown when editing
               an SO that has a deposit — unpaid orders can be deleted directly.
               r-new-8: also hidden on terminal statuses (picked_up / cancelled) —
@@ -1723,7 +1719,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           {/* R-EDIT-AUDIT F5.3: save routes through handleSubmit to pick up the
               locked-ticket audit flow. Explicit arrow avoids MouseEvent leaking
               into onSave's optional auditMeta parameter. */}
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => handleSubmit()}>💾 {L.save || 'Save'}</button>
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => handleSubmit()}>💾 {t('so.saveBtn')}</button>
         </div>
 
         {/* R-EDIT-AUDIT F5.2-3: reason selector + admin PIN challenge. */}

@@ -192,7 +192,7 @@ export default function CancelSpecialOrderModal({
               opacity: isValid ? 1 : 0.5,
               cursor: isValid ? 'pointer' : 'not-allowed',
             }}>
-            {t('confirm')}
+            {t('so.confirmBtn')}
           </button>
         </div>
       </div>

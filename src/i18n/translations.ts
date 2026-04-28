@@ -2173,6 +2173,19 @@ export const translations: TranslationDictionary = {
   'so.modal.depositAutoCart':   { en: 'Deposit will be automatically added to cart.', es: 'El depósito se agregará al carrito automáticamente.', pt: 'O depósito será adicionado ao carrinho automaticamente.' },
   'so.modal.cancelOrder':       { en: 'Cancel Order',              es: 'Cancelar Pedido',                 pt: 'Cancelar Pedido' },
 
+  'so.all':                { en: 'All',                     es: 'Todos',                          pt: 'Todos' },
+  'so.cancelled':          { en: 'Cancelled',               es: 'Cancelado',                      pt: 'Cancelado' },
+  'so.saved':              { en: 'Saved!',                  es: '¡Guardado!',                     pt: 'Salvo!' },
+  'so.specialOrderCreated':{ en: 'Special order created!',  es: '¡Pedido especial creado!',       pt: 'Pedido especial criado!' },
+  'so.title':              { en: 'Special Orders',          es: 'Pedidos Especiales',             pt: 'Pedidos Especiais' },
+  'so.active':             { en: 'Active',                  es: 'Activos',                        pt: 'Ativos' },
+  'so.completed':          { en: 'Completed',               es: 'Completados',                    pt: 'Concluídos' },
+  'so.total':              { en: 'Total',                   es: 'Total',                          pt: 'Total' },
+  'so.newOrder':           { en: 'New Order',               es: 'Nuevo Pedido',                   pt: 'Novo Pedido' },
+  'so.cancelBtn':          { en: 'Cancel',                  es: 'Cancelar',                       pt: 'Cancelar' },
+  'so.saveBtn':            { en: 'Save',                    es: 'Guardar',                        pt: 'Salvar' },
+  'so.confirmBtn':         { en: 'Confirm',                 es: 'Confirmar',                      pt: 'Confirmar' },
+
   // ── Inventory module ───────────────────────────────────────────────────
   // Column / stat labels (inventory-namespaced to avoid mixing generic keys)
   'inventory.name':          { en: 'Name',           es: 'Nombre',                        pt: 'Nome' },
