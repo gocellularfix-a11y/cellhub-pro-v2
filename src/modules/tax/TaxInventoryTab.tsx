@@ -5,9 +5,9 @@
 // ============================================================
 
 import { useState } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, RETURN_STATUSES, dollarsToCents, centsToDollars, todayISO } from './taxData';
 import {
   inputStyle, labelStyle, thStyle, tdStyle, iconBtnStyle,
@@ -22,10 +22,11 @@ interface Props {
 type ModalKind = 'supplier' | 'return' | null;
 
 export default function TaxInventoryTab({ year }: Props) {
-  const { state: { lang } } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
+
+  const dateLocale = locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US';
 
   const [modalKind, setModalKind] = useState<ModalKind>(null);
   const [editingSupplier, setEditingSupplier] = useState<TaxSupplierPurchase | null>(null);
@@ -70,19 +71,14 @@ export default function TaxInventoryTab({ year }: Props) {
     // r29c-1 — F-ZERO-AMOUNT
     const amountCents = dollarsToCents(supForm.amount);
     if (amountCents <= 0) {
-      toast(es ? 'El monto debe ser mayor a $0' : 'Amount must be greater than $0', 'error');
+      toast(t('taxInv.errAmountGreaterZero'), 'error');
       return;
     }
 
     // r29c-1 — F-DATE-OUTSIDE-YEAR
     const formYear = new Date(supForm.date).getFullYear();
     if (formYear !== year) {
-      toast(
-        es
-          ? `La fecha debe estar dentro del año fiscal ${year} (1 ene – 31 dic, ${year})`
-          : `Date must be within fiscal year ${year} (Jan 1 – Dec 31, ${year})`,
-        'error',
-      );
+      toast(t('taxInv.errDateOutsideYear', year), 'error');
       return;
     }
 
@@ -129,7 +125,7 @@ export default function TaxInventoryTab({ year }: Props) {
     // r29c-1 — F-ZERO-AMOUNT
     const amountCents = dollarsToCents(retForm.amount);
     if (amountCents <= 0) {
-      toast(es ? 'El reembolso debe ser mayor a $0' : 'Refund must be greater than $0', 'error');
+      toast(t('taxInv.errRefundGreaterZero'), 'error');
       return;
     }
 
@@ -138,19 +134,14 @@ export default function TaxInventoryTab({ year }: Props) {
     // NaN, "0", and negative numbers to 1, modifying user data without warning.
     const quantity = parseInt(retForm.quantity, 10);
     if (!Number.isFinite(quantity) || quantity < 1) {
-      toast(es ? 'La cantidad debe ser un número entero ≥ 1' : 'Quantity must be a whole number ≥ 1', 'error');
+      toast(t('taxInv.errQuantityInteger'), 'error');
       return;
     }
 
     // r29c-1 — F-DATE-OUTSIDE-YEAR
     const formYear = new Date(retForm.date).getFullYear();
     if (formYear !== year) {
-      toast(
-        es
-          ? `La fecha debe estar dentro del año fiscal ${year} (1 ene – 31 dic, ${year})`
-          : `Date must be within fiscal year ${year} (Jan 1 – Dec 31, ${year})`,
-        'error',
-      );
+      toast(t('taxInv.errDateOutsideYear', year), 'error');
       return;
     }
 
@@ -181,21 +172,21 @@ export default function TaxInventoryTab({ year }: Props) {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'Inventario y COGS' : 'Inventory & COGS'} — {year}
+          {t('taxInv.title', year)}
         </div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-          {es ? 'Schedule A — Cost of Goods Sold' : 'Schedule A — Cost of Goods Sold'}
+          {t('taxInv.subtitle')}
         </div>
       </div>
 
       {/* Beginning / Ending Inventory */}
       <div style={cardBox}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'Inventario Inicial / Final' : 'Beginning / Ending Inventory'}
+          {t('taxInv.beginEndHeader')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={labelStyle}>{es ? `Inventario Inicial (1 enero ${year})` : `Beginning Inventory (Jan 1, ${year})`} ($)</label>
+            <label style={labelStyle}>{t('taxInv.beginningInventoryLabel', year)} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -206,7 +197,7 @@ export default function TaxInventoryTab({ year }: Props) {
             />
           </div>
           <div>
-            <label style={labelStyle}>{es ? `Inventario Final (31 dic ${year})` : `Ending Inventory (Dec 31, ${year})`} ($)</label>
+            <label style={labelStyle}>{t('taxInv.endingInventoryLabel', year)} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -218,9 +209,7 @@ export default function TaxInventoryTab({ year }: Props) {
           </div>
         </div>
         <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#64748b' }}>
-          💡 {es
-            ? 'Cuenta físico al inicio y fin del año fiscal. Si es tu primer año, usa $0 inicial.'
-            : 'Physical count at start and end of fiscal year. First year? Use $0 beginning.'}
+          💡 {t('taxInv.physicalCountHint')}
         </div>
       </div>
 
@@ -228,32 +217,32 @@ export default function TaxInventoryTab({ year }: Props) {
       <div style={cardBox}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {es ? 'Compras a Proveedores' : 'Supplier Purchases'}
+            {t('taxInv.suppliersHeader')}
           </div>
           <button onClick={openAddSupplier} style={btnAddStyle}>
-            + {es ? 'Agregar Compra' : 'Add Purchase'}
+            + {t('taxInv.addPurchaseBtn')}
           </button>
         </div>
         {sortedSuppliers.length === 0 ? (
           <div style={{ padding: '1.5rem', textAlign: 'center', fontSize: '0.78rem', color: '#64748b' }}>
-            {es ? 'Sin compras registradas. Click "Agregar Compra" para empezar.' : 'No supplier purchases yet. Click "Add Purchase" to start.'}
+            {t('taxInv.noSuppliers')}
           </div>
         ) : (
           <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '0.5rem', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                  <th style={thStyle}>{es ? 'Fecha' : 'Date'}</th>
-                  <th style={thStyle}>{es ? 'Proveedor' : 'Supplier'}</th>
-                  <th style={thStyle}>{es ? 'Items' : 'Items'}</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>{es ? 'Monto' : 'Amount'}</th>
-                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{es ? 'Acciones' : 'Actions'}</th>
+                  <th style={thStyle}>{t('taxInv.thDate')}</th>
+                  <th style={thStyle}>{t('taxInv.thSupplier')}</th>
+                  <th style={thStyle}>{t('taxInv.thItems')}</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>{t('taxInv.thAmount')}</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{t('taxInv.thActions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedSuppliers.map((s) => (
                   <tr key={s.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={tdStyle}>{new Date(s.date).toLocaleDateString(es ? 'es-MX' : 'en-US')}</td>
+                    <td style={tdStyle}>{new Date(s.date).toLocaleDateString(dateLocale)}</td>
                     <td style={{ ...tdStyle, fontWeight: 600, color: '#e2e8f0' }}>
                       {s.name}
                       {s.paymentMethod && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{s.paymentMethod}</div>}
@@ -273,7 +262,7 @@ export default function TaxInventoryTab({ year }: Props) {
           </div>
         )}
         <div style={{ marginTop: '0.5rem', textAlign: 'right', fontSize: '0.85rem', color: '#cbd5e1' }}>
-          {es ? 'Total Compras:' : 'Total Purchases:'} <strong style={{ color: '#fb923c' }}>{formatCurrency(tax.totalSupplierPurchases)}</strong>
+          {t('taxInv.totalPurchases')} <strong style={{ color: '#fb923c' }}>{formatCurrency(tax.totalSupplierPurchases)}</strong>
         </div>
       </div>
 
@@ -281,28 +270,28 @@ export default function TaxInventoryTab({ year }: Props) {
       <div style={cardBox}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {es ? 'Devoluciones / RMA' : 'Returns / RMA'}
+            {t('taxInv.returnsHeader')}
           </div>
           <button onClick={openAddReturn} style={btnAddStyle}>
-            + {es ? 'Agregar Devolución' : 'Add Return'}
+            + {t('taxInv.addReturnBtn')}
           </button>
         </div>
         {sortedReturns.length === 0 ? (
           <div style={{ padding: '1.5rem', textAlign: 'center', fontSize: '0.78rem', color: '#64748b' }}>
-            {es ? 'Sin devoluciones registradas.' : 'No returns recorded yet.'}
+            {t('taxInv.noReturns')}
           </div>
         ) : (
           <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '0.5rem', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                  <th style={thStyle}>{es ? 'Fecha' : 'Date'}</th>
-                  <th style={thStyle}>{es ? 'Proveedor' : 'Supplier'}</th>
-                  <th style={thStyle}>{es ? 'Producto' : 'Product'}</th>
+                  <th style={thStyle}>{t('taxInv.thDate')}</th>
+                  <th style={thStyle}>{t('taxInv.thSupplier')}</th>
+                  <th style={thStyle}>{t('taxInv.thProduct')}</th>
                   <th style={{ ...thStyle, textAlign: 'center' }}>Qty</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>{es ? 'Reembolso' : 'Refund'}</th>
-                  <th style={thStyle}>{es ? 'Status' : 'Status'}</th>
-                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{es ? 'Acciones' : 'Actions'}</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>{t('taxInv.thRefund')}</th>
+                  <th style={thStyle}>{t('taxInv.thStatus')}</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{t('taxInv.thActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,7 +299,7 @@ export default function TaxInventoryTab({ year }: Props) {
                   const stat = statusInfo(r.status);
                   return (
                     <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={tdStyle}>{new Date(r.date).toLocaleDateString(es ? 'es-MX' : 'en-US')}</td>
+                      <td style={tdStyle}>{new Date(r.date).toLocaleDateString(dateLocale)}</td>
                       <td style={{ ...tdStyle, color: '#e2e8f0' }}>{r.supplier}</td>
                       <td style={tdStyle}>
                         <div>{r.product}</div>
@@ -332,7 +321,7 @@ export default function TaxInventoryTab({ year }: Props) {
                           color: stat.color,
                           border: `1px solid ${stat.color}55`,
                         }}>
-                          {es ? stat.es : stat.en}
+                          {locale === 'es' ? stat.es : stat.en}
                         </span>
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
@@ -349,7 +338,7 @@ export default function TaxInventoryTab({ year }: Props) {
           </div>
         )}
         <div style={{ marginTop: '0.5rem', textAlign: 'right', fontSize: '0.85rem', color: '#cbd5e1' }}>
-          {es ? 'Total Reembolsado:' : 'Total Refunded:'} <strong style={{ color: '#22c55e' }}>{formatCurrency(tax.totalSupplierReturns)}</strong>
+          {t('taxInv.totalRefunded')} <strong style={{ color: '#22c55e' }}>{formatCurrency(tax.totalSupplierReturns)}</strong>
         </div>
       </div>
 
@@ -361,12 +350,12 @@ export default function TaxInventoryTab({ year }: Props) {
         marginBottom: 0,
       }}>
         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#93c5fd', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'COGS — Costo de Bienes Vendidos (Schedule A)' : 'COGS — Cost of Goods Sold (Schedule A)'}
+          {t('taxInv.cogsHeader')}
         </div>
-        <CogsRow label={es ? 'Inventario Inicial' : 'Beginning Inventory'} value={tax.data.inventory.beginningInventory} />
-        <CogsRow label={es ? '+ Compras durante el año' : '+ Purchases during year'} value={tax.totalSupplierPurchases} sign="+" />
-        <CogsRow label={es ? '− Devoluciones reembolsadas' : '− Returns refunded'} value={tax.totalSupplierReturns} sign="-" />
-        <CogsRow label={es ? '− Inventario Final' : '− Ending Inventory'} value={tax.data.inventory.endingInventory} sign="-" />
+        <CogsRow label={t('taxInv.beginningInventoryShort')} value={tax.data.inventory.beginningInventory} />
+        <CogsRow label={t('taxInv.purchasesDuringYear')} value={tax.totalSupplierPurchases} sign="+" />
+        <CogsRow label={t('taxInv.returnsRefunded')} value={tax.totalSupplierReturns} sign="-" />
+        <CogsRow label={t('taxInv.endingInventoryShort')} value={tax.data.inventory.endingInventory} sign="-" />
         <div style={{
           marginTop: '0.5rem',
           paddingTop: '0.5rem',
@@ -376,15 +365,11 @@ export default function TaxInventoryTab({ year }: Props) {
           alignItems: 'center',
         }}>
           <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#cbd5e1' }}>
-            COGS {es ? '(Línea 8, Schedule A)' : '(Line 8, Schedule A)'}
+            COGS {t('taxInv.cogsLine8')}
           </span>
           <span
             style={{ fontSize: '1.4rem', fontWeight: 800, color: tax.cogs >= 0 ? '#60a5fa' : '#f87171', fontFamily: 'ui-monospace, monospace' }}
-            title={tax.cogs < 0
-              ? (es
-                  ? 'COGS negativo significa que tu inventario final es mayor que (inicial + compras − devoluciones). Probablemente falta una compra o el conteo físico está mal. El 1065 va a clampear este valor a $0 — corrige los datos arriba.'
-                  : 'Negative COGS means your ending inventory is greater than (beginning + purchases − returns). You probably forgot a purchase or your physical count is wrong. The 1065 will clamp this to $0 — fix the data above.')
-              : undefined}
+            title={tax.cogs < 0 ? t('taxInv.cogsNegativeTooltip') : undefined}
           >
             {formatCurrency(tax.cogs)}
           </span>
@@ -401,11 +386,9 @@ export default function TaxInventoryTab({ year }: Props) {
             color: '#fca5a5',
             lineHeight: 1.5,
           }}>
-            <strong>⚠️ {es ? 'COGS Negativo Detectado' : 'Negative COGS Detected'}</strong>
+            <strong>⚠️ {t('taxInv.cogsNegativeWarningTitle')}</strong>
             <div style={{ marginTop: '0.3rem', color: '#fecaca' }}>
-              {es
-                ? 'Tu inventario final es mayor que (inicial + compras − devoluciones). Esto significa que probablemente: (1) falta capturar una compra a proveedor, (2) el conteo físico del inventario final está mal, o (3) el inicial está sobreestimado. El 1065 va a clampear este valor a $0 automáticamente — corrige los datos arriba antes de filear.'
-                : 'Your ending inventory is greater than (beginning + purchases − returns). This means probably: (1) a supplier purchase is missing, (2) the physical ending count is wrong, or (3) the beginning is overestimated. The 1065 will automatically clamp this to $0 — fix the data above before filing.'}
+              {t('taxInv.cogsNegativeWarningBody')}
             </div>
           </div>
         )}
@@ -416,37 +399,37 @@ export default function TaxInventoryTab({ year }: Props) {
         <div onClick={() => setModalKind(null)} style={modalOverlay}>
           <div onClick={(e) => e.stopPropagation()} style={modalCard}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
-              {editingSupplier ? (es ? '✏️ Editar Compra' : '✏️ Edit Purchase') : (es ? '+ Agregar Compra' : '+ Add Purchase')}
+              {editingSupplier ? t('taxInv.editPurchaseTitle') : t('taxInv.addPurchaseTitle')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Fecha' : 'Date'} *</label>
+                <label style={labelStyle}>{t('taxInv.dateLabel')} *</label>
                 <input type="date" style={inputStyle} value={supForm.date} onChange={(e) => setSupForm({ ...supForm, date: e.target.value })} />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Monto' : 'Amount'} ($) *</label>
+                <label style={labelStyle}>{t('taxInv.amountLabel')} ($) *</label>
                 <input type="text" inputMode="decimal" style={inputStyle} value={supForm.amount} onChange={(e) => setSupForm({ ...supForm, amount: e.target.value })} placeholder="0.00" />
               </div>
             </div>
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Proveedor' : 'Supplier Name'} *</label>
+              <label style={labelStyle}>{t('taxInv.supplierName')} *</label>
               <input style={inputStyle} value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder="Modern Wireless, Costco, etc." autoFocus />
             </div>
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Items / Descripción' : 'Items / Description'}</label>
-              <input style={inputStyle} value={supForm.items} onChange={(e) => setSupForm({ ...supForm, items: e.target.value })} placeholder={es ? '50 fundas, 10 cargadores' : '50 cases, 10 chargers'} />
+              <label style={labelStyle}>{t('taxInv.itemsDescription')}</label>
+              <input style={inputStyle} value={supForm.items} onChange={(e) => setSupForm({ ...supForm, items: e.target.value })} placeholder={t('taxInv.itemsPlaceholder')} />
             </div>
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={labelStyle}>{es ? 'Método de Pago' : 'Payment Method'}</label>
-              <input style={inputStyle} value={supForm.paymentMethod} onChange={(e) => setSupForm({ ...supForm, paymentMethod: e.target.value })} placeholder={es ? 'Chase Ink, AMEX, Cheque' : 'Chase Ink, AMEX, Check'} />
+              <label style={labelStyle}>{t('taxInv.paymentMethod')}</label>
+              <input style={inputStyle} value={supForm.paymentMethod} onChange={(e) => setSupForm({ ...supForm, paymentMethod: e.target.value })} placeholder={t('taxInv.paymentMethodPlaceholder')} />
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setModalKind(null)} style={btnSecondaryStyle}>{es ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={() => setModalKind(null)} style={btnSecondaryStyle}>{t('cancel')}</button>
               <button onClick={saveSupplier} disabled={!supForm.name.trim() || !supForm.amount} style={{
                 ...btnPrimaryStyle,
                 opacity: (!supForm.name.trim() || !supForm.amount) ? 0.5 : 1,
                 cursor: (!supForm.name.trim() || !supForm.amount) ? 'not-allowed' : 'pointer',
-              }}>💾 {es ? 'Guardar' : 'Save'}</button>
+              }}>💾 {t('save')}</button>
             </div>
           </div>
         </div>
@@ -457,29 +440,29 @@ export default function TaxInventoryTab({ year }: Props) {
         <div onClick={() => setModalKind(null)} style={modalOverlay}>
           <div onClick={(e) => e.stopPropagation()} style={modalCard}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
-              {editingReturn ? (es ? '✏️ Editar Devolución' : '✏️ Edit Return') : (es ? '+ Agregar Devolución' : '+ Add Return')}
+              {editingReturn ? t('taxInv.editReturnTitle') : t('taxInv.addReturnTitle')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Fecha' : 'Date'} *</label>
+                <label style={labelStyle}>{t('taxInv.dateLabel')} *</label>
                 <input type="date" style={inputStyle} value={retForm.date} onChange={(e) => setRetForm({ ...retForm, date: e.target.value })} />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Reembolso' : 'Refund'} ($) *</label>
+                <label style={labelStyle}>{t('taxInv.refundLabel')} ($) *</label>
                 <input type="text" inputMode="decimal" style={inputStyle} value={retForm.amount} onChange={(e) => setRetForm({ ...retForm, amount: e.target.value })} placeholder="0.00" />
               </div>
             </div>
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Devolver a (Proveedor)' : 'Return To (Supplier)'} *</label>
+              <label style={labelStyle}>{t('taxInv.returnToSupplier')} *</label>
               <input style={inputStyle} value={retForm.supplier} onChange={(e) => setRetForm({ ...retForm, supplier: e.target.value })} autoFocus />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Producto' : 'Product'} *</label>
+                <label style={labelStyle}>{t('taxInv.productLabel')} *</label>
                 <input style={inputStyle} value={retForm.product} onChange={(e) => setRetForm({ ...retForm, product: e.target.value })} />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Cantidad' : 'Quantity'}</label>
+                <label style={labelStyle}>{t('taxInv.qtyLabel')}</label>
                 <input type="number" min="1" style={inputStyle} value={retForm.quantity} onChange={(e) => setRetForm({ ...retForm, quantity: e.target.value })} />
               </div>
             </div>
@@ -489,7 +472,7 @@ export default function TaxInventoryTab({ year }: Props) {
                 <input style={inputStyle} value={retForm.qrCode} onChange={(e) => setRetForm({ ...retForm, qrCode: e.target.value })} placeholder="RMA12345" />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Tracking #' : 'Tracking #'}</label>
+                <label style={labelStyle}>Tracking #</label>
                 <input style={inputStyle} value={retForm.trackingNumber} onChange={(e) => setRetForm({ ...retForm, trackingNumber: e.target.value })} placeholder="1Z999AA..." />
               </div>
             </div>
@@ -497,17 +480,17 @@ export default function TaxInventoryTab({ year }: Props) {
               <label style={labelStyle}>Status</label>
               <select style={inputStyle} value={retForm.status} onChange={(e) => setRetForm({ ...retForm, status: e.target.value as TaxReturnStatus })}>
                 {RETURN_STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>{es ? s.es : s.en}</option>
+                  <option key={s.value} value={s.value}>{locale === 'es' ? s.es : s.en}</option>
                 ))}
               </select>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setModalKind(null)} style={btnSecondaryStyle}>{es ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={() => setModalKind(null)} style={btnSecondaryStyle}>{t('cancel')}</button>
               <button onClick={saveReturn} disabled={!retForm.supplier.trim() || !retForm.product.trim() || !retForm.amount} style={{
                 ...btnPrimaryStyle,
                 opacity: (!retForm.supplier.trim() || !retForm.product.trim() || !retForm.amount) ? 0.5 : 1,
                 cursor: (!retForm.supplier.trim() || !retForm.product.trim() || !retForm.amount) ? 'not-allowed' : 'pointer',
-              }}>💾 {es ? 'Guardar' : 'Save'}</button>
+              }}>💾 {t('save')}</button>
             </div>
           </div>
         </div>
@@ -519,10 +502,10 @@ export default function TaxInventoryTab({ year }: Props) {
           <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, maxWidth: '420px', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.5rem' }}>
-              {es ? '¿Borrar este registro?' : 'Delete this record?'}
+              {t('taxInv.deleteRecordTitle')}
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
-              <button onClick={() => setConfirmDelete(null)} style={btnSecondaryStyle}>{es ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={() => setConfirmDelete(null)} style={btnSecondaryStyle}>{t('cancel')}</button>
               <button
                 onClick={() => {
                   if (confirmDelete.kind === 'supplier') tax.deleteSupplier(confirmDelete.id);
@@ -530,7 +513,7 @@ export default function TaxInventoryTab({ year }: Props) {
                   setConfirmDelete(null);
                 }}
                 style={{ ...btnPrimaryStyle, background: '#dc2626', color: 'white' }}
-              >🗑 {es ? 'Borrar' : 'Delete'}</button>
+              >🗑 {t('delete')}</button>
             </div>
           </div>
         </div>

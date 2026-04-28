@@ -7,6 +7,7 @@
 
 import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, dollarsToCents, centsToDollars } from './taxData';
 import { inputStyle, labelStyle, cardBox } from './taxStyles';
 
@@ -98,8 +99,8 @@ function calcCABracketTax(taxableIncomeDollars: number, year: number): number {
 }
 
 export default function TaxCA540Tab({ year, netProfitCents }: Props) {
-  const { state: { lang, settings } } = useApp();
-  const es = lang === 'es';
+  const { state: { settings } } = useApp();
+  const { t } = useTranslation();
   const tax = useTaxYear(year);
   const ca = tax.data.ca540;
 
@@ -172,12 +173,10 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-          {es ? 'CA Form 540 — Estimación' : 'CA Form 540 — Estimate'} — {year}
+          {t('taxCA540.title', year)}
         </div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-          {es
-            ? 'Estimación de impuestos de California por socio. Usa brackets 2025.'
-            : 'California tax estimate per partner. Uses 2025 brackets.'}
+          {t('taxCA540.subtitle')}
         </div>
       </div>
 
@@ -193,12 +192,10 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
         }}>
           <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>👥</div>
           <div style={{ fontSize: '0.85rem', color: '#fcd34d', fontWeight: 700 }}>
-            {es ? 'Agrega socios primero' : 'Add partnership members first'}
+            {t('taxCA540.addMembersFirst')}
           </div>
           <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem' }}>
-            {es
-              ? 'El cálculo de CA 540 es por socio. Ve al tab Members para configurarlos.'
-              : 'CA 540 calculation is per partner. Go to the Members tab to set them up.'}
+            {t('taxCA540.addMembersBody')}
           </div>
         </div>
       )}
@@ -206,12 +203,12 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
       {/* Editable inputs */}
       <div style={cardBox}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'Pagos y Retenciones (Total Combinado)' : 'Payments & Withholding (Combined Total)'}
+          {t('taxCA540.paymentsHeader')}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
           <div>
-            <label style={labelStyle}>{es ? 'Retención CA (W-2)' : 'CA Withholding (W-2)'} ($)</label>
+            <label style={labelStyle}>{t('taxCA540.caWithholding')} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -232,7 +229,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
               fontSize: '0.82rem',
               color: '#86efac',
             }}>
-              {es ? 'Pagos Estimados Q1-Q4:' : 'Q1-Q4 Estimated Payments:'}{' '}
+              {t('taxCA540.q1q4Total')}{' '}
               <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{formatCurrency(totalQuarterlyPayments)}</strong>
             </div>
           </div>
@@ -262,11 +259,11 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
 
       <div style={cardBox}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {es ? 'Deducciones CA' : 'CA Deductions'}
+          {t('taxCA540.deductionsHeader')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
           <div>
-            <label style={labelStyle}>{es ? 'Seguro Médico Self-Employed' : 'Self-Employed Health Insurance'} ($)</label>
+            <label style={labelStyle}>{t('taxCA540.healthInsurance')} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -278,7 +275,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
             />
           </div>
           <div>
-            <label style={labelStyle}>{es ? 'Otras Deducciones CA' : 'Other CA Deductions'} ($)</label>
+            <label style={labelStyle}>{t('taxCA540.otherDeductions')} ($)</label>
             <input
               type="text"
               inputMode="decimal"
@@ -299,7 +296,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
               onChange={() => tax.updateCA540({ useStandardDeductionCA: true })}
               style={{ width: '1rem', height: '1rem' }}
             />
-            {es ? 'Deducción Estándar' : 'Standard Deduction'} <span style={{ color: '#64748b' }}>(${getStdDeductionForYear(year)}/single, {year})</span>
+            {t('taxCA540.standardDeduction')} <span style={{ color: '#64748b' }}>(${getStdDeductionForYear(year)}/single, {year})</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.82rem', color: '#cbd5e1' }}>
             <input
@@ -308,14 +305,14 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
               onChange={() => tax.updateCA540({ useStandardDeductionCA: false })}
               style={{ width: '1rem', height: '1rem' }}
             />
-            {es ? 'Deducciones Detalladas' : 'Itemized Deductions'}
+            {t('taxCA540.itemizedDeductions')}
           </label>
         </div>
 
         {!ca.useStandardDeductionCA && (
           <div style={{ marginTop: '0.5rem' }}>
             <label style={labelStyle}>
-              {es ? 'Deducciones Detalladas del Partnership (se reparten por share)' : 'Partnership Itemized Deductions (split by ownership share)'} ($)
+              {t('taxCA540.itemizedSplitLabel')} ($)
             </label>
             <input
               type="text"
@@ -329,9 +326,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
             {/* r29c-1: clarify the per-share split behavior. The itemized total is divided
                 by ownership %, NOT applied per-partner directly. */}
             <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              💡 {es
-                ? 'Este monto es el TOTAL de las deducciones detalladas del partnership. Se divide proporcionalmente entre los socios según su % de ownership. Si cada socio tiene sus propias deducciones individuales, eso se maneja en su 540 personal con el CPA.'
-                : "This is the partnership's TOTAL itemized deductions. It's divided proportionally between partners by ownership %. If each partner has their own individual itemized deductions, that's handled on their personal 540 with the CPA."}
+              💡 {t('taxCA540.itemizedHint')}
             </div>
           </div>
         )}
@@ -351,11 +346,9 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
           color: '#fca5a5',
           lineHeight: 1.5,
         }}>
-          <strong>⚠️ {es ? 'IMPORTANTE — Estimación de Single Filer Solamente' : 'IMPORTANT — Single Filer Estimate Only'}</strong>
+          <strong>⚠️ {t('taxCA540.singleFilerWarningTitle')}</strong>
           <div style={{ marginTop: '0.3rem', color: '#fecaca' }}>
-            {es
-              ? 'Este cálculo asume que TODOS los socios filean como Single. Los brackets para Married Filing Jointly (MFJ), Head of Household (HoH), o MFS son diferentes y pueden cambiar el cálculo en 50% o más. Consulta a tu CPA para los números reales de cada socio según su filing status.'
-              : 'This calculation assumes ALL partners file as Single. Brackets for Married Filing Jointly (MFJ), Head of Household (HoH), or MFS are different and can change the calculation by 50% or more. Consult your CPA for real numbers per partner based on their actual filing status.'}
+            {t('taxCA540.singleFilerWarningBody')}
           </div>
         </div>
       )}
@@ -364,7 +357,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
       {hasMembers && (
         <div style={cardBox}>
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {es ? 'Estimación por Socio' : 'Estimate Per Partner'}
+            {t('taxCA540.estimatePerPartner')}
           </div>
           {perPartnerCalc.map((calc) => (
             <div key={calc.member.id} style={{
@@ -404,13 +397,13 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
           marginBottom: 0,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.85rem' }}>
-            <span style={{ color: '#94a3b8' }}>{es ? 'CA Tax Total (todos los socios)' : 'Total CA Tax (all partners)'}</span>
+            <span style={{ color: '#94a3b8' }}>{t('taxCA540.totalCATax')}</span>
             <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#f87171' }}>
               {formatCurrency(totalCATaxAllPartners)}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.85rem' }}>
-            <span style={{ color: '#94a3b8' }}>{es ? '− Pagos / Retenciones' : '− Payments / Withholding'}</span>
+            <span style={{ color: '#94a3b8' }}>{t('taxCA540.payments')}</span>
             <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#22c55e' }}>
               ({formatCurrency(totalPrepayments)})
             </span>
@@ -425,8 +418,8 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
           }}>
             <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#cbd5e1' }}>
               {balanceDue > 0
-                ? (es ? '⚠️ Saldo a Pagar' : '⚠️ Balance Due')
-                : (es ? '✓ Reembolso Estimado' : '✓ Estimated Refund')}
+                ? t('taxCA540.balanceDue')
+                : t('taxCA540.estimatedRefund')}
             </span>
             <span style={{
               fontSize: '1.5rem',
@@ -450,9 +443,7 @@ export default function TaxCA540Tab({ year, netProfitCents }: Props) {
         color: '#fcd34d',
         lineHeight: 1.5,
       }}>
-        ℹ️ {es
-          ? 'Esta es una estimación. Brackets de 2025, deducción estándar single. Para retornos reales consulta a un CPA. CA income tax debe pagarse antes del 15 de abril; pagos estimados cada Q.'
-          : 'This is an estimate. 2025 brackets, single standard deduction. For actual returns consult a CPA. CA income tax due April 15; estimated payments each quarter.'}
+        ℹ️ {t('taxCA540.bottomDisclaimer')}
       </div>
     </div>
   );

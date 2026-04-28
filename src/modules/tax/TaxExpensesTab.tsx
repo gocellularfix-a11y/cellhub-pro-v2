@@ -6,9 +6,9 @@
 // ============================================================
 
 import { useState } from 'react';
-import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 import { useTaxYear, EXPENSE_CATEGORIES, dollarsToCents, centsToDollars, todayISO } from './taxData';
 import {
   inputStyle, labelStyle, thStyle, tdStyle, iconBtnStyle,
@@ -21,9 +21,8 @@ interface Props {
 }
 
 export default function TaxExpensesTab({ year }: Props) {
-  const { state: { lang } } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
 
   const [editing, setEditing] = useState<TaxExpense | null>(null);
@@ -63,19 +62,14 @@ export default function TaxExpensesTab({ year }: Props) {
     // r29c-1 — F-ZERO-AMOUNT
     const amountCents = dollarsToCents(form.amount);
     if (amountCents <= 0) {
-      toast(es ? 'El monto debe ser mayor a $0' : 'Amount must be greater than $0', 'error');
+      toast(t('taxExpenses.errAmountGreaterZero'), 'error');
       return;
     }
 
     // r29c-1 — F-DATE-OUTSIDE-YEAR
     const formYear = new Date(form.date).getFullYear();
     if (formYear !== year) {
-      toast(
-        es
-          ? `La fecha debe estar dentro del año fiscal ${year} (1 ene – 31 dic, ${year})`
-          : `Date must be within fiscal year ${year} (Jan 1 – Dec 31, ${year})`,
-        'error',
-      );
+      toast(t('taxExpenses.errDateOutsideYear', year), 'error');
       return;
     }
 
@@ -110,7 +104,9 @@ export default function TaxExpensesTab({ year }: Props) {
   }, {});
 
   const catLabel = (val: TaxExpenseCategory) =>
-    EXPENSE_CATEGORIES.find((c) => c.value === val)?.[es ? 'es' : 'en'] ?? val;
+    EXPENSE_CATEGORIES.find((c) => c.value === val)?.[locale === 'es' ? 'es' : 'en'] ?? val;
+
+  const dateLocale = locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US';
 
   return (
     <div>
@@ -118,14 +114,14 @@ export default function TaxExpensesTab({ year }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
-            {es ? 'Gastos del Negocio' : 'Business Expenses'} — {year}
+            {t('taxExpenses.title', year)}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-            {es ? 'Editables manualmente. Se sincronizan a Firebase.' : 'Manually editable. Syncs to Firebase.'}
+            {t('taxExpenses.subtitle')}
           </div>
         </div>
         <button onClick={openAdd} style={btnAddStyle}>
-          + {es ? 'Agregar Gasto' : 'Add Expense'}
+          + {t('taxExpenses.addBtn')}
         </button>
       </div>
 
@@ -138,7 +134,7 @@ export default function TaxExpensesTab({ year }: Props) {
           padding: '0.875rem 1rem',
         }}>
           <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-            {es ? 'Gastos Deducibles' : 'Deductible Expenses'}
+            {t('taxExpenses.deductibleHeader')}
           </div>
           <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fca5a5', marginTop: '0.2rem' }}>
             {formatCurrency(tax.totalExpensesDeductible)}
@@ -151,7 +147,7 @@ export default function TaxExpensesTab({ year }: Props) {
           padding: '0.875rem 1rem',
         }}>
           <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-            Pass-through {es ? '(excluido)' : '(excluded)'}
+            Pass-through {t('taxExpenses.passThroughExcluded')}
           </div>
           <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#c4b5fd', marginTop: '0.2rem' }}>
             {formatCurrency(tax.totalPassThrough)}
@@ -164,7 +160,7 @@ export default function TaxExpensesTab({ year }: Props) {
           padding: '0.875rem 1rem',
         }}>
           <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-            {es ? 'Total Capturado' : 'Total Entries'}
+            {t('taxExpenses.totalEntries')}
           </div>
           <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#cbd5e1', marginTop: '0.2rem' }}>
             {tax.data.expenses.length}
@@ -183,9 +179,7 @@ export default function TaxExpensesTab({ year }: Props) {
         color: '#c4b5fd',
         lineHeight: 1.5,
       }}>
-        <strong>💡 Pass-through:</strong> {es
-          ? 'Dinero recibido de clientes que se debe pasar a un tercero (carrier, etc.). NO es ingreso ni gasto — solo está de paso. Se excluye de los totales del 1065.'
-          : "Money collected from customers that must be forwarded to a third party (carrier, etc.). NOT income, NOT expense — just transit. Excluded from 1065 totals."}
+        <strong>💡 Pass-through:</strong> {t('taxExpenses.passThroughBanner')}
       </div>
 
       {/* Table or empty state */}
@@ -199,10 +193,10 @@ export default function TaxExpensesTab({ year }: Props) {
         }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💸</div>
           <div style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.25rem' }}>
-            {es ? 'No hay gastos capturados' : 'No expenses recorded yet'}
+            {t('taxExpenses.empty')}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-            {es ? `Agrega gastos del año ${year} para llenar el 1065 y CDTFA.` : `Add ${year} expenses to populate Form 1065 and CDTFA.`}
+            {t('taxExpenses.emptyHint', year)}
           </div>
         </div>
       ) : (
@@ -215,11 +209,11 @@ export default function TaxExpensesTab({ year }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <th style={thStyle}>{es ? 'Fecha' : 'Date'}</th>
-                <th style={thStyle}>{es ? 'Vendedor' : 'Vendor'}</th>
-                <th style={thStyle}>{es ? 'Categoría' : 'Category'}</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>{es ? 'Monto' : 'Amount'}</th>
-                <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{es ? 'Acciones' : 'Actions'}</th>
+                <th style={thStyle}>{t('taxExpenses.thDate')}</th>
+                <th style={thStyle}>{t('taxExpenses.thVendor')}</th>
+                <th style={thStyle}>{t('taxExpenses.thCategory')}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>{t('taxExpenses.thAmount')}</th>
+                <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>{t('taxExpenses.thActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -230,7 +224,7 @@ export default function TaxExpensesTab({ year }: Props) {
                     background: isPassThrough ? 'rgba(168,85,247,0.04)' : 'transparent',
                     borderTop: '1px solid rgba(255,255,255,0.05)',
                   }}>
-                    <td style={tdStyle}>{new Date(exp.date).toLocaleDateString(es ? 'es-MX' : 'en-US')}</td>
+                    <td style={tdStyle}>{new Date(exp.date).toLocaleDateString(dateLocale)}</td>
                     <td style={{ ...tdStyle, fontWeight: 600, color: '#e2e8f0' }}>
                       {exp.vendor}
                       {exp.notes && <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.15rem' }}>{exp.notes}</div>}
@@ -244,8 +238,8 @@ export default function TaxExpensesTab({ year }: Props) {
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
-                        <button onClick={() => openEdit(exp)} style={iconBtnStyle('blue')} title={es ? 'Editar' : 'Edit'}>✏️</button>
-                        <button onClick={() => setConfirmDelete(exp.id)} style={iconBtnStyle('red')} title={es ? 'Borrar' : 'Delete'}>🗑</button>
+                        <button onClick={() => openEdit(exp)} style={iconBtnStyle('blue')} title={t('edit')}>✏️</button>
+                        <button onClick={() => setConfirmDelete(exp.id)} style={iconBtnStyle('red')} title={t('delete')}>🗑</button>
                       </div>
                     </td>
                   </tr>
@@ -260,7 +254,7 @@ export default function TaxExpensesTab({ year }: Props) {
       {Object.keys(byCategory).length > 0 && (
         <div style={{ marginTop: '1rem' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            {es ? 'Por Categoría' : 'By Category'}
+            {t('taxExpenses.byCategoryHeader')}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
             {Object.entries(byCategory)
@@ -290,12 +284,12 @@ export default function TaxExpensesTab({ year }: Props) {
         <div onClick={() => setShowModal(false)} style={modalOverlay}>
           <div onClick={(e) => e.stopPropagation()} style={modalCard}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
-              {editing ? (es ? '✏️ Editar Gasto' : '✏️ Edit Expense') : (es ? '+ Agregar Gasto' : '+ Add Expense')}
+              {editing ? t('taxExpenses.editTitle') : t('taxExpenses.addTitle')}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Fecha' : 'Date'} *</label>
+                <label style={labelStyle}>{t('taxExpenses.dateLabel')} *</label>
                 <input
                   type="date"
                   style={inputStyle}
@@ -304,7 +298,7 @@ export default function TaxExpensesTab({ year }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Monto' : 'Amount'} ($) *</label>
+                <label style={labelStyle}>{t('taxExpenses.amountLabel')} ($) *</label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -317,32 +311,32 @@ export default function TaxExpensesTab({ year }: Props) {
             </div>
 
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Vendedor / Proveedor' : 'Vendor'} *</label>
+              <label style={labelStyle}>{t('taxExpenses.vendorLabel')} *</label>
               <input
                 style={inputStyle}
                 value={form.vendor}
                 onChange={(e) => setForm({ ...form, vendor: e.target.value })}
-                placeholder={es ? 'PG&E, Costco, etc.' : 'PG&E, Costco, etc.'}
+                placeholder={t('taxExpenses.vendorPlaceholder')}
                 autoFocus
               />
             </div>
 
             <div style={{ marginBottom: '0.875rem' }}>
-              <label style={labelStyle}>{es ? 'Categoría' : 'Category'} *</label>
+              <label style={labelStyle}>{t('taxExpenses.categoryLabel')} *</label>
               <select
                 style={inputStyle}
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value as TaxExpenseCategory })}
               >
-                <option value="">{es ? 'Seleccionar...' : 'Select...'}</option>
+                <option value="">{t('taxExpenses.selectPlaceholder')}</option>
                 {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>{es ? c.es : c.en}</option>
+                  <option key={c.value} value={c.value}>{locale === 'es' ? c.es : c.en}</option>
                 ))}
               </select>
             </div>
 
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={labelStyle}>{es ? 'Notas' : 'Notes'}</label>
+              <label style={labelStyle}>{t('taxExpenses.notesLabel')}</label>
               <textarea
                 style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }}
                 value={form.notes}
@@ -360,13 +354,13 @@ export default function TaxExpensesTab({ year }: Props) {
                 fontSize: '0.72rem',
                 color: '#c4b5fd',
               }}>
-                ⊘ {es ? 'Marcado como Pass-through. NO se descontará del 1065.' : 'Marked as Pass-through. Will NOT be deducted on 1065.'}
+                ⊘ {t('taxExpenses.passThroughHint')}
               </div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowModal(false)} style={btnSecondaryStyle}>
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('cancel')}
               </button>
               <button
                 onClick={handleSave}
@@ -377,7 +371,7 @@ export default function TaxExpensesTab({ year }: Props) {
                   cursor: (!form.vendor.trim() || !form.category || !form.amount) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {es ? '💾 Guardar' : '💾 Save'}
+                💾 {t('save')}
               </button>
             </div>
           </div>
@@ -390,17 +384,17 @@ export default function TaxExpensesTab({ year }: Props) {
           <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, maxWidth: '420px', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.5rem' }}>
-              {es ? '¿Borrar este gasto?' : 'Delete this expense?'}
+              {t('taxExpenses.deleteConfirmTitle')}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
-              {es ? 'Esta acción no se puede deshacer.' : "This can't be undone."}
+              {t('taxExpenses.cantUndo')}
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
               <button onClick={() => setConfirmDelete(null)} style={btnSecondaryStyle}>
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('cancel')}
               </button>
               <button onClick={() => handleDelete(confirmDelete)} style={{ ...btnPrimaryStyle, background: '#dc2626', color: 'white' }}>
-                🗑 {es ? 'Borrar' : 'Delete'}
+                🗑 {t('delete')}
               </button>
             </div>
           </div>

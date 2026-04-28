@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
+import { useTranslation } from '@/i18n';
 import { persistSettings } from '@/services/persist';
 import { formatCurrency } from '@/utils/currency';
 import { calcMemberK1 } from './taxData';
@@ -107,9 +108,9 @@ interface Props {
 }
 
 export default function PartnershipMembersTab({ netProfitCents }: Props) {
-  const { state: { settings, lang }, setSettings } = useApp();
+  const { state: { settings }, setSettings } = useApp();
   const { toast } = useToast();
-  const es = lang === 'es';
+  const { t } = useTranslation();
 
   const partnership: PartnershipInfo = settings.partnership ?? DEFAULT_PARTNERSHIP;
   const members = partnership.members ?? [];
@@ -152,10 +153,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
     // Ownership % must be between 0 and 100
     const ownership = editingMember.ownershipPct || 0;
     if (!Number.isFinite(ownership) || ownership < 0 || ownership > 100) {
-      toast(
-        es ? 'El porcentaje de propiedad debe estar entre 0 y 100' : 'Ownership % must be between 0 and 100',
-        'error',
-      );
+      toast(t('partners.errOwnershipRange'), 'error');
       return;
     }
 
@@ -168,12 +166,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
       .reduce((s, m) => s + (m.ownershipPct || 0), 0);
     if (otherMembersPct + ownership > 100.01) {
       // 0.01 tolerance for float drift
-      toast(
-        es
-          ? `La propiedad total excedería 100% (${(otherMembersPct + ownership).toFixed(2)}%). Ajusta los porcentajes.`
-          : `Total ownership would exceed 100% (${(otherMembersPct + ownership).toFixed(2)}%). Adjust the percentages.`,
-        'error',
-      );
+      toast(t('partners.errOwnershipExceeds', (otherMembersPct + ownership).toFixed(2)), 'error');
       return;
     }
 
@@ -183,12 +176,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
     if (ssn) {
       const ssnDigits = ssn.replace(/\D/g, '');
       if (ssnDigits.length !== 9) {
-        toast(
-          es
-            ? 'SSN/ITIN debe tener 9 dígitos (formato XXX-XX-XXXX)'
-            : 'SSN/ITIN must be 9 digits (format XXX-XX-XXXX)',
-          'error',
-        );
+        toast(t('partners.errSSNFormat'), 'error');
         return;
       }
     }
@@ -255,17 +243,17 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              {es ? 'Información de la Sociedad' : 'Partnership Entity Info'}
+              {t('partners.entityInfoHeader')}
             </div>
             <div style={{ fontSize: '0.95rem', color: '#e2e8f0', marginTop: '0.2rem', fontWeight: 600 }}>
-              {partnership.legalName || (es ? '(Nombre legal no configurado)' : '(Legal name not set)')}
+              {partnership.legalName || t('partners.legalNameNotSet')}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-              EIN: {partnership.ein || (es ? '(no configurado)' : '(not set)')}
+              EIN: {partnership.ein || t('partners.einNotSet')}
               {' · '}
               {partnership.entityType === 'llc-p' ? 'LLC (Partnership)' : 'General Partnership'}
               {' · '}
-              {partnership.accountingMethod === 'cash' ? (es ? 'Efectivo' : 'Cash') : (es ? 'Devengo' : 'Accrual')}
+              {partnership.accountingMethod === 'cash' ? t('partners.cash') : t('partners.accrual')}
             </div>
           </div>
           <button
@@ -282,14 +270,14 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
               whiteSpace: 'nowrap',
             }}
           >
-            {showEntityForm ? (es ? '✕ Cerrar' : '✕ Close') : (es ? '✏️ Editar' : '✏️ Edit')}
+            {showEntityForm ? t('partners.entityClose') : t('partners.entityEdit')}
           </button>
         </div>
 
         {showEntityForm && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginTop: '0.75rem' }}>
             <div>
-              <label style={labelStyle}>{es ? 'Nombre Legal' : 'Legal Name'}</label>
+              <label style={labelStyle}>{t('partners.legalName')}</label>
               <input
                 style={inputStyle}
                 value={partnership.legalName}
@@ -308,7 +296,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
               />
             </div>
             <div>
-              <label style={labelStyle}>{es ? 'Tipo de Entidad' : 'Entity Type'}</label>
+              <label style={labelStyle}>{t('partners.entityType')}</label>
               <select
                 style={inputStyle}
                 value={partnership.entityType}
@@ -319,18 +307,18 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>{es ? 'Método Contable' : 'Accounting Method'}</label>
+              <label style={labelStyle}>{t('partners.accountingMethod')}</label>
               <select
                 style={inputStyle}
                 value={partnership.accountingMethod}
                 onChange={(e) => updatePartnership({ accountingMethod: e.target.value as any })}
               >
-                <option value="cash">{es ? 'Efectivo' : 'Cash'}</option>
-                <option value="accrual">{es ? 'Devengo' : 'Accrual'}</option>
+                <option value="cash">{t('partners.cash')}</option>
+                <option value="accrual">{t('partners.accrual')}</option>
               </select>
             </div>
             <div>
-              <label style={labelStyle}>{es ? 'Fecha de Formación' : 'Formation Date'}</label>
+              <label style={labelStyle}>{t('partners.formationDate')}</label>
               <input
                 type="date"
                 style={inputStyle}
@@ -339,21 +327,21 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
               />
             </div>
             <div>
-              <label style={labelStyle}>{es ? 'Actividad Comercial' : 'Business Activity'}</label>
+              <label style={labelStyle}>{t('partners.businessActivity')}</label>
               <input
                 style={inputStyle}
                 value={partnership.businessActivity}
                 onChange={(e) => updatePartnership({ businessActivity: e.target.value })}
-                placeholder={es ? 'Reparación de celulares' : 'Cell phone repair'}
+                placeholder={t('partners.businessActivityPlaceholder')}
               />
             </div>
             <div style={{ gridColumn: 'span 2' }}>
-              <label style={labelStyle}>{es ? 'Producto / Servicio Principal' : 'Principal Product/Service'}</label>
+              <label style={labelStyle}>{t('partners.principalProductService')}</label>
               <input
                 style={inputStyle}
                 value={partnership.productOrService}
                 onChange={(e) => updatePartnership({ productOrService: e.target.value })}
-                placeholder={es ? 'Reparación de celulares y accesorios' : 'Phone repair and accessories'}
+                placeholder={t('partners.principalProductServicePlaceholder')}
               />
             </div>
           </div>
@@ -374,9 +362,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
         }}>
           <span style={{ fontSize: '1.1rem' }}>⚠️</span>
           <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>
-            {es
-              ? `Los porcentajes de propiedad suman ${totalPct.toFixed(2)}% — deben sumar 100%.`
-              : `Ownership percentages total ${totalPct.toFixed(2)}% — must equal 100%.`}
+            {t('partners.ownershipExceeds', totalPct.toFixed(2))}
           </span>
         </div>
       )}
@@ -393,9 +379,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
         }}>
           <span style={{ fontSize: '1rem' }}>✓</span>
           <span style={{ fontSize: '0.78rem', color: '#86efac' }}>
-            {es
-              ? `${members.length} ${members.length === 1 ? 'socio' : 'socios'} · 100% asignado`
-              : `${members.length} ${members.length === 1 ? 'member' : 'members'} · 100% allocated`}
+            {t('partners.ownershipValid', members.length)}
           </span>
         </div>
       )}
@@ -403,7 +387,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
       {/* ── Members header + Add button ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#cbd5e1' }}>
-          {es ? 'Socios / Miembros' : 'Members / Partners'}
+          {t('partners.membersHeader')}
         </div>
         <button
           onClick={openAdd}
@@ -418,7 +402,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
             cursor: 'pointer',
           }}
         >
-          + {es ? 'Agregar Socio' : 'Add Member'}
+          + {t('partners.addMemberBtn')}
         </button>
       </div>
 
@@ -433,12 +417,10 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
         }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
           <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.25rem', fontWeight: 600 }}>
-            {es ? 'No hay socios configurados' : 'No members configured'}
+            {t('partners.noMembers')}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-            {es
-              ? 'Agrega cada socio del Partnership para generar el K-1.'
-              : 'Add each Partnership member to generate K-1 forms.'}
+            {t('partners.noMembersHint')}
           </div>
         </div>
       )}
@@ -473,12 +455,12 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                         textTransform: 'uppercase',
                         fontWeight: 700,
                       }}>
-                        {es ? 'Gerente' : 'Managing'}
+                        {t('partners.managingBadge')}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
-                    {m.ssn ? `SSN: ${maskSSN(m.ssn)}` : (es ? 'SSN no configurado' : 'No SSN set')}
+                    {m.ssn ? `SSN: ${maskSSN(m.ssn)}` : t('partners.ssnNotSet')}
                     {m.ein && ` · EIN: ${m.ein}`}
                   </div>
                   {(m.address || m.city) && (
@@ -500,7 +482,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                       cursor: 'pointer',
                       fontWeight: 600,
                     }}
-                    title={es ? 'Editar' : 'Edit'}
+                    title={t('edit')}
                   >
                     ✏️
                   </button>
@@ -516,7 +498,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                       cursor: 'pointer',
                       fontWeight: 600,
                     }}
-                    title={es ? 'Borrar' : 'Delete'}
+                    title={t('delete')}
                   >
                     🗑
                   </button>
@@ -525,7 +507,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
 
               {/* K-1 preview rows */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.5rem' }}>
-                <MemberRow label={es ? 'Propiedad' : 'Ownership'} value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} bold />
+                <MemberRow label={t('partners.ownership')} value={`${(m.ownershipPct ?? 0).toFixed(2)}%`} bold />
                 <MemberRow label="Box 1 — Ordinary Income" value={formatCurrency(k1.ordinaryIncome)} color="#22c55e" />
                 {m.guaranteedPayments > 0 && (
                   <MemberRow label="Box 4 — Guaranteed Payments" value={formatCurrency(m.guaranteedPayments)} color="#fbbf24" />
@@ -580,17 +562,17 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
           >
             <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '1rem' }}>
               {members.find((m) => m.id === editingId)
-                ? (es ? '✏️ Editar Socio' : '✏️ Edit Member')
-                : (es ? '+ Agregar Socio' : '+ Add Member')}
+                ? t('partners.editMemberTitle')
+                : t('partners.addMemberTitle')}
             </div>
 
             {/* Personal info */}
             <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-              {es ? 'Información Personal' : 'Personal Info'}
+              {t('partners.personalInfo')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={labelStyle}>{es ? 'Nombre Completo' : 'Full Name'} *</label>
+                <label style={labelStyle}>{t('partners.fullName')} *</label>
                 <input
                   style={inputStyle}
                   value={editingMember.name}
@@ -610,7 +592,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>EIN ({es ? 'si es entidad' : 'if entity'})</label>
+                <label style={labelStyle}>EIN ({t('partners.einIfEntity')})</label>
                 <input
                   style={inputStyle}
                   value={editingMember.ein || ''}
@@ -623,11 +605,11 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
 
             {/* Address */}
             <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-              {es ? 'Dirección' : 'Address'}
+              {t('partners.address')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Calle' : 'Street'}</label>
+                <label style={labelStyle}>{t('partners.street')}</label>
                 <input
                   style={inputStyle}
                   value={editingMember.address}
@@ -636,7 +618,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Ciudad' : 'City'}</label>
+                <label style={labelStyle}>{t('partners.city')}</label>
                 <input
                   style={inputStyle}
                   value={editingMember.city}
@@ -645,7 +627,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Estado' : 'State'}</label>
+                <label style={labelStyle}>{t('partners.state')}</label>
                 <input
                   style={inputStyle}
                   value={editingMember.state}
@@ -667,11 +649,11 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
 
             {/* Ownership */}
             <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-              {es ? 'Propiedad y Estado' : 'Ownership & Status'}
+              {t('partners.ownershipStatus')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <div>
-                <label style={labelStyle}>% {es ? 'Propiedad' : 'Ownership'} *</label>
+                <label style={labelStyle}>% {t('partners.ownership')} *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -700,7 +682,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                     onChange={(e) => setEditingMember({ ...editingMember, isManaging: e.target.checked })}
                     style={{ width: '1rem', height: '1rem' }}
                   />
-                  {es ? 'Gerente' : 'Managing'}
+                  {t('partners.managing')}
                 </label>
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0.4rem' }}>
@@ -711,18 +693,18 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                     onChange={(e) => setEditingMember({ ...editingMember, isUSResident: e.target.checked })}
                     style={{ width: '1rem', height: '1rem' }}
                   />
-                  {es ? 'Residente EE.UU.' : 'US Resident'}
+                  {t('partners.usResident')}
                 </label>
               </div>
             </div>
 
             {/* Capital account */}
             <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-              {es ? 'Cuenta de Capital (K-1 Item L)' : 'Capital Account (K-1 Item L)'}
+              {t('partners.capitalAccount')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <div>
-                <label style={labelStyle}>{es ? 'Capital Inicial' : 'Beginning Capital'} ($)</label>
+                <label style={labelStyle}>{t('partners.beginningCapital')} ($)</label>
                 <input
                   style={inputStyle}
                   value={centsToDollars(editingMember.beginningCapital)}
@@ -731,7 +713,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Aportaciones del Año' : 'Contributions YTD'} ($)</label>
+                <label style={labelStyle}>{t('partners.contributionsYTD')} ($)</label>
                 <input
                   style={inputStyle}
                   value={centsToDollars(editingMember.contributions)}
@@ -740,7 +722,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Distribuciones del Año' : 'Distributions YTD'} ($)</label>
+                <label style={labelStyle}>{t('partners.distributionsYTD')} ($)</label>
                 <input
                   style={inputStyle}
                   value={centsToDollars(editingMember.distributions)}
@@ -749,7 +731,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                 />
               </div>
               <div>
-                <label style={labelStyle}>{es ? 'Pagos Garantizados' : 'Guaranteed Payments'} ($)</label>
+                <label style={labelStyle}>{t('partners.guaranteedPayments')} ($)</label>
                 <input
                   style={inputStyle}
                   value={centsToDollars(editingMember.guaranteedPayments)}
@@ -761,7 +743,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
 
             {/* Notes */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={labelStyle}>{es ? 'Notas' : 'Notes'}</label>
+              <label style={labelStyle}>{t('partners.notes')}</label>
               <textarea
                 style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }}
                 value={editingMember.notes || ''}
@@ -784,7 +766,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                   cursor: 'pointer',
                 }}
               >
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('cancel')}
               </button>
               <button
                 onClick={saveMember}
@@ -803,7 +785,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                   opacity: !editingMember.name.trim() ? 0.5 : 1,
                 }}
               >
-                {es ? '💾 Guardar' : '💾 Save'}
+                💾 {t('save')}
               </button>
             </div>
           </div>
@@ -841,12 +823,10 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
           >
             <div style={{ fontSize: '2rem', textAlign: 'center', marginBottom: '0.5rem' }}>⚠️</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0', textAlign: 'center', marginBottom: '0.5rem' }}>
-              {es ? '¿Borrar este socio?' : 'Delete this member?'}
+              {t('partners.deleteMemberTitle')}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', marginBottom: '1.25rem' }}>
-              {es
-                ? 'Esta acción no se puede deshacer. La información del socio se eliminará permanentemente.'
-                : "This can't be undone. The member's information will be permanently removed."}
+              {t('partners.deleteMemberHint')}
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
               <button
@@ -862,7 +842,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                   cursor: 'pointer',
                 }}
               >
-                {es ? 'Cancelar' : 'Cancel'}
+                {t('cancel')}
               </button>
               <button
                 onClick={() => deleteMember(confirmDelete)}
@@ -877,7 +857,7 @@ export default function PartnershipMembersTab({ netProfitCents }: Props) {
                   cursor: 'pointer',
                 }}
               >
-                {es ? '🗑 Borrar' : '🗑 Delete'}
+                🗑 {t('delete')}
               </button>
             </div>
           </div>
