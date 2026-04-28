@@ -1135,7 +1135,6 @@ export default function UnlockModule() {
                 )
               ) : undefined}
               lang={lang}
-              L={L}
             />
           ))
         )}

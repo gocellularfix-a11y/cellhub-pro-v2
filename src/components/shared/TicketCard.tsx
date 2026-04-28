@@ -5,6 +5,7 @@
 import { formatCurrency } from '@/utils/currency';
 import { formatDate } from '@/utils/dates';
 import { forwardRef, type ReactNode } from 'react';
+import { useTranslation } from '@/i18n';
 
 interface TicketCardProps {
   ticketNumber: string;
@@ -25,7 +26,6 @@ interface TicketCardProps {
   onWhatsApp?: () => void;
   highlighted?: boolean;  // flash from GlobalSearch navigate
   lang: string;
-  L: Record<string, any>;
 
   // NEW — optional action callbacks. If provided, renders a button.
   onDeposit?: () => void;
@@ -63,7 +63,6 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   onWhatsApp,
   highlighted,
   lang,
-  L,
   onDeposit,
   onComplete,
   onPrint,
@@ -73,6 +72,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   completeVariant = 'amber',
   extraBadges,
 }, ref) {
+  const { t } = useTranslation();
   return (
     <div
       ref={ref}
@@ -117,17 +117,17 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
           <p className="text-sm font-bold text-white">{formatCurrency(total)}</p>
           {deposit > 0 && (
             <p className="text-xs text-emerald-400">
-              {L.deposit || 'Deposit'}: {formatCurrency(deposit)}
+              {t('ticket.deposit')}: {formatCurrency(deposit)}
             </p>
           )}
           {balance > 0 && (
             <p className="text-xs text-amber-400">
-              {L.balance || 'Balance'}: {formatCurrency(balance)}
+              {t('ticket.balance')}: {formatCurrency(balance)}
             </p>
           )}
           {pendingCents > 0 && (
             <p className="text-xs" style={{ color: '#fb923c' }}>
-              🛒 {formatCurrency(pendingCents)} {L.inCart || 'in cart'}
+              🛒 {formatCurrency(pendingCents)} {t('ticket.inCart')}
             </p>
           )}
           <p className="text-xs text-slate-600 mt-1">{formatDate(createdAt)}</p>
@@ -138,9 +138,9 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                 onClick={(e) => { e.stopPropagation(); onDeposit(); }}
                 className="btn btn-secondary btn-sm"
                 style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
-                title={L.deposit || 'Deposit'}
+                title={t('ticket.deposit')}
               >
-                + {L.deposit || 'Deposit'}
+                + {t('ticket.deposit')}
               </button>
             )}
 
@@ -168,7 +168,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                              : 'rgba(255,255,255,0.1)',
                 }}
               >
-                {completeLabel || (L.complete || 'Complete')}
+                {completeLabel || t('ticket.complete')}
               </button>
             )}
 
@@ -179,7 +179,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                 className="btn btn-success btn-sm"
                 style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
               >
-                💰 {L.collectBalance || 'Collect'}
+                💰 {t('ticket.collectBalance')}
               </button>
             )}
 
@@ -196,7 +196,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                       background: 'rgba(255,255,255,0.05)', color: '#e5e7eb',
                       border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
                     }}
-                    title={L.print || 'Print'}
+                    title={t('ticket.print')}
                   >🖨</button>
                 )}
 
@@ -224,7 +224,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                       background: 'rgba(239,68,68,0.15)', color: '#ef4444',
                       border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer',
                     }}
-                    title={L.delete || 'Delete'}
+                    title={t('ticket.delete')}
                   >🗑</button>
                 )}
               </div>

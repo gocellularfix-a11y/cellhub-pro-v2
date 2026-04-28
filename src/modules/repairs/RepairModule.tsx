@@ -6,7 +6,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui';
-import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
@@ -66,7 +65,6 @@ export default function RepairModule() {
   const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
-  const L = getLabels(lang); // kept — passed to RepairModal + TicketCard prop drilling
 
   const [search, setSearch] = useState(globalSearchTerm || '');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -152,17 +150,17 @@ export default function RepairModule() {
   const translateStatus = useCallback(
     (status: string) => {
       const map: Record<string, string> = {
-        All: L.all,
-        [REPAIR_STATUS.RECEIVED]:      L.received,
-        [REPAIR_STATUS.IN_PROGRESS]:   L.inProgress,
-        [REPAIR_STATUS.WAITING_PARTS]: L.waitingParts || 'Waiting Parts',
-        [REPAIR_STATUS.READY]:         L.ready || 'Ready',
-        [REPAIR_STATUS.PICKED_UP]:     L.completed,
-        [REPAIR_STATUS.CANCELLED]:     L.cancelled,
+        All: t('repairs.filter.all'),
+        [REPAIR_STATUS.RECEIVED]:      t('repairs.status.received'),
+        [REPAIR_STATUS.IN_PROGRESS]:   t('repairs.status.inProgress'),
+        [REPAIR_STATUS.WAITING_PARTS]: t('repairs.status.waitingParts'),
+        [REPAIR_STATUS.READY]:         t('repairs.status.ready'),
+        [REPAIR_STATUS.PICKED_UP]:     t('repairs.status.completed'),
+        [REPAIR_STATUS.CANCELLED]:     t('repairs.status.cancelled'),
       };
       return map[status] || status;
     },
-    [L],
+    [t],
   );
 
   // ── Filtered list ───────────────────────────────────────
@@ -230,7 +228,6 @@ export default function RepairModule() {
     const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
-    const es = lang === 'es';
 
     // R-EDIT-AUDIT F3.8: annotate "previously: $X.XX" on money lines when the
     // corrected-receipt flag is set and the snapshot has a different prior value.
@@ -241,7 +238,7 @@ export default function RepairModule() {
       const prior = snap[field];
       const current = (repair as any)[field];
       if (prior == null || prior === '' || prior === current) return '';
-      if (typeof prior === 'number') return ` (${es ? 'antes' : 'previously'}: ${money(prior)})`;
+      if (typeof prior === 'number') return ` (${t('repairs.print.previously')}: ${money(prior)})`;
       return '';
     };
 
@@ -251,33 +248,33 @@ export default function RepairModule() {
     if (storePhone) lines.push(storePhone);
     lines.push('----------------------------------------');
     if (corrected) {
-      lines.push(es ? '*** RECIBO CORREGIDO ***' : '*** CORRECTED RECEIPT ***');
-      lines.push(`${es ? 'CORREGIDO' : 'CORRECTED'}: ${new Date().toLocaleString()}`);
+      lines.push(t('repairs.print.correctedReceipt'));
+      lines.push(`${t('repairs.print.corrected')}: ${new Date().toLocaleString()}`);
       lines.push('----------------------------------------');
     }
-    lines.push(es ? 'TICKET DE REPARACIÓN' : 'REPAIR TICKET');
+    lines.push(t('repairs.print.repairTicket'));
     lines.push(`TICKET: ${safe(repair.ticketNumber)}`);
-    lines.push(`${es ? 'FECHA' : 'DATE'}: ${new Date().toLocaleString()}`);
+    lines.push(`${t('repairs.print.date')}: ${new Date().toLocaleString()}`);
     lines.push(`STATUS: ${safe(repair.status)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'CLIENTE' : 'CUSTOMER'}: ${safe(repair.customerName)}`);
-    if (repair.customerPhone) lines.push(`${es ? 'TEL' : 'PHONE'}: ${safe(repair.customerPhone)}`);
+    lines.push(`${t('repairs.print.customer')}: ${safe(repair.customerName)}`);
+    if (repair.customerPhone) lines.push(`${t('repairs.print.phone')}: ${safe(repair.customerPhone)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'DISPOSITIVO' : 'DEVICE'}: ${safe(repair.device)}`);
+    lines.push(`${t('repairs.print.device')}: ${safe(repair.device)}`);
     if (repair.imei) lines.push(`IMEI: ${safe(repair.imei)}`);
     lines.push('----------------------------------------');
-    lines.push(`${es ? 'PROBLEMA' : 'ISSUE'}: ${safe(repair.issue)}`);
+    lines.push(`${t('repairs.print.issue')}: ${safe(repair.issue)}`);
     if (repair.notes) {
       lines.push('----------------------------------------');
-      lines.push(`${es ? 'NOTAS' : 'NOTES'}: ${safe(repair.notes)}`);
+      lines.push(`${t('repairs.print.notes')}: ${safe(repair.notes)}`);
     }
     lines.push('----------------------------------------');
     const partsCents = (repair.subtotal || 0) - (repair.laborCost || 0);
-    if (partsCents > 0) lines.push(`${es ? 'REFACCIONES' : 'PARTS'}: ${money(partsCents)}`);
-    if (repair.laborCost) lines.push(`${es ? 'MANO DE OBRA' : 'LABOR'}: ${money(repair.laborCost)}${previously('laborCost')}`);
+    if (partsCents > 0) lines.push(`${t('repairs.print.parts')}: ${money(partsCents)}`);
+    if (repair.laborCost) lines.push(`${t('repairs.print.labor')}: ${money(repair.laborCost)}${previously('laborCost')}`);
     lines.push(`SUBTOTAL: ${money(repair.subtotal || 0)}${previously('subtotal')}`);
     if (repair.taxable && repair.taxAmount > 0) {
-      lines.push(`${es ? 'IMPUESTO' : 'TAX'} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}${previously('taxAmount')}`);
+      lines.push(`${t('repairs.print.tax')} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}${previously('taxAmount')}`);
     }
     lines.push(`TOTAL: ${money(repair.total || 0)}${previously('total')}`);
     // Round R-QF1: print the deposit intent captured at form save.
@@ -294,20 +291,20 @@ export default function RepairModule() {
     const displayTotal = repair.total || repair.estimatedCost || 0;
     const displayBalance = displayOverride?.balance
       ?? Math.max(0, displayTotal - displayDeposit);
-    lines.push(`${es ? 'DEPÓSITO' : 'DEPOSIT'}: ${money(displayDeposit)}${previously('depositAmount')}`);
-    lines.push(`${es ? 'BALANCE' : 'BALANCE'}: ${money(displayBalance)}${previously('balance')}`);
+    lines.push(`${t('repairs.print.deposit')}: ${money(displayDeposit)}${previously('depositAmount')}`);
+    lines.push(`${t('repairs.print.balance')}: ${money(displayBalance)}${previously('balance')}`);
     // R-EDIT-AUDIT F3.8: show refund owed on corrected receipt when reason='refund'.
     if (corrected && (repair.refundOwedAmount || 0) > 0) {
-      lines.push(`${es ? 'REEMBOLSO ADEUDADO' : 'REFUND OWED'}: ${money(repair.refundOwedAmount)}`);
+      lines.push(`${t('repairs.print.refundOwed')}: ${money(repair.refundOwedAmount)}`);
     }
     lines.push('----------------------------------------');
-    if (repair.warranty) lines.push(`${es ? 'GARANTÍA' : 'WARRANTY'}: ${repair.warranty} ${es ? 'días' : 'days'}`);
-    lines.push(es ? '¡Gracias por su preferencia!' : 'Thank you for your business!');
+    if (repair.warranty) lines.push(`${t('repairs.print.warranty')}: ${repair.warranty} ${t('repairs.print.days')}`);
+    lines.push(t('repairs.print.thankYou'));
 
     const text = lines.filter(Boolean).join('\n');
     const html = `<!DOCTYPE html><html><head><title>Repair ${escHtml(repair.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
-  }, [settings, lang, printHtml]);
+  }, [settings, printHtml, t]);
 
   // r-new-5: consolidation helper — ensures the invariant "one repair has at most
   // one cart item at any time". Called by: deposit-at-create (handleSave CREATE),
@@ -345,7 +342,7 @@ export default function RepairModule() {
 
     const consolidatedItem: CartItem = {
       id: generateId(),
-      name: `${deviceLabel} — ${lang === 'es' ? 'Reparación' : 'Repair'}`,
+      name: `${deviceLabel} — ${t('repairs.repairSuffix')}`,
       category: 'service',
       price: split.baseCents,
       qty: 1,
@@ -711,7 +708,7 @@ export default function RepairModule() {
       setShowModal(false);
       setEditRepair(null);
     },
-    [editRepair, customers, settings, currentEmployee, cart, lang, L,
+    [editRepair, customers, settings, currentEmployee, cart, lang,
      setRepairs, setCustomers, setCart, toast, printRepairTicket, consolidateCartForRepair,
      dispatch],  // Round R1 F5: missing dispatch dep (used for SET_PENDING_POS_CUSTOMER)
   );
@@ -765,7 +762,7 @@ export default function RepairModule() {
         customerPhone: repair.customerPhone,
         items: [{
           id: generateId(),
-          name: `${repair.device} — ${lang === 'es' ? 'Reembolso cancelación' : 'Cancellation refund'}`,
+          name: `${repair.device} — ${t('repairs.cancellationRefundSuffix')}`,
           category: 'service' as any,
           price: -depositCents,
           qty: 1,
@@ -990,7 +987,7 @@ export default function RepairModule() {
   return (
     <>
       <TicketListLayout
-        title={L.repairs || 'Repairs'}
+        title={t('repairs.title')}
         icon="🔧"
         statuses={STATUSES}
         activeStatus={filterStatus}
@@ -1003,21 +1000,21 @@ export default function RepairModule() {
             localValue={search}
             onLocalChange={(s) => { setSearch(s); setVisibleCount(50); }}
             excludeCollection="repairs"
-            placeholder={L.searchPlaceholder}
+            placeholder={t('repairs.searchPlaceholder')}
           />
         }
         stats={[
-          { label: L.activeRepairs || 'Active', value: activeCount, color: 'text-orange-400' },
-          { label: L.completed || 'Completed', value: completeCount, color: 'text-emerald-400' },
-          { label: L.total || 'Total', value: repairs.length, color: 'text-slate-300' },
+          { label: t('repairs.stat.active'), value: activeCount, color: 'text-orange-400' },
+          { label: t('repairs.stat.completed'), value: completeCount, color: 'text-emerald-400' },
+          { label: t('repairs.stat.total'), value: repairs.length, color: 'text-slate-300' },
         ]}
         onNew={() => { setEditRepair(null); setShowModal(true); }}
-        newLabel={L.newRepair || 'New Repair'}
+        newLabel={t('repairs.action.newRepair')}
       >
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-500">
             <span className="text-4xl block mb-3">🔧</span>
-            <p>{L.noRepairsFound || 'No repairs found'}</p>
+            <p>{t('repairs.noRepairsFound')}</p>
           </div>
         ) : (
           filtered.slice(0, visibleCount).map((repair) => (
@@ -1139,7 +1136,6 @@ export default function RepairModule() {
                 </>
               }
               lang={lang}
-              L={L}
             />
           ))
         )}
@@ -1218,7 +1214,6 @@ export default function RepairModule() {
           }}
           onClose={() => { setShowModal(false); setEditRepair(null); }}
           lang={lang}
-          L={L}
         />
       )}
 
@@ -1380,7 +1375,7 @@ export default function RepairModule() {
                 customerPhone: updated.customerPhone || '',
                 items: [{
                   id: generateId(),
-                  name: `${updated.device || 'Repair'} — ${lang === 'es' ? 'Reembolso post-edición' : 'Post-edit refund'}`,
+                  name: `${updated.device || 'Repair'} — ${t('repairs.postEditRefundSuffix')}`,
                   category: 'service' as any,
                   price: -refundAmountCents,
                   qty: 1,

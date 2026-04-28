@@ -70,7 +70,6 @@ interface Props {
   onRequestCancel?: (repair: Repair) => void;
   onClose: () => void;
   lang: string;
-  L: Record<string, any>;
 }
 
 const ISSUES_EN = [
@@ -168,9 +167,7 @@ function togglePill(current: string, value: string): string {
   return [...parts, value].join(', ');
 }
 
-export default function RepairModal({ repair, customers, inventory, settings, allRepairs = [], onSave, onCollectBalance, onRequestCancel, onClose, lang, L }: Props) {
-  const es = lang === 'es'; // kept — used in print HTML helpers (printTicket/printWarranty) per V1 surgical scope
-  void L; // vestigial — V3 cleanup
+export default function RepairModal({ repair, customers, inventory, settings, allRepairs = [], onSave, onCollectBalance, onRequestCancel, onClose, lang }: Props) {
   const { t } = useTranslation();
   const isEdit = !!repair;
   const { printHtml } = usePrint();
@@ -405,7 +402,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     expiryDate.setDate(expiryDate.getDate() + warrantyDays);
 
     const fmt = (v: any) => v == null ? '' : String(v);
-    const fmtDate = (d: Date) => d.toLocaleDateString(es ? 'es-MX' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const fmtDate = (d: Date) => d.toLocaleDateString(lang === 'es' ? 'es-MX' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const money   = (v: number) => `$${(v / 100).toFixed(2)}`;
 
     const ticketNum  = escHtml(fmt(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || ''));
@@ -420,16 +417,13 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     const storePhoneEsc = escHtml(storePhone);
     const storeEmailEsc = escHtml(storeEmail);
 
-    const warrantyBody = escHtml(settings.warrantyText ||
-      (es
-        ? `Esta garantía cubre defectos de mano de obra y piezas instaladas durante la reparación. No cubre daños físicos, daños por líquidos, software de terceros ni problemas no relacionados con la reparación original. Para hacer válida esta garantía, presente este documento en nuestra tienda.`
-        : `This warranty covers defects in workmanship and parts installed during the repair. It does not cover physical damage, liquid damage, third-party software, or issues unrelated to the original repair. To claim this warranty, present this document at our store.`));
+    const warrantyBody = escHtml(settings.warrantyText || t('repairs.print.warrantyText'));
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>${es ? 'Garantía de Reparación' : 'Repair Warranty'}</title>
+<title>${t('repairs.warranty.repairWarranty')}</title>
 <style>
   @page { size: 4in 6in; margin: 0; }
   html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #000; background: #fff; }
@@ -464,10 +458,10 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   <!-- Title -->
   <div class="center" style="margin:6px 0">
     <div class="bold" style="font-size:13px;letter-spacing:0.05em">
-      🛡️ ${es ? 'CERTIFICADO DE GARANTÍA' : 'WARRANTY CERTIFICATE'}
+      🛡️ ${t('repairs.warranty.certificate')}
     </div>
     <div style="font-size:9px;color:#555;margin-top:2px">
-      ${es ? 'Garantía de Reparación' : 'Repair Warranty'}
+      ${t('repairs.warranty.repairWarranty')}
     </div>
   </div>
   <hr class="sep-solid">
@@ -475,23 +469,23 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   <!-- Ticket + customer -->
   <div style="margin:4px 0">
     <div class="row">
-      <span class="bold">${es ? 'Ticket' : 'Ticket'}:</span>
+      <span class="bold">${t('repairs.warranty.ticket')}:</span>
       <span class="bold" style="font-family:monospace">#${ticketNum}</span>
     </div>
     <div class="row">
-      <span class="bold">${es ? 'Cliente' : 'Customer'}:</span>
+      <span class="bold">${t('repairs.print.customer')}:</span>
       <span>${custName}</span>
     </div>
     <div class="row">
-      <span class="bold">${es ? 'Dispositivo' : 'Device'}:</span>
+      <span class="bold">${t('repairs.print.device')}:</span>
       <span>${device}</span>
     </div>
     ${imei ? `<div class="row"><span class="bold">IMEI:</span><span style="font-family:monospace;font-size:9px">${imei}</span></div>` : ''}
     <div class="row">
-      <span class="bold">${es ? 'Servicio' : 'Service'}:</span>
+      <span class="bold">${t('repairs.warranty.service')}:</span>
       <span style="max-width:2.2in;text-align:right">${issue}</span>
     </div>
-    ${techNotes ? `<div style="font-size:8.5px;color:#444;margin-top:2px">${es ? 'Notas' : 'Notes'}: ${techNotes}</div>` : ''}
+    ${techNotes ? `<div style="font-size:8.5px;color:#444;margin-top:2px">${t('repairs.print.notesLower')}: ${techNotes}</div>` : ''}
     <div class="row" style="margin-top:3px">
       <span class="bold">Total:</span>
       <span class="bold">${totalAmt}</span>
@@ -502,14 +496,14 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   <!-- Warranty period -->
   <div style="margin:4px 0;background:#f5f5f5;border:1px solid #ccc;border-radius:4px;padding:5px 7px">
     <div class="center bold" style="font-size:11px;margin-bottom:3px">
-      ${es ? `GARANTÍA: ${warrantyDays} DÍAS` : `WARRANTY: ${warrantyDays} DAYS`}
+      ${t('repairs.print.warranty')}: ${warrantyDays} ${t('repairs.print.days').toUpperCase()}
     </div>
     <div class="row" style="font-size:9.5px">
-      <span>${es ? 'Fecha de servicio' : 'Service date'}:</span>
+      <span>${t('repairs.warranty.serviceDate')}:</span>
       <span class="bold">${fmtDate(completedDate)}</span>
     </div>
     <div class="row" style="font-size:9.5px">
-      <span>${es ? 'Vence el' : 'Expires on'}:</span>
+      <span>${t('repairs.print.expiresOn')}:</span>
       <span class="bold" style="color:#000">${fmtDate(expiryDate)}</span>
     </div>
   </div>
@@ -526,20 +520,20 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     <div class="row" style="font-size:9px">
       <div style="flex:1">
         <div style="border-bottom:1px solid #000;height:18px;margin-bottom:2px"></div>
-        <div>${es ? 'Firma del Cliente' : 'Customer Signature'}</div>
+        <div>${t('repairs.warranty.customerSignature')}</div>
       </div>
       <div style="width:12px"></div>
       <div style="flex:1">
         <div style="border-bottom:1px solid #000;height:18px;margin-bottom:2px"></div>
-        <div>${es ? 'Técnico / Tienda' : 'Technician / Store'}</div>
+        <div>${t('repairs.warranty.technicianStore')}</div>
       </div>
     </div>
   </div>
 
   <!-- Footer -->
   <div class="center" style="font-size:8px;color:#666;margin-top:5px;border-top:1px dashed #ccc;padding-top:4px">
-    ${es ? '¡Gracias por confiar en nosotros!' : 'Thank you for your business!'}
-    ${storePhoneEsc ? `<br>${es ? 'Preguntas' : 'Questions'}? ${storePhoneEsc}` : ''}
+    ${t('repairs.print.thankYouTrust')}
+    ${storePhoneEsc ? `<br>${t('repairs.print.questions')}? ${storePhoneEsc}` : ''}
   </div>
 
 </body>
@@ -713,8 +707,8 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     [inventory]
   );
 
-  const issues = es ? ISSUES_ES : ISSUES_EN;
-  const diagOptions = es ? DIAG_ES : DIAG_EN;
+  const issues = lang === 'es' ? ISSUES_ES : ISSUES_EN;
+  const diagOptions = lang === 'es' ? DIAG_ES : DIAG_EN;
 
   return (
     <Modal open onClose={handleClose}
@@ -749,7 +743,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             autocomplete behavior on top of the header search button. */}
         <CustomerSearchHeader
           customers={customers}
-          lang={es ? 'es' : 'en'}
+          lang={lang === 'es' ? 'es' : 'en'}
           onSelect={(c) => {
             const parts = c.name.trim().split(' ');
             upd('firstName', parts[0] || '');
@@ -810,7 +804,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   }
                 }}
                 options={phoneOptions}
-                placeholder="(555) 123-4567"
+                placeholder={t('repairs.phonePlaceholder')}
                 maxResults={6}
                 matchHint={phoneMatch ? (
                   <div
@@ -849,7 +843,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 onChange={(val) => upd('model', val)}
                 onSelect={(opt) => upd('model', opt.value)}
                 options={DEVICE_MODEL_OPTIONS}
-                placeholder="iPhone 15 Pro"
+                placeholder={t('repairs.devicePlaceholder')}
                 maxResults={8}
               />
             </div>
@@ -859,7 +853,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>IMEI</label>
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <input className="input" style={{ flex: 1, fontFamily: 'monospace' }} value={form.imei}
-                  onChange={(e) => upd('imei', e.target.value)} placeholder="15 digits" maxLength={15} />
+                  onChange={(e) => upd('imei', e.target.value)} placeholder={t('repairs.imeiPlaceholder')} maxLength={15} />
                 <button type="button" onClick={generateIMEI} className="btn btn-secondary" title={t('repairs.generateImei')}
                   style={{ padding: '0 0.625rem', flexShrink: 0 }}>🔄</button>
               </div>
@@ -867,7 +861,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
             </div>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.devicePasswordLabel')}</label>
-              <input className="input" value={form.password} onChange={(e) => upd('password', e.target.value)} placeholder="Optional" />
+              <input className="input" value={form.password} onChange={(e) => upd('password', e.target.value)} placeholder={t('repairs.passwordPlaceholder')} />
             </div>
             <div>
               <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>Carrier</label>
@@ -876,7 +870,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 onChange={(val) => upd('carrier', val)}
                 onSelect={(opt) => upd('carrier', opt.value)}
                 options={CARRIER_OPTIONS}
-                placeholder="AT&T, T-Mobile..."
+                placeholder={t('repairs.carrierPlaceholder')}
                 maxResults={8}
               />
             </div>
@@ -1075,7 +1069,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 placeholder={t('repairs.partPricePlaceholder')} step="0.01" min="0" style={{ fontSize: '0.82rem' }} />
               {/* Col 4: qty */}
               <input type="number" className="input" value={part.quantity || 1} onChange={(e) => updatePart(i, 'quantity', e.target.value)}
-                placeholder="Qty" min="1" style={{ fontSize: '0.82rem' }} />
+                placeholder={t('repairs.qtyPlaceholder')} min="1" style={{ fontSize: '0.82rem' }} />
               {/* Col 5: remove */}
               <button type="button" onClick={() => removePart(i)} style={{ padding: '0 0.5rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.375rem', color: '#f87171', cursor: 'pointer', height: '36px' }}>✕</button>
             </div>
@@ -1093,7 +1087,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   className="input"
                   value={form.laborCost || ''}
                   onChange={(e) => upd('laborCost', parseFloat(e.target.value) || 0)}
-                  placeholder="0.00"
+                  placeholder={t('repairs.amountPlaceholder')}
                   step="0.01"
                   min="0"
                   disabled={isLocked && !pin.editUnlocked}
@@ -1169,7 +1163,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 {isEdit && '🔒 '}{t('repairs.depositLabel')}
               </label>
               <input type="number" className="input" value={form.deposit || ''} onChange={(e) => !isEdit && upd('deposit', parseFloat(e.target.value) || 0)}
-                placeholder="0.00" step="0.01" min="0" max={total}
+                placeholder={t('repairs.depositPlaceholder')} step="0.01" min="0" max={total}
                 disabled={isEdit}
                 style={{ borderColor: depositAmt > total && total > 0 ? '#ef4444' : undefined, opacity: isEdit ? 0.6 : 1 }} />
               {/* Deposit paid display - always shown when there's a deposit */}
@@ -1232,7 +1226,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               max={365}
               value={form.warranty}
               onChange={(e) => upd('warranty', parseInt(e.target.value, 10) || 0)}
-              placeholder="30"
+              placeholder={t('repairs.warrantyDaysPlaceholder')}
             />
           </div>
         </div>
@@ -1289,7 +1283,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                 <span style={{ fontSize: '1.1rem' }}>🔗</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '2px', fontWeight: 600 }}>
-                    {L.repairTrackingLink || 'Customer Tracking Link'}
+                    {t('repairs.repairTrackingLink')}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#34d399', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {`${settings.repairStatusBaseUrl}?t=${repair.trackingToken}`}
@@ -1301,10 +1295,10 @@ export default function RepairModal({ repair, customers, inventory, settings, al
                   style={{ flexShrink: 0, fontSize: '0.7rem', padding: '0.25rem 0.6rem' }}
                   onClick={() => {
                     navigator.clipboard.writeText(`${settings.repairStatusBaseUrl}?t=${repair.trackingToken}`).catch(() => {});
-                    toast(L.linkCopied || 'Link copied!', 'success');
+                    toast(t('repairs.linkCopied'), 'success');
                   }}
                 >
-                  📋 {L.copyLink || 'Copy'}
+                  📋 {t('repairs.copyLink')}
                 </button>
               </div>
             )}
@@ -1374,7 +1368,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
 
       {/* Footer */}
       <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <button type="button" onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>{L.cancel || 'Cancel'}</button>
+        <button type="button" onClick={handleClose} className="btn btn-secondary" style={{ flex: 1 }}>{t('repairs.cancel')}</button>
         {!isEdit && (
           <button type="button" onClick={() => {
             upd('firstName', ''); upd('lastName', ''); upd('customerPhone', '');
@@ -1385,7 +1379,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
           </button>
         )}
         <button type="button" onClick={handleSubmit} className="btn btn-primary" style={{ flex: 1 }}>
-          ✓ {isEdit ? (L.save || 'Save') : t('repairs.createTicket')}
+          ✓ {isEdit ? t('repairs.save') : t('repairs.createTicket')}
         </button>
       </div>
 

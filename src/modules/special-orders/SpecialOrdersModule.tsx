@@ -897,7 +897,6 @@ export default function SpecialOrdersModule() {
                 </>
               }
               lang={lang}
-              L={{ deposit: t('deposit'), balance: t('balance'), inCart: t('inCart'), complete: t('complete'), print: t('print'), delete: t('delete') }}
             />
           ))
         )}
