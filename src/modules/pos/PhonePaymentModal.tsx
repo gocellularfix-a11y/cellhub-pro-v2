@@ -89,7 +89,6 @@ export default function PhonePaymentModal({
 }: Props) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  // lang and L kept vestigial — passed to CustomerFormModal (not yet migrated). V3 cleanup.
 
   // ── Tab ───────────────────────────────────────────────────
   const [modalTab, setModalTab] = useState<'payment' | 'activation'>('payment');
@@ -2236,8 +2235,6 @@ export default function PhonePaymentModal({
           } as unknown as Customer)}
           onSave={handleSaveCustomer}
           onClose={() => setShowCustomerForm(false)}
-          lang={lang}
-          L={L}
         />
       )}
     </Modal>

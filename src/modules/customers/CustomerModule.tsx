@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -26,7 +26,7 @@ export default function CustomerModule() {
   // forced extra re-renders.
   const app = useApp();
   const { state, setCustomers, dispatch } = app;
-  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, lang, customerSearchTerm } = state;
+  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm } = state;
 
   // returns and appointments live in localStorage (not AppState yet) — to be
   // lifted into the store in a future phase. For now we read them untyped and
@@ -36,7 +36,7 @@ export default function CustomerModule() {
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
-  const L = getLabels(lang);
+  const { t } = useTranslation();
 
   // Round 18: customersRef anti-stale-closure pattern (canonical project pattern).
   // setCustomers from AppProvider only accepts arrays (not functions), so handlers
@@ -206,7 +206,7 @@ export default function CustomerModule() {
         customersRef.current = nextCustomers;
         setCustomers(nextCustomers);
         persist.customer(updated.id, updated as unknown as Record<string, unknown>);
-        toast(L.saved || 'Saved!', 'success');
+        toast(t('customers.saved'), 'success');
       } else {
         // Duplicate detection — by phone (last 10 digits) or by first+last name.
         // Round 18: search baseline reads customersRef.current so dup-check sees
@@ -241,10 +241,10 @@ export default function CustomerModule() {
         const existing = existingByPhone || existingByName;
         if (existing) {
           const matchType = existingByPhone
-            ? (lang === 'es' ? 'teléfono' : 'phone')
-            : (lang === 'es' ? 'nombre' : 'name');
+            ? t('customers.dupMatchPhone')
+            : t('customers.dupMatchName');
           const existName = `${existing.firstName || ''} ${existing.lastName || ''}`.trim() || existing.name;
-          const existPhone = existing.phone ? formatPhone(existing.phone) : 'N/A';
+          const existPhone = existing.phone ? formatPhone(existing.phone) : t('customers.na');
           // Show merge/create dialog instead of blocking confirm()
           const doMerge = () => {
             const existingPhones = Array.isArray((existing as any).phones) ? (existing as any).phones : (existing.phone ? [existing.phone] : []);
@@ -266,14 +266,12 @@ export default function CustomerModule() {
             customersRef.current = mergedNext;
             setCustomers(mergedNext);
             persist.customer(merged.id, merged as unknown as Record<string, unknown>);
-            toast(lang === 'es' ? 'Cliente actualizado' : 'Customer updated', 'success');
+            toast(t('customers.updated'), 'success');
             setShowModal(false);
             setEditCustomer(null);
           };
           setDupConfirm({
-            message: lang === 'es'
-              ? `⚠️ Ya existe un cliente con el mismo ${matchType}.\n\nCliente: ${existName}\nTeléfono: ${existPhone}\n\n¿Actualizar existente o crear nuevo?`
-              : `⚠️ A customer with the same ${matchType} already exists.\n\nCustomer: ${existName}\nPhone: ${existPhone}\n\nUpdate existing or create new?`,
+            message: t('customers.dupMsg', matchType, existName, existPhone),
             onMerge: doMerge,
             onCreateNew: () => {
               setDupConfirm(null);
@@ -331,12 +329,7 @@ export default function CustomerModule() {
             workingCustomers = workingCustomers.map((c) => c.id === referrer.id ? updatedReferrer : c);
             persist.customer(referrer.id, updatedReferrer as unknown as Record<string, unknown>);
             newCustomer.loyaltyPoints = REFERRAL_BONUS;
-            toast(
-              lang === 'es'
-                ? `Referido válido — +${REFERRAL_BONUS} pts para ambos`
-                : `Valid referral — +${REFERRAL_BONUS} pts awarded to both`,
-              'success',
-            );
+            toast(t('customers.referralBonus', REFERRAL_BONUS), 'success');
           }
         }
 
@@ -345,13 +338,13 @@ export default function CustomerModule() {
         setCustomers(finalCustomers);
         persist.customer(newCustomer.id, newCustomer as unknown as Record<string, unknown>);
         if (!usedCode || !settings.loyaltyEnabled) {
-          toast(lang === 'es' ? 'Cliente agregado' : 'Customer added!', 'success');
+          toast(t('customers.added'), 'success');
         }
       }
       setShowModal(false);
       setEditCustomer(null);
     },
-    [editCustomer, customers, settings, lang, L, setCustomers, toast],
+    [editCustomer, customers, settings, t, setCustomers, toast],
   );
 
   const handleDelete = useCallback(
@@ -377,17 +370,14 @@ export default function CustomerModule() {
       ).length;
 
       const warnings: string[] = [];
-      if (hasStoreCredit) warnings.push(`• ${formatCurrency(cust.storeCredit || 0)} ${lang === 'es' ? 'en crédito de tienda' : 'in store credit'}`);
-      if (hasLoyalty)     warnings.push(`• ${cust.loyaltyPoints} ${lang === 'es' ? 'puntos de lealtad' : 'loyalty points'}`);
-      if (activeRepairs)  warnings.push(`• ${activeRepairs} ${lang === 'es' ? 'reparación(es) activa(s)' : 'active repair(s)'}`);
-      if (activeLayaways) warnings.push(`• ${activeLayaways} ${lang === 'es' ? 'apartado(s) activo(s)' : 'active layaway(s)'}`);
-      if (activeUnlocks)  warnings.push(`• ${activeUnlocks} ${lang === 'es' ? 'desbloqueo(s) activo(s)' : 'active unlock(s)'}`);
+      if (hasStoreCredit) warnings.push(t('customers.warnStoreCredit', formatCurrency(cust.storeCredit || 0)));
+      if (hasLoyalty)     warnings.push(t('customers.warnLoyalty', cust.loyaltyPoints));
+      if (activeRepairs)  warnings.push(t('customers.warnRepairs', activeRepairs));
+      if (activeLayaways) warnings.push(t('customers.warnLayaways', activeLayaways));
+      if (activeUnlocks)  warnings.push(t('customers.warnUnlocks', activeUnlocks));
 
       if (warnings.length > 0) {
-        const msg = lang === 'es'
-          ? `⚠️ ATENCIÓN: Este cliente tiene:\n\n${warnings.join('\n')}\n\nSi lo eliminas, se perderá esta información. ¿Continuar de todos modos?`
-          : `⚠️ WARNING: This customer has:\n\n${warnings.join('\n')}\n\nDeleting will lose this information. Continue anyway?`;
-        setDeleteWarningMsg(msg);
+        setDeleteWarningMsg(t('customers.deleteWarning', warnings.join('\n')));
         return; // Wait for ConfirmDialog
       }
 
@@ -397,16 +387,16 @@ export default function CustomerModule() {
       setCustomers(nextCustomers);
       remove.customer(id);
       setDeleteConfirm(null);
-      toast(lang === 'es' ? 'Eliminado' : 'Deleted', 'info');
+      toast(t('customers.deleted'), 'info');
     },
-    [customers, repairs, layaways, unlocks, setCustomers, toast, lang],
+    [customers, repairs, layaways, unlocks, setCustomers, toast, t],
   );
 
   return (
     <>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">👤 {L.customers}</h1>
+          <h1 className="text-2xl font-bold text-white">👤 {t('customers.title')}</h1>
           <div className="flex gap-2">
             <button
               onClick={() => {
@@ -451,14 +441,14 @@ export default function CustomerModule() {
                 a.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
-                toast(lang === 'es' ? 'CSV exportado' : 'CSV exported', 'success');
+                toast(t('customers.csvExported'), 'success');
               }}
               className="btn btn-secondary"
             >
-              ⬇ {lang === 'es' ? 'Exportar CSV' : 'Export CSV'}
+              ⬇ {t('customers.exportCsv')}
             </button>
             <button onClick={() => { setEditCustomer(null); setShowModal(true); }} className="btn btn-primary">
-              + {lang === 'es' ? 'Nuevo Cliente' : 'New Customer'}
+              + {t('customers.newCustomer')}
             </button>
           </div>
         </div>
@@ -466,29 +456,29 @@ export default function CustomerModule() {
         {/* Stats — hybrid 4-card: Total / Lapsed / StoreCredit / Revenue */}
         <div className="grid grid-cols-4 gap-4">
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{L.totalCustomers}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('customers.stat.total')}</p>
             <p className="text-2xl font-bold text-white mt-1">{customers.length}</p>
           </div>
           <div className="stat-card" style={{ cursor: lapsedCustomers.length > 0 ? 'pointer' : 'default' }} onClick={() => lapsedCustomers.length > 0 && setShowLapsedOnly(!showLapsedOnly)}>
-            <p className="text-xs text-slate-400 uppercase">{lang === 'es' ? 'Sin visita 30+ días' : 'Lapsed 30+ days'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('customers.stat.lapsed')}</p>
             <p className={`text-2xl font-bold mt-1 ${lapsedCustomers.length > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
               {lapsedCustomers.length}
             </p>
             {lapsedCustomers.length > 0 && (
-              <p className="text-xs text-slate-500 mt-0.5">{lang === 'es' ? 'Clic para filtrar' : 'Click to filter'}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{t('customers.stat.lapsedFilter')}</p>
             )}
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{lang === 'es' ? 'Crédito en Tienda' : 'Store Credit'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('customers.stat.storeCredit')}</p>
             <p className="text-2xl font-bold text-emerald-400 mt-1">
               {formatCurrency(customers.reduce((sum, c) => sum + (c.storeCredit || 0), 0))}
             </p>
             <p className="text-xs text-slate-500 mt-0.5">
-              {customers.filter((c) => (c.storeCredit || 0) > 0).length} {lang === 'es' ? 'clientes' : 'customers'}
+              {customers.filter((c) => (c.storeCredit || 0) > 0).length} {t('customers.stat.withCredit')}
             </p>
           </div>
           <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{lang === 'es' ? 'Ingresos Totales' : 'Total Revenue'}</p>
+            <p className="text-xs text-slate-400 uppercase">{t('customers.stat.totalRevenue')}</p>
             <p className="text-2xl font-bold text-blue-400 mt-1">
               {formatCurrency(sales.filter((s) => s.status === 'completed').reduce((sum, s) => sum + (s.total || 0), 0))}
             </p>
@@ -505,7 +495,7 @@ export default function CustomerModule() {
               localValue={search}
               onLocalChange={setSearch}
               excludeCollection="customers"
-              placeholder={L.searchPlaceholder}
+              placeholder={t('customers.searchPlaceholder')}
             />
           </div>
           {lapsedCustomers.length > 0 && (
@@ -518,7 +508,7 @@ export default function CustomerModule() {
                 color: showLapsedOnly ? '#fbbf24' : '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap',
               }}
             >
-              ⏰ {lang === 'es' ? `Inactivos (${lapsedCustomers.length})` : `Lapsed (${lapsedCustomers.length})`}
+              ⏰ {t('customers.lapsedBtn', lapsedCustomers.length)}
             </button>
           )}
         </div>
@@ -528,20 +518,20 @@ export default function CustomerModule() {
           <table className="table">
             <thead>
               <tr>
-                <th>{L.name || 'NAME'}</th>
-                <th>{lang === 'es' ? 'TELÉFONO' : 'PHONE'}</th>
-                <th>{lang === 'es' ? 'COMPAÑÍA' : 'CARRIER'}</th>
-                <th>{lang === 'es' ? 'PLAN' : 'PLAN'}</th>
-                <th className="text-right">{lang === 'es' ? 'TOTAL GASTADO' : 'TOTAL SPENT'}</th>
-                <th className="text-center">{lang === 'es' ? 'VISITAS' : 'VISITS'}</th>
-                <th>{lang === 'es' ? 'ÚLTIMA VISITA' : 'LAST VISIT'}</th>
-                <th className="text-right">{lang === 'es' ? 'CRÉDITO' : 'CREDIT'}</th>
-                <th className="text-right">{lang === 'es' ? 'ACCIONES' : 'ACTIONS'}</th>
+                <th>{t('customers.col.name')}</th>
+                <th>{t('customers.col.phone')}</th>
+                <th>{t('customers.col.carrier')}</th>
+                <th>{t('customers.col.plan')}</th>
+                <th className="text-right">{t('customers.col.totalSpent')}</th>
+                <th className="text-center">{t('customers.col.visits')}</th>
+                <th>{t('customers.col.lastVisit')}</th>
+                <th className="text-right">{t('customers.col.credit')}</th>
+                <th className="text-right">{t('customers.col.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-8 text-slate-500">{lang === 'es' ? 'No se encontraron clientes' : 'No customers found'}</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-slate-500">{t('customers.noFound')}</td></tr>
               ) : (
                 filtered.map((c) => (
                   <tr key={c.id}
@@ -583,7 +573,7 @@ export default function CustomerModule() {
                     <td className="text-sm text-slate-400">{customerStats.get(c.id)?.lastVisit || '—'}</td>
                     <td className="text-right">
                       {(c.storeCredit || 0) > 0 ? (
-                        <span className="text-blue-400 font-semibold" title={lang === 'es' ? 'Crédito disponible' : 'Available credit'}>
+                        <span className="text-blue-400 font-semibold" title={t('customers.creditAvailable')}>
                           {formatCurrency(c.storeCredit || 0)}
                         </span>
                       ) : (
@@ -597,7 +587,7 @@ export default function CustomerModule() {
                             dispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: c.id });
                             dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
                           }}
-                          title={lang === 'es' ? 'Pago de teléfono' : 'Phone Payment'}
+                          title={t('customers.titlePhonePayment')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1rem', fontWeight: 800, background: 'rgba(34,197,94,0.3)', color: '#22c55e' }}
                         >$</button>
                         <button
@@ -611,17 +601,17 @@ export default function CustomerModule() {
                         >💬</button>
                         <button
                           onClick={() => setViewHistory(c)}
-                          title={lang === 'es' ? 'Ver historial' : 'View history'}
+                          title={t('customers.titleViewHistory')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(139,92,246,0.3)', color: '#8b5cf6' }}
                         >👁</button>
                         <button
                           onClick={() => { setEditCustomer(c); setShowModal(true); }}
-                          title={lang === 'es' ? 'Editar' : 'Edit'}
+                          title={t('customers.titleEdit')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(245,158,11,0.25)', color: '#f59e0b' }}
                         >✏️</button>
                         <button
                           onClick={() => setDeleteConfirm(c.id)}
-                          title={lang === 'es' ? 'Eliminar' : 'Delete'}
+                          title={t('customers.titleDelete')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(239,68,68,0.25)', color: '#ef4444' }}
                         >🗑️</button>
                       </div>
@@ -640,7 +630,6 @@ export default function CustomerModule() {
           customer={editCustomer}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditCustomer(null); }}
-          lang={lang} L={L}
           toast={toast}
           confirmDialog={confirmDialog}
           setConfirmDialog={setConfirmDialog}
@@ -661,18 +650,18 @@ export default function CustomerModule() {
             returns={history.returns}
             appointments={history.appointments}
             onClose={() => setViewHistory(null)}
-            lang={lang} L={L} settings={settings}
+            settings={settings}
           />
         );
       })()}
 
       <ConfirmDialog
         open={!!deleteConfirm || !!deleteWarningMsg}
-        title={L.delete || 'Delete'}
-        message={deleteWarningMsg || (lang === 'es' ? '¿Eliminar este cliente?' : 'Delete this customer?')}
+        title={t('customers.titleDelete')}
+        message={deleteWarningMsg || t('customers.deleteMsg')}
         variant="danger"
-        confirmLabel={lang === 'es' ? 'Eliminar' : 'Delete'}
-        cancelLabel={lang === 'es' ? 'Cancelar' : 'Cancel'}
+        confirmLabel={t('customers.confirmDelete')}
+        cancelLabel={t('customers.cancelBtn')}
         onConfirm={() => {
           if (deleteWarningMsg && deleteConfirm) {
             // User confirmed after seeing warnings — proceed with delete
@@ -680,7 +669,7 @@ export default function CustomerModule() {
             customersRef.current = nextCustomers;
             setCustomers(nextCustomers);
             remove.customer(deleteConfirm);
-            toast(lang === 'es' ? 'Eliminado' : 'Deleted', 'info');
+            toast(t('customers.deleted'), 'info');
           } else if (deleteConfirm) {
             handleDelete(deleteConfirm);
           }
@@ -692,11 +681,11 @@ export default function CustomerModule() {
       {dupConfirm && (
         <ConfirmDialog
           open
-          title={lang === 'es' ? 'Cliente Duplicado' : 'Duplicate Customer'}
+          title={t('customers.dupTitle')}
           message={dupConfirm.message}
           variant="warning"
-          confirmLabel={lang === 'es' ? 'Actualizar Existente' : 'Update Existing'}
-          cancelLabel={lang === 'es' ? 'Crear Nuevo' : 'Create New'}
+          confirmLabel={t('customers.dupUpdateExisting')}
+          cancelLabel={t('customers.dupCreateNew')}
           onConfirm={() => { dupConfirm.onMerge(); setDupConfirm(null); }}
           onCancel={() => { dupConfirm.onCreateNew(); setDupConfirm(null); }}
         />
@@ -715,8 +704,6 @@ interface CustomerFormModalProps {
   customer: Customer | null;
   onSave: (d: Partial<Customer>) => void;
   onClose: () => void;
-  lang: string;
-  L: Record<string, any>;
   toast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   confirmDialog?: {
     message: string;
@@ -736,8 +723,8 @@ interface CustomerFormModalProps {
   } | null>>;
 }
 
-function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
-  const es = lang === 'es';
+function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
+  const { t } = useTranslation();
 
   // Build initial form state (handles: edit mode, draft restore, fresh)
   const [form, setForm] = useState(() => {
@@ -846,7 +833,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
       setShowCamera(true);
       setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = s; }, 100);
     } catch {
-      toast?.(es ? 'Cámara no disponible' : 'Camera not available', 'error');
+      toast?.(t('customers.form.cameraUnavailable'), 'error');
     }
   };
   const stopCamera = () => {
@@ -872,17 +859,17 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
     const firstName = form.firstName.trim();
     const lastName  = form.lastName.trim();
     if (!firstName || !lastName) {
-      toast?.(es ? 'Nombre y apellido requeridos' : 'First and last name required', 'error');
+      toast?.(t('customers.form.nameRequired'), 'error');
       return;
     }
     const phones = form.phones.map((p: string) => (p || '').trim()).filter(Boolean);
     if (phones.length === 0) {
-      toast?.(es ? 'Al menos un teléfono es requerido' : 'At least one phone is required', 'error');
+      toast?.(t('customers.form.phoneRequired'), 'error');
       return;
     }
     const phoneLen = phones[0].replace(/\D/g, '').length;
     if (phoneLen > 0 && phoneLen !== 10) {
-      toast?.(es ? 'Teléfono debe ser 10 dígitos' : 'Phone must be 10 digits', 'error');
+      toast?.(t('customers.form.phoneMustBe10'), 'error');
       return;
     }
     const carriers: string[] = [];
@@ -917,11 +904,11 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
   const clearForm = () => {
     if (!setConfirmDialog) return;
     setConfirmDialog({
-      title: es ? 'Borrar Formulario' : 'Clear Form',
-      message: es ? '¿Borrar todos los campos del formulario?' : 'Clear all form fields?',
+      title: t('customers.form.clearTitle'),
+      message: t('customers.form.clearMsg'),
       variant: 'warning',
-      confirmLabel: es ? 'Borrar' : 'Clear',
-      cancelLabel: es ? 'Cancelar' : 'Cancel',
+      confirmLabel: t('customers.form.clearConfirm'),
+      cancelLabel: t('customers.form.cancelBtn'),
       onConfirm: () => {
         setForm({
           firstName: '', lastName: '', phone: '', phones: [''],
@@ -937,49 +924,49 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
   };
 
   return (
-    <Modal open onClose={onClose} title={`👤 ${customer ? L.edit : L.add} Customer`} size="max-w-2xl">
+    <Modal open onClose={onClose} title={`👤 ${customer ? t('customers.form.editCustomer') : t('customers.form.addCustomer')}`} size="max-w-2xl">
       <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
         {/* Auto-save indicator */}
         {!customer && (
           <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '0.5rem', padding: '0.6rem 0.75rem', fontSize: '0.8rem', color: '#6ee7b7' }}>
-            💾 {es ? 'Auto-guardado activado — tu progreso está seguro' : 'Auto-save enabled — your progress is safe'}
+            💾 {t('customers.form.autoSave')}
           </div>
         )}
 
         {/* First / Last Name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Nombre' : 'First Name'} *</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.firstName')} *</label>
             <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input" autoFocus />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Apellido' : 'Last Name'} *</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.lastName')} *</label>
             <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input" />
           </div>
         </div>
 
         {/* Photo / Webcam */}
         <div style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '0.5rem', padding: '0.75rem' }}>
-          <label className="text-xs text-slate-300 font-semibold block mb-2">📸 {es ? 'Foto del Cliente' : 'Customer Photo'}</label>
+          <label className="text-xs text-slate-300 font-semibold block mb-2">📸 {t('customers.form.photo')}</label>
           {!showCamera ? (
             form.photo ? (
               <div style={{ textAlign: 'center' }}>
                 <img src={form.photo} alt="Customer" style={{ maxWidth: '160px', maxHeight: '160px', borderRadius: '8px', border: '2px solid #8b5cf6', marginBottom: '0.5rem' }} />
                 <div className="flex gap-2 justify-center">
-                  <button type="button" onClick={startCamera} className="btn btn-secondary btn-sm">📷 {es ? 'Volver a tomar' : 'Retake'}</button>
+                  <button type="button" onClick={startCamera} className="btn btn-secondary btn-sm">📷 {t('customers.form.retakePhoto')}</button>
                   <button type="button" onClick={() => setForm({ ...form, photo: '' })} className="btn btn-ghost btn-sm text-red-400">🗑️</button>
                 </div>
               </div>
             ) : (
-              <button type="button" onClick={startCamera} className="btn btn-secondary" style={{ width: '100%' }}>📷 {es ? 'Tomar Foto' : 'Take Photo'}</button>
+              <button type="button" onClick={startCamera} className="btn btn-secondary" style={{ width: '100%' }}>📷 {t('customers.form.takePhoto')}</button>
             )
           ) : (
             <div style={{ textAlign: 'center' }}>
               <video ref={videoRef} autoPlay playsInline style={{ width: '100%', maxWidth: '360px', borderRadius: '8px', marginBottom: '0.5rem', transform: 'scaleX(-1)' }} />
               <canvas ref={canvasRef} style={{ display: 'none' }} />
               <div className="flex gap-2 justify-center">
-                <button type="button" onClick={capturePhoto} className="btn btn-primary btn-sm">✓ {es ? 'Capturar' : 'Capture'}</button>
-                <button type="button" onClick={stopCamera} className="btn btn-secondary btn-sm">✕ {es ? 'Cancelar' : 'Cancel'}</button>
+                <button type="button" onClick={capturePhoto} className="btn btn-primary btn-sm">✓ {t('customers.form.capture')}</button>
+                <button type="button" onClick={stopCamera} className="btn btn-secondary btn-sm">✕ {t('customers.form.cancelBtn')}</button>
               </div>
             </div>
           )}
@@ -987,7 +974,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
 
         {/* Phones[] + Carriers[] */}
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Teléfono(s)' : 'Phone(s)'} *</label>
+          <label className="text-xs text-slate-400 block mb-1">{t('customers.form.phones')} *</label>
           {form.phones.map((p: string, idx: number) => (
             <div key={idx} style={{ marginBottom: '0.6rem', padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.4rem' }}>
               <div className="flex gap-2 items-center mb-1">
@@ -1008,15 +995,15 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
                 onChange={(e) => updateCarrier(idx, e.target.value)}
                 style={{ fontSize: '0.85rem' }}
               >
-                <option value="">{es ? 'Seleccionar operador...' : 'Select carrier...'}</option>
+                <option value="">{t('customers.form.selectCarrier')}</option>
                 {CARRIER_OPTIONS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           ))}
           <button type="button" onClick={addPhoneField} className="btn btn-secondary btn-sm" style={{ width: '100%' }}>
-            + {es ? 'Agregar Teléfono' : 'Add Phone'}
+            + {t('customers.form.addPhone')}
           </button>
-          <p className="text-xs text-slate-600 mt-1">{es ? 'Puedes guardar varios números para el mismo cliente.' : 'You can store multiple numbers for the same customer.'}</p>
+          <p className="text-xs text-slate-600 mt-1">{t('customers.form.multiPhoneHint')}</p>
         </div>
 
         {/* Email */}
@@ -1027,18 +1014,18 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
 
         {/* Address */}
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{es ? 'Dirección' : 'Address'}</label>
+          <label className="text-xs text-slate-400 block mb-1">{t('customers.form.address')}</label>
           <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" placeholder="123 Main Street" />
         </div>
 
         {/* City / State / Zip */}
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Ciudad' : 'City'}</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.city')}</label>
             <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="input" placeholder="Santa Barbara" />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Estado' : 'State'}</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.state')}</label>
             <input
               value={form.state}
               onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
@@ -1054,11 +1041,11 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
         {/* Plan / Monthly Payment */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Plan' : 'Plan'}</label>
+            <label className="text-xs text-slate-400 block mb-1">Plan</label>
             <input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="input" placeholder="Unlimited Plus" />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">{es ? 'Pago Mensual' : 'Monthly Payment'}</label>
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.monthlyPayment')}</label>
             <input
               type="number" step="0.01"
               value={form.monthlyPayment}
@@ -1075,17 +1062,17 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
         {!customer && (
           <div>
             <label className="text-xs text-slate-400 block mb-1">
-              {es ? '¿Código de referido? (opcional)' : 'Referral code? (optional)'}
+              {t('customers.form.referralCode')}
             </label>
             <input
               value={form.referredBy}
               onChange={(e) => setForm({ ...form, referredBy: e.target.value.toUpperCase() })}
               className="input font-mono"
-              placeholder={es ? 'Ej: GC1234' : 'e.g. GC1234'}
+              placeholder={t('customers.form.referralPlaceholder')}
               maxLength={10}
             />
             <p className="text-xs text-slate-600 mt-1">
-              {es ? '+50 pts para el cliente y quien lo refirió' : '+50 pts for both customer and referrer'}
+              {t('customers.form.referralHint')}
             </p>
           </div>
         )}
@@ -1093,22 +1080,22 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
         {/* Communication consent — R-COMMS-CONSENT-UNIFY: covers SMS, WhatsApp, future email */}
         <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
           <input type="checkbox" checked={form.communicationConsent} onChange={(e) => setForm({ ...form, communicationConsent: e.target.checked })} className="rounded border-white/20 bg-white/5" />
-          {es ? 'Cliente acepta recibir comunicaciones' : 'Customer agrees to receive communications'}
+          {t('customers.form.consent')}
         </label>
 
         {/* Notes */}
         <div>
-          <label className="text-xs text-slate-400 block mb-1">{L.notes || 'Notes'}</label>
+          <label className="text-xs text-slate-400 block mb-1">{t('customers.form.notes')}</label>
           <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="textarea" rows={2} />
         </div>
       </div>
 
       <div className="flex gap-3 mt-4 pt-4 border-t border-white/10">
-        <button onClick={onClose} className="btn btn-secondary flex-1">{L.cancel}</button>
+        <button onClick={onClose} className="btn btn-secondary flex-1">{t('customers.form.cancelBtn')}</button>
         {!customer && (
-          <button onClick={clearForm} className="btn btn-ghost" style={{ flex: 0.6 }}>🗑️ {es ? 'Limpiar' : 'Clear'}</button>
+          <button onClick={clearForm} className="btn btn-ghost" style={{ flex: 0.6 }}>🗑️ {t('customers.form.clearBtn')}</button>
         )}
-        <button onClick={handleSubmit} className="btn btn-primary flex-1">{customer ? L.save : L.create}</button>
+        <button onClick={handleSubmit} className="btn btn-primary flex-1">{customer ? t('customers.form.saveBtn') : t('customers.form.createBtn')}</button>
       </div>
 
       {confirmDialog && (
@@ -1129,7 +1116,7 @@ function CustomerFormModal({ customer, onSave, onClose, lang, L, toast, confirmD
 
 // ── Customer History ──────────────────────────────────────
 
-function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, onClose, lang, L, settings }: {
+function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, onClose, settings }: {
   customer: Customer;
   sales: Sale[];
   repairs: any[];
@@ -1139,11 +1126,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   returns: any[];
   appointments: any[];
   onClose: () => void;
-  lang: string;
-  L: Record<string, any>;
   settings: any;
 }) {
-  const es = lang === 'es';
+  const { t } = useTranslation();
   // Profit analytics — delegates refund math + per-line (price-cost)*qty
   // aggregation to the pure helper. See src/utils/customerProfit.ts.
   const stats = useMemo(
@@ -1189,29 +1174,25 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         {/* Summary stats — primary row */}
         <div className="grid grid-cols-4 gap-2">
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Ingresos' : 'Revenue'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.revenue')}</p>
             <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalSpent)}</p>
           </div>
           <div
             className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30 p-3 text-center"
-            title={coveragePct < 100
-              ? (es
-                  ? `Solo ${coveragePct}% de las ventas tienen costo registrado — ganancia real puede ser mayor`
-                  : `Only ${coveragePct}% of sales have cost data — actual profit may be higher`)
-              : undefined}
+            title={coveragePct < 100 ? t('customers.history.coverageTitle', coveragePct) : undefined}
           >
             <p className="text-xs text-emerald-300">
-              {es ? 'Ganancia' : 'Profit'}
+              {t('customers.history.profit')}
               {coveragePct < 100 && <span className="ml-1 text-amber-400">*</span>}
             </p>
             <p className="text-lg font-bold text-emerald-300">{formatCurrency(stats.profit)}</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Margen' : 'Margin'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.margin')}</p>
             <p className="text-lg font-bold text-white">{stats.margin.toFixed(1)}%</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Crédito' : 'Store Credit'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.credit')}</p>
             <p className="text-lg font-bold text-blue-400">{formatCurrency(customer.storeCredit || 0)}</p>
           </div>
         </div>
@@ -1219,43 +1200,41 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         {/* Summary stats — analytics row */}
         <div className="grid grid-cols-4 gap-2">
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Ticket Promedio' : 'Avg Ticket'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.avgTicket')}</p>
             <p className="text-lg font-bold text-white">{formatCurrency(stats.avgTicket)}</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Vuelve cada' : 'Returns every'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.returnsEvery')}</p>
             <p className="text-lg font-bold text-white">
               {stats.avgDaysBetweenVisits !== null ? `${stats.avgDaysBetweenVisits}d` : '—'}
             </p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Top Categoría' : 'Top Category'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.topCategory')}</p>
             <p className="text-lg font-bold text-white truncate" title={categoryLabel}>{categoryLabel}</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{es ? 'Transacciones' : 'Transactions'}</p>
+            <p className="text-xs text-slate-400">{t('customers.history.transactions')}</p>
             <p className="text-lg font-bold text-white">{totalTransactions}</p>
           </div>
         </div>
 
         {coveragePct < 100 && stats.visitCount > 0 && (
           <div className="text-xs text-amber-400/80 text-center -mt-2">
-            {es
-              ? `* Ganancia calculada sobre ${coveragePct}% de ventas con costo registrado`
-              : `* Profit calculated from ${coveragePct}% of sales with cost data`}
+            {t('customers.history.coverageWarn', coveragePct)}
           </div>
         )}
 
         {/* 💰 Sales */}
-        <Section title={`💰 ${es ? 'Ventas' : 'Sales'}`} count={sales.length}>
+        <Section title={`💰 ${t('customers.history.sales')}`} count={sales.length}>
           {sales.length === 0
-            ? <Empty es={es} />
+            ? <Empty />
             : sales.slice(0, 20).map((s) => (
                 <div key={s.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm">
                   <div>
                     <span className="text-brand-400 font-mono">{s.invoiceNumber}</span>
                     <span className="text-slate-500 ml-2">{formatDate(s.createdAt)}</span>
-                    <span className="text-slate-400 ml-2">{s.items?.length || 0} items</span>
+                    <span className="text-slate-400 ml-2">{s.items?.length || 0} {t('customers.history.salesItems')}</span>
                   </div>
                   <span className="text-emerald-400 font-medium">{formatCurrency(s.total)}</span>
                 </div>
@@ -1264,9 +1243,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         </Section>
 
         {/* 🔧 Repairs */}
-        <Section title={`🔧 ${es ? 'Reparaciones' : 'Repairs'}`} count={repairs.length}>
+        <Section title={`🔧 ${t('customers.history.repairs')}`} count={repairs.length}>
           {repairs.length === 0
-            ? <Empty es={es} />
+            ? <Empty />
             : repairs.slice(0, 10).map((r) => (
                 <div key={r.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
@@ -1284,9 +1263,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         </Section>
 
         {/* 📦 Layaways */}
-        <Section title={`🏷️ ${es ? 'Apartados' : 'Layaways'}`} count={layaways.length}>
+        <Section title={`🏷️ ${t('customers.history.layaways')}`} count={layaways.length}>
           {layaways.length === 0
-            ? <Empty es={es} />
+            ? <Empty />
             : layaways.slice(0, 10).map((l) => (
                 <div key={l.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
@@ -1303,9 +1282,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         </Section>
 
         {/* 🔓 Unlocks */}
-        <Section title={`🔓 ${es ? 'Desbloqueos' : 'Unlocks'}`} count={unlocks.length}>
+        <Section title={`🔓 ${t('customers.history.unlocks')}`} count={unlocks.length}>
           {unlocks.length === 0
-            ? <Empty es={es} />
+            ? <Empty />
             : unlocks.slice(0, 10).map((u) => (
                 <div key={u.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
@@ -1324,9 +1303,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         </Section>
 
         {/* 🛍️ Special Orders */}
-        <Section title={`🛍️ ${es ? 'Pedidos Especiales' : 'Special Orders'}`} count={specialOrders.length}>
+        <Section title={`🛍️ ${t('customers.history.specialOrders')}`} count={specialOrders.length}>
           {specialOrders.length === 0
-            ? <Empty es={es} />
+            ? <Empty />
             : specialOrders.slice(0, 10).map((o) => (
                 <div key={o.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
@@ -1345,7 +1324,7 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
 
         {/* 🔄 Returns */}
         {returns.length > 0 && (
-          <Section title={`🔄 ${es ? 'Devoluciones' : 'Returns'}`} count={returns.length}>
+          <Section title={`🔄 ${t('customers.history.returns')}`} count={returns.length}>
             {returns.slice(0, 10).map((r: any) => {
               // Returns in localStorage are in dollars; formatCurrency expects cents.
               // Round 18 fix: real field is `r.total` not `r.refundAmount`. Label uses
@@ -1353,7 +1332,7 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
               const refundCents = Math.round((r.total || 0) * 100);
               const label = (Array.isArray(r.items) && r.items[0] && r.items[0].name)
                 || r.reason
-                || (es ? 'Devolución' : 'Return');
+                || t('customers.history.returnLabel');
               return (
                 <Row
                   key={r.id}
@@ -1368,11 +1347,11 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
 
         {/* 📅 Appointments */}
         {appointments.length > 0 && (
-          <Section title={`📅 ${es ? 'Citas' : 'Appointments'}`} count={appointments.length}>
+          <Section title={`📅 ${t('customers.history.appointments')}`} count={appointments.length}>
             {appointments.slice(0, 10).map((a: any) => (
               <div key={a.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                 <div className="flex-1 min-w-0">
-                  <span className="text-slate-300">{a.title || a.service || (es ? 'Cita' : 'Appointment')}</span>
+                  <span className="text-slate-300">{a.title || a.service || t('customers.history.appointment')}</span>
                   <div className="text-xs text-slate-600">
                     {a.date || formatDate(a.scheduledAt || a.createdAt)}
                     {a.time && ` · ${a.time}`}
@@ -1397,8 +1376,9 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-function Empty({ es }: { es: boolean }) {
-  return <p className="text-sm text-slate-600 px-3">{es ? 'Sin registros' : 'No records'}</p>;
+function Empty() {
+  const { t } = useTranslation();
+  return <p className="text-sm text-slate-600 px-3">{t('customers.history.noRecords')}</p>;
 }
 
 export { CustomerFormModal };
