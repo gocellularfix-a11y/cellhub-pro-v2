@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   screenFeeAmount: 0.5,
 
   // Receipt
-  receiptFooter: 'Thank you for your business!',
+  receiptFooter: '',
   paperSize: '4x6',
   detectedPrinters: [],
 

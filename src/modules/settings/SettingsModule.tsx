@@ -494,10 +494,10 @@ export default function SettingsModule() {
                 <Field settings={settings} update={update} label="Email" settingsKey="storeEmail" placeholder="gocellularfix@gmail.com" />
               </div>
               <UrlField settings={settings} update={update} label="Website" settingsKey="storeWebsite" placeholder="gocellularsb.com" />
-              <Field settings={settings} update={update} label="Business Hours" settingsKey="businessHours" placeholder="Mon-Sat: 10AM-7PM" />
-              <Field settings={settings} update={update} label={t('settings.store.receiptFooter')} settingsKey="receiptFooter" />
-              <Field settings={settings} update={update} label="Warranty Text" settingsKey="warrantyText" />
-              <Field settings={settings} update={update} label="Return Policy" settingsKey="returnPolicy" />
+              <Field settings={settings} update={update} label={t('settings.store.businessHours')} settingsKey="businessHours" placeholder={t('settings.store.businessHoursPlaceholder')} />
+              <Field settings={settings} update={update} label={t('settings.store.receiptFooter')} settingsKey="receiptFooter" placeholder={t('settings.store.receiptFooterPlaceholder')} />
+              <Field settings={settings} update={update} label={t('settings.store.warrantyText')} settingsKey="warrantyText" placeholder={t('settings.store.warrantyTextPlaceholder')} />
+              <Field settings={settings} update={update} label={t('settings.store.returnPolicy')} settingsKey="returnPolicy" placeholder={t('settings.store.returnPolicyPlaceholder')} />
               <div className="border-t border-white/10 pt-4 space-y-3">
                 <h3 className="text-sm font-semibold text-white">⭐ {t('settings.store.showReviewQr')}</h3>
                 <Toggle settings={settings} update={update} label={t('settings.store.showReviewQr')} settingsKey="showReviewQr" />
