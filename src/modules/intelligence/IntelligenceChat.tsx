@@ -12,6 +12,7 @@ import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent } from '@/services/intelligence/chat/handlers';
+import { useTranslation } from '@/i18n';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -28,7 +29,7 @@ interface ChatMessage {
 }
 
 export default function IntelligenceChat({ engine, customers, lang }: Props) {
-  const es = lang === 'es';
+  const { locale } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -77,10 +78,10 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
       <div className="px-4 py-3 border-b border-surface-700 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-200">
-            💬 {es ? 'Pregúntale a tu Tienda' : 'Ask Your Shop'}
+            💬 {locale === 'es' ? 'Pregúntale a tu Tienda' : 'Ask Your Shop'}
           </h3>
           <p className="text-xs text-slate-400">
-            {es
+            {locale === 'es'
               ? 'Respuestas locales, sin APIs externas. Escribe "ayuda" para ver qué puedo responder.'
               : 'Local answers, no external APIs. Type "help" to see what I can answer.'}
           </p>
@@ -90,7 +91,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
             onClick={clearChat}
             className="text-xs px-2 py-1 rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
           >
-            {es ? 'Limpiar' : 'Clear'}
+            {locale === 'es' ? 'Limpiar' : 'Clear'}
           </button>
         )}
       </div>
@@ -98,9 +99,9 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 ? (
-          <EmptyState es={es} onSuggestion={handleSuggestion} />
+          <EmptyState es={locale === 'es'} onSuggestion={handleSuggestion} />
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={es} />)
+          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} />)
         )}
         <div ref={bottomRef} />
       </div>
@@ -111,7 +112,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={es
+          placeholder={locale === 'es'
             ? 'Ej: "historial de Juan" o "cómo van las ventas"'
             : 'Ex: "history of John" or "how are sales"'}
           className="flex-1 bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
@@ -121,7 +122,7 @@ export default function IntelligenceChat({ engine, customers, lang }: Props) {
           disabled={!input.trim()}
           className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-surface-700 disabled:text-slate-500 text-white text-sm font-medium"
         >
-          {es ? 'Enviar' : 'Send'}
+          {locale === 'es' ? 'Enviar' : 'Send'}
         </button>
       </form>
     </div>

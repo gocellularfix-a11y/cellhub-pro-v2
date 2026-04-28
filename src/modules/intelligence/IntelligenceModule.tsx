@@ -16,16 +16,16 @@ import IntelligenceDashboard from '@/components/ui/IntelligenceDashboard';
 import IntelligenceChat from './IntelligenceChat';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+import { useTranslation } from '@/i18n';
 
 export default function IntelligenceModule() {
   const { state } = useApp();
   const {
     sales, customers, inventory, repairs,
     specialOrders, unlocks, layaways, customerReturns,
-    lang, currentStoreId, consolidatedView,
+    currentStoreId, consolidatedView,
   } = state;
-
-  const es = lang === 'es';
+  const { locale } = useTranslation();
 
   // Force-refresh trigger — bumped by onRefresh to recompute.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -43,7 +43,7 @@ export default function IntelligenceModule() {
       inventory,
       repairs,
       {
-        lang: (lang === 'es' ? 'es' : 'en'),
+        lang: (locale === 'es' ? 'es' : 'en'),
         storeId: consolidatedView ? undefined : currentStoreId,
         enableAlerts: true,
         enableScoring: true,
@@ -57,14 +57,14 @@ export default function IntelligenceModule() {
       }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, lang, currentStoreId, consolidatedView, refreshKey]);
+  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, currentStoreId, consolidatedView, refreshKey]);
 
   const result: EngineResult = useMemo(() => engine.analyze(), [engine]);
 
   // R-INTEL-NLG-F4: natural-language summary derived from the analyzed result.
   const nlgSummary = useMemo(
-    () => summarizeDashboard(result, lang === 'es' ? 'es' : 'en'),
-    [result, lang],
+    () => summarizeDashboard(result, locale === 'es' ? 'es' : 'en'),
+    [result, locale],
   );
 
   const handleRefresh = useCallback(() => {
@@ -91,7 +91,7 @@ export default function IntelligenceModule() {
       <IntelligenceChat
         engine={engine}
         customers={customers}
-        lang={lang === 'es' ? 'es' : 'en'}
+        lang={locale === 'es' ? 'es' : 'en'}
       />
 
       {/* ── Customer Lookup Card (R-INTEL-CUSTOMER-HISTORY) ─── */}
@@ -99,10 +99,10 @@ export default function IntelligenceModule() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-200">
-              🔍 {es ? 'Historial de Cliente' : 'Customer History'}
+              🔍 {locale === 'es' ? 'Historial de Cliente' : 'Customer History'}
             </h3>
             <p className="text-xs text-slate-400">
-              {es
+              {locale === 'es'
                 ? 'Busca un cliente para ver su historial completo'
                 : 'Search a customer to view their full history'}
             </p>
@@ -115,7 +115,7 @@ export default function IntelligenceModule() {
               }}
               className="px-2 py-1 text-xs rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
             >
-              {es ? 'Limpiar' : 'Clear'}
+              {locale === 'es' ? 'Limpiar' : 'Clear'}
             </button>
           )}
         </div>
@@ -126,7 +126,7 @@ export default function IntelligenceModule() {
               type="text"
               value={lookupQuery}
               onChange={(e) => setLookupQuery(e.target.value)}
-              placeholder={es ? 'Nombre, teléfono o número de cliente…' : 'Name, phone or customer number…'}
+              placeholder={locale === 'es' ? 'Nombre, teléfono o número de cliente…' : 'Name, phone or customer number…'}
               className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
@@ -153,13 +153,13 @@ export default function IntelligenceModule() {
 
             {lookupQuery.trim().length >= 2 && matches.length === 0 && (
               <div className="mt-2 text-xs text-slate-500 px-1">
-                {es ? 'Sin resultados' : 'No matches'}
+                {locale === 'es' ? 'Sin resultados' : 'No matches'}
               </div>
             )}
           </div>
         )}
 
-        {history && <CustomerHistoryCard history={history} es={es} />}
+        {history && <CustomerHistoryCard history={history} />}
       </div>
 
       {/* ── Main Dashboard ──────────────────────────────────── */}
@@ -168,7 +168,7 @@ export default function IntelligenceModule() {
         healthScore={result.healthScore}
         kpiDashboard={result.kpiDashboard}
         insights={result.insights}
-        lang={lang === 'es' ? 'es' : 'en'}
+        lang={locale === 'es' ? 'es' : 'en'}
         onRefresh={handleRefresh}
         nlgSummary={nlgSummary}
       />
@@ -179,17 +179,17 @@ export default function IntelligenceModule() {
 // ── Customer History Card (rendered below the picker) ────────
 interface CustomerHistoryCardProps {
   history: CustomerHistorySummary;
-  es: boolean;
 }
 
-function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
+function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
+  const { locale } = useTranslation();
   const fmtDate = (d: Date | null) =>
-    d ? d.toLocaleDateString(es ? 'es-MX' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+    d ? d.toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
   const lowCostCoverage = history.costCoverage < 0.5 && history.visitCount > 0;
 
   // R-INTEL-NLG-F4: one-sentence narrative summary.
-  const summarySentence = summarizeCustomerHistory(history, es ? 'es' : 'en');
+  const summarySentence = summarizeCustomerHistory(history, locale === 'es' ? 'es' : 'en');
 
   return (
     <div className="space-y-4">
@@ -212,8 +212,8 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
             </div>
           </div>
           <div className="text-right text-xs text-slate-400">
-            <div>{es ? 'Primera visita' : 'First visit'}: {fmtDate(history.firstVisit)}</div>
-            <div>{es ? 'Última visita' : 'Last visit'}: {fmtDate(history.lastVisit)}</div>
+            <div>{locale === 'es' ? 'Primera visita' : 'First visit'}: {fmtDate(history.firstVisit)}</div>
+            <div>{locale === 'es' ? 'Última visita' : 'Last visit'}: {fmtDate(history.lastVisit)}</div>
           </div>
         </div>
       </div>
@@ -221,37 +221,37 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
       {/* Metrics grid — 4 top-line numbers */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MetricTile
-          label={es ? 'Transacciones' : 'Transactions'}
+          label={locale === 'es' ? 'Transacciones' : 'Transactions'}
           value={String(history.visitCount)}
           sub={history.avgDaysBetweenVisits !== null
-            ? (es ? `Cada ${history.avgDaysBetweenVisits} días` : `Every ${history.avgDaysBetweenVisits} days`)
+            ? (locale === 'es' ? `Cada ${history.avgDaysBetweenVisits} días` : `Every ${history.avgDaysBetweenVisits} days`)
             : undefined}
         />
         <MetricTile
-          label={es ? 'Total Gastado' : 'Total Spent'}
+          label={locale === 'es' ? 'Total Gastado' : 'Total Spent'}
           value={formatCurrency(history.netRevenue)}
           sub={history.totalRefunded > 0
-            ? (es ? `Reembolsos: ${formatCurrency(history.totalRefunded)}` : `Refunded: ${formatCurrency(history.totalRefunded)}`)
+            ? (locale === 'es' ? `Reembolsos: ${formatCurrency(history.totalRefunded)}` : `Refunded: ${formatCurrency(history.totalRefunded)}`)
             : undefined}
         />
         <MetricTile
-          label={es ? 'Profit del Negocio' : 'Business Profit'}
+          label={locale === 'es' ? 'Profit del Negocio' : 'Business Profit'}
           value={formatCurrency(history.profit)}
           sub={`${history.margin.toFixed(1)}% margin`}
           accent="emerald"
         />
         <MetricTile
-          label={es ? 'Ticket Promedio' : 'Avg Ticket'}
+          label={locale === 'es' ? 'Ticket Promedio' : 'Avg Ticket'}
           value={formatCurrency(history.avgTicket)}
           sub={history.preferredPaymentMethod
-            ? (es ? `Prefiere: ${history.preferredPaymentMethod}` : `Prefers: ${history.preferredPaymentMethod}`)
+            ? (locale === 'es' ? `Prefiere: ${history.preferredPaymentMethod}` : `Prefers: ${history.preferredPaymentMethod}`)
             : undefined}
         />
       </div>
 
       {lowCostCoverage && (
         <div className="text-xs rounded px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-300">
-          ⚠️ {es
+          ⚠️ {locale === 'es'
             ? `Profit aproximado — solo ${Math.round(history.costCoverage * 100)}% de las ventas tienen cost registrado.`
             : `Approximate profit — only ${Math.round(history.costCoverage * 100)}% of sales have cost recorded.`}
         </div>
@@ -261,14 +261,14 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
         <InfoRow
           icon="🔧"
-          label={es ? 'Reparaciones' : 'Repairs'}
+          label={locale === 'es' ? 'Reparaciones' : 'Repairs'}
           value={history.linkedEntities.repairCount > 0
             ? `${history.linkedEntities.repairCount} (${formatCurrency(history.linkedEntities.repairTotalValue)})`
             : '0'}
         />
         <InfoRow
           icon="📦"
-          label={es ? 'Pedidos Especiales' : 'Special Orders'}
+          label={locale === 'es' ? 'Pedidos Especiales' : 'Special Orders'}
           value={String(history.linkedEntities.specialOrderCount)}
         />
         <InfoRow
@@ -278,24 +278,24 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
         />
         <InfoRow
           icon="🏷️"
-          label={es ? 'Apartados' : 'Layaways'}
+          label={locale === 'es' ? 'Apartados' : 'Layaways'}
           value={String(history.linkedEntities.layawayCount)}
         />
         <InfoRow
           icon="🎁"
-          label={es ? 'Puntos Lealtad' : 'Loyalty Points'}
+          label={locale === 'es' ? 'Puntos Lealtad' : 'Loyalty Points'}
           value={history.customer.loyaltyPoints.toLocaleString()}
         />
         <InfoRow
           icon="💳"
-          label={es ? 'Crédito Tienda' : 'Store Credit'}
+          label={locale === 'es' ? 'Crédito Tienda' : 'Store Credit'}
           value={formatCurrency(history.customer.storeCredit)}
         />
       </div>
 
       {history.linkedEntities.activeBalance > 0 && (
         <div className="text-xs rounded px-3 py-2 bg-red-500/10 border border-red-500/30 text-red-300">
-          💰 {es ? 'Balance pendiente' : 'Outstanding balance'}: <strong>{formatCurrency(history.linkedEntities.activeBalance)}</strong>
+          💰 {locale === 'es' ? 'Balance pendiente' : 'Outstanding balance'}: <strong>{formatCurrency(history.linkedEntities.activeBalance)}</strong>
         </div>
       )}
 
@@ -303,7 +303,7 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
       {history.topItems.length > 0 && (
         <div>
           <h5 className="text-sm font-semibold text-slate-300 mb-2">
-            {es ? 'Top 5 artículos comprados' : 'Top 5 items purchased'}
+            {locale === 'es' ? 'Top 5 artículos comprados' : 'Top 5 items purchased'}
           </h5>
           <div className="rounded border border-surface-700 divide-y divide-surface-700">
             {history.topItems.map((item, idx) => (
@@ -314,14 +314,14 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
                 </div>
                 <div className="text-right">
                   <div className="text-slate-200">{formatCurrency(item.revenue)}</div>
-                  <div className="text-xs text-slate-500">{item.quantity} {es ? 'uds' : 'qty'}</div>
+                  <div className="text-xs text-slate-500">{item.quantity} {locale === 'es' ? 'uds' : 'qty'}</div>
                 </div>
               </div>
             ))}
           </div>
           {history.topCategoryByProfit && (
             <div className="text-xs text-slate-400 mt-2">
-              {es ? 'Categoría más rentable' : 'Most profitable category'}: <strong>{history.topCategoryByProfit}</strong> ({formatCurrency(history.topCategoryProfit)})
+              {locale === 'es' ? 'Categoría más rentable' : 'Most profitable category'}: <strong>{history.topCategoryByProfit}</strong> ({formatCurrency(history.topCategoryProfit)})
             </div>
           )}
         </div>
@@ -329,7 +329,7 @@ function CustomerHistoryCard({ history, es }: CustomerHistoryCardProps) {
 
       {history.visitCount === 0 && (
         <div className="text-sm text-slate-500 italic text-center py-4">
-          {es ? 'Sin ventas registradas para este cliente.' : 'No sales recorded for this customer.'}
+          {locale === 'es' ? 'Sin ventas registradas para este cliente.' : 'No sales recorded for this customer.'}
         </div>
       )}
     </div>

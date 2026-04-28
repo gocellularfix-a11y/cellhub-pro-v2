@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { isToday } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
@@ -73,8 +73,8 @@ function formatTime(ts: number): string {
 // ── Build System Prompt ───────────────────────────────────
 
 function buildSystemPrompt(state: ReturnType<typeof useApp>['state']): string {
-  const { sales, repairs, inventory, customers, unlocks, specialOrders, layaways, settings, lang, employees, purchaseOrders, appointments } = state;
-  const isEs = lang === 'es';
+  const { sales, repairs, inventory, customers, unlocks, specialOrders, layaways, settings, lang: locale, employees, purchaseOrders, appointments } = state;
+  const isEs = locale === 'es';
   const now = new Date();
 
   // Load Returns from localStorage — Returns module has not yet been migrated
@@ -485,8 +485,7 @@ Remember: you are embedded in a working store. The operator is likely on the sal
 // ── Proactive Insights Generator ─────────────────────────
 
 function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsight[] {
-  const { sales, repairs, inventory, customers, layaways, lang, settings } = state;
-  const es = lang === 'es';
+  const { sales, repairs, inventory, customers, layaways, lang: locale, settings } = state;
   const insights: ProactiveInsight[] = [];
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -503,10 +502,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'ready-repairs',
       icon: '🔧',
       severity: 'warning',
-      text: es
+      text: locale === 'es'
         ? `${readyRepairs.length} reparación(es) lista(s) — avisa a los clientes`
         : `${readyRepairs.length} repair(s) ready — notify customers`,
-      action: es ? 'Ver reparaciones' : 'View repairs',
+      action: locale === 'es' ? 'Ver reparaciones' : 'View repairs',
       actionTab: 'repairs',
     });
   }
@@ -523,10 +522,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'overdue-repairs',
       icon: '⏰',
       severity: 'warning',
-      text: es
+      text: locale === 'es'
         ? `${overdueRepairs.length} reparación(es) sin actualizar en 3+ días`
         : `${overdueRepairs.length} repair(s) with no update in 3+ days`,
-      action: es ? 'Ver reparaciones' : 'View repairs',
+      action: locale === 'es' ? 'Ver reparaciones' : 'View repairs',
       actionTab: 'repairs',
     });
   }
@@ -538,10 +537,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'out-of-stock',
       icon: '🚫',
       severity: 'warning',
-      text: es
+      text: locale === 'es'
         ? `${outOfStock.length} producto(s) sin stock`
         : `${outOfStock.length} item(s) out of stock`,
-      action: es ? 'Ver inventario' : 'View inventory',
+      action: locale === 'es' ? 'Ver inventario' : 'View inventory',
       actionTab: 'inventory',
     });
   }
@@ -553,10 +552,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'low-stock',
       icon: '📦',
       severity: 'warning',
-      text: es
+      text: locale === 'es'
         ? `${lowStock.length} producto(s) con stock bajo`
         : `${lowStock.length} item(s) low in stock`,
-      action: es ? 'Ver inventario' : 'View inventory',
+      action: locale === 'es' ? 'Ver inventario' : 'View inventory',
       actionTab: 'inventory',
     });
   }
@@ -571,10 +570,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'lapsed-customers',
       icon: '👤',
       severity: 'info',
-      text: es
+      text: locale === 'es'
         ? `${lapsedCount} clientes sin visita en 30+ días — oportunidad de reactivar`
         : `${lapsedCount} customers haven't visited in 30+ days — opportunity to re-engage`,
-      action: es ? 'Ver clientes' : 'View customers',
+      action: locale === 'es' ? 'Ver clientes' : 'View customers',
       actionTab: 'customers',
     });
   }
@@ -590,10 +589,10 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'overdue-layaways',
       icon: '📅',
       severity: 'warning',
-      text: es
+      text: locale === 'es'
         ? `${overdueLayaways.length} apartado(s) vencido(s)`
         : `${overdueLayaways.length} overdue layaway(s)`,
-      action: es ? 'Ver apartados' : 'View layaways',
+      action: locale === 'es' ? 'Ver apartados' : 'View layaways',
       actionTab: 'layaways',
     });
   }
@@ -606,7 +605,7 @@ function buildInsights(state: ReturnType<typeof useApp>['state']): ProactiveInsi
       id: 'today-revenue',
       icon: '💰',
       severity: 'success',
-      text: es
+      text: locale === 'es'
         ? `Hoy: ${formatCurrency(rev)} en ${todaySales.length} transacción(es)`
         : `Today: ${formatCurrency(rev)} across ${todaySales.length} transaction(s)`,
     });
@@ -731,9 +730,8 @@ const QUICK_PROMPTS_ES = [
 
 export default function AIAssistantPanel() {
   const { state, dispatch, setActiveTab } = useApp();
-  const { showAIAssistant, settings, lang } = state;
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { showAIAssistant, settings } = state;
+  const { t, locale } = useTranslation();
 
   const [messages, setMessages] = useState<Message[]>(() => loadHistory());
   const [input, setInput] = useState('');
@@ -749,7 +747,7 @@ export default function AIAssistantPanel() {
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  const quickPrompts = es ? QUICK_PROMPTS_ES : QUICK_PROMPTS_EN;
+  const quickPrompts = locale === 'es' ? QUICK_PROMPTS_ES : QUICK_PROMPTS_EN;
   const insights = useMemo(() => buildInsights(state), [state]);
   // Round 25 — M1: systemPrompt is expensive to build (O(n) over all collections)
   // and the panel doesn't display it. Build lazily inside sendMessage instead of
@@ -818,7 +816,7 @@ export default function AIAssistantPanel() {
     const content = text.trim();
     if (!content || loading) return;
     if (!hasApiKey) {
-      setError(es ? 'Configura tu API key en Ajustes → IA.' : 'Set your API key in Settings → AI.');
+      setError(t('ai.apiKeyError'));
       return;
     }
 
@@ -938,12 +936,10 @@ export default function AIAssistantPanel() {
         try {
           parsedUrl = new URL(customUrl);
         } catch {
-          throw new Error(es ? 'Custom AI URL inválida. Revisa Ajustes → IA.' : 'Invalid Custom AI URL. Check Settings → AI.');
+          throw new Error(t('ai.invalidUrl'));
         }
         if (parsedUrl.protocol !== 'https:') {
-          throw new Error(es
-            ? 'Custom AI URL debe usar HTTPS. HTTP no es seguro — tu API key quedaría expuesta.'
-            : 'Custom AI URL must use HTTPS. HTTP is not secure — your API key would be exposed.');
+          throw new Error(t('ai.httpsRequired'));
         }
         const res = await fetch(customUrl, {
           method: 'POST',
@@ -982,7 +978,7 @@ export default function AIAssistantPanel() {
       setLoading(false);
       abortRef.current = null;
     }
-  }, [loading, hasApiKey, es, settings]);
+  }, [loading, hasApiKey, locale, settings]);
 
   const handleSubmit = () => sendMessage(input);
   const handleQuickPrompt = (prompt: string) => sendMessage(prompt);
@@ -1041,14 +1037,14 @@ export default function AIAssistantPanel() {
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
               {hasApiKey
                 ? `Connected · ${providerLabel}`
-                : (es ? 'Sin API key — configura en Ajustes' : 'No API key — configure in Settings')}
+                : (locale === 'es' ? 'Sin API key — configura en Ajustes' : 'No API key — configure in Settings')}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.25rem' }}>
             {messages.length > 0 && (
               <button
                 onClick={handleClear}
-                title={es ? 'Borrar historial' : 'Clear history'}
+                title={locale === 'es' ? 'Borrar historial' : 'Clear history'}
                 style={{
                   background: 'transparent', border: 'none', color: '#475569',
                   cursor: 'pointer', padding: '0.35rem', borderRadius: '6px',
@@ -1089,11 +1085,11 @@ export default function AIAssistantPanel() {
           }}>
             <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
             <span>
-              {es
+              {locale === 'es'
                 ? 'Para usar el Asistente AI, agrega tu Claude API key en '
                 : 'To use AI Assistant, add your Claude API key in '}
               <strong style={{ color: '#fcd34d' }}>
-                {es ? 'Ajustes → IA' : 'Settings → AI'}
+                {locale === 'es' ? 'Ajustes → IA' : 'Settings → AI'}
               </strong>.
             </span>
           </div>
@@ -1103,7 +1099,7 @@ export default function AIAssistantPanel() {
         {insights.length > 0 && (
           <div style={{ padding: '0.75rem 0.875rem 0', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              {es ? 'ATENCIÓN' : 'ATTENTION'}
+              {locale === 'es' ? 'ATENCIÓN' : 'ATTENTION'}
             </div>
             {insights.map((ins) => (
               <InsightCard key={ins.id} insight={ins} onAction={handleInsightAction} />
@@ -1128,10 +1124,10 @@ export default function AIAssistantPanel() {
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.6 }}>🤖</div>
               <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b', marginBottom: '0.4rem' }}>
-                {es ? '¡Hola! Soy tu asistente de negocios.' : "Hi! I'm your business assistant."}
+                {locale === 'es' ? '¡Hola! Soy tu asistente de negocios.' : "Hi! I'm your business assistant."}
               </p>
               <p style={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
-                {es
+                {locale === 'es'
                   ? 'Pregúntame sobre ventas, reparaciones, inventario, o cualquier cosa del negocio.'
                   : 'Ask me about sales, repairs, inventory, or anything about your store.'}
               </p>
@@ -1165,7 +1161,7 @@ export default function AIAssistantPanel() {
         {showQuickPrompts && messages.length === 0 && (
           <div style={{ padding: '0 0.875rem 0.5rem', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: '#475569', fontWeight: 700, letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              {es ? 'PREGUNTAS RÁPIDAS' : 'QUICK PROMPTS'}
+              {locale === 'es' ? 'PREGUNTAS RÁPIDAS' : 'QUICK PROMPTS'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {quickPrompts.map((prompt) => (
@@ -1230,8 +1226,8 @@ export default function AIAssistantPanel() {
               onKeyDown={handleKeyDown}
               placeholder={
                 hasApiKey
-                  ? (es ? 'Escribe tu pregunta… (Enter para enviar)' : 'Ask anything… (Enter to send)')
-                  : (es ? 'Configura la API key primero' : 'Configure API key first')
+                  ? (locale === 'es' ? 'Escribe tu pregunta… (Enter para enviar)' : 'Ask anything… (Enter to send)')
+                  : (locale === 'es' ? 'Configura la API key primero' : 'Configure API key first')
               }
               disabled={!hasApiKey || loading}
               rows={1}
@@ -1274,8 +1270,8 @@ export default function AIAssistantPanel() {
             </button>
           </div>
           <div style={{ fontSize: '0.62rem', color: '#334155', marginTop: '0.35rem', textAlign: 'center' }}>
-            {es ? 'Shift+Enter para nueva línea' : 'Shift+Enter for new line'}
-            {messages.length > 0 && ` • ${messages.length} ${es ? 'mensajes' : 'messages'}`}
+            {locale === 'es' ? 'Shift+Enter para nueva línea' : 'Shift+Enter for new line'}
+            {messages.length > 0 && ` • ${messages.length} ${locale === 'es' ? 'mensajes' : 'messages'}`}
           </div>
         </div>
       </div>

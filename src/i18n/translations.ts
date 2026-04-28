@@ -4118,4 +4118,21 @@ export const translations: TranslationDictionary = {
   'barcode.waMessage':      { en: 'Message customer',                 es: 'Enviar mensaje al cliente',           pt: 'Enviar mensagem ao cliente' },
   'barcode.balance':        { en: 'Balance',                          es: 'Saldo',                               pt: 'Saldo' },
   'barcode.cancel':         { en: 'Cancel',                           es: 'Cancelar',                            pt: 'Cancelar' },
+
+  // ── AI Assistant ─────────────────────────────────────────
+  'ai.noApiKey':         { en: 'No API key — configure in Settings',    es: 'Sin API key — configura en Ajustes',    pt: 'Sem API key — configure em Configurações' },
+  'ai.attention':        { en: 'ATTENTION',                              es: 'ATENCIÓN',                              pt: 'ATENÇÃO' },
+  'ai.quickPrompts':     { en: 'QUICK PROMPTS',                          es: 'PREGUNTAS RÁPIDAS',                     pt: 'PERGUNTAS RÁPIDAS' },
+  'ai.clearHistory':     { en: 'Clear history',                          es: 'Borrar historial',                      pt: 'Limpar histórico' },
+  'ai.setupBannerPre':   { en: 'To use AI Assistant, add your Claude API key in', es: 'Para usar el Asistente AI, agrega tu Claude API key en', pt: 'Para usar o Assistente AI, adicione sua chave da API Claude em' },
+  'ai.settingsPath':     { en: 'Settings → AI',                          es: 'Ajustes → IA',                          pt: 'Configurações → IA' },
+  'ai.greeting':         { en: "Hi! I'm your business assistant.",        es: '¡Hola! Soy tu asistente de negocios.',  pt: 'Olá! Sou seu assistente de negócios.' },
+  'ai.greetingSub':      { en: 'Ask me about sales, repairs, inventory, or anything about your store.', es: 'Pregúntame sobre ventas, reparaciones, inventario, o cualquier cosa del negocio.', pt: 'Me pergunte sobre vendas, reparos, estoque, ou qualquer coisa do negócio.' },
+  'ai.shiftEnter':       { en: 'Shift+Enter for new line',               es: 'Shift+Enter para nueva línea',          pt: 'Shift+Enter para nova linha' },
+  'ai.messages':         { en: 'messages',                               es: 'mensajes',                              pt: 'mensagens' },
+  'ai.placeholder':      { en: 'Ask anything… (Enter to send)',           es: 'Escribe tu pregunta… (Enter para enviar)', pt: 'Pergunte qualquer coisa… (Enter para enviar)' },
+  'ai.placeholderNoKey': { en: 'Configure API key first',                es: 'Configura la API key primero',          pt: 'Configure a chave da API primeiro' },
+  'ai.apiKeyError':      { en: 'Set your API key in Settings → AI.',     es: 'Configura tu API key en Ajustes → IA.', pt: 'Configure sua API key em Configurações → IA.' },
+  'ai.invalidUrl':       { en: 'Invalid Custom AI URL. Check Settings → AI.', es: 'Custom AI URL inválida. Revisa Ajustes → IA.', pt: 'URL de IA personalizada inválida. Verifique Configurações → IA.' },
+  'ai.httpsRequired':    { en: 'Custom AI URL must use HTTPS. HTTP is not secure — your API key would be exposed.', es: 'Custom AI URL debe usar HTTPS. HTTP no es seguro — tu API key quedaría expuesta.', pt: 'URL de IA personalizada deve usar HTTPS. HTTP não é seguro — sua chave da API ficaria exposta.' },
 };
