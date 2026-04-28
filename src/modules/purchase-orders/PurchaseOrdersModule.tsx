@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, remove, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
@@ -38,7 +38,7 @@ function statusBadge(status: string): string {
 
 export default function PurchaseOrdersModule() {
   const {
-    state: { purchaseOrders, inventory, lang, settings, globalSearchTerm },
+    state: { purchaseOrders, inventory, settings, globalSearchTerm },
     setPurchaseOrders,
     setInventory,
     dispatch,
@@ -46,8 +46,7 @@ export default function PurchaseOrdersModule() {
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLDivElement>();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t } = useTranslation();
 
   // Round 20: anti-stale-closure ref (canonical project pattern). setPurchaseOrders
   // from AppProvider only accepts arrays (not functions), so handlers that read
@@ -147,7 +146,7 @@ export default function PurchaseOrdersModule() {
 
   const openEdit = (po: PurchaseOrder) => {
     if (['received', 'cancelled'].includes(po.status)) {
-      toast(es ? 'No se puede editar una PO cerrada' : 'Cannot edit a closed PO', 'error');
+      toast(t('po.closedError'), 'error');
       return;
     }
     setEditPO(po);
@@ -158,11 +157,11 @@ export default function PurchaseOrdersModule() {
 
   const openReceive = (po: PurchaseOrder) => {
     if (po.status === 'received') {
-      toast(es ? 'Esta orden ya fue recibida completamente' : 'Order already fully received', 'info');
+      toast(t('po.alreadyReceived'), 'info');
       return;
     }
     if (po.status === 'cancelled') {
-      toast(es ? 'Orden cancelada' : 'Order is cancelled', 'error');
+      toast(t('po.isCancelled'), 'error');
       return;
     }
     setReceivePO(po);
@@ -216,15 +215,15 @@ export default function PurchaseOrdersModule() {
 
   const handleSave = useCallback(() => {
     if (!form.vendor?.trim()) {
-      toast(es ? 'Ingresa el nombre del proveedor' : 'Enter vendor name', 'error');
+      toast(t('po.errVendor'), 'error');
       return;
     }
     if (formItems.length === 0) {
-      toast(es ? 'Agrega al menos un artículo' : 'Add at least one item', 'error');
+      toast(t('po.errNoItems'), 'error');
       return;
     }
     if (formItems.some((i) => !i.name.trim())) {
-      toast(es ? 'Todos los artículos necesitan nombre' : 'All items need a name', 'error');
+      toast(t('po.errItemName'), 'error');
       return;
     }
 
@@ -268,11 +267,11 @@ export default function PurchaseOrdersModule() {
       persist.purchaseOrder(newPO.id, newPO as unknown as Record<string, unknown>);
     }
 
-    toast(L.poSaved || 'Purchase order saved', 'success');
+    toast(t('po.saved'), 'success');
     setShowFormModal(false);
     setEditPO(null);
   // Round 20: purchaseOrders removed from deps because handler now reads from ref
-  }, [form, formItems, editPO, setPurchaseOrders, calcTotals, nextPONumber, toast, L, es]);
+  }, [form, formItems, editPO, setPurchaseOrders, calcTotals, nextPONumber, toast, t]);
 
   // ── Quick status actions ──────────────────────────────────
 
@@ -283,8 +282,8 @@ export default function PurchaseOrdersModule() {
     purchaseOrdersRef.current = nextPOs;
     setPurchaseOrders(nextPOs);
     persist.purchaseOrder(updated.id, updated as unknown as Record<string, unknown>);
-    toast(es ? 'Marcado como Ordenado' : 'Marked as Ordered', 'success');
-  }, [setPurchaseOrders, toast, es]);
+    toast(t('po.markedOrdered'), 'success');
+  }, [setPurchaseOrders, toast, t]);
 
   const markCancelled = useCallback(async (id: string) => {
     // Round 20: read from ref so we cancel against the latest state
@@ -340,8 +339,8 @@ export default function PurchaseOrdersModule() {
     }
 
     setDeleteConfirm(null);
-    toast(es ? 'Orden cancelada — inventario revertido' : 'Order cancelled — inventory reversed', 'info');
-  }, [setPurchaseOrders, setInventory, toast, es]);
+    toast(t('po.cancelledRollback'), 'info');
+  }, [setPurchaseOrders, setInventory, toast, t]);
 
   // ── Inventory picker search ───────────────────────────────
 
@@ -362,12 +361,12 @@ export default function PurchaseOrdersModule() {
 
   const translateStatus = (s: string) => {
     const map: Record<string, string> = {
-      All: L.all || 'All',
-      draft: L.poStatusDraft || 'Draft',
-      ordered: L.poStatusOrdered || 'Ordered',
-      partial: L.poStatusPartial || 'Partial',
-      received: L.poStatusReceived || 'Received',
-      cancelled: L.poStatusCancelled || 'Cancelled',
+      All: t('po.statusAll'),
+      draft: t('po.statusDraft'),
+      ordered: t('po.statusOrdered'),
+      partial: t('po.statusPartial'),
+      received: t('po.statusReceived'),
+      cancelled: t('po.statusCancelled'),
     };
     return map[s] ?? s;
   };
@@ -383,39 +382,37 @@ export default function PurchaseOrdersModule() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">
-            🛒 {L.purchaseOrders || 'Purchase Orders'}
+            🛒 {t('po.title')}
           </h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {es
-              ? 'Gestiona órdenes de compra a proveedores y recepción de mercancía'
-              : 'Manage vendor purchase orders and merchandise receiving'}
+            {t('po.subtitle')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>
-          + {L.newPurchaseOrder || 'New Purchase Order'}
+          + {t('po.newPO')}
         </button>
       </div>
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
-          label={L.totalPOs || 'Total POs'}
+          label={t('po.totalPOs')}
           value={String(stats.total)}
           icon="📋"
         />
         <StatCard
-          label={L.openPOs || 'Open POs'}
+          label={t('po.openPOs')}
           value={String(stats.open)}
           icon="⏳"
           highlight={stats.open > 0}
         />
         <StatCard
-          label={es ? 'Pendiente de Pago' : 'Pending Cost'}
+          label={t('po.pendingCost')}
           value={formatCurrency(stats.pendingCost)}
           icon="💸"
         />
         <StatCard
-          label={L.totalSpend || 'Total Spend'}
+          label={t('po.totalSpend')}
           value={formatCurrency(stats.totalSpend)}
           icon="📊"
         />
@@ -430,7 +427,7 @@ export default function PurchaseOrdersModule() {
           <GlobalSearchBar
             localValue={search}
             onLocalChange={setSearch}
-            placeholder={es ? 'Buscar proveedor, # orden…' : 'Search vendor, PO number…'}
+            placeholder={t('po.searchPlaceholder')}
           />
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -451,10 +448,10 @@ export default function PurchaseOrdersModule() {
         <div className="text-center py-16 text-slate-400">
           <div className="text-5xl mb-4">🛒</div>
           <div className="text-lg font-medium">
-            {es ? 'No hay órdenes de compra' : 'No purchase orders yet'}
+            {t('po.noOrders')}
           </div>
           <div className="text-sm mt-1">
-            {es ? 'Crea tu primera PO con el botón de arriba' : 'Create your first PO using the button above'}
+            {t('po.createFirst')}
           </div>
         </div>
       ) : (
@@ -472,8 +469,6 @@ export default function PurchaseOrdersModule() {
             >
               <POCard
                 po={po}
-                lang={lang}
-                L={L}
                 onEdit={() => openEdit(po)}
                 onReceive={() => openReceive(po)}
                 onMarkOrdered={() => markOrdered(po)}
@@ -490,19 +485,17 @@ export default function PurchaseOrdersModule() {
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-white mb-2">
-              ⚠️ {es ? 'Cancelar Orden' : 'Cancel Order'}
+              ⚠️ {t('po.cancelOrderTitle')}
             </h3>
             <p className="text-slate-300 text-sm mb-4">
-              {es
-                ? '¿Estás seguro? Esta acción no se puede deshacer.'
-                : 'Are you sure? This action cannot be undone.'}
+              {t('po.cancelConfirm')}
             </p>
             <div className="flex gap-3 justify-end">
               <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>
-                {L.cancel}
+                {t('cancel')}
               </button>
               <button className="btn btn-danger" onClick={() => markCancelled(deleteConfirm)}>
-                {L.markCancelled || 'Cancel Order'}
+                {t('po.markCancelled')}
               </button>
             </div>
           </div>
@@ -523,8 +516,8 @@ export default function PurchaseOrdersModule() {
         <Modal
           open={showFormModal}
           title={editPO
-            ? `✏️ ${es ? 'Editar' : 'Edit'} ${editPO.poNumber}`
-            : `+ ${L.newPurchaseOrder || 'New Purchase Order'}`}
+            ? `✏️ ${t('po.editPrefix')} ${editPO.poNumber}`
+            : `+ ${t('po.newPO')}`}
           onClose={() => { setShowFormModal(false); setEditPO(null); }}
           size="max-w-lg"
         >
@@ -533,7 +526,7 @@ export default function PurchaseOrdersModule() {
             {/* Header fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="label">{L.poNumber || 'PO Number'}</label>
+                <label className="label">{t('po.poNumber')}</label>
                 <input
                   className="input"
                   value={form.poNumber || ''}
@@ -542,25 +535,25 @@ export default function PurchaseOrdersModule() {
                 />
               </div>
               <div>
-                <label className="label">{L.vendor || 'Vendor'} *</label>
+                <label className="label">{t('vendor')} *</label>
                 <input
                   className="input"
                   value={form.vendor || ''}
                   onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
-                  placeholder={es ? 'Nombre del proveedor' : 'Vendor name'}
+                  placeholder={t('po.vendorNamePlaceholder')}
                 />
               </div>
               <div>
-                <label className="label">{L.vendorContact || 'Vendor Contact'}</label>
+                <label className="label">{t('po.vendorContact')}</label>
                 <input
                   className="input"
                   value={form.vendorContact || ''}
                   onChange={(e) => setForm((f) => ({ ...f, vendorContact: e.target.value }))}
-                  placeholder={es ? 'Teléfono o email' : 'Phone or email'}
+                  placeholder={t('po.contactPlaceholder')}
                 />
               </div>
               <div>
-                <label className="label">{L.expectedDate || 'Expected Date'}</label>
+                <label className="label">{t('po.expectedDate')}</label>
                 <input
                   className="input"
                   type="date"
@@ -572,28 +565,28 @@ export default function PurchaseOrdersModule() {
 
             {/* Notes */}
             <div>
-              <label className="label">{L.notes || 'Notes'}</label>
+              <label className="label">{t('notes')}</label>
               <textarea
                 className="input"
                 rows={2}
                 value={form.notes || ''}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder={es ? 'Notas adicionales…' : 'Additional notes…'}
+                placeholder={t('po.notesPlaceholder')}
               />
             </div>
 
             {/* Line items */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="label mb-0">{es ? 'Artículos' : 'Items'}</label>
+                <label className="label mb-0">{t('po.items')}</label>
                 <button className="btn btn-sm btn-secondary" onClick={addLineItem}>
-                  + {L.addLineItem || 'Add Item'}
+                  + {t('po.addItem')}
                 </button>
               </div>
 
               {formItems.length === 0 && (
                 <div className="text-center py-6 text-slate-500 text-sm glass-card">
-                  {es ? 'Sin artículos — agrega uno arriba' : 'No items — add one above'}
+                  {t('po.noItems')}
                 </div>
               )}
 
@@ -605,7 +598,7 @@ export default function PurchaseOrdersModule() {
                       <div className="flex-1">
                         <input
                           className="input text-sm"
-                          placeholder={es ? 'Nombre del artículo *' : 'Item name *'}
+                          placeholder={t('po.itemNamePlaceholder')}
                           value={item.name}
                           onChange={(e) => updateLineItem(item.id, 'name', e.target.value)}
                         />
@@ -623,7 +616,7 @@ export default function PurchaseOrdersModule() {
                       <button
                         className="btn btn-sm btn-danger mt-0.5"
                         onClick={() => removeLineItem(item.id)}
-                        title={L.delete}
+                        title={t('delete')}
                       >
                         ✕
                       </button>
@@ -632,7 +625,7 @@ export default function PurchaseOrdersModule() {
                     <div className="flex gap-2 items-center flex-wrap">
                       {/* Cost */}
                       <div className="flex items-center gap-1">
-                        <span className="text-slate-400 text-xs">{es ? 'Costo $' : 'Cost $'}</span>
+                        <span className="text-slate-400 text-xs">{t('po.cost')}</span>
                         <input
                           className="input text-sm w-24"
                           type="number"
@@ -647,7 +640,7 @@ export default function PurchaseOrdersModule() {
                       </div>
                       {/* Qty */}
                       <div className="flex items-center gap-1">
-                        <span className="text-slate-400 text-xs">{L.qtyOrdered || 'Qty'}</span>
+                        <span className="text-slate-400 text-xs">{t('po.qtyOrdered')}</span>
                         <input
                           className="input text-sm w-16 text-center"
                           type="number"
@@ -667,11 +660,11 @@ export default function PurchaseOrdersModule() {
                       <div className="relative">
                         {item.inventoryId ? (
                           <span className="text-xs text-emerald-400 flex items-center gap-1">
-                            🔗 {es ? 'Vinculado' : 'Linked'}
+                            🔗 {t('po.linked')}
                             <button
                               className="text-slate-400 hover:text-red-400 ml-1"
                               onClick={() => updateLineItem(item.id, 'inventoryId', '')}
-                              title={es ? 'Desvincular' : 'Unlink'}
+                              title={t('po.unlink')}
                             >
                               ✕
                             </button>
@@ -684,7 +677,7 @@ export default function PurchaseOrdersModule() {
                               setInvSearch('');
                             }}
                           >
-                            🔗 {L.linkToInventory || 'Link Inventory'}
+                            🔗 {t('po.linkInventory')}
                           </button>
                         )}
 
@@ -694,13 +687,13 @@ export default function PurchaseOrdersModule() {
                             <input
                               autoFocus
                               className="input text-sm"
-                              placeholder={es ? 'Buscar en inventario…' : 'Search inventory…'}
+                              placeholder={t('po.invSearchPlaceholder')}
                               value={invSearch}
                               onChange={(e) => setInvSearch(e.target.value)}
                             />
                             {invResults.length === 0 && invSearch.length > 1 && (
                               <div className="text-slate-400 text-xs text-center py-2">
-                                {es ? 'Sin resultados' : 'No results'}
+                                {t('po.noInvResults')}
                               </div>
                             )}
                             {invResults.map((inv) => (
@@ -714,7 +707,7 @@ export default function PurchaseOrdersModule() {
                                   <span className="text-slate-400 text-xs ml-2">{inv.sku}</span>
                                 )}
                                 <span className="text-slate-400 text-xs ml-2">
-                                  ({es ? 'Stock' : 'Qty'}: {inv.qty})
+                                  ({t('po.stock')}: {inv.qty})
                                 </span>
                               </button>
                             ))}
@@ -722,7 +715,7 @@ export default function PurchaseOrdersModule() {
                               className="btn btn-sm btn-ghost w-full text-xs mt-1"
                               onClick={() => { setShowInvPicker(null); setInvSearch(''); }}
                             >
-                              {L.cancel}
+                              {t('cancel')}
                             </button>
                           </div>
                         )}
@@ -737,11 +730,11 @@ export default function PurchaseOrdersModule() {
             {formItems.length > 0 && (
               <div className="glass-card p-3 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">{es ? 'Subtotal' : 'Subtotal'}</span>
+                  <span className="text-slate-400">Subtotal</span>
                   <span className="text-white">{formatCurrency(formSubtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-400">{L.shippingCost || 'Shipping'}</span>
+                  <span className="text-slate-400">{t('po.shippingCost')}</span>
                   <input
                     className="input text-sm w-28 text-right"
                     type="number"
@@ -767,10 +760,10 @@ export default function PurchaseOrdersModule() {
                 className="btn btn-secondary"
                 onClick={() => { setShowFormModal(false); setEditPO(null); }}
               >
-                {L.cancel}
+                {t('cancel')}
               </button>
               <button className="btn btn-primary" onClick={handleSave}>
-                💾 {L.save}
+                💾 {t('save')}
               </button>
             </div>
           </div>
@@ -784,8 +777,6 @@ export default function PurchaseOrdersModule() {
 
 interface POCardProps {
   po: PurchaseOrder;
-  lang: string;
-  L: Record<string, string>;
   onEdit: () => void;
   onReceive: () => void;
   onMarkOrdered: () => void;
@@ -793,8 +784,8 @@ interface POCardProps {
   translateStatus: (s: string) => string;
 }
 
-function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, translateStatus }: POCardProps) {
-  const es = lang === 'es';
+function POCard({ po, onEdit, onReceive, onMarkOrdered, onCancel, translateStatus }: POCardProps) {
+  const { t } = useTranslation();
   const isClosed = ['received', 'cancelled'].includes(po.status);
   const canReceive = ['ordered', 'partial'].includes(po.status);
   const canMarkOrdered = po.status === 'draft';
@@ -825,9 +816,9 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
             <div className="text-slate-400 text-xs">{po.vendorContact}</div>
           )}
           <div className="text-xs text-slate-400">
-            {po.items.length} {po.items.length === 1 ? (es ? 'artículo' : 'item') : (es ? 'artículos' : 'items')}
+            {po.items.length} {po.items.length === 1 ? t('po.itemSingular') : t('po.itemPlural')}
             {' · '}
-            {es ? 'Creado' : 'Created'}: {new Date(po.createdAt as string).toLocaleDateString()}
+            {t('po.created')}: {new Date(po.createdAt as string).toLocaleDateString()}
           </div>
           {po.notes && (
             <div className="text-xs text-slate-400 italic truncate">"{po.notes}"</div>
@@ -837,7 +828,7 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
           {(po.status === 'partial' || po.status === 'ordered') && totalItems > 0 && (
             <div className="mt-2">
               <div className="flex justify-between text-xs text-slate-400 mb-1">
-                <span>{es ? 'Recibido' : 'Received'}: {receivedItems}/{totalItems}</span>
+                <span>{t('po.received')}: {receivedItems}/{totalItems}</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -856,7 +847,7 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
             <div className="text-emerald-400 font-bold text-lg">{formatCurrency(po.total)}</div>
             {po.shippingCost > 0 && (
               <div className="text-xs text-slate-400">
-                {es ? 'Envío' : 'Shipping'}: {formatCurrency(po.shippingCost)}
+                {t('po.shipping')}: {formatCurrency(po.shippingCost)}
               </div>
             )}
           </div>
@@ -864,12 +855,12 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
           <div className="flex gap-2 flex-wrap justify-end">
             {canMarkOrdered && (
               <button className="btn btn-sm btn-info" onClick={onMarkOrdered}>
-                📦 {L.markOrdered || 'Mark Ordered'}
+                📦 {t('po.markOrdered')}
               </button>
             )}
             {canReceive && (
               <button className="btn btn-sm btn-success" onClick={onReceive}>
-                🚚 {L.receiveItems || 'Receive'}
+                🚚 {t('po.receiveItems')}
               </button>
             )}
             {!isClosed && (
@@ -878,7 +869,7 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
               </button>
             )}
             {!isClosed && (
-              <button className="btn btn-sm btn-danger" onClick={onCancel} title={L.markCancelled}>
+              <button className="btn btn-sm btn-danger" onClick={onCancel} title={t('po.markCancelled')}>
                 ✕
               </button>
             )}
@@ -899,7 +890,7 @@ function POCard({ po, lang, L, onEdit, onReceive, onMarkOrdered, onCancel, trans
         ))}
         {po.items.length > 6 && (
           <div className="text-xs text-slate-500 col-span-full">
-            +{po.items.length - 6} {es ? 'más…' : 'more…'}
+            +{po.items.length - 6} {t('po.moreSuffix')}
           </div>
         )}
       </div>

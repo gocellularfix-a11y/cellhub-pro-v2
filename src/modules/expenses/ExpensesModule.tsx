@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { Modal } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
@@ -48,20 +48,12 @@ const MONTHS = [
   'July','August','September','October','November','December',
 ];
 
-function catLabel(cat: ExpenseCategory, L: Record<string, string>): string {
-  return L[`cat_${cat}`] || cat;
+function catLabel(cat: ExpenseCategory, t: (key: string) => string): string {
+  return t(`expenses.cat.${cat}`);
 }
 
-function payLabel(method: string, es: boolean): string {
-  const map: Record<string, [string, string]> = {
-    cash:     ['Cash',     'Efectivo'],
-    card:     ['Card',     'Tarjeta'],
-    check:    ['Check',    'Cheque'],
-    transfer: ['Transfer', 'Transferencia'],
-    other:    ['Other',    'Otro'],
-  };
-  const pair = map[method];
-  return pair ? pair[es ? 1 : 0] : method;
+function payLabel(method: string, t: (key: string) => string): string {
+  return t(`expenses.pay.${method}`) || method;
 }
 
 const blankForm = (): Partial<Expense> => ({
@@ -78,13 +70,12 @@ const blankForm = (): Partial<Expense> => ({
 
 export default function ExpensesModule() {
   const {
-    state: { expenses, lang },
+    state: { expenses },
     setExpenses,
   } = useApp();
 
   const { toast } = useToast();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
 
   // r-global-search: useHighlightRecord wires up the flash+scroll behavior
   // when the user clicks an Expense result in the GlobalSearchBar dropdown
@@ -171,16 +162,16 @@ export default function ExpensesModule() {
 
   const handleSave = useCallback(() => {
     if (!form.vendor?.trim()) {
-      toast(es ? 'Ingresa el proveedor' : 'Enter vendor name', 'error');
+      toast(t('expenses.errVendor'), 'error');
       return;
     }
     if (!form.date) {
-      toast(es ? 'Selecciona la fecha' : 'Select a date', 'error');
+      toast(t('expenses.errDate'), 'error');
       return;
     }
     const amount = Math.round(parseFloat(amountStr || '0') * 100);
     if (amount <= 0) {
-      toast(es ? 'Ingresa un monto válido' : 'Enter a valid amount', 'error');
+      toast(t('expenses.errAmount'), 'error');
       return;
     }
 
@@ -209,17 +200,17 @@ export default function ExpensesModule() {
       persist.expense(newExp.id, newExp as unknown as Record<string, unknown>);
     }
 
-    toast(L.expenseSaved || 'Expense saved', 'success');
+    toast(t('expenses.saved'), 'success');
     setShowModal(false);
     setEditExpense(null);
-  }, [form, amountStr, editExpense, expenses, setExpenses, toast, L, es]);
+  }, [form, amountStr, editExpense, expenses, setExpenses, toast, t]);
 
   const handleDelete = useCallback((id: string) => {
     setExpenses(expenses.filter((e) => e.id !== id));
     remove.expense(id);
     setDeleteConfirm(null);
-    toast(L.expenseDeleted || 'Expense deleted', 'info');
-  }, [expenses, setExpenses, remove, toast, L]);
+    toast(t('expenses.deleted'), 'info');
+  }, [expenses, setExpenses, remove, toast, t]);
 
   // ─────────────────────────────────────────────────────────
   // RENDER
@@ -231,16 +222,14 @@ export default function ExpensesModule() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">
-            💸 {L.expenses || 'Expenses'}
+            💸 {t('expenses.title')}
           </h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {es
-              ? 'Registra y categoriza los gastos del negocio para impuestos y reportes'
-              : 'Track and categorize business expenses for taxes and reporting'}
+            {t('expenses.subtitle')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>
-          + {L.newExpense || 'New Expense'}
+          + {t('expenses.newExpense')}
         </button>
       </div>
 
@@ -249,26 +238,26 @@ export default function ExpensesModule() {
         <div className="stat-card">
           <div className="text-2xl mb-1">📅</div>
           <div className="text-xl font-bold text-white">{formatCurrency(stats.monthTotal)}</div>
-          <div className="text-slate-400 text-xs mt-0.5">{L.thisMonth || 'This Month'}</div>
+          <div className="text-slate-400 text-xs mt-0.5">{t('expenses.thisMonth')}</div>
         </div>
         <div className="stat-card">
           <div className="text-2xl mb-1">📊</div>
           <div className="text-xl font-bold text-white">{formatCurrency(stats.yearTotal)}</div>
-          <div className="text-slate-400 text-xs mt-0.5">{L.thisYear || 'This Year'} {filterYear}</div>
+          <div className="text-slate-400 text-xs mt-0.5">{t('expenses.thisYear')} {filterYear}</div>
         </div>
         <div className="stat-card">
           <div className="text-2xl mb-1">🧾</div>
           <div className="text-xl font-bold text-white">{filtered.length}</div>
-          <div className="text-slate-400 text-xs mt-0.5">{es ? 'Registros' : 'Records'}</div>
+          <div className="text-slate-400 text-xs mt-0.5">{t('expenses.records')}</div>
         </div>
         <div className="stat-card">
           <div className="text-2xl mb-1">
             {stats.topCat ? CATEGORY_ICONS[stats.topCat[0] as ExpenseCategory] : '📌'}
           </div>
           <div className="text-sm font-bold text-white truncate">
-            {stats.topCat ? catLabel(stats.topCat[0] as ExpenseCategory, L) : '—'}
+            {stats.topCat ? catLabel(stats.topCat[0] as ExpenseCategory, t) : '—'}
           </div>
-          <div className="text-slate-400 text-xs mt-0.5">{L.topCategory || 'Top Category'}</div>
+          <div className="text-slate-400 text-xs mt-0.5">{t('expenses.topCategory')}</div>
         </div>
       </div>
 
@@ -276,7 +265,7 @@ export default function ExpensesModule() {
       {stats.catBreakdown.length > 0 && (
         <div className="glass-card p-4">
           <div className="text-sm font-semibold text-slate-300 mb-3">
-            {es ? `Gastos por categoría — ${filterYear}` : `Expenses by category — ${filterYear}`}
+            {t('expenses.catBreakdown', String(filterYear))}
           </div>
           <div className="space-y-2">
             {stats.catBreakdown.slice(0, 6).map(({ cat, total }) => {
@@ -286,7 +275,7 @@ export default function ExpensesModule() {
                   <div className="w-6 text-center text-sm">{CATEGORY_ICONS[cat as ExpenseCategory]}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-300 truncate">{catLabel(cat as ExpenseCategory, L)}</span>
+                      <span className="text-slate-300 truncate">{catLabel(cat as ExpenseCategory, t)}</span>
                       <span className="text-slate-400 ml-2 shrink-0">{formatCurrency(total)}</span>
                     </div>
                     <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -315,7 +304,7 @@ export default function ExpensesModule() {
             localValue={search}
             onLocalChange={setSearch}
             excludeCollection="expenses"
-            placeholder={es ? 'Buscar proveedor, descripción…' : 'Search vendor, description…'}
+            placeholder={t('expenses.searchPlaceholder')}
           />
         </div>
 
@@ -334,7 +323,7 @@ export default function ExpensesModule() {
           value={filterMonth}
           onChange={(e) => setFilterMonth(e.target.value)}
         >
-          <option value="All">{es ? 'Todos los meses' : 'All months'}</option>
+          <option value="All">{t('expenses.allMonths')}</option>
           {MONTHS.map((m, i) => (
             <option key={i} value={String(i)}>{m}</option>
           ))}
@@ -346,9 +335,9 @@ export default function ExpensesModule() {
           value={filterCat}
           onChange={(e) => setFilterCat(e.target.value)}
         >
-          <option value="All">{es ? 'Todas las categorías' : 'All categories'}</option>
+          <option value="All">{t('expenses.allCategories')}</option>
           {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{CATEGORY_ICONS[c]} {catLabel(c, L)}</option>
+            <option key={c} value={c}>{CATEGORY_ICONS[c]} {catLabel(c, t)}</option>
           ))}
         </select>
       </div>
@@ -358,21 +347,21 @@ export default function ExpensesModule() {
         <div className="text-center py-16 text-slate-400">
           <div className="text-5xl mb-4">💸</div>
           <div className="text-lg font-medium">
-            {es ? 'Sin gastos registrados' : 'No expenses recorded'}
+            {t('expenses.noExpenses')}
           </div>
           <div className="text-sm mt-1">
-            {es ? 'Agrega tu primer gasto arriba' : 'Add your first expense above'}
+            {t('expenses.addFirst')}
           </div>
         </div>
       ) : (
         <div className="space-y-2">
           {/* Table header */}
           <div className="hidden md:grid grid-cols-[90px_1fr_140px_100px_100px_80px] gap-3 px-4 text-xs text-slate-500 font-semibold uppercase tracking-wider">
-            <span>{L.expenseDate || 'Date'}</span>
-            <span>{L.expenseVendor || 'Vendor'}</span>
-            <span>{L.expenseCategory || 'Category'}</span>
-            <span>{L.expensePayment || 'Payment'}</span>
-            <span className="text-right">{L.expenseAmount || 'Amount'}</span>
+            <span>{t('expenses.date')}</span>
+            <span>{t('vendor')}</span>
+            <span>{t('expenses.category')}</span>
+            <span>{t('expenses.payment')}</span>
+            <span className="text-right">{t('expenses.amount')}</span>
             <span></span>
           </div>
 
@@ -386,7 +375,7 @@ export default function ExpensesModule() {
             >
               {/* Date */}
               <div className="text-xs text-slate-400 font-mono">
-                {new Date(exp.date + 'T12:00:00').toLocaleDateString(es ? 'es-MX' : 'en-US', { month: 'short', day: 'numeric' })}
+                {new Date(exp.date + 'T12:00:00').toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', { month: 'short', day: 'numeric' })}
               </div>
 
               {/* Vendor + description */}
@@ -400,12 +389,12 @@ export default function ExpensesModule() {
               {/* Category */}
               <div className="flex items-center gap-1.5 text-sm text-slate-300">
                 <span>{CATEGORY_ICONS[exp.category]}</span>
-                <span className="truncate text-xs">{catLabel(exp.category, L)}</span>
+                <span className="truncate text-xs">{catLabel(exp.category, t)}</span>
               </div>
 
               {/* Payment */}
               <div className="text-xs text-slate-400">
-                {payLabel(exp.paymentMethod, es)}
+                {payLabel(exp.paymentMethod, t)}
               </div>
 
               {/* Amount */}
@@ -418,14 +407,14 @@ export default function ExpensesModule() {
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={() => openEdit(exp)}
-                  title={L.edit}
+                  title={t('edit')}
                 >
                   ✏️
                 </button>
                 <button
                   className="btn btn-sm btn-danger"
                   onClick={() => setDeleteConfirm(exp.id)}
-                  title={L.delete}
+                  title={t('delete')}
                 >
                   🗑️
                 </button>
@@ -436,7 +425,7 @@ export default function ExpensesModule() {
           {/* Footer total */}
           <div className="flex justify-end pt-2 pr-4">
             <div className="text-sm text-slate-400">
-              {es ? 'Total filtrado:' : 'Filtered total:'}
+              {t('expenses.filteredTotal')}
               <span className="text-red-400 font-bold ml-2">
                 {formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}
               </span>
@@ -450,17 +439,17 @@ export default function ExpensesModule() {
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-white mb-2">
-              🗑️ {es ? 'Eliminar gasto' : 'Delete expense'}
+              🗑️ {t('expenses.deleteTitle')}
             </h3>
             <p className="text-slate-300 text-sm mb-4">
-              {es ? '¿Estás seguro? Esta acción no se puede deshacer.' : 'Are you sure? This cannot be undone.'}
+              {t('expenses.deleteConfirm')}
             </p>
             <div className="flex gap-3 justify-end">
               <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>
-                {L.cancel}
+                {t('cancel')}
               </button>
               <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm)}>
-                {L.delete}
+                {t('delete')}
               </button>
             </div>
           </div>
@@ -472,8 +461,8 @@ export default function ExpensesModule() {
         <Modal
           open
           title={editExpense
-            ? `✏️ ${es ? 'Editar gasto' : 'Edit expense'}`
-            : `+ ${L.newExpense || 'New Expense'}`}
+            ? `✏️ ${t('expenses.editTitle')}`
+            : `+ ${t('expenses.newExpense')}`}
           onClose={() => { setShowModal(false); setEditExpense(null); }}
           size="max-w-md"
         >
@@ -482,7 +471,7 @@ export default function ExpensesModule() {
             <div className="grid grid-cols-2 gap-4">
               {/* Date */}
               <div>
-                <label className="label">{L.expenseDate || 'Date'} *</label>
+                <label className="label">{t('expenses.date')} *</label>
                 <input
                   type="date"
                   className="input"
@@ -493,7 +482,7 @@ export default function ExpensesModule() {
 
               {/* Amount */}
               <div>
-                <label className="label">{L.expenseAmount || 'Amount'} * ($)</label>
+                <label className="label">{t('expenses.amount')} * ($)</label>
                 <input
                   type="number"
                   className="input"
@@ -508,10 +497,10 @@ export default function ExpensesModule() {
 
             {/* Vendor */}
             <div>
-              <label className="label">{L.expenseVendor || 'Vendor / Payee'} *</label>
+              <label className="label">{t('expenses.vendorLabel')} *</label>
               <input
                 className="input"
-                placeholder={es ? 'Ej. AT&T, Home Depot, Renta…' : 'e.g. AT&T, Home Depot, Landlord…'}
+                placeholder={t('expenses.vendorPlaceholder')}
                 value={form.vendor || ''}
                 onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
               />
@@ -519,10 +508,10 @@ export default function ExpensesModule() {
 
             {/* Description */}
             <div>
-              <label className="label">{L.expenseDescription || 'Description'}</label>
+              <label className="label">{t('expenses.description')}</label>
               <input
                 className="input"
-                placeholder={es ? 'Descripción opcional' : 'Optional details'}
+                placeholder={t('expenses.descPlaceholder')}
                 value={form.description || ''}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
@@ -531,7 +520,7 @@ export default function ExpensesModule() {
             <div className="grid grid-cols-2 gap-4">
               {/* Category */}
               <div>
-                <label className="label">{L.expenseCategory || 'Category'}</label>
+                <label className="label">{t('expenses.category')}</label>
                 <select
                   className="select"
                   value={form.category || 'other'}
@@ -539,7 +528,7 @@ export default function ExpensesModule() {
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>
-                      {CATEGORY_ICONS[c]} {catLabel(c, L)}
+                      {CATEGORY_ICONS[c]} {catLabel(c, t)}
                     </option>
                   ))}
                 </select>
@@ -547,14 +536,14 @@ export default function ExpensesModule() {
 
               {/* Payment method */}
               <div>
-                <label className="label">{L.expensePayment || 'Payment Method'}</label>
+                <label className="label">{t('expenses.payment')}</label>
                 <select
                   className="select"
                   value={form.paymentMethod || 'card'}
                   onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value as ExpensePaymentMethod }))}
                 >
                   {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>{payLabel(m, es)}</option>
+                    <option key={m} value={m}>{payLabel(m, t)}</option>
                   ))}
                 </select>
               </div>
@@ -562,11 +551,11 @@ export default function ExpensesModule() {
 
             {/* Notes */}
             <div>
-              <label className="label">{L.expenseNotes || 'Notes'}</label>
+              <label className="label">{t('expenses.notes')}</label>
               <textarea
                 className="input"
                 rows={2}
-                placeholder={es ? 'Notas opcionales…' : 'Optional notes…'}
+                placeholder={t('expenses.notesPlaceholder')}
                 value={form.notes || ''}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               />
@@ -578,10 +567,10 @@ export default function ExpensesModule() {
                 className="btn btn-secondary"
                 onClick={() => { setShowModal(false); setEditExpense(null); }}
               >
-                {L.cancel}
+                {t('cancel')}
               </button>
               <button className="btn btn-primary" onClick={handleSave}>
-                💾 {L.save}
+                💾 {t('save')}
               </button>
             </div>
           </div>

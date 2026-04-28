@@ -8,7 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
@@ -23,15 +23,14 @@ interface Props {
 
 export default function POReceiveModal({ po, onClose, onSave }: Props) {
   const {
-    state: { lang, inventory },
+    state: { inventory },
     setInventory,
     setPurchaseOrders,
     state,
   } = useApp();
 
   const { toast } = useToast();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t } = useTranslation();
 
   // Round 20: anti-stale-closure refs. handleConfirm mutates both inventory AND
   // purchaseOrders, and creates new inventory items per phone IMEI. Without refs,
@@ -124,32 +123,23 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
 
         const imeis = (receiveImeis[item.id] ?? []).slice(0, incoming).map(normImei);
         if (imeis.some((s) => !s)) {
-          toast(
-            es ? `Falta IMEI en "${item.name}"` : `Missing IMEI on "${item.name}"`,
-            'error',
-          );
+          toast(t('po.errMissingImei', item.name), 'error');
           setSaving(false);
           return;
         }
         for (const imei of imeis) {
           if (!/^\d{15}$/.test(imei)) {
-            toast(
-              es ? `IMEI inválido (debe ser 15 dígitos): ${imei}` : `Invalid IMEI (must be 15 digits): ${imei}`,
-              'error',
-            );
+            toast(t('po.errInvalidImei', imei), 'error');
             setSaving(false);
             return;
           }
           if (allFormImeis.includes(imei)) {
-            toast(es ? `IMEI duplicado: ${imei}` : `Duplicate IMEI: ${imei}`, 'error');
+            toast(t('po.errDuplicateImei', imei), 'error');
             setSaving(false);
             return;
           }
           if (inventory.some((inv) => normImei(inv.imei || '') === imei)) {
-            toast(
-              es ? `IMEI ya existe en inventario: ${imei}` : `IMEI already in inventory: ${imei}`,
-              'error',
-            );
+            toast(t('po.errExistsImei', imei), 'error');
             setSaving(false);
             return;
           }
@@ -266,7 +256,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
       purchaseOrdersRef.current = nextPOs;
       setPurchaseOrders(nextPOs);
 
-      toast(L.poReceived || 'Items received — inventory updated', 'success');
+      toast(t('po.itemsReceived'), 'success');
       onSave(updatedPO);
     } catch (err) {
       console.error('[POReceiveModal]', err);
@@ -276,12 +266,12 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
     }
   // Round 20: inventory and state.purchaseOrders removed from deps because the
   // handler now reads from refs (anti stale-closure pattern).
-  }, [po, receiveQtys, receiveImeis, setInventory, setPurchaseOrders, toast, L, onSave, isPhonePO, es]);
+  }, [po, receiveQtys, receiveImeis, setInventory, setPurchaseOrders, toast, t, onSave, isPhonePO]);
 
   return (
     <Modal
       open
-      title={`🚚 ${L.receiveModal || 'Receive Merchandise'} — ${po.poNumber}`}
+      title={`🚚 ${t('po.receiveModal')} — ${po.poNumber}`}
       onClose={onClose}
       size="max-w-md"
     >
@@ -298,7 +288,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
           </div>
           <div className="ml-auto">
             <span className={`badge ${statusBadge(po.status)}`}>
-              {translateStatus(po.status, L)}
+              {translateStatus(po.status, t)}
             </span>
           </div>
         </div>
@@ -321,10 +311,10 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
                       <div className="text-xs text-slate-400">SKU: {item.sku}</div>
                     )}
                     <div className="text-xs text-slate-400 mt-1">
-                      {es ? 'Costo' : 'Cost'}: {formatCurrency(item.cost)}
+                      {t('po.costLabel')}: {formatCurrency(item.cost)}
                       {item.inventoryId && (
                         <span className="ml-2 text-emerald-400">
-                          🔗 {es ? 'Vinculado' : 'Linked'}
+                          🔗 {t('po.linked')}
                         </span>
                       )}
                     </div>
@@ -333,15 +323,15 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
                   {/* Qty columns */}
                   <div className="flex items-center gap-3 text-center text-xs">
                     <div>
-                      <div className="text-slate-400">{L.qtyOrdered || 'Ordered'}</div>
+                      <div className="text-slate-400">{t('po.qtyOrdered')}</div>
                       <div className="text-white font-semibold">{item.qtyOrdered}</div>
                     </div>
                     <div>
-                      <div className="text-slate-400">{L.qtyReceived || 'Received'}</div>
+                      <div className="text-slate-400">{t('po.qtyReceived')}</div>
                       <div className="text-emerald-400 font-semibold">{item.qtyReceived}</div>
                     </div>
                     <div>
-                      <div className="text-slate-400">{L.qtyPending || 'Pending'}</div>
+                      <div className="text-slate-400">{t('po.qtyPending')}</div>
                       <div className={`font-semibold ${pend > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
                         {pend}
                       </div>
@@ -349,7 +339,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
 
                     {/* Receive input */}
                     <div>
-                      <div className="text-slate-400">{es ? 'Recibir' : 'Receive'}</div>
+                      <div className="text-slate-400">{t('po.receive')}</div>
                       {isFullyReceived ? (
                         <div className="text-emerald-500 text-lg">✓</div>
                       ) : (
@@ -370,7 +360,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
                 {!isFullyReceived && isPhonePO(item) && (receiveQtys[item.id] ?? 0) > 0 && (
                   <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-2">
                     <div className="text-xs text-slate-400 font-medium">
-                      📱 {es ? 'Escanea/captura IMEI por unidad' : 'Scan/enter IMEI per unit'}
+                      📱 {t('po.imeiInstruction')}
                     </div>
                     {Array.from({ length: receiveQtys[item.id] ?? 0 }).map((_, idx) => (
                       <div key={idx} className="flex items-center gap-2">
@@ -379,7 +369,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
                           type="text"
                           inputMode="numeric"
                           maxLength={15}
-                          placeholder={es ? 'IMEI (15 dígitos)' : 'IMEI (15 digits)'}
+                          placeholder={t('po.imeiPlaceholder')}
                           value={(receiveImeis[item.id] ?? [])[idx] ?? ''}
                           onChange={(e) => handleImeiChange(item.id, idx, e.target.value)}
                           className="input flex-1 py-1 text-sm font-mono"
@@ -396,7 +386,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
         {/* No items pending */}
         {!hasAnythingToReceive && (
           <div className="text-center text-slate-400 py-4 text-sm">
-            ✅ {es ? 'Todo ya fue recibido' : 'All items already received'}
+            ✅ {t('po.allReceived')}
           </div>
         )}
 
@@ -404,7 +394,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
         {hasAnythingToReceive && (
           <div className="glass-card p-3 text-sm space-y-1">
             <div className="text-slate-300 font-medium mb-2">
-              {es ? 'Resumen de recepción:' : 'Receiving summary:'}
+              {t('po.receivingSummary')}
             </div>
             {po.items.map((item) => {
               const qty = receiveQtys[item.id] ?? 0;
@@ -412,13 +402,13 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
               return (
                 <div key={item.id} className="flex justify-between text-slate-300">
                   <span>{item.name}</span>
-                  <span className="text-emerald-400">+{qty} {es ? 'uds.' : 'units'}</span>
+                  <span className="text-emerald-400">+{qty} {t('po.units')}</span>
                 </div>
               );
             })}
             {po.items.every((i) => (receiveQtys[i.id] ?? 0) === 0) && (
               <div className="text-amber-400 text-xs">
-                {es ? 'Ingresa al menos una cantidad para continuar.' : 'Enter at least one quantity to proceed.'}
+                {t('po.enterQty')}
               </div>
             )}
           </div>
@@ -427,7 +417,7 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
         {/* Actions */}
         <div className="flex gap-3 justify-end pt-2">
           <button className="btn btn-secondary" onClick={onClose}>
-            {L.cancel}
+            {t('cancel')}
           </button>
           <button
             className="btn btn-success"
@@ -439,8 +429,8 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
             }
           >
             {saving
-              ? (es ? 'Guardando…' : 'Saving…')
-              : `✅ ${L.updateInventory || 'Update Inventory'}`}
+              ? t('po.saving')
+              : `✅ ${t('po.updateInventory')}`}
           </button>
         </div>
       </div>
@@ -461,13 +451,13 @@ function statusBadge(status: string): string {
   return map[status] ?? 'badge-neutral';
 }
 
-function translateStatus(status: string, L: Record<string, string>): string {
+function translateStatus(status: string, t: (key: string) => string): string {
   const map: Record<string, string> = {
-    draft: L.poStatusDraft || 'Draft',
-    ordered: L.poStatusOrdered || 'Ordered',
-    partial: L.poStatusPartial || 'Partial',
-    received: L.poStatusReceived || 'Received',
-    cancelled: L.poStatusCancelled || 'Cancelled',
+    draft: t('po.statusDraft'),
+    ordered: t('po.statusOrdered'),
+    partial: t('po.statusPartial'),
+    received: t('po.statusReceived'),
+    cancelled: t('po.statusCancelled'),
   };
   return map[status] ?? status;
 }
