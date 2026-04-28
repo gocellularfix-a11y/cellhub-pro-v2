@@ -35,10 +35,9 @@ function formatMoney(cents: number): string {
 export function buildCancellationReceiptHtml(
   row: CancellationRow,
   settings: StoreSettings,
-  lang: string,
+  locale: string,
   employeeName?: string,
 ): string {
-  const es = lang === 'es';
   const storeName = escHtml(settings.storeName || 'CellHub Pro');
   const storeAddr = escHtml((settings as any).storeAddress || '');
   const storePhone = escHtml((settings as any).storePhone || '');
@@ -50,7 +49,7 @@ export function buildCancellationReceiptHtml(
     unknown:      { en: 'UNKNOWN',      es: 'DESCONOCIDO' },
   };
   const methodLabel = methodLabels[row.refundMethod] || methodLabels.unknown;
-  const methodText = es ? methodLabel.es : methodLabel.en;
+  const methodText = locale === 'es' ? methodLabel.es : methodLabel.en;
 
   const typeDisplayEn: Record<string, string> = {
     special_order: 'Special Order',
@@ -62,9 +61,9 @@ export function buildCancellationReceiptHtml(
     repair: 'Reparación',
     unlock: 'Desbloqueo',
   };
-  const typeDisplay = es ? typeDisplayEs[row.type] || row.typeLabel : typeDisplayEn[row.type] || row.typeLabel;
+  const typeDisplay = locale === 'es' ? typeDisplayEs[row.type] || row.typeLabel : typeDisplayEn[row.type] || row.typeLabel;
 
-  const dateStr = new Date(row.cancelledAt).toLocaleString(es ? 'es-MX' : 'en-US', {
+  const dateStr = new Date(row.cancelledAt).toLocaleString(locale === 'es' ? 'es-MX' : 'en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
@@ -130,31 +129,31 @@ export function buildCancellationReceiptHtml(
   ${storePhone ? `<div class="store-info">${storePhone}</div>` : ''}
 </div>
 
-<div class="title">${es ? 'RECIBO DE CANCELACI\u00d3N' : 'CANCELLATION RECEIPT'}</div>
+<div class="title">${locale === 'es' ? 'RECIBO DE CANCELACI\u00d3N' : 'CANCELLATION RECEIPT'}</div>
 
-<div class="row"><span class="label">${es ? 'Fecha:' : 'Date:'}</span><span>${escHtml(dateStr)}</span></div>
+<div class="row"><span class="label">${locale === 'es' ? 'Fecha:' : 'Date:'}</span><span>${escHtml(dateStr)}</span></div>
 <div class="row"><span class="label">Ref:</span><span>${escHtml(row.reference)}</span></div>
-<div class="row"><span class="label">${es ? 'Tipo:' : 'Type:'}</span><span>${escHtml(typeDisplay)}</span></div>
+<div class="row"><span class="label">${locale === 'es' ? 'Tipo:' : 'Type:'}</span><span>${escHtml(typeDisplay)}</span></div>
 
 <div class="section">
-  <div class="row"><span class="label">${es ? 'Cliente:' : 'Customer:'}</span><span>${escHtml(row.customerName)}</span></div>
-  ${row.itemDescription ? `<div style="margin-top:4px"><div class="label">${es ? 'Art\u00edculo:' : 'Item:'}</div><div style="padding-left:4px;margin-top:2px">${escHtml(row.itemDescription)}</div></div>` : ''}
+  <div class="row"><span class="label">${locale === 'es' ? 'Cliente:' : 'Customer:'}</span><span>${escHtml(row.customerName)}</span></div>
+  ${row.itemDescription ? `<div style="margin-top:4px"><div class="label">${locale === 'es' ? 'Art\u00edculo:' : 'Item:'}</div><div style="padding-left:4px;margin-top:2px">${escHtml(row.itemDescription)}</div></div>` : ''}
 </div>
 
 <div class="amount-section">
-  <div class="amount-label">${es ? 'MONTO REEMBOLSADO' : 'AMOUNT REFUNDED'}</div>
+  <div class="amount-label">${locale === 'es' ? 'MONTO REEMBOLSADO' : 'AMOUNT REFUNDED'}</div>
   <div class="amount-value">${amountPrefix}${formatMoney(row.refundAmountCents)}</div>
   <div class="method-badge">${escHtml(methodText)}</div>
 </div>
 
-${row.cancellationNote ? `<div class="note-section"><div class="note-label">${es ? 'Raz\u00f3n:' : 'Reason:'}</div><div>${escHtml(row.cancellationNote)}</div></div>` : ''}
+${row.cancellationNote ? `<div class="note-section"><div class="note-label">${locale === 'es' ? 'Raz\u00f3n:' : 'Reason:'}</div><div>${escHtml(row.cancellationNote)}</div></div>` : ''}
 
 <div class="signature-block">
-  <div><div class="signature-line">${es ? 'Firma del Cliente' : 'Customer Signature'}</div></div>
-  <div><div class="signature-line">${es ? 'Firma del Empleado' : 'Employee Signature'}${employeeName ? ` — ${escHtml(employeeName)}` : ''}</div></div>
+  <div><div class="signature-line">${locale === 'es' ? 'Firma del Cliente' : 'Customer Signature'}</div></div>
+  <div><div class="signature-line">${locale === 'es' ? 'Firma del Empleado' : 'Employee Signature'}${employeeName ? ` — ${escHtml(employeeName)}` : ''}</div></div>
 </div>
 
-<div class="footer">${es ? 'Gracias por su preferencia' : 'Thank you for your business'}</div>
+<div class="footer">${locale === 'es' ? 'Gracias por su preferencia' : 'Thank you for your business'}</div>
 
 </body>
 </html>`;
