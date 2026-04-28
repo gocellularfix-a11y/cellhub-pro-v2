@@ -44,7 +44,8 @@ export default function AppointmentsModule() {
   const { t, locale } = useTranslation();
   const es = locale === 'es';
   const dateLoc = ({ en: 'en-US', es: 'es-MX', pt: 'pt-BR' } as Record<string, string>)[locale] ?? 'en-US';
-  const APPT_STATUS_LABELS: Record<string, string> = {
+  const waLang: 'en' | 'es' = locale === 'es' ? 'es' : 'en';
+  const APPT_STATUS_LABELS: Record<AppointmentStatus, string> = {
     scheduled: t('appt.status.scheduled'),
     arrived:   t('appt.status.arrived'),
     converted: t('appt.status.converted'),
@@ -178,10 +179,10 @@ export default function AppointmentsModule() {
         appointmentDate: dateStr,
         appointmentTime: timeStr,
       },
-      es ? 'es' : 'en',
+      waLang,
     );
     openWhatsApp(appt.customerPhone, msg);
-  }, [settings, es, dateLoc]);
+  }, [settings, waLang, dateLoc]);
 
   const handleSave = useCallback((data: Partial<Appointment>) => {
     const rawFirst = (data as any).firstName as string | undefined;
