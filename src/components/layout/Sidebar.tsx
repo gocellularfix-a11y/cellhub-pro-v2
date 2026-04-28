@@ -1,13 +1,12 @@
 import { useApp } from '@/store/AppProvider';
 import { useMultiStore } from '@/store/MultiStoreProvider';
-import { getLabels } from '@/config/i18n';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
 import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
 
 export default function Sidebar() {
   const {
-    state: { activeTab, currentEmployee, lang, isAdminMode, settings },
+    state: { activeTab, currentEmployee, isAdminMode, settings },
     setActiveTab,
     setCurrentEmployee,
     setLang,
@@ -17,8 +16,7 @@ export default function Sidebar() {
 
   const { state: multiStore, setConsolidatedView } = useMultiStore();
   const { theme, setTheme } = useTheme();
-  const { t } = useTranslation();
-  const L = getLabels(lang);
+  const { t, locale } = useTranslation();
 
   const handleClockOut = () => {
     setCurrentEmployee(null);
@@ -27,7 +25,7 @@ export default function Sidebar() {
   };
 
   const toggleLang = () => {
-    setLang(lang === 'en' ? 'es' : lang === 'es' ? 'pt' : 'en');
+    setLang(locale === 'en' ? 'es' : locale === 'es' ? 'pt' : 'en');
   };
 
   return (
@@ -126,7 +124,7 @@ export default function Sidebar() {
               }`}
             >
               <span className="text-xl">{tab.icon}</span>
-              <span>{L[tab.labelKey] || tab.labelKey}</span>
+              <span>{t('nav.' + tab.labelKey)}</span>
             </button>
           );
         })}
@@ -162,8 +160,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'en' ? '#ef4444' : 'var(--bg-hover)',
-                color: lang === 'en' ? 'white' : 'var(--text-secondary)',
+                background: locale ==='en' ? '#ef4444' : 'var(--bg-hover)',
+                color: locale ==='en' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇺🇸 EN
@@ -173,8 +171,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'es' ? '#3b82f6' : 'var(--bg-hover)',
-                color: lang === 'es' ? 'white' : 'var(--text-secondary)',
+                background: locale ==='es' ? '#3b82f6' : 'var(--bg-hover)',
+                color: locale ==='es' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇲🇽 ES
@@ -184,8 +182,8 @@ export default function Sidebar() {
               style={{
                 flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: '0.8rem', transition: 'all 0.2s',
-                background: lang === 'pt' ? '#22c55e' : 'var(--bg-hover)',
-                color: lang === 'pt' ? 'white' : 'var(--text-secondary)',
+                background: locale ==='pt' ? '#22c55e' : 'var(--bg-hover)',
+                color: locale ==='pt' ? 'white' : 'var(--text-secondary)',
               }}
             >
               🇧🇷 PT
@@ -201,7 +199,7 @@ export default function Sidebar() {
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
             {THEMES.map((t) => {
-              const localizedLabel = lang === 'es' ? t.labelEs : lang === 'pt' ? t.labelPt : t.label;
+              const localizedLabel = locale ==='es' ? t.labelEs : locale ==='pt' ? t.labelPt : t.label;
               const isActive = theme === t.id;
               return (
                 <button

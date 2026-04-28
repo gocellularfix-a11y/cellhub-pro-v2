@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import type { Employee } from '@/store/types';
-import { getLabels } from '@/config/i18n';
-import type { Lang } from '@/store/types';
+import { useTranslation } from '@/i18n';
 import { comparePin } from '@/utils/pinHash';
 
 interface EmployeeLoginProps {
   employees: Employee[];
-  lang: Lang;
   onLogin: (employee: Employee) => void;
 }
 
-export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLoginProps) {
-  const L = getLabels(lang);
+export default function EmployeeLogin({ employees, onLogin }: EmployeeLoginProps) {
+  const { t } = useTranslation();
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -53,16 +51,16 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
           <h1 className="text-3xl font-bold bg-gradient-to-r from-brand-500 to-accent-500 bg-clip-text text-transparent">
             CellHub Pro
           </h1>
-          <p className="text-slate-400 mt-2 text-sm">{L.whoIsWorking}</p>
+          <p className="text-slate-400 mt-2 text-sm">{t('employee.whoIsWorking')}</p>
         </div>
 
         {!selectedEmployee ? (
           /* Employee selection */
           <div className="space-y-2">
-            <p className="text-sm text-slate-400 mb-3">{L.selectEmployee}</p>
+            <p className="text-sm text-slate-400 mb-3">{t('employee.selectEmployee')}</p>
             {activeEmployees.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-slate-500">{L.noActiveEmployees}</p>
+                <p className="text-slate-500">{t('employee.noActiveEmployees')}</p>
                 <button
                   className="btn btn-primary mt-4"
                   onClick={() => {
@@ -85,7 +83,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
                     });
                   }}
                 >
-                  Continue as Owner
+                  {t('employee.continueAsOwner')}
                 </button>
               </div>
             ) : (
@@ -97,7 +95,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
                     setPin('');
                     setError(false);
                   }}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5 
+                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5
                              hover:bg-white/10 border border-white/10 transition-all text-left"
                 >
                   <div className="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold">
@@ -122,7 +120,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
               }}
               className="text-sm text-slate-400 hover:text-white flex items-center gap-1"
             >
-              ← {L.backToEmployees}
+              ← {t('employee.backToEmployees')}
             </button>
 
             <div className="text-center py-4">
@@ -135,12 +133,12 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
 
             {employeeHasNoPin ? (
               <div className="text-center text-sm text-slate-400 py-2">
-                {lang === 'es' ? 'Sin PIN configurado — toca Clock In para entrar.' : 'No PIN configured — tap Clock In to enter.'}
+                {t('employee.noPinMsg')}
               </div>
             ) : (
               <div>
                 <label className="text-sm text-slate-400 block mb-2">
-                  {L.enterPinFor} {selectedEmployee.name}
+                  {t('employee.enterPinFor')} {selectedEmployee.name}
                 </label>
                 <input
                   type="password"
@@ -158,7 +156,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
                   autoFocus
                 />
                 {error && (
-                  <p className="text-red-400 text-sm text-center mt-2">{L.invalidPin}</p>
+                  <p className="text-red-400 text-sm text-center mt-2">{t('employee.invalidPin')}</p>
                 )}
               </div>
             )}
@@ -168,7 +166,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
                 className="btn btn-primary w-full"
                 onClick={handleNoPinLogin}
               >
-                {L.clockIn} →
+                {t('sidebar.clockIn')} →
               </button>
             ) : (
               <button
@@ -176,7 +174,7 @@ export default function EmployeeLogin({ employees, lang, onLogin }: EmployeeLogi
                 onClick={handlePinSubmit}
                 disabled={!pin}
               >
-                {L.clockIn} →
+                {t('sidebar.clockIn')} →
               </button>
             )}
           </div>

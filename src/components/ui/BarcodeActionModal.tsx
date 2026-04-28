@@ -17,7 +17,7 @@ import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
 import { usePrint } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 
 export default function BarcodeActionModal() {
@@ -27,12 +27,10 @@ export default function BarcodeActionModal() {
     sales,
     settings,
     cart,
-    lang,
   } = state;
 
   const { printHtml } = usePrint();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t, locale } = useTranslation();
 
   // Find the sale matching the scanned invoice number
   const sale = useMemo(() => {
@@ -76,7 +74,7 @@ export default function BarcodeActionModal() {
     if (balance <= 0) return;
     const balanceItem = {
       id: Math.random().toString(36).slice(2),
-      name: `${es ? 'Saldo' : 'Balance'} — ${sale.invoiceNumber}`,
+      name: `${t('barcode.balance')} — ${sale.invoiceNumber}`,
       category: 'service' as const,
       price: balance,
       qty: 1,
@@ -91,7 +89,7 @@ export default function BarcodeActionModal() {
   const reprint = () => {
     if (!sale) return;
     const bsvg = renderBarcodeSvg(sale.invoiceNumber);
-    const html = generateReceiptHtml(sale, settings, lang, undefined, bsvg);
+    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
     close();
   };
@@ -104,7 +102,7 @@ export default function BarcodeActionModal() {
     <Modal
       open={isOpen}
       onClose={close}
-      title={`📱 ${es ? 'Código Escaneado' : 'Barcode Scanned'}`}
+      title={`📱 ${t('barcode.title')}`}
       size="max-w-sm"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -118,7 +116,7 @@ export default function BarcodeActionModal() {
           borderRadius: '0.75rem',
         }}>
           <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            {es ? 'Factura detectada' : 'Invoice detected'}
+            {t('barcode.invoiceDetected')}
           </div>
           <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#a5b4fc', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
             {pendingBarcodeInvoice}
@@ -129,7 +127,7 @@ export default function BarcodeActionModal() {
             <div style={{ marginTop: '0.625rem', fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
               {sale.customerName && <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{sale.customerName}</div>}
               <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.25rem' }}>
-                <span>{es ? 'Total' : 'Total'}: <strong style={{ color: '#22c55e' }}>{formatCurrency(sale.total)}</strong></span>
+                <span>Total: <strong style={{ color: '#22c55e' }}>{formatCurrency(sale.total)}</strong></span>
                 <span>{sale.paymentMethod}</span>
               </div>
               {hasBalance && (
@@ -139,13 +137,13 @@ export default function BarcodeActionModal() {
                   color: '#f59e0b', fontWeight: 700, fontSize: '0.78rem',
                   display: 'inline-block',
                 }}>
-                  ⚠️ {es ? 'Saldo pendiente' : 'Balance due'}: {formatCurrency((sale as any).balance)}
+                  ⚠️ {t('barcode.balanceDue')}: {formatCurrency((sale as any).balance)}
                 </div>
               )}
             </div>
           ) : (
             <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: '#ef4444' }}>
-              ⚠️ {es ? 'Factura no encontrada en el sistema' : 'Invoice not found in system'}
+              ⚠️ {t('barcode.notFound')}
             </div>
           )}
         </div>
@@ -159,8 +157,8 @@ export default function BarcodeActionModal() {
           >
             <span style={{ fontSize: '1.25rem' }}>🔍</span>
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{es ? 'Ver Detalles' : 'View Details'}</div>
-              <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Abrir en Reportes' : 'Open in Reports'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.viewDetails')}</div>
+              <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.openInReports')}</div>
             </div>
           </button>
 
@@ -170,8 +168,8 @@ export default function BarcodeActionModal() {
           >
             <span style={{ fontSize: '1.25rem' }}>↩️</span>
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{es ? 'Procesar Devolución' : 'Process Return'}</div>
-              <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Ir al módulo de Devoluciones' : 'Go to Returns module'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.processReturn')}</div>
+              <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.goToReturns')}</div>
             </div>
           </button>
 
@@ -183,9 +181,9 @@ export default function BarcodeActionModal() {
               <span style={{ fontSize: '1.25rem' }}>💰</span>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                  {es ? 'Cobrar Saldo' : 'Collect Balance'} — {formatCurrency((sale as any).balance)}
+                  {t('barcode.collectBalance')} — {formatCurrency((sale as any).balance)}
                 </div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Agregar saldo al carrito' : 'Add balance to cart'}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.addToCart')}</div>
               </div>
             </button>
           )}
@@ -197,8 +195,8 @@ export default function BarcodeActionModal() {
             >
               <span style={{ fontSize: '1.25rem' }}>🖨️</span>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{es ? 'Reimprimir Recibo' : 'Reprint Receipt'}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Imprimir copia del recibo 4×6' : 'Print 4×6 receipt copy'}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.reprint')}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.printCopy')}</div>
               </div>
             </button>
           )}
@@ -214,7 +212,7 @@ export default function BarcodeActionModal() {
             >
               <span style={{ fontSize: '1.25rem' }}>👤</span>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{es ? 'Ver Cliente' : 'View Customer'}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.viewCustomer')}</div>
                 <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{sale.customerName}</div>
               </div>
             </button>
@@ -231,8 +229,8 @@ export default function BarcodeActionModal() {
             >
               <span style={{ fontSize: '1.25rem' }}>📋</span>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{es ? 'Historial del Cliente' : 'Customer History'}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Todas las transacciones' : 'All transactions'}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.custHistory')}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.allTx')}</div>
               </div>
             </button>
           )}
@@ -245,7 +243,7 @@ export default function BarcodeActionModal() {
                   customerName: sale.customerName || 'Customer',
                   storeName: settings.storeName || 'Go Cellular',
                   storePhone: settings.storePhone || '',
-                }, es ? 'es' : 'en', (settings as any).waTemplateThankYou || '');
+                }, locale === 'es' ? 'es' : 'en', (settings as any).waTemplateThankYou || '');
                 openWhatsApp(sale.customerPhone!, msg);
               }}
               style={actionStyle('#25D366')}
@@ -253,7 +251,7 @@ export default function BarcodeActionModal() {
               <span style={{ fontSize: '1.25rem' }}>📲</span>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>WhatsApp</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{es ? 'Enviar mensaje al cliente' : 'Message customer'}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.waMessage')}</div>
               </div>
             </button>
           )}
@@ -265,7 +263,7 @@ export default function BarcodeActionModal() {
           className="btn btn-secondary"
           style={{ marginTop: '0.25rem' }}
         >
-          {es ? 'Cancelar' : 'Cancel'}
+          {t('barcode.cancel')}
         </button>
       </div>
     </Modal>

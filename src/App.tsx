@@ -201,7 +201,6 @@ export default function App() {
     return (
       <EmployeeLogin
         employees={employees}
-        lang={lang}
         onLogin={handleLogin}
       />
     );
