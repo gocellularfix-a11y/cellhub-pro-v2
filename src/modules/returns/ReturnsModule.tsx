@@ -15,7 +15,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui';
-import { getLabels } from '@/config/i18n';
+import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
@@ -60,8 +60,7 @@ export default function ReturnsModule() {
 
   const { toast } = useToast();
   const { printHtml } = usePrint();
-  const L = getLabels(lang);
-  const es = lang === 'es';
+  const { t } = useTranslation();
   const taxRate = settings.taxRate ?? 0.0925;
   // r-pkg-b4 fix B1: was reading nonexistent `returnDays` — `returnPolicyDays`
   // is the actual field on StoreSettings (types.ts L74).
@@ -162,7 +161,7 @@ export default function ReturnsModule() {
   const handleSearch = useCallback(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q && !dateFrom && !dateTo) {
-      toast(es ? 'Ingresa un término de búsqueda.' : 'Enter a search term.', 'warning');
+      toast(t('returns.enterSearchTerm'), 'warning');
       return;
     }
 
@@ -195,13 +194,13 @@ export default function ReturnsModule() {
       .slice(0, 30);
 
     if (matches.length === 0) {
-      toast(es ? 'No se encontraron ventas.' : 'No sales found.', 'warning');
+      toast(t('returns.noSalesFound'), 'warning');
     } else if (matches.length === 1) {
       pickSale(matches[0]);
     } else {
       setSearchResults(matches);
     }
-  }, [searchQuery, searchType, dateFrom, dateTo, sales, es, toast]);
+  }, [searchQuery, searchType, dateFrom, dateTo, sales, t, toast]);
 
   const pickSale = (sale: Sale) => {
     setFoundSale(sale);
@@ -319,19 +318,14 @@ export default function ReturnsModule() {
 
   // ── Process customer return ────────────────────────────────
   const processReturn = useCallback(() => {
-    if (selectedCount === 0) { toast(es ? 'Selecciona al menos un artículo.' : 'Select at least one item.', 'warning'); return; }
+    if (selectedCount === 0) { toast(t('returns.selectAtLeastOne'), 'warning'); return; }
 
     // R-RETURNS-F1.4: hard guard — if the original sale was paid with store
     // credit, no cash/card money physically entered the drawer. Refunding
     // to cash or card would cash out money that was never collected.
     // Force store_credit or exchange.
     if (foundSale?.paymentMethod === 'Store Credit' && (resolution === 'cash' || resolution === 'card')) {
-      toast(
-        es
-          ? 'Venta original fue con crédito — solo se puede reembolsar a crédito o cambio'
-          : 'Original sale was store credit — refund must be store credit or exchange',
-        'error',
-      );
+      toast(t('returns.storeCreditOnly'), 'error');
       return;
     }
 
@@ -377,7 +371,7 @@ export default function ReturnsModule() {
       returnNumber,
       originalInvoice: foundSale?.invoiceNumber || 'N/A',
       originalSaleId: foundSale?.id || null,
-      customerName: foundSale?.customerName || (es ? 'Sin factura' : 'No invoice'),
+      customerName: foundSale?.customerName || t('returns.noInvoice'),
       customerPhone: foundSale?.customerPhone || '',
       employeeName: currentEmployee?.name || '',
       createdAt: nowIso,
@@ -465,12 +459,7 @@ export default function ReturnsModule() {
           card: -refundCardCents,
           storeCredit: 0,
         };
-        toast(
-          es
-            ? `Venta original fue Split — reembolso proporcional: $${(refundCashCents / 100).toFixed(2)} efectivo + $${(refundCardCents / 100).toFixed(2)} tarjeta`
-            : `Original sale was Split — proportional refund: $${(refundCashCents / 100).toFixed(2)} cash + $${(refundCardCents / 100).toFixed(2)} card`,
-          'info',
-        );
+        toast(t('returns.splitRefundInfo', (refundCashCents / 100).toFixed(2), (refundCardCents / 100).toFixed(2)), 'info');
       } else {
         refundPaymentMethod = resolution === 'cash' ? 'Cash' : 'Card';
       }
@@ -509,11 +498,11 @@ export default function ReturnsModule() {
     if (resolution === 'exchange' && totalCents > 0) {
       const exchangeItem: CartItem = {
         id: generateId(),
-        name: `🔄 ${es ? 'Crédito Cambio' : 'Exchange Credit'} — ${returnNumber}`,
+        name: t('returns.exchangeCreditName', returnNumber),
         category: 'service',
         price: -totalCents,
         qty: 1, taxable: false, cbeEligible: false,
-        notes: `${es ? 'Cambio de' : 'Exchange from'} ${returnRecord.originalInvoice}`,
+        notes: t('returns.exchangeFrom', returnRecord.originalInvoice),
       };
       const nextCart = [...cartRef.current, exchangeItem];
       cartRef.current = nextCart;
@@ -553,11 +542,7 @@ export default function ReturnsModule() {
         customersRef.current = updatedCustomers;
         setCustomers(updatedCustomers);
       } else {
-        toast(
-          es ? '⚠️ No se pudo identificar al cliente — registra el crédito manualmente'
-             : '⚠️ Could not identify customer — credit must be applied manually',
-          'warning'
-        );
+        toast(t('returns.creditApplyManually'), 'warning');
       }
     }
 
@@ -764,23 +749,16 @@ export default function ReturnsModule() {
 
     // Toasts
     if (skippedAlreadyDone.length > 0) {
-      toast(
-        es
-          ? `⚠️ Estos registros ya estaban completados, NO se cancelaron: ${skippedAlreadyDone.join(', ')}. Manéjalos manualmente.`
-          : `⚠️ These records were already complete and were NOT cancelled: ${skippedAlreadyDone.join(', ')}. Handle them manually.`,
-        'warning'
-      );
+      toast(t('returns.alreadyCompleteWarning', skippedAlreadyDone.join(', ')), 'warning');
     }
-    const mainMsg = `${es ? 'Devolución' : 'Return'} ${returnNumber} ${es ? 'procesada' : 'processed'} — ${fc(totalCents)}`;
-    const linkedMsg = cancelledCount > 0
-      ? ` · ${cancelledCount} ${es ? 'registros linkeados cancelados' : 'linked records cancelled'}`
-      : '';
+    const mainMsg = t('returns.processedToast', returnNumber, fc(totalCents));
+    const linkedMsg = cancelledCount > 0 ? t('returns.linkedCancelledMsg', cancelledCount) : '';
     toast(mainMsg + linkedMsg, 'success');
 
     setReturnSuccess(returnRecord);
     resetSearch();
   }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
-      currentEmployee, taxRate, es,
+      currentEmployee, taxRate, t,
       setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
       setReturnHistory, toast]);
 
@@ -795,18 +773,18 @@ export default function ReturnsModule() {
       settings.storeAddress || '',
       settings.storePhone || '',
       '--------------------------------',
-      es ? 'RECIBO DE DEVOLUCIÓN' : 'RETURN RECEIPT',
-      `${es ? 'No.' : 'Return #'}: ${rec.returnNumber}`,
-      `${es ? 'Fecha' : 'Date'}: ${new Date(rec.createdAt).toLocaleDateString()}`,
-      `${es ? 'Cliente' : 'Customer'}: ${rec.customerName}`,
-      `${es ? 'Factura orig.' : 'Orig. Invoice'}: ${rec.originalInvoice}`,
-      `${es ? 'Motivo' : 'Reason'}: ${rec.reason}`,
-      `${es ? 'Resolución' : 'Resolution'}: ${rec.resolution}`,
+      t('returns.print.receipt'),
+      `${t('returns.print.returnNo')}: ${rec.returnNumber}`,
+      `${t('returns.print.date')}: ${new Date(rec.createdAt).toLocaleDateString()}`,
+      `${t('returns.print.customer')}: ${rec.customerName}`,
+      `${t('returns.print.origInvoice')}: ${rec.originalInvoice}`,
+      `${t('returns.print.reason')}: ${rec.reason}`,
+      `${t('returns.print.resolution')}: ${rec.resolution}`,
       '--------------------------------',
       ...(rec.items || []).map((i: any) => `${i.name} x${i.qty}  $${((i.totalCents || 0) / 100).toFixed(2)}`),
       '--------------------------------',
-      `${es ? 'TOTAL DEVUELTO' : 'TOTAL RETURNED'}: $${((rec.totalCents || 0) / 100).toFixed(2)}`,
-      '', es ? 'Gracias por su preferencia' : 'Thank you for your business',
+      `${t('returns.print.totalReturned')}: $${((rec.totalCents || 0) / 100).toFixed(2)}`,
+      '', t('returns.print.thanks'),
     ].filter(Boolean);
     const html = `<!DOCTYPE html><html><head><title>Return</title><style>body{font-family:monospace;font-size:12px;width:3in;margin:0;padding:8px}pre{white-space:pre-wrap}</style></head><body><pre>${escHtml(lines.join('\n'))}</pre></body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
@@ -830,9 +808,9 @@ export default function ReturnsModule() {
   }, [vendorSearch, inventory]);
 
   const processVendorReturn = () => {
-    if (!vendorItem) { toast(es ? 'Selecciona un producto.' : 'Select a product.', 'warning'); return; }
+    if (!vendorItem) { toast(t('returns.vendor.selectProduct'), 'warning'); return; }
     const maxQty = vendorItem.qty || 0;
-    if (vendorQty < 1 || vendorQty > maxQty) { toast(es ? `Cantidad inválida. Stock: ${maxQty}` : `Invalid qty. Stock: ${maxQty}`, 'warning'); return; }
+    if (vendorQty < 1 || vendorQty > maxQty) { toast(t('returns.vendor.invalidQty', maxQty), 'warning'); return; }
     // Round 19: multi-station safe vendor return number (same pattern as RTN above)
     const vndTs8  = Date.now().toString().slice(-8);
     const vndRand = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -840,7 +818,7 @@ export default function ReturnsModule() {
     const rec: VendorReturn = {
       id: generateId(), returnNumber: `VND-${vndTs8}-${vndRand}`,
       productId: vendorItem.id, productName: vendorItem.name,
-      sku: vendorItem.sku || '', supplier: vendorItem.supplier || (es ? 'Desconocido' : 'Unknown'),
+      sku: vendorItem.sku || '', supplier: vendorItem.supplier || t('returns.vendor.unknown'),
       qty: vendorQty, cost: vendorItem.cost || 0,
       // canonical cents
       totalValueCents: vendorCostCents,
@@ -864,7 +842,7 @@ export default function ReturnsModule() {
     vendorReturnsRef.current = vHistory;
     setVendorHistory(vHistory);
     persist.vendorReturn(rec.id, rec as unknown as Record<string, unknown>);
-    toast(es ? 'Devolución al proveedor registrada' : 'Vendor return recorded!', 'success');
+    toast(t('returns.vendor.recorded'), 'success');
     setVendorItem(null); setVendorSearch(''); setVendorQty(1); setVendorNotes('');
   };
 
@@ -874,16 +852,16 @@ export default function ReturnsModule() {
       {/* Header + tabs */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-          🔄 {es ? 'Devoluciones' : 'Returns'}
+          🔄 {t('returns.title')}
         </h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button onClick={() => { setMainTab('customer'); resetSearch(); }}
             className={`btn ${mainTab === 'customer' ? 'btn-primary' : 'btn-secondary'}`}>
-            👤 {es ? 'Cliente' : 'Customer'}
+            👤 {t('returns.tabCustomer')}
           </button>
           <button onClick={() => setMainTab('vendor')}
             className={`btn ${mainTab === 'vendor' ? 'btn-primary' : 'btn-secondary'}`}>
-            📦 {es ? 'Proveedor' : 'Vendor'}
+            📦 {t('returns.tabVendor')}
           </button>
         </div>
       </div>
@@ -891,7 +869,7 @@ export default function ReturnsModule() {
       <GlobalSearchBar
         localValue={globalSearch}
         onLocalChange={setGlobalSearch}
-        placeholder={es ? 'Buscar en todo el sistema...' : 'Search across all modules...'}
+        placeholder={t('returns.globalSearchPlaceholder')}
       />
 
       {/* Success banner */}
@@ -899,21 +877,21 @@ export default function ReturnsModule() {
         <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '0.75rem', padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
             <div style={{ fontWeight: 700, color: '#22c55e' }}>
-              ✅ {es ? 'Devolución procesada' : 'Return processed'}: {returnSuccess.returnNumber}
+              ✅ {t('returns.successBanner')}: {returnSuccess.returnNumber}
             </div>
             <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.25rem' }}>
               {fc(returnSuccess.totalCents || 0)} —{' '}
-              {returnSuccess.resolution === 'cash' ? (es ? 'Reembolso efectivo' : 'Cash refund') :
-               returnSuccess.resolution === 'card' ? (es ? 'Reembolso tarjeta' : 'Card refund') :
-               returnSuccess.resolution === 'store_credit' ? (es ? 'Crédito en tienda' : 'Store credit') :
-               (es ? 'Cambio de producto' : 'Exchange')}
+              {returnSuccess.resolution === 'cash' ? t('returns.resCashFull') :
+               returnSuccess.resolution === 'card' ? t('returns.resCardFull') :
+               returnSuccess.resolution === 'store_credit' ? t('returns.resStoreCreditFull') :
+               t('returns.resExchangeFull')}
               {(returnSuccess.resolution === 'cash' || returnSuccess.resolution === 'card')
-                ? (es ? ' — transacción negativa grabada en reportes' : ' — negative transaction recorded in reports') : ''}
+                ? t('returns.negativeTransactionNote') : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn btn-secondary" style={{ fontSize: '0.8rem' }}
-              onClick={() => printReturnReceipt(returnSuccess)}>🖨️ {es ? 'Imprimir' : 'Print'}</button>
+              onClick={() => printReturnReceipt(returnSuccess)}>🖨️ {t('returns.printBtn')}</button>
             <button className="btn btn-secondary" style={{ fontSize: '0.8rem' }}
               onClick={() => setReturnSuccess(null)}>✕</button>
           </div>
@@ -927,18 +905,18 @@ export default function ReturnsModule() {
           {step === 1 && (
             <div className="glass-card p-5">
               <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem' }}>
-                🔍 {es ? 'Buscar Venta' : 'Find Sale'}
+                🔍 {t('returns.findSale')}
               </h3>
 
               {/* Search type tabs */}
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
                 {[
-                  { v: 'any',     l: es ? 'Todo' : 'All' },
-                  { v: 'invoice', l: es ? '# Factura / Código' : 'Invoice / Barcode' },
-                  { v: 'phone',   l: es ? 'Teléfono' : 'Phone' },
-                  { v: 'name',    l: es ? 'Nombre' : 'Name' },
-                  { v: 'item',    l: es ? 'Artículo' : 'Item' },
-                  { v: 'date',    l: es ? 'Solo Fecha' : 'Date Only' },
+                  { v: 'any',     l: t('returns.searchAll') },
+                  { v: 'invoice', l: t('returns.searchInvoice') },
+                  { v: 'phone',   l: t('returns.searchPhone') },
+                  { v: 'name',    l: t('returns.searchName') },
+                  { v: 'item',    l: t('returns.searchItem') },
+                  { v: 'date',    l: t('returns.searchDate') },
                 ].map((o) => (
                   <button key={o.v} onClick={() => setSearchType(o.v)}
                     className={`btn btn-sm ${searchType === o.v ? 'btn-primary' : 'btn-secondary'}`}
@@ -957,11 +935,11 @@ export default function ReturnsModule() {
                     className="input"
                     style={{ flex: 1, fontSize: '1rem' }}
                     placeholder={
-                      searchType === 'invoice' ? (es ? 'Escanea código o escribe # de factura...' : 'Scan barcode or type invoice #...') :
-                      searchType === 'phone'   ? (es ? 'Teléfono del cliente...' : 'Customer phone...') :
-                      searchType === 'name'    ? (es ? 'Nombre del cliente...' : 'Customer name...') :
-                      searchType === 'item'    ? (es ? 'Nombre del artículo, SKU...' : 'Item name, SKU...') :
-                      (es ? 'Buscar por cualquier campo...' : 'Search any field...')
+                      searchType === 'invoice' ? t('returns.searchPlaceholderInvoice') :
+                      searchType === 'phone'   ? t('returns.searchPlaceholderPhone') :
+                      searchType === 'name'    ? t('returns.searchPlaceholderName') :
+                      searchType === 'item'    ? t('returns.searchPlaceholderItem') :
+                      t('returns.searchPlaceholderAny')
                     }
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -969,7 +947,7 @@ export default function ReturnsModule() {
                     autoFocus
                   />
                   <button className="btn btn-primary" onClick={handleSearch}>
-                    🔍 {es ? 'Buscar' : 'Search'}
+                    🔍 {t('returns.searchBtn')}
                   </button>
                 </div>
               )}
@@ -977,21 +955,21 @@ export default function ReturnsModule() {
               {/* Date range */}
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{es ? 'Desde:' : 'From:'}</label>
+                  <label style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{t('returns.dateFrom')}</label>
                   <input type="date" className="input" style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
                     value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{es ? 'Hasta:' : 'To:'}</label>
+                  <label style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{t('returns.dateTo')}</label>
                   <input type="date" className="input" style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
                     value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                 </div>
                 {searchType === 'date' && (dateFrom || dateTo) && (
-                  <button className="btn btn-primary" onClick={handleSearch}>{es ? 'Buscar por fecha' : 'Search by date'}</button>
+                  <button className="btn btn-primary" onClick={handleSearch}>{t('returns.searchByDate')}</button>
                 )}
                 {(dateFrom || dateTo) && (
                   <button className="btn btn-secondary btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
-                    ✕ {es ? 'Limpiar' : 'Clear'}
+                    ✕ {t('returns.clearDates')}
                   </button>
                 )}
               </div>
@@ -999,7 +977,7 @@ export default function ReturnsModule() {
               {/* Barcode hint */}
               {(searchType === 'invoice' || searchType === 'any') && (
                 <div style={{ fontSize: '0.78rem', color: '#38bdf8', padding: '0.4rem 0.75rem', background: 'rgba(56,189,248,0.08)', borderRadius: '6px', border: '1px solid rgba(56,189,248,0.2)', marginBottom: '0.75rem' }}>
-                  📷 {es ? 'Puedes escanear el código de barras del recibo — presiona Enter para buscar automáticamente.' : 'You can scan the receipt barcode — press Enter to search automatically.'}
+                  📷 {t('returns.barcodeHint')}
                 </div>
               )}
 
@@ -1007,7 +985,7 @@ export default function ReturnsModule() {
               {searchResults.length > 0 && (
                 <div>
                   <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                    {searchResults.length} {es ? 'ventas encontradas:' : 'sales found:'}
+                    {t('returns.salesFound', searchResults.length)}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '320px', overflowY: 'auto' }}>
                     {searchResults.map((s) => (
@@ -1032,7 +1010,7 @@ export default function ReturnsModule() {
               {/* History toggle */}
               <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowHistory(!showHistory)}>
-                  📋 {es ? 'Historial' : 'Return history'} ({returnHistory.length})
+                  📋 {t('returns.historyBtn')} ({returnHistory.length})
                 </button>
               </div>
               {showHistory && returnHistory.length > 0 && (
@@ -1068,23 +1046,23 @@ export default function ReturnsModule() {
                   </div>
                   {!isWithinWindow && (
                     <div style={{ fontSize: '0.8rem', color: '#f59e0b', marginTop: '0.25rem' }}>
-                      ⚠️ {es ? `Fuera de ventana de ${RETURN_LIMIT_DAYS} días` : `Outside ${RETURN_LIMIT_DAYS}-day return window`}
+                      ⚠️ {t('returns.outsideWindow', RETURN_LIMIT_DAYS)}
                     </div>
                   )}
                 </div>
                 <button className="btn btn-secondary btn-sm" onClick={resetSearch}>
-                  ← {es ? 'Buscar otra' : 'Search again'}
+                  ← {t('returns.searchAgain')}
                 </button>
               </div>
 
               {/* Item checklist */}
               <div className="glass-card p-4">
                 <h4 style={{ fontWeight: 700, color: '#fff', marginBottom: '0.75rem' }}>
-                  ✅ {es ? 'Selecciona artículos a devolver' : 'Select items to return'}
+                  ✅ {t('returns.selectItems')}
                 </h4>
                 {returnableItems.length === 0 ? (
                   <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                    {es ? 'No hay artículos retornables en esta venta.' : 'No returnable items in this sale.'}
+                    {t('returns.noReturnableItems')}
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1117,9 +1095,9 @@ export default function ReturnsModule() {
                             <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#e2e8f0' }}>{item.name}</div>
                             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
                               {fc(item.price)} × {item.qty}
-                              {item.taxable ? ` + ${es ? 'impuesto' : 'tax'}` : ''}
-                              {alreadyReturned > 0 ? ` · ${alreadyReturned} ${es ? 'ya devueltos' : 'already returned'}` : ''}
-                              {disabled ? ` · ✓ ${es ? 'Totalmente devuelto' : 'Fully returned'}` : ''}
+                              {item.taxable ? ` + ${t('returns.tax')}` : ''}
+                              {alreadyReturned > 0 ? ` · ${alreadyReturned} ${t('returns.alreadyReturned')}` : ''}
+                              {disabled ? ` · ✓ ${t('returns.fullyReturned')}` : ''}
                             </div>
                           </div>
                           {sel && available > 1 && (
@@ -1145,19 +1123,19 @@ export default function ReturnsModule() {
                   <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '200px' }}>
                       <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                        {es ? 'Motivo de devolución' : 'Return reason'}
+                        {t('returns.reasonLabel')}
                       </label>
                       <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
-                        <option value="defective">{es ? 'Defectuoso' : 'Defective'}</option>
-                        <option value="not_working">{es ? 'No funciona' : 'Not Working'}</option>
-                        <option value="wrong_item">{es ? 'Artículo incorrecto' : 'Wrong Item'}</option>
-                        <option value="changed_mind">{es ? 'Cambió de opinión' : 'Changed Mind'}</option>
-                        <option value="other">{es ? 'Otro' : 'Other'}</option>
+                        <option value="defective">{t('returns.reasonDefective')}</option>
+                        <option value="not_working">{t('returns.reasonNotWorking')}</option>
+                        <option value="wrong_item">{t('returns.reasonWrongItem')}</option>
+                        <option value="changed_mind">{t('returns.reasonChangedMind')}</option>
+                        <option value="other">{t('returns.reasonOther')}</option>
                       </select>
                     </div>
                     <div style={{ flex: 1, minWidth: '200px' }}>
                       <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                        {es ? 'Resolución' : 'Resolution'}
+                        {t('returns.resolutionLabel')}
                       </label>
                       {/* R-RETURNS-F1.4: disable cash/card when original sale was
                           Store Credit — no physical money to refund from drawer. */}
@@ -1169,10 +1147,10 @@ export default function ReturnsModule() {
                           <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
                               {[
-                                { v: 'cash',         l: es ? '💵 Efectivo' : '💵 Cash Refund' },
-                                { v: 'card',         l: es ? '💳 Tarjeta' : '💳 Card Refund' },
-                                { v: 'store_credit', l: es ? '🎫 Crédito Tienda' : '🎫 Store Credit' },
-                                { v: 'exchange',     l: es ? '🔄 Cambio' : '🔄 Exchange' },
+                                { v: 'cash',         l: t('returns.resCash') },
+                                { v: 'card',         l: t('returns.resCard') },
+                                { v: 'store_credit', l: t('returns.resStoreCredit') },
+                                { v: 'exchange',     l: t('returns.resExchange') },
                               ].map((r) => {
                                 const disabled = resolutionDisabled(r.v);
                                 return (
@@ -1180,9 +1158,7 @@ export default function ReturnsModule() {
                                     key={r.v}
                                     onClick={() => !disabled && setResolution(r.v)}
                                     disabled={disabled}
-                                    title={disabled
-                                      ? (es ? 'Original fue crédito — solo crédito o cambio' : 'Original was store credit — credit or exchange only')
-                                      : undefined}
+                                    title={disabled ? t('returns.storeCreditTitle') : undefined}
                                     style={{
                                       padding: '0.5rem', borderRadius: '8px',
                                       border: `2px solid ${resolution === r.v ? '#6366f1' : 'rgba(255,255,255,0.1)'}`,
@@ -1200,7 +1176,7 @@ export default function ReturnsModule() {
                             </div>
                             {origWasStoreCredit && (
                               <div style={{ fontSize: '0.72rem', color: '#f59e0b', marginTop: '0.4rem' }}>
-                                ⚠️ {es ? 'Venta original fue con crédito — reembolso solo a crédito o cambio' : 'Original was store credit — refund to credit or exchange only'}
+                                ⚠️ {t('returns.storeCreditWarning')}
                               </div>
                             )}
                           </>
@@ -1211,10 +1187,10 @@ export default function ReturnsModule() {
 
                   <div style={{ marginTop: '0.75rem' }}>
                     <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-                      {es ? 'Notas (opcional)' : 'Notes (optional)'}
+                      {t('returns.notesOptional')}
                     </label>
                     <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)}
-                      placeholder={es ? 'Detalles adicionales...' : 'Additional details...'} />
+                      placeholder={t('returns.notesPlaceholder')} />
                   </div>
                 </div>
               )}
@@ -1224,16 +1200,16 @@ export default function ReturnsModule() {
                 <div className="glass-card p-4">
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                     <div>
-                      <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{selectedCount} {es ? 'artículo(s) seleccionado(s)' : 'item(s) selected'}</div>
-                      {returnTax > 0 && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{es ? 'Subtotal:' : 'Subtotal:'} ${returnSubtotal.toFixed(2)} + tax: ${returnTax.toFixed(2)}</div>}
+                      <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{selectedCount} {t('returns.itemsSelected')}</div>
+                      {returnTax > 0 && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subtotal: ${returnSubtotal.toFixed(2)} + tax: ${returnTax.toFixed(2)}</div>}
                     </div>
                     <div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ef4444' }}>−${returnTotal.toFixed(2)}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'right' }}>{es ? 'A devolver' : 'To refund'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'right' }}>{t('returns.toRefund')}</div>
                     </div>
                   </div>
                   <button onClick={() => setShowConfirmReturn(true)} className="btn btn-primary" style={{ width: '100%', fontSize: '1rem', fontWeight: 700 }}>
-                    ✅ {es ? `Procesar Devolución —$${returnTotal.toFixed(2)}` : `Process Return — $${returnTotal.toFixed(2)}`}
+                    ✅ {t('returns.processReturn', returnTotal.toFixed(2))}
                   </button>
                 </div>
               )}
@@ -1244,28 +1220,28 @@ export default function ReturnsModule() {
 
       {/* r-pkg-b4 fix S5: Confirmation modal before irreversible return */}
       <Modal open={showConfirmReturn} onClose={() => setShowConfirmReturn(false)}
-        title={es ? '¿Confirmar devolución?' : 'Confirm return?'} size="max-w-md">
+        title={t('returns.confirmTitle')} size="max-w-md">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div style={{ fontSize: '0.9rem', color: '#e2e8f0' }}>
-            {es ? 'Estás a punto de procesar una devolución irreversible:' : 'You are about to process an irreversible return:'}
+            {t('returns.confirmMsg')}
           </div>
           <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem' }}>
             <div style={{ fontWeight: 700, color: '#f87171', fontSize: '1.1rem' }}>−${returnTotal.toFixed(2)}</div>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-              {foundSale?.invoiceNumber || 'N/A'} · {selectedCount} {es ? 'artículo(s)' : 'item(s)'} ·{' '}
-              {resolution === 'cash' ? (es ? 'Efectivo' : 'Cash') :
-               resolution === 'card' ? (es ? 'Tarjeta' : 'Card') :
-               resolution === 'store_credit' ? (es ? 'Crédito tienda' : 'Store credit') :
-               (es ? 'Cambio' : 'Exchange')}
+              {foundSale?.invoiceNumber || 'N/A'} · {selectedCount} {t('returns.items')} ·{' '}
+              {resolution === 'cash' ? t('returns.resCashShort') :
+               resolution === 'card' ? t('returns.resCardShort') :
+               resolution === 'store_credit' ? t('returns.resStoreCreditShort') :
+               t('returns.resExchangeShort')}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => setShowConfirmReturn(false)}>
-              {es ? 'Cancelar' : 'Cancel'}
+              {t('returns.cancelBtn')}
             </button>
             <button className="btn btn-primary" style={{ background: '#ef4444' }}
               onClick={() => { setShowConfirmReturn(false); processReturn(); }}>
-              {es ? 'Sí, procesar devolución' : 'Yes, process return'}
+              {t('returns.confirmBtn')}
             </button>
           </div>
         </div>
@@ -1276,15 +1252,15 @@ export default function ReturnsModule() {
         <div className="space-y-4">
           <div className="glass-card p-5">
             <h3 style={{ fontWeight: 700, color: '#fff', marginBottom: '1rem' }}>
-              📦 {es ? 'Devolución al Proveedor' : 'Vendor Return / RMA'}
+              📦 {t('returns.vendor.title')}
             </h3>
             <div style={{ marginBottom: '0.75rem' }}>
               <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-                {es ? 'Buscar producto en inventario' : 'Search inventory product'}
+                {t('returns.vendor.searchLabel')}
               </label>
               <div style={{ position: 'relative' }}>
                 <input className="input" value={vendorSearch} onChange={(e) => { setVendorSearch(e.target.value); setVendorItem(null); }}
-                  placeholder={es ? 'Nombre, SKU, proveedor...' : 'Name, SKU, supplier...'} autoFocus />
+                  placeholder={t('returns.vendor.searchPlaceholder')} autoFocus />
                 {vendorResults.length > 0 && !vendorItem && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden' }}>
                     {vendorResults.map((i) => (
@@ -1305,42 +1281,42 @@ export default function ReturnsModule() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', fontSize: '0.85rem' }}>
                   <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{vendorItem.name}</div>
-                  <div style={{ color: '#94a3b8' }}>{es ? 'Proveedor:' : 'Supplier:'} {vendorItem.supplier || '—'} · {es ? 'Costo:' : 'Cost:'} ${((vendorItem.cost || 0) / 100).toFixed(2)} · {es ? 'Stock:' : 'Stock:'} {vendorItem.qty}</div>
+                  <div style={{ color: '#94a3b8' }}>{t('returns.vendor.supplier')} {vendorItem.supplier || '—'} · {t('returns.vendor.cost')} ${((vendorItem.cost || 0) / 100).toFixed(2)} · {t('returns.vendor.stock')} {vendorItem.qty}</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div>
-                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{es ? 'Cantidad' : 'Quantity'}</label>
+                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{t('returns.vendor.qty')}</label>
                     <input type="number" className="input" min={1} max={vendorItem.qty} value={vendorQty} onChange={(e) => setVendorQty(Math.max(1, Math.min(parseInt(e.target.value) || 1, vendorItem.qty)))} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{es ? 'Motivo' : 'Reason'}</label>
+                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{t('returns.vendor.reason')}</label>
                     <select className="select" value={vendorReason} onChange={(e) => setVendorReason(e.target.value)}>
-                      <option value="defective">{es ? 'Defectuoso' : 'Defective'}</option>
-                      <option value="overstock">{es ? 'Sobreinventario' : 'Overstock'}</option>
-                      <option value="wrong_item">{es ? 'Artículo incorrecto' : 'Wrong Item'}</option>
-                      <option value="warranty">{es ? 'Garantía' : 'Warranty'}</option>
+                      <option value="defective">{t('returns.reasonDefective')}</option>
+                      <option value="overstock">{t('returns.vendor.reasonOverstock')}</option>
+                      <option value="wrong_item">{t('returns.reasonWrongItem')}</option>
+                      <option value="warranty">{t('returns.vendor.reasonWarranty')}</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{es ? 'Resolución' : 'Resolution'}</label>
+                    <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{t('returns.resolutionLabel')}</label>
                     <select className="select" value={vendorResolution} onChange={(e) => setVendorResolution(e.target.value)}>
-                      <option value="credit">{es ? 'Crédito de proveedor' : 'Vendor credit'}</option>
-                      <option value="replacement">{es ? 'Reemplazo' : 'Replacement'}</option>
-                      <option value="refund">{es ? 'Reembolso' : 'Refund'}</option>
+                      <option value="credit">{t('returns.vendor.resCredit')}</option>
+                      <option value="replacement">{t('returns.vendor.resReplacement')}</option>
+                      <option value="refund">{t('returns.vendor.resRefund')}</option>
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{es ? 'Notas' : 'Notes'}</label>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>{t('returns.notesLabel')}</label>
                   <input className="input" value={vendorNotes} onChange={(e) => setVendorNotes(e.target.value)}
-                    placeholder={es ? 'RMA#, rastreo, etc.' : 'RMA#, tracking, etc.'} />
+                    placeholder={t('returns.vendor.notesPlaceholder')} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{es ? 'Valor a devolver:' : 'Value to return:'}</span>
-                  <span style={{ fontWeight: 700, color: '#f87171' }}>${(((vendorItem.cost || 0) / 100) * vendorQty).toFixed(2)} ({vendorQty} {es ? 'unidades' : 'units'})</span>
+                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{t('returns.vendor.valueToReturn')}</span>
+                  <span style={{ fontWeight: 700, color: '#f87171' }}>${(((vendorItem.cost || 0) / 100) * vendorQty).toFixed(2)} ({vendorQty} {t('returns.vendor.units')})</span>
                 </div>
                 <button onClick={processVendorReturn} className="btn btn-primary" style={{ width: '100%' }}>
-                  📦 {es ? 'Registrar Devolución al Proveedor' : 'Record Vendor Return'}
+                  📦 {t('returns.vendor.recordBtn')}
                 </button>
               </div>
             )}
@@ -1350,7 +1326,7 @@ export default function ReturnsModule() {
           {vendorHistory.length > 0 && (
             <div>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowVendorHistory(!showVendorHistory)}>
-                📋 {es ? 'Historial proveedor' : 'Vendor return history'} ({vendorHistory.length})
+                📋 {t('returns.vendor.historyBtn')} ({vendorHistory.length})
               </button>
               {showVendorHistory && (
                 <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '300px', overflowY: 'auto' }}>
@@ -1359,7 +1335,7 @@ export default function ReturnsModule() {
                       <div>
                         <span style={{ fontWeight: 600, color: '#a5b4fc' }}>{r.returnNumber}</span>
                         <span style={{ fontSize: '0.78rem', color: '#64748b', marginLeft: '0.5rem' }}>{fd(r.createdAt)}</span>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.productName} · {r.supplier} · {r.qty} {es ? 'unidades' : 'units'}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.productName} · {r.supplier} · {r.qty} {t('returns.vendor.units')}</div>
                       </div>
                       <span style={{ fontWeight: 700, color: '#f87171' }}>${((r.totalValueCents || 0) / 100).toFixed(2)}</span>
                     </div>
