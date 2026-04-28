@@ -982,11 +982,11 @@ function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, se
                   type="tel" className="input"
                   value={formatPhone(p)}
                   onChange={(e) => updatePhone(idx, e.target.value)}
-                  placeholder="(805) 555-1234"
+                  placeholder={t('customers.form.phonePlaceholder')}
                   style={{ flex: 1 }}
                 />
                 {form.phones.length > 1 && (
-                  <button type="button" onClick={() => removePhoneField(idx)} className="btn btn-ghost btn-sm text-red-400" title="Remove">🗑️</button>
+                  <button type="button" onClick={() => removePhoneField(idx)} className="btn btn-ghost btn-sm text-red-400" title={t('customers.form.removePhone')}>🗑️</button>
                 )}
               </div>
               <select
@@ -1008,41 +1008,41 @@ function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, se
 
         {/* Email */}
         <div>
-          <label className="text-xs text-slate-400 block mb-1">Email</label>
-          <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" placeholder="customer@example.com" />
+          <label className="text-xs text-slate-400 block mb-1">{t('customers.form.email')}</label>
+          <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" placeholder={t('customers.form.emailPlaceholder')} />
         </div>
 
         {/* Address */}
         <div>
           <label className="text-xs text-slate-400 block mb-1">{t('customers.form.address')}</label>
-          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" placeholder="123 Main Street" />
+          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" placeholder={t('customers.form.addressPlaceholder')} />
         </div>
 
         {/* City / State / Zip */}
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-slate-400 block mb-1">{t('customers.form.city')}</label>
-            <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="input" placeholder="Santa Barbara" />
+            <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="input" placeholder={t('customers.form.cityPlaceholder')} />
           </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1">{t('customers.form.state')}</label>
             <input
               value={form.state}
               onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
-              className="input" placeholder="CA" maxLength={2}
+              className="input" placeholder={t('customers.form.statePlaceholder')} maxLength={2}
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Zip</label>
-            <input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })} className="input" placeholder="93101" />
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.zip')}</label>
+            <input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })} className="input" placeholder={t('customers.form.zipPlaceholder')} />
           </div>
         </div>
 
         {/* Plan / Monthly Payment */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Plan</label>
-            <input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="input" placeholder="Unlimited Plus" />
+            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.plan')}</label>
+            <input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="input" placeholder={t('customers.form.planPlaceholder')} />
           </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1">{t('customers.form.monthlyPayment')}</label>
@@ -1050,7 +1050,7 @@ function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, se
               type="number" step="0.01"
               value={form.monthlyPayment}
               onChange={(e) => setForm({ ...form, monthlyPayment: e.target.value })}
-              className="input" placeholder="55.00" list="monthly-payment-presets"
+              className="input" placeholder={t('customers.form.monthlyPaymentPlaceholder')} list="monthly-payment-presets"
             />
             <datalist id="monthly-payment-presets">
               {MONTHLY_PAYMENT_PRESETS.map((v) => <option key={v} value={v} />)}
