@@ -14,6 +14,8 @@ import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
+import { createAutomationItem } from '@/services/intelligence/automation/automationQueue';
+import type { AutomationQueueItem } from '@/services/intelligence/automation/automationQueue';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 
@@ -42,6 +44,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const [actionFeedbackById, setActionFeedbackById] = useState<
     Record<string, { message: string; ts: number }>
   >({});
+  const [automationQueue, setAutomationQueue] = useState<AutomationQueueItem[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -127,21 +130,40 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       setFeedbackForAction(action.id, `Action not available: ${result.reason}`);
       return;
     }
+
+    const kindMap = {
+      whatsapp_url:   'whatsapp_reconnect',
+      pos_discount:   'discount_review',
+      pos_bundle:     'bundle_review',
+      reminder_queue: 'reminder_followup',
+      review_panel:   'manual_review',
+    } as const;
+
+    const kind = kindMap[result.type];
+    const item = createAutomationItem({
+      kind,
+      label: action.label,
+      customerId: action.payload.customerId,
+      customerName: action.payload.customerName,
+      sku: action.payload.sku,
+    });
+    setAutomationQueue(prev => [...prev, item]);
+
     switch (result.type) {
       case 'whatsapp_url':
         setPendingWaAction({ action, url: result.url });
         return;
       case 'pos_discount':
-        setFeedbackForAction(action.id, `Discount flow triggered for SKU: ${result.sku}`);
+        setFeedbackForAction(action.id, `Added to automation queue (discount).`);
         break;
       case 'pos_bundle':
-        setFeedbackForAction(action.id, `Bundle flow triggered for SKU: ${result.sku}`);
+        setFeedbackForAction(action.id, `Added to automation queue (bundle).`);
         break;
       case 'review_panel':
-        setFeedbackForAction(action.id, 'Review panel opened.');
+        setFeedbackForAction(action.id, 'Added to automation queue (review).');
         break;
       case 'reminder_queue':
-        setFeedbackForAction(action.id, `Reminder queued for ${result.customerName ?? 'customer'}.`);
+        setFeedbackForAction(action.id, 'Added to automation queue (reminder).');
         break;
     }
   }
