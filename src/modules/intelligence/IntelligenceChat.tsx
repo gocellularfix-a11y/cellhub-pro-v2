@@ -20,8 +20,9 @@ import {
   cancelAutomationItem,
   markAutomationExecuted,
   markAutomationFailed,
+  addAutomationOutcome,
 } from '@/services/intelligence/automation/automationQueue';
-import type { AutomationQueueItem } from '@/services/intelligence/automation/automationQueue';
+import type { AutomationQueueItem, AutomationOutcome } from '@/services/intelligence/automation/automationQueue';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 
@@ -218,6 +219,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     );
   }
 
+  function handleAutomationOutcome(id: string, outcome: AutomationOutcome) {
+    setAutomationQueue(prev =>
+      prev.map(item => item.id === id ? addAutomationOutcome(item, outcome) : item)
+    );
+  }
+
   const handleSuggestion = (suggestion: string) => {
     setInput(suggestion);
   };
@@ -280,6 +287,29 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                       {item.executionLog[item.executionLog.length - 1].resultType ?? item.executionLog[item.executionLog.length - 1].reason ?? ''}
                     </span>
                   ) : null}
+                  {item.outcomeLog?.length ? (
+                    <span className="text-[10px] text-slate-500 block">
+                      Outcome: {item.outcomeLog[item.outcomeLog.length - 1].outcome}
+                    </span>
+                  ) : null}
+                  {item.status === 'completed' && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {([
+                        ['customer_responded', 'Responded'],
+                        ['sale_created', 'Sale'],
+                        ['no_response', 'No Response'],
+                        ['not_relevant', 'Not Relevant'],
+                      ] as [AutomationOutcome, string][]).map(([outcome, label]) => (
+                        <button
+                          key={outcome}
+                          onClick={() => handleAutomationOutcome(item.id, outcome)}
+                          className="text-[10px] px-1.5 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {item.status !== 'pending' ? (

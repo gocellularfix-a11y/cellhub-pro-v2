@@ -25,6 +25,19 @@ export interface AutomationExecutionLog {
   reason?: string;
 }
 
+export type AutomationOutcome =
+  | 'unknown'
+  | 'customer_responded'
+  | 'sale_created'
+  | 'no_response'
+  | 'not_relevant';
+
+export interface AutomationOutcomeLog {
+  recordedAt: string;
+  outcome: AutomationOutcome;
+  note?: string;
+}
+
 export interface AutomationQueueItem {
   id: string;
   kind: AutomationKind;
@@ -47,6 +60,7 @@ export interface AutomationQueueItem {
   };
 
   executionLog?: AutomationExecutionLog[];
+  outcomeLog?: AutomationOutcomeLog[];
 }
 
 export function createAutomationItem(input: {
@@ -118,4 +132,18 @@ export function markAutomationFailed(
       reason,
     }),
   );
+}
+
+export function addAutomationOutcome(
+  item: AutomationQueueItem,
+  outcome: AutomationOutcome,
+  note?: string,
+): AutomationQueueItem {
+  return {
+    ...item,
+    outcomeLog: [
+      ...(item.outcomeLog ?? []),
+      { recordedAt: new Date().toISOString(), outcome, note },
+    ],
+  };
 }
