@@ -280,6 +280,8 @@ export interface RootCauseReport {
 export interface SlowDayRootCauseReport {
   slowestDayName: string;           // English DOW, e.g. 'Sunday'
   bestDayName: string;              // English DOW
+  slowestDayIndex: number;          // 0 = Sunday … 6 = Saturday
+  bestDayIndex: number;
   slowDayRevenueCents: number;      // avg revenue per occurrence
   bestDayRevenueCents: number;
   weeklyGapCents: number;           // bestDayRevenue - slowDayRevenue

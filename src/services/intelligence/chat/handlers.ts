@@ -337,6 +337,15 @@ const DAY_NAMES_LOCALIZED: Record<Lang3, Record<string, string>> = {
   pt: { Sunday: 'Domingo', Monday: 'Segunda', Tuesday: 'Terça', Wednesday: 'Quarta', Thursday: 'Quinta', Friday: 'Sexta', Saturday: 'Sábado' },
 };
 
+// R-INTEL-PHASE2B-FIX: numeric-indexed DOW names (0=Sunday…6=Saturday).
+// Used by handleSlowDayRootCause so localization is not dependent on
+// string-matching the English day name from the report.
+const DAY_NAMES_BY_INDEX: Record<Lang3, readonly string[]> = {
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  es: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+  pt: ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+};
+
 function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const report = engine.getMissedRevenue();
@@ -443,8 +452,8 @@ function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatRe
     return { kind: 'answer', text: t('chat.slowRoot.notEnoughData') };
   }
 
-  const localDay  = DAY_NAMES_LOCALIZED[lang][report.slowestDayName] ?? report.slowestDayName;
-  const localBest = DAY_NAMES_LOCALIZED[lang][report.bestDayName]    ?? report.bestDayName;
+  const localDay  = DAY_NAMES_BY_INDEX[lang][report.slowestDayIndex] ?? report.slowestDayName;
+  const localBest = DAY_NAMES_BY_INDEX[lang][report.bestDayIndex]    ?? report.bestDayName;
 
   const DIAG_KEY: Record<string, string> = {
     traffic: 'chat.slowRoot.diagTraffic',

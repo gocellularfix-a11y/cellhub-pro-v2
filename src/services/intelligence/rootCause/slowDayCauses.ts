@@ -106,6 +106,8 @@ export function diagnoseSlowDay(sales: Sale[]): SlowDayRootCauseReport | null {
   return {
     slowestDayName:         DAY_NAMES[slowest.dow],
     bestDayName:            DAY_NAMES[best.dow],
+    slowestDayIndex:        slowest.dow,
+    bestDayIndex:           best.dow,
     slowDayRevenueCents:    slowest.avgRev,
     bestDayRevenueCents:    best.avgRev,
     weeklyGapCents:         best.avgRev - slowest.avgRev,
