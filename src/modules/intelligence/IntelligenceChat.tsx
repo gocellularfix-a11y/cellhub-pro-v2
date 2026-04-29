@@ -14,7 +14,11 @@ import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
-import { createAutomationItem } from '@/services/intelligence/automation/automationQueue';
+import {
+  createAutomationItem,
+  approveAutomationItem,
+  cancelAutomationItem,
+} from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem } from '@/services/intelligence/automation/automationQueue';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
@@ -168,6 +172,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
   }
 
+  function handleApproveAutomation(id: string) {
+    setAutomationQueue(prev =>
+      prev.map(item => item.id === id ? approveAutomationItem(item) : item)
+    );
+  }
+
+  function handleCancelAutomation(id: string) {
+    setAutomationQueue(prev =>
+      prev.map(item => item.id === id ? cancelAutomationItem(item) : item)
+    );
+  }
+
   const handleSuggestion = (suggestion: string) => {
     setInput(suggestion);
   };
@@ -205,6 +221,54 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Automation Queue */}
+      {automationQueue.length > 0 && (
+        <div className="border-t border-surface-700 px-3 py-2 shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-slate-400">Automation Queue</span>
+            <span className="text-[10px] text-slate-500">
+              Pending: {automationQueue.filter(i => i.status === 'pending').length}
+            </span>
+          </div>
+          <div className="space-y-1 max-h-36 overflow-y-auto">
+            {automationQueue.map(item => (
+              <div key={item.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-surface-700 border border-surface-600">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs text-slate-300 truncate block">{item.label}</span>
+                  <span className="text-[10px] text-slate-500">
+                    {item.kind}{item.customerName ? ` · ${item.customerName}` : ''}{item.sku ? ` · ${item.sku}` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {item.status !== 'pending' ? (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                      item.status === 'approved' ? 'border-green-600/50 text-green-400' : 'border-slate-600 text-slate-500'
+                    }`}>
+                      {item.status}
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleApproveAutomation(item.id)}
+                        className="text-[10px] px-2 py-0.5 rounded border border-green-700 text-green-400 hover:bg-green-900/30"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleCancelAutomation(item.id)}
+                        className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2 shrink-0">
