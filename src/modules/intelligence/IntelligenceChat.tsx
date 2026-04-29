@@ -132,13 +132,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2">
+      <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2 shrink-0">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={t('intelligence.chatPlaceholder')}
           className="flex-1 bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
+          style={{ transform: 'translateZ(0)' }}
         />
         <button
           type="submit"
