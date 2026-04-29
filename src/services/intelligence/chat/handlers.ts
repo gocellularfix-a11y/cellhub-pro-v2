@@ -10,12 +10,13 @@
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
+import type { ActionType } from '../types';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 
 const COP = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-const ACTION_TYPE_LABEL: Record<string, string> = {
+const ACTION_TYPE_LABEL: Record<ActionType, string> = {
   whatsapp: 'WhatsApp',
   discount: 'Discount',
   bundle:   'Bundle',
