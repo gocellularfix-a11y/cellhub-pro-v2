@@ -18,7 +18,10 @@ import {
   createAutomationItem,
   approveAutomationItem,
   cancelAutomationItem,
+  completeAutomationItem,
+  failAutomationItem,
 } from '@/services/intelligence/automation/automationQueue';
+import type { ActionPayload } from '@/services/intelligence/actions/actionEngine';
 import type { AutomationQueueItem } from '@/services/intelligence/automation/automationQueue';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
@@ -150,6 +153,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       customerId: action.payload.customerId,
       customerName: action.payload.customerName,
       sku: action.payload.sku,
+      payload: { actionPayload: action.payload as unknown as Record<string, unknown> },
     });
     setAutomationQueue(prev => [...prev, item]);
 
@@ -173,9 +177,40 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }
 
   function handleApproveAutomation(id: string) {
-    setAutomationQueue(prev =>
-      prev.map(item => item.id === id ? approveAutomationItem(item) : item)
-    );
+    setAutomationQueue(prev => {
+      const item = prev.find(i => i.id === id);
+      if (!item) return prev;
+
+      const actionPayload = item.payload?.actionPayload as ActionPayload | undefined;
+      if (!actionPayload) {
+        return prev.map(i => i.id === id ? failAutomationItem(i) : i);
+      }
+
+      const result = executeActionPayload(actionPayload);
+      if (!result.ok) {
+        return prev.map(i => i.id === id ? failAutomationItem(i) : i);
+      }
+
+      switch (result.type) {
+        case 'whatsapp_url':
+          window.open(result.url, '_blank');
+          break;
+        case 'pos_discount':
+          console.log('Approved discount automation:', result.sku);
+          break;
+        case 'pos_bundle':
+          console.log('Approved bundle automation:', result.sku);
+          break;
+        case 'review_panel':
+          console.log('Approved review automation');
+          break;
+        case 'reminder_queue':
+          console.log('Approved reminder automation:', result.customerName);
+          break;
+      }
+
+      return prev.map(i => i.id === id ? completeAutomationItem(approveAutomationItem(i)) : i);
+    });
   }
 
   function handleCancelAutomation(id: string) {
@@ -243,7 +278,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                 <div className="flex items-center gap-1 shrink-0">
                   {item.status !== 'pending' ? (
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                      item.status === 'approved' ? 'border-green-600/50 text-green-400' : 'border-slate-600 text-slate-500'
+                      item.status === 'completed' ? 'border-green-600/50 text-green-400' :
+                      item.status === 'approved'  ? 'border-blue-600/50 text-blue-400' :
+                      item.status === 'failed'    ? 'border-red-600/50 text-red-400' :
+                      'border-slate-600 text-slate-500'
                     }`}>
                       {item.status}
                     </span>
