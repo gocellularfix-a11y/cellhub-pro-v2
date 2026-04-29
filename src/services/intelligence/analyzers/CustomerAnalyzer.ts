@@ -1,6 +1,6 @@
 // CellHub Intelligence — Customer Analyzer
 import type { Customer, Sale } from '@/store/types';
-import { Insight, CustomerMetrics } from '../types';
+import { Insight, CustomerMetrics, NextVisitPrediction } from '../types';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { percentile } from '../utils/statistics';
 
@@ -134,6 +134,60 @@ export class CustomerAnalyzer {
       dist[carrier] = (dist[carrier] || 0) + 1;
     }
     return dist;
+  }
+
+  // R-INTEL-2-CONTACT: predict next expected visit per customer and return
+  // overdue customers sorted by urgency. Requires visitCount >= 2 to have
+  // a meaningful cadence. Confidence grows with visit history (capped at 5).
+  getNextVisitPredictions(topN: number = 10): NextVisitPrediction[] {
+    const today = Date.now();
+    const result: NextVisitPrediction[] = [];
+
+    for (const customer of this.filterByStore(this.customers)) {
+      const customerSales = this.sales
+        .filter(s => s.customerId === customer.id && s.status !== 'voided')
+        .map(s => new Date(s.createdAt as string).getTime())
+        .filter(t => !Number.isNaN(t))
+        .sort((a, b) => a - b);
+
+      if (customerSales.length < 2) continue;
+
+      const visitCount = customerSales.length;
+      const lastVisitMs = customerSales[customerSales.length - 1];
+
+      // Avg gap between consecutive visits (ms → days).
+      let totalGapMs = 0;
+      for (let i = 1; i < customerSales.length; i++) {
+        totalGapMs += customerSales[i] - customerSales[i - 1];
+      }
+      const avgDaysBetweenVisits = totalGapMs / (visitCount - 1) / (1000 * 60 * 60 * 24);
+
+      if (avgDaysBetweenVisits <= 0) continue;
+
+      const predictedNextVisitMs = lastVisitMs + avgDaysBetweenVisits * 24 * 60 * 60 * 1000;
+      const overdueByDays = (today - predictedNextVisitMs) / (1000 * 60 * 60 * 24);
+
+      if (overdueByDays <= 0) continue;  // not yet due
+
+      const urgencyScore = overdueByDays / avgDaysBetweenVisits;
+      const confidence = Math.min(visitCount / 5, 1);
+
+      result.push({
+        customerId: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        lastVisit: new Date(lastVisitMs),
+        avgDaysBetweenVisits: Math.round(avgDaysBetweenVisits),
+        predictedNextVisit: new Date(predictedNextVisitMs),
+        overdueByDays: Math.round(overdueByDays),
+        urgencyScore,
+        confidence,
+      });
+    }
+
+    return result
+      .sort((a, b) => b.urgencyScore - a.urgencyScore)
+      .slice(0, topN);
   }
 
   generateInsights(window?: { start: Date; end: Date }): Insight[] {

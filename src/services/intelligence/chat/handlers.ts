@@ -57,6 +57,9 @@ export function handleIntent(
     case 'anomaly_days':
       return handleAnomalyDays(engine, es);
 
+    case 'who_to_contact':
+      return handleWhoToContact(engine, es);
+
     case 'help':
       return handleHelp(es);
 
@@ -302,6 +305,37 @@ function handleAnomalyDays(engine: IntelligenceEngine, es: boolean): ChatRespons
   };
 }
 
+// ── Who to contact (R-INTEL-2-CONTACT) ─────────────────────
+function handleWhoToContact(engine: IntelligenceEngine, es: boolean): ChatResponse {
+  const predictions = engine.getNextVisitPredictions(10);
+
+  if (predictions.length === 0) {
+    return {
+      kind: 'answer',
+      text: es
+        ? 'Ningún cliente con visita esperada está atrasado. ¡Todos al día!'
+        : 'No customers with an expected visit are overdue. All caught up!',
+    };
+  }
+
+  const lines = predictions.map(p => {
+    const phone = p.phone ? ` · ${p.phone}` : '';
+    const overdue = p.overdueByDays === 1
+      ? (es ? '1 día' : '1 day')
+      : (es ? `${p.overdueByDays} días` : `${p.overdueByDays} days`);
+    const msg = es
+      ? `💬 "Hola ${p.name.split(' ')[0]}, han pasado ${p.overdueByDays} días desde tu última visita. ¡Pásate cuando puedas!"`
+      : `💬 "Hi ${p.name.split(' ')[0]}, it's been ${p.overdueByDays} days since your last visit. Stop by when you can!"`;
+    return `• ${p.name}${phone} — ${es ? 'atrasado' : 'overdue'} ${overdue}\n  ${msg}`;
+  });
+
+  const header = es
+    ? `${predictions.length} clientes que deberías contactar hoy:`
+    : `${predictions.length} customers you should reach out to today:`;
+
+  return { kind: 'answer', text: `${header}\n\n${lines.join('\n\n')}` };
+}
+
 // ── Help ────────────────────────────────────────────────────
 function handleHelp(es: boolean): ChatResponse {
   const items = es
@@ -313,6 +347,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "qué está perdiendo velocidad" — dying stock',
       '• "qué vendo más" — top items',
       '• "reparaciones atrasadas" — overdue repairs',
+      '• "a quién llamar" — clientes con visita esperada atrasada',
       '• "cómo está la tienda" — health score',
       '• "proyecciones" — forecast por SKU',
       '• "días raros" / "anomalías" — cash-flow anomalies',
@@ -325,6 +360,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "what is losing momentum" — dying stock',
       '• "top items" — best sellers',
       '• "overdue repairs" — overdue repairs',
+      '• "who should I contact" — customers with overdue expected visit',
       '• "store health" — health score',
       '• "forecasts" — per-SKU demand projection',
       '• "anomalies" — unusual revenue days',

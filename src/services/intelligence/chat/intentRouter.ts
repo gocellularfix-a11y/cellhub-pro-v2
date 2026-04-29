@@ -34,6 +34,7 @@ export type IntentId =
   | 'health_check'
   | 'forecast_items'
   | 'anomaly_days'
+  | 'who_to_contact'
   | 'help'
   | 'unknown';
 
@@ -98,6 +99,12 @@ const FORECAST_KEYWORDS = [
 const ANOMALY_KEYWORDS = [
   'anomalia', 'anomalía', 'anomaly', 'dia raro', 'día raro',
   'unusual', 'inusual',
+];
+
+const WHO_TO_CONTACT_KEYWORDS = [
+  'llamar', 'contactar', 'contact', 'reach out', 'follow up',
+  'quién llamar', 'quien llamar', 'who should', 'a quién', 'a quien',
+  'clientes que', 'customers to', 'follow-up', 'no han venido', 'not visited',
 ];
 
 const HELP_KEYWORDS = [
@@ -172,6 +179,7 @@ export function classifyIntent(
     { id: 'health_check', score: scoreKeywords(query, HEALTH_KEYWORDS) },
     { id: 'forecast_items', score: scoreKeywords(query, FORECAST_KEYWORDS) },
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
+    { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -192,7 +200,7 @@ export function classifyIntent(
       CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
-      ANOMALY_KEYWORDS, HELP_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

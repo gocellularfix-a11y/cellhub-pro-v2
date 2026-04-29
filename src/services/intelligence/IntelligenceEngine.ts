@@ -1,6 +1,6 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation, NextVisitPrediction } from './types';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -438,6 +438,12 @@ export class IntelligenceEngine {
   // getReorderAlerts() insight for action-oriented consumers.
   getReorderRecommendations(): ReorderRecommendation[] {
     return this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
+  }
+
+  // R-INTEL-2-CONTACT: overdue customers sorted by urgency.
+  // Only customers with visitCount >= 2 (established cadence) are included.
+  getNextVisitPredictions(topN: number = 10): NextVisitPrediction[] {
+    return this.customerAnalyzer.getNextVisitPredictions(topN);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

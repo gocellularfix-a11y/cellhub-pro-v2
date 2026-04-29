@@ -155,6 +155,20 @@ export interface CacheEntry<T> {
   expiresAt: number;
 }
 
+// R-INTEL-2-CONTACT: per-customer next-visit prediction for the
+// "who should I contact today?" chat intent and future contact-list UI.
+export interface NextVisitPrediction {
+  customerId: string;
+  name: string;
+  phone?: string;
+  lastVisit: Date;
+  avgDaysBetweenVisits: number;
+  predictedNextVisit: Date;
+  overdueByDays: number;       // positive = overdue, negative = not yet due
+  urgencyScore: number;        // overdueByDays / avgDaysBetweenVisits (0..∞)
+  confidence: number;          // min(visitCount / 5, 1.0)
+}
+
 // R-INTEL-2-REORDER: full reorder recommendation — extends the binary
 // reorder alert with suggested qty, lost-revenue risk, and priority tier.
 export interface ReorderRecommendation {
