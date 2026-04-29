@@ -39,6 +39,7 @@ function ElectronLicenseCheck({ children }: { children: ReactNode }) {
       const result = await api.checkLicense() as any;
       setTier(result.tier || '');
       setDaysRemaining(result.daysRemaining ?? null);
+      if (result.graceDaysRemaining != null) setDaysRemaining(result.graceDaysRemaining);
       setStatus(result.valid ? 'valid' : 'invalid');
     } catch (err) {
       // r27 B1: fail CLOSED. Previous behavior was fail-open which let any
@@ -82,6 +83,11 @@ function ElectronLicenseCheck({ children }: { children: ReactNode }) {
         {tier === 'trial' && daysRemaining !== null && daysRemaining <= 7 && (
           <div className="fixed top-0 left-0 right-0 z-[200] bg-amber-600/90 text-white text-center py-1.5 text-xs font-medium">
             ⏳ Trial: {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} remaining
+          </div>
+        )}
+        {tier === 'grace' && daysRemaining !== null && (
+          <div className="fixed top-0 left-0 right-0 z-[200] bg-red-600/90 text-white text-center py-1.5 text-xs font-medium">
+            ⚠️ License machine mismatch — {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} to reactivate
           </div>
         )}
         {children}

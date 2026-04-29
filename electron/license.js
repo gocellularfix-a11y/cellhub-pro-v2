@@ -165,6 +165,29 @@ function getTierFeatures(tier) {
   return TIER_FEATURES[tier] || TIER_FEATURES.none;
 }
 
+function computeHwFingerprint() {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  let mac = 'NO-MAC';
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    const valid = iface.find(a => !a.internal && a.mac && a.mac !== '00:00:00:00:00:00');
+    if (valid) { mac = valid.mac; break; }
+  }
+  const cpu = os.cpus()[0]?.model || 'NO-CPU';
+  return crypto
+    .createHash('sha256')
+    .update(`${mac}::${cpu}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function checkClockRollback(config) {
+  if (!config.licenseHighWaterMark) return false;
+  const hwm = new Date(config.licenseHighWaterMark);
+  return Date.now() < hwm.getTime();
+}
+
 module.exports = {
   generateLicenseKey,
   validateLicenseKey,
@@ -172,4 +195,6 @@ module.exports = {
   getTrialDaysRemaining,
   getTierFeatures,
   TRIAL_DAYS,
+  computeHwFingerprint,
+  checkClockRollback,
 };

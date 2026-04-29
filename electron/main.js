@@ -10,6 +10,8 @@ const {
   generateTrialKey,
   getTrialDaysRemaining,
   getTierFeatures,
+  computeHwFingerprint,
+  checkClockRollback,
 } = require('./license');
 
 // ── Single instance lock ──────────────────────────────────
@@ -43,13 +45,66 @@ function saveConfig(data) {
 // ── License management ────────────────────────────────────
 function getLicenseStatus() {
   const config = loadConfig();
+  const hwFingerprint = computeHwFingerprint();
+
+  // Clock rollback guard
+  if (checkClockRollback(config)) {
+    return { valid: false, tier: 'none', expiresAt: null, expired: false, error: 'System clock manipulation detected.' };
+  }
+
+  // Advance highWaterMark
+  if (!config.licenseHighWaterMark || Date.now() > new Date(config.licenseHighWaterMark).getTime()) {
+    saveConfig({ licenseHighWaterMark: new Date().toISOString() });
+  }
+
+  // Auto-generate trial on first run
   if (!config.licenseKey) {
     const trialKey = generateTrialKey();
-    saveConfig({ licenseKey: trialKey, licenseTier: 'trial' });
+    saveConfig({
+      licenseKey: trialKey,
+      licenseTier: 'trial',
+      licenseHwFingerprint: hwFingerprint,
+      licenseGraceSince: null,
+      licenseHighWaterMark: new Date().toISOString(),
+    });
     const result = validateLicenseKey(trialKey);
     return { ...result, daysRemaining: getTrialDaysRemaining(result.expiresAt), features: getTierFeatures(result.tier) };
   }
+
   const result = validateLicenseKey(config.licenseKey);
+
+  // HW fingerprint binding
+  if (config.licenseHwFingerprint && config.licenseHwFingerprint !== hwFingerprint) {
+    const graceSince = config.licenseGraceSince;
+    if (!graceSince) {
+      saveConfig({ licenseGraceSince: new Date().toISOString() });
+      return { ...result, valid: true, tier: 'grace', hwMismatch: true, graceDaysRemaining: 7, features: getTierFeatures(result.tier) };
+    }
+    const days = (Date.now() - new Date(graceSince).getTime()) / 86400000;
+    if (days <= 7) {
+      return {
+        ...result,
+        valid: true,
+        tier: 'grace',
+        hwMismatch: true,
+        graceDaysRemaining: Math.ceil(7 - days),
+        features: getTierFeatures(result.tier),
+      };
+    }
+    return {
+      valid: false,
+      tier: 'none',
+      expiresAt: null,
+      expired: false,
+      error: 'License is bound to a different machine. Please reactivate.',
+      hwMismatch: true,
+      features: getTierFeatures('none'),
+    };
+  }
+
+  // Same machine — bind fingerprint if not yet stored
+  saveConfig({ licenseHwFingerprint: hwFingerprint, licenseGraceSince: null });
+
   return {
     ...result,
     daysRemaining: result.tier === 'trial' ? getTrialDaysRemaining(result.expiresAt) : null,
@@ -190,7 +245,14 @@ function registerIpcHandlers() {
   ipcMain.handle('activate-license', (_, key) => {
     const result = validateLicenseKey(key);
     if (result.valid) {
-      saveConfig({ licenseKey: key.trim().toUpperCase(), licenseTier: result.tier, licenseActivatedAt: new Date().toISOString() });
+      saveConfig({
+        licenseKey: key.trim().toUpperCase(),
+        licenseTier: result.tier,
+        licenseActivatedAt: new Date().toISOString(),
+        licenseHwFingerprint: computeHwFingerprint(),
+        licenseGraceSince: null,
+        licenseHighWaterMark: new Date().toISOString(),
+      });
       return { success: true, tier: result.tier, expiresAt: result.expiresAt, features: getTierFeatures(result.tier) };
     }
     return { success: false, error: result.error || 'Invalid license key' };
