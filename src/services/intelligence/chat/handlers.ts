@@ -11,6 +11,8 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
 import type { ActionType } from '../types';
+import type { ActionPayload } from '../actions/actionEngine';
+import { buildActionPayload } from '../actions/actionEngine';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 
@@ -36,9 +38,17 @@ function tChat(lang: Lang3) {
   };
 }
 
+export interface ChatActionUI {
+  id: string;
+  label: string;
+  actionType?: ActionType;
+  payload: ActionPayload;
+}
+
 export interface ChatResponse {
   text: string;
   kind: 'answer' | 'disambiguation' | 'error' | 'help';
+  actions?: ChatActionUI[];
 }
 
 export function handleIntent(
@@ -490,7 +500,14 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
     return lines.join('\n');
   });
 
-  return { kind: 'answer', text: `${header}\n\n${sections.join('\n\n')}` };
+  const actionUI: ChatActionUI[] = top[0].actions.map((a, i) => ({
+    id: `${i}-${a.labelKey}`,
+    label: t(a.labelKey),
+    actionType: a.actionType,
+    payload: buildActionPayload(a, { sku: top[0].sku }),
+  }));
+
+  return { kind: 'answer', text: `${header}\n\n${sections.join('\n\n')}`, actions: actionUI };
 }
 
 // ── Slow day root cause (R-INTEL-PHASE2B-RC) ───────────────
@@ -542,7 +559,14 @@ function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatRe
     lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`);
   });
 
-  return { kind: 'answer', text: lines.join('\n') };
+  const actionUI: ChatActionUI[] = report.actions.map((a, i) => ({
+    id: `${i}-${a.labelKey}`,
+    label: t(a.labelKey),
+    actionType: a.actionType,
+    payload: buildActionPayload(a, {}),
+  }));
+
+  return { kind: 'answer', text: lines.join('\n'), actions: actionUI };
 }
 
 // ── Revenue decline root cause (R-INTEL-PHASE2-RC) ─────────
@@ -591,7 +615,14 @@ function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse 
     lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`);
   });
 
-  return { kind: 'answer', text: lines.join('\n') };
+  const actionUI: ChatActionUI[] = report.actions.map((a, i) => ({
+    id: `${i}-${a.labelKey}`,
+    label: t(a.labelKey),
+    actionType: a.actionType,
+    payload: buildActionPayload(a, {}),
+  }));
+
+  return { kind: 'answer', text: lines.join('\n'), actions: actionUI };
 }
 
 // ── Customer churn root cause (R-INTEL-PHASE2D-RC) ──────────
@@ -628,7 +659,14 @@ function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResp
     });
   }
 
-  return { kind: 'answer', text: lines.join('\n') };
+  const actionUI: ChatActionUI[] = reports[0].actions.map((a, i) => ({
+    id: `${i}-${a.labelKey}`,
+    label: t(a.labelKey),
+    actionType: a.actionType,
+    payload: buildActionPayload(a, { customerName: reports[0].name }),
+  }));
+
+  return { kind: 'answer', text: lines.join('\n'), actions: actionUI };
 }
 
 // ── Help ────────────────────────────────────────────────────

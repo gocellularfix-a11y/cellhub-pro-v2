@@ -32,7 +32,11 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
         return { ok: false, reason: 'missing_customer' };
       }
       const text = buildMessage(payload.messageKey, payload.customerName);
-      const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      if (!text || text.trim().length === 0) {
+        return { ok: false, reason: 'missing_template' };
+      }
+      const encoded = encodeURIComponent(text);
+      const url = `https://wa.me/?text=${encoded}`;
       return { ok: true, type: 'whatsapp_url', url };
     }
 

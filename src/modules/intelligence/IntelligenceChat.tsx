@@ -12,6 +12,8 @@ import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent } from '@/services/intelligence/chat/handlers';
+import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
+import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 import { useTranslation } from '@/i18n';
 
 interface Props {
@@ -28,6 +30,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   kind?: 'answer' | 'disambiguation' | 'error' | 'help';
+  actions?: ChatActionUI[];
 }
 
 export default function IntelligenceChat({ engine, customers, lang, externalQuery }: Props) {
@@ -51,7 +54,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     setMessages(prev => [
       ...prev,
       { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
-      { id: `a-${Date.now() + 1}`, role: 'assistant', content: response.text, timestamp: new Date(), kind: response.kind },
+      { id: `a-${Date.now() + 1}`, role: 'assistant', content: response.text, timestamp: new Date(), kind: response.kind, actions: response.actions },
     ]);
   }, []);
 
@@ -87,11 +90,37 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       content: response.text,
       timestamp: new Date(),
       kind: response.kind,
+      actions: response.actions,
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
   };
+
+  function handleActionClick(action: ChatActionUI) {
+    const result = executeActionPayload(action.payload);
+    if (!result.ok) {
+      console.warn('Action not executable:', result.reason);
+      return;
+    }
+    switch (result.type) {
+      case 'whatsapp_url':
+        window.open(result.url, '_blank');
+        break;
+      case 'pos_discount':
+        console.log('Trigger discount flow for SKU:', result.sku);
+        break;
+      case 'pos_bundle':
+        console.log('Trigger bundle flow for SKU:', result.sku);
+        break;
+      case 'review_panel':
+        console.log('Open review panel');
+        break;
+      case 'reminder_queue':
+        console.log('Queue reminder for:', result.customerName);
+        break;
+    }
+  }
 
   const handleSuggestion = (suggestion: string) => {
     setInput(suggestion);
@@ -126,7 +155,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         {messages.length === 0 ? (
           <EmptyState onSuggestion={handleSuggestion} />
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} />)
+          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} />)
         )}
         <div ref={bottomRef} />
       </div>
@@ -154,7 +183,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 }
 
 // ── Message bubble ──────────────────────────────────────────
-function MessageBubble({ msg, es }: { msg: ChatMessage; es: boolean }) {
+function MessageBubble({ msg, es, onAction }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void }) {
   const isUser = msg.role === 'user';
   const kindColor = {
     answer: 'border-blue-500/30 bg-blue-500/5',
@@ -175,6 +204,20 @@ function MessageBubble({ msg, es }: { msg: ChatMessage; es: boolean }) {
       >
         {!isUser && <div className="text-xs text-slate-400 mb-1">🤖 {es ? 'Intelligence' : 'Intelligence'}</div>}
         {msg.content}
+        {!isUser && msg.actions && msg.actions.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {msg.actions.map(action => (
+              <button
+                key={action.id}
+                onClick={() => onAction(action)}
+                disabled={!action.payload.executable}
+                className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 disabled:opacity-50"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
