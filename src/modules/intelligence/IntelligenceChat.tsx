@@ -64,7 +64,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       return [];
     }
   });
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
   // Auto-submit when parent fires a quick-action chip.
@@ -150,9 +150,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
   }, [automationQueue]);
 
-  // Scroll to bottom on new message.
+  // Scroll message list to bottom — does NOT scroll the page.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messageListRef.current) {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -290,13 +292,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 ? (
           <EmptyState onSuggestion={handleSuggestion} />
         ) : (
           messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Automation Queue */}
