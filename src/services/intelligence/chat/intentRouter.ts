@@ -24,6 +24,7 @@ export interface IntentContext {
 }
 
 export type IntentId =
+  | 'best_customer'
   | 'customer_history'
   | 'sales_summary'
   | 'inventory_low'
@@ -53,6 +54,15 @@ export interface IntentMatch {
 }
 
 // ── Keyword banks ───────────────────────────────────────────
+
+const BEST_CUSTOMER_KEYWORDS = [
+  // EN
+  'best customer', 'top customer', 'my best customer', 'highest value customer',
+  // ES
+  'mi mejor cliente', 'mejor cliente', 'cliente más valioso', 'cliente que más compra',
+  // PT
+  'melhor cliente', 'meu melhor cliente', 'cliente mais valioso', 'cliente que mais compra',
+];
 
 const CUSTOMER_KEYWORDS = [
   'historial', 'history', 'cliente', 'customer',
@@ -242,6 +252,7 @@ export function classifyIntent(
 
   // Score each intent bank.
   const scores: Array<{ id: IntentId; score: number }> = [
+    { id: 'best_customer',    score: scoreKeywords(query, BEST_CUSTOMER_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     { id: 'sales_summary', score: scoreKeywords(query, SALES_KEYWORDS) },
     { id: 'inventory_low', score: scoreKeywords(query, INVENTORY_LOW_KEYWORDS) },
@@ -276,7 +287,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

@@ -4730,4 +4730,17 @@ export const translations: TranslationDictionary = {
   'chat.churn.action.first_return_incentive': { en: 'Send a "come back" incentive (discount or freebie)',               es: 'Envía incentivo para que regrese (descuento o regalo)',                    pt: 'Envie incentivo de retorno (desconto ou brinde)' },
   'chat.churn.action.educate_customer':       { en: 'Follow up to understand their experience',                         es: 'Haz seguimiento para entender su experiencia',                             pt: 'Faça acompanhamento para entender a experiência' },
   'chat.churn.action.review_history':         { en: 'Review their purchase history for patterns',                       es: 'Revisa su historial de compras para detectar patrones',                    pt: 'Revise o histórico de compras para padrões' },
+
+  'chat.bestCustomer.header':         { en: 'Your best customer:', es: 'Tu mejor cliente:', pt: 'Seu melhor cliente:' },
+  'chat.bestCustomer.empty':          { en: 'No customer data available yet.', es: 'Sin datos de clientes todavía.', pt: 'Sem dados de clientes ainda.' },
+  'chat.bestCustomer.summary':        {
+    en: (name: string, revenue: string, visits: number, lastDays: number) => `${name}\nTotal spent: ${revenue}\nVisits: ${visits}\nLast visit: ${lastDays} days ago`,
+    es: (name: string, revenue: string, visits: number, lastDays: number) => `${name}\nGasto total: ${revenue}\nVisitas: ${visits}\nÚltima visita: hace ${lastDays} días`,
+    pt: (name: string, revenue: string, visits: number, lastDays: number) => `${name}\nTotal gasto: ${revenue}\nVisitas: ${visits}\nÚltima visita: há ${lastDays} dias`,
+  },
+  'chat.bestCustomer.recommendation': {
+    en: 'Consider a loyalty reward or personal outreach to keep them coming back.',
+    es: 'Considera un premio de lealtad o contacto personal para que siga regresando.',
+    pt: 'Considere uma recompensa de fidelidade ou contato pessoal para mantê-los voltando.',
+  },
 };

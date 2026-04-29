@@ -59,6 +59,9 @@ export function handleIntent(
   const es = lang === 'es';
 
   switch (match.id) {
+    case 'best_customer':
+      return handleBestCustomer(engine, lang);
+
     case 'customer_history':
       return handleCustomerHistory(match, engine, es);
 
@@ -117,6 +120,40 @@ export function handleIntent(
     default:
       return handleUnknown(es);
   }
+}
+
+// ── Best customer ───────────────────────────────────────────
+function handleBestCustomer(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const result = engine.refresh();
+  const scores = result.customerScores;
+
+  if (scores.length === 0) {
+    return { kind: 'answer', text: t('chat.bestCustomer.empty') };
+  }
+
+  const top = scores.slice().sort((a, b) => b.score - a.score)[0];
+  const history = engine.getCustomerHistory(top.customerId);
+
+  if (!history) {
+    return { kind: 'answer', text: t('chat.bestCustomer.empty') };
+  }
+
+  const lastDays = history.lastVisit
+    ? Math.floor((Date.now() - history.lastVisit.getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  const summary = t('chat.bestCustomer.summary',
+    history.customer.name,
+    COP(history.grossRevenue),
+    history.visitCount,
+    lastDays,
+  );
+
+  return {
+    kind: 'answer',
+    text: `${t('chat.bestCustomer.header')}\n\n${summary}\n\n${t('chat.bestCustomer.recommendation')}`,
+  };
 }
 
 // ── Customer history ────────────────────────────────────────
@@ -683,6 +720,7 @@ function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResp
 function handleHelp(es: boolean): ChatResponse {
   const items = es
     ? [
+      '• "mi mejor cliente" — cliente top por valor',
       '• "historial de <nombre>" — historial completo de un cliente',
       '• "cómo van las ventas" — resumen de ventas',
       '• "qué me falta" — stock bajo / reorden',
@@ -702,6 +740,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "días raros" / "anomalías" — cash-flow anomalies',
     ]
     : [
+      '• "best customer" — top customer by value',
       '• "history of <name>" — full customer history',
       '• "how are sales" — sales summary',
       '• "what do I need" — low stock / reorder',
