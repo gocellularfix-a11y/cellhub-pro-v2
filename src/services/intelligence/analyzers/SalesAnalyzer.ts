@@ -129,6 +129,38 @@ export class SalesAnalyzer {
     return hourly;
   }
 
+  // R-INTEL-2-MISSED: weekly revenue gap — compares the slowest DOW against
+  // the best DOW over the last 30 days. The gap is the per-week opportunity.
+  getMissedRevenueByDay(): { slowDayLossCents: number; slowestDayName: string } {
+    const days = this.getSlowestDays(); // sorted ASC by revenue; uses EN names by default
+    if (days.length < 2) return { slowDayLossCents: 0, slowestDayName: '' };
+    const slowest = days[0];
+    const best = days[days.length - 1];
+    // Re-derive English name regardless of analyzer lang (stored data = English DOW)
+    const DAY_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const DAY_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const esIdx = DAY_ES.indexOf(slowest.day);
+    const slowestDayName = esIdx >= 0 ? DAY_EN[esIdx] : slowest.day;
+    return {
+      slowDayLossCents: Math.max(0, best.revenue - slowest.revenue),
+      slowestDayName,
+    };
+  }
+
+  // R-INTEL-2-MISSED: daily off-peak gap — sum of (peakHour - eachActiveHour)
+  // for the last 30 days. Hours with zero revenue are excluded (assumed closed).
+  getMissedRevenueByHour(): { slowHourLossCents: number } {
+    const hourly = this.getHourlyHeatmap();
+    const activeRevenues = Object.values(hourly).filter(rev => rev > 0);
+    if (activeRevenues.length === 0) return { slowHourLossCents: 0 };
+    const peakHourRevenue = Math.max(...activeRevenues);
+    const slowHourLossCents = activeRevenues.reduce(
+      (sum, rev) => sum + (peakHourRevenue - rev),
+      0,
+    );
+    return { slowHourLossCents };
+  }
+
   // R-INTEL-SMARTER-F1: per-SKU demand forecasting via linear regression
   // over daily unit sales. Returns only items with r² ≥ 0.3 (some signal;
   // lower than that is noise). Projects 7 and 30 days.

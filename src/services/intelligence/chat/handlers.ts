@@ -73,6 +73,9 @@ export function handleIntent(
     case 'who_to_contact':
       return handleWhoToContact(engine, es);
 
+    case 'what_hurting_profit':
+      return handleWhatHurtingProfit(engine, es);
+
     case 'help':
       return handleHelp(es);
 
@@ -318,6 +321,66 @@ function handleAnomalyDays(engine: IntelligenceEngine, es: boolean): ChatRespons
   };
 }
 
+// ── What is hurting profit (R-INTEL-2-MISSED) ───────────────
+function handleWhatHurtingProfit(engine: IntelligenceEngine, es: boolean): ChatResponse {
+  const report = engine.getMissedRevenue();
+
+  // Build ranked loss list — only include signals with value > 0.
+  const losses: Array<{ labelEs: string; label: string; cents: number; noteEs: string; note: string }> = [];
+
+  if (report.deadStockLockedCents > 0) {
+    losses.push({
+      label: 'Dead stock capital lock',
+      labelEs: 'Capital en stock muerto',
+      cents: report.deadStockLockedCents,
+      note: `${COP(report.opportunityCostCents)}/mo holding cost`,
+      noteEs: `${COP(report.opportunityCostCents)}/mes de costo de almacenaje`,
+    });
+  }
+
+  if (report.slowDayLossCents > 0) {
+    const day = report.slowestDayName;
+    losses.push({
+      label: `Slow day gap (${day})`,
+      labelEs: `Brecha del día lento (${day})`,
+      cents: report.slowDayLossCents,
+      note: 'vs best day of week — weekly opportunity',
+      noteEs: 'vs mejor día — oportunidad semanal',
+    });
+  }
+
+  if (report.slowHourLossCents > 0) {
+    losses.push({
+      label: 'Off-peak hour gap',
+      labelEs: 'Brecha de horas lentas',
+      cents: report.slowHourLossCents,
+      note: 'daily total vs peak hour across all active hours',
+      noteEs: 'total diario vs hora pico en horas con actividad',
+    });
+  }
+
+  if (losses.length === 0) {
+    return {
+      kind: 'answer',
+      text: es
+        ? 'Sin señales de ingreso perdido detectadas. ¡Todo luciendo bien!'
+        : 'No missed-revenue signals detected. Everything looking good!',
+    };
+  }
+
+  losses.sort((a, b) => b.cents - a.cents);
+
+  const lines = losses.map((l, i) =>
+    `${i + 1}. ${es ? l.labelEs : l.label}: ${COP(l.cents)}\n   ${es ? l.noteEs : l.note}`,
+  );
+
+  const header = es
+    ? '💸 Pérdidas de ingreso detectadas (mayor a menor):'
+    : '💸 Missed revenue signals (largest first):';
+
+  return { kind: 'answer', text: `${header}\n\n${lines.join('\n\n')}` };
+}
+
 // ── Who to contact (R-INTEL-2-CONTACT) ─────────────────────
 function handleWhoToContact(engine: IntelligenceEngine, es: boolean): ChatResponse {
   const predictions = engine.getNextVisitPredictions(10);
@@ -361,6 +424,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "qué vendo más" — top items',
       '• "reparaciones atrasadas" — overdue repairs',
       '• "a quién llamar" — clientes con visita esperada atrasada',
+      '• "qué está afectando mi ganancia" — ingreso perdido por área',
       '• "cómo está la tienda" — health score',
       '• "proyecciones" — forecast por SKU',
       '• "días raros" / "anomalías" — cash-flow anomalies',
@@ -374,6 +438,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "top items" — best sellers',
       '• "overdue repairs" — overdue repairs',
       '• "who should I contact" — customers with overdue expected visit',
+      '• "what is hurting my profit" — missed revenue by area',
       '• "store health" — health score',
       '• "forecasts" — per-SKU demand projection',
       '• "anomalies" — unusual revenue days',

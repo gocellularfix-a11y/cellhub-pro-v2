@@ -1,6 +1,6 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation, NextVisitPrediction } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation, NextVisitPrediction, MissedRevenueReport } from './types';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -444,6 +444,15 @@ export class IntelligenceEngine {
   // Only customers with visitCount >= 2 (established cadence) are included.
   getNextVisitPredictions(topN: number = 10): NextVisitPrediction[] {
     return this.customerAnalyzer.getNextVisitPredictions(topN);
+  }
+
+  // R-INTEL-2-MISSED: aggregate missed-revenue signals from sales and
+  // inventory analyzers into a single report for the chat handler + future UI.
+  getMissedRevenue(): MissedRevenueReport {
+    const { slowDayLossCents, slowestDayName } = this.salesAnalyzer.getMissedRevenueByDay();
+    const { slowHourLossCents } = this.salesAnalyzer.getMissedRevenueByHour();
+    const { deadStockLockedCents, opportunityCostCents } = this.inventoryAnalyzer.getDeadStockOpportunityCost();
+    return { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

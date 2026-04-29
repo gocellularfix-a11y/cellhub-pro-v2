@@ -306,6 +306,18 @@ export class InventoryAnalyzer {
     );
   }
 
+  // R-INTEL-2-MISSED: capital locked in dead inventory + monthly holding cost.
+  getDeadStockOpportunityCost(): { deadStockLockedCents: number; opportunityCostCents: number } {
+    const deadStock = this.getDeadStock();
+    const deadStockLockedCents = deadStock.reduce(
+      (sum, i) => sum + ((i.cost || 0) * Math.max(0, i.qty || 0)),
+      0,
+    );
+    // 2 % / month holding cost (simplified capital opportunity cost)
+    const opportunityCostCents = Math.round(deadStockLockedCents * 0.02);
+    return { deadStockLockedCents, opportunityCostCents };
+  }
+
   getInventoryTurnoverRate(): number {
     const costValue = this.inventory.reduce((sum, i) => sum + ((i.cost || 0) * Math.max(0, i.qty || 0)), 0);
     const recentSales = this.sales.filter(s => {

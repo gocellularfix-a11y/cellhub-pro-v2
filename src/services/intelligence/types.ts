@@ -155,6 +155,16 @@ export interface CacheEntry<T> {
   expiresAt: number;
 }
 
+// R-INTEL-2-MISSED: aggregate missed-revenue signals for the
+// "what is hurting my profit?" chat intent and future dashboard card.
+export interface MissedRevenueReport {
+  slowDayLossCents: number;       // weekly revenue gap: best DOW minus slowest DOW
+  slowestDayName: string;         // English name of the slowest day of week
+  slowHourLossCents: number;      // daily sum of off-peak gaps vs peak hour
+  deadStockLockedCents: number;   // capital tied up in dead inventory (cost basis)
+  opportunityCostCents: number;   // 2%/month holding cost on dead stock
+}
+
 // R-INTEL-2-CONTACT: per-customer next-visit prediction for the
 // "who should I contact today?" chat intent and future contact-list UI.
 export interface NextVisitPrediction {
