@@ -155,6 +155,20 @@ export interface CacheEntry<T> {
   expiresAt: number;
 }
 
+// R-INTEL-2-REORDER: full reorder recommendation — extends the binary
+// reorder alert with suggested qty, lost-revenue risk, and priority tier.
+export interface ReorderRecommendation {
+  inventoryId: string;
+  name: string;
+  currentQty: number;
+  avgDailySales: number;       // units/day (float)
+  daysLeft: number;            // days of stock at current velocity
+  reorderPoint: number;        // qty threshold that triggered the recommendation
+  suggestedOrderQty: number;   // units to order to restore safety stock
+  lostRevenueRiskCents: number; // estimated revenue lost during stockout window
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
 // R-INTEL-CUSTOMER-HISTORY: per-customer rollup for the lookup card
 // + future chat "historial de X" intent. Composes computeCustomerProfit
 // (src/utils/customerProfit.ts) with first/last visit, top items,

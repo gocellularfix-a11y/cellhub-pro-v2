@@ -128,29 +128,34 @@ function handleSalesSummary(engine: IntelligenceEngine, es: boolean): ChatRespon
   return { kind: 'answer', text: lines.join('\n') };
 }
 
-// ── Inventory low-stock ─────────────────────────────────────
+// ── Inventory low-stock / reorder recommendations ───────────
+// R-INTEL-2-REORDER: upgraded from binary alert to full recommendation
+// list with suggested qty, priority, and lost-revenue risk.
 function handleInventoryLow(engine: IntelligenceEngine, es: boolean): ChatResponse {
-  const result = engine.refresh();
-  const count = result.kpiDashboard.inventory.lowStockCount;
-  const insights = result.insights.filter((i) => i.id === 'inventory-reorder');
-  const reorder = insights[0];
+  const recs = engine.getReorderRecommendations();
 
-  if (count === 0) {
+  if (recs.length === 0) {
     return {
       kind: 'answer',
       text: es ? 'Nada en alerta de reorden. Stock saludable.' : 'Nothing on reorder alert. Stock looks healthy.',
     };
   }
 
-  const data = reorder?.data as { items?: Array<{ name: string; daysLeft: number }> } | undefined;
-  const items = data?.items || [];
-  const list = items.map(i => `• ${i.name} (${i.daysLeft} ${es ? 'días' : 'days'})`).join('\n');
-  return {
-    kind: 'answer',
-    text: es
-      ? `${count} artículos necesitan reorden:\n${list}`
-      : `${count} items need reorder:\n${list}`,
-  };
+  const PRIORITY_LABEL: Record<string, string> = es
+    ? { CRITICAL: '🔴 CRÍTICO', HIGH: '🟠 ALTO', MEDIUM: '🟡 MEDIO', LOW: '🟢 BAJO' }
+    : { CRITICAL: '🔴 CRITICAL', HIGH: '🟠 HIGH', MEDIUM: '🟡 MEDIUM', LOW: '🟢 LOW' };
+
+  const lines = recs.slice(0, 8).map(r => {
+    const days = r.daysLeft < 1 ? (es ? '<1 día' : '<1 day') : `${Math.round(r.daysLeft)} ${es ? 'días' : 'days'}`;
+    const risk = r.lostRevenueRiskCents > 0 ? ` ⚠️ ${COP(r.lostRevenueRiskCents)} riesgo` : '';
+    return `${PRIORITY_LABEL[r.priority]} • ${r.name} — ${es ? 'pedir' : 'order'} ${r.suggestedOrderQty} uds (${days}${risk})`;
+  });
+
+  const header = es
+    ? `${recs.length} artículo${recs.length === 1 ? '' : 's'} para reordenar:`
+    : `${recs.length} item${recs.length === 1 ? '' : 's'} to reorder:`;
+
+  return { kind: 'answer', text: `${header}\n${lines.join('\n')}` };
 }
 
 // ── Inventory dead-stock ────────────────────────────────────

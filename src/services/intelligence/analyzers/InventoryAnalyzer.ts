@@ -1,6 +1,6 @@
 // CellHub Intelligence — Inventory Analyzer
 import type { InventoryItem } from '@/store/types';
-import { Insight, InventoryMetrics } from '../types';
+import { Insight, InventoryMetrics, ReorderRecommendation } from '../types';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { exponentialSmoothing } from '../utils/statistics';
 
@@ -239,6 +239,71 @@ export class InventoryAnalyzer {
     }
 
     return result.sort((a, b) => a.velocityScore - b.velocityScore);
+  }
+
+  // R-INTEL-2-REORDER: full recommendation with suggested order qty, priority,
+  // and lost-revenue risk. Replaces the binary getReorderAlerts() for UI/chat
+  // consumers that need actionable detail. getReorderAlerts() is preserved
+  // (used by generateInsights + health score).
+  getReorderRecommendations(leadTimeDays: number = 3): ReorderRecommendation[] {
+    const result: ReorderRecommendation[] = [];
+    const recentSales = this.sales.filter(s => {
+      const created = new Date(s.createdAt as string);
+      return created >= getDaysAgo(30);
+    });
+
+    for (const item of this.inventory) {
+      const qty = item.qty || 0;
+      if (qty <= 0) continue;
+
+      let salesQty = 0;
+      for (const sale of recentSales) {
+        for (const si of (sale.items || [])) {
+          if (si.inventoryId === item.id || si.name === item.name) {
+            salesQty += si.qty || 1;
+          }
+        }
+      }
+
+      const avgDailySales = salesQty / 30;
+      if (avgDailySales <= 0) continue;
+
+      const daysLeft = qty / avgDailySales;
+      const safetyStock = avgDailySales * leadTimeDays * 1.5;
+      const reorderPoint = avgDailySales * leadTimeDays + safetyStock;
+      const suggestedOrderQty = Math.max(Math.ceil(reorderPoint - qty), 0);
+
+      if (suggestedOrderQty === 0) continue;
+
+      const lostRevenueRiskCents = daysLeft < leadTimeDays
+        ? Math.round((leadTimeDays - daysLeft) * avgDailySales * (item.price || 0))
+        : 0;
+
+      let priority: ReorderRecommendation['priority'];
+      if (daysLeft < leadTimeDays) priority = 'CRITICAL';
+      else if (daysLeft < leadTimeDays * 2) priority = 'HIGH';
+      else if (daysLeft < 7) priority = 'MEDIUM';
+      else priority = 'LOW';
+
+      result.push({
+        inventoryId: item.id,
+        name: item.name,
+        currentQty: qty,
+        avgDailySales,
+        daysLeft,
+        reorderPoint,
+        suggestedOrderQty,
+        lostRevenueRiskCents,
+        priority,
+      });
+    }
+
+    const PRIORITY_ORDER: Record<ReorderRecommendation['priority'], number> = {
+      CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3,
+    };
+    return result.sort(
+      (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.daysLeft - b.daysLeft,
+    );
   }
 
   getInventoryTurnoverRate(): number {

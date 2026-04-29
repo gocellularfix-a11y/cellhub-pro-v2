@@ -1,6 +1,6 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation } from './types';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -32,6 +32,7 @@ export interface EngineConfig {
   enableAlerts: boolean;
   enableScoring: boolean;
   cacheTimeoutMinutes: number;
+  leadTimeDays?: number;  // R-INTEL-2-REORDER: days to receive stock (default 3)
 }
 
 export interface EngineResult {
@@ -430,6 +431,13 @@ export class IntelligenceEngine {
   // Expose correlations directly for UI/chat consumers.
   getRepairInventoryGaps(): RepairInventoryGap[] {
     return findRepairInventoryGaps(this.repairs, this.inventory, this.sales, 60, 5);
+  }
+
+  // R-INTEL-2-REORDER: full reorder recommendations with suggested qty,
+  // priority tier, and lost-revenue risk. Supersedes the binary
+  // getReorderAlerts() insight for action-oriented consumers.
+  getReorderRecommendations(): ReorderRecommendation[] {
+    return this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

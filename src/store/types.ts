@@ -73,6 +73,8 @@ export interface StoreSettings {
 
   // Inventory
   lowStockThreshold: number;
+  /** R-INTEL-2-REORDER: days to receive stock from supplier (default 3). */
+  reorderLeadTimeDays?: number;
   /** Custom field customization for Inventory form (null = use all defaults) */
   inventoryFieldConfig?: InventoryFieldConfig;
 
