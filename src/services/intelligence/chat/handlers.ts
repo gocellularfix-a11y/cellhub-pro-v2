@@ -71,7 +71,7 @@ export function handleIntent(
       return handleAnomalyDays(engine, es);
 
     case 'who_to_contact':
-      return handleWhoToContact(engine, es);
+      return handleWhoToContact(engine, lang);
 
     case 'what_hurting_profit':
       return handleWhatHurtingProfit(engine, lang);
@@ -373,34 +373,24 @@ function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatR
 }
 
 // ── Who to contact (R-INTEL-2-CONTACT) ─────────────────────
-function handleWhoToContact(engine: IntelligenceEngine, es: boolean): ChatResponse {
+function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
   const predictions = engine.getNextVisitPredictions(10);
 
   if (predictions.length === 0) {
-    return {
-      kind: 'answer',
-      text: es
-        ? 'Ningún cliente con visita esperada está atrasado. ¡Todos al día!'
-        : 'No customers with an expected visit are overdue. All caught up!',
-    };
+    return { kind: 'answer', text: t('chat.contact.empty') };
   }
 
   const lines = predictions.map(p => {
     const phone = p.phone ? ` · ${p.phone}` : '';
     const overdue = p.overdueByDays === 1
-      ? (es ? '1 día' : '1 day')
-      : (es ? `${p.overdueByDays} días` : `${p.overdueByDays} days`);
-    const msg = es
-      ? `💬 "Hola ${p.name.split(' ')[0]}, han pasado ${p.overdueByDays} días desde tu última visita. ¡Pásate cuando puedas!"`
-      : `💬 "Hi ${p.name.split(' ')[0]}, it's been ${p.overdueByDays} days since your last visit. Stop by when you can!"`;
-    return `• ${p.name}${phone} — ${es ? 'atrasado' : 'overdue'} ${overdue}\n  ${msg}`;
+      ? t('chat.contact.daySingular')
+      : t('chat.contact.dayPlural', p.overdueByDays);
+    const msg = t('chat.contact.message', p.name.split(' ')[0], p.overdueByDays);
+    return `• ${p.name}${phone} — ${t('chat.contact.overdue')} ${overdue}\n  ${msg}`;
   });
 
-  const header = es
-    ? `${predictions.length} clientes que deberías contactar hoy:`
-    : `${predictions.length} customers you should reach out to today:`;
-
-  return { kind: 'answer', text: `${header}\n\n${lines.join('\n\n')}` };
+  return { kind: 'answer', text: `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}` };
 }
 
 // ── Help ────────────────────────────────────────────────────
