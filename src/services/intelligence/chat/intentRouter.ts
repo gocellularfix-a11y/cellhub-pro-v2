@@ -40,6 +40,7 @@ export type IntentId =
   | 'root_cause'
   | 'slow_day_root_cause'
   | 'dead_stock_root_cause'
+  | 'customer_churn_root_cause'
   | 'help'
   | 'unknown';
 
@@ -167,6 +168,18 @@ const DEAD_STOCK_ROOT_CAUSE_KEYWORDS = [
   'por que não vende', 'estoque parado', 'produto parado', 'diagnóstico de estoque',
 ];
 
+const CUSTOMER_CHURN_KEYWORDS = [
+  // EN
+  'why customers stopped coming', 'lost customers', 'churn reason',
+  'customers not returning', 'not coming back', 'stopped visiting',
+  // ES
+  'por qué no regresan clientes', 'clientes perdidos', 'clientes no vuelven',
+  'no regresan', 'dejaron de venir',
+  // PT
+  'por que clientes não voltam', 'clientes perdidos', 'churn clientes',
+  'não voltam', 'pararam de vir',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -245,6 +258,7 @@ export function classifyIntent(
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
     { id: 'dead_stock_root_cause', score: scoreKeywords(query, DEAD_STOCK_ROOT_CAUSE_KEYWORDS) },
+    { id: 'customer_churn_root_cause', score: scoreKeywords(query, CUSTOMER_CHURN_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -267,7 +281,7 @@ export function classifyIntent(
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
-      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

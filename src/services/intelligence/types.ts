@@ -309,3 +309,14 @@ export interface DeadStockRootCauseReport {
   confidence: number;               // 0..1, min(1, lastSaleDaysAgo / 30)
   actions: ActionItem[];
 }
+
+export interface ChurnRootCauseReport {
+  customerId: string;
+  name: string;
+  lastVisitDaysAgo: number;
+  avgVisitGapDays: number;
+  totalVisits: number;
+  diagnosis: 'lost_habit' | 'price_sensitivity' | 'one_time' | 'mixed';
+  confidence: number;               // 0..1, min(1, totalVisits / 5)
+  actions: ActionItem[];
+}

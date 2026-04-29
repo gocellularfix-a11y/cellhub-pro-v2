@@ -88,6 +88,9 @@ export function handleIntent(
     case 'dead_stock_root_cause':
       return handleDeadStockRootCause(engine, lang);
 
+    case 'customer_churn_root_cause':
+      return handleChurnRootCause(engine, lang);
+
     case 'help':
       return handleHelp(es);
 
@@ -582,6 +585,43 @@ function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse 
   return { kind: 'answer', text: lines.join('\n') };
 }
 
+// ── Customer churn root cause (R-INTEL-PHASE2D-RC) ──────────
+function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const reports = engine.getChurnRootCause().slice(0, 5);
+
+  if (reports.length === 0) {
+    return { kind: 'answer', text: t('chat.churn.noChurn') };
+  }
+
+  const DIAG_KEY: Record<string, string> = {
+    lost_habit:        'chat.churn.diagLostHabit',
+    price_sensitivity: 'chat.churn.diagPrice',
+    one_time:          'chat.churn.diagOneTime',
+    mixed:             'chat.churn.diagMixed',
+  };
+
+  const lines: string[] = [];
+  lines.push(t('chat.churn.header'));
+
+  for (let i = 0; i < reports.length; i++) {
+    const r = reports[i];
+    lines.push('');
+    lines.push(`${i + 1}. ${r.name}`);
+    lines.push(t(DIAG_KEY[r.diagnosis]));
+    lines.push(t('chat.churn.evidence.lastVisit', r.lastVisitDaysAgo));
+    lines.push(t('chat.churn.evidence.gap', r.avgVisitGapDays));
+    lines.push(t('chat.churn.evidence.visits', r.totalVisits));
+    lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
+    lines.push(t('chat.rootCause.actionsHeader'));
+    r.actions.forEach((a, ai) => {
+      lines.push(`${ai + 1}. ${t(a.labelKey)}`);
+    });
+  }
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
 // ── Help ────────────────────────────────────────────────────
 function handleHelp(es: boolean): ChatResponse {
   const items = es
@@ -597,6 +637,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "por qué bajaron las ventas" — diagnóstico de caída de ingresos',
       '• "por qué el domingo está lento" — diagnóstico de día lento',
       '• "por qué no se vende X" — causa raíz de stock muerto',
+      '• "por qué no regresan clientes" — diagnóstico de clientes perdidos',
       '• "qué está afectando mi ganancia" — ingreso perdido por área',
       '• "oportunidades de producto" — promover, descontar o revisar por margen',
       '• "cómo está la tienda" — health score',
@@ -615,6 +656,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "why are sales down" — revenue decline diagnosis',
       '• "why is Sunday slow" — slow day diagnosis',
       '• "dead stock reason" — dead stock root cause diagnosis',
+      '• "why customers stopped coming" — churn root cause diagnosis',
       '• "what is hurting my profit" — missed revenue by area',
       '• "product opportunities" — items to promote, discount, or review by margin',
       '• "store health" — health score',

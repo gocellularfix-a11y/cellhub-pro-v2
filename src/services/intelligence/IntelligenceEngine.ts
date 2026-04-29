@@ -1,9 +1,10 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
+import { diagnoseChurn } from './rootCause/churnCauses';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -482,6 +483,12 @@ export class IntelligenceEngine {
   // item is not moving. Returns empty array when nothing qualifies.
   getDeadStockRootCause(): DeadStockRootCauseReport[] {
     return diagnoseDeadStock(this.inventory, this.sales);
+  }
+
+  // R-INTEL-PHASE2D-RC: customer churn root cause — explains WHY each
+  // inactive customer stopped coming. Returns empty array when none qualify.
+  getChurnRootCause(): ChurnRootCauseReport[] {
+    return diagnoseChurn(this.customers, this.sales);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer
