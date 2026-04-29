@@ -23,13 +23,13 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { formatCurrency } from '@/utils/currency';
 import { normalizeCarrier, normalizePhone, formatPhone } from '@/utils/normalize';
-import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
@@ -103,9 +103,7 @@ export default function PhonePaymentModal({
   const [actSpiff, setActSpiff] = useState('0'); // pre-populated from settings.carrierSpiffs[carrier] when carrier selected
 
   // ── Customer search ───────────────────────────────────────
-  const [custSearch, setCustSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showCustDropdown, setShowCustDropdown] = useState(false);
 
   // ── Form fields ───────────────────────────────────────────
   const [carrier, setCarrier] = useState('');
@@ -192,9 +190,6 @@ export default function PhonePaymentModal({
     }
     // Autofill from customer record
     setSelectedCustomer(match);
-    // R-PHONE-FAMILY-MULTICUST: searchbar stays clean so the cashier can
-    // immediately search the next customer (Family Plan multi-customer flow).
-    setCustSearch('');
     setFirstName(match.firstName || (match.name || '').split(' ')[0] || '');
     setLastName(match.lastName || (match.name || '').split(' ').slice(1).join(' ') || '');
     // Primary phone — v2 Boundary 3: sanitize on hydration (legacy customers
@@ -217,13 +212,6 @@ export default function PhonePaymentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pendingPhonePaymentCustomerId]);
 
-  // ── Customer search results ───────────────────────────────
-  const custResults = useMemo(() => {
-    if (!custSearch.trim()) return [];
-    return customers
-      .filter((c) => matchesSearch(custSearch, c.name, c.phone, c.customerNumber))
-      .slice(0, 6);
-  }, [custSearch, customers]);
 
   // ── Known phone lines for selected customer ───────────────
   // Derived from past phone_payment sales linked to this customer.
@@ -282,11 +270,6 @@ export default function PhonePaymentModal({
   // Core customer-selection logic (used after phone is chosen or if only one)
   const applyCustomerSelection = (c: Customer, chosenPhone: string) => {
     setSelectedCustomer(c);
-    // R-PHONE-FAMILY-MULTICUST: clear searchbar post-selection (the green ✓
-    // badge below is the visual confirmation). Lets the user immediately
-    // search for a different/next customer without manually deleting.
-    setCustSearch('');
-    setShowCustDropdown(false);
     const parts = c.name.trim().split(' ');
     setFirstName(c.firstName || parts[0] || '');
     setLastName(c.lastName || parts.slice(1).join(' ') || '');
@@ -333,8 +316,6 @@ export default function PhonePaymentModal({
     });
 
     autoCopyPhone(cleanPhone);
-    setCustSearch('');
-    setShowCustDropdown(false);
   };
 
   // ── Select a customer ─────────────────────────────────────
@@ -345,7 +326,6 @@ export default function PhonePaymentModal({
     const uniquePhones = Array.from(new Set(validPhones));
     if (uniquePhones.length > 1) {
       setPhoneSelectorCustomer(c);
-      setShowCustDropdown(false);
       return;
     }
     // R-PHONE-FAMILY-MULTICUST: in multi-line mode, append a new line for
@@ -405,7 +385,7 @@ export default function PhonePaymentModal({
 
   // ── Reset ─────────────────────────────────────────────────
   const reset = () => {
-    setCustSearch(''); setSelectedCustomer(null);
+    setSelectedCustomer(null);
     setCarrier(''); setIsMultiLine(false);
     setPhoneNumber(''); setCopiedPhone(null); setFirstName(''); setLastName('');
     setPortal(''); setAmount('');
@@ -694,9 +674,6 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(updated.id, updated as unknown as Record<string, unknown>);
       setSelectedCustomer(updated);
-      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save (consistent
-      // with select-customer flow — ✓ badge is the confirmation).
-      setCustSearch('');
       // Sync form fields with updated customer
       // v2 Boundary 3: sanitize (defense in depth — even though Boundary 2
       // already blocked bad phones pre-persist, preserves the invariant).
@@ -725,8 +702,6 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
       setSelectedCustomer(newCust);
-      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save.
-      setCustSearch('');
       // v2 Boundary 3: sanitize (defense in depth).
       setPhoneNumber(sanitizePhone(newCust.phone));
       setFirstName(newCust.firstName || '');
@@ -1076,63 +1051,21 @@ export default function PhonePaymentModal({
         {modalTab === 'activation' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', minHeight: '540px' }}>
 
-            {/* Customer search — same component as bill payment tab */}
-            <div style={{ position: 'relative' }}>
-              <div style={{
-                padding: '0.5rem 0.875rem',
-                background: 'rgba(102,126,234,0.08)',
-                border: '1px solid rgba(102,126,234,0.25)',
-                borderRadius: '0.625rem',
-                fontSize: '0.78rem', color: '#a5b4fc',
-                marginBottom: '0.5rem',
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-              }}>
-                🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
-              </div>
-              <input
-                className="input"
-                placeholder={t('phonePay.searchCustomerPlaceholder')}
-                value={custSearch}
-                onChange={(e) => {
-                  setCustSearch(e.target.value);
-                  setShowCustDropdown(true);
+            {/* Customer search */}
+            <CustomerPicker
+              customers={customers}
+              selectedCustomer={selectedCustomer}
+              lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
+              allowClear
+              onSelect={(c) => {
+                if (c) {
+                  handleSelectCustomer(c);
+                  if (c.phone) setActPhone(c.phone);
+                } else {
                   setSelectedCustomer(null);
-                }}
-                onFocus={() => setShowCustDropdown(true)}
-              />
-              {showCustDropdown && custResults.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                  background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden',
-                }}>
-                  {custResults.map((c) => (
-                    <button key={c.id} onClick={() => {
-                      handleSelectCustomer(c);
-                      // Autopopulate activation phone from customer primary phone
-                      if (c.phone) setActPhone(c.phone);
-                    }} style={{
-                      width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem',
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      color: '#e2e8f0', fontSize: '0.875rem',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(102,126,234,0.15)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <span style={{ fontWeight: 600 }}>{c.name}</span>
-                      <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{c.phone}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {selectedCustomer && (
-                <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>
-                  ✓ {selectedCustomer.name}
-                </div>
-              )}
-            </div>
+                }
+              }}
+            />
 
             {/* First / Last name */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -1348,73 +1281,25 @@ export default function PhonePaymentModal({
         ══════════════════════════════════════════════════ */}
         {modalTab === 'payment' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ position: 'relative' }}>
-          <div style={{
-            padding: '0.5rem 0.875rem',
-            background: 'rgba(102,126,234,0.08)',
-            border: '1px solid rgba(102,126,234,0.25)',
-            borderRadius: '0.625rem',
-            fontSize: '0.78rem', color: '#a5b4fc',
-            marginBottom: '0.5rem',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-          }}>
-            🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
-          </div>
-          <input
-            className="input"
-            placeholder={t('phonePay.searchCustomerPlaceholder')}
-            value={custSearch}
-            onChange={(e) => {
-              setCustSearch(e.target.value);
-              setShowCustDropdown(true);
-              setSelectedCustomer(null);
-              setSelectedKnownLines({});
-            }}
-            onFocus={() => setShowCustDropdown(true)}
+        <div>
+          <CustomerPicker
+            customers={customers}
+            selectedCustomer={selectedCustomer}
+            lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
+            allowClear={false}
+            onSelect={(c) => { if (c) handleSelectCustomer(c); }}
           />
-          {showCustDropdown && custResults.length > 0 && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-              background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden',
-            }}>
-              {custResults.map((c) => (
-                <button key={c.id} onClick={() => handleSelectCustomer(c)} style={{
-                  width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: '#e2e8f0', fontSize: '0.875rem',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(102,126,234,0.15)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <span style={{ fontWeight: 600 }}>{c.name}</span>
-                  <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{c.phone}</span>
-                </button>
-              ))}
-            </div>
-          )}
           {selectedCustomer && (
-            <div style={{
-              fontSize: '0.75rem', marginTop: '0.25rem',
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              flexWrap: 'wrap',
-            }}>
-              <span style={{ color: '#22c55e' }}>✓ {selectedCustomer.name}</span>
+            <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {hasKnownLines && (
                 <span style={{ color: '#a5b4fc' }}>
                   · {knownLines.length} {t('phonePay.knownLineCount', knownLines.length)}
                 </span>
               )}
-              {/* R-PHONE-FAMILY-SWITCHCUSTOMER: explicit "change customer" button.
-                  Clears everything so user can search a different customer without
-                  having to manually delete the filled input value. */}
               <button
                 type="button"
                 onClick={() => {
                   setSelectedCustomer(null);
-                  setCustSearch('');
                   setSelectedKnownLines({});
                   setFirstName('');
                   setLastName('');
@@ -1425,7 +1310,6 @@ export default function PhonePaymentModal({
                   setNewLinePhone('');
                   setNewLineAmount('');
                   setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
-                  setShowCustDropdown(true);
                 }}
                 style={{
                   marginLeft: 'auto',

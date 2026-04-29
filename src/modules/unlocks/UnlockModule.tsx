@@ -19,7 +19,7 @@ import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/
 import TicketListLayout from '@/components/shared/TicketListLayout';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import TicketCard from '@/components/shared/TicketCard';
-import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
@@ -152,12 +152,15 @@ export default function UnlockModule() {
     || normalizeStatus(editUnlock.status) === 'refunded'
   );
 
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
   // Wrap the modal close so closing resets the PIN unlock state.
   const handleClose = () => {
     pin.resetLock();
     setIsSaving(false);
     setShowModal(false);
     setEditUnlock(null);
+    setSelectedCustomer(null);
   };
 
   // ── Form state (inside modal) ───────────────────────────
@@ -197,6 +200,7 @@ export default function UnlockModule() {
 
   const openNew = () => {
     setEditUnlock(null);
+    setSelectedCustomer(null);
     const today = new Date().toISOString().slice(0, 10);
     setForm({
       firstName: '', lastName: '', customerPhone: '', device: '', imei: '',
@@ -211,6 +215,7 @@ export default function UnlockModule() {
 
   const openEdit = (u: Unlock) => {
     setEditUnlock(u);
+    setSelectedCustomer(customers.find(c => c.id === (u as any).customerId) ?? null);
     // Storage is in cents — convert to dollars for the form inputs
     setForm({
       ...u,
@@ -549,6 +554,7 @@ export default function UnlockModule() {
 
       const updated: Unlock = {
         ...editUnlock, ...form, customerName,
+        customerId: selectedCustomer?.id ?? (editUnlock as any).customerId ?? undefined,
         price: priceCents,
         cost: costCents,
         depositAmount: lockedDeposit,
@@ -659,6 +665,7 @@ export default function UnlockModule() {
     } else {
       const newUnlock: Unlock = {
         id: generateId(), ...form, customerName,
+        customerId: selectedCustomer?.id ?? undefined,
         // Override with cents — form values are dollars, storage is cents
         price: priceCents,
         cost: costCents,
@@ -1180,74 +1187,19 @@ export default function UnlockModule() {
             </div>
           )}
 
-          {/* r-customer-picker-sweep: wrap customer inputs in shared
-              CustomerSearchHeader. The 3 AutocompleteInputs below are kept
-              as-is — they still provide per-field autocomplete on top of
-              the header search button. */}
-          <CustomerSearchHeader
+          <CustomerPicker
             customers={customers}
-            lang={lang === 'es' ? 'es' : 'en'}
+            selectedCustomer={selectedCustomer}
+            lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
+            allowClear
             onSelect={(c) => {
-              const parts = c.name.trim().split(/\s+/);
-              setForm({
-                ...form,
-                firstName: parts[0] || '',
-                lastName: parts.slice(1).join(' ') || '',
-                customerPhone: c.phone || '',
-                customerName: c.name || '',
-              });
+              setSelectedCustomer(c);
+              if (c) {
+                const parts = c.name.trim().split(/\s+/);
+                setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '', customerName: c.name || '' });
+              }
             }}
-          >
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">{t('unlocks.firstNameLabel')}</label>
-                <AutocompleteInput
-                  value={(form.firstName as string) || ''}
-                  onChange={(val) => setForm({ ...form, firstName: val })}
-                  onSelect={(opt) => {
-                    setForm({ ...form, firstName: opt.value,
-                      lastName: (form.lastName as string) || (opt.data as Customer)?.name?.split(' ').slice(1).join(' ') || '',
-                      customerPhone: (opt.data as Customer)?.phone || form.customerPhone || '' });
-                  }}
-                  options={firstNameOptions}
-                  placeholder={t('unlocks.firstNamePlaceholder')}
-                  maxResults={6}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">{t('unlocks.lastNameLabel')}</label>
-                <AutocompleteInput
-                  value={(form.lastName as string) || ''}
-                  onChange={(val) => setForm({ ...form, lastName: val })}
-                  onSelect={(opt) => {
-                    setForm({ ...form, lastName: opt.value,
-                      firstName: (form.firstName as string) || (opt.data as Customer)?.name?.split(' ')[0] || '',
-                      customerPhone: (opt.data as Customer)?.phone || form.customerPhone || '' });
-                  }}
-                  options={lastNameOptions}
-                  placeholder={t('unlocks.lastNamePlaceholder')}
-                  maxResults={6}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Phone</label>
-                <AutocompleteInput
-                  type="tel"
-                  value={form.customerPhone || ''}
-                  onChange={(val) => setForm({ ...form, customerPhone: val })}
-                  onSelect={(opt) => {
-                    setForm({ ...form, customerPhone: opt.value, customerName: (opt.data as Customer)?.name || form.customerName || '' });
-                  }}
-                  options={phoneOptions}
-                  placeholder="(555) 123-4567"
-                  maxResults={6}
-                  matchHint={phoneMatch ? (
-                    <span style={{ fontSize: '0.72rem', color: '#34d399' }}>&#10003; {phoneMatch.name}</span>
-                  ) : undefined}
-                />
-              </div>
-            </div>
-          </CustomerSearchHeader>
+          />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">IMEI</label>

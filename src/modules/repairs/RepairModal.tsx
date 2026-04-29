@@ -25,7 +25,7 @@ import { generateId } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { normalizePhone } from '@/utils/normalize';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
-import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import AdminPinGate from '@/components/shared/AdminPinGate';
 import { usePinGate } from '@/hooks/usePinGate';
 import ReasonSelectorModal from '@/components/ReasonSelectorModal';
@@ -157,18 +157,18 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   // R-EDIT-AUDIT F3.3: PIN gate for unlocking money fields post-completion.
   const pin = usePinGate(settings?.adminPin);
 
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+    () => customers.find(c => c.id === (r as any)?.customerId) ?? null
+  );
+
   // Wrap onClose so closing the modal (X, Cancel, etc.) clears the PIN unlock.
   const handleClose = () => {
     pin.resetLock();
     setIsSaving(false);
+    setSelectedCustomer(null);
     onClose();
   };
 
-  // r-customer-picker-sweep: customer search state (showCustSearch, customerSearch,
-  // custResults) was extracted into the CustomerSearchHeader component. The header
-  // now manages its own search state and just calls back via onSelect when a
-  // customer is picked. The 3 AutocompleteInputs below are kept as-is — they still
-  // provide per-field autocomplete on top of the header search button.
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // ── Autocomplete option sets ─────────────────────────────
@@ -259,6 +259,7 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   const buildPayload = (override: any = {}): any => ({
     ...form,
     ...override,
+    customerId: selectedCustomer?.id ?? (r as any)?.customerId ?? undefined,
     customerName: `${form.firstName} ${form.lastName}`.trim(),
     device: `${form.brand} ${form.model}`.trim(),
     deviceModel: form.model,
@@ -701,92 +702,23 @@ export default function RepairModal({ repair, customers, inventory, settings, al
         )}
 
         {/* ── Customer Info ─────────────────────────────────── */}
-        {/* r-customer-picker-sweep: replaced inline header bar + dropdown
-            with shared <CustomerSearchHeader>. The 3 AutocompleteInputs
-            below are passed as children — they keep their per-field
-            autocomplete behavior on top of the header search button. */}
-        <CustomerSearchHeader
-          customers={customers}
-          lang={lang === 'es' ? 'es' : 'en'}
-          onSelect={(c) => {
-            const parts = c.name.trim().split(' ');
-            upd('firstName', parts[0] || '');
-            upd('lastName', parts.slice(1).join(' ') || '');
-            upd('customerPhone', c.phone || '');
-          }}
-        >
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.firstNameStarLabel')}</label>
-              <AutocompleteInput
-                value={form.firstName}
-                onChange={(val) => upd('firstName', val)}
-                onSelect={(opt) => {
-                  upd('firstName', opt.value);
-                  if (opt.data) {
-                    const parts = (opt.data as Customer).name.trim().split(' ');
-                    upd('lastName', parts.slice(1).join(' ') || '');
-                    upd('customerPhone', (opt.data as Customer).phone || '');
-                  }
-                }}
-                options={firstNameOptions}
-                placeholder={t('repairs.firstNamePlaceholder')}
-                maxResults={6}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.lastNameStarLabel')}</label>
-              <AutocompleteInput
-                value={form.lastName}
-                onChange={(val) => upd('lastName', val)}
-                onSelect={(opt) => {
-                  upd('lastName', opt.value);
-                  if (opt.data) {
-                    const parts = (opt.data as Customer).name.trim().split(' ');
-                    upd('firstName', parts[0] || form.firstName);
-                    upd('customerPhone', (opt.data as Customer).phone || '');
-                  }
-                }}
-                options={lastNameOptions}
-                placeholder={t('repairs.lastNamePlaceholder')}
-                maxResults={6}
-              />
-            </div>
-            <div style={{ position: 'relative' }}>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.phoneStarLabel')}</label>
-              <AutocompleteInput
-                type="tel"
-                value={form.customerPhone}
-                onChange={(val) => upd('customerPhone', val)}
-                onSelect={(opt) => {
-                  upd('customerPhone', opt.value);
-                  if (opt.data) {
-                    const parts = (opt.data as Customer).name.trim().split(' ');
-                    upd('firstName', parts[0] || '');
-                    upd('lastName', parts.slice(1).join(' ') || '');
-                  }
-                }}
-                options={phoneOptions}
-                placeholder={t('repairs.phonePlaceholder')}
-                maxResults={6}
-                matchHint={phoneMatch ? (
-                  <div
-                    style={{ fontSize: '0.72rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
-                    onClick={() => {
-                      const parts = phoneMatch.name.split(' ');
-                      upd('firstName', parts[0] || '');
-                      upd('lastName', parts.slice(1).join(' ') || '');
-                    }}
-                  >
-                    ✅ {t('repairs.foundCustomerHint', phoneMatch.name)}
-                    {` · ${phoneMatch.loyaltyPoints || 0} pts`}
-                  </div>
-                ) : undefined}
-              />
-            </div>
-          </div>
-        </CustomerSearchHeader>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '1rem' }}>
+          <CustomerPicker
+            customers={customers}
+            selectedCustomer={selectedCustomer}
+            lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
+            allowClear
+            onSelect={(c) => {
+              setSelectedCustomer(c);
+              if (c) {
+                const parts = c.name.trim().split(' ');
+                upd('firstName', parts[0] || '');
+                upd('lastName', parts.slice(1).join(' ') || '');
+                upd('customerPhone', c.phone || '');
+              }
+            }}
+          />
+        </div>
 
         {/* ── Device Info ───────────────────────────────────── */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '1rem' }}>

@@ -39,11 +39,10 @@ import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import DepositModal from '@/components/DepositModal';
 import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
-import { AutocompleteInput, ConfirmDialog } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
-import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
 
@@ -112,40 +111,13 @@ export default function LayawayModule() {
   });
 
   const [form, setForm]                         = useState(emptyForm());
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // ── Autocomplete options ───────────────────────────────
   const customerNameOptions = useMemo(() =>
     customers.map((c) => ({ value: c.name, label: c.name, sublabel: c.phone, data: c })),
     [customers],
   );
-  const firstNameOptions = useMemo(() =>
-    customers.map((c) => {
-      const p = c.name.trim().split(' ');
-      return { value: p[0] || '', label: p[0] || '', sublabel: c.phone, data: c };
-    }).filter((o) => o.value.length > 0),
-    [customers],
-  );
-  const lastNameOptions = useMemo(() =>
-    customers
-      .filter((c) => !form.firstName || c.name.toLowerCase().startsWith(form.firstName.toLowerCase()))
-      .map((c) => {
-        const p = c.name.trim().split(' ');
-        const last = p.slice(1).join(' ');
-        return { value: last, label: last, sublabel: c.phone, data: c };
-      })
-      .filter((o, i, arr) => o.value.length > 0 && arr.findIndex((x) => x.label === o.label) === i),
-    [customers, form.firstName],
-  );
-  const phoneOptions = useMemo(() =>
-    customers.map((c) => ({ value: c.phone || '', label: c.phone || '', sublabel: c.name, data: c }))
-      .filter((o) => o.value.length > 0),
-    [customers],
-  );
-  const phoneMatch = useMemo(() => {
-    const digits = normalizePhone(form.customerPhone || '');
-    if (digits.length < 7) return null;
-    return customers.find((c) => normalizePhone(c.phone) === digits) || null;
-  }, [form.customerPhone, customers]);
 
   const [itemSearch, setItemSearch]             = useState('');
   const [itemResults, setItemResults]           = useState<InventoryItem[]>([]);
@@ -257,6 +229,7 @@ export default function LayawayModule() {
 
   const openNew = () => {
     setEditLayaway(null);
+    setSelectedCustomer(null);
     setForm(emptyForm());
     setItemSearch('');
     setShowForm(true);
@@ -265,6 +238,7 @@ export default function LayawayModule() {
   const openEdit = (l: Layaway) => {
     const r = l as any;
     setEditLayaway(l);
+    setSelectedCustomer(customers.find(c => c.id === r.customerId) ?? null);
     setForm({
       firstName:       r.firstName    || l.customerName?.split(' ')[0] || '',
       lastName:        r.lastName     || l.customerName?.split(' ').slice(1).join(' ') || '',
@@ -413,7 +387,7 @@ export default function LayawayModule() {
       const updated: any = {
         ...editLayaway,
         firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
-        customerId: finalCustomerId || (editLayaway as any).customerId,
+        customerId: selectedCustomer?.id ?? finalCustomerId ?? (editLayaway as any).customerId,
         inventoryId: form.inventoryId || undefined,
         itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
         itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -452,7 +426,7 @@ export default function LayawayModule() {
 
       toast(t('layaway.updated'), 'success');
       setIsSaving(false);
-      setShowForm(false); setEditLayaway(null); return;
+      setShowForm(false); setEditLayaway(null); setSelectedCustomer(null); return;
     }
 
     // CREATE
@@ -463,7 +437,7 @@ export default function LayawayModule() {
       // filters + R15b H2 fresh re-read guards don't orphan records across stores.
       storeId: currentStoreId,
       firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
-      customerId: finalCustomerId || undefined,
+      customerId: selectedCustomer?.id ?? finalCustomerId ?? undefined,
       inventoryId: form.inventoryId || undefined,
       itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
       itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -1154,80 +1128,24 @@ export default function LayawayModule() {
           <div className="modal-content" style={{ maxWidth: '580px', maxHeight: '92vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontWeight: 700 }}>🏷️ {editLayaway ? t('layaway.editTitle') : t('layaway.newTitle')}</h3>
-              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => { setShowForm(false); setEditLayaway(null); setSelectedCustomer(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
 
-              {/* Name */}
-              {/* r-customer-picker-sweep: wrap customer inputs in shared
-                  CustomerSearchHeader for explicit "Select Customer" button. */}
-              <CustomerSearchHeader
+              {/* Name / Customer */}
+              <CustomerPicker
                 customers={customers}
-                lang={locale === 'es' ? 'es' : 'en'}
+                selectedCustomer={selectedCustomer}
+                lang={locale === 'es' ? 'es' : locale === 'pt' ? 'pt' : 'en'}
+                allowClear
                 onSelect={(c) => {
-                  const parts = c.name.trim().split(/\s+/);
-                  setForm({
-                    ...form,
-                    firstName: parts[0] || '',
-                    lastName: parts.slice(1).join(' ') || '',
-                    customerPhone: c.phone || '',
-                  });
+                  setSelectedCustomer(c);
+                  if (c) {
+                    const parts = c.name.trim().split(/\s+/);
+                    setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '' });
+                  }
                 }}
-              >
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label className="label">👤 {t('layaway.firstName')} *</label>
-                    <AutocompleteInput
-                      value={form.firstName}
-                      onChange={(val) => setForm({ ...form, firstName: val })}
-                      onSelect={(opt) => {
-                        const c = opt.data as Customer;
-                        const parts = c.name.trim().split(' ');
-                        setForm({ ...form, firstName: parts[0] || opt.value, lastName: parts.slice(1).join(' ') || form.lastName, customerPhone: c.phone || form.customerPhone });
-                      }}
-                      options={firstNameOptions}
-                      placeholder={t('layaway.firstNamePlaceholder')}
-                      maxResults={6}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">👤 {t('layaway.lastName')}</label>
-                    <AutocompleteInput
-                      value={form.lastName}
-                      onChange={(val) => setForm({ ...form, lastName: val })}
-                      onSelect={(opt) => {
-                        const c = opt.data as Customer;
-                        const parts = c.name.trim().split(' ');
-                        setForm({ ...form, lastName: parts.slice(1).join(' ') || opt.value, firstName: parts[0] || form.firstName, customerPhone: c.phone || form.customerPhone });
-                      }}
-                      options={lastNameOptions}
-                      placeholder={t('layaway.lastNamePlaceholder')}
-                      maxResults={6}
-                    />
-                  </div>
-                </div>
-
-                {/* Phone */}
-                <div style={{ marginTop: '0.75rem' }}>
-                  <label className="label">📞 {t('layaway.phone')}</label>
-                  <AutocompleteInput
-                    type="tel"
-                    value={form.customerPhone}
-                    onChange={(val) => setForm({ ...form, customerPhone: val })}
-                    onSelect={(opt) => {
-                      const c = opt.data as Customer;
-                      const parts = c.name.trim().split(' ');
-                      setForm({ ...form, customerPhone: opt.value, firstName: parts[0] || form.firstName, lastName: parts.slice(1).join(' ') || form.lastName });
-                    }}
-                    options={phoneOptions}
-                    placeholder="(805) 000-0000"
-                    maxResults={6}
-                    matchHint={phoneMatch ? (
-                      <span style={{ fontSize: '0.72rem', color: '#34d399' }}>&#10003; {phoneMatch.name} &middot; {phoneMatch.loyaltyPoints || 0} pts</span>
-                    ) : undefined}
-                  />
-                </div>
-              </CustomerSearchHeader>
+              />
 
               {/* Item search / manual */}
               <div style={{ position: 'relative' }}>

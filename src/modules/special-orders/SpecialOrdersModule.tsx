@@ -8,7 +8,6 @@ import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { Modal, AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
-import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { persist, remove } from '@/services/persist';
@@ -20,7 +19,7 @@ import { generateId } from '@/utils/dates';
 import TicketListLayout from '@/components/shared/TicketListLayout';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import TicketCard from '@/components/shared/TicketCard';
-import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import type { SpecialOrder, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
@@ -68,6 +67,7 @@ export default function SpecialOrdersModule() {
   const [showModal, setShowModal] = useState(false);
   const [editOrder, setEditOrder] = useState<SpecialOrder | null>(null);
   const [form, setForm] = useState<Partial<SpecialOrder>>({});
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [depositModalOrder, setDepositModalOrder] = useState<SpecialOrder | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SpecialOrder | null>(null);
   const [isConsolidating, setIsConsolidating] = useState(false);
@@ -198,6 +198,7 @@ export default function SpecialOrdersModule() {
 
   const openNew = () => {
     setEditOrder(null);
+    setSelectedCustomer(null);
     setForm({
       firstName: '', lastName: '', customerPhone: '', itemDescription: '',
       supplier: '', cost: '' as any, price: '' as any, depositAmount: '' as any, balance: 0,
@@ -208,6 +209,7 @@ export default function SpecialOrdersModule() {
 
   const openEdit = (o: SpecialOrder) => {
     setEditOrder(o);
+    setSelectedCustomer(customers.find(c => c.id === (o as any).customerId) ?? null);
     const parts = (o.customerName || '').trim().split(' ');
     setForm({
       ...o,
@@ -348,7 +350,7 @@ export default function SpecialOrdersModule() {
       // The form field `deposit` was parsed but we IGNORE it here — entity's
       // committed depositAmount is the source of truth. Recalculate balance from
       // the (possibly updated) price minus the locked deposit.
-      const spread = { ...editOrder, ...form, customerName, cost, price } as SpecialOrder;
+      const spread = { ...editOrder, ...form, customerName, cost, price, customerId: selectedCustomer?.id ?? (editOrder as any).customerId ?? undefined } as SpecialOrder;
       const lockedDeposit = editOrder.depositAmount || 0;
       const newPrice = (spread as any).price || 0;
       const newTaxRate = settings.taxRate ?? 0.0925;
@@ -469,6 +471,7 @@ export default function SpecialOrdersModule() {
     } else {
       const newOrder: SpecialOrder = {
         id: generateId(), ...form, customerName,
+        customerId: selectedCustomer?.id ?? undefined,
         cost, price,
         // r-deposit-integrity-1: override form's depositAmount and balance.
         // The deposit lives in the cart until POS checkout confirms.
@@ -919,15 +922,18 @@ export default function SpecialOrdersModule() {
           editOrder={editOrder}
           form={form}
           setForm={setForm}
+          selectedCustomer={selectedCustomer}
+          onSelectCustomer={setSelectedCustomer}
           customers={customers}
           settings={settings}
           onSave={handleSave}
           onRequestCancel={(o) => {
             setShowModal(false);
             setEditOrder(null);
+            setSelectedCustomer(null);
             setCancelTarget(o);
           }}
-          onClose={() => { setShowModal(false); setEditOrder(null); }}
+          onClose={() => { setShowModal(false); setEditOrder(null); setSelectedCustomer(null); }}
           lang={lang}
           allOrders={specialOrders}
         />
@@ -1188,6 +1194,8 @@ interface SpecialOrderModalProps {
   editOrder: SpecialOrder | null;
   form: Partial<SpecialOrder>;
   setForm: (f: Partial<SpecialOrder>) => void;
+  selectedCustomer: Customer | null;
+  onSelectCustomer: (c: Customer | null) => void;
   customers: Customer[];
   settings: import('@/store/types').StoreSettings;
   // R-EDIT-AUDIT F5: signature extended to accept optional audit metadata.
@@ -1202,7 +1210,7 @@ interface SpecialOrderModalProps {
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, allOrders }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, selectedCustomer, onSelectCustomer, customers, settings, onSave, onRequestCancel, onClose, lang, allOrders }: SpecialOrderModalProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
@@ -1245,34 +1253,6 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
   const profitC  = priceC - costC;
   const balanceC = _formTotals.balanceCents;
 
-  // firstName/lastName split autocomplete
-  const firstNameOptions = useMemo(() =>
-    customers.map((c) => {
-      const parts = c.name.trim().split(' ');
-      return { value: parts[0] || '', label: parts[0] || '', sublabel: c.phone, data: c };
-    }).filter((o) => o.value.length > 0),
-    [customers],
-  );
-  const lastNameOptions = useMemo(() => {
-    const base = customers
-      .filter((c) => !(form as any).firstName || c.name.toLowerCase().startsWith(((form as any).firstName || '').toLowerCase()))
-      .map((c) => {
-        const parts = c.name.trim().split(' ');
-        const last = parts.slice(1).join(' ');
-        return { value: last, label: last, sublabel: c.phone, data: c };
-      }).filter((o) => o.value.length > 0);
-    return base.filter((o, i, arr) => arr.findIndex((x) => x.label === o.label) === i);
-  }, [customers, (form as any).firstName]);
-  const phoneOptions = useMemo(() =>
-    customers.map((c) => ({ value: c.phone || '', label: c.phone || '', sublabel: c.name, data: c }))
-      .filter((o) => o.value.length > 0),
-    [customers],
-  );
-  const phoneMatch = useMemo(() => {
-    const digits = normalizePhone(form.customerPhone || '');
-    if (digits.length < 7) return null;
-    return customers.find((c) => normalizePhone(c.phone) === digits) || null;
-  }, [form.customerPhone, customers]);
   const itemOptions = useMemo(() =>
     DEVICE_MODEL_OPTIONS.map((o) => o),
     [],
@@ -1418,77 +1398,19 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           )}
 
           {/* Customer */}
-          {/* r-customer-picker-sweep: wrap customer inputs in shared
-              CustomerSearchHeader for explicit "Select Customer" button. */}
-          <CustomerSearchHeader
+          <CustomerPicker
             customers={customers}
-            lang={lang === 'es' ? 'es' : 'en'}
+            selectedCustomer={selectedCustomer}
+            lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
+            allowClear
             onSelect={(c) => {
-              const parts = c.name.trim().split(/\s+/);
-              setForm({
-                ...form,
-                firstName: parts[0] || '',
-                lastName: parts.slice(1).join(' ') || '',
-                customerPhone: c.phone || '',
-                customerName: c.name || '',
-              } as any);
+              onSelectCustomer(c);
+              if (c) {
+                const parts = c.name.trim().split(/\s+/);
+                setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '', customerName: c.name || '' } as any);
+              }
             }}
-          >
-            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div>
-                <label className="label">👤 {t('so.modal.firstName')}</label>
-                <AutocompleteInput
-                  value={(form as any).firstName || ''}
-                  onChange={(val) => setForm({ ...form, firstName: val } as any)}
-                  onSelect={(opt) => {
-                    setForm({ ...form, firstName: opt.value,
-                      lastName: (form as any).lastName || (opt.data as Customer)?.name?.split(' ').slice(1).join(' ') || '',
-                      customerPhone: form.customerPhone || (opt.data as Customer)?.phone || '',
-                    } as any);
-                  }}
-                  options={firstNameOptions}
-                  placeholder={t('so.modal.firstNamePlaceholder')}
-                  maxResults={6}
-                />
-              </div>
-              <div>
-                <label className="label">{t('so.modal.lastName')}</label>
-                <AutocompleteInput
-                  value={(form as any).lastName || ''}
-                  onChange={(val) => setForm({ ...form, lastName: val } as any)}
-                  onSelect={(opt) => {
-                    setForm({ ...form, lastName: opt.value,
-                      firstName: (form as any).firstName || (opt.data as Customer)?.name?.split(' ')[0] || '',
-                      customerPhone: form.customerPhone || (opt.data as Customer)?.phone || '',
-                    } as any);
-                  }}
-                  options={lastNameOptions}
-                  placeholder={t('so.modal.lastNamePlaceholder')}
-                  maxResults={6}
-                />
-              </div>
-            </div>
-
-            {/* Phone */}
-            <div style={{ marginTop: '0.75rem' }}>
-              <label className="label">📞 {t('so.modal.phone')}</label>
-              <AutocompleteInput
-                type="tel"
-                value={form.customerPhone || ''}
-                onChange={(val) => upd('customerPhone', val)}
-                onSelect={(opt) => {
-                  upd('customerPhone', opt.value);
-                  if (opt.data) upd('customerName', (opt.data as Customer).name || form.customerName || '');
-                }}
-                options={phoneOptions}
-                placeholder="(805) 000-0000"
-                maxResults={6}
-                matchHint={phoneMatch ? (
-                  <span style={{ fontSize: '0.72rem', color: '#34d399' }}>&#10003; {phoneMatch.name}</span>
-                ) : undefined}
-              />
-            </div>
-          </CustomerSearchHeader>
+          />
 
           {/* Item */}
           <div>
