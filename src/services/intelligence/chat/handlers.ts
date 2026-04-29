@@ -15,6 +15,14 @@ import { translations } from '@/i18n/translations';
 
 const COP = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+const ACTION_TYPE_LABEL: Record<string, string> = {
+  whatsapp: 'WhatsApp',
+  discount: 'Discount',
+  bundle:   'Bundle',
+  review:   'Review',
+  reminder: 'Reminder',
+};
+
 // Standalone translation lookup — mirrors useTranslation() logic without
 // requiring React context. Used by pure-TS chat handlers.
 type Lang3 = 'en' | 'es' | 'pt';
@@ -477,7 +485,7 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(t('chat.deadStock.evidence.stock', r.stockUnits));
     lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
     lines.push(t('chat.rootCause.actionsHeader'));
-    r.actions.forEach((a, ai) => lines.push(`  ${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`));
+    r.actions.forEach((a, ai) => lines.push(`  ${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`));
     return lines.join('\n');
   });
 
@@ -530,7 +538,7 @@ function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatRe
   lines.push('');
   lines.push(t('chat.rootCause.actionsHeader'));
   report.actions.forEach((a, i) => {
-    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
+    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`);
   });
 
   return { kind: 'answer', text: lines.join('\n') };
@@ -579,7 +587,7 @@ function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse 
   lines.push('');
   lines.push(t('chat.rootCause.actionsHeader'));
   report.actions.forEach((a, i) => {
-    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
+    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`);
   });
 
   return { kind: 'answer', text: lines.join('\n') };
@@ -615,7 +623,7 @@ function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResp
     lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
     lines.push(t('chat.rootCause.actionsHeader'));
     r.actions.forEach((a, ai) => {
-      lines.push(`${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
+      lines.push(`${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}]` : ''}`);
     });
   }
 
