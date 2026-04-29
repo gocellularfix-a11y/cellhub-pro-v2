@@ -3,6 +3,8 @@
 // All money values stored as CENTS (integer) in Firestore
 // ============================================================
 
+import type { PaymentPortal } from '@/config/paymentPortals';
+
 // ── Common ────────────────────────────────────────────────
 
 export type Lang = 'en' | 'es' | 'pt';
@@ -143,6 +145,15 @@ export interface StoreSettings {
 
   // Per-year manually editable tax data (expenses, income, COGS, CA 540)
   taxData?: TaxData;
+
+  // Payment portals (carrier bill payment)
+  paymentPortals?: PaymentPortal[];
+
+  // Top-up commissions per provider (key = provider name, value = rate 0..1)
+  topUpCommissions?: Record<string, number>;
+
+  // Backup folder path (Electron local backup)
+  backupFolder?: string;
 }
 
 // ── Partnership ───────────────────────────────────────────

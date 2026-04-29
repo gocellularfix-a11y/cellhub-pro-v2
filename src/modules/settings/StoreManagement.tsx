@@ -185,7 +185,7 @@ export default function StoreManagement({ lang }: StoreManagementProps) {
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">{t('settings.multistore.inventoryMode')}</label>
-              <select value={form.inventoryMode} onChange={(e) => setForm({ ...form, inventoryMode: e.target.value as any })} className="select">
+              <select value={form.inventoryMode} onChange={(e) => setForm({ ...form, inventoryMode: e.target.value as 'per_store' | 'shared' })} className="select">
                 <option value="shared">{t('settings.multistore.inventoryShared')}</option>
                 <option value="per_store">{t('settings.multistore.inventoryPerStore')}</option>
               </select>
