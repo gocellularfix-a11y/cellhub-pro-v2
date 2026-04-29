@@ -81,10 +81,43 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     setActionFeedbackById({});
   }
 
+  function createQueueItemFromChatAction(action: ChatActionUI): AutomationQueueItem {
+    const kindMap = {
+      whatsapp: 'whatsapp_reconnect',
+      discount: 'discount_review',
+      bundle:   'bundle_review',
+      reminder: 'reminder_followup',
+      review:   'manual_review',
+    } as const;
+    return createAutomationItem({
+      kind: kindMap[action.actionType ?? 'review'],
+      label: action.label,
+      customerId: action.payload.customerId,
+      customerName: action.payload.customerName,
+      sku: action.payload.sku,
+      payload: { actionPayload: action.payload },
+    });
+  }
+
+  function automationKey(item: AutomationQueueItem): string {
+    return [item.kind, item.label, item.customerId ?? '', item.customerName ?? '', item.sku ?? ''].join('|');
+  }
+
+  function addAutomationItems(items: AutomationQueueItem[]) {
+    setAutomationQueue(prev => {
+      const existing = new Set(prev.map(automationKey));
+      const next = items.filter(item => !existing.has(automationKey(item)));
+      return [...prev, ...next];
+    });
+  }
+
   const fireQuery = useCallback((query: string) => {
     const match = classifyIntent(query, customersRef.current, langRef.current);
     const response = handleIntent(match, engineRef.current, langRef.current);
     clearActionFeedback();
+    if (response.actions?.length) {
+      addAutomationItems(response.actions.map(createQueueItemFromChatAction));
+    }
     setMessages(prev => [
       ...prev,
       { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
@@ -128,6 +161,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     };
 
     clearActionFeedback();
+    if (response.actions?.length) {
+      addAutomationItems(response.actions.map(createQueueItemFromChatAction));
+    }
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
   };
@@ -138,41 +174,21 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       setFeedbackForAction(action.id, `Action not available: ${result.reason}`);
       return;
     }
-
-    const kindMap = {
-      whatsapp_url:   'whatsapp_reconnect',
-      pos_discount:   'discount_review',
-      pos_bundle:     'bundle_review',
-      reminder_queue: 'reminder_followup',
-      review_panel:   'manual_review',
-    } as const;
-
-    const kind = kindMap[result.type];
-    const item = createAutomationItem({
-      kind,
-      label: action.label,
-      customerId: action.payload.customerId,
-      customerName: action.payload.customerName,
-      sku: action.payload.sku,
-      payload: { actionPayload: action.payload },
-    });
-    setAutomationQueue(prev => [...prev, item]);
-
     switch (result.type) {
       case 'whatsapp_url':
         setPendingWaAction({ action, url: result.url });
         return;
       case 'pos_discount':
-        setFeedbackForAction(action.id, `Added to automation queue (discount).`);
+        setFeedbackForAction(action.id, 'Discount action prepared.');
         break;
       case 'pos_bundle':
-        setFeedbackForAction(action.id, `Added to automation queue (bundle).`);
+        setFeedbackForAction(action.id, 'Bundle action prepared.');
         break;
       case 'review_panel':
-        setFeedbackForAction(action.id, 'Added to automation queue (review).');
+        setFeedbackForAction(action.id, 'Review action prepared.');
         break;
       case 'reminder_queue':
-        setFeedbackForAction(action.id, 'Added to automation queue (reminder).');
+        setFeedbackForAction(action.id, 'Reminder action prepared.');
         break;
     }
   }
