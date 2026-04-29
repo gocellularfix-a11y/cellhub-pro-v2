@@ -706,6 +706,7 @@ export const translations: TranslationDictionary = {
   'qaServices': { en: 'Services', es: 'Servicios', pt: 'Serviços' },
   'qaServicesDesc':    { en: 'Repairs & unlocking services',      es: 'Reparaciones y desbloqueos',         pt: 'Reparos e serviços de desbloqueio' },
   'notepadDesc':       { en: 'Write and print quick notes',       es: 'Escribe e imprime notas rápidas',    pt: 'Escreva e imprima notas rápidas' },
+  'estimates':         { en: 'Estimates',                        es: 'Estimados',                          pt: 'Cotizações' },
   'estimatesDesc':     { en: 'Quick estimate with receipt',       es: 'Estimado rápido con recibo',         pt: 'Orçamento rápido com recibo' },
   'rmaLabelDesc':      { en: 'Create return shipping label 4×6', es: 'Crea etiqueta de devolución 4×6',   pt: 'Criar etiqueta de devolução 4×6' },
   'labelPrinterDesc':  { en: 'Paste & print 4×6 labels',         es: 'Pega e imprime etiquetas 4×6',       pt: 'Cole e imprima etiquetas 4×6' },

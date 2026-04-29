@@ -60,7 +60,7 @@ export interface WaTemplateParams {
 export function buildWaMessage(
   template: WaTemplate,
   params: WaTemplateParams,
-  lang: 'en' | 'es' = 'en',
+  lang: 'en' | 'es' | 'pt' = 'en',
   customTemplate?: string,
 ): string {
   const firstName = params.customerName?.split(' ')[0] || params.customerName || '';
@@ -109,42 +109,51 @@ export type WaTemplate =
 // Settings → WhatsApp tab. They will display correctly when WA
 // template is sent through paths NOT going through shell.openExternal,
 // and may render as � otherwise. This is a known platform quirk.
-export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string }> = {
+export const DEFAULT_TEMPLATES: Record<WaTemplate, { en: string; es: string; pt: string }> = {
   repairReady: {
     en: `Hi {name}! ✓ Your {device} is ready for pickup at {store}. Balance due: {balance}. Come by anytime! — {store}`,
     es: `¡Hola {nombre}! ✓ Tu {dispositivo} ya está listo para recoger en {tienda}. Balance pendiente: {balance}. ¡Te esperamos! — {tienda}`,
+    pt: `Oi {name}! ✓ Seu {device} está pronto para retirada em {store}. Saldo pendente: {balance}. Venha quando quiser! — {store}`,
   },
   repairReceived: {
     en: `Hi {name}, we received your {device} for repair. Ticket #{ticket}. We'll message you with updates. — {store}`,
     es: `Hola {nombre}, recibimos tu {dispositivo} para reparación. Ticket #{ticket}. Te avisaremos con actualizaciones. — {tienda}`,
+    pt: `Oi {name}, recebemos seu {device} para reparo. Ticket #{ticket}. Te avisaremos com atualizações. — {store}`,
   },
   repairInProgress: {
     en: `Hi {name}, we're working on your {device}. Ticket #{ticket}. We'll notify you when it's ready. — {store}`,
     es: `Hola {nombre}, ya estamos trabajando en tu {dispositivo}. Ticket #{ticket}. Te avisamos cuando esté listo. — {tienda}`,
+    pt: `Oi {name}, já estamos trabalhando no seu {device}. Ticket #{ticket}. Te avisamos quando estiver pronto. — {store}`,
   },
   balanceDue: {
     en: `Hi {name}, you have a balance of {balance} due for your {device}. Stop by when you can! — {store}`,
     es: `Hola {nombre}, tienes un saldo pendiente de {balance} por tu {dispositivo}. ¡Pasa cuando puedas! — {tienda}`,
+    pt: `Oi {name}, você tem um saldo de {balance} referente ao seu {device}. Passe quando puder! — {store}`,
   },
   specialOrderReady: {
     en: `Hi {name}! ✓ Your order ({item}) has arrived at {store}. Balance: {balance}. Come pick it up! — {store}`,
     es: `¡Hola {nombre}! ✓ Tu pedido ({articulo}) llegó a {tienda}. Balance: {balance}. ¡Pasa a recogerlo! — {tienda}`,
+    pt: `Oi {name}! ✓ Seu pedido ({item}) chegou em {store}. Saldo: {balance}. Venha buscar! — {store}`,
   },
   layawayReminder: {
     en: `Hi {name}, reminder: your layaway for {item} has a balance of {balance}. Stop by anytime. — {store}`,
     es: `Hola {nombre}, recuerda que tu apartado de {articulo} tiene un saldo de {balance}. Pasa cuando puedas. — {tienda}`,
+    pt: `Oi {name}, lembrete: seu pagamento parcelado de {item} tem saldo de {balance}. Passe quando puder. — {store}`,
   },
   appointmentReminder: {
     en: `Hi {name}, reminder: you have an appointment at {store} on {date} at {time}. See you then! — {store}`,
     es: `Hola {nombre}, recuerda tu cita en {tienda} el {date} a las {time}. ¡Te esperamos! — {tienda}`,
+    pt: `Oi {name}, lembrete: você tem um agendamento em {store} no dia {date} às {time}. Te esperamos! — {store}`,
   },
   thankYou: {
     en: `Hi {name}, thank you for visiting {store}! We appreciate your business. See you next time!`,
     es: `¡Hola {nombre}, gracias por visitarnos en {tienda}! Apreciamos tu preferencia. ¡Hasta la próxima!`,
+    pt: `Oi {name}, obrigado por visitar {store}! Agradecemos sua preferência. Até a próxima!`,
   },
   custom: {
     en: `Hi {name},`,
     es: `Hola {nombre},`,
+    pt: `Oi {name},`,
   },
 };
 

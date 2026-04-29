@@ -243,7 +243,7 @@ export default function BarcodeActionModal() {
                   customerName: sale.customerName || 'Customer',
                   storeName: settings.storeName || 'Go Cellular',
                   storePhone: settings.storePhone || '',
-                }, locale === 'es' ? 'es' : 'en', (settings as any).waTemplateThankYou || '');
+                }, locale === 'es' ? 'es' : locale === 'pt' ? 'pt' : 'en', (settings as any).waTemplateThankYou || '');
                 openWhatsApp(sale.customerPhone!, msg);
               }}
               style={actionStyle('#25D366')}

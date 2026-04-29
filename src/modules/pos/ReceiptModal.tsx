@@ -556,7 +556,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
                 customerName: name,
                 storeName: settings.storeName || 'Go Cellular',
                 storePhone: settings.storePhone || '',
-              }, lang === 'es' ? 'es' : 'en', (settings as any).waTemplateThankYou || '');
+              }, lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en', (settings as any).waTemplateThankYou || '');
               openWhatsApp(phone, msg);
             }}
             className="btn flex-1"
