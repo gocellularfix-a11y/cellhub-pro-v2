@@ -500,12 +500,17 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
     return lines.join('\n');
   });
 
-  const actionUI: ChatActionUI[] = top[0].actions.map((a, i) => ({
-    id: `${i}-${a.labelKey}`,
-    label: t(a.labelKey),
-    actionType: a.actionType,
-    payload: buildActionPayload(a, { sku: top[0].sku }),
-  }));
+  const actionUI: ChatActionUI[] = top.flatMap((r, ri) =>
+    r.actions.map((a, ai) => ({
+      id: `dead-${ri}-${ai}-${a.labelKey}`,
+      label: `${r.name}: ${t(a.labelKey)}`,
+      actionType: a.actionType,
+      payload: buildActionPayload(
+        { ...a, sku: a.sku ?? r.sku },
+        { sku: r.sku },
+      ),
+    }))
+  ).slice(0, 10);
 
   return { kind: 'answer', text: `${header}\n\n${sections.join('\n\n')}`, actions: actionUI };
 }
@@ -560,7 +565,7 @@ function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatRe
   });
 
   const actionUI: ChatActionUI[] = report.actions.map((a, i) => ({
-    id: `${i}-${a.labelKey}`,
+    id: `slow-${i}-${a.labelKey}`,
     label: t(a.labelKey),
     actionType: a.actionType,
     payload: buildActionPayload(a, {}),
@@ -616,7 +621,7 @@ function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse 
   });
 
   const actionUI: ChatActionUI[] = report.actions.map((a, i) => ({
-    id: `${i}-${a.labelKey}`,
+    id: `revenue-${i}-${a.labelKey}`,
     label: t(a.labelKey),
     actionType: a.actionType,
     payload: buildActionPayload(a, {}),
@@ -659,12 +664,17 @@ function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResp
     });
   }
 
-  const actionUI: ChatActionUI[] = reports[0].actions.map((a, i) => ({
-    id: `${i}-${a.labelKey}`,
-    label: t(a.labelKey),
-    actionType: a.actionType,
-    payload: buildActionPayload(a, { customerName: reports[0].name }),
-  }));
+  const actionUI: ChatActionUI[] = reports.flatMap((r, ri) =>
+    r.actions.map((a, ai) => ({
+      id: `churn-${ri}-${ai}-${a.labelKey}`,
+      label: `${r.name}: ${t(a.labelKey)}`,
+      actionType: a.actionType,
+      payload: buildActionPayload(
+        { ...a, customerId: a.customerId ?? r.customerId },
+        { customerName: r.name },
+      ),
+    }))
+  ).slice(0, 10);
 
   return { kind: 'answer', text: lines.join('\n'), actions: actionUI };
 }
