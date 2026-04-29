@@ -1142,10 +1142,29 @@ export default function LayawayModule() {
                   setSelectedCustomer(c);
                   if (c) {
                     const parts = c.name.trim().split(/\s+/);
-                    setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '' });
+                    setForm(prev => ({
+                      ...prev,
+                      firstName: prev.firstName || parts[0] || '',
+                      lastName: prev.lastName || parts.slice(1).join(' ') || '',
+                      customerPhone: prev.customerPhone || c.phone || '',
+                    }));
                   }
                 }}
               />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label className="label">👤 {t('layaway.firstName')} *</label>
+                  <input className="input" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder={t('layaway.firstNamePlaceholder')} />
+                </div>
+                <div>
+                  <label className="label">👤 {t('layaway.lastName')}</label>
+                  <input className="input" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder={t('layaway.lastNamePlaceholder')} />
+                </div>
+              </div>
+              <div>
+                <label className="label">📞 {t('layaway.phone')}</label>
+                <input type="tel" className="input" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} placeholder="(805) 000-0000" />
+              </div>
 
               {/* Item search / manual */}
               <div style={{ position: 'relative' }}>

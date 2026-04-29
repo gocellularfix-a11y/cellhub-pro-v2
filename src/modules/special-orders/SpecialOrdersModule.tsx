@@ -1407,10 +1407,30 @@ function SpecialOrderModal({ editOrder, form, setForm, selectedCustomer, onSelec
               onSelectCustomer(c);
               if (c) {
                 const parts = c.name.trim().split(/\s+/);
-                setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '', customerName: c.name || '' } as any);
+                setForm({
+                  ...form,
+                  firstName: (form as any).firstName || parts[0] || '',
+                  lastName: (form as any).lastName || parts.slice(1).join(' ') || '',
+                  customerPhone: form.customerPhone || c.phone || '',
+                  customerName: form.customerName || c.name || '',
+                } as any);
               }
             }}
           />
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label className="label">👤 {t('so.modal.firstName')}</label>
+              <input className="input" value={(form as any).firstName || ''} onChange={(e) => setForm({ ...form, firstName: e.target.value } as any)} placeholder={t('so.modal.firstNamePlaceholder')} />
+            </div>
+            <div>
+              <label className="label">{t('so.modal.lastName')}</label>
+              <input className="input" value={(form as any).lastName || ''} onChange={(e) => setForm({ ...form, lastName: e.target.value } as any)} placeholder={t('so.modal.lastNamePlaceholder')} />
+            </div>
+          </div>
+          <div>
+            <label className="label">📞 {t('so.modal.phone')}</label>
+            <input type="tel" className="input" value={form.customerPhone || ''} onChange={(e) => upd('customerPhone', e.target.value)} placeholder="(805) 000-0000" />
+          </div>
 
           {/* Item */}
           <div>

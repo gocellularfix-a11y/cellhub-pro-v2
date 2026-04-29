@@ -1056,13 +1056,11 @@ export default function PhonePaymentModal({
               customers={customers}
               selectedCustomer={selectedCustomer}
               lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
-              allowClear
+              allowClear={false}
               onSelect={(c) => {
                 if (c) {
                   handleSelectCustomer(c);
-                  if (c.phone) setActPhone(c.phone);
-                } else {
-                  setSelectedCustomer(null);
+                  if (c.phone && !actPhone) setActPhone(c.phone);
                 }
               }}
             />

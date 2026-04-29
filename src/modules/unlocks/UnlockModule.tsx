@@ -1196,10 +1196,66 @@ export default function UnlockModule() {
               setSelectedCustomer(c);
               if (c) {
                 const parts = c.name.trim().split(/\s+/);
-                setForm({ ...form, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', customerPhone: c.phone || '', customerName: c.name || '' });
+                setForm(prev => ({
+                  ...prev,
+                  firstName: (prev.firstName as string) || parts[0] || '',
+                  lastName: (prev.lastName as string) || parts.slice(1).join(' ') || '',
+                  customerPhone: (prev.customerPhone as string) || c.phone || '',
+                  customerName: (prev.customerName as string) || c.name || '',
+                }));
               }
             }}
           />
+          <div className="grid grid-cols-3 gap-3" style={{ marginTop: '0.5rem' }}>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">{t('unlocks.firstNameLabel')}</label>
+              <AutocompleteInput
+                value={(form.firstName as string) || ''}
+                onChange={(val) => setForm({ ...form, firstName: val })}
+                onSelect={(opt) => {
+                  setForm(prev => ({ ...prev, firstName: opt.value,
+                    lastName: (prev.lastName as string) || (opt.data as Customer)?.name?.split(' ').slice(1).join(' ') || '',
+                    customerPhone: (prev.customerPhone as string) || (opt.data as Customer)?.phone || '' }));
+                }}
+                options={firstNameOptions}
+                placeholder={t('unlocks.firstNamePlaceholder')}
+                maxResults={6}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">{t('unlocks.lastNameLabel')}</label>
+              <AutocompleteInput
+                value={(form.lastName as string) || ''}
+                onChange={(val) => setForm({ ...form, lastName: val })}
+                onSelect={(opt) => {
+                  setForm(prev => ({ ...prev, lastName: opt.value,
+                    firstName: (prev.firstName as string) || (opt.data as Customer)?.name?.split(' ')[0] || '',
+                    customerPhone: (prev.customerPhone as string) || (opt.data as Customer)?.phone || '' }));
+                }}
+                options={lastNameOptions}
+                placeholder={t('unlocks.lastNamePlaceholder')}
+                maxResults={6}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Phone</label>
+              <AutocompleteInput
+                type="tel"
+                value={form.customerPhone || ''}
+                onChange={(val) => setForm({ ...form, customerPhone: val })}
+                onSelect={(opt) => {
+                  setForm(prev => ({ ...prev, customerPhone: opt.value,
+                    customerName: (prev.customerName as string) || (opt.data as Customer)?.name || '' }));
+                }}
+                options={phoneOptions}
+                placeholder="(555) 123-4567"
+                maxResults={6}
+                matchHint={phoneMatch ? (
+                  <span style={{ fontSize: '0.72rem', color: '#34d399' }}>&#10003; {phoneMatch.name}</span>
+                ) : undefined}
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">IMEI</label>

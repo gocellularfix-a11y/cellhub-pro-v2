@@ -712,12 +712,82 @@ export default function RepairModal({ repair, customers, inventory, settings, al
               setSelectedCustomer(c);
               if (c) {
                 const parts = c.name.trim().split(' ');
-                upd('firstName', parts[0] || '');
-                upd('lastName', parts.slice(1).join(' ') || '');
-                upd('customerPhone', c.phone || '');
+                if (!form.firstName) upd('firstName', parts[0] || '');
+                if (!form.lastName) upd('lastName', parts.slice(1).join(' ') || '');
+                if (!form.customerPhone) upd('customerPhone', c.phone || '');
               }
             }}
           />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginTop: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.firstNameStarLabel')}</label>
+              <AutocompleteInput
+                value={form.firstName}
+                onChange={(val) => upd('firstName', val)}
+                onSelect={(opt) => {
+                  upd('firstName', opt.value);
+                  if (opt.data) {
+                    const parts = (opt.data as Customer).name.trim().split(' ');
+                    if (!form.lastName) upd('lastName', parts.slice(1).join(' ') || '');
+                    if (!form.customerPhone) upd('customerPhone', (opt.data as Customer).phone || '');
+                  }
+                }}
+                options={firstNameOptions}
+                placeholder={t('repairs.firstNamePlaceholder')}
+                maxResults={6}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.lastNameStarLabel')}</label>
+              <AutocompleteInput
+                value={form.lastName}
+                onChange={(val) => upd('lastName', val)}
+                onSelect={(opt) => {
+                  upd('lastName', opt.value);
+                  if (opt.data) {
+                    const parts = (opt.data as Customer).name.trim().split(' ');
+                    if (!form.firstName) upd('firstName', parts[0] || '');
+                    if (!form.customerPhone) upd('customerPhone', (opt.data as Customer).phone || '');
+                  }
+                }}
+                options={lastNameOptions}
+                placeholder={t('repairs.lastNamePlaceholder')}
+                maxResults={6}
+              />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>{t('repairs.phoneStarLabel')}</label>
+              <AutocompleteInput
+                type="tel"
+                value={form.customerPhone}
+                onChange={(val) => upd('customerPhone', val)}
+                onSelect={(opt) => {
+                  upd('customerPhone', opt.value);
+                  if (opt.data) {
+                    const parts = (opt.data as Customer).name.trim().split(' ');
+                    if (!form.firstName) upd('firstName', parts[0] || '');
+                    if (!form.lastName) upd('lastName', parts.slice(1).join(' ') || '');
+                  }
+                }}
+                options={phoneOptions}
+                placeholder={t('repairs.phonePlaceholder')}
+                maxResults={6}
+                matchHint={phoneMatch ? (
+                  <div
+                    style={{ fontSize: '0.72rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                    onClick={() => {
+                      const parts = phoneMatch.name.split(' ');
+                      if (!form.firstName) upd('firstName', parts[0] || '');
+                      if (!form.lastName) upd('lastName', parts.slice(1).join(' ') || '');
+                    }}
+                  >
+                    ✅ {t('repairs.foundCustomerHint', phoneMatch.name)}
+                    {` · ${phoneMatch.loyaltyPoints || 0} pts`}
+                  </div>
+                ) : undefined}
+              />
+            </div>
+          </div>
         </div>
 
         {/* ── Device Info ───────────────────────────────────── */}
