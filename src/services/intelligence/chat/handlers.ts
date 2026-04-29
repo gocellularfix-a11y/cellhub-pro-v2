@@ -470,7 +470,7 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(`${i + 1}. ${r.name}`);
     lines.push(t(DIAG_KEY[r.diagnosis]));
     lines.push(t('chat.deadStock.evidence.days', r.daysWithoutSale));
-    lines.push(t('chat.deadStock.evidence.velocity', r.avgWeeklySales));
+    lines.push(t('chat.deadStock.evidence.velocity', Number(r.avgWeeklySales.toFixed(1))));
     lines.push(t('chat.deadStock.evidence.stock', r.stockUnits));
     lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
     lines.push(t('chat.rootCause.actionsHeader'));

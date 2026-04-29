@@ -118,6 +118,6 @@ export function diagnoseDeadStock(
     });
   }
 
-  // Worst offenders first (longest without a sale)
-  return reports.sort((a, b) => b.daysWithoutSale - a.daysWithoutSale);
+  // Highest impact first (stock units × days without sale)
+  return reports.sort((a, b) => (b.stockUnits * b.lastSaleDaysAgo) - (a.stockUnits * a.lastSaleDaysAgo));
 }
