@@ -85,6 +85,9 @@ export function handleIntent(
     case 'slow_day_root_cause':
       return handleSlowDayRootCause(engine, lang);
 
+    case 'dead_stock_root_cause':
+      return handleDeadStockRootCause(engine, lang);
+
     case 'help':
       return handleHelp(es);
 
@@ -443,6 +446,41 @@ function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): Ch
   return { kind: 'answer', text: `${t('chat.product.header', opps.length)}\n${lines.join('\n')}` };
 }
 
+// ── Dead stock root cause (R-INTEL-PHASE2C-RC) ─────────────
+function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const reports = engine.getDeadStockRootCause();
+
+  if (reports.length === 0) {
+    return { kind: 'answer', text: t('chat.deadStock.empty') };
+  }
+
+  const DIAG_KEY: Record<string, string> = {
+    no_demand:      'chat.deadStock.diagNoDemand',
+    low_visibility: 'chat.deadStock.diagLowVisibility',
+    pricing_issue:  'chat.deadStock.diagPricing',
+    mixed:          'chat.deadStock.diagMixed',
+  };
+
+  const top = reports.slice(0, 5);
+  const header = t('chat.deadStock.header', top.length);
+
+  const sections = top.map((r, i) => {
+    const lines: string[] = [];
+    lines.push(`${i + 1}. ${r.name}`);
+    lines.push(t(DIAG_KEY[r.diagnosis]));
+    lines.push(t('chat.deadStock.evidence.days', r.daysWithoutSale));
+    lines.push(t('chat.deadStock.evidence.velocity', r.avgWeeklySales));
+    lines.push(t('chat.deadStock.evidence.stock', r.stockUnits));
+    lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
+    lines.push(t('chat.rootCause.actionsHeader'));
+    r.actions.forEach((a, ai) => lines.push(`  ${ai + 1}. ${t(a.labelKey)}`));
+    return lines.join('\n');
+  });
+
+  return { kind: 'answer', text: `${header}\n\n${sections.join('\n\n')}` };
+}
+
 // ── Slow day root cause (R-INTEL-PHASE2B-RC) ───────────────
 function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
@@ -558,6 +596,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "a quién llamar" — clientes con visita esperada atrasada',
       '• "por qué bajaron las ventas" — diagnóstico de caída de ingresos',
       '• "por qué el domingo está lento" — diagnóstico de día lento',
+      '• "por qué no se vende X" — causa raíz de stock muerto',
       '• "qué está afectando mi ganancia" — ingreso perdido por área',
       '• "oportunidades de producto" — promover, descontar o revisar por margen',
       '• "cómo está la tienda" — health score',
@@ -575,6 +614,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "who should I contact" — customers with overdue expected visit',
       '• "why are sales down" — revenue decline diagnosis',
       '• "why is Sunday slow" — slow day diagnosis',
+      '• "dead stock reason" — dead stock root cause diagnosis',
       '• "what is hurting my profit" — missed revenue by area',
       '• "product opportunities" — items to promote, discount, or review by margin',
       '• "store health" — health score',

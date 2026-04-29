@@ -295,3 +295,17 @@ export interface SlowDayRootCauseReport {
   confidence: number;               // 0..1, based on weeks of data
   actions: ActionItem[];
 }
+
+// R-INTEL-PHASE2C-RC: per-item dead stock root cause report
+export interface DeadStockRootCauseReport {
+  sku: string;
+  name: string;
+  daysWithoutSale: number;
+  stockUnits: number;
+  avgWeeklySales: number;           // units/week over last 60 days
+  lastSaleDaysAgo: number;
+  marginPct: number | null;         // null when cost is unknown
+  diagnosis: 'no_demand' | 'low_visibility' | 'pricing_issue' | 'mixed';
+  confidence: number;               // 0..1, min(1, lastSaleDaysAgo / 30)
+  actions: ActionItem[];
+}

@@ -39,6 +39,7 @@ export type IntentId =
   | 'product_opportunities'
   | 'root_cause'
   | 'slow_day_root_cause'
+  | 'dead_stock_root_cause'
   | 'help'
   | 'unknown';
 
@@ -155,6 +156,17 @@ const SLOW_DAY_ROOT_CAUSE_KEYWORDS = [
   'dia mais fraco', 'por que meu dia fraco',
 ];
 
+const DEAD_STOCK_ROOT_CAUSE_KEYWORDS = [
+  // EN
+  'why not selling', 'not selling reason', 'dead stock reason', 'dead stock cause',
+  'dead stock diagnosis', 'item not moving', 'inventory diagnosis', 'why is inventory dead',
+  // ES
+  'por qué no se vende', 'inventario muerto por qué', 'causa del muerto',
+  'inventario estancado', 'artículo estancado', 'diagnóstico de inventario',
+  // PT
+  'por que não vende', 'estoque parado', 'produto parado', 'diagnóstico de estoque',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -232,6 +244,7 @@ export function classifyIntent(
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
+    { id: 'dead_stock_root_cause', score: scoreKeywords(query, DEAD_STOCK_ROOT_CAUSE_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -253,7 +266,8 @@ export function classifyIntent(
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
-      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
+      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

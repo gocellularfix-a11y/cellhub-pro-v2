@@ -1,8 +1,9 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
+import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -475,6 +476,12 @@ export class IntelligenceEngine {
   // Returns null when fewer than 5 sales or <2 active days of week.
   getSlowDayRootCause(): SlowDayRootCauseReport | null {
     return diagnoseSlowDay(this.sales);
+  }
+
+  // R-INTEL-PHASE2C-RC: per-item dead stock root cause — explains WHY each
+  // item is not moving. Returns empty array when nothing qualifies.
+  getDeadStockRootCause(): DeadStockRootCauseReport[] {
+    return diagnoseDeadStock(this.inventory, this.sales);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer
