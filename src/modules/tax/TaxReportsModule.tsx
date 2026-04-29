@@ -1183,9 +1183,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                 <Card title="Page 1 — Deductions">
                   {annual.yearExpenses.length === 0 && annual.taxExpensesDeductible === 0 && annual.guaranteedPaymentsTotal === 0 ? (
                     <div style={{ color: '#475569', fontSize: '0.8rem' }}>
-                      {es
-                        ? 'Sin deducciones. Agrega gastos en el tab Expenses o en el módulo 💸 Expenses del menú lateral.'
-                        : 'No deductions. Add expenses in the Expenses tab or in the 💸 Expenses sidebar module.'}
+                      {t('tax.noDeductionsHint')}
                     </div>
                   ) : (
                     <>
@@ -1243,9 +1241,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                           {t('tax.noPartnershipMembers')}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.875rem' }}>
-                          {es
-                            ? 'Agrega los socios en la pestaña "Members" para generar formularios K-1.'
-                            : 'Add members in the "Members" tab to generate K-1 forms.'}
+                          {t('tax.addMembersForK1')}
                         </div>
                         <button
                           onClick={() => setF1065Tab('members')}
@@ -1337,9 +1333,7 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                           {t('tax.noPartnershipMembers')}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.875rem' }}>
-                          {es
-                            ? 'Schedule SE se calcula por socio. Agrega los socios en Members para ver el cálculo real.'
-                            : 'Schedule SE is calculated per partner. Add members in the Members tab to see the real calculation.'}
+                          {t('tax.scheduleSeHint')}
                         </div>
                         <button
                           onClick={() => setF1065Tab('members')}
