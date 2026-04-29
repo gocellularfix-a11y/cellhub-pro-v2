@@ -211,9 +211,13 @@ function MessageBubble({ msg, es, onAction }: { msg: ChatMessage; es: boolean; o
                 key={action.id}
                 onClick={() => onAction(action)}
                 disabled={!action.payload.executable}
-                className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 disabled:opacity-50"
+                title={action.payload.executable ? '' : 'Missing data to execute'}
+                className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 active:scale-[0.98] disabled:opacity-50"
               >
                 {action.label}
+                {action.actionType && (
+                  <span className="ml-1 text-[10px] opacity-60">[{action.actionType}]</span>
+                )}
               </button>
             ))}
           </div>
