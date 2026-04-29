@@ -65,8 +65,8 @@ export default function IntelligenceModule() {
 
   // R-INTEL-NLG-F4: natural-language summary derived from the analyzed result.
   const nlgSummary = useMemo(
-    () => summarizeDashboard(result, apiLang),
-    [result, apiLang],
+    () => summarizeDashboard(result, locale as 'en' | 'es' | 'pt'),
+    [result, locale],
   );
 
   const handleRefresh = useCallback(() => {
@@ -183,7 +183,6 @@ interface CustomerHistoryCardProps {
 
 function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
   const { locale, t } = useTranslation();
-  const apiLang: 'es' | 'en' = locale === 'pt' ? 'en' : locale as 'es' | 'en';
   const dateLoc = ({ en: 'en-US', es: 'es-MX', pt: 'pt-BR' } as Record<string, string>)[locale] ?? 'en-US';
   const fmtDate = (d: Date | null) =>
     d ? d.toLocaleDateString(dateLoc, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
@@ -191,7 +190,7 @@ function CustomerHistoryCard({ history }: CustomerHistoryCardProps) {
   const lowCostCoverage = history.costCoverage < 0.5 && history.visitCount > 0;
 
   // R-INTEL-NLG-F4: one-sentence narrative summary.
-  const summarySentence = summarizeCustomerHistory(history, apiLang);
+  const summarySentence = summarizeCustomerHistory(history, locale as 'en' | 'es' | 'pt');
 
   return (
     <div className="space-y-4">
