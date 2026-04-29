@@ -74,7 +74,7 @@ export function handleIntent(
       return handleWhoToContact(engine, es);
 
     case 'what_hurting_profit':
-      return handleWhatHurtingProfit(engine, es);
+      return handleWhatHurtingProfit(engine, lang);
 
     case 'help':
       return handleHelp(es);
@@ -322,63 +322,54 @@ function handleAnomalyDays(engine: IntelligenceEngine, es: boolean): ChatRespons
 }
 
 // ── What is hurting profit (R-INTEL-2-MISSED) ───────────────
-function handleWhatHurtingProfit(engine: IntelligenceEngine, es: boolean): ChatResponse {
+const DAY_NAMES_LOCALIZED: Record<Lang3, Record<string, string>> = {
+  en: {},
+  es: { Sunday: 'Domingo', Monday: 'Lunes', Tuesday: 'Martes', Wednesday: 'Miércoles', Thursday: 'Jueves', Friday: 'Viernes', Saturday: 'Sábado' },
+  pt: { Sunday: 'Domingo', Monday: 'Segunda', Tuesday: 'Terça', Wednesday: 'Quarta', Thursday: 'Quinta', Friday: 'Sexta', Saturday: 'Sábado' },
+};
+
+function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
   const report = engine.getMissedRevenue();
 
-  // Build ranked loss list — only include signals with value > 0.
-  const losses: Array<{ labelEs: string; label: string; cents: number; noteEs: string; note: string }> = [];
+  const losses: Array<{ label: string; cents: number; note: string }> = [];
 
   if (report.deadStockLockedCents > 0) {
     losses.push({
-      label: 'Dead stock capital lock',
-      labelEs: 'Capital en stock muerto',
+      label: t('chat.missed.deadStock.label'),
       cents: report.deadStockLockedCents,
-      note: `${COP(report.opportunityCostCents)}/mo holding cost`,
-      noteEs: `${COP(report.opportunityCostCents)}/mes de costo de almacenaje`,
+      note: t('chat.missed.deadStock.note', COP(report.opportunityCostCents)),
     });
   }
 
   if (report.slowDayLossCents > 0) {
-    const day = report.slowestDayName;
+    const localDay = DAY_NAMES_LOCALIZED[lang][report.slowestDayName] ?? report.slowestDayName;
     losses.push({
-      label: `Slow day gap (${day})`,
-      labelEs: `Brecha del día lento (${day})`,
+      label: t('chat.missed.slowDay.label', localDay),
       cents: report.slowDayLossCents,
-      note: 'vs best day of week — weekly opportunity',
-      noteEs: 'vs mejor día — oportunidad semanal',
+      note: t('chat.missed.slowDay.note'),
     });
   }
 
   if (report.slowHourLossCents > 0) {
     losses.push({
-      label: 'Off-peak hour gap',
-      labelEs: 'Brecha de horas lentas',
+      label: t('chat.missed.offPeak.label'),
       cents: report.slowHourLossCents,
-      note: 'daily total vs peak hour across all active hours',
-      noteEs: 'total diario vs hora pico en horas con actividad',
+      note: t('chat.missed.offPeak.note'),
     });
   }
 
   if (losses.length === 0) {
-    return {
-      kind: 'answer',
-      text: es
-        ? 'Sin señales de ingreso perdido detectadas. ¡Todo luciendo bien!'
-        : 'No missed-revenue signals detected. Everything looking good!',
-    };
+    return { kind: 'answer', text: t('chat.missed.empty') };
   }
 
   losses.sort((a, b) => b.cents - a.cents);
 
   const lines = losses.map((l, i) =>
-    `${i + 1}. ${es ? l.labelEs : l.label}: ${COP(l.cents)}\n   ${es ? l.noteEs : l.note}`,
+    `${i + 1}. ${l.label}: ${COP(l.cents)}\n   ${l.note}`,
   );
 
-  const header = es
-    ? '💸 Pérdidas de ingreso detectadas (mayor a menor):'
-    : '💸 Missed revenue signals (largest first):';
-
-  return { kind: 'answer', text: `${header}\n\n${lines.join('\n\n')}` };
+  return { kind: 'answer', text: `${t('chat.missed.header')}\n\n${lines.join('\n\n')}` };
 }
 
 // ── Who to contact (R-INTEL-2-CONTACT) ─────────────────────
