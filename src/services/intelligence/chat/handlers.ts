@@ -76,6 +76,9 @@ export function handleIntent(
     case 'what_hurting_profit':
       return handleWhatHurtingProfit(engine, lang);
 
+    case 'product_opportunities':
+      return handleProductOpportunities(engine, lang);
+
     case 'help':
       return handleHelp(es);
 
@@ -393,6 +396,38 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   return { kind: 'answer', text: `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}` };
 }
 
+// ── Product opportunities (R-INTEL-2-PRODUCT) ───────────────
+function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const opps = engine.getProductOpportunities();
+
+  if (opps.length === 0) {
+    return { kind: 'answer', text: t('chat.product.empty') };
+  }
+
+  const TYPE_LABEL: Record<string, string> = {
+    HIGH_MARGIN: t('chat.product.type.highMargin'),
+    LOW_MARGIN:  t('chat.product.type.lowMargin'),
+    DEAD_STOCK:  t('chat.product.type.deadStock'),
+    HIGH_RETURN: t('chat.product.type.highReturn'),
+  };
+
+  const ACTION_LABEL: Record<string, string> = {
+    PROMOTE:  t('chat.product.action.promote'),
+    DISCOUNT: t('chat.product.action.discount'),
+    BUNDLE:   t('chat.product.action.bundle'),
+    REVIEW:   t('chat.product.action.review'),
+  };
+
+  const lines = opps.slice(0, 8).map(o => {
+    const margin = o.marginPct > 0 ? ` · ${o.marginPct.toFixed(1)}% ${t('chat.product.margin')}` : '';
+    const impact = o.impactCents > 0 ? ` · ${COP(o.impactCents)} ${t('chat.product.impact')}` : '';
+    return `• ${o.name} [${TYPE_LABEL[o.type]}] → ${ACTION_LABEL[o.action]}${margin}${impact}`;
+  });
+
+  return { kind: 'answer', text: `${t('chat.product.header', opps.length)}\n${lines.join('\n')}` };
+}
+
 // ── Help ────────────────────────────────────────────────────
 function handleHelp(es: boolean): ChatResponse {
   const items = es
@@ -406,6 +441,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "reparaciones atrasadas" — overdue repairs',
       '• "a quién llamar" — clientes con visita esperada atrasada',
       '• "qué está afectando mi ganancia" — ingreso perdido por área',
+      '• "oportunidades de producto" — promover, descontar o revisar por margen',
       '• "cómo está la tienda" — health score',
       '• "proyecciones" — forecast por SKU',
       '• "días raros" / "anomalías" — cash-flow anomalies',
@@ -420,6 +456,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "overdue repairs" — overdue repairs',
       '• "who should I contact" — customers with overdue expected visit',
       '• "what is hurting my profit" — missed revenue by area',
+      '• "product opportunities" — items to promote, discount, or review by margin',
       '• "store health" — health score',
       '• "forecasts" — per-SKU demand projection',
       '• "anomalies" — unusual revenue days',

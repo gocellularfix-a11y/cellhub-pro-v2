@@ -36,6 +36,7 @@ export type IntentId =
   | 'anomaly_days'
   | 'who_to_contact'
   | 'what_hurting_profit'
+  | 'product_opportunities'
   | 'help'
   | 'unknown';
 
@@ -115,6 +116,17 @@ const WHO_TO_CONTACT_KEYWORDS = [
   'clientes que', 'customers to', 'follow-up', 'no han venido', 'not visited',
 ];
 
+const PRODUCT_OPPORTUNITY_KEYWORDS = [
+  'opportunity', 'oportunidad', 'opportunities', 'oportunidades',
+  'promote', 'promover', 'promotion', 'promocion', 'promoción',
+  'bundle', 'upsell', 'cross-sell',
+  'what to promote', 'qué promover', 'que promover',
+  'what to discount', 'qué descontar', 'que descontar',
+  'high margin', 'alto margen',
+  'what products', 'qué productos', 'que productos',
+  'product opportunity', 'oportunidad de producto',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -189,6 +201,7 @@ export function classifyIntent(
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
+    { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -209,7 +222,7 @@ export function classifyIntent(
       CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
-      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS, HELP_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS, PRODUCT_OPPORTUNITY_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

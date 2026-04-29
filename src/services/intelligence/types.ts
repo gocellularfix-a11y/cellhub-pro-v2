@@ -193,6 +193,22 @@ export interface ReorderRecommendation {
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
+// R-INTEL-2-PRODUCT: margin + velocity + return-rate classification for the
+// "what should I promote or discount?" chat intent and future product-opportunity UI.
+export interface ProductOpportunity {
+  inventoryId: string;
+  name: string;
+  type: 'HIGH_MARGIN' | 'LOW_MARGIN' | 'DEAD_STOCK' | 'HIGH_RETURN';
+  marginPct: number;          // (price - cost) / price * 100; 0 if cost unknown
+  avgDailySales: number;      // units/day over last 30 days
+  qty: number;
+  daysSinceLastSale: number | null;
+  returnRate: number;         // 0..1 (returned sales / total sales containing item)
+  action: 'PROMOTE' | 'DISCOUNT' | 'BUNDLE' | 'REVIEW';
+  impactCents: number;        // estimated revenue / margin impact over 30 days
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
 // R-INTEL-CUSTOMER-HISTORY: per-customer rollup for the lookup card
 // + future chat "historial de X" intent. Composes computeCustomerProfit
 // (src/utils/customerProfit.ts) with first/last visit, top items,

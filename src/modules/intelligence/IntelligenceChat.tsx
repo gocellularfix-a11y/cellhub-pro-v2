@@ -7,7 +7,7 @@
 // owner questions deterministically.
 // ============================================================
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
@@ -18,6 +18,8 @@ interface Props {
   engine: IntelligenceEngine;
   customers: Customer[];
   lang: 'en' | 'es';
+  // When this changes (new seq), the chat auto-submits the query text.
+  externalQuery?: { text: string; seq: number };
 }
 
 interface ChatMessage {
@@ -28,11 +30,36 @@ interface ChatMessage {
   kind?: 'answer' | 'disambiguation' | 'error' | 'help';
 }
 
-export default function IntelligenceChat({ engine, customers, lang }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery }: Props) {
   const { locale, t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevExternalSeq = useRef(-1);
+
+  // Auto-submit when parent fires a quick-action chip.
+  const engineRef = useRef(engine);
+  const customersRef = useRef(customers);
+  const langRef = useRef(lang);
+  useEffect(() => { engineRef.current = engine; }, [engine]);
+  useEffect(() => { customersRef.current = customers; }, [customers]);
+  useEffect(() => { langRef.current = lang; }, [lang]);
+
+  const fireQuery = useCallback((query: string) => {
+    const match = classifyIntent(query, customersRef.current, langRef.current);
+    const response = handleIntent(match, engineRef.current, langRef.current);
+    setMessages(prev => [
+      ...prev,
+      { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
+      { id: `a-${Date.now() + 1}`, role: 'assistant', content: response.text, timestamp: new Date(), kind: response.kind },
+    ]);
+  }, []);
+
+  useEffect(() => {
+    if (!externalQuery || externalQuery.seq === prevExternalSeq.current) return;
+    prevExternalSeq.current = externalQuery.seq;
+    fireQuery(externalQuery.text);
+  }, [externalQuery, fireQuery]);
 
   // Scroll to bottom on new message.
   useEffect(() => {

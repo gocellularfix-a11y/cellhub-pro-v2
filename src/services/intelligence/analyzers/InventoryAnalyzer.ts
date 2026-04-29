@@ -1,6 +1,6 @@
 // CellHub Intelligence — Inventory Analyzer
 import type { InventoryItem } from '@/store/types';
-import { Insight, InventoryMetrics, ReorderRecommendation } from '../types';
+import { Insight, InventoryMetrics, ProductOpportunity, ReorderRecommendation } from '../types';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { exponentialSmoothing } from '../utils/statistics';
 
@@ -316,6 +316,124 @@ export class InventoryAnalyzer {
     // 2 % / month holding cost (simplified capital opportunity cost)
     const opportunityCostCents = Math.round(deadStockLockedCents * 0.02);
     return { deadStockLockedCents, opportunityCostCents };
+  }
+
+  // R-INTEL-2-PRODUCT: classify inventory items into actionable opportunity tiers.
+  // Four types: HIGH_MARGIN (promote), LOW_MARGIN (bundle/discount),
+  // DEAD_STOCK (discount), HIGH_RETURN (review). Priority by 30-day impact.
+  // `returns` is a list of CustomerReturn-like objects with an originalSaleId;
+  // return rate is approximated at sale level (returned sales / all sales for item).
+  getProductOpportunities(
+    topN: number = 10,
+    returns: Array<{ originalSaleId?: string | null }> = [],
+  ): ProductOpportunity[] {
+    const result: ProductOpportunity[] = [];
+
+    // Build returned sale ID set for quick lookup
+    const returnedSaleIds = new Set(
+      returns.map(r => r.originalSaleId).filter((id): id is string => Boolean(id)),
+    );
+
+    // Dead stock set (reuse binary threshold logic)
+    const deadStockIds = new Set(this.getDeadStock().map(i => i.id));
+
+    // Recent 30-day window (for velocity and margin impact)
+    const recentSales = this.sales.filter(s => {
+      const d = new Date(s.createdAt as string);
+      return d >= getDaysAgo(30) && s.status !== 'voided';
+    });
+
+    // All-time non-voided sales (for return rate + daysSinceLastSale)
+    const allSales = this.sales.filter(s => s.status !== 'voided');
+
+    for (const item of this.inventory) {
+      const qty = item.qty || 0;
+      if (qty <= 0) continue;
+
+      const price = item.price || 0;
+      const cost = item.cost || 0;
+      if (price <= 0) continue;
+
+      const marginPct = cost > 0 ? ((price - cost) / price) * 100 : 0;
+
+      // 30-day velocity
+      const recentWithItem = recentSales.filter(s =>
+        (s.items || []).some((si: any) => si.inventoryId === item.id || si.name === item.name),
+      );
+      let recentQty = 0;
+      for (const sale of recentWithItem) {
+        for (const si of (sale.items || []) as any[]) {
+          if (si.inventoryId === item.id || si.name === item.name) {
+            recentQty += si.qty || 1;
+          }
+        }
+      }
+      const avgDailySales = recentQty / 30;
+
+      // All-time: return rate + daysSinceLastSale
+      const allWithItem = allSales.filter(s =>
+        (s.items || []).some((si: any) => si.inventoryId === item.id || si.name === item.name),
+      );
+      const returnedCount = allWithItem.filter(s => returnedSaleIds.has(s.id)).length;
+      const returnRate = allWithItem.length > 0 ? returnedCount / allWithItem.length : 0;
+
+      const lastSaleDate = allWithItem.reduce<Date | null>((latest, s) => {
+        const d = new Date(s.createdAt as string);
+        return !latest || d > latest ? d : latest;
+      }, null);
+      const daysSinceLastSale = lastSaleDate
+        ? Math.floor((Date.now() - lastSaleDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      // Classify — checked in priority order so each item gets one type.
+      // HIGH_RETURN checked first: product quality issue trumps margin/velocity.
+      let type: ProductOpportunity['type'] | null = null;
+      let action: ProductOpportunity['action'] = 'REVIEW';
+      let impactCents = 0;
+
+      if (returnRate >= 0.2 && allWithItem.length >= 5) {
+        type = 'HIGH_RETURN';
+        action = 'REVIEW';
+        impactCents = Math.round(returnRate * price * Math.max(avgDailySales, 0.1) * 30);
+      } else if (deadStockIds.has(item.id)) {
+        type = 'DEAD_STOCK';
+        action = 'DISCOUNT';
+        impactCents = cost * qty; // capital locked at cost basis
+      } else if (cost > 0 && marginPct >= 40 && avgDailySales >= 0.1) {
+        type = 'HIGH_MARGIN';
+        action = 'PROMOTE';
+        impactCents = Math.round((price - cost) * avgDailySales * 30);
+      } else if (cost > 0 && marginPct >= 0 && marginPct < 15 && avgDailySales >= 0.1) {
+        type = 'LOW_MARGIN';
+        action = avgDailySales >= 0.5 ? 'BUNDLE' : 'DISCOUNT';
+        impactCents = Math.round((0.15 - marginPct / 100) * price * avgDailySales * 30);
+      }
+
+      if (!type) continue;
+
+      const priority: ProductOpportunity['priority'] =
+        impactCents >= 50000 ? 'HIGH' :
+        impactCents >= 10000 ? 'MEDIUM' : 'LOW';
+
+      result.push({
+        inventoryId: item.id,
+        name: item.name,
+        type,
+        marginPct: Math.round(marginPct * 10) / 10,
+        avgDailySales,
+        qty,
+        daysSinceLastSale,
+        returnRate,
+        action,
+        impactCents,
+        priority,
+      });
+    }
+
+    const PRIORITY_ORDER: Record<ProductOpportunity['priority'], number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+    return result
+      .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || b.impactCents - a.impactCents)
+      .slice(0, topN);
   }
 
   getInventoryTurnoverRate(): number {

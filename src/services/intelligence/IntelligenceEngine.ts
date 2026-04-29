@@ -1,6 +1,6 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, ReorderRecommendation, NextVisitPrediction, MissedRevenueReport } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation } from './types';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -453,6 +453,12 @@ export class IntelligenceEngine {
     const { slowHourLossCents } = this.salesAnalyzer.getMissedRevenueByHour();
     const { deadStockLockedCents, opportunityCostCents } = this.inventoryAnalyzer.getDeadStockOpportunityCost();
     return { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
+  }
+
+  // R-INTEL-2-PRODUCT: margin + velocity + return-rate opportunity classification.
+  // Passes customerReturns so return rate can be approximated at sale level.
+  getProductOpportunities(topN: number = 10): ProductOpportunity[] {
+    return this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer
