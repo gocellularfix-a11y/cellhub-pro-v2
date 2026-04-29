@@ -39,7 +39,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
-  const [actionFeedbackById, setActionFeedbackById] = useState<Record<string, string>>({});
+  const [actionFeedbackById, setActionFeedbackById] = useState<
+    Record<string, { message: string; ts: number }>
+  >({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -52,7 +54,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   useEffect(() => { langRef.current = lang; }, [lang]);
 
   function setFeedbackForAction(actionId: string, message: string) {
-    setActionFeedbackById((prev) => ({ ...prev, [actionId]: message }));
+    const ts = Date.now();
+    setActionFeedbackById((prev) => ({ ...prev, [actionId]: { message, ts } }));
+    window.setTimeout(() => {
+      setActionFeedbackById((prev) => {
+        if (prev[actionId]?.ts !== ts) return prev;
+        const next = { ...prev };
+        delete next[actionId];
+        return next;
+      });
+    }, 5000);
   }
 
   function clearActionFeedback() {
@@ -232,7 +243,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 }
 
 // ── Message bubble ──────────────────────────────────────────
-function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, string> }) {
+function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
   const isUser = msg.role === 'user';
   const kindColor = {
     answer: 'border-blue-500/30 bg-blue-500/5',
@@ -268,9 +279,9 @@ function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; 
                     <span className="ml-1 text-[10px] opacity-60">[{action.actionType}]</span>
                   )}
                 </button>
-                {feedbackById[action.id] && (
+                {feedbackById[action.id]?.message && (
                   <div className="mt-1 text-[11px] text-slate-400">
-                    {feedbackById[action.id]}
+                    {feedbackById[action.id]?.message}
                   </div>
                 )}
               </div>
