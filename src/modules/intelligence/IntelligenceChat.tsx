@@ -39,6 +39,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -53,6 +54,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const fireQuery = useCallback((query: string) => {
     const match = classifyIntent(query, customersRef.current, langRef.current);
     const response = handleIntent(match, engineRef.current, langRef.current);
+    setActionFeedback(null);
     setMessages(prev => [
       ...prev,
       { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
@@ -95,6 +97,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       actions: response.actions,
     };
 
+    setActionFeedback(null);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
   };
@@ -102,7 +105,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   function handleActionClick(action: ChatActionUI) {
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
-      console.warn('Action not executable:', result.reason);
+      setActionFeedback(`Action not available: ${result.reason}`);
       return;
     }
     switch (result.type) {
@@ -110,16 +113,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         setPendingWaAction({ action, url: result.url });
         return;
       case 'pos_discount':
-        console.log('Trigger discount flow for SKU:', result.sku);
+        setActionFeedback(`Discount flow triggered for SKU: ${result.sku}`);
         break;
       case 'pos_bundle':
-        console.log('Trigger bundle flow for SKU:', result.sku);
+        setActionFeedback(`Bundle flow triggered for SKU: ${result.sku}`);
         break;
       case 'review_panel':
-        console.log('Open review panel');
+        setActionFeedback('Review panel opened.');
         break;
       case 'reminder_queue':
-        console.log('Queue reminder for:', result.customerName);
+        setActionFeedback(`Reminder queued for ${result.customerName ?? 'customer'}.`);
         break;
     }
   }
@@ -162,6 +165,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         <div ref={bottomRef} />
       </div>
 
+      {/* Action feedback */}
+      {actionFeedback && (
+        <div className="mx-3 mb-1 px-3 py-2 rounded bg-surface-700 border border-surface-600 text-xs text-slate-300 flex items-center justify-between shrink-0">
+          <span>{actionFeedback}</span>
+          <button onClick={() => setActionFeedback(null)} className="ml-2 text-slate-500 hover:text-slate-300">×</button>
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2 shrink-0">
         <input
@@ -198,6 +209,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               onClick={() => {
                 if (pendingWaAction) window.open(pendingWaAction.url, '_blank');
                 setPendingWaAction(null);
+                setActionFeedback('WhatsApp opened.');
               }}
               className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
             >
