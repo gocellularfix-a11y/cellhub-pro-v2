@@ -77,6 +77,7 @@ interface PaymentModalProps {
   onComplete: (sale: Sale) => void;
   lang: string;
   L: Record<string, any>;
+  storeId?: string;
 }
 
 export default function PaymentModal({
@@ -93,6 +94,7 @@ export default function PaymentModal({
   onComplete,
   lang,
   L,
+  storeId,
 }: PaymentModalProps) {
   const [showPortalConfirm, setShowPortalConfirm] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -164,6 +166,7 @@ export default function PaymentModal({
         selectedCustomer,
         currentEmployee,
         settings,
+        storeId,
       });
       onComplete(sale);
     } finally {

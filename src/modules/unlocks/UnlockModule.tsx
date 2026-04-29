@@ -55,7 +55,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function UnlockModule() {
   const {
-    state: { unlocks, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    state: { unlocks, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setUnlocks, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -665,6 +665,7 @@ export default function UnlockModule() {
     } else {
       const newUnlock: Unlock = {
         id: generateId(), ...form, customerName,
+        storeId: currentStoreId,
         customerId: selectedCustomer?.id ?? undefined,
         // Override with cents — form values are dollars, storage is cents
         price: priceCents,

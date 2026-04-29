@@ -58,7 +58,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function RepairModule() {
   const {
-    state: { repairs, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    state: { repairs, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setRepairs, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -584,6 +584,7 @@ export default function RepairModule() {
 
         const newRepair = {
           id: generateId(),
+          storeId: currentStoreId,
           ticketNumber: ticketNum,
           trackingToken,
           // Customer

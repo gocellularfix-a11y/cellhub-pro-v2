@@ -38,7 +38,7 @@ function statusBadge(status: string): string {
 
 export default function PurchaseOrdersModule() {
   const {
-    state: { purchaseOrders, inventory, settings, globalSearchTerm },
+    state: { purchaseOrders, inventory, settings, globalSearchTerm, currentStoreId },
     setPurchaseOrders,
     setInventory,
     dispatch,
@@ -247,6 +247,7 @@ export default function PurchaseOrdersModule() {
     } else {
       const newPO: PurchaseOrder = {
         id: generateId(),
+        storeId: currentStoreId,
         poNumber: form.poNumber || nextPONumber(),
         vendor: form.vendor!,
         vendorContact: form.vendorContact || '',

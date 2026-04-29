@@ -36,7 +36,7 @@ const STATUS_BADGE: Record<AppointmentStatus, string> = {
 
 export default function AppointmentsModule() {
   const {
-    state: { repairs, customers, settings, currentEmployee, lang, appointments, globalSearchTerm },
+    state: { repairs, customers, settings, currentEmployee, lang, appointments, globalSearchTerm, currentStoreId },
     setRepairs, setCustomers, setAppointments, dispatch,
   } = useApp();
   const { toast } = useToast();
@@ -265,6 +265,7 @@ export default function AppointmentsModule() {
       // removed in Round 1; schema field removed in Round 3.
       const appt: Appointment = {
         id: generateId(),
+        storeId: currentStoreId,
         customerId: linkedCustomerId,
         customerName,
         customerPhone: normalizedPhone,

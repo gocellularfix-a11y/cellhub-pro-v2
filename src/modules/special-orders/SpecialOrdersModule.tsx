@@ -52,7 +52,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function SpecialOrdersModule() {
   const {
-    state: { specialOrders, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    state: { specialOrders, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setSpecialOrders, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -471,6 +471,7 @@ export default function SpecialOrdersModule() {
     } else {
       const newOrder: SpecialOrder = {
         id: generateId(), ...form, customerName,
+        storeId: currentStoreId,
         customerId: selectedCustomer?.id ?? undefined,
         cost, price,
         // r-deposit-integrity-1: override form's depositAmount and balance.

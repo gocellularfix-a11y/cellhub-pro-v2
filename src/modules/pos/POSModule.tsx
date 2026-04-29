@@ -54,7 +54,7 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
-      pendingPosCustomer,
+      pendingPosCustomer, currentStoreId,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
@@ -774,9 +774,6 @@ export default function POSModule() {
       return;
     }
 
-    // [I3, I7] Mismo BuildSaleInput shape que phone path. storeId se
-    // omite — currentStoreId no está en scope de POSModule (F0 Q3
-    // conservative; pre-existing behavior preserved).
     const sale = buildSale({
       cart,
       totals,
@@ -786,6 +783,7 @@ export default function POSModule() {
       selectedCustomer,
       currentEmployee,
       settings,
+      storeId: currentStoreId,
     });
 
     // [I1] Única capa post-sale — misma función que consume onComplete
@@ -1091,6 +1089,7 @@ export default function POSModule() {
         onComplete={handleCompleteSale}
         lang={lang}
         L={L}
+        storeId={currentStoreId}
       />
 
       <ReceiptModal

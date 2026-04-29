@@ -70,7 +70,7 @@ const blankForm = (): Partial<Expense> => ({
 
 export default function ExpensesModule() {
   const {
-    state: { expenses },
+    state: { expenses, currentStoreId },
     setExpenses,
   } = useApp();
 
@@ -187,6 +187,7 @@ export default function ExpensesModule() {
     } else {
       const newExp: Expense = {
         id:            generateId(),
+        storeId:       currentStoreId,
         date:          form.date!,
         vendor:        form.vendor!,
         description:   form.description || '',
