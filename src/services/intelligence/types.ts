@@ -252,10 +252,16 @@ export interface CustomerHistorySummary {
 }
 
 // R-INTEL-PHASE2-RC: root cause analysis types
+export type ActionType = 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder';
+
 export interface ActionItem {
-  labelKey: string;         // i18n key: chat.rootCause.action.*
+  labelKey: string;              // i18n key: chat.rootCause.action.*
   effort: 'low' | 'medium' | 'high';
-  priority: number;         // 1 = highest
+  priority: number;              // 1 = highest
+  actionType?: ActionType;       // execution hint for action layer
+  customerId?: string;           // target customer (optional)
+  sku?: string;                  // target SKU (optional)
+  messageTemplateKey?: string;   // WhatsApp template key (optional)
 }
 
 export type RevenueDiagnosis = 'traffic' | 'ticket' | 'both';

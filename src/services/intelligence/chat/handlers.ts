@@ -477,7 +477,7 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(t('chat.deadStock.evidence.stock', r.stockUnits));
     lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
     lines.push(t('chat.rootCause.actionsHeader'));
-    r.actions.forEach((a, ai) => lines.push(`  ${ai + 1}. ${t(a.labelKey)}`));
+    r.actions.forEach((a, ai) => lines.push(`  ${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`));
     return lines.join('\n');
   });
 
@@ -530,7 +530,7 @@ function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatRe
   lines.push('');
   lines.push(t('chat.rootCause.actionsHeader'));
   report.actions.forEach((a, i) => {
-    lines.push(`${i + 1}. ${t(a.labelKey)}`);
+    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
   });
 
   return { kind: 'answer', text: lines.join('\n') };
@@ -579,7 +579,7 @@ function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse 
   lines.push('');
   lines.push(t('chat.rootCause.actionsHeader'));
   report.actions.forEach((a, i) => {
-    lines.push(`${i + 1}. ${t(a.labelKey)}`);
+    lines.push(`${i + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
   });
 
   return { kind: 'answer', text: lines.join('\n') };
@@ -615,7 +615,7 @@ function handleChurnRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResp
     lines.push(t('chat.rootCause.confidence', Math.round(r.confidence * 100)));
     lines.push(t('chat.rootCause.actionsHeader'));
     r.actions.forEach((a, ai) => {
-      lines.push(`${ai + 1}. ${t(a.labelKey)}`);
+      lines.push(`${ai + 1}. ${t(a.labelKey)}${a.actionType ? ` → [${a.actionType}]` : ''}`);
     });
   }
 

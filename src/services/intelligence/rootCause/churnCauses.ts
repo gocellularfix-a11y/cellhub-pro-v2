@@ -12,25 +12,25 @@ const CONFIDENCE_VISITS   = 5;    // visits needed for full confidence
 const TICKET_DROP_PCT     = 0.85; // <85% of prior avg = decreasing ticket
 
 const LOST_HABIT_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.churn.action.contact_customer',       effort: 'low',    priority: 1 },
-  { labelKey: 'chat.churn.action.send_offer',             effort: 'low',    priority: 2 },
-  { labelKey: 'chat.churn.action.remind_service',         effort: 'low',    priority: 3 },
+  { labelKey: 'chat.churn.action.contact_customer',       effort: 'low',    priority: 1, actionType: 'whatsapp',  messageTemplateKey: 'whatsapp.template.reconnect' },
+  { labelKey: 'chat.churn.action.send_offer',             effort: 'low',    priority: 2, actionType: 'whatsapp',  messageTemplateKey: 'whatsapp.template.discount' },
+  { labelKey: 'chat.churn.action.remind_service',         effort: 'low',    priority: 3, actionType: 'reminder' },
 ];
 
 const PRICE_SENSITIVITY_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.churn.action.offer_discount',         effort: 'low',    priority: 1 },
-  { labelKey: 'chat.churn.action.bundle_offer',           effort: 'medium', priority: 2 },
-  { labelKey: 'chat.churn.action.review_pricing',         effort: 'low',    priority: 3 },
+  { labelKey: 'chat.churn.action.offer_discount',         effort: 'low',    priority: 1, actionType: 'discount' },
+  { labelKey: 'chat.churn.action.bundle_offer',           effort: 'medium', priority: 2, actionType: 'bundle' },
+  { labelKey: 'chat.churn.action.review_pricing',         effort: 'low',    priority: 3, actionType: 'review' },
 ];
 
 const ONE_TIME_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.churn.action.first_return_incentive', effort: 'low',    priority: 1 },
-  { labelKey: 'chat.churn.action.educate_customer',       effort: 'medium', priority: 2 },
+  { labelKey: 'chat.churn.action.first_return_incentive', effort: 'low',    priority: 1, actionType: 'whatsapp',  messageTemplateKey: 'whatsapp.template.discount' },
+  { labelKey: 'chat.churn.action.educate_customer',       effort: 'medium', priority: 2, actionType: 'reminder' },
 ];
 
 const MIXED_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.churn.action.contact_customer',       effort: 'low',    priority: 1 },
-  { labelKey: 'chat.churn.action.review_history',         effort: 'low',    priority: 2 },
+  { labelKey: 'chat.churn.action.contact_customer',       effort: 'low',    priority: 1, actionType: 'whatsapp',  messageTemplateKey: 'whatsapp.template.reconnect' },
+  { labelKey: 'chat.churn.action.review_history',         effort: 'low',    priority: 2, actionType: 'review' },
 ];
 
 export function diagnoseChurn(
@@ -120,6 +120,6 @@ export function diagnoseChurn(
     });
   }
 
-  // Longest inactive first
-  return reports.sort((a, b) => b.lastVisitDaysAgo - a.lastVisitDaysAgo);
+  // Highest impact first (days inactive × total visits)
+  return reports.sort((a, b) => (b.lastVisitDaysAgo * b.totalVisits) - (a.lastVisitDaysAgo * a.totalVisits));
 }

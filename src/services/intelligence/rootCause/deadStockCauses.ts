@@ -15,24 +15,24 @@ const LOW_VELOCITY        = 0.5;    // < 0.5 units/week = suppressed demand
 
 const ITEM_ACTIONS: Record<string, ActionItem[]> = {
   no_demand: [
-    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 1 },
-    { labelKey: 'chat.deadStock.action.bundle_item',   effort: 'medium', priority: 2 },
-    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 3 },
+    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 1, actionType: 'discount' },
+    { labelKey: 'chat.deadStock.action.bundle_item',   effort: 'medium', priority: 2, actionType: 'bundle' },
+    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 3, actionType: 'review' },
   ],
   low_visibility: [
-    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 1 },
-    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 2 },
-    { labelKey: 'chat.deadStock.action.bundle_item',   effort: 'medium', priority: 3 },
+    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 1, actionType: 'review' },
+    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 2, actionType: 'review' },
+    { labelKey: 'chat.deadStock.action.bundle_item',   effort: 'medium', priority: 3, actionType: 'bundle' },
   ],
   pricing_issue: [
-    { labelKey: 'chat.deadStock.action.review_price',  effort: 'low',    priority: 1 },
-    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 2 },
-    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 3 },
+    { labelKey: 'chat.deadStock.action.review_price',  effort: 'low',    priority: 1, actionType: 'review' },
+    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 2, actionType: 'discount' },
+    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 3, actionType: 'review' },
   ],
   mixed: [
-    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 1 },
-    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 2 },
-    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 3 },
+    { labelKey: 'chat.deadStock.action.discount_item', effort: 'low',    priority: 1, actionType: 'discount' },
+    { labelKey: 'chat.deadStock.action.move_display',  effort: 'low',    priority: 2, actionType: 'review' },
+    { labelKey: 'chat.deadStock.action.promote_item',  effort: 'low',    priority: 3, actionType: 'review' },
   ],
 };
 

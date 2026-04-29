@@ -24,21 +24,21 @@ function sliceWindow(sales: Sale[], from: Date, to: Date): Sale[] {
 }
 
 const TRAFFIC_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.rootCause.action.contactOverdue',   effort: 'low',    priority: 1 },
-  { labelKey: 'chat.rootCause.action.slowDayPromo',     effort: 'medium', priority: 2 },
-  { labelKey: 'chat.rootCause.action.promoteTopSeller', effort: 'low',    priority: 3 },
+  { labelKey: 'chat.rootCause.action.contactOverdue',   effort: 'low',    priority: 1, actionType: 'whatsapp', messageTemplateKey: 'whatsapp.template.reconnect' },
+  { labelKey: 'chat.rootCause.action.slowDayPromo',     effort: 'medium', priority: 2, actionType: 'review' },
+  { labelKey: 'chat.rootCause.action.promoteTopSeller', effort: 'low',    priority: 3, actionType: 'review' },
 ];
 
 const TICKET_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.rootCause.action.upsellPrompt',         effort: 'low',    priority: 1 },
-  { labelKey: 'chat.rootCause.action.highMarginProducts',    effort: 'low',    priority: 2 },
-  { labelKey: 'chat.rootCause.action.bundleAccessories',     effort: 'medium', priority: 3 },
+  { labelKey: 'chat.rootCause.action.upsellPrompt',         effort: 'low',    priority: 1, actionType: 'review' },
+  { labelKey: 'chat.rootCause.action.highMarginProducts',    effort: 'low',    priority: 2, actionType: 'review' },
+  { labelKey: 'chat.rootCause.action.bundleAccessories',     effort: 'medium', priority: 3, actionType: 'bundle' },
 ];
 
 const BOTH_ACTIONS: ActionItem[] = [
-  { labelKey: 'chat.rootCause.action.contactOverdue', effort: 'low',    priority: 1 },
-  { labelKey: 'chat.rootCause.action.upsellPrompt',   effort: 'low',    priority: 2 },
-  { labelKey: 'chat.rootCause.action.slowDayPromo',   effort: 'medium', priority: 3 },
+  { labelKey: 'chat.rootCause.action.contactOverdue', effort: 'low',    priority: 1, actionType: 'whatsapp', messageTemplateKey: 'whatsapp.template.reconnect' },
+  { labelKey: 'chat.rootCause.action.upsellPrompt',   effort: 'low',    priority: 2, actionType: 'review' },
+  { labelKey: 'chat.rootCause.action.slowDayPromo',   effort: 'medium', priority: 3, actionType: 'review' },
 ];
 
 // Confidence reaches 1.0 at 20 total transactions across both windows.
