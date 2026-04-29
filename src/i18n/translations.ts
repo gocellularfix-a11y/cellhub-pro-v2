@@ -3362,6 +3362,16 @@ export const translations: TranslationDictionary = {
     es: 'Tip: Esta búsqueda es global a todos los módulos.',
     pt: 'Dica: Esta busca é compartilhada entre módulos.',
   },
+  'globalSearch.placeholder': {
+    en: 'Search customers, phones, accessories...',
+    es: 'Buscar clientes, teléfonos, accesorios...',
+    pt: 'Buscar clientes, celulares, acessórios...',
+  },
+  'globalSearch.sharedTip': {
+    en: 'Tip: This search is shared across modules. Your term stays saved until you change it.',
+    es: 'Tip: Esta búsqueda se comparte entre módulos. El término queda guardado hasta que lo cambies.',
+    pt: 'Dica: Esta busca é compartilhada entre os módulos. O termo fica salvo até você alterá-lo.',
+  },
   'globalSearch.resultsFor': {
     en: (n: number, q: string) => `${n} result${n !== 1 ? 's' : ''} for "${q}"`,
     es: (n: number, q: string) => `${n} resultado${n !== 1 ? 's' : ''} para "${q}"`,

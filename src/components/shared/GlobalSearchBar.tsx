@@ -306,12 +306,12 @@ export default function GlobalSearchBar({
       <SearchInput
         value={search}
         onChange={handleChange}
-        placeholder={placeholder || L.searchPlaceholder || t('globalSearch.placeholderDefault')}
+        placeholder={placeholder || t('globalSearch.placeholder') || L.searchPlaceholder}
       />
 
       {showTip && (
         <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.35rem' }}>
-          {L.globalSearchTip || t('globalSearch.tip')}
+          {t('globalSearch.sharedTip') || L.globalSearchTip}
         </div>
       )}
 
