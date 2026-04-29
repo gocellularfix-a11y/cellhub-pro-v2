@@ -1,7 +1,8 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
+import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -467,6 +468,13 @@ export class IntelligenceEngine {
   // Returns null when revenue is not down or prior-period data is absent.
   getRevenueRootCause(): RootCauseReport | null {
     return diagnoseRevenueDecline(this.sales);
+  }
+
+  // R-INTEL-PHASE2B-RC: slow day root cause — compares slowest DOW vs
+  // best DOW over last 30 days and classifies as traffic, ticket, or mixed.
+  // Returns null when fewer than 5 sales or <2 active days of week.
+  getSlowDayRootCause(): SlowDayRootCauseReport | null {
+    return diagnoseSlowDay(this.sales);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

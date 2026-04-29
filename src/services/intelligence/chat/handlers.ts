@@ -82,6 +82,9 @@ export function handleIntent(
     case 'root_cause':
       return handleRootCause(engine, lang);
 
+    case 'slow_day_root_cause':
+      return handleSlowDayRootCause(engine, lang);
+
     case 'help':
       return handleHelp(es);
 
@@ -431,6 +434,58 @@ function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): Ch
   return { kind: 'answer', text: `${t('chat.product.header', opps.length)}\n${lines.join('\n')}` };
 }
 
+// ── Slow day root cause (R-INTEL-PHASE2B-RC) ───────────────
+function handleSlowDayRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = engine.getSlowDayRootCause();
+
+  if (!report) {
+    return { kind: 'answer', text: t('chat.slowRoot.notEnoughData') };
+  }
+
+  const localDay  = DAY_NAMES_LOCALIZED[lang][report.slowestDayName] ?? report.slowestDayName;
+  const localBest = DAY_NAMES_LOCALIZED[lang][report.bestDayName]    ?? report.bestDayName;
+
+  const DIAG_KEY: Record<string, string> = {
+    traffic: 'chat.slowRoot.diagTraffic',
+    ticket:  'chat.slowRoot.diagTicket',
+    mixed:   'chat.slowRoot.diagMixed',
+  };
+
+  const lines: string[] = [];
+  lines.push(t('chat.slowRoot.header', localDay));
+  lines.push('');
+  lines.push(t(DIAG_KEY[report.diagnosis], localDay));
+  lines.push('');
+  lines.push(t('chat.slowRoot.evidence.revGap',
+    COP(report.weeklyGapCents), COP(report.slowDayRevenueCents), localBest, COP(report.bestDayRevenueCents)));
+
+  if (report.txDiffPct >= 5) {
+    lines.push(t('chat.slowRoot.evidence.txDiff',
+      report.txDiffPct, report.slowDayTxCount, report.bestDayTxCount));
+  } else {
+    lines.push(t('chat.slowRoot.evidence.txSimilar', report.slowDayTxCount));
+  }
+
+  if (report.ticketDiffPct >= 5) {
+    lines.push(t('chat.slowRoot.evidence.ticketDiff',
+      report.ticketDiffPct,
+      COP(report.slowDayAvgTicketCents), COP(report.bestDayAvgTicketCents)));
+  } else {
+    lines.push(t('chat.slowRoot.evidence.ticketSimilar', COP(report.slowDayAvgTicketCents)));
+  }
+
+  lines.push('');
+  lines.push(t('chat.rootCause.confidence', Math.round(report.confidence * 100)));
+  lines.push('');
+  lines.push(t('chat.rootCause.actionsHeader'));
+  report.actions.forEach((a, i) => {
+    lines.push(`${i + 1}. ${t(a.labelKey)}`);
+  });
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
 // ── Revenue decline root cause (R-INTEL-PHASE2-RC) ─────────
 function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
@@ -493,6 +548,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "reparaciones atrasadas" — overdue repairs',
       '• "a quién llamar" — clientes con visita esperada atrasada',
       '• "por qué bajaron las ventas" — diagnóstico de caída de ingresos',
+      '• "por qué el domingo está lento" — diagnóstico de día lento',
       '• "qué está afectando mi ganancia" — ingreso perdido por área',
       '• "oportunidades de producto" — promover, descontar o revisar por margen',
       '• "cómo está la tienda" — health score',
@@ -509,6 +565,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "overdue repairs" — overdue repairs',
       '• "who should I contact" — customers with overdue expected visit',
       '• "why are sales down" — revenue decline diagnosis',
+      '• "why is Sunday slow" — slow day diagnosis',
       '• "what is hurting my profit" — missed revenue by area',
       '• "product opportunities" — items to promote, discount, or review by margin',
       '• "store health" — health score',

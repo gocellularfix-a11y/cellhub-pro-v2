@@ -38,6 +38,7 @@ export type IntentId =
   | 'what_hurting_profit'
   | 'product_opportunities'
   | 'root_cause'
+  | 'slow_day_root_cause'
   | 'help'
   | 'unknown';
 
@@ -139,6 +140,21 @@ const ROOT_CAUSE_KEYWORDS = [
   'por que as vendas', 'o que aconteceu com', 'queda nas vendas', 'causa raiz das vendas',
 ];
 
+const SLOW_DAY_ROOT_CAUSE_KEYWORDS = [
+  // EN
+  'why is sunday', 'why is monday', 'why is tuesday', 'why is wednesday',
+  'why is thursday', 'why is friday', 'why is saturday',
+  'why slowest day', 'slow day reason', 'slow day why', 'why my slowest',
+  // ES
+  'por qué domingo', 'por qué lunes', 'por qué martes', 'por qué miércoles',
+  'por qué jueves', 'por qué viernes', 'por qué sábado',
+  'por qué mi día lento', 'causa del día lento', 'día lento por qué',
+  // PT
+  'por que domingo', 'por que segunda', 'por que terça', 'por que quarta',
+  'por que quinta', 'por que sexta', 'por que sábado',
+  'dia mais fraco', 'por que meu dia fraco',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -215,6 +231,7 @@ export function classifyIntent(
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
+    { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -236,7 +253,7 @@ export function classifyIntent(
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
-      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
+      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

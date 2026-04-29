@@ -275,3 +275,21 @@ export interface RootCauseReport {
   confidence: number;       // 0..1, based on sample size
   actions: ActionItem[];
 }
+
+// R-INTEL-PHASE2B-RC: slow day root cause report
+export interface SlowDayRootCauseReport {
+  slowestDayName: string;           // English DOW, e.g. 'Sunday'
+  bestDayName: string;              // English DOW
+  slowDayRevenueCents: number;      // avg revenue per occurrence
+  bestDayRevenueCents: number;
+  weeklyGapCents: number;           // bestDayRevenue - slowDayRevenue
+  slowDayTxCount: number;           // avg transactions per occurrence (rounded)
+  bestDayTxCount: number;
+  slowDayAvgTicketCents: number;
+  bestDayAvgTicketCents: number;
+  txDiffPct: number;                // integer %
+  ticketDiffPct: number;            // integer %
+  diagnosis: 'traffic' | 'ticket' | 'mixed';
+  confidence: number;               // 0..1, based on weeks of data
+  actions: ActionItem[];
+}
