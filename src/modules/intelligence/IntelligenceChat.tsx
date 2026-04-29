@@ -23,6 +23,7 @@ import {
   addAutomationOutcome,
 } from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem, AutomationOutcome } from '@/services/intelligence/automation/automationQueue';
+import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 
@@ -273,12 +274,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             </span>
           </div>
           <div className="space-y-1 max-h-36 overflow-y-auto">
-            {automationQueue.map(item => (
+            {[...automationQueue].sort((a, b) => scoreAutomationItem(b).score - scoreAutomationItem(a).score).map(item => {
+              const priority = scoreAutomationItem(item);
+              return (
               <div key={item.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-surface-700 border border-surface-600">
                 <div className="min-w-0 flex-1">
                   <span className="text-xs text-slate-300 truncate block">{item.label}</span>
                   <span className="text-[10px] text-slate-500">
                     {item.kind}{item.customerName ? ` · ${item.customerName}` : ''}{item.sku ? ` · ${item.sku}` : ''}
+                    {' · '}
+                    <span title={priority.reasons.join(', ')}>Priority: {priority.score}</span>
                   </span>
                   {item.executionLog?.length ? (
                     <span className="text-[10px] text-slate-500 block">
@@ -339,7 +344,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
