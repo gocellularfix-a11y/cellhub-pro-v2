@@ -6,16 +6,60 @@
 // Change display, SMS checkbox, Loyalty nag) was moved to Cart.tsx.
 // This modal now only handles the external-portal-done warning that
 // Jorge explicitly asked to preserve.
+//
+// R-PORTAL-WARN: Enhanced rotating confirmation modal — variant changes
+// each time the modal opens so cashiers cannot click through on autopilot.
+// Checkbox friction required before the Confirm button unlocks.
 // ============================================================
 
-import { useMemo, useState } from 'react';
-import { Modal, ConfirmDialog } from '@/components/ui';
+import { useMemo, useRef, useState } from 'react';
+import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import type { CartItem, Customer, Sale, Employee, StoreSettings } from '@/store/types';
 import type { CartTotals } from './types';
 import { buildSale, computePaidCents } from './saleBuilder';
+
+// ── Rotating variant definitions ─────────────────────────────
+// 4 visual styles cycling deterministically on each modal open.
+// Order: danger → warning → verification → attention
+const PORTAL_VARIANTS = [
+  {
+    icon: '🛑',
+    titleKey: 'paymentModal.portalV0Title',
+    helperKey: 'paymentModal.portalV0Helper',
+    accent: '#EF4444',
+    bg: 'rgba(239,68,68,0.09)',
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  {
+    icon: '⚠️',
+    titleKey: 'paymentModal.portalV1Title',
+    helperKey: 'paymentModal.portalV1Helper',
+    accent: '#F59E0B',
+    bg: 'rgba(245,158,11,0.09)',
+    borderColor: 'rgba(245,158,11,0.35)',
+  },
+  {
+    icon: '🔍',
+    titleKey: 'paymentModal.portalV2Title',
+    helperKey: 'paymentModal.portalV2Helper',
+    accent: '#3B82F6',
+    bg: 'rgba(59,130,246,0.09)',
+    borderColor: 'rgba(59,130,246,0.35)',
+  },
+  {
+    icon: '🔔',
+    titleKey: 'paymentModal.portalV3Title',
+    helperKey: 'paymentModal.portalV3Helper',
+    accent: '#8B5CF6',
+    bg: 'rgba(139,92,246,0.09)',
+    borderColor: 'rgba(139,92,246,0.35)',
+  },
+] as const;
+
+type PortalVariant = typeof PORTAL_VARIANTS[number];
 
 interface PaymentModalProps {
   open: boolean;
@@ -52,6 +96,11 @@ export default function PaymentModal({
 }: PaymentModalProps) {
   const [showPortalConfirm, setShowPortalConfirm] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [portalVerified, setPortalVerified] = useState(false);
+  // Deterministic rotation: ref tracks next variant index; state holds current.
+  const nextVariantRef = useRef(0);
+  const [variantIdx, setVariantIdx] = useState(0);
+
   const { toast } = useToast();
   const { t } = useTranslation();
 
@@ -77,6 +126,11 @@ export default function PaymentModal({
     // Paso 1: ConfirmDialog portal PRIMERO (antes del guard).
     // Jorge-mandated warning for carrier-portal payments.
     if (hasExternalPortal && !showPortalConfirm) {
+      // Advance to next variant deterministically before opening.
+      const vi = nextVariantRef.current;
+      nextVariantRef.current = (vi + 1) % PORTAL_VARIANTS.length;
+      setVariantIdx(vi);
+      setPortalVerified(false);
       setShowPortalConfirm(true);
       return;
     }
@@ -137,11 +191,14 @@ export default function PaymentModal({
             <p className="text-sm text-slate-500 mt-2 capitalize">{paymentMethod}</p>
           </div>
 
-          {/* External portal reminder — visual cue before button click */}
+          {/* External portal reminder — strengthened visual cue before button click */}
           {hasExternalPortal && (
-            <div className="text-center py-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-              <p className="text-sm text-amber-400">
+            <div className="rounded-xl border-2 border-amber-500/40 bg-amber-500/10 px-4 py-4 text-center">
+              <p className="text-base font-bold text-amber-400">
                 ⚠️ {t('paymentModal.externalPortalRequired')}
+              </p>
+              <p className="text-xs text-amber-300/80 mt-1">
+                {t('paymentModal.portalV1Helper')}
               </p>
             </div>
           )}
@@ -159,20 +216,103 @@ export default function PaymentModal({
         </div>
       </Modal>
 
-      {/* External portal confirmation — keep (Jorge-mandated) */}
-      <ConfirmDialog
-        open={showPortalConfirm}
-        title={t('paymentModal.portalConfirmTitle')}
-        message={t('paymentModal.portalConfirmMessage')}
-        confirmLabel={t('paymentModal.portalConfirmYes')}
-        cancelLabel={t('paymentModal.portalConfirmNo')}
-        variant="warning"
-        onConfirm={() => {
-          setShowPortalConfirm(false);
-          handleComplete();
-        }}
-        onCancel={() => setShowPortalConfirm(false)}
-      />
+      {/* External portal confirmation — rotating enhanced modal (Jorge-mandated) */}
+      {showPortalConfirm && (
+        <ExternalPortalConfirmModal
+          variant={PORTAL_VARIANTS[variantIdx]}
+          verified={portalVerified}
+          onVerifiedChange={setPortalVerified}
+          onConfirm={() => {
+            setShowPortalConfirm(false);
+            setPortalVerified(false);
+            handleComplete();
+          }}
+          onCancel={() => {
+            setShowPortalConfirm(false);
+            setPortalVerified(false);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// ── Rotating external-portal confirmation modal ──────────────
+// Bigger, variant-styled, requires checkbox before confirm unlocks.
+function ExternalPortalConfirmModal({
+  variant,
+  verified,
+  onVerifiedChange,
+  onConfirm,
+  onCancel,
+}: {
+  variant: PortalVariant;
+  verified: boolean;
+  onVerifiedChange: (v: boolean) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title={t(variant.titleKey)}
+      size="max-w-lg"
+      footer={
+        <div className="flex gap-3 w-full">
+          <button className="btn btn-secondary flex-1 py-3" onClick={onCancel}>
+            {t('paymentModal.portalConfirmNo')}
+          </button>
+          <button
+            className="btn flex-1 py-3 text-base font-bold transition-all"
+            style={{
+              background: verified ? variant.accent : 'rgba(100,100,100,0.25)',
+              color: verified ? '#fff' : 'rgba(255,255,255,0.35)',
+              border: `1px solid ${verified ? variant.accent : 'transparent'}`,
+              cursor: verified ? 'pointer' : 'not-allowed',
+            }}
+            onClick={onConfirm}
+            disabled={!verified}
+          >
+            {t('paymentModal.portalConfirmVerified')}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-5 py-1">
+        {/* Variant accent block — icon + helper text */}
+        <div
+          className="text-center rounded-2xl py-7 px-5"
+          style={{ background: variant.bg, border: `2px solid ${variant.borderColor}` }}
+        >
+          <div className="text-6xl mb-4 select-none">{variant.icon}</div>
+          <p className="text-base font-medium text-slate-200 leading-relaxed">
+            {t(variant.helperKey)}
+          </p>
+        </div>
+
+        {/* Checkbox friction — must check before confirm unlocks */}
+        <label
+          className="flex items-start gap-3 cursor-pointer rounded-xl p-4 border-2 transition-all select-none"
+          style={{
+            borderColor: verified ? variant.accent : 'rgba(100,116,139,0.35)',
+            background: verified ? `${variant.accent}18` : 'transparent',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={verified}
+            onChange={e => onVerifiedChange(e.target.checked)}
+            className="mt-0.5 w-5 h-5 flex-shrink-0"
+            style={{ accentColor: variant.accent }}
+          />
+          <span className="text-sm font-semibold text-slate-200 leading-snug">
+            {t('paymentModal.portalCheckbox')}
+          </span>
+        </label>
+      </div>
+    </Modal>
   );
 }
