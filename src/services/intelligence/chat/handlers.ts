@@ -11,8 +11,21 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
 import { summarizeCustomerHistory } from '../nlg';
+import { translations } from '@/i18n/translations';
 
 const COP = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+// Standalone translation lookup — mirrors useTranslation() logic without
+// requiring React context. Used by pure-TS chat handlers.
+type Lang3 = 'en' | 'es' | 'pt';
+function tChat(lang: Lang3) {
+  return (key: string, ...args: any[]): string => {
+    const entry = translations[key];
+    if (!entry) return key;
+    const value = entry[lang] ?? entry.en;
+    return typeof value === 'function' ? value(...args) : value;
+  };
+}
 
 export interface ChatResponse {
   text: string;
@@ -22,7 +35,7 @@ export interface ChatResponse {
 export function handleIntent(
   match: IntentMatch,
   engine: IntelligenceEngine,
-  lang: 'en' | 'es',
+  lang: Lang3,
 ): ChatResponse {
   const es = lang === 'es';
 
@@ -34,7 +47,7 @@ export function handleIntent(
       return handleSalesSummary(engine, es);
 
     case 'inventory_low':
-      return handleInventoryLow(engine, es);
+      return handleInventoryLow(engine, lang);
 
     case 'inventory_dead':
       return handleInventoryDead(engine, es);
@@ -134,31 +147,31 @@ function handleSalesSummary(engine: IntelligenceEngine, es: boolean): ChatRespon
 // ── Inventory low-stock / reorder recommendations ───────────
 // R-INTEL-2-REORDER: upgraded from binary alert to full recommendation
 // list with suggested qty, priority, and lost-revenue risk.
-function handleInventoryLow(engine: IntelligenceEngine, es: boolean): ChatResponse {
+function handleInventoryLow(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
   const recs = engine.getReorderRecommendations();
 
   if (recs.length === 0) {
-    return {
-      kind: 'answer',
-      text: es ? 'Nada en alerta de reorden. Stock saludable.' : 'Nothing on reorder alert. Stock looks healthy.',
-    };
+    return { kind: 'answer', text: t('chat.reorder.empty') };
   }
 
-  const PRIORITY_LABEL: Record<string, string> = es
-    ? { CRITICAL: '🔴 CRÍTICO', HIGH: '🟠 ALTO', MEDIUM: '🟡 MEDIO', LOW: '🟢 BAJO' }
-    : { CRITICAL: '🔴 CRITICAL', HIGH: '🟠 HIGH', MEDIUM: '🟡 MEDIUM', LOW: '🟢 LOW' };
+  const PRIORITY_LABEL: Record<string, string> = {
+    CRITICAL: t('chat.reorder.priorityCritical'),
+    HIGH:     t('chat.reorder.priorityHigh'),
+    MEDIUM:   t('chat.reorder.priorityMedium'),
+    LOW:      t('chat.reorder.priorityLow'),
+  };
 
   const lines = recs.slice(0, 8).map(r => {
-    const days = r.daysLeft < 1 ? (es ? '<1 día' : '<1 day') : `${Math.round(r.daysLeft)} ${es ? 'días' : 'days'}`;
-    const risk = r.lostRevenueRiskCents > 0 ? ` ⚠️ ${COP(r.lostRevenueRiskCents)} riesgo` : '';
-    return `${PRIORITY_LABEL[r.priority]} • ${r.name} — ${es ? 'pedir' : 'order'} ${r.suggestedOrderQty} uds (${days}${risk})`;
+    const daysRounded = Math.round(r.daysLeft);
+    const days = r.daysLeft < 1 ? t('chat.reorder.daysLessThanOne') : t('chat.reorder.days', daysRounded);
+    const risk = r.lostRevenueRiskCents > 0
+      ? ` ⚠️ ${COP(r.lostRevenueRiskCents)} ${t('chat.reorder.risk')}`
+      : '';
+    return `${PRIORITY_LABEL[r.priority]} • ${r.name} — ${t('chat.reorder.orderVerb')} ${r.suggestedOrderQty} ${t('chat.reorder.units')} (${days}${risk})`;
   });
 
-  const header = es
-    ? `${recs.length} artículo${recs.length === 1 ? '' : 's'} para reordenar:`
-    : `${recs.length} item${recs.length === 1 ? '' : 's'} to reorder:`;
-
-  return { kind: 'answer', text: `${header}\n${lines.join('\n')}` };
+  return { kind: 'answer', text: `${t('chat.reorder.header', recs.length)}\n${lines.join('\n')}` };
 }
 
 // ── Inventory dead-stock ────────────────────────────────────
