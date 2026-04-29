@@ -39,7 +39,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [actionFeedbackById, setActionFeedbackById] = useState<Record<string, string>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -51,10 +51,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { langRef.current = lang; }, [lang]);
 
+  function setFeedbackForAction(actionId: string, message: string) {
+    setActionFeedbackById((prev) => ({ ...prev, [actionId]: message }));
+  }
+
+  function clearActionFeedback() {
+    setActionFeedbackById({});
+  }
+
   const fireQuery = useCallback((query: string) => {
     const match = classifyIntent(query, customersRef.current, langRef.current);
     const response = handleIntent(match, engineRef.current, langRef.current);
-    setActionFeedback(null);
+    clearActionFeedback();
     setMessages(prev => [
       ...prev,
       { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
@@ -97,7 +105,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       actions: response.actions,
     };
 
-    setActionFeedback(null);
+    clearActionFeedback();
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
   };
@@ -105,7 +113,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   function handleActionClick(action: ChatActionUI) {
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
-      setActionFeedback(`Action not available: ${result.reason}`);
+      setFeedbackForAction(action.id, `Action not available: ${result.reason}`);
       return;
     }
     switch (result.type) {
@@ -113,16 +121,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         setPendingWaAction({ action, url: result.url });
         return;
       case 'pos_discount':
-        setActionFeedback(`Discount flow triggered for SKU: ${result.sku}`);
+        setFeedbackForAction(action.id, `Discount flow triggered for SKU: ${result.sku}`);
         break;
       case 'pos_bundle':
-        setActionFeedback(`Bundle flow triggered for SKU: ${result.sku}`);
+        setFeedbackForAction(action.id, `Bundle flow triggered for SKU: ${result.sku}`);
         break;
       case 'review_panel':
-        setActionFeedback('Review panel opened.');
+        setFeedbackForAction(action.id, 'Review panel opened.');
         break;
       case 'reminder_queue':
-        setActionFeedback(`Reminder queued for ${result.customerName ?? 'customer'}.`);
+        setFeedbackForAction(action.id, `Reminder queued for ${result.customerName ?? 'customer'}.`);
         break;
     }
   }
@@ -160,18 +168,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         {messages.length === 0 ? (
           <EmptyState onSuggestion={handleSuggestion} />
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} />)
+          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* Action feedback */}
-      {actionFeedback && (
-        <div className="mx-3 mb-1 px-3 py-2 rounded bg-surface-700 border border-surface-600 text-xs text-slate-300 flex items-center justify-between shrink-0">
-          <span>{actionFeedback}</span>
-          <button onClick={() => setActionFeedback(null)} className="ml-2 text-slate-500 hover:text-slate-300">×</button>
-        </div>
-      )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2 shrink-0">
@@ -207,9 +207,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             </button>
             <button
               onClick={() => {
-                if (pendingWaAction) window.open(pendingWaAction.url, '_blank');
+                if (pendingWaAction) {
+                  window.open(pendingWaAction.url, '_blank');
+                  setFeedbackForAction(pendingWaAction.action.id, 'WhatsApp opened.');
+                }
                 setPendingWaAction(null);
-                setActionFeedback('WhatsApp opened.');
               }}
               className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
             >
@@ -230,7 +232,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 }
 
 // ── Message bubble ──────────────────────────────────────────
-function MessageBubble({ msg, es, onAction }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void }) {
+function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, string> }) {
   const isUser = msg.role === 'user';
   const kindColor = {
     answer: 'border-blue-500/30 bg-blue-500/5',
@@ -252,20 +254,26 @@ function MessageBubble({ msg, es, onAction }: { msg: ChatMessage; es: boolean; o
         {!isUser && <div className="text-xs text-slate-400 mb-1">🤖 {es ? 'Intelligence' : 'Intelligence'}</div>}
         {msg.content}
         {!isUser && msg.actions && msg.actions.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="flex flex-wrap mt-2">
             {msg.actions.map(action => (
-              <button
-                key={action.id}
-                onClick={() => onAction(action)}
-                disabled={!action.payload.executable}
-                title={action.payload.executable ? '' : 'Missing data to execute'}
-                className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 active:scale-[0.98] disabled:opacity-50"
-              >
-                {action.label}
-                {action.actionType && (
-                  <span className="ml-1 text-[10px] opacity-60">[{action.actionType}]</span>
+              <div key={action.id} className="inline-block mr-2 mt-2 align-top">
+                <button
+                  onClick={() => onAction(action)}
+                  disabled={!action.payload.executable}
+                  title={action.payload.executable ? '' : 'Missing data to execute'}
+                  className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {action.label}
+                  {action.actionType && (
+                    <span className="ml-1 text-[10px] opacity-60">[{action.actionType}]</span>
+                  )}
+                </button>
+                {feedbackById[action.id] && (
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    {feedbackById[action.id]}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         )}
