@@ -250,3 +250,28 @@ export interface CustomerHistorySummary {
     activeBalance: number;          // cents — sum of outstanding balances
   };
 }
+
+// R-INTEL-PHASE2-RC: root cause analysis types
+export interface ActionItem {
+  labelKey: string;         // i18n key: chat.rootCause.action.*
+  effort: 'low' | 'medium' | 'high';
+  priority: number;         // 1 = highest
+}
+
+export type RevenueDiagnosis = 'traffic' | 'ticket' | 'both';
+
+export interface RootCauseReport {
+  triggerKind: 'revenue_decline';
+  diagnosis: RevenueDiagnosis;
+  revCurrentCents: number;
+  revPreviousCents: number;
+  txCurrent: number;
+  txPrevious: number;
+  avgTicketCurrentCents: number;
+  avgTicketPreviousCents: number;
+  revDropCents: number;
+  txDropPct: number;        // integer percentage, e.g. 22 = 22%
+  ticketDropPct: number;    // integer percentage
+  confidence: number;       // 0..1, based on sample size
+  actions: ActionItem[];
+}

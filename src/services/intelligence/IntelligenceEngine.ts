@@ -1,6 +1,7 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport } from './types';
+import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { computeCustomerProfit } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
@@ -459,6 +460,13 @@ export class IntelligenceEngine {
   // Passes customerReturns so return rate can be approximated at sale level.
   getProductOpportunities(topN: number = 10): ProductOpportunity[] {
     return this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
+  }
+
+  // R-INTEL-PHASE2-RC: revenue decline root cause — compares last 7 days
+  // vs prior 7 days and classifies the drop as traffic, ticket, or both.
+  // Returns null when revenue is not down or prior-period data is absent.
+  getRevenueRootCause(): RootCauseReport | null {
+    return diagnoseRevenueDecline(this.sales);
   }
 
   // R-INTEL-CUSTOMER-HISTORY: per-customer rollup. Crosses analyzer

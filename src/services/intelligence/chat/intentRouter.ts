@@ -19,7 +19,7 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 export interface IntentContext {
   query: string;           // raw user input
   queryLower: string;      // lowercased for matching
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   customers: Customer[];   // for name resolution
 }
 
@@ -37,6 +37,7 @@ export type IntentId =
   | 'who_to_contact'
   | 'what_hurting_profit'
   | 'product_opportunities'
+  | 'root_cause'
   | 'help'
   | 'unknown';
 
@@ -127,6 +128,17 @@ const PRODUCT_OPPORTUNITY_KEYWORDS = [
   'product opportunity', 'oportunidad de producto',
 ];
 
+const ROOT_CAUSE_KEYWORDS = [
+  // EN
+  'why revenue', 'why are sales', 'why sales down', 'why is revenue',
+  'what happened to sales', 'root cause', 'revenue decline', 'sales decline',
+  // ES
+  'por qué bajaron', 'porque bajaron', 'qué pasó con ventas', 'qué pasó con las ventas',
+  'causa raíz', 'causa raiz', 'por qué cayeron', 'bajaron las ventas', 'cayeron las ventas',
+  // PT
+  'por que as vendas', 'o que aconteceu com', 'queda nas vendas', 'causa raiz das vendas',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -181,7 +193,7 @@ function extractName(query: string, allKeywords: string[][]): string | null {
 export function classifyIntent(
   rawQuery: string,
   customers: Customer[],
-  lang: 'en' | 'es' = 'en',
+  lang: 'en' | 'es' | 'pt' = 'en',
 ): IntentMatch {
   const query = normalize(rawQuery);
   const ctx: IntentContext = { query: rawQuery, queryLower: query, lang, customers };
@@ -202,6 +214,7 @@ export function classifyIntent(
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
+    { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
   ];
 
@@ -222,7 +235,8 @@ export function classifyIntent(
       CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
-      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS, PRODUCT_OPPORTUNITY_KEYWORDS, HELP_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
+      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {

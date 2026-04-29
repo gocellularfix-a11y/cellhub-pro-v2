@@ -79,6 +79,9 @@ export function handleIntent(
     case 'product_opportunities':
       return handleProductOpportunities(engine, lang);
 
+    case 'root_cause':
+      return handleRootCause(engine, lang);
+
     case 'help':
       return handleHelp(es);
 
@@ -428,6 +431,55 @@ function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): Ch
   return { kind: 'answer', text: `${t('chat.product.header', opps.length)}\n${lines.join('\n')}` };
 }
 
+// ── Revenue decline root cause (R-INTEL-PHASE2-RC) ─────────
+function handleRootCause(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = engine.getRevenueRootCause();
+
+  if (!report) {
+    return { kind: 'answer', text: t('chat.rootCause.notDown') };
+  }
+
+  const DIAG_KEY: Record<string, string> = {
+    traffic: 'chat.rootCause.diagTraffic',
+    ticket:  'chat.rootCause.diagTicket',
+    both:    'chat.rootCause.diagBoth',
+  };
+
+  const lines: string[] = [];
+  lines.push(t('chat.rootCause.header'));
+  lines.push('');
+  lines.push(t(DIAG_KEY[report.diagnosis]));
+  lines.push('');
+  lines.push(t('chat.rootCause.evidence.revDrop',
+    COP(report.revDropCents), COP(report.revCurrentCents), COP(report.revPreviousCents)));
+
+  if (report.txDropPct >= 5) {
+    lines.push(t('chat.rootCause.evidence.txDrop',
+      report.txDropPct, report.txCurrent, report.txPrevious));
+  } else {
+    lines.push(t('chat.rootCause.evidence.txStable', report.txCurrent));
+  }
+
+  if (report.ticketDropPct >= 5) {
+    lines.push(t('chat.rootCause.evidence.ticketDrop',
+      report.ticketDropPct,
+      COP(report.avgTicketCurrentCents), COP(report.avgTicketPreviousCents)));
+  } else {
+    lines.push(t('chat.rootCause.evidence.ticketStable', COP(report.avgTicketCurrentCents)));
+  }
+
+  lines.push('');
+  lines.push(t('chat.rootCause.confidence', Math.round(report.confidence * 100)));
+  lines.push('');
+  lines.push(t('chat.rootCause.actionsHeader'));
+  report.actions.forEach((a, i) => {
+    lines.push(`${i + 1}. ${t(a.labelKey)}`);
+  });
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
 // ── Help ────────────────────────────────────────────────────
 function handleHelp(es: boolean): ChatResponse {
   const items = es
@@ -440,6 +492,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "qué vendo más" — top items',
       '• "reparaciones atrasadas" — overdue repairs',
       '• "a quién llamar" — clientes con visita esperada atrasada',
+      '• "por qué bajaron las ventas" — diagnóstico de caída de ingresos',
       '• "qué está afectando mi ganancia" — ingreso perdido por área',
       '• "oportunidades de producto" — promover, descontar o revisar por margen',
       '• "cómo está la tienda" — health score',
@@ -455,6 +508,7 @@ function handleHelp(es: boolean): ChatResponse {
       '• "top items" — best sellers',
       '• "overdue repairs" — overdue repairs',
       '• "who should I contact" — customers with overdue expected visit',
+      '• "why are sales down" — revenue decline diagnosis',
       '• "what is hurting my profit" — missed revenue by area',
       '• "product opportunities" — items to promote, discount, or review by margin',
       '• "store health" — health score',
