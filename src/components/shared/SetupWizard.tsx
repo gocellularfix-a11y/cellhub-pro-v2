@@ -17,7 +17,7 @@ import { DEFAULT_PAYMENT_PORTALS } from '@/config/paymentPortals';
 import type { Employee, FirebaseConfig } from '@/store/types';
 
 interface SetupWizardProps {
-  onComplete: (db?: any) => void;
+  onComplete: () => void;
 }
 
 const STEPS = ['Welcome', 'Store Info', 'Admin PIN', 'First Employee', 'Cloud Sync', 'Done'];
@@ -152,7 +152,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         cbeFeeMax: 15,
         screenFeeAmount: 0.5,
         defaultCommissionRate: 0.07,
-        creditCardFee: 3.0,
+        creditCardFee: 300,
         // r-settings-2a F-02: seed paymentPortals defaults so multi-station
         // deploys have consistent portal config from day 1 (instead of falling
         // back to DEFAULT_PAYMENT_PORTALS only on the first station that opens
@@ -163,7 +163,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         receiptFooter: 'Thank you for your business!',
         warrantyText: '30-day warranty on parts and labor',
         returnPolicy: '30-day return policy on new items',
-        cloudEnabled: fbConnected,
+        cloudSyncEnabled: fbConnected,
       };
 
       await persistSettings(settingsData);
