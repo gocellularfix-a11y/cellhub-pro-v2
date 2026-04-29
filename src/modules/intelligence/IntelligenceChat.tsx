@@ -44,6 +44,8 @@ interface ChatMessage {
   actions?: ChatActionUI[];
 }
 
+const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
+
 export default function IntelligenceChat({ engine, customers, lang, externalQuery }: Props) {
   const { locale, t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -52,7 +54,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const [actionFeedbackById, setActionFeedbackById] = useState<
     Record<string, { message: string; ts: number }>
   >({});
-  const [automationQueue, setAutomationQueue] = useState<AutomationQueueItem[]>([]);
+  const [automationQueue, setAutomationQueue] = useState<AutomationQueueItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(AUTOMATION_QUEUE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -130,6 +141,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     prevExternalSeq.current = externalQuery.seq;
     fireQuery(externalQuery.text);
   }, [externalQuery, fireQuery]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AUTOMATION_QUEUE_STORAGE_KEY, JSON.stringify(automationQueue));
+    } catch {
+      // ignore persistence failure
+    }
+  }, [automationQueue]);
 
   // Scroll to bottom on new message.
   useEffect(() => {
@@ -285,9 +304,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         <div className="border-t border-surface-700 px-3 py-2 shrink-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-slate-400">Automation Queue</span>
-            <span className="text-[10px] text-slate-500">
-              Pending: {automationQueue.filter(i => i.status === 'pending').length}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-500">
+                Pending: {automationQueue.filter(i => i.status === 'pending').length}
+              </span>
+              <button
+                onClick={() => setAutomationQueue(prev => prev.filter(i => i.status !== 'completed' && i.status !== 'cancelled'))}
+                className="text-[10px] text-slate-500 hover:text-slate-300 underline"
+              >
+                Clear completed
+              </button>
+            </div>
           </div>
           <div className="space-y-1 max-h-36 overflow-y-auto">
             {[...automationQueue].sort((a, b) => scoreAutomationItem(b).score - scoreAutomationItem(a).score).map(item => {
