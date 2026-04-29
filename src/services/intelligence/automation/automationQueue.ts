@@ -2,6 +2,8 @@
 // Pure data layer — no storage, no execution, no side effects.
 // Callers own persistence and execution decisions.
 
+import type { ActionPayload } from '../actions/actionEngine';
+
 export type AutomationStatus =
   | 'pending'
   | 'approved'
@@ -15,6 +17,13 @@ export type AutomationKind =
   | 'bundle_review'
   | 'reminder_followup'
   | 'manual_review';
+
+export interface AutomationExecutionLog {
+  executedAt: string;
+  result: 'success' | 'failed';
+  resultType?: string;
+  reason?: string;
+}
 
 export interface AutomationQueueItem {
   id: string;
@@ -32,7 +41,12 @@ export interface AutomationQueueItem {
   approvedAt?: string;
   completedAt?: string;
 
-  payload?: Record<string, unknown>;
+  payload?: {
+    actionPayload?: ActionPayload;
+    [key: string]: unknown;
+  };
+
+  executionLog?: AutomationExecutionLog[];
 }
 
 export function createAutomationItem(input: {
@@ -41,7 +55,7 @@ export function createAutomationItem(input: {
   customerId?: string;
   customerName?: string;
   sku?: string;
-  payload?: Record<string, unknown>;
+  payload?: { actionPayload?: ActionPayload; [key: string]: unknown };
 }): AutomationQueueItem {
   return {
     id: `auto-${input.kind}-${Date.now()}`,
@@ -71,4 +85,37 @@ export function cancelAutomationItem(item: AutomationQueueItem): AutomationQueue
 
 export function failAutomationItem(item: AutomationQueueItem): AutomationQueueItem {
   return { ...item, status: 'failed' };
+}
+
+export function addAutomationExecutionLog(
+  item: AutomationQueueItem,
+  log: AutomationExecutionLog,
+): AutomationQueueItem {
+  return { ...item, executionLog: [...(item.executionLog ?? []), log] };
+}
+
+export function markAutomationExecuted(
+  item: AutomationQueueItem,
+  resultType: string,
+): AutomationQueueItem {
+  return completeAutomationItem(
+    addAutomationExecutionLog(item, {
+      executedAt: new Date().toISOString(),
+      result: 'success',
+      resultType,
+    }),
+  );
+}
+
+export function markAutomationFailed(
+  item: AutomationQueueItem,
+  reason: string,
+): AutomationQueueItem {
+  return failAutomationItem(
+    addAutomationExecutionLog(item, {
+      executedAt: new Date().toISOString(),
+      result: 'failed',
+      reason,
+    }),
+  );
 }

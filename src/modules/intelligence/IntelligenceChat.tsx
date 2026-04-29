@@ -18,10 +18,9 @@ import {
   createAutomationItem,
   approveAutomationItem,
   cancelAutomationItem,
-  completeAutomationItem,
-  failAutomationItem,
+  markAutomationExecuted,
+  markAutomationFailed,
 } from '@/services/intelligence/automation/automationQueue';
-import type { ActionPayload } from '@/services/intelligence/actions/actionEngine';
 import type { AutomationQueueItem } from '@/services/intelligence/automation/automationQueue';
 import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
@@ -153,7 +152,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       customerId: action.payload.customerId,
       customerName: action.payload.customerName,
       sku: action.payload.sku,
-      payload: { actionPayload: action.payload as unknown as Record<string, unknown> },
+      payload: { actionPayload: action.payload },
     });
     setAutomationQueue(prev => [...prev, item]);
 
@@ -181,14 +180,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const item = prev.find(i => i.id === id);
       if (!item) return prev;
 
-      const actionPayload = item.payload?.actionPayload as ActionPayload | undefined;
+      const actionPayload = item.payload?.actionPayload;
       if (!actionPayload) {
-        return prev.map(i => i.id === id ? failAutomationItem(i) : i);
+        return prev.map(i => i.id === id ? markAutomationFailed(i, 'missing_action_payload') : i);
       }
 
       const result = executeActionPayload(actionPayload);
       if (!result.ok) {
-        return prev.map(i => i.id === id ? failAutomationItem(i) : i);
+        return prev.map(i => i.id === id ? markAutomationFailed(i, result.reason) : i);
       }
 
       switch (result.type) {
@@ -209,7 +208,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           break;
       }
 
-      return prev.map(i => i.id === id ? completeAutomationItem(approveAutomationItem(i)) : i);
+      return prev.map(i => i.id === id ? markAutomationExecuted(approveAutomationItem(i), result.type) : i);
     });
   }
 
@@ -274,6 +273,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   <span className="text-[10px] text-slate-500">
                     {item.kind}{item.customerName ? ` · ${item.customerName}` : ''}{item.sku ? ` · ${item.sku}` : ''}
                   </span>
+                  {item.executionLog?.length ? (
+                    <span className="text-[10px] text-slate-500 block">
+                      {item.executionLog[item.executionLog.length - 1].result}
+                      {': '}
+                      {item.executionLog[item.executionLog.length - 1].resultType ?? item.executionLog[item.executionLog.length - 1].reason ?? ''}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {item.status !== 'pending' ? (
