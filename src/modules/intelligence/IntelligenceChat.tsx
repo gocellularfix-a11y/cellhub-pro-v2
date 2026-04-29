@@ -14,6 +14,7 @@ import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
+import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 
 interface Props {
@@ -37,6 +38,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const { locale, t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
 
@@ -105,8 +107,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     switch (result.type) {
       case 'whatsapp_url':
-        window.open(result.url, '_blank');
-        break;
+        setPendingWaAction({ action, url: result.url });
+        return;
       case 'pos_discount':
         console.log('Trigger discount flow for SKU:', result.sku);
         break;
@@ -178,6 +180,39 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           {t('intelligence.send')}
         </button>
       </form>
+
+      <Modal
+        open={!!pendingWaAction}
+        onClose={() => setPendingWaAction(null)}
+        title="Open WhatsApp?"
+        size="max-w-sm"
+        footer={
+          <>
+            <button
+              onClick={() => setPendingWaAction(null)}
+              className="px-4 py-2 rounded bg-surface-700 hover:bg-surface-600 text-slate-300 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (pendingWaAction) window.open(pendingWaAction.url, '_blank');
+                setPendingWaAction(null);
+              }}
+              className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
+            >
+              Open WhatsApp
+            </button>
+          </>
+        }
+      >
+        <p className="text-slate-300 text-sm mb-2">
+          This will open WhatsApp with a prepared message.
+        </p>
+        <p className="text-slate-200 text-sm font-medium">
+          {pendingWaAction?.action.payload.customerName ?? 'Customer'}
+        </p>
+      </Modal>
     </div>
   );
 }
