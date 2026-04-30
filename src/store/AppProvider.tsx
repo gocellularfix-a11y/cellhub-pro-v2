@@ -205,7 +205,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const filteredState = useMemo((): AppState => {
     const { currentStoreId, consolidatedView } = state;
     // No filtering needed in consolidated view or single-store mode
-    if (consolidatedView || currentStoreId === 'default') return state;
+    // BUG-1 (R-INVENTORY-SEARCH): treat null/undefined/'' currentStoreId as
+    // single-store ('default'). A bad HYDRATE/import payload can leave it null,
+    // and items tagged storeId='default' would otherwise fail belongs() and
+    // disappear from every per-store collection (inventory, sales, repairs…).
+    if (consolidatedView || !currentStoreId || currentStoreId === 'default') return state;
 
     const belongs = (storeId?: string) =>
       !storeId || storeId === currentStoreId;

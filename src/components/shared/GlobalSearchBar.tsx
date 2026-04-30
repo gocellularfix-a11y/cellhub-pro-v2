@@ -223,7 +223,9 @@ export default function GlobalSearchBar({
   const inventoryMatches = useMemo(() => {
     if (!q || excludeCollection === 'inventory') return [];
     return inventory.filter((i) =>
-      matchesSearch(q, i.name, i.sku, i.barcode, i.imei),
+      // BUG-1: include i.category to match the scope of InventoryModule local
+      // search (line 110) and GlobalSearch Cmd+K palette (line 123).
+      matchesSearch(q, i.name, i.sku, i.barcode, i.imei, i.category),
     ).slice(0, 5);
   }, [q, inventory, excludeCollection]);
 
