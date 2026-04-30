@@ -2979,6 +2979,8 @@ export const translations: TranslationDictionary = {
   'employees.cantDeleteLastOwner':  { en: 'At least one owner must remain in the system', es: 'Debe quedar al menos un dueño en el sistema', pt: 'Pelo menos um proprietário deve permanecer no sistema' },
   'employees.cantDeactivateSelf':   { en: "You can't deactivate yourself", es: 'No puedes desactivarte a ti mismo', pt: 'Você não pode se desativar' },
   'employees.cantDeactivateLastOwner': { en: 'At least one active owner must remain', es: 'Debe quedar al menos un dueño activo', pt: 'Pelo menos um proprietário ativo deve permanecer' },
+  'employees.cantCreateDuplicateOwner': { en: 'An active owner already exists', es: 'Ya existe un dueño activo', pt: 'Já existe um proprietário ativo' },
+  'employees.cantPromoteDuplicateOwner': { en: 'Another active owner already exists. Demote them first', es: 'Ya existe otro dueño activo. Cambia su rol primero', pt: 'Outro proprietário ativo já existe. Altere o cargo primeiro' },
   'employees.printError':           { en: 'Print failed',           es: 'Error al imprimir',          pt: 'Falha na impressão' },
   'employees.empty':                { en: 'No employees yet. Add your first employee.', es: 'No hay empleados aún. Agrega tu primer empleado.', pt: 'Nenhum funcionário ainda. Adicione seu primeiro funcionário.' },
 

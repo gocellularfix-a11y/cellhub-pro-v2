@@ -242,6 +242,19 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
 
   const handleSave = useCallback(async (data: any) => {
     if (editEmployee) {
+      // r-employee-dedupe: block promoting/keeping a second active owner.
+      // Skips self via e.id !== editEmployee.id so "save" on the existing
+      // owner is allowed.
+      const willBeActiveOwner = (data.role || 'sales') === 'owner' && data.active !== false;
+      if (willBeActiveOwner) {
+        const otherOwner = employeesRef.current.find(
+          (e) => e.role === 'owner' && e.active && e.id !== editEmployee.id,
+        );
+        if (otherOwner) {
+          toast(`${t('employees.cantPromoteDuplicateOwner')} (${otherOwner.name})`, 'error');
+          return;
+        }
+      }
       // Edit mode: if form.pin is blank, preserve the existing PIN (round 24 — M3 fix:
       // edit modal no longer loads plaintext PIN into React state at all).
       // r27 M3: hash the new PIN if one was typed. Preserved PINs are already hashed
@@ -256,6 +269,19 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
       setEmployees(nextEmployees);
       persist.employee(updated.id, updated as Record<string, unknown>);
     } else {
+      // r-employee-dedupe: block creating a second active owner alongside an
+      // existing one. The data.active flag may be missing on creation forms,
+      // so default-true matches DEFAULT_FORM.
+      const willBeActiveOwner = (data.role || 'sales') === 'owner' && data.active !== false;
+      if (willBeActiveOwner) {
+        const existingOwner = employeesRef.current.find(
+          (e) => e.role === 'owner' && e.active,
+        );
+        if (existingOwner) {
+          toast(`${t('employees.cantCreateDuplicateOwner')} (${existingOwner.name})`, 'error');
+          return;
+        }
+      }
       // r27 M3: hash the create-mode PIN. Empty PIN is allowed (no-PIN employee).
       const hashedPin = data.pin ? await hashPin(String(data.pin)) : '';
       const newEmp = {
@@ -272,7 +298,7 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
     }
     setShowModal(false);
     setEditEmployee(null);
-  }, [editEmployee, setEmployees]);
+  }, [editEmployee, setEmployees, t, toast]);
 
   const toggleActive = useCallback((id: string) => {
     // Round 24 — C6: guard rails on deactivation too.

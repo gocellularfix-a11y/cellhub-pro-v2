@@ -168,19 +168,47 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
       await persistSettings(settingsData);
 
-      const firstEmp: Employee = {
-        id: generateId(),
-        name: emp.name.trim(),
-        role: 'owner',
-        pin: hashedEmpPin,
-        commissionRate: 0,
-        active: true,
-        clockLog: [],
-        onboardingSigned: false,
-        startDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-      };
-      await saveRecord(COLLECTIONS.employees, firstEmp.id, firstEmp as unknown as Record<string, unknown>);
+      // r-employee-dedupe: defense in depth. If the wizard re-runs (e.g. user
+      // cleared only the cellhub_setup_complete flag), skip employee creation
+      // when an active owner already exists in localStorage. Without this guard
+      // the wizard could create a second owner alongside the legacy one.
+      let existingOwner: { id?: string; name?: string } | null = null;
+      try {
+        const raw = localStorage.getItem('employees');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            existingOwner = parsed.find(
+              (e: any) => e && e.role === 'owner' && e.active,
+            ) || null;
+          }
+        }
+      } catch {
+        // localStorage corrupted or unavailable — proceed with normal creation
+        existingOwner = null;
+      }
+
+      if (existingOwner) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[SetupWizard] Active owner already exists, skipping creation:',
+          existingOwner.id,
+        );
+      } else {
+        const firstEmp: Employee = {
+          id: generateId(),
+          name: emp.name.trim(),
+          role: 'owner',
+          pin: hashedEmpPin,
+          commissionRate: 0,
+          active: true,
+          clockLog: [],
+          onboardingSigned: false,
+          startDate: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        await saveRecord(COLLECTIONS.employees, firstEmp.id, firstEmp as unknown as Record<string, unknown>);
+      }
 
       localStorage.setItem('cellhub_setup_complete', '1');
       onComplete();
