@@ -670,10 +670,23 @@ export default function ReportsModule() {
           // accounting standard). Recompute only if missing or invalid.
           let commRate = (item as any).commissionRate;
           if (commRate == null || commRate === 0) {
-            let rawCarrier = ((item as any).carrier || (item as any).carrierName || '').trim();
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || (item as any).provider || '').trim();
             if (!rawCarrier && (item as any).name) {
               const match = String((item as any).name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
               if (match) rawCarrier = match[1].trim();
+            }
+            // BUG-3 (R-INV-BUGS): broader fallback for legacy phone_payment
+            // sales whose carrier field is blank AND whose name doesn't fit
+            // the "Carrier - phone" / "Carrier Bill Payment" prefix shape
+            // (e.g. "H2O Wireless 25", "Verizon Refill"). Searches for any
+            // known-carrier substring inside the item name; normalizeCarrier
+            // below canonicalizes the match (h2o → 'H2O', etc.) so the
+            // settings.carrierCommissions lookup hits.
+            if (!rawCarrier && (item as any).name) {
+              const knownMatch = String((item as any).name).match(
+                /\b(h2o|t-?mobile|verizon|at&?t|cricket|tracfone|page\s*plus|simple\s*mobile|ultra(?:\s+mobile)?|telcel|boost|metro(?:\s*pcs)?|mint\s*mobile|visible)\b/i,
+              );
+              if (knownMatch) rawCarrier = knownMatch[1].trim();
             }
             const normalized = normalizeCarrier(rawCarrier);
             const carrierRate = normalized

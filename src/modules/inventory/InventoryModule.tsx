@@ -104,7 +104,12 @@ export default function InventoryModule() {
   const filtered = useMemo(() => {
     return inventory
       .filter((item) => {
-        if (filterCategory !== 'All' && (item.category || '').toLowerCase() !== filterCategory.toLowerCase()) return false;
+        // BUG-4 (R-INV-BUGS): apply normCat to item.category so the filter
+        // matches the same key the tab labels were built from (line 81).
+        // Without this, items saved as 'phone' (singular — see CATEGORIES
+        // tuple at line ~843) never match the 'Phones' tab whose key is
+        // 'phones' (plural) per normCat.
+        if (filterCategory !== 'All' && normCat(item.category || '') !== filterCategory.toLowerCase()) return false;
         if (filterCondition !== 'All' && (item.condition || '').toLowerCase() !== filterCondition.toLowerCase()) return false;
         if (showLowStockOnly && item.qty > (settings.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD)) return false;
         return matchesSearch(search, item.name, item.sku, item.barcode, item.imei, item.category);
@@ -737,11 +742,17 @@ function InventoryFormModal({
 
   // Print label — HTML window.print() in both Electron and browser.
   // (Native thermal label printing is not wired yet; deferred from r-pathB.)
-  const handleLabel = () => {
+  // BUG-5 (R-INV-BUGS): accept overrides so doSubmit can auto-print one label
+  // per item in batch mode (each with its own incremented SKU). silent=true
+  // bypasses the preview modal — required for batch so N calls don't overwrite
+  // each other's modal state. Manual click of the 🏷️ Label button passes no
+  // overrides and keeps the preview-modal UX.
+  const handleLabel = (overrides?: { sku?: string; silent?: boolean }) => {
     const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c] as string));
-    const code = esc(form.sku || form.imei || form.barcode || form.name.slice(0, 12));
+    const skuForLabel = overrides?.sku ?? form.sku;
+    const code = esc(skuForLabel || form.imei || form.barcode || form.name.slice(0, 12));
     const price = formatCurrency(form.price);
     const name = esc(form.name);
 
@@ -784,7 +795,7 @@ function InventoryFormModal({
       <div class="code">${code}</div>
     </body></html>`;
 
-    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+    printHtml(html, { silent: overrides?.silent ?? false, printer: settings.detectedPrinters?.[0] });
   };
 
   const isServiceLikeCategory = (cat: string) => {
@@ -808,15 +819,24 @@ function InventoryFormModal({
       }
       // Batch: create N distinct items, qty=1 each (UI clarifies this).
       // skipMerge prevents accidental merging into existing SKU on subsequent iterations.
+      // BUG-5 (R-INV-BUGS): auto-print one label per item with its incremented
+      // SKU. silent=true so N back-to-back calls go straight to the configured
+      // printer instead of fighting over the preview-modal state.
       for (let i = 0; i < batchCount; i++) {
+        const itemSku = form.sku ? `${form.sku}-${startIdx + i}` : '';
         onSave({
           ...form,
-          sku: form.sku ? `${form.sku}-${startIdx + i}` : '',
+          sku: itemSku,
           qty: 1,
         } as Partial<InventoryItem>, { skipMerge: true });
+        if (!isEdit) handleLabel({ sku: itemSku, silent: true });
       }
     } else {
       onSave(form as Partial<InventoryItem>);
+      // BUG-5: auto-print label after creating a single new item. Edit-mode
+      // saves don't trigger auto-print (label content didn't change in
+      // a meaningful way for the operator).
+      if (!isEdit) handleLabel();
     }
     if (!isEdit) {
       setForm({ ...form, sku: '', imei: '', barcode: '', name: '', description: '', qty: 1, customFields: {} });
@@ -899,7 +919,7 @@ function InventoryFormModal({
               {t('inventory.form.generate')}
             </button>
             <button
-              onClick={handleLabel}
+              onClick={() => handleLabel()}
               style={{
                 padding: '0 0.875rem', borderRadius: '0.5rem',
                 border: 'none',
