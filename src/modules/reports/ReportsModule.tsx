@@ -1221,13 +1221,47 @@ export default function ReportsModule() {
       ? new Date(startDate + 'T12:00:00').toLocaleDateString()
       : `${new Date(startDate + 'T12:00:00').toLocaleDateString()} – ${new Date(endDate + 'T12:00:00').toLocaleDateString()}`;
 
+    // R-REPORT-PRINT-REDESIGN: trilingual labels hoisted out of the template
+    // literal so the HTML stays readable. Section headers carry emojis to
+    // mirror the on-screen module nav. EN / ES / PT preserved per spec.
+    const L = {
+      title:        locale === 'es' ? 'Reporte de Ventas'        : locale === 'pt' ? 'Relatório de Vendas'           : 'Sales Report',
+      generated:    locale === 'es' ? 'Generado'                  : locale === 'pt' ? 'Gerado'                         : 'Generated',
+      gross:        locale === 'es' ? 'Ingreso Bruto'             : locale === 'pt' ? 'Receita Bruta'                  : 'Gross Revenue',
+      returns:      locale === 'es' ? 'Devoluciones'              : locale === 'pt' ? 'Devoluções'                     : 'Returns',
+      net:          locale === 'es' ? 'Ingreso Neto'              : locale === 'pt' ? 'Receita Líquida'                : 'Net Revenue',
+      profit:       locale === 'es' ? 'Ganancia'                  : locale === 'pt' ? 'Lucro'                          : 'Profit',
+      sales:        locale === 'es' ? 'ventas'                    : locale === 'pt' ? 'vendas'                         : 'sales',
+      returnsCount: locale === 'es' ? 'devoluciones'              : locale === 'pt' ? 'devoluções'                     : 'returns',
+      retained:     locale === 'es' ? 'retenido'                  : locale === 'pt' ? 'retido'                         : 'retained',
+      marginLower:  locale === 'es' ? 'margen'                    : locale === 'pt' ? 'margem'                         : 'margin',
+      tax:          locale === 'es' ? 'Impuesto (CDTFA)'          : locale === 'pt' ? 'Imposto (CDTFA)'                : 'Tax (CDTFA)',
+      cash:         locale === 'es' ? 'Efectivo'                  : locale === 'pt' ? 'Dinheiro'                       : 'Cash',
+      card:         locale === 'es' ? 'Tarjeta'                   : locale === 'pt' ? 'Cartão'                         : 'Card',
+      ppHeader:     locale === 'es' ? '📞 Pagos por Proveedor'   : locale === 'pt' ? '📞 Pagamentos por Provedor'    : '📞 Phone Payments by Provider',
+      catHeader:    locale === 'es' ? '📦 Ventas por Categoría'  : locale === 'pt' ? '📦 Vendas por Categoria'       : '📦 Sales by Category',
+      empHeader:    locale === 'es' ? '👥 Desempeño de Empleados': locale === 'pt' ? '👥 Desempenho de Funcionários' : '👥 Employee Performance',
+      itemHeader:   locale === 'es' ? '⭐ Artículos Más Vendidos' : locale === 'pt' ? '⭐ Itens Mais Vendidos'         : '⭐ Top Selling Items',
+      provider:     locale === 'es' ? 'Proveedor'                 : locale === 'pt' ? 'Provedor'                       : 'Provider',
+      count:        locale === 'es' ? 'Cant.'                     : locale === 'pt' ? 'Qtd.'                           : 'Count',
+      total:        'TOTAL',
+      category:     locale === 'es' ? 'Categoría'                 : locale === 'pt' ? 'Categoria'                      : 'Category',
+      qty:          'Qty',
+      revenue:      locale === 'es' ? 'Ingresos'                  : locale === 'pt' ? 'Receita'                        : 'Revenue',
+      marginCol:    locale === 'es' ? 'Margen'                    : locale === 'pt' ? 'Margem'                         : 'Margin',
+      employee:     locale === 'es' ? 'Empleado'                  : locale === 'pt' ? 'Funcionário'                    : 'Employee',
+      trans:        'Trans.',
+      item:         locale === 'es' ? 'Artículo'                  : locale === 'pt' ? 'Item'                           : 'Item',
+      netTotal:     locale === 'es' ? 'TOTAL NETO'                : locale === 'pt' ? 'TOTAL LÍQUIDO'                  : 'NET TOTAL',
+    };
+
     // All user-controlled strings below MUST go through escHtml (round 17 XSS fix).
     // formatCurrency output is safe (pure numeric), same for quantities and percentages.
     const ppRows = Object.entries(stats.phonePaymentsByProvider)
       .sort((a, b) => b[1].totalCents - a[1].totalCents)
       .map(([c, d]) => {
         const margin = d.totalCents > 0 ? (d.profitCents / d.totalCents) * 100 : 0;
-        return `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td><td>${formatCurrency(d.profitCents)}</td><td>${margin.toFixed(1)}%</td></tr>`;
+        return `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td><td class="text-right text-green">${formatCurrency(d.profitCents)}</td><td class="text-right">${margin.toFixed(1)}%</td></tr>`;
       })
       .join('');
     const ppTotal = {
@@ -1236,58 +1270,196 @@ export default function ReportsModule() {
       profit: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.profitCents, 0),
     };
     const ppMargin = ppTotal.revenue > 0 ? (ppTotal.profit / ppTotal.revenue) * 100 : 0;
-    const ppTotalRow = `<tr class="total"><td>TOTAL</td><td>${ppTotal.count}</td><td>${formatCurrency(ppTotal.revenue)}</td><td>${formatCurrency(ppTotal.profit)}</td><td>${ppMargin.toFixed(1)}%</td></tr>`;
+    const ppTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${ppTotal.count}</td><td class="text-right text-green">${formatCurrency(ppTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(ppTotal.profit)}</td><td class="text-right">${ppMargin.toFixed(1)}%</td></tr>`;
+
     const catRows = stats.categoriesByRevenue
-      .map((c) => `<tr><td>${escHtml(c.name)}</td><td>${c.quantity}</td><td>${formatCurrency(c.revenueCents)}</td><td>${formatCurrency(c.profitCents)}</td><td>${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
+      .map((c) => `<tr><td>${escHtml(c.name)}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td><td class="text-right text-green">${formatCurrency(c.profitCents)}</td><td class="text-right">${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
       .join('');
+    // R-REPORT-PRINT-REDESIGN: TOTAL row for Sales by Category. Margin uses
+    // revenue as denominator (consistent with phone payments TOTAL above);
+    // per-row margins still use their own pseudoRevenue-aware denominator
+    // from the data prep memo so they don't drift.
+    const catTotal = stats.categoriesByRevenue.reduce(
+      (acc, c) => ({
+        qty: acc.qty + c.quantity,
+        revenue: acc.revenue + c.revenueCents,
+        profit: acc.profit + c.profitCents,
+      }),
+      { qty: 0, revenue: 0, profit: 0 },
+    );
+    const catMargin = catTotal.revenue > 0 ? (catTotal.profit / catTotal.revenue) * 100 : 0;
+    const catTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${catTotal.qty}</td><td class="text-right text-green">${formatCurrency(catTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(catTotal.profit)}</td><td class="text-right">${catMargin.toFixed(1)}%</td></tr>`;
+
     const empRows = stats.topEmployees
-      .map((e) => `<tr><td>${escHtml(e.name)}</td><td>${e.transactions}</td><td>${formatCurrency(e.revenueCents)}</td></tr>`)
+      .map((e) => `<tr><td>${escHtml(e.name)}</td><td class="text-right">${e.transactions}</td><td class="text-right text-green">${formatCurrency(e.revenueCents)}</td></tr>`)
       .join('');
+    // R-REPORT-PRINT-REDESIGN: TOTAL row for Employees.
+    const empTotal = stats.topEmployees.reduce(
+      (acc, e) => ({ trans: acc.trans + e.transactions, revenue: acc.revenue + e.revenueCents }),
+      { trans: 0, revenue: 0 },
+    );
+    const empTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${empTotal.trans}</td><td class="text-right text-green">${formatCurrency(empTotal.revenue)}</td></tr>`;
+
     const itemRows = stats.topItems
-      .map((i) => `<tr><td>${escHtml(i.name)}</td><td>${i.quantity}</td><td>${formatCurrency(i.revenueCents)}</td></tr>`)
+      .map((i) => `<tr><td>${escHtml(i.name)}</td><td class="text-right">${i.quantity}</td><td class="text-right text-green">${formatCurrency(i.revenueCents)}</td></tr>`)
       .join('');
 
-    const html = `<!DOCTYPE html><html><head><title>Sales Report</title><style>
-@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.4}
-h1{font-size:14pt;margin-bottom:4px}h2{font-size:10pt;margin:10px 0 4px;border-bottom:1px solid #ccc;padding-bottom:2px}
-table{width:100%;border-collapse:collapse;margin-bottom:8px}
-th,td{padding:2px 5px;text-align:left;border-bottom:1px solid #eee;font-size:8.5pt}
-th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
-.summary-box{border:1px solid #ddd;padding:6px 8px;border-radius:4px}
-.summary-box .label{font-size:7.5pt;color:#666;text-transform:uppercase}
-.summary-box .value{font-size:12pt;font-weight:700;margin-top:2px}
-.grand{background:#1a1a2e;color:#fff;padding:8px 12px;font-size:12pt;font-weight:700;text-align:right;margin-top:12px;border-radius:4px}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    // Summary card sub-counters / percentages.
+    const retainedPct = stats.grossRevenueCents > 0
+      ? Math.round((stats.netRevenueCents / stats.grossRevenueCents) * 100)
+      : 0;
+    const marginPct = (stats.profitMargin || 0).toFixed(1);
+
+    const html = `<!DOCTYPE html><html><head><title>${escHtml(L.title)}</title><style>
+@page { size: letter; margin: 0.5in; }
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; font-size: 9pt; color: #1a1a2e; margin: 0; }
+
+.report-header { margin-bottom: 16px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px; }
+.report-title { font-size: 18pt; font-weight: 900; margin: 0; }
+.report-meta { font-size: 8pt; color: #666; margin-top: 2px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.summary-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+.summary-card .label { font-size: 7pt; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 2px; }
+.summary-card .value { font-size: 14pt; font-weight: 900; }
+.summary-card .sub { font-size: 7pt; color: #888; margin-top: 2px; }
+.value-green { color: #16a34a; }
+.value-red { color: #dc2626; }
+.value-blue { color: #2563eb; }
+
+.meta-row { display: flex; gap: 24px; margin-bottom: 16px; font-size: 8pt; color: #444; }
+.meta-row span { font-weight: 700; color: #1a1a2e; }
+
+.section { margin-bottom: 16px; }
+.section-header { background: #1a1a2e; color: #fff; padding: 6px 10px; border-radius: 4px 4px 0 0; font-size: 9pt; font-weight: 700; margin-bottom: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+th { background: #f1f5f9; padding: 5px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 7pt; color: #475569; border-bottom: 1px solid #e2e8f0; }
+td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+tr:last-child td { border-bottom: none; }
+.row-total td { font-weight: 900; background: #f8fafc; border-top: 2px solid #1a1a2e; }
+.text-right { text-align: right; }
+.text-green { color: #16a34a; font-weight: 700; }
+.text-red { color: #dc2626; font-weight: 700; }
+
+.net-banner { background: #1a1a2e; color: #fff; padding: 10px 16px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 12pt; font-weight: 900; }
+
+.report-footer { text-align: center; margin-top: 12px; font-size: 7pt; color: #aaa; }
+
+@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>
-<h1>Sales Report — ${escHtml(storeName)}</h1>
-<p style="color:#666;margin-bottom:12px">${escHtml(dateLabel)} | Generated: ${escHtml(new Date().toLocaleString())}</p>
-<div class="summary">
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Bruto' : locale === 'pt' ? 'Bruto' : 'Gross'}</div><div class="value">${formatCurrency(stats.grossRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Devoluciones' : locale === 'pt' ? 'Devoluções' : 'Returns'}</div><div class="value" style="color:#dc2626">-${formatCurrency(stats.totalReturnsCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Neto' : locale === 'pt' ? 'Líquido' : 'Net'}</div><div class="value">${formatCurrency(stats.netRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</div><div class="value" style="color:#16a34a">${formatCurrency(stats.totalProfitCents)}</div></div>
+
+<!-- HEADER -->
+<div class="report-header">
+  <h1 class="report-title">📊 ${escHtml(L.title)} — ${escHtml(storeName)}</h1>
+  <div class="report-meta">${escHtml(dateLabel)} | ${escHtml(L.generated)}: ${escHtml(new Date().toLocaleString())}</div>
 </div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:8.5pt">
-  <div><span style="color:#666">${locale === 'es' ? 'Impuesto:' : locale === 'pt' ? 'Imposto:' : 'Tax:'}</span> <strong>${formatCurrency(stats.taxCollectedCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Efectivo:' : locale === 'pt' ? 'Dinheiro:' : 'Cash:'}</span> <strong>${formatCurrency(stats.cashCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Tarjeta:' : locale === 'pt' ? 'Cartão:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
+
+<!-- SUMMARY CARDS -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="label">$ ${escHtml(L.gross)}</div>
+    <div class="value">${formatCurrency(stats.grossRevenueCents)}</div>
+    <div class="sub">${stats.cleanSalesCount} ${L.sales}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">↓ ${escHtml(L.returns)}</div>
+    <div class="value value-red">-${formatCurrency(stats.totalReturnsCents)}</div>
+    <div class="sub">${stats.refundSalesCount} ${L.returnsCount}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">📊 ${escHtml(L.net)}</div>
+    <div class="value value-green">${formatCurrency(stats.netRevenueCents)}</div>
+    <div class="sub">${retainedPct}% ${L.retained}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">↗ ${escHtml(L.profit)}</div>
+    <div class="value value-green">${formatCurrency(stats.totalProfitCents)}</div>
+    <div class="sub">${marginPct}% ${L.marginLower}</div>
+  </div>
 </div>
-<h2>${locale === 'es' ? 'Pagos por Proveedor' : locale === 'pt' ? 'Pagamentos por Provedor' : 'Phone Payments by Provider'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Proveedor' : locale === 'pt' ? 'Provedor' : 'Provider'}</th><th>${locale === 'es' ? 'Cant.' : locale === 'pt' ? 'Qtd.' : 'Count'}</th><th>Total</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
-<tbody>${ppRows}${ppTotalRow}</tbody></table>
-<h2>${locale === 'es' ? 'Ventas por Categoría' : locale === 'pt' ? 'Vendas por Categoria' : 'Sales by Category'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Categoría' : locale === 'pt' ? 'Categoria' : 'Category'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
-<tbody>${catRows}</tbody></table>
-<h2>${locale === 'es' ? 'Empleados' : locale === 'pt' ? 'Funcionários' : 'Employees'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Empleado' : locale === 'pt' ? 'Funcionário' : 'Employee'}</th><th>${locale === 'es' ? 'Trans.' : locale === 'pt' ? 'Trans.' : 'Trans.'}</th><th>${locale === 'es' ? 'Ventas' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
-<tbody>${empRows}</tbody></table>
-<h2>${locale === 'es' ? 'Más Vendidos' : locale === 'pt' ? 'Mais Vendidos' : 'Top Items'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Artículo' : locale === 'pt' ? 'Item' : 'Item'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
-<tbody>${itemRows}</tbody></table>
-<div class="grand">${locale === 'es' ? 'TOTAL NETO' : locale === 'pt' ? 'TOTAL LÍQUIDO' : 'NET TOTAL'}: ${formatCurrency(stats.netRevenueCents)}</div>
-<p style="font-size:7.5pt;color:#999;margin-top:8px;text-align:center">${escHtml(storeName)} | CellHub Pro</p>
+
+<!-- META ROW -->
+<div class="meta-row">
+  <div>${escHtml(L.tax)}: <span>${formatCurrency(stats.taxCollectedCents)}</span></div>
+  <div>${escHtml(L.cash)}: <span>${formatCurrency(stats.cashCents)}</span></div>
+  <div>${escHtml(L.card)}: <span>${formatCurrency(stats.cardCents)}</span></div>
+</div>
+
+<!-- PHONE PAYMENTS -->
+<div class="section">
+  <div class="section-header">${escHtml(L.ppHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.provider)}</th>
+        <th class="text-right">${escHtml(L.count)}</th>
+        <th class="text-right">Total</th>
+        <th class="text-right">${escHtml(L.profit)}</th>
+        <th class="text-right">${escHtml(L.marginCol)}</th>
+      </tr>
+    </thead>
+    <tbody>${ppRows}${ppTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- SALES BY CATEGORY -->
+<div class="section">
+  <div class="section-header">${escHtml(L.catHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.category)}</th>
+        <th class="text-right">${L.qty}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+        <th class="text-right">${escHtml(L.profit)}</th>
+        <th class="text-right">${escHtml(L.marginCol)}</th>
+      </tr>
+    </thead>
+    <tbody>${catRows}${catTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- EMPLOYEES -->
+<div class="section">
+  <div class="section-header">${escHtml(L.empHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.employee)}</th>
+        <th class="text-right">${L.trans}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+      </tr>
+    </thead>
+    <tbody>${empRows}${empTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- TOP ITEMS -->
+<div class="section">
+  <div class="section-header">${escHtml(L.itemHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.item)}</th>
+        <th class="text-right">${L.qty}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+</div>
+
+<!-- NET TOTAL BANNER -->
+<div class="net-banner">
+  <span>${escHtml(L.netTotal)}</span>
+  <span>${formatCurrency(stats.netRevenueCents)}</span>
+</div>
+
+<!-- FOOTER -->
+<div class="report-footer">${escHtml(storeName)} | CellHub Pro</div>
+
 </body></html>`;
     openPrintWindow(html);
   }, [stats, settings, startDate, endDate, locale]);
