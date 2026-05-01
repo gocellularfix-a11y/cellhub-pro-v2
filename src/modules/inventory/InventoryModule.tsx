@@ -880,7 +880,19 @@ function InventoryFormModal({
       if (!isEdit) handleLabel();
     }
     if (!isEdit) {
-      setForm({ ...form, sku: '', imei: '', barcode: '', name: '', description: '', qty: 1, customFields: {} });
+      // BUG-11 (R-INV-FORM-UX): full reset post-save instead of partial. The
+      // prior partial reset preserved category/condition/cost/price/supplier/
+      // brand for batch-entry of similar items, but Jorge's flow is the
+      // opposite — distinct items per save, so leftover fields confused the
+      // next entry. Mirror the manual "🗑️ Clear" button (line ~1512).
+      setForm({
+        sku: '', imei: '', barcode: '', name: '', description: '',
+        category: 'accessory', condition: 'New',
+        cost: 0, price: 0, qty: 1,
+        supplier: '', brand: '',
+        taxable: true, cbeEligible: false, screenFeeEligible: false,
+        customFields: {},
+      });
     }
   };
 
