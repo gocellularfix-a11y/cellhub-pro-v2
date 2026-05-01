@@ -1631,6 +1631,9 @@ export const translations: TranslationDictionary = {
   'phonePay.addLine': { en: 'Add Line', es: 'Agregar Línea', pt: 'Adicionar Linha' },
   'phonePay.phoneNumberLabel': { en: 'Phone Number', es: 'Número de Teléfono', pt: 'Número de Telefone' },
   'phonePay.copiedShort': { en: 'Copied', es: 'Copiado', pt: 'Copiado' },
+  // R-PHONE-AUTOFILL: shown next to the phone input after auto-fill from
+  // CustomerDB or sales history fires (debounced 500ms after 10 digits).
+  'phonePay.autoFilled': { en: 'Auto-filled', es: 'Auto-llenado', pt: 'Preenchido' },
   'phonePay.addNewNumber': { en: 'Add a new number', es: 'Agregar número nuevo', pt: 'Adicionar novo número' },
   'phonePay.newNumberPlaceholder': { en: 'New number', es: 'Número nuevo', pt: 'Novo número' },
   'phonePay.paymentPortalHeader': { en: 'PAYMENT PORTAL', es: 'PORTAL DE PAGO', pt: 'PORTAL DE PAGAMENTO' },

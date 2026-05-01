@@ -144,6 +144,11 @@ export default function PhonePaymentModal({
   // from other modules (POS sale, loyalty, scanner edits) during the modal session.
   const customersRef = useRef(customers);
   const cartRef = useRef(cart);
+  // R-PHONE-AUTOFILL: ref-mirror of sales for the typed-phone lookup. Same
+  // pattern as customersRef/cartRef so the debounced callback always sees
+  // fresh sales (the prop array gets a new identity on every Firestore push).
+  const salesRef = useRef(sales);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { cartRef.current = cart; }, [cart]);
 
@@ -309,6 +314,141 @@ export default function PhonePaymentModal({
     if (mp) setAmount(String(mp));
     setSelectedKnownLines({});
   };
+
+  // ── R-PHONE-AUTOFILL: typed-phone auto-fill ──────────────────────────
+  // V1 parity. When the cashier types a 10-digit phone in the Bill Payment
+  // tab's single-line input, look up the number in: (1) CustomerDB, then
+  // (2) sales history. Auto-fill firstName / lastName / carrier / amount.
+  // Manual edits are preserved via a snapshot pattern: a field is only
+  // overwritten if it is currently empty OR still equals the value set by
+  // the previous lookup. This lets the cashier change the carrier and have
+  // it stick, even if a later 10-digit retype would otherwise re-fill.
+  const [autoFilledSnap, setAutoFilledSnap] = useState<{
+    carrier: string; amount: string; firstName: string; lastName: string;
+  } | null>(null);
+
+  // Mirror current form state into a ref so lookupByPhone can stay a stable
+  // useCallback (empty deps). Without this, putting carrier/amount/etc. in
+  // the deps would recreate the callback every render → useEffect re-fires
+  // → infinite debounce loop.
+  const formStateRef = useRef({ carrier, amount, firstName, lastName, autoFilledSnap });
+  useEffect(() => {
+    formStateRef.current = { carrier, amount, firstName, lastName, autoFilledSnap };
+  }, [carrier, amount, firstName, lastName, autoFilledSnap]);
+
+  const lookupByPhone = useCallback((rawPhone: string) => {
+    const norm = normalizePhone(rawPhone);
+    if (!norm || norm.length !== 10) return;
+
+    // Timestamp extraction reused from the knownLines memo (line ~242).
+    // Handles Firestore Timestamp { toDate() } + Date + ISO string.
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as any).createdAt;
+      if (!ca) return 0;
+      try {
+        return new Date(typeof ca?.toDate === 'function' ? ca.toDate() : ca).getTime();
+      } catch { return 0; }
+    };
+
+    // Source 1: CustomerDB by normalized phone.
+    const customer = customersRef.current.find((c) =>
+      normalizePhone(c.phone || '') === norm,
+    );
+
+    let freshFirst = '', freshLast = '', freshCarrier = '', freshAmount = '';
+
+    if (customer) {
+      freshFirst = customer.firstName || (customer.name || '').split(' ')[0] || '';
+      freshLast  = customer.lastName  || (customer.name || '').split(' ').slice(1).join(' ') || '';
+
+      // Find this customer's most recent phone_payment for this exact number.
+      const customerSales = salesRef.current
+        .filter((s) =>
+          s.customerId === customer.id ||
+          normalizePhone(s.customerPhone || '') === norm,
+        )
+        .sort((a, b) => tsOf(b) - tsOf(a));
+      for (const s of customerSales) {
+        const item = (s.items || []).find((i) =>
+          i.category === 'phone_payment'
+          && normalizePhone(i.phoneNumber || '') === norm,
+        );
+        if (item) {
+          if (item.carrier) freshCarrier = item.carrier;
+          if (item.price)   freshAmount  = (item.price / 100).toFixed(2);
+          break;
+        }
+      }
+      // Fallbacks to the customer profile when no sale was found.
+      if (!freshCarrier) {
+        const c = customer as any;
+        freshCarrier = (c.carriers?.[0] || c.carrier || '').trim();
+      }
+      if (!freshAmount) {
+        const mp = (customer as any).monthlyPayment;
+        if (mp) freshAmount = String(mp);
+      }
+    } else {
+      // Source 2: sales history (no customer record) — find latest
+      // phone_payment for this number across all sales.
+      type Cand = { item: any; ts: number; sale: Sale };
+      const candidates: Cand[] = [];
+      for (const s of salesRef.current) {
+        for (const i of s.items || []) {
+          if (i.category === 'phone_payment'
+              && normalizePhone(i.phoneNumber || '') === norm) {
+            candidates.push({ item: i, ts: tsOf(s), sale: s });
+          }
+        }
+      }
+      candidates.sort((a, b) => b.ts - a.ts);
+      if (candidates.length > 0) {
+        const { item, sale } = candidates[0];
+        if (item.carrier) freshCarrier = item.carrier;
+        if (item.price)   freshAmount  = (item.price / 100).toFixed(2);
+        if (sale.customerName) {
+          const parts = sale.customerName.split(/\s+/);
+          freshFirst = parts[0] || '';
+          freshLast  = parts.slice(1).join(' ');
+        }
+      }
+    }
+
+    // Nothing found → no-op so we don't pollute the form.
+    if (!freshCarrier && !freshAmount && !freshFirst && !freshLast) return;
+
+    // Snapshot-based keep-or-replace. Preserves cashier edits AND lets the
+    // next 10-digit retype re-fill from a different number's history.
+    const snap = formStateRef.current.autoFilledSnap;
+    const kr = (cur: string, prev: string | undefined, fresh: string) =>
+      fresh && (cur === '' || (prev !== undefined && cur === prev)) ? fresh : cur;
+    const cur = formStateRef.current;
+    const nextCarrier   = kr(cur.carrier,   snap?.carrier,   freshCarrier);
+    const nextAmount    = kr(cur.amount,    snap?.amount,    freshAmount);
+    const nextFirstName = kr(cur.firstName, snap?.firstName, freshFirst);
+    const nextLastName  = kr(cur.lastName,  snap?.lastName,  freshLast);
+    if (nextCarrier   !== cur.carrier)   setCarrier(nextCarrier);
+    if (nextAmount    !== cur.amount)    setAmount(nextAmount);
+    if (nextFirstName !== cur.firstName) setFirstName(nextFirstName);
+    if (nextLastName  !== cur.lastName)  setLastName(nextLastName);
+    setAutoFilledSnap({
+      carrier: freshCarrier, amount: freshAmount,
+      firstName: freshFirst, lastName: freshLast,
+    });
+  }, []);
+
+  // Debounced trigger: 500ms after the cashier types the 10th digit.
+  // When the field is cleared, also clear the snapshot so a future retype
+  // can re-fill from scratch (D3 in the phase-1 report).
+  useEffect(() => {
+    if (phoneNumber.length === 0) {
+      setAutoFilledSnap(null);
+      return;
+    }
+    if (phoneNumber.length !== 10) return;
+    const t = setTimeout(() => lookupByPhone(phoneNumber), 500);
+    return () => clearTimeout(t);
+  }, [phoneNumber, lookupByPhone]);
 
   // R-PHONE-FAMILY-MULTICUST: add a customer's line to the multi-line rows
   // without replacing the previously selected customer. Fills the first
@@ -2030,6 +2170,17 @@ export default function PhonePaymentModal({
                     </span>
                   )}
                 </div>
+                {/* R-PHONE-AUTOFILL: shown when the typed-phone lookup
+                    populated carrier / amount / name from CustomerDB or
+                    sales history. Fades silently when phone is cleared. */}
+                {autoFilledSnap && (
+                  <div style={{
+                    fontSize: '0.7rem', color: '#22c55e', marginTop: '0.3rem',
+                    textAlign: 'center', fontWeight: 600,
+                  }}>
+                    ✓ {t('phonePay.autoFilled')}
+                  </div>
+                )}
               </div>
             ) : null}
           </>
