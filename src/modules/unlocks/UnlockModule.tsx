@@ -522,7 +522,8 @@ export default function UnlockModule() {
         }
       } else if (customerName) {
         const newCust: Customer = {
-          id: generateId(), firstName, lastName, name: customerName, phone: form.customerPhone,
+          // R-PHONE-SANITIZE-SWEEP: persist 10-digit form (or empty).
+          id: generateId(), firstName, lastName, name: customerName, phone: normalizePhone(form.customerPhone || ''),
           email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-4)}`,
           notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
@@ -614,7 +615,8 @@ export default function UnlockModule() {
           cost: costCents,
           taxable,
           customerName,
-          customerPhone: form.customerPhone ?? '',
+          // R-PHONE-SANITIZE-SWEEP: 10-digit form on unlock record.
+          customerPhone: normalizePhone(form.customerPhone || ''),
           device: form.device ?? '',
           imei: normalizedImei,
           carrier: form.carrier ?? '',

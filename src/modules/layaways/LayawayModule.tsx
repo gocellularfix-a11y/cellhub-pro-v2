@@ -378,9 +378,12 @@ export default function LayawayModule() {
           toast(t('layaway.existingCustomer', existing.name), 'info');
         }
       } else if (customerName) {
+        // R-PHONE-SANITIZE-SWEEP: normalize at write boundary so customer.phone
+        // and the phones[] array are 10-digit / empty (never raw "(805)…").
+        const normPhone = normalizePhone(form.customerPhone || '');
         const newCust: Customer = {
-          id: generateId(), firstName: fName, lastName: lName, name: customerName, phone: form.customerPhone,
-          phones: [form.customerPhone], email: '', loyaltyPoints: 0, storeCredit: 0,
+          id: generateId(), firstName: fName, lastName: lName, name: customerName, phone: normPhone,
+          phones: normPhone ? [normPhone] : [], email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
           notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
         };
@@ -412,7 +415,8 @@ export default function LayawayModule() {
 
       const updated: any = {
         ...editLayaway,
-        firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
+        // R-PHONE-SANITIZE-SWEEP: 10-digit form on the layaway record itself.
+        firstName: fName, lastName: lName, customerName, customerPhone: normalizePhone(form.customerPhone || ''),
         customerId: finalCustomerId || (editLayaway as any).customerId,
         inventoryId: form.inventoryId || undefined,
         itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
@@ -462,7 +466,8 @@ export default function LayawayModule() {
       // Round 16 H-v4b: multi-store — stamp storeId at creation so belongs(storeId)
       // filters + R15b H2 fresh re-read guards don't orphan records across stores.
       storeId: currentStoreId,
-      firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
+      // R-PHONE-SANITIZE-SWEEP: same normalization on the create path.
+      firstName: fName, lastName: lName, customerName, customerPhone: normalizePhone(form.customerPhone || ''),
       customerId: finalCustomerId || undefined,
       inventoryId: form.inventoryId || undefined,
       itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,

@@ -332,7 +332,8 @@ export default function SpecialOrdersModule() {
         const ts = Date.now().toString().slice(-8);
         const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
         const newCust: Customer = {
-          id: generateId(), firstName, lastName, name: customerName, phone: form.customerPhone || '',
+          // R-PHONE-SANITIZE-SWEEP: persist 10-digit form (or empty).
+          id: generateId(), firstName, lastName, name: customerName, phone: normalizePhone(form.customerPhone || ''),
           email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${ts}-${rand}`,
           notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
@@ -1343,7 +1344,8 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
       cost: costCents,
       taxable: !!(form as any).taxable,
       customerName,
-      customerPhone: form.customerPhone ?? '',
+      // R-PHONE-SANITIZE-SWEEP: 10-digit form on the SO record itself.
+      customerPhone: normalizePhone(form.customerPhone || ''),
       itemDescription: form.itemDescription ?? '',
       supplier: form.supplier ?? '',
       estimatedArrival: form.estimatedArrival ?? '',
@@ -1443,7 +1445,9 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   onSelect={(opt) => {
                     setForm({ ...form, firstName: opt.value,
                       lastName: (form as any).lastName || (opt.data as Customer)?.name?.split(' ').slice(1).join(' ') || '',
-                      customerPhone: form.customerPhone || (opt.data as Customer)?.phone || '',
+                      // R-PHONE-SANITIZE-SWEEP: re-normalize on autocomplete pick — defense
+                      // in depth in case a legacy customer record still has formatted phone.
+                      customerPhone: normalizePhone(form.customerPhone || (opt.data as Customer)?.phone || ''),
                     } as any);
                   }}
                   options={firstNameOptions}
@@ -1459,7 +1463,8 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   onSelect={(opt) => {
                     setForm({ ...form, lastName: opt.value,
                       firstName: (form as any).firstName || (opt.data as Customer)?.name?.split(' ')[0] || '',
-                      customerPhone: form.customerPhone || (opt.data as Customer)?.phone || '',
+                      // R-PHONE-SANITIZE-SWEEP: same defense-in-depth normalization on this autocomplete path.
+                      customerPhone: normalizePhone(form.customerPhone || (opt.data as Customer)?.phone || ''),
                     } as any);
                   }}
                   options={lastNameOptions}

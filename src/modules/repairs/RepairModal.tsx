@@ -582,7 +582,8 @@ export default function RepairModal({ repair, customers, inventory, settings, al
       estimatedCost: totalCents,
       taxable: !!form.taxable,
       customerName: `${form.firstName} ${form.lastName}`.trim(),
-      customerPhone: form.customerPhone ?? '',
+      // R-PHONE-SANITIZE-SWEEP: 10-digit form on repair record.
+      customerPhone: normalizePhone(form.customerPhone || ''),
       device: `${form.brand} ${form.model}`.trim(),
       deviceModel: form.model ?? '',
       imei: form.imei ?? '',

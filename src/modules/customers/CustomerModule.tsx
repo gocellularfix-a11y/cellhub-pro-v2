@@ -293,7 +293,10 @@ export default function CustomerModule() {
         const { firstName: _df, lastName: _dl, name: _dn, ...dataRest } = data;
         const newCustomer: Customer = {
           id: generateId(),
-          phone: data.phone || '',
+          // R-PHONE-SANITIZE-SWEEP: persist 10-digit form (or empty) so wa.me /
+          // SMS / search downstream see consistent input regardless of how the
+          // cashier typed the number.
+          phone: normalizePhone(data.phone || ''),
           email: data.email || '',
           loyaltyPoints: 0,
           storeCredit: 0,
