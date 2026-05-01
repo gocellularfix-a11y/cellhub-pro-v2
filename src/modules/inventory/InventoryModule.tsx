@@ -16,6 +16,7 @@ import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import JsBarcode from 'jsbarcode';
 import type { InventoryItem, Sale, PurchaseOrder } from '@/store/types';
 import { persist, persistSettings, remove } from '@/services/persist';
+import { loadLocal, saveLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
 
@@ -40,6 +41,15 @@ export default function InventoryModule() {
   };
 
   const [search, setSearch] = useState(inventorySearchTerm || '');
+
+  // BUG-CAT (R-SIM-INTAKE): user-added inventory categories persist independently
+  // of the inventory items. Without this, a category typed via the "+ Add
+  // category" inline picker only survives as long as at least one item with
+  // that category exists (because the `categories` memo above derives from
+  // inventory). Storage key follows the cellhub_* convention via saveLocal.
+  const [customCategories, setCustomCategories] = useState<string[]>(
+    () => loadLocal<string[]>('inventory_custom_categories', []),
+  );
 
   // Consume cross-module search term once on mount
   useEffect(() => {
@@ -71,6 +81,10 @@ export default function InventoryModule() {
     if (lc === 'accessories') return 'accessory';
     if (lc === 'services') return 'service';
     if (lc === 'parts') return 'part';
+    // R-SIM-INTAKE: SIM is an acronym — return all-caps form so the tab
+    // label shows "SIM" instead of "Sim". The filter below compares both
+    // sides lowercased, so the case difference doesn't break matching.
+    if (lc === 'sim') return 'SIM';
     return lc || c;
   };
   const categories = useMemo(() => {
@@ -81,6 +95,10 @@ export default function InventoryModule() {
       const key = normCat(cat);
       if (!seen.has(key)) seen.set(key, key.charAt(0).toUpperCase() + key.slice(1));
     }
+    // R-SIM-INTAKE: always expose the SIM tab so cashiers can navigate to it
+    // even before the first SIM is intaked. The key 'SIM' (from normCat) is
+    // shown as-is since it's already an acronym.
+    if (!seen.has('SIM')) seen.set('SIM', 'SIM');
     return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, locale))];
   }, [inventory, lang]);
 
@@ -109,7 +127,9 @@ export default function InventoryModule() {
         // Without this, items saved as 'phone' (singular — see CATEGORIES
         // tuple at line ~843) never match the 'Phones' tab whose key is
         // 'phones' (plural) per normCat.
-        if (filterCategory !== 'All' && normCat(item.category || '') !== filterCategory.toLowerCase()) return false;
+        // R-SIM-INTAKE: lowercase BOTH sides because normCat now returns
+        // mixed-case for acronyms (e.g. 'SIM').
+        if (filterCategory !== 'All' && normCat(item.category || '').toLowerCase() !== filterCategory.toLowerCase()) return false;
         if (filterCondition !== 'All' && (item.condition || '').toLowerCase() !== filterCondition.toLowerCase()) return false;
         if (showLowStockOnly && item.qty > (settings.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD)) return false;
         return matchesSearch(search, item.name, item.sku, item.barcode, item.imei, item.category);
@@ -497,12 +517,31 @@ export default function InventoryModule() {
         <InventoryFormModal
           item={editItem}
           categories={categories.filter((c) => c !== 'All')}
+          customCategories={customCategories}
           allInventory={inventory}
           allSales={sales}
           allPurchaseOrders={purchaseOrders}
           fieldConfig={fieldConfig}
           onAddCategory={(newCat) => {
-            toast(t('inventory.categoryAdded', newCat), 'success');
+            // BUG-CAT (R-SIM-INTAKE): persist custom categories so they survive
+            // reloads and "no items in this category" states. Skips duplicates
+            // against existing inventory-derived categories AND built-in
+            // CATEGORIES tuple (case-insensitive).
+            const trimmed = newCat.trim();
+            if (!trimmed) return;
+            const lower = trimmed.toLowerCase();
+            const knownLower = new Set([
+              ...categories.map((c) => c.toLowerCase()),
+              ...customCategories.map((c) => c.toLowerCase()),
+            ]);
+            if (knownLower.has(lower)) {
+              toast(t('inventory.categoryAdded', trimmed), 'info');
+              return;
+            }
+            const next = [...customCategories, trimmed];
+            setCustomCategories(next);
+            saveLocal('inventory_custom_categories', next);
+            toast(t('inventory.categoryAdded', trimmed), 'success');
           }}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditItem(null); }}
@@ -544,6 +583,7 @@ export default function InventoryModule() {
 function InventoryFormModal({
   item,
   categories,
+  customCategories,
   allInventory,
   allSales,
   allPurchaseOrders,
@@ -556,6 +596,7 @@ function InventoryFormModal({
 }: {
   item: InventoryItem | null;
   categories: string[];
+  customCategories: string[];
   allInventory: InventoryItem[];
   allSales: Sale[];
   allPurchaseOrders: PurchaseOrder[];
@@ -864,6 +905,10 @@ function InventoryFormModal({
     { value: 'accessory', label: t('inventory.form.cat.accessories') },
     { value: 'part',      label: t('inventory.form.cat.parts') },
     { value: 'service',   label: t('inventory.form.cat.services') },
+    // R-SIM-INTAKE: built-in 'sim' category. The CATEGORIES `value` is the
+    // canonical lowercase form; the inventory tab/normCat uppercase it for
+    // display ('SIM').
+    { value: 'sim',       label: t('inventory.form.cat.sim') },
     { value: 'top_up',    label: 'Top Up' },
     { value: 'other',     label: t('inventory.form.cat.other') },
   ];
@@ -1138,6 +1183,16 @@ function InventoryFormModal({
                 {CATEGORIES.filter((c) => !categories.includes(c.value)).map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
+                {/* BUG-CAT (R-SIM-INTAKE): user-added custom categories. */}
+                {customCategories
+                  .filter((c) => {
+                    const lc = c.toLowerCase();
+                    return !categories.some((cat) => cat.toLowerCase() === lc)
+                      && !CATEGORIES.some((cat) => cat.value.toLowerCase() === lc);
+                  })
+                  .map((c) => (
+                    <option key={`custom-${c}`} value={c}>{c}</option>
+                  ))}
                 <option value="__add__">{t('inventory.form.addNew')}</option>
               </select>
             ) : (

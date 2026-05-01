@@ -1648,6 +1648,12 @@ export const translations: TranslationDictionary = {
   'phonePay.errInvalidAmount': { en: 'Invalid amount', es: 'Monto inválido', pt: 'Valor inválido' },
   'phonePay.itemPlanName': { en: 'Plan', es: 'Plan', pt: 'Plano' },
   'phonePay.itemActivationFeeName': { en: 'Activation Fee', es: 'Cargo de Activación', pt: 'Taxa de Ativação' },
+  'phonePay.itemSimName': { en: 'SIM Card', es: 'Tarjeta SIM', pt: 'Cartão SIM' },
+  'phonePay.simCardLabel': { en: 'SIM Card (optional)', es: 'Tarjeta SIM (opcional)', pt: 'Cartão SIM (opcional)' },
+  'phonePay.simCardSearchPlaceholder': { en: 'Search SIM cards in stock…', es: 'Buscar tarjetas SIM en stock…', pt: 'Buscar cartões SIM em estoque…' },
+  'phonePay.noSimsInStock': { en: 'No SIM cards in stock — activation can still proceed', es: 'No hay tarjetas SIM en stock — la activación puede continuar', pt: 'Sem cartões SIM em estoque — a ativação pode prosseguir' },
+  'phonePay.spiffToggleLabel': { en: 'Spiff (manual)', es: 'Spiff (manual)', pt: 'Spiff (manual)' },
+  'phonePay.spiffToggleHint': { en: 'Internal — does not affect customer total', es: 'Interno — no afecta total del cliente', pt: 'Interno — não afeta total do cliente' },
   'phonePay.knownLineCount': {
     en: (n: number) => n === 1 ? 'known line' : 'known lines',
     es: (n: number) => `línea(s) conocida(s)`,
@@ -2399,6 +2405,7 @@ export const translations: TranslationDictionary = {
   'inventory.form.cat.accessories': { en: 'Accessories',         es: 'Accesorios',                    pt: 'Acessórios' },
   'inventory.form.cat.parts':    { en: 'Parts',                  es: 'Partes',                        pt: 'Peças' },
   'inventory.form.cat.services': { en: 'Services',               es: 'Servicios',                     pt: 'Serviços' },
+  'inventory.form.cat.sim':      { en: 'SIM Card',               es: 'Tarjeta SIM',                   pt: 'Cartão SIM' },
   'inventory.form.cat.other':    { en: 'Other',                  es: 'Otro',                          pt: 'Outro' },
   // Field Customizer
   'inventory.fields.title':      { en: 'Customize Fields',       es: 'Personalizar Campos',           pt: 'Personalizar Campos' },

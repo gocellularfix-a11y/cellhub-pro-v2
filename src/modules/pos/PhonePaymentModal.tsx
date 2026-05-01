@@ -34,7 +34,7 @@ import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
-import type { CartItem, StoreSettings, Customer, Sale } from '@/store/types';
+import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
 
 // Shared sanitization for phoneNumber — used in onChange, validation,
@@ -100,7 +100,16 @@ export default function PhonePaymentModal({
   const [actPlanPrice, setActPlanPrice] = useState('');  // first month plan charge to customer
   const [actAmount, setActAmount] = useState('');         // activation/SIM/setup fee
   const [actNotes, setActNotes] = useState('');
-  const [actSpiff, setActSpiff] = useState('0'); // pre-populated from settings.carrierSpiffs[carrier] when carrier selected
+  // R-SIM-INTAKE: spiff is now opt-in via the useSpiff toggle (default OFF).
+  // The auto-populate effect below was removed — carriers change spiff rates
+  // frequently, so the cashier enters the value manually each transaction.
+  const [actSpiff, setActSpiff] = useState('0');
+  const [useSpiff, setUseSpiff] = useState(false);
+  // R-SIM-INTAKE: SIM Card picker state — selected SIM gets stamped on a
+  // dedicated cart item with category='sim' and inventoryId so the existing
+  // POSModule decrement loop handles qty automatically at checkout.
+  const [selectedSim, setSelectedSim] = useState<InventoryItem | null>(null);
+  const [simSearch, setSimSearch] = useState('');
 
   // ── Customer search ───────────────────────────────────────
   const [custSearch, setCustSearch] = useState('');
@@ -148,16 +157,13 @@ export default function PhonePaymentModal({
     if (defaultPortal) setPortal(defaultPortal);
   }, [carrier, PORTALS, settings.carrierPortalUrls]);
 
-  // Auto-populate spiff default from settings.carrierSpiffs when activation carrier changes
-  useEffect(() => {
-    if (!actCarrier || !settings.trackActivationSpiffs) {
-      setActSpiff('0');
-      return;
-    }
-    const normalized = normalizeCarrier(actCarrier);
-    const def = settings.carrierSpiffs?.[actCarrier] ?? settings.carrierSpiffs?.[normalized] ?? 0;
-    setActSpiff(String(def));
-  }, [actCarrier, settings.trackActivationSpiffs, settings.carrierSpiffs]);
+  // R-SIM-INTAKE: auto-populate of spiff was removed. Spiff is now opt-in via
+  // the useSpiff toggle (default OFF) and entered manually by the cashier.
+  // Reason: carriers change spiff rates often enough that an outdated default
+  // pulled from settings.carrierSpiffs caused incorrect spiff stamping. Manual
+  // entry keeps each transaction honest. The carrierSpiffs setting is no
+  // longer read here; legacy persistence to localStorage.activation_spiffs
+  // (Tax Reports source) still happens in handleAddActivation when useSpiff=true.
 
   // ── Multi-line rows ───────────────────────────────────────
   const [lines, setLines] = useState<PhonePaymentLine[]>([
@@ -182,7 +188,12 @@ export default function PhonePaymentModal({
   // which auto-opens this modal. We detect the pending ID here and
   // autofill everything from the customer record.
   const { state: appState, dispatch: appDispatch } = useApp();
-  const { pendingPhonePaymentCustomerId } = appState;
+  const { pendingPhonePaymentCustomerId, inventory } = appState;
+  // R-SIM-INTAKE: anti-stale-closure ref for inventory — back-to-back
+  // activations (same modal session) should see post-decrement qty so the
+  // SIM picker doesn't show items that were already sold this session.
+  const inventoryRef = useRef(inventory);
+  useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => {
     if (!open || !pendingPhonePaymentCustomerId) return;
     const match = customers.find((c) => c.id === pendingPhonePaymentCustomerId);
@@ -906,6 +917,22 @@ export default function PhonePaymentModal({
     actPhoneValid &&
     ((parseFloat(actAmount) || 0) > 0 || (parseFloat(actPlanPrice) || 0) > 0);
 
+  // R-SIM-INTAKE: SIM Cards in stock (category 'sim', qty>0). Optional — the
+  // activation can complete without a SIM. The cart-side decrement at checkout
+  // (POSModule) uses the stamped inventoryId on the SIM cart line.
+  const availableSims = useMemo(
+    () => inventory.filter((i) => (i.category || '').toLowerCase() === 'sim' && (i.qty || 0) > 0),
+    [inventory],
+  );
+  const simResults = useMemo(() => {
+    const list = simSearch.trim()
+      ? availableSims.filter((i) =>
+          matchesSearch(simSearch, i.name, i.imei, i.sku, i.barcode, (i as any).carrier),
+        )
+      : availableSims;
+    return list.slice(0, 8);
+  }, [simSearch, availableSims]);
+
   // Plan autocomplete — load previously-used plans from localStorage
   const knownPlans = useMemo<string[]>(() => {
     try {
@@ -968,14 +995,50 @@ export default function PhonePaymentModal({
       });
     }
 
+    // ── Item 3 (R-SIM-INTAKE): SIM Card from inventory ──
+    // Separate cart line with category='sim' so reports can attribute SIM
+    // revenue/profit independently from activation fees. inventoryId triggers
+    // the existing POSModule.tsx decrement loop (no new checkout code needed).
+    // spiffAmount is stamped here (NOT on Plan or Activation Fee) per auditor
+    // decision — single source of truth for downstream commission/tax reports.
+    if (selectedSim) {
+      const simPriceCents = selectedSim.price || 0;
+      newItems.push({
+        id: generateId(),
+        inventoryId: selectedSim.id,
+        name: `📶 ${t('phonePay.itemSimName')} — ${selectedSim.name || normalizedCarrier}`,
+        category: 'sim',
+        price: simPriceCents,
+        qty: 1,
+        taxable: !!selectedSim.taxable,
+        cbeEligible: false,
+        carrier: normalizedCarrier,
+        phoneNumber: phoneNorm,
+        notes: [
+          customerNote,
+          selectedSim.imei ? `IMEI: ${selectedSim.imei}` : '',
+          actNotes.trim(),
+        ].filter(Boolean).join(' — '),
+        // Stamped tracking fields — read by reports / receipts.
+        simCardId: selectedSim.id,
+        simCardImei: selectedSim.imei || '',
+        simPrice: simPriceCents,
+        spiffAmount: useSpiff ? spiffCents : 0,
+      } as unknown as CartItem);
+    }
+
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
 
-    // Persist spiff (INTERNAL — does NOT touch cart, reported separately in Taxes)
-    if (spiffCents > 0 && settings.trackActivationSpiffs) {
+    // Persist spiff (INTERNAL — does NOT touch customer total, reported in Taxes).
+    // R-SIM-INTAKE: gated on the manual `useSpiff` toggle (default OFF) instead of
+    // settings.trackActivationSpiffs. The legacy `activation_spiffs` localStorage
+    // is preserved for Tax Reports backward-compat; the spiffAmount is also
+    // stamped on the SIM cart line (above) so future reports can read either.
+    if (useSpiff && spiffCents > 0) {
       try {
         const all = loadLocal<any[]>('activation_spiffs', []) || [];
         all.push({
@@ -1009,12 +1072,14 @@ export default function PhonePaymentModal({
     // Reset all activation fields
     setActCarrier('');
     setActPhone(''); setActPlan(''); setActPlanPrice(''); setActAmount(''); setActNotes(''); setActSpiff('0');
+    // R-SIM-INTAKE: reset SIM picker + spiff toggle for next transaction
+    setSelectedSim(null); setSimSearch(''); setUseSpiff(false);
     // Also reset main panel fields to avoid data leak between transactions
     reset();
     onClose();
   }, [canAddActivation, actCarrier, actPhone, actPlan, actPlanPrice, actAmount, actNotes, actSpiff,
       actCommissionCents, settings, setCart, onClose, t, firstName, lastName,
-      selectedCustomer, propagateSelectedCustomer]);
+      selectedCustomer, propagateSelectedCustomer, selectedSim, useSpiff]);
 
   const handleOpenActivationPortal = () => {
     // Try both raw and normalized carrier name as keys
@@ -1209,41 +1274,55 @@ export default function PhonePaymentModal({
               </div>
             )}
 
-            {/* Spiff — visible whenever tracking is enabled in Settings.
-                Autopopulates from settings.carrierSpiffs[carrier] once carrier is picked. */}
-            {settings.trackActivationSpiffs && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
-                padding: '0.625rem 0.875rem',
-                background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.2)',
-                borderRadius: '0.625rem',
-              }}>
+            {/* R-SIM-INTAKE: Spiff toggle — opt-in per transaction (default OFF).
+                Replaces the prior auto-populate that read settings.carrierSpiffs.
+                When ON: cashier types the spiff amount; gets stamped onto the
+                SIM cart line as `spiffAmount` and persisted to legacy
+                `activation_spiffs` localStorage (Tax Reports source). */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.625rem 0.875rem',
+              background: useSpiff ? 'rgba(251,191,36,0.07)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${useSpiff ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '0.625rem',
+            }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={useSpiff}
+                  onChange={(e) => {
+                    setUseSpiff(e.target.checked);
+                    if (!e.target.checked) setActSpiff('0');
+                  }}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#fbbf24' }}
+                />
                 <span style={{ fontSize: '1.1rem' }}>🎯</span>
-                <div style={{ fontSize: '0.82rem', color: '#94a3b8', flex: 1 }}>
-                  <strong style={{ color: '#fbbf24' }}>Spiff</strong>
-                  <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: '#64748b' }}>
-                    {t('phonePay.spiffHint')}
-                  </span>
-                </div>
+                <strong style={{ color: useSpiff ? '#fbbf24' : '#94a3b8', fontSize: '0.85rem' }}>
+                  {t('phonePay.spiffToggleLabel')}
+                </strong>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  {t('phonePay.spiffToggleHint')}
+                </span>
+              </label>
+              {useSpiff && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>$</span>
                   <input
-                    type="number" min="0" step="1"
+                    type="number" min="0" step="0.01"
                     value={actSpiff}
                     onChange={(e) => setActSpiff(e.target.value)}
-                    disabled={!actCarrier}
-                    placeholder={actCarrier ? '0' : '—'}
+                    placeholder="0.00"
                     style={{
-                      width: '80px', padding: '0.25rem 0.5rem', textAlign: 'right',
+                      width: '90px', padding: '0.25rem 0.5rem', textAlign: 'right',
                       background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
                       borderRadius: '0.375rem',
-                      color: actCarrier ? '#fbbf24' : '#64748b',
+                      color: '#fbbf24',
                       fontWeight: 700, fontSize: '0.9rem',
                     }}
                   />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Phone + Plan grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -1320,6 +1399,97 @@ export default function PhonePaymentModal({
                 placeholder={t('phonePay.internalNotesPlaceholder')} />
             </div>
 
+            {/* R-SIM-INTAKE: SIM Card picker. Lists category='sim' items with
+                qty>0 from inventory. Optional — activation can complete without
+                a SIM. The selected SIM's price is added to the cart total and
+                its qty is decremented at checkout via inventoryId. */}
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                {t('phonePay.simCardLabel')}
+              </label>
+              {selectedSim ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.5rem 0.75rem',
+                  background: 'rgba(34,211,238,0.08)',
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: '0.5rem',
+                }}>
+                  <span style={{ fontSize: '1rem' }}>📶</span>
+                  <span style={{ fontSize: '0.82rem', color: '#e2e8f0', flex: 1 }}>
+                    <strong>{selectedSim.name}</strong>
+                    {selectedSim.imei && <span style={{ color: '#94a3b8', marginLeft: '0.4rem' }}>· IMEI {selectedSim.imei}</span>}
+                    <span style={{ color: '#22c55e', marginLeft: '0.4rem', fontWeight: 700 }}>
+                      {formatCurrency(selectedSim.price || 0)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedSim(null); setSimSearch(''); }}
+                    style={{
+                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#f87171', padding: '0.2rem 0.55rem', borderRadius: '0.375rem',
+                      cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+                    }}
+                    aria-label="clear selected SIM"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    className="input"
+                    value={simSearch}
+                    onChange={(e) => setSimSearch(e.target.value)}
+                    placeholder={t('phonePay.simCardSearchPlaceholder')}
+                    disabled={availableSims.length === 0}
+                  />
+                  {availableSims.length === 0 ? (
+                    <p style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '0.25rem' }}>
+                      ⚠️ {t('phonePay.noSimsInStock')}
+                    </p>
+                  ) : simResults.length > 0 && (
+                    <div style={{
+                      marginTop: '0.25rem',
+                      background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '0.5rem', overflow: 'hidden',
+                      maxHeight: '180px', overflowY: 'auto',
+                    }}>
+                      {simResults.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => { setSelectedSim(s); setSimSearch(''); }}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left',
+                            padding: '0.45rem 0.75rem', cursor: 'pointer',
+                            background: 'transparent', border: 'none',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            color: '#e2e8f0', fontSize: '0.78rem',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.12)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 600 }}>{s.name}</span>
+                            <span style={{ color: '#22c55e', fontWeight: 700 }}>{formatCurrency(s.price || 0)}</span>
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                            {[
+                              s.imei && `IMEI ${s.imei}`,
+                              (s as any).carrier,
+                              `qty ${s.qty}`,
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
             {/* Add to cart */}
             <button
               onClick={handleAddActivation}
@@ -1331,11 +1501,13 @@ export default function PhonePaymentModal({
               {(() => {
                 const plan = parseFloat(actPlanPrice) || 0;
                 const fee  = parseFloat(actAmount) || 0;
+                // R-SIM-INTAKE: include selected SIM price in the preview total.
+                const sim  = (selectedSim?.price || 0) / 100;
                 // If plan > 0, add utility tax + mobility (same as bill payment)
                 const utilRate = settings.utilityUsersTax || 0.055;
                 const mobility = settings.mobileSurcharge || 0.41;
                 const planExtras = plan > 0 ? (plan * utilRate + mobility) : 0;
-                const total = plan + fee + planExtras;
+                const total = plan + fee + sim + planExtras;
                 return total > 0 ? ` — $${total.toFixed(2)}` : '';
               })()}
             </button>

@@ -336,6 +336,18 @@ export default function POSModule() {
         if (!saleItem.inventoryId) continue;
         const idx = updatedInventory.findIndex((i) => i.id === saleItem.inventoryId);
         if (idx >= 0 && updatedInventory[idx].category !== 'service') {
+          // R-SIM-INTAKE: surface a warning if the item we're "decrementing"
+          // already shows qty=0. The Math.max(0, ...) clamps to zero (no
+          // negative qty), but the physical sale still happened — log so it
+          // can be reconciled (typical cause: same SIM scanned twice in
+          // back-to-back transactions before the first persist landed).
+          if ((updatedInventory[idx].qty || 0) <= 0 && (saleItem.qty || 0) > 0) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              '[POS] Sale item with inventoryId but inventory qty already 0:',
+              { name: saleItem.name, id: saleItem.inventoryId, soldQty: saleItem.qty },
+            );
+          }
           updatedInventory[idx] = {
             ...updatedInventory[idx],
             qty: Math.max(0, updatedInventory[idx].qty - saleItem.qty),
