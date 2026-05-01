@@ -95,6 +95,20 @@ export default function Cart({
     [cart, setCart],
   );
 
+  // R-CART-FEES BUG-6: per-item toggle for CBE (Battery) and Screen Fee.
+  // The booleans already exist on CartItem and are honored by the cart total
+  // calculation in pos/types.ts (cbeEligible respects settings.cbeFeeEnabled
+  // global gate; screenFeeEligible has no global gate). This just exposes
+  // them in the cart UI.
+  const toggleItemFee = useCallback(
+    (itemId: string, flag: 'cbeEligible' | 'screenFeeEligible') => {
+      setCart(cart.map((c) =>
+        c.id === itemId ? { ...c, [flag]: !c[flag] } : c,
+      ));
+    },
+    [cart, setCart],
+  );
+
   // ── Loyalty points preview ────────────────────────────────
   const loyaltyPtsPreview = useMemo(() => {
     if (!settings.loyaltyEnabled) return 0;
@@ -244,6 +258,60 @@ export default function Cart({
               className="mt-2 w-full bg-transparent border-b border-white/10 text-xs text-slate-400
                          placeholder-slate-600 focus:outline-none focus:border-brand-500 py-1"
             />
+
+            {/* R-CART-FEES BUG-6: per-item CBE / Screen Fee toggles.
+                Default OFF (the cashier opts in per item). The CBE toggle
+                is hidden when the global cbeFeeEnabled is off — otherwise
+                clicking it would do nothing (calc gates on the global flag
+                in pos/types.ts:124). Screen Fee has no global gate. */}
+            <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+              {settings.cbeFeeEnabled && (
+                <button
+                  type="button"
+                  onClick={() => toggleItemFee(item.id, 'cbeEligible')}
+                  style={{
+                    flex: 1,
+                    padding: '0.3rem 0.5rem',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    borderRadius: '0.4rem',
+                    cursor: 'pointer',
+                    background: item.cbeEligible
+                      ? 'rgba(34,197,94,0.18)'
+                      : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${item.cbeEligible
+                      ? 'rgba(34,197,94,0.45)'
+                      : 'rgba(255,255,255,0.12)'}`,
+                    color: item.cbeEligible ? '#34d399' : '#94a3b8',
+                  }}
+                  aria-pressed={!!item.cbeEligible}
+                >
+                  🔋 {t('cart.batteryFeeToggle')} {item.cbeEligible ? 'ON' : 'OFF'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => toggleItemFee(item.id, 'screenFeeEligible')}
+                style={{
+                  flex: 1,
+                  padding: '0.3rem 0.5rem',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  borderRadius: '0.4rem',
+                  cursor: 'pointer',
+                  background: item.screenFeeEligible
+                    ? 'rgba(34,197,94,0.18)'
+                    : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${item.screenFeeEligible
+                    ? 'rgba(34,197,94,0.45)'
+                    : 'rgba(255,255,255,0.12)'}`,
+                  color: item.screenFeeEligible ? '#34d399' : '#94a3b8',
+                }}
+                aria-pressed={!!item.screenFeeEligible}
+              >
+                🖥️ {t('cart.screenFeeToggle')} {item.screenFeeEligible ? 'ON' : 'OFF'}
+              </button>
+            </div>
           </div>
         ))}
       </div>

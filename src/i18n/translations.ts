@@ -1414,6 +1414,11 @@ export const translations: TranslationDictionary = {
   'cart.surcharge': { en: 'Surcharge', es: 'Recargo Móvil', pt: 'Sobretaxa Móvel' },
   'cart.cbeFee': { en: 'CBE Fee', es: 'Cuota CBE', pt: 'Taxa CBE' },
   'cart.screenFee': { en: 'Screen Fee', es: 'Cuota Pantalla', pt: 'Taxa de Tela' },
+  // R-CART-FEES BUG-6: per-item toggle labels in the cart panel.
+  'cart.batteryFeeToggle': { en: 'Battery Fee', es: 'Tarifa de Batería', pt: 'Taxa de Bateria' },
+  'cart.screenFeeToggle': { en: 'Screen Fee', es: 'Tarifa de Pantalla', pt: 'Taxa de Tela' },
+  // R-CART-FEES BUG-6: receipt HTML — Screen Fee line, paralelo al CBE Fee existente.
+  'receipt.screenFee': { en: 'Screen Fee:', es: 'Cuota Pantalla:', pt: 'Taxa de Tela:' },
   'cart.ccFee': { en: 'CC Fee', es: 'Cargo Tarjeta', pt: 'Taxa de Cartão' },
   'cart.split': { en: 'Split', es: 'Dividir', pt: 'Dividir' },
   'cart.cashReceived': { en: 'Cash Received', es: 'Efectivo Recibido', pt: 'Dinheiro Recebido' },

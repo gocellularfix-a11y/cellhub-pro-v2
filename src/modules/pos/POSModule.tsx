@@ -298,17 +298,21 @@ export default function POSModule() {
         cartRef.current = next;
         setCart(next);
 
-        // Bundle suggestion — when a phone is added, suggest accessories
-        if (isPhoneCategory(item)) {
-          const suggestions = inventory.filter(
-            (i) =>
-              isAccessoryCategory(i) &&
-              i.qty > 0 &&
-              !currentCart.some((c) => c.inventoryId === i.id) &&
-              i.id !== item.id,
-          ).slice(0, 4);
-          if (suggestions.length > 0) setBundleSuggestion(suggestions);
-        }
+        // BUG-9 (R-CART-FEES) DISABLED: the auto-pop "Add accessories?" panel
+        // interrupted the fast-sale flow. State + render are preserved (so a
+        // future feature flag can re-enable easily) but the trigger is muted.
+        // To re-enable, uncomment the block below.
+        //
+        // if (isPhoneCategory(item)) {
+        //   const suggestions = inventory.filter(
+        //     (i) =>
+        //       isAccessoryCategory(i) &&
+        //       i.qty > 0 &&
+        //       !currentCart.some((c) => c.inventoryId === i.id) &&
+        //       i.id !== item.id,
+        //   ).slice(0, 4);
+        //   if (suggestions.length > 0) setBundleSuggestion(suggestions);
+        // }
       }
 
       toast(t('pos.itemAdded', item.name), 'success');
