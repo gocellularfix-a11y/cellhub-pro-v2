@@ -110,6 +110,16 @@ export default function PhonePaymentModal({
   // POSModule decrement loop handles qty automatically at checkout.
   const [selectedSim, setSelectedSim] = useState<InventoryItem | null>(null);
   const [simSearch, setSimSearch] = useState('');
+  // R-SIM-ACTIVATION: carrier filter buttons above the search input. 'All'
+  // shows every SIM; otherwise narrow by carrier (matches `(i as any).carrier`
+  // OR `i.brand`, matching the SimManagerModal storage convention).
+  const [simCarrierFilter, setSimCarrierFilter] = useState<string>('All');
+  // R-SIM-ACTIVATION: editable SIM name in the selected pill. Initialized
+  // from `selectedSim.name` on pick; flushed to the cart-line item name on
+  // Add to Cart so the cashier can rename ad-hoc per transaction (e.g. note
+  // a custom plan in the receipt) without mutating the inventory record.
+  const [simNameOverride, setSimNameOverride] = useState('');
+  const [editingSimName, setEditingSimName] = useState(false);
 
   // ── Customer search ───────────────────────────────────────
   const [custSearch, setCustSearch] = useState('');
@@ -1067,14 +1077,39 @@ export default function PhonePaymentModal({
     () => inventory.filter((i) => (i.category || '').toLowerCase() === 'sim' && (i.qty || 0) > 0),
     [inventory],
   );
+  // R-SIM-ACTIVATION: distinct carriers present in stock (used to render
+  // carrier filter buttons above the search input). Reads either the legacy
+  // `carrier` field or the SimManagerModal `brand` field.
+  const simCarriers = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of availableSims) {
+      const c = ((i as any).carrier || i.brand || '').trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort();
+  }, [availableSims]);
+  // R-SIM-ACTIVATION: SIMs after the carrier-button filter, before the
+  // text-search filter. simResults below narrows further by simSearch.
+  const carrierFilteredSims = useMemo(
+    () => simCarrierFilter === 'All'
+      ? availableSims
+      : availableSims.filter(
+          (i) => (((i as any).carrier || i.brand || '') as string).toLowerCase()
+                 === simCarrierFilter.toLowerCase(),
+        ),
+    [availableSims, simCarrierFilter],
+  );
   const simResults = useMemo(() => {
     const list = simSearch.trim()
-      ? availableSims.filter((i) =>
-          matchesSearch(simSearch, i.name, i.imei, i.sku, i.barcode, (i as any).carrier),
+      ? carrierFilteredSims.filter((i) =>
+          // R-SIM-ACTIVATION: include `brand` in search — SimManagerModal
+          // stores carrier in InventoryItem.brand, so a search for "Verizon"
+          // would otherwise miss SIMs created from the new manager.
+          matchesSearch(simSearch, i.name, i.imei, i.sku, i.barcode, (i as any).carrier, i.brand),
         )
-      : availableSims;
+      : carrierFilteredSims;
     return list.slice(0, 8);
-  }, [simSearch, availableSims]);
+  }, [simSearch, carrierFilteredSims]);
 
   // Plan autocomplete — load previously-used plans from localStorage
   const knownPlans = useMemo<string[]>(() => {
@@ -1149,7 +1184,9 @@ export default function PhonePaymentModal({
       newItems.push({
         id: generateId(),
         inventoryId: selectedSim.id,
-        name: `📶 ${t('phonePay.itemSimName')} — ${selectedSim.name || normalizedCarrier}`,
+        // R-SIM-ACTIVATION: simNameOverride lets the cashier rename the SIM
+        // ad-hoc per transaction without mutating the inventory record.
+        name: `📶 ${t('phonePay.itemSimName')} — ${simNameOverride.trim() || selectedSim.name || normalizedCarrier}`,
         category: 'sim',
         price: simPriceCents,
         qty: 1,
@@ -1217,12 +1254,16 @@ export default function PhonePaymentModal({
     setActPhone(''); setActPlan(''); setActPlanPrice(''); setActAmount(''); setActNotes(''); setActSpiff('0');
     // R-SIM-INTAKE: reset SIM picker + spiff toggle for next transaction
     setSelectedSim(null); setSimSearch(''); setUseSpiff(false);
+    // R-SIM-ACTIVATION: reset the new picker UX state too.
+    setSimCarrierFilter('All'); setSimNameOverride(''); setEditingSimName(false);
     // Also reset main panel fields to avoid data leak between transactions
     reset();
     onClose();
   }, [canAddActivation, actCarrier, actPhone, actPlan, actPlanPrice, actAmount, actNotes, actSpiff,
       actCommissionCents, settings, setCart, onClose, t, firstName, lastName,
-      selectedCustomer, propagateSelectedCustomer, selectedSim, useSpiff]);
+      selectedCustomer, propagateSelectedCustomer, selectedSim, useSpiff,
+      // R-SIM-ACTIVATION: the renamed SIM line picks up simNameOverride.
+      simNameOverride]);
 
   const handleOpenActivationPortal = () => {
     // Try both raw and normalized carrier name as keys
@@ -1559,16 +1600,62 @@ export default function PhonePaymentModal({
                   borderRadius: '0.5rem',
                 }}>
                   <span style={{ fontSize: '1rem' }}>📶</span>
-                  <span style={{ fontSize: '0.82rem', color: '#e2e8f0', flex: 1 }}>
-                    <strong>{selectedSim.name}</strong>
-                    {selectedSim.imei && <span style={{ color: '#94a3b8', marginLeft: '0.4rem' }}>· IMEI {selectedSim.imei}</span>}
-                    <span style={{ color: '#22c55e', marginLeft: '0.4rem', fontWeight: 700 }}>
+                  {/* R-SIM-ACTIVATION: pill flex container so the editable
+                      name input can claim flex:1 alongside ICCID + price. */}
+                  <span style={{ fontSize: '0.82rem', color: '#e2e8f0', flex: 1, display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flexWrap: 'wrap' }}>
+                    {editingSimName ? (
+                      <input
+                        value={simNameOverride}
+                        onChange={(e) => setSimNameOverride(e.target.value)}
+                        onBlur={() => setEditingSimName(false)}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: '1px solid rgba(34,211,238,0.5)',
+                          color: '#e2e8f0',
+                          fontSize: '0.82rem',
+                          outline: 'none',
+                          padding: '0.1rem 0.2rem',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <strong>{simNameOverride || selectedSim.name}</strong>
+                        <button
+                          type="button"
+                          onClick={() => setEditingSimName(true)}
+                          aria-label="edit SIM name"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            fontSize: '0.78rem',
+                            padding: '0 0.2rem',
+                          }}
+                        >
+                          ✏️
+                        </button>
+                      </>
+                    )}
+                    {/* R-SIM-ACTIVATION: ICCID label (was "IMEI" — semantically wrong for SIMs). */}
+                    {selectedSim.imei && <span style={{ color: '#94a3b8' }}>· ICCID {selectedSim.imei}</span>}
+                    <span style={{ color: '#22c55e', fontWeight: 700 }}>
                       {formatCurrency(selectedSim.price || 0)}
                     </span>
                   </span>
                   <button
                     type="button"
-                    onClick={() => { setSelectedSim(null); setSimSearch(''); }}
+                    onClick={() => {
+                      // R-SIM-ACTIVATION: reset all SIM-picker state on clear.
+                      setSelectedSim(null);
+                      setSimSearch('');
+                      setSimCarrierFilter('All');
+                      setSimNameOverride('');
+                      setEditingSimName(false);
+                    }}
                     style={{
                       background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
                       color: '#f87171', padding: '0.2rem 0.55rem', borderRadius: '0.375rem',
@@ -1581,6 +1668,43 @@ export default function PhonePaymentModal({
                 </div>
               ) : (
                 <>
+                  {/* R-SIM-ACTIVATION: carrier filter buttons (only render
+                      when at least one carrier is present in stock). 'All'
+                      pill always first; the rest is the sorted set of
+                      distinct carriers from `simCarriers` memo. */}
+                  {simCarriers.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSimCarrierFilter('All')}
+                        style={{
+                          padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700,
+                          borderRadius: '0.4rem', cursor: 'pointer',
+                          background: simCarrierFilter === 'All' ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${simCarrierFilter === 'All' ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                          color: simCarrierFilter === 'All' ? '#67e8f9' : '#94a3b8',
+                        }}
+                      >
+                        All
+                      </button>
+                      {simCarriers.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setSimCarrierFilter(c)}
+                          style={{
+                            padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700,
+                            borderRadius: '0.4rem', cursor: 'pointer',
+                            background: simCarrierFilter === c ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${simCarrierFilter === c ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                            color: simCarrierFilter === c ? '#67e8f9' : '#cbd5e1',
+                          }}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <input
                     className="input"
                     value={simSearch}
@@ -1603,7 +1727,15 @@ export default function PhonePaymentModal({
                         <button
                           key={s.id}
                           type="button"
-                          onClick={() => { setSelectedSim(s); setSimSearch(''); }}
+                          onClick={() => {
+                            // R-SIM-ACTIVATION: seed simNameOverride from the
+                            // picked SIM so the editable pill input starts
+                            // with the inventory name as the placeholder text.
+                            setSelectedSim(s);
+                            setSimSearch('');
+                            setSimNameOverride(s.name || '');
+                            setEditingSimName(false);
+                          }}
                           style={{
                             display: 'block', width: '100%', textAlign: 'left',
                             padding: '0.45rem 0.75rem', cursor: 'pointer',
@@ -1620,8 +1752,11 @@ export default function PhonePaymentModal({
                           </div>
                           <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
                             {[
-                              s.imei && `IMEI ${s.imei}`,
-                              (s as any).carrier,
+                              // R-SIM-ACTIVATION: ICCID label (was "IMEI") +
+                              // brand fallback for SIMs created via
+                              // SimManagerModal (which stores carrier in `brand`).
+                              s.imei && `ICCID ${s.imei}`,
+                              (s as any).carrier || s.brand,
                               `qty ${s.qty}`,
                             ].filter(Boolean).join(' · ')}
                           </div>
