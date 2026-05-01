@@ -8,7 +8,8 @@ import { useToast } from '@/components/ui/Toast';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import { exportBackup, importBackup } from '@/services/storage';
-import { persistSettings } from '@/services/persist';
+import { persistSettings, getFirestoreInstance } from '@/services/persist';
+import { pushAllToCloud, pullAllFromCloud, countLocalRecords } from '@/hooks/useFirestore';
 import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
@@ -338,6 +339,9 @@ export default function SettingsModule() {
   const [cloudToggleTarget, setCloudToggleTarget] = useState<'on' | 'off' | null>(null);
   const [showFirebaseSetup, setShowFirebaseSetup] = useState(false);
   const [showRestartPrompt, setShowRestartPrompt] = useState<'enabled' | 'disabled' | null>(null);
+  // R-FIREBASE-MULTIPC-SYNC: bulk push/pull state. `busy` disables both
+  // buttons during an operation so the cashier can't double-click.
+  const [bulkSyncBusy, setBulkSyncBusy] = useState<'push' | 'pull' | null>(null);
   // R-IMPORT-LEGACY-ADAPTER: post-import modal state. Populated only when a
   // legacy v1 backup was normalized AND produced warnings the user should
   // review before the reload fires (reload is deferred until modal close).
@@ -425,6 +429,62 @@ export default function SettingsModule() {
     toast('Backup exported!', 'success');
   }, [sales, customers, inventory, repairs, unlocks, specialOrders, employees,
       settings, layaways, purchaseOrders, appointments, expenses, customerReturns, vendorReturns, toast]);
+
+  // ── R-FIREBASE-MULTIPC-SYNC: bulk push / pull handlers ─────
+  const handlePushAllToCloud = useCallback(() => {
+    const db = getFirestoreInstance();
+    if (!db) {
+      toast(t('settings.backup.cloudSync.notReady'), 'error');
+      return;
+    }
+    const localCount = countLocalRecords();
+    const isLarge = localCount > 8000;
+    requireConfirm({
+      title: t('settings.backup.cloudSync.pushTitle'),
+      body: isLarge
+        ? `${t('settings.backup.cloudSync.pushBody')}\n\n${t('settings.backup.cloudSync.pushBodyLarge', localCount)}`
+        : t('settings.backup.cloudSync.pushBody'),
+      confirmWord: '',
+      onConfirm: async () => {
+        setBulkSyncBusy('push');
+        try {
+          const result = await pushAllToCloud(db);
+          toast(t('settings.backup.cloudSync.pushDone', result.records), 'success');
+        } catch (err) {
+          toast(t('settings.backup.cloudSync.bulkFailed', String((err as Error)?.message || err)), 'error');
+        } finally {
+          setBulkSyncBusy(null);
+        }
+      },
+    });
+  }, [t, toast]);
+
+  const handlePullFromCloud = useCallback(() => {
+    const db = getFirestoreInstance();
+    if (!db) {
+      toast(t('settings.backup.cloudSync.notReady'), 'error');
+      return;
+    }
+    requireConfirm({
+      title: t('settings.backup.cloudSync.pullTitle'),
+      body: t('settings.backup.cloudSync.pullBody'),
+      confirmWord: '',
+      onConfirm: async () => {
+        setBulkSyncBusy('pull');
+        try {
+          const result = await pullAllFromCloud(db);
+          toast(t('settings.backup.cloudSync.pullDone', result.records), 'success');
+          // Reload so React state re-hydrates from the freshly replaced
+          // localStorage. The live snapshot subscriber would otherwise race
+          // and overwrite our local data with an in-flight cloud snapshot.
+          setTimeout(() => window.location.reload(), 1200);
+        } catch (err) {
+          toast(t('settings.backup.cloudSync.bulkFailed', String((err as Error)?.message || err)), 'error');
+          setBulkSyncBusy(null);
+        }
+      },
+    });
+  }, [t, toast]);
 
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
@@ -1498,12 +1558,46 @@ export default function SettingsModule() {
                 </label>
 
                 {(settings as any).cloudSyncEnabled && (
-                  <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <button
                       onClick={() => setShowFirebaseSetup(true)}
                       className="btn btn-secondary btn-sm"
                     >
                       {t('settings.backup.cloudSync.changeConfig')}
+                    </button>
+                    {/* R-FIREBASE-MULTIPC-SYNC: bulk push button. */}
+                    <button
+                      onClick={handlePushAllToCloud}
+                      disabled={bulkSyncBusy !== null}
+                      className="btn btn-sm"
+                      style={{
+                        background: bulkSyncBusy === 'push' ? 'rgba(102,126,234,0.25)' : 'rgba(102,126,234,0.15)',
+                        border: '1px solid rgba(102,126,234,0.4)',
+                        color: '#a5b4fc',
+                        cursor: bulkSyncBusy ? 'not-allowed' : 'pointer',
+                        opacity: bulkSyncBusy && bulkSyncBusy !== 'push' ? 0.5 : 1,
+                      }}
+                    >
+                      {bulkSyncBusy === 'push'
+                        ? `⏳ ${t('settings.backup.cloudSync.pushing')}`
+                        : t('settings.backup.cloudSync.pushBtn')}
+                    </button>
+                    {/* R-FIREBASE-MULTIPC-SYNC: bulk pull button. Reloads on success. */}
+                    <button
+                      onClick={handlePullFromCloud}
+                      disabled={bulkSyncBusy !== null}
+                      className="btn btn-sm"
+                      style={{
+                        background: bulkSyncBusy === 'pull' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        color: '#fbbf24',
+                        cursor: bulkSyncBusy ? 'not-allowed' : 'pointer',
+                        opacity: bulkSyncBusy && bulkSyncBusy !== 'pull' ? 0.5 : 1,
+                      }}
+                    >
+                      {bulkSyncBusy === 'pull'
+                        ? `⏳ ${t('settings.backup.cloudSync.pulling')}`
+                        : t('settings.backup.cloudSync.pullBtn')}
                     </button>
                   </div>
                 )}

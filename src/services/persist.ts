@@ -27,6 +27,13 @@ export function isCloudEnabled(): boolean {
   return _db !== null;
 }
 
+// R-FIREBASE-MULTIPC-SYNC: getter so the bulk push/pull buttons in
+// Settings can access the same singleton without re-plumbing db down
+// the AppShell → SettingsModule prop chain.
+export function getFirestoreInstance(): Firestore | null {
+  return _db;
+}
+
 // ── Multi-store: auto-tag storeId on writes ───────────────
 // r-multi-m1: Instead of editing 42 persist call sites across 12 modules,
 // we inject storeId at the persist layer. setCurrentStoreId() is called
