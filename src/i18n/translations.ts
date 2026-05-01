@@ -100,7 +100,7 @@ export const translations: TranslationDictionary = {
   'caSalesTax': { en: 'CA Sales Tax', es: 'Impuesto de Venta CA', pt: 'Imposto sobre Vendas CA' },
   'caSurchargeLabel': { en: 'CA Mobile Telephony Surcharge ($)', es: 'Recargo CA Mobile Telephony ($)', pt: 'Taxa de Telefonia Móvel CA ($)' },
   'caSurchargeShort': { en: 'CA Mobility Fee', es: 'Recargo Móvil CA', pt: 'Taxa de Mobilidade CA' },
-  'caTaxReports': { en: 'Taxes', es: 'Impuestos', pt: 'Impostos' },
+  'caTaxReports': { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'californiaCdtfaFormSummary': { en: '📋 California CDTFA Form Summary', es: '📋 Resumen del Formulario CDTFA de California', pt: '📋 Resumo do Formulário CDTFA da Califórnia' },
   'californiaSalesTax': { en: 'California Sales Tax - Quarterly', es: 'Impuesto de Venta de California - Trimestral', pt: 'Imposto sobre Vendas da Califórnia - Trimestral' },
   'callUs': { en: 'Call Us', es: 'Llámanos', pt: 'Ligue para Nós' },
@@ -4217,7 +4217,7 @@ export const translations: TranslationDictionary = {
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
-  'nav.caTaxReports':    { en: 'Taxes',             es: 'Impuestos',            pt: 'Impostos' },
+  'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
 
   // ── Employee login ────────────────────────────────────────
