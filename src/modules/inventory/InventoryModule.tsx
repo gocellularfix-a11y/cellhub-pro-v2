@@ -66,6 +66,8 @@ export default function InventoryModule() {
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showFieldCustomizer, setShowFieldCustomizer] = useState(false);
+  // R-SIM-MANAGER-UI: dedicated SIM Card manager modal (toolbar button).
+  const [showSimManager, setShowSimManager] = useState(false);
 
   // Resolve field config (with defaults) for use throughout the module
   const fieldConfig = useMemo(
@@ -318,6 +320,19 @@ export default function InventoryModule() {
               title={t('inventory.customizeTitle')}
             >
               ⚙️ {t('inventory.fieldsBtn')}
+            </button>
+            {/* R-SIM-MANAGER-UI: dedicated SIM Card manager (carrier-aware
+                quick-add). Sits between ⚙️ Fields and + Add Item per spec. */}
+            <button
+              onClick={() => setShowSimManager(true)}
+              className="btn"
+              style={{
+                background: 'rgba(34,211,238,0.15)',
+                border: '1px solid rgba(34,211,238,0.4)',
+                color: '#67e8f9',
+              }}
+            >
+              🪪 {t('inventory.simManagerBtn')}
             </button>
             <button
               onClick={() => { setEditItem(null); setShowModal(true); }}
@@ -573,6 +588,20 @@ export default function InventoryModule() {
         variant="danger"
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
+      />
+
+      {/* R-SIM-MANAGER-UI: dedicated SIM Card manager modal. Renders only
+          when toolbar button toggled showSimManager=true. Owns its own
+          state (selectedCarrier filter, sub-form, editingSim) and writes
+          directly via persist + setInventory — bypasses the generic
+          InventoryFormModal flow per spec. */}
+      <SimManagerModal
+        open={showSimManager}
+        onClose={() => setShowSimManager(false)}
+        inventory={inventory}
+        setInventory={setInventory}
+        toast={toast}
+        t={t}
       />
     </>
   );
@@ -1692,3 +1721,444 @@ const dropdownItemStyle: React.CSSProperties = {
   cursor: 'pointer',
   borderRadius: '0.35rem',
 };
+
+// ============================================================
+// R-SIM-MANAGER-UI: dedicated SIM Card manager modal.
+// Carrier-aware quick-add for cashier intake. Bypasses the
+// generic InventoryFormModal — writes directly via persist +
+// setInventory, with category='sim' / taxable=true / condition='New'
+// hardcoded per spec.
+// ============================================================
+
+const SIM_CARRIERS = ['Verizon', 'AT&T', 'T-Mobile', 'H2O', 'Simple Mobile', 'Other'];
+
+interface SimManagerModalProps {
+  open: boolean;
+  onClose: () => void;
+  inventory: InventoryItem[];
+  setInventory: (next: InventoryItem[]) => void;
+  toast: (msg: string, kind?: 'success' | 'error' | 'info' | 'warning') => void;
+  t: (key: string, ...args: any[]) => string;
+}
+
+function SimManagerModal({
+  open, onClose, inventory, setInventory, toast, t,
+}: SimManagerModalProps) {
+  const [selectedCarrier, setSelectedCarrier] = useState<string>('All');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingSim, setEditingSim] = useState<InventoryItem | null>(null);
+  const [subForm, setSubForm] = useState({
+    carrier: '',
+    name: '',
+    imei: '',  // ICCID stored in imei field per spec (no types.ts touch)
+    sku: '',
+    price: 0,
+    qty: 1,
+  });
+
+  // SIMs from inventory (category='sim' case-insensitive)
+  const allSims = useMemo(
+    () => inventory.filter((i) => (i.category || '').toLowerCase() === 'sim'),
+    [inventory],
+  );
+
+  // Carriers present in current SIM inventory (for filter buttons).
+  // Brand field doubles as carrier for SIMs (set in sub-form).
+  const carriers = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allSims) {
+      const c = (s.brand || (s as any).carrier || '').trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort();
+  }, [allSims]);
+
+  // Filtered list — Available first, then Sold (per spec).
+  const filteredSims = useMemo(() => {
+    const base = selectedCarrier === 'All'
+      ? allSims
+      : allSims.filter((s) => (s.brand || '').toLowerCase() === selectedCarrier.toLowerCase());
+    return [...base].sort((a, b) => {
+      const aAvail = (a.qty || 0) > 0 ? 0 : 1;
+      const bAvail = (b.qty || 0) > 0 ? 0 : 1;
+      if (aAvail !== bAvail) return aAvail - bAvail;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [allSims, selectedCarrier]);
+
+  const availableCount = useMemo(() => allSims.filter((s) => (s.qty || 0) > 0).length, [allSims]);
+  const soldCount = allSims.length - availableCount;
+
+  // Reset sub-form but KEEP the carrier — UX for batch entry of same carrier.
+  const resetSubFormKeepCarrier = () => {
+    setSubForm((prev) => ({
+      carrier: prev.carrier,
+      name: '',
+      imei: '',
+      sku: '',
+      price: 0,
+      qty: 1,
+    }));
+  };
+
+  const handleSubmit = () => {
+    if (!subForm.name.trim()) {
+      toast(t('inventory.simManager.nameRequired'), 'error');
+      return;
+    }
+    const priceCents = Math.round(subForm.price * 100);
+
+    if (editingSim) {
+      // Edit existing — preserve id / createdAt / cost.
+      const updated: InventoryItem = {
+        ...editingSim,
+        name: subForm.name.trim(),
+        brand: subForm.carrier,
+        imei: subForm.imei.trim(),
+        sku: subForm.sku.trim(),
+        barcode: subForm.sku.trim() || editingSim.barcode,
+        price: priceCents,
+        qty: subForm.qty,
+        category: 'sim',
+        taxable: true,
+        condition: 'New',
+        updatedAt: new Date().toISOString(),
+      } as InventoryItem;
+      setInventory(inventory.map((i) => (i.id === updated.id ? updated : i)));
+      persist.inventory(updated.id, updated as unknown as Record<string, unknown>);
+      toast(t('inventory.saved'), 'success');
+      setEditingSim(null);
+      setShowAddForm(false);
+      resetSubFormKeepCarrier();
+    } else {
+      const newSim: InventoryItem = {
+        id: generateId(),
+        sku: subForm.sku.trim(),
+        barcode: subForm.sku.trim() || undefined,
+        imei: subForm.imei.trim(),
+        name: subForm.name.trim(),
+        category: 'sim',
+        condition: 'New',
+        brand: subForm.carrier,
+        cost: 0,
+        price: priceCents,
+        qty: subForm.qty,
+        cbeEligible: false,
+        screenFeeEligible: false,
+        taxable: true,
+        createdAt: new Date().toISOString(),
+      } as InventoryItem;
+      setInventory([...inventory, newSim]);
+      persist.inventory(newSim.id, newSim as unknown as Record<string, unknown>);
+      toast(t('inventory.itemAdded'), 'success');
+      // Stay in add-mode so the cashier can add more SIMs of the same carrier.
+      resetSubFormKeepCarrier();
+    }
+  };
+
+  const handleEditClick = (sim: InventoryItem) => {
+    setEditingSim(sim);
+    setShowAddForm(true);
+    setSubForm({
+      carrier: sim.brand || '',
+      name: sim.name || '',
+      imei: sim.imei || '',
+      sku: sim.sku || '',
+      price: (sim.price || 0) / 100,
+      qty: sim.qty || 0,
+    });
+  };
+
+  const handleAddClick = () => {
+    setEditingSim(null);
+    setShowAddForm(true);
+    setSubForm({ carrier: '', name: '', imei: '', sku: '', price: 0, qty: 1 });
+  };
+
+  const handleCancelSubForm = () => {
+    setEditingSim(null);
+    setShowAddForm(false);
+  };
+
+  const handleGenerateSku = () => {
+    const prefix = (subForm.carrier || 'SIM').slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, 'S');
+    const ts = Date.now().toString().slice(-6);
+    setSubForm({ ...subForm, sku: `${prefix}-${ts}` });
+  };
+
+  if (!open) return null;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('inventory.simManager.title')}
+      size="max-w-2xl"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: '72vh', overflowY: 'auto' }}>
+
+        {/* ── Section A: Header ── */}
+        <div>
+          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+            <span style={{ color: '#22c55e', fontWeight: 700 }}>{availableCount}</span>
+            {' '}available · {' '}
+            <span style={{ color: '#f87171', fontWeight: 700 }}>{soldCount}</span>
+            {' '}sold
+          </div>
+
+          {/* Carrier filter buttons — only show carriers with >= 1 SIM */}
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => setSelectedCarrier('All')}
+              style={{
+                padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700,
+                borderRadius: '0.4rem', cursor: 'pointer',
+                background: selectedCarrier === 'All' ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${selectedCarrier === 'All' ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                color: selectedCarrier === 'All' ? '#67e8f9' : '#94a3b8',
+              }}
+            >
+              {t('inventory.simManager.allCarriers')} ({allSims.length})
+            </button>
+            {carriers.map((c) => {
+              const count = allSims.filter((s) => (s.brand || '').toLowerCase() === c.toLowerCase()).length;
+              const active = selectedCarrier === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setSelectedCarrier(c)}
+                  style={{
+                    padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700,
+                    borderRadius: '0.4rem', cursor: 'pointer',
+                    background: active ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${active ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                    color: active ? '#67e8f9' : '#cbd5e1',
+                  }}
+                >
+                  {c} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {!showAddForm && (
+            <button
+              type="button"
+              onClick={handleAddClick}
+              className="btn btn-primary btn-sm"
+            >
+              {t('inventory.simManager.addSim')}
+            </button>
+          )}
+        </div>
+
+        {/* ── Section C: Sub-form (inline, no modal anidado) ── */}
+        {showAddForm && (
+          <div style={{
+            border: '1px solid rgba(34,211,238,0.3)',
+            borderRadius: '0.5rem',
+            padding: '0.875rem',
+            background: 'rgba(34,211,238,0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.625rem',
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                  {t('inventory.simManager.carrier')} *
+                </label>
+                <select
+                  className="select"
+                  value={subForm.carrier}
+                  onChange={(e) => setSubForm({ ...subForm, carrier: e.target.value })}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">— Select —</option>
+                  {SIM_CARRIERS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                  {t('inventory.form.itemName')} *
+                </label>
+                <input
+                  className="input"
+                  placeholder="e.g. Verizon Activation SIM"
+                  value={subForm.name}
+                  onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                {t('inventory.simManager.iccid')}
+              </label>
+              <input
+                className="input"
+                placeholder="Scan or type ICCID"
+                value={subForm.imei}
+                onChange={(e) => setSubForm({ ...subForm, imei: e.target.value })}
+                style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                SKU
+              </label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="SKU"
+                  value={subForm.sku}
+                  onChange={(e) => setSubForm({ ...subForm, sku: e.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateSku}
+                  style={{
+                    padding: '0 0.75rem', borderRadius: '0.4rem',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'rgba(255,255,255,0.07)',
+                    color: '#e2e8f0', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {t('inventory.form.generate')}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                  Price ($)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={subForm.price || ''}
+                  onChange={(e) => setSubForm({ ...subForm, price: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                  Qty
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={subForm.qty}
+                  onChange={(e) => setSubForm({ ...subForm, qty: parseInt(e.target.value, 10) || 0 })}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                onClick={handleCancelSubForm}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
+                {t('inventory.form.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="btn btn-primary"
+                style={{ flex: 2 }}
+              >
+                {editingSim ? t('inventory.form.save') : t('inventory.simManager.saveBtn')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Section B: List of existing SIMs ── */}
+        <div>
+          {filteredSims.length === 0 ? (
+            <div style={{
+              padding: '1.5rem',
+              textAlign: 'center',
+              color: '#64748b',
+              fontSize: '0.85rem',
+              border: '1px dashed rgba(255,255,255,0.1)',
+              borderRadius: '0.5rem',
+            }}>
+              {t('inventory.noItemsFound')}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.5rem' }}>
+              <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                    <th style={{ textAlign: 'left',  padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>{t('inventory.simManager.carrier')}</th>
+                    <th style={{ textAlign: 'left',  padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>{t('inventory.form.itemName')}</th>
+                    <th style={{ textAlign: 'left',  padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>ICCID</th>
+                    <th style={{ textAlign: 'left',  padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>SKU</th>
+                    <th style={{ textAlign: 'right', padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>Qty</th>
+                    <th style={{ textAlign: 'left',  padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>Status</th>
+                    <th style={{ textAlign: 'right', padding: '0.4rem 0.625rem', color: '#94a3b8', fontWeight: 700 }}>{t('inventory.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSims.map((sim) => {
+                    const available = (sim.qty || 0) > 0;
+                    return (
+                      <tr key={sim.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '0.4rem 0.625rem', color: '#cbd5e1', fontWeight: 600 }}>{sim.brand || '—'}</td>
+                        <td style={{ padding: '0.4rem 0.625rem', color: '#e2e8f0' }}>{sim.name}</td>
+                        <td style={{ padding: '0.4rem 0.625rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.72rem' }}>{sim.imei || '—'}</td>
+                        <td style={{ padding: '0.4rem 0.625rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.72rem' }}>{sim.sku || '—'}</td>
+                        <td style={{ padding: '0.4rem 0.625rem', color: '#cbd5e1', textAlign: 'right' }}>{sim.qty || 0}</td>
+                        <td style={{ padding: '0.4rem 0.625rem' }}>
+                          <span style={{
+                            fontSize: '0.7rem', fontWeight: 700,
+                            color: available ? '#22c55e' : '#f87171',
+                          }}>
+                            {available ? t('inventory.simManager.available') : t('inventory.simManager.sold')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.4rem 0.625rem', textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleEditClick(sim)}
+                            style={{
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '0.35rem',
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              background: 'rgba(255,255,255,0.05)',
+                              color: '#cbd5e1',
+                              cursor: 'pointer',
+                              fontSize: '0.78rem',
+                            }}
+                            title={t('inventory.titleEdit')}
+                          >
+                            ✏️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}

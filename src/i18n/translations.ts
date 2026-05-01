@@ -2407,6 +2407,18 @@ export const translations: TranslationDictionary = {
   'inventory.form.cancel':       { en: 'Cancel',                 es: 'Cancelar',                      pt: 'Cancelar' },
   'inventory.form.clear':        { en: 'Clear',                  es: 'Limpiar',                       pt: 'Limpar' },
   'inventory.form.save':         { en: '💾 Save',                es: '💾 Guardar',                     pt: '💾 Salvar' },
+  // R-SIM-MANAGER-UI: dedicated SIM Card manager modal launched from
+  // the Inventory toolbar. Carrier-aware quick-add for cashier intake.
+  'inventory.simManagerBtn':         { en: 'SIM Cards',              es: 'SIM Cards',                    pt: 'SIM Cards' },
+  'inventory.simManager.title':      { en: '🪪 SIM Card Manager',    es: '🪪 Administrador de SIMs',     pt: '🪪 Gerenciador de SIMs' },
+  'inventory.simManager.addSim':     { en: '+ Add SIM',              es: '+ Agregar SIM',                pt: '+ Adicionar SIM' },
+  'inventory.simManager.allCarriers':{ en: 'All',                    es: 'Todos',                        pt: 'Todos' },
+  'inventory.simManager.carrier':    { en: 'Carrier',                es: 'Carrier',                      pt: 'Operadora' },
+  'inventory.simManager.iccid':      { en: 'ICCID / SIM Number',     es: 'ICCID / Número de SIM',        pt: 'ICCID / Número do SIM' },
+  'inventory.simManager.available':  { en: '✅ Available',           es: '✅ Disponible',                pt: '✅ Disponível' },
+  'inventory.simManager.sold':       { en: '❌ Sold',                es: '❌ Vendida',                   pt: '❌ Vendida' },
+  'inventory.simManager.saveBtn':    { en: '✓ Add SIM',              es: '✓ Agregar SIM',                pt: '✓ Adicionar SIM' },
+  'inventory.simManager.nameRequired': { en: 'SIM name is required', es: 'El nombre de la SIM es requerido', pt: 'O nome do SIM é obrigatório' },
   'inventory.form.addNew':       { en: '+ Add new...',           es: '+ Agregar nueva...',            pt: '+ Adicionar nova...' },
   'inventory.form.catNamePlaceholder': { en: 'Category name',    es: 'Nombre de categoría',           pt: 'Nome da categoria' },
   'inventory.form.vendor':       { en: 'Vendor',                 es: 'Proveedor',                     pt: 'Fornecedor' },
