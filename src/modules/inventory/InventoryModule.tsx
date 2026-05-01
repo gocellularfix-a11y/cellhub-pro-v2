@@ -578,6 +578,60 @@ export default function InventoryModule() {
   );
 }
 
+// ── Autocomplete keyboard nav hook (BUG-12 R-INV-FORM-UX) ────────────────
+// Adds ↓↑ navigation, Enter-to-select, Esc/Tab-to-close to the existing
+// onMouseDown-only suggestion lists used by name/supplier/brand inputs.
+// Reset rules: activeIdx → -1 whenever the input value changes (re-typeo
+// invalidates stale highlight) or after a selection. Tab does NOT
+// preventDefault — the focus moves naturally and the dropdown closes.
+function useAutocompleteKeyboard(opts: {
+  inputValue: string;
+  suggestions: string[];
+  onSelect: (s: string) => void;
+  onClose: () => void;
+}): {
+  activeIdx: number;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+} {
+  const [activeIdx, setActiveIdx] = useState(-1);
+
+  // Reset highlight whenever the input value changes (typing invalidates
+  // the previously highlighted suggestion).
+  useEffect(() => {
+    setActiveIdx(-1);
+  }, [opts.inputValue]);
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const len = opts.suggestions.length;
+      if (len === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveIdx((i) => Math.min(i + 1, len - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveIdx((i) => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter' && activeIdx >= 0 && activeIdx < len) {
+        e.preventDefault();
+        opts.onSelect(opts.suggestions[activeIdx]);
+        opts.onClose();
+        setActiveIdx(-1);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        opts.onClose();
+        setActiveIdx(-1);
+      } else if (e.key === 'Tab') {
+        // Don't preventDefault — let focus move naturally to next input.
+        opts.onClose();
+        setActiveIdx(-1);
+      }
+    },
+    [opts, activeIdx],
+  );
+
+  return { activeIdx, onKeyDown };
+}
+
 // ── Inventory Form Modal ──────────────────────────────────
 
 function InventoryFormModal({
@@ -686,6 +740,31 @@ function InventoryFormModal({
       .filter((v) => v.toLowerCase().startsWith(lower) && v.toLowerCase() !== lower)
       .slice(0, 5);
   };
+
+  // BUG-12 (R-INV-FORM-UX): keyboard nav for the 3 autocompletes (name,
+  // supplier, brand). Each call wires its own activeIdx + onKeyDown handler.
+  // Functional setForm prevents stale closure on rapid Enter selections.
+  const nameSuggs = suggestionsForField('name', form.name);
+  const supplierSuggs = suggestionsForField('supplier', form.supplier);
+  const brandSuggs = suggestionsForField('brand', form.brand);
+  const nameKb = useAutocompleteKeyboard({
+    inputValue: form.name,
+    suggestions: nameSuggs,
+    onSelect: (s) => setForm((f) => ({ ...f, name: s })),
+    onClose: () => setActiveSuggestField(null),
+  });
+  const supplierKb = useAutocompleteKeyboard({
+    inputValue: form.supplier,
+    suggestions: supplierSuggs,
+    onSelect: (s) => setForm((f) => ({ ...f, supplier: s })),
+    onClose: () => setActiveSuggestField(null),
+  });
+  const brandKb = useAutocompleteKeyboard({
+    inputValue: form.brand,
+    suggestions: brandSuggs,
+    onSelect: (s) => setForm((f) => ({ ...f, brand: s })),
+    onClose: () => setActiveSuggestField(null),
+  });
 
   // ── Price History lookup from past sales ──────────────
   interface PriceHistoryEntry {
@@ -1034,13 +1113,15 @@ function InventoryFormModal({
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             onFocus={() => setActiveSuggestField('name')}
             onBlur={() => setTimeout(() => setActiveSuggestField(null), 150)}
+            onKeyDown={nameKb.onKeyDown}
             autoFocus={!isEdit}
             style={{ fontSize: '1rem' }}
           />
-          {activeSuggestField === 'name' && suggestionsForField('name', form.name).length > 0 && (
+          {activeSuggestField === 'name' && nameSuggs.length > 0 && (
             <div style={dropdownStyle}>
-              {suggestionsForField('name', form.name).map((s) => (
-                <button key={s} type="button" style={dropdownItemStyle}
+              {nameSuggs.map((s, idx) => (
+                <button key={s} type="button"
+                  style={{ ...dropdownItemStyle, background: idx === nameKb.activeIdx ? 'rgba(102,126,234,0.15)' : 'transparent' }}
                   onMouseDown={(e) => { e.preventDefault(); setForm({ ...form, name: s }); setActiveSuggestField(null); }}>
                   {s}
                 </button>
@@ -1276,11 +1357,13 @@ function InventoryFormModal({
               onChange={(e) => setForm({ ...form, supplier: e.target.value })}
               onFocus={() => setActiveSuggestField('supplier')}
               onBlur={() => setTimeout(() => setActiveSuggestField(null), 150)}
+              onKeyDown={supplierKb.onKeyDown}
             />
-            {activeSuggestField === 'supplier' && suggestionsForField('supplier', form.supplier).length > 0 && (
+            {activeSuggestField === 'supplier' && supplierSuggs.length > 0 && (
               <div style={dropdownStyle}>
-                {suggestionsForField('supplier', form.supplier).map((s) => (
-                  <button key={s} type="button" style={dropdownItemStyle}
+                {supplierSuggs.map((s, idx) => (
+                  <button key={s} type="button"
+                    style={{ ...dropdownItemStyle, background: idx === supplierKb.activeIdx ? 'rgba(102,126,234,0.15)' : 'transparent' }}
                     onMouseDown={(e) => { e.preventDefault(); setForm({ ...form, supplier: s }); setActiveSuggestField(null); }}>
                     {s}
                   </button>
@@ -1301,11 +1384,13 @@ function InventoryFormModal({
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               onFocus={() => setActiveSuggestField('brand')}
               onBlur={() => setTimeout(() => setActiveSuggestField(null), 150)}
+              onKeyDown={brandKb.onKeyDown}
             />
-            {activeSuggestField === 'brand' && suggestionsForField('brand', form.brand).length > 0 && (
+            {activeSuggestField === 'brand' && brandSuggs.length > 0 && (
               <div style={dropdownStyle}>
-                {suggestionsForField('brand', form.brand).map((s) => (
-                  <button key={s} type="button" style={dropdownItemStyle}
+                {brandSuggs.map((s, idx) => (
+                  <button key={s} type="button"
+                    style={{ ...dropdownItemStyle, background: idx === brandKb.activeIdx ? 'rgba(102,126,234,0.15)' : 'transparent' }}
                     onMouseDown={(e) => { e.preventDefault(); setForm({ ...form, brand: s }); setActiveSuggestField(null); }}>
                     {s}
                   </button>
