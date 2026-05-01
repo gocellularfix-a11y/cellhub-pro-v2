@@ -383,8 +383,11 @@ export default function PhonePaymentModal({
       }
       return next;
     });
-    // Auto-switch to multi-line mode if more than one line selected
-    setIsMultiLine(true);
+    // R-MULTILINE-PICKER-FIX: removed unconditional setIsMultiLine(true) here.
+    // It dismounted the known-lines panel on every checkbox click, hiding the
+    // selected phone numbers and forcing the cashier into the empty manual
+    // multi-line UI. Per-line amount inputs in the panel (below) now let
+    // multi-select work in place — no mode switch required.
   };
 
   const updateKnownLineAmount = (norm: string, val: string) => {
@@ -1719,6 +1722,25 @@ export default function PhonePaymentModal({
                       <span style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 600, flexShrink: 0 }}>
                         📋 {t('phonePay.ready')}
                       </span>
+                    )}
+                    {/* R-MULTILINE-PICKER-FIX: per-line amount input. Visible
+                        only when this line is checked. Lets the cashier enter
+                        a different amount per phone in multi-select mode
+                        (validLines filters parseFloat(amt) > 0, so without
+                        this field 2+ selected lines never reach Portal / Add
+                        to Cart). */}
+                    {selectedKnownLines[norm] !== undefined && (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={lineAmt}
+                        onChange={(e) => updateKnownLineAmount(norm, e.target.value)}
+                        placeholder={t('pos.amountPlaceholder')}
+                        aria-label={t('pos.knownLineAmountAria')}
+                        className="input"
+                        style={{ width: '90px', flexShrink: 0, fontSize: '0.82rem' }}
+                      />
                     )}
                   </div>
                 );
