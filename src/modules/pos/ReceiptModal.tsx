@@ -582,6 +582,11 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: string, qrSvg?: string, barcodeSvg?: string): string {
   const es = lang === 'es';
   const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  // R-RECEIPT-DISCOUNT-LINE: derive discount locally without touching Sale.
+  // Sale.subtotal is pre-discount; subtotalAfterDiscount is the post value
+  // (optional). When no discount applied, subtotalAfterDiscount is undefined
+  // and the difference is 0 → row hidden.
+  const discountAmount = sale.subtotal - (sale.subtotalAfterDiscount ?? sale.subtotal);
 
   const itemRows = sale.items.map((item) => `
     <tr>
@@ -637,6 +642,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   <!-- Totals -->
   <table style="margin-bottom:5px">
     <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotal)}</td></tr>
+    ${discountAmount > 0 ? `<tr><td>${es ? 'Descuento' : 'Discount'}:</td><td style="text-align:right;color:#c00;">-${fmt(discountAmount)}</td></tr>` : ''}
     ${(sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined) ? `
       ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
       ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}
