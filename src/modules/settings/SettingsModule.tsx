@@ -16,6 +16,7 @@ import { isElectron, getElectronAPI } from '@/utils/platform';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
+import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
 
@@ -1634,6 +1635,9 @@ export default function SettingsModule() {
                   {t('settings.backup.includesDesc')}
                 </div>
               </div>
+
+              {/* ── R-IMPORTER-V1: CSV importer (Customers / Inventory) ── */}
+              <ImportTab />
 
               {/* ── Clear Local Cache ── */}
               {/* FIX: renamed from "Firebase Data Manager" — these buttons only clear localStorage, NOT Firestore */}
