@@ -1,5 +1,6 @@
 import { useApp } from '@/store/AppProvider';
 import { useMultiStore } from '@/store/MultiStoreProvider';
+import { useLicense } from '@/contexts/LicenseContext';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
 import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
@@ -15,6 +16,7 @@ export default function Sidebar() {
   } = useApp();
 
   const { state: multiStore, setConsolidatedView } = useMultiStore();
+  const { features } = useLicense();
   const { theme, setTheme } = useTheme();
   const { t, locale } = useTranslation();
 
@@ -40,7 +42,7 @@ export default function Sidebar() {
         ) : settings.storeName ? (
           <p className="text-xs text-slate-500 mt-1 truncate">{settings.storeName}</p>
         ) : null}
-        {multiStore.enabled && (
+        {features.multiStore && multiStore.enabled && (
           <button
             onClick={() => setConsolidatedView(!multiStore.consolidatedView)}
             className={`mt-1 text-[10px] px-2 py-0.5 rounded-full transition-all ${
@@ -132,21 +134,23 @@ export default function Sidebar() {
 
       {/* Bottom section — matches original */}
       <div style={{ borderTop: '1px solid var(--border-default)', padding: '1rem 1.5rem', paddingBottom: '2rem' }}>
-        {/* AI Assistant */}
-        <button
-          onClick={() => dispatch({ type: 'SET_SHOW_AI_ASSISTANT', payload: true })}
-          style={{
-            width: '100%', padding: '0.6rem 0.75rem', background: 'transparent', border: 'none',
-            color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.75rem',
-            cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, textAlign: 'left',
-            borderRadius: '8px', transition: 'all 0.2s', marginBottom: '0.5rem',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-        >
-          <span style={{ fontSize: '1.1rem' }}>🤖</span>
-          <span>{t('sidebar.aiAssistant')}</span>
-        </button>
+        {/* AI Assistant — Pro tier only */}
+        {features.aiAssistant && (
+          <button
+            onClick={() => dispatch({ type: 'SET_SHOW_AI_ASSISTANT', payload: true })}
+            style={{
+              width: '100%', padding: '0.6rem 0.75rem', background: 'transparent', border: 'none',
+              color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.75rem',
+              cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, textAlign: 'left',
+              borderRadius: '8px', transition: 'all 0.2s', marginBottom: '0.5rem',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            <span style={{ fontSize: '1.1rem' }}>🤖</span>
+            <span>{t('sidebar.aiAssistant')}</span>
+          </button>
+        )}
 
         {/* Language toggle — EN / ES buttons like original */}
         <div style={{ marginBottom: '0.75rem' }}>

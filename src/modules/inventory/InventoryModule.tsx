@@ -4,6 +4,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useLicense } from '@/contexts/LicenseContext';
 import { useToast } from '@/components/ui/Toast';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { Modal, ConfirmDialog } from '@/components/ui';
@@ -30,6 +31,8 @@ export default function InventoryModule() {
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
   const { printHtml } = usePrint();
   const { t, locale } = useTranslation();
+  const { features } = useLicense();
+  const atLimit = features.maxProducts !== -1 && inventory.length >= features.maxProducts;
 
   const CONDITION_LABELS: Record<string, string> = {
     New: t('condition.new'),
@@ -337,6 +340,8 @@ export default function InventoryModule() {
             <button
               onClick={() => { setEditItem(null); setShowModal(true); }}
               className="btn btn-primary"
+              disabled={atLimit}
+              title={atLimit ? t('license.maxProductsReached') : undefined}
             >
               + {t('inventory.addItem')}
             </button>
