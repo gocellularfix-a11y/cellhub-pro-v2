@@ -208,6 +208,104 @@ function UrlField({ label, settingsKey, settings, update, placeholder = '' }: Ur
   );
 }
 
+// ── PortalRow — R-CARRIERS-INPUT-FIX ──────────────────────
+// Hoisted to module scope for stable identity across renders (same
+// reasoning as Field/Toggle above). Owns local text state for the
+// matchCarriers / matchUrlSnippets inputs so the user can type commas
+// and spaces without the value being shredded by split→trim→filter on
+// every keystroke. Commits to settings on blur.
+interface PortalRowProps {
+  portal: PaymentPortal;
+  onUpdate: (patch: Partial<PaymentPortal>) => void;
+  onRemove: () => void;
+}
+
+function PortalRow({ portal, onUpdate, onRemove }: PortalRowProps) {
+  const { t } = useTranslation();
+  const [matchCarriersText, setMatchCarriersText] = useState(
+    portal.matchCarriers.join(', '),
+  );
+  const [matchUrlSnippetsText, setMatchUrlSnippetsText] = useState(
+    portal.matchUrlSnippets.join(', '),
+  );
+
+  return (
+    <div className="p-3 rounded-lg bg-white/5 space-y-2" style={{ borderLeft: `3px solid ${portal.color}` }}>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={portal.emoji}
+          onChange={(e) => onUpdate({ emoji: e.target.value })}
+          className="input"
+          style={{ width: '50px', textAlign: 'center', fontSize: '1.1rem' }}
+          maxLength={2}
+          title="Emoji"
+        />
+        <input
+          type="text"
+          value={portal.label}
+          onChange={(e) => onUpdate({ label: e.target.value })}
+          className="input flex-1"
+          placeholder="Portal name"
+          style={{ fontWeight: 700 }}
+        />
+        <input
+          type="color"
+          value={portal.color}
+          onChange={(e) => onUpdate({ color: e.target.value })}
+          style={{ width: '38px', height: '34px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.4rem', cursor: 'pointer', background: 'transparent' }}
+          title="Color"
+        />
+        <button
+          onClick={onRemove}
+          className="btn btn-ghost btn-sm text-red-400"
+          title={t('settings.commissions.portals.removeTitle')}
+        >
+          🗑️
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-slate-500 block mb-0.5">
+            {t('settings.commissions.portals.matchCarriers')}
+          </label>
+          <input
+            type="text"
+            value={matchCarriersText}
+            onChange={(e) => setMatchCarriersText(e.target.value)}
+            onBlur={(e) => {
+              const list = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+              onUpdate({ matchCarriers: list });
+              setMatchCarriersText(list.join(', '));
+            }}
+            className="input"
+            placeholder="t-mobile, verizon"
+            style={{ fontSize: '0.78rem' }}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 block mb-0.5">
+            {t('settings.commissions.portals.matchUrls')}
+          </label>
+          <input
+            type="text"
+            value={matchUrlSnippetsText}
+            onChange={(e) => setMatchUrlSnippetsText(e.target.value)}
+            onBlur={(e) => {
+              const list = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+              onUpdate({ matchUrlSnippets: list });
+              setMatchUrlSnippetsText(list.join(', '));
+            }}
+            className="input"
+            placeholder="paymasterwebpos, epay"
+            style={{ fontSize: '0.78rem' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsModule() {
   const {
     // r-settings-1 B-08: sales added so Export Today reads live AppState
@@ -822,7 +920,7 @@ export default function SettingsModule() {
                   {(settings.phoneCarriers || []).map((carrier, idx) => {
                     const url = settings.carrierPortalUrls?.[carrier] || '';
                     return (
-                      <div key={`${carrier}-${idx}`} className="p-3 rounded-lg bg-white/5 space-y-2">
+                      <div key={idx} className="p-3 rounded-lg bg-white/5 space-y-2">
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
@@ -993,69 +1091,12 @@ export default function SettingsModule() {
                       toast(t('settings.commissions.portals.removed'), 'info');
                     };
                     return (
-                      <div key={`${portal.id}-${idx}`} className="p-3 rounded-lg bg-white/5 space-y-2" style={{ borderLeft: `3px solid ${portal.color}` }}>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={portal.emoji}
-                            onChange={(e) => updatePortal({ emoji: e.target.value })}
-                            className="input"
-                            style={{ width: '50px', textAlign: 'center', fontSize: '1.1rem' }}
-                            maxLength={2}
-                            title="Emoji"
-                          />
-                          <input
-                            type="text"
-                            value={portal.label}
-                            onChange={(e) => updatePortal({ label: e.target.value })}
-                            className="input flex-1"
-                            placeholder="Portal name"
-                            style={{ fontWeight: 700 }}
-                          />
-                          <input
-                            type="color"
-                            value={portal.color}
-                            onChange={(e) => updatePortal({ color: e.target.value })}
-                            style={{ width: '38px', height: '34px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.4rem', cursor: 'pointer', background: 'transparent' }}
-                            title="Color"
-                          />
-                          <button
-                            onClick={removePortal}
-                            className="btn btn-ghost btn-sm text-red-400"
-                            title={t('settings.commissions.portals.removeTitle')}
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-slate-500 block mb-0.5">
-                              {t('settings.commissions.portals.matchCarriers')}
-                            </label>
-                            <input
-                              type="text"
-                              value={portal.matchCarriers.join(', ')}
-                              onChange={(e) => updatePortal({ matchCarriers: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                              className="input"
-                              placeholder="t-mobile, verizon"
-                              style={{ fontSize: '0.78rem' }}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-slate-500 block mb-0.5">
-                              {t('settings.commissions.portals.matchUrls')}
-                            </label>
-                            <input
-                              type="text"
-                              value={portal.matchUrlSnippets.join(', ')}
-                              onChange={(e) => updatePortal({ matchUrlSnippets: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                              className="input"
-                              placeholder="paymasterwebpos, epay"
-                              style={{ fontSize: '0.78rem' }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                      <PortalRow
+                        key={portal.id}
+                        portal={portal}
+                        onUpdate={updatePortal}
+                        onRemove={removePortal}
+                      />
                     );
                   })}
                   <button
