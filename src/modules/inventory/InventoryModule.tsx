@@ -1758,6 +1758,7 @@ function SimManagerModal({
     name: '',
     imei: '',  // ICCID stored in imei field per spec (no types.ts touch)
     sku: '',
+    cost: 0,
     price: 0,
     qty: 1,
   });
@@ -1803,6 +1804,8 @@ function SimManagerModal({
   // Reset sub-form but KEEP the carrier — UX for batch entry of same carrier.
   // R-SIM-MANAGER-UX: also re-prime the auto-filled name so the next save
   // path (manual or batch) doesn't trip handleSubmit's nameRequired check.
+  // R-SIM-BATCH-SMART: keep prev.cost and prev.price too — in batch mode the
+  // cashier sets these once and reuses them across the whole batch.
   const resetSubFormKeepCarrier = () => {
     setSubForm((prev) => {
       const autoName = prev.carrier ? `${prev.carrier} Activation SIM` : '';
@@ -1812,7 +1815,8 @@ function SimManagerModal({
         name: autoName,
         imei: '',
         sku: '',
-        price: 0,
+        cost: prev.cost,
+        price: prev.price,
         qty: 1,
       };
     });
@@ -1837,9 +1841,9 @@ function SimManagerModal({
       return;
     }
     const priceCents = Math.round(subForm.price * 100);
+    const costCents = Math.round(subForm.cost * 100);
 
     if (editingSim) {
-      // Edit existing — preserve id / createdAt / cost.
       const updated: InventoryItem = {
         ...editingSim,
         name: subForm.name.trim(),
@@ -1847,6 +1851,7 @@ function SimManagerModal({
         imei: subForm.imei.trim(),
         sku: subForm.sku.trim(),
         barcode: subForm.sku.trim() || editingSim.barcode,
+        cost: costCents,
         price: priceCents,
         qty: subForm.qty,
         category: 'sim',
@@ -1870,7 +1875,7 @@ function SimManagerModal({
         category: 'sim',
         condition: 'New',
         brand: subForm.carrier,
-        cost: 0,
+        cost: costCents,
         price: priceCents,
         qty: subForm.qty,
         cbeEligible: false,
@@ -1886,17 +1891,32 @@ function SimManagerModal({
     }
   };
 
-  // R-SIM-MANAGER-UX FIX 2: batch scan path. Carrier must be picked first;
-  // ICCID is the only typed/scanned field. Saves immediately, clears ICCID,
-  // refocuses the input. Auto-name + auto-SKU + price=0 + qty=1.
+  // R-SIM-MANAGER-UX FIX 2: batch scan path. Carrier + cost + price are
+  // entered once; ICCID is the only field that changes per scan. Saves
+  // immediately, clears ICCID, refocuses input.
+  // R-SIM-BATCH-SMART FIX 3: smart merge — if an existing SIM already has
+  // the same ICCID, skip with a warning toast (each ICCID is one physical
+  // SIM, so duplicates are operator error, not stock).
   const handleBatchSave = () => {
     if (!subForm.carrier) return;
     const iccid = subForm.imei.trim();
     if (!iccid) return;
 
+    const dup = inventory.find(
+      (i) => (i.category || '').toLowerCase() === 'sim' && (i.imei || '') === iccid,
+    );
+    if (dup) {
+      toast('⚠️ ICCID already in inventory — skipped', 'warning');
+      setSubForm((prev) => ({ ...prev, imei: '' }));
+      setTimeout(() => iccidInputRef.current?.focus(), 0);
+      return;
+    }
+
     const autoName = `${subForm.carrier} Activation SIM`;
     const skuPrefix = subForm.carrier.slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, 'S');
     const autoSku = `${skuPrefix}-${Date.now().toString().slice(-6)}`;
+    const priceCents = Math.round(subForm.price * 100);
+    const costCents = Math.round(subForm.cost * 100);
 
     const newSim: InventoryItem = {
       id: generateId(),
@@ -1907,8 +1927,8 @@ function SimManagerModal({
       category: 'sim',
       condition: 'New',
       brand: subForm.carrier,
-      cost: 0,
-      price: 0,
+      cost: costCents,
+      price: priceCents,
       qty: 1,
       cbeEligible: false,
       screenFeeEligible: false,
@@ -1943,6 +1963,7 @@ function SimManagerModal({
       name: sim.name || '',
       imei: sim.imei || '',
       sku: sim.sku || '',
+      cost: (sim.cost || 0) / 100,
       price: (sim.price || 0) / 100,
       qty: sim.qty || 0,
     });
@@ -1952,7 +1973,7 @@ function SimManagerModal({
     setEditingSim(null);
     setShowAddForm(true);
     lastAutoFillNameRef.current = '';
-    setSubForm({ carrier: '', name: '', imei: '', sku: '', price: 0, qty: 1 });
+    setSubForm({ carrier: '', name: '', imei: '', sku: '', cost: 0, price: 0, qty: 1 });
   };
 
   const handleCancelSubForm = () => {
@@ -2144,21 +2165,53 @@ function SimManagerModal({
             )}
 
             {batchScan ? (
-              <div>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                  {t('inventory.simManager.carrier')} *
-                </label>
-                <select
-                  className="select"
-                  value={subForm.carrier}
-                  onChange={(e) => handleCarrierChange(e.target.value)}
-                  style={{ width: '100%' }}
-                >
-                  <option value="">— Select —</option>
-                  {SIM_CARRIERS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+              // R-SIM-BATCH-SMART FIX 1: Cost + Price entered once, reused
+              // by every SIM saved in the batch. Carrier sits next to them.
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '0.625rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                    {t('inventory.simManager.carrier')} *
+                  </label>
+                  <select
+                    className="select"
+                    value={subForm.carrier}
+                    onChange={(e) => handleCarrierChange(e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">— Select —</option>
+                    {SIM_CARRIERS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                    Cost ($)
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={subForm.cost || ''}
+                    onChange={(e) => setSubForm({ ...subForm, cost: parseFloat(e.target.value) || 0 })}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                    Price ($)
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={subForm.price || ''}
+                    onChange={(e) => setSubForm({ ...subForm, price: parseFloat(e.target.value) || 0 })}
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -2247,7 +2300,23 @@ function SimManagerModal({
             )}
 
             {!batchScan && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+              // R-SIM-BATCH-SMART FIX 2: Cost added next to Price (same
+              // order as InventoryFormModal). Qty kept as 3rd column.
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.625rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                    Cost ($)
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={subForm.cost || ''}
+                    onChange={(e) => setSubForm({ ...subForm, cost: parseFloat(e.target.value) || 0 })}
+                    placeholder="0.00"
+                  />
+                </div>
                 <div>
                   <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
                     Price ($)
