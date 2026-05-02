@@ -566,6 +566,9 @@ export default function ReportsModule() {
     let salesSubtotalCents = 0;
     let salesDiscountCents = 0;
     let salesTaxCents = 0;
+    let productSalesTaxCents = 0;
+    let utilityTaxCents = 0;
+    let mobilitySurchargeCents = 0;
     let salesCbeCents = 0;
     let salesScreenFeeCents = 0;
     let totalCostCents = 0;
@@ -625,6 +628,9 @@ export default function ReportsModule() {
       salesDiscountCents += Math.max(0, saleSubtotal - saleSubAfterDisc);
       // v2 writes salesTax + utilityTax + mobileSurcharge separately;
       // legacy v1 data uses the aggregate taxAmount field. Read both.
+      productSalesTaxCents += (sale as any).salesTax || 0;
+      utilityTaxCents += (sale as any).utilityTax || 0;
+      mobilitySurchargeCents += (sale as any).mobileSurcharge || 0;
       const saleTax = ((sale as any).salesTax || 0)
         + ((sale as any).utilityTax || 0)
         + ((sale as any).mobileSurcharge || 0);
@@ -947,6 +953,9 @@ export default function ReportsModule() {
       subtotalBeforeTaxCents,
       profitMargin,
       taxCollectedCents: salesTaxCents,
+      productSalesTaxCents,
+      utilityTaxCents,
+      mobilitySurchargeCents,
       cbeCollectedCents: salesCbeCents,
       screenFeeCents: salesScreenFeeCents,
       cashCents,
@@ -1086,6 +1095,36 @@ export default function ReportsModule() {
     });
     return rows;
   }, [allFilteredSales, locale]);
+
+  // ── R-REPORT-FEES-BREAKDOWN: per-category counts/revenue for the
+  // Transaction Breakdown table. A sale is counted in both Product and
+  // Phone columns when mixed (matches TaxReportsModule semantics).
+  const breakdownRows = useMemo(() => {
+    let productCount = 0, productRevenue = 0;
+    let phoneCount = 0, phoneRevenue = 0;
+    for (const sale of filteredSales) {
+      let saleProductRev = 0;
+      let salePhoneRev = 0;
+      for (const item of (sale.items || [])) {
+        const kind = classifyItem(item);
+        const rev = lineRevenueCents(item);
+        if (kind === 'phone_payment') salePhoneRev += rev;
+        else if (kind !== 'repair' && kind !== 'unlock') saleProductRev += rev;
+      }
+      if (saleProductRev > 0) { productCount++; productRevenue += saleProductRev; }
+      if (salePhoneRev > 0) { phoneCount++; phoneRevenue += salePhoneRev; }
+    }
+    const repairCat = stats.categoriesByRevenue.find((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey('Repairs'));
+    const unlockCat = stats.categoriesByRevenue.find((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey('Unlocks'));
+    return {
+      productCount, productRevenue,
+      phoneCount, phoneRevenue,
+      repairCount: stats.completedRepairCount,
+      repairRevenue: repairCat?.revenueCents || 0,
+      unlockCount: stats.unlockCount,
+      unlockRevenue: unlockCat?.revenueCents || 0,
+    };
+  }, [filteredSales, stats]);
 
   // ── Transactions display (search + secondary date filter) ──
   const displayedTx = useMemo(() => {
@@ -1236,6 +1275,12 @@ export default function ReportsModule() {
       retained:     locale === 'es' ? 'retenido'                  : locale === 'pt' ? 'retido'                         : 'retained',
       marginLower:  locale === 'es' ? 'margen'                    : locale === 'pt' ? 'margem'                         : 'margin',
       tax:          locale === 'es' ? 'Impuesto (CDTFA)'          : locale === 'pt' ? 'Imposto (CDTFA)'                : 'Tax (CDTFA)',
+      salesTax:     locale === 'es' ? 'Impuesto de Venta'         : locale === 'pt' ? 'Imposto sobre Vendas'           : 'Sales Tax',
+      utilityTax:   locale === 'es' ? 'Impuesto de Utilidad'      : locale === 'pt' ? 'Taxa de Utilidade'              : 'Utility Tax',
+      mobilityFee:  locale === 'es' ? 'Cargo de Movilidad CA'     : locale === 'pt' ? 'Taxa de Mobilidade CA'          : 'CA Mobility Fee',
+      cbeFee:       locale === 'es' ? 'Cargo CBE'                  : locale === 'pt' ? 'Taxa CBE'                        : 'CBE Fee',
+      screenFee:    locale === 'es' ? 'Cargo de Pantalla'         : locale === 'pt' ? 'Taxa de Tela'                    : 'Screen Fee',
+      totalFees:    locale === 'es' ? 'Total Impuestos y Cargos'  : locale === 'pt' ? 'Total Impostos e Taxas'         : 'Total Taxes & Fees',
       cash:         locale === 'es' ? 'Efectivo'                  : locale === 'pt' ? 'Dinheiro'                       : 'Cash',
       card:         locale === 'es' ? 'Tarjeta'                   : locale === 'pt' ? 'Cartão'                         : 'Card',
       ppHeader:     locale === 'es' ? '📞 Pagos por Proveedor'   : locale === 'pt' ? '📞 Pagamentos por Provedor'    : '📞 Phone Payments by Provider',
@@ -1382,7 +1427,12 @@ tr:last-child td { border-bottom: none; }
 
 <!-- META ROW -->
 <div class="meta-row">
-  <div>${escHtml(L.tax)}: <span>${formatCurrency(stats.taxCollectedCents)}</span></div>
+  ${stats.productSalesTaxCents > 0 ? `<div>${escHtml(L.salesTax)}: <span>${formatCurrency(stats.productSalesTaxCents)}</span></div>` : ''}
+  ${stats.utilityTaxCents > 0 ? `<div>${escHtml(L.utilityTax)}: <span>${formatCurrency(stats.utilityTaxCents)}</span></div>` : ''}
+  ${stats.mobilitySurchargeCents > 0 ? `<div>${escHtml(L.mobilityFee)}: <span>${formatCurrency(stats.mobilitySurchargeCents)}</span></div>` : ''}
+  ${stats.cbeCollectedCents > 0 ? `<div>${escHtml(L.cbeFee)}: <span>${formatCurrency(stats.cbeCollectedCents)}</span></div>` : ''}
+  ${stats.screenFeeCents > 0 ? `<div>${escHtml(L.screenFee)}: <span>${formatCurrency(stats.screenFeeCents)}</span></div>` : ''}
+  <div><strong>${escHtml(L.totalFees)}: <span>${formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents)}</span></strong></div>
   <div>${escHtml(L.cash)}: <span>${formatCurrency(stats.cashCents)}</span></div>
   <div>${escHtml(L.card)}: <span>${formatCurrency(stats.cardCents)}</span></div>
 </div>
@@ -1477,7 +1527,12 @@ tr:last-child td { border-bottom: none; }
         profit: formatCurrency(stats.totalProfitCents),
         profitMargin: `${stats.profitMargin.toFixed(2)}%`,
         tax: formatCurrency(stats.taxCollectedCents),
+        salesTax: formatCurrency(stats.productSalesTaxCents),
+        utilityTax: formatCurrency(stats.utilityTaxCents),
+        mobilityFee: formatCurrency(stats.mobilitySurchargeCents),
         cbe: formatCurrency(stats.cbeCollectedCents),
+        screenFee: formatCurrency(stats.screenFeeCents),
+        totalFees: formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents),
         cash: formatCurrency(stats.cashCents),
         card: formatCurrency(stats.cardCents),
         storeCredit: formatCurrency(stats.storeCreditCents),
@@ -2096,6 +2151,135 @@ tr:last-child td { border-bottom: none; }
               </div>
             </div>
           )}
+
+          {/* ── R-REPORT-FEES-BREAKDOWN: Transaction Breakdown ── */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                {t('reports.breakdown.title')}
+              </span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.type')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.count')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.revenue')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.taxesFees')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* 🛒 Product Sales */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🛒</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.productSales')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.productSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.productCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.productRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', fontSize: '0.78rem' }}>
+                    {(stats.productSalesTaxCents > 0 || stats.cbeCollectedCents > 0 || stats.screenFeeCents > 0) ? (
+                      <>
+                        {stats.productSalesTaxCents > 0 && (
+                          <div style={{ color: '#f87171', fontWeight: 700 }}>
+                            {formatCurrency(stats.productSalesTaxCents)}
+                            <div style={{ fontSize: '0.68rem', fontWeight: 400, color: '#94a3b8' }}>{t('reports.breakdown.salesTax')}</div>
+                          </div>
+                        )}
+                        {stats.cbeCollectedCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                            {t('reports.breakdown.cbeFee')}: {formatCurrency(stats.cbeCollectedCents)}
+                          </div>
+                        )}
+                        {stats.screenFeeCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem' }}>
+                            {t('reports.breakdown.screenFee')}: {formatCurrency(stats.screenFeeCents)}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: '#475569' }}>—</span>}
+                  </td>
+                </tr>
+                {/* 📱 Phone Bill Payments */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>📱</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.phoneBill')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.phoneSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.phoneCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.phoneRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', fontSize: '0.78rem' }}>
+                    {(stats.utilityTaxCents > 0 || stats.mobilitySurchargeCents > 0) ? (
+                      <>
+                        {stats.utilityTaxCents > 0 && (
+                          <div style={{ color: '#f87171', fontWeight: 700 }}>
+                            {formatCurrency(stats.utilityTaxCents)}
+                            <div style={{ fontSize: '0.68rem', fontWeight: 400, color: '#94a3b8' }}>{t('reports.breakdown.utilityTax')}</div>
+                          </div>
+                        )}
+                        {stats.mobilitySurchargeCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                            {t('reports.breakdown.mobilityFee')}: {formatCurrency(stats.mobilitySurchargeCents)}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: '#475569' }}>—</span>}
+                  </td>
+                </tr>
+                {/* 🔧 Repair Services */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🔧</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.repairServices')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.repairSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.repairCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.repairRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#475569', fontSize: '0.78rem' }}>
+                    {formatCurrency(0)} · {t('reports.breakdown.noTax')}
+                  </td>
+                </tr>
+                {/* 🔓 Unlock Services */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🔓</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.unlockServices')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.unlockSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.unlockCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.unlockRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#475569', fontSize: '0.78rem' }}>
+                    {formatCurrency(0)} · {t('reports.breakdown.noTax')}
+                  </td>
+                </tr>
+                {/* TOTAL */}
+                <tr style={{ background: 'rgba(255,255,255,0.04)', fontWeight: 700 }}>
+                  <td style={{ padding: '0.75rem', color: '#e2e8f0' }}>{t('reports.breakdown.total')}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{breakdownRows.productCount + breakdownRows.phoneCount + breakdownRows.repairCount + breakdownRows.unlockCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{formatCurrency(breakdownRows.productRevenue + breakdownRows.phoneRevenue + breakdownRows.repairRevenue + breakdownRows.unlockRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#f87171' }}>{formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           {/* ── Transactions list ── */}
           <div id="reports-transactions-section" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
