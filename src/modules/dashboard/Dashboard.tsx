@@ -19,6 +19,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { loadLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
+import { normalizeCarrier } from '@/utils/normalize';
 
 /** Sale is countable for revenue if not voided/refunded. Handles legacy case variations. */
 function isSaleCountable(s: { status?: string }): boolean {
@@ -121,18 +122,51 @@ export default function Dashboard() {
   // from profit because those are commission/fee-based (phone payments) or
   // price=cost labor (services) — counting them in margin math inflates profit
   // or double-counts commission income tracked elsewhere.
-  // R-DASHBOARD-PROFIT-PARITY Fix 1: removed service/phone_payment/activation
-  // exclusions. Reports counts every item with its real cost/price, so
-  // Dashboard does too — phone_payment items have cost=0 (commission income,
-  // 100% margin) and that's correct.
+  // R-DASHBOARD-PROFIT-COMMISSION: phone_payment items must use commission
+  // lookup (mirrors ReportsModule L672-710) — they ship from PhonePaymentModal
+  // with cost=undefined, so (price-cost) treated 100% as margin which inflates
+  // Dashboard profit by ~10x for typical carrier rates. Replicated logic:
+  //   1) Trust transaction-time stamped item.commissionRate first.
+  //   2) Else resolve carrier: item.carrier → name regex → known-carrier regex.
+  //   3) commRate = settings.carrierCommissions[normalized] ?? defaultCommissionRate ?? 0.
+  //   4) profit = revenue × commRate (Reports: cost = revenue × (1-commRate)).
+  // Strict rule: if no commission resolvable → that item's profit = 0
+  // (NO 0.07 fallback — refuse to fabricate profit).
   const todayProfitGross = useMemo(
     () => todaySales.reduce((sum, s) => {
       const itemProfit = (s.items || []).reduce((p, item) => {
-        return p + ((item.price || 0) - (item.cost || 0)) * (item.qty || (item as any).quantity || 1);
+        const qty = item.qty || (item as any).quantity || 1;
+        const revenueCents = (item.price || 0) * qty;
+        const cat = (item.category || '').toLowerCase();
+
+        if (cat === 'phone_payment') {
+          let commRate = (item as any).commissionRate;
+          if (commRate == null || commRate === 0) {
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || (item as any).provider || '').trim();
+            if (!rawCarrier && item.name) {
+              const m = String(item.name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
+              if (m) rawCarrier = m[1].trim();
+            }
+            if (!rawCarrier && item.name) {
+              const km = String(item.name).match(
+                /\b(h2o|t-?mobile|verizon|at&?t|cricket|tracfone|page\s*plus|simple\s*mobile|ultra(?:\s+mobile)?|telcel|boost|metro(?:\s*pcs)?|mint\s*mobile|visible)\b/i,
+              );
+              if (km) rawCarrier = km[1].trim();
+            }
+            const normalized = normalizeCarrier(rawCarrier);
+            const carrierRate = normalized ? settings.carrierCommissions?.[normalized] : undefined;
+            commRate = carrierRate ?? settings.defaultCommissionRate ?? 0;
+          }
+          if (!commRate) return p;
+          const costCents = Math.round(revenueCents * (1 - commRate));
+          return p + (revenueCents - costCents);
+        }
+
+        return p + (revenueCents - (item.cost || 0) * qty);
       }, 0);
       // CC fee is 100% margin — add directly to sum (no cost to deduct).
       return sum + itemProfit + (s.creditCardFee || 0);
-    }, 0), [todaySales],
+    }, 0), [todaySales, settings],
   );
 
   // Subtotal of ONLY profit-generating items + CC fee (apples-to-apples with
