@@ -180,6 +180,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       // form values (storeName, adminPin, emp would all be ''). Just mark
       // setup complete and close.
       if (isSecondaryDevice) {
+        // R-MULTIPC-WIZARD-FIX: persist the boot trigger so App.tsx's boot
+        // effect re-initializes Firebase on every subsequent launch. Without
+        // this, _db is set in-memory by the wizard's auto-connect but lost
+        // on restart, and getFirestoreInstance() returns null next session.
+        await persistSettings({ cloudSyncEnabled: true });
         localStorage.setItem('cellhub_setup_complete', '1');
         onComplete();
         return;
@@ -224,7 +229,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         receiptFooter: 'Thank you for your business!',
         warrantyText: '30-day warranty on parts and labor',
         returnPolicy: '30-day return policy on new items',
-        cloudEnabled: fbConnected,
+        cloudSyncEnabled: fbConnected,
       };
 
       await persistSettings(settingsData);
