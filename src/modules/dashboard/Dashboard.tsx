@@ -121,11 +121,13 @@ export default function Dashboard() {
   // from profit because those are commission/fee-based (phone payments) or
   // price=cost labor (services) — counting them in margin math inflates profit
   // or double-counts commission income tracked elsewhere.
+  // R-DASHBOARD-PROFIT-PARITY Fix 1: removed service/phone_payment/activation
+  // exclusions. Reports counts every item with its real cost/price, so
+  // Dashboard does too — phone_payment items have cost=0 (commission income,
+  // 100% margin) and that's correct.
   const todayProfitGross = useMemo(
     () => todaySales.reduce((sum, s) => {
       const itemProfit = (s.items || []).reduce((p, item) => {
-        const cat = (item.category || '').toLowerCase();
-        if (cat === 'service' || cat === 'phone_payment' || cat === 'activation') return p;
         return p + ((item.price || 0) - (item.cost || 0)) * (item.qty || (item as any).quantity || 1);
       }, 0);
       // CC fee is 100% margin — add directly to sum (no cost to deduct).
@@ -140,13 +142,65 @@ export default function Dashboard() {
   const todayProfitableSubtotal = useMemo(
     () => todaySales.reduce((sum, s) => {
       const lineTotal = (s.items || []).reduce((p, item) => {
-        const cat = (item.category || '').toLowerCase();
-        if (cat === 'service' || cat === 'phone_payment' || cat === 'activation') return p;
         return p + (item.price || 0) * (item.qty || (item as any).quantity || 1);
       }, 0);
       return sum + lineTotal + (s.creditCardFee || 0);
     }, 0), [todaySales],
   );
+
+  // R-DASHBOARD-PROFIT-PARITY Fix 2: standalone repairs completed today,
+  // not already counted via POS sale items (mirrors Reports' isRepairCompleted
+  // + repairsAlreadyInSales filter for true parity with totalProfitCents).
+  const todayRepairProfit = useMemo(() => {
+    const inSales = new Set<string>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        if ((item as any).repairId) inSales.add((item as any).repairId);
+      }
+    }
+    return repairs.reduce((sum, r) => {
+      const status = String(r.status || '').toLowerCase();
+      const completedStatuses = ['complete', 'completed', 'picked_up', 'pickedup'];
+      if (!completedStatuses.includes(status)) return sum;
+      if ((r.balance ?? 0) !== 0) return sum;
+      if (!isToday(r.completedAt)) return sum;
+      if (inSales.has(r.id)) return sum;
+
+      const rev = r.total ?? r.estimatedCost ?? 0;
+      const partsCost = (r.parts || []).reduce(
+        (p, part) => p + ((part.cost || 0) * (part.qty || 1)),
+        0,
+      );
+      const labor = r.laborCost || 0;
+      // 0.35 fallback ratio matches REPAIR_COST_FALLBACK in ReportsModule.tsx.
+      const cost = (partsCost + labor) > 0
+        ? (partsCost + labor)
+        : Math.round(rev * 0.35);
+      return sum + (rev - cost);
+    }, 0);
+  }, [repairs, todaySales]);
+
+  // R-DASHBOARD-PROFIT-PARITY Fix 3: standalone unlocks completed today,
+  // not already counted via POS sale items (mirrors Reports' isUnlockCompleted
+  // + unlocksAlreadyInSales filter — note unlocks check both item.unlockId
+  // and item.meta?.unlockId per Reports L444-455).
+  const todayUnlockProfit = useMemo(() => {
+    const inSales = new Set<string>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        if ((item as any).unlockId) inSales.add((item as any).unlockId);
+        const metaUnlockId = (item as unknown as { meta?: { unlockId?: string } }).meta?.unlockId;
+        if (metaUnlockId) inSales.add(metaUnlockId);
+      }
+    }
+    return unlocks.reduce((sum, u) => {
+      const status = String(u.status || '').toLowerCase();
+      if (status !== 'completed' && status !== 'complete') return sum;
+      if (!isToday(u.completedAt)) return sum;
+      if (inSales.has(u.id)) return sum;
+      return sum + ((u.price || 0) - (u.cost || 0));
+    }, 0);
+  }, [unlocks, todaySales]);
 
   // Subtract today's refunds from profit proportionally.
   // ALL values in cents — no unit mismatch. No outer Math.round (formatCurrency handles display).
@@ -156,7 +210,9 @@ export default function Dashboard() {
   // produces a positive. Clamping floors the ratio at 0 in loss scenarios.
   const rawRatio = todayProfitableSubtotal > 0 ? (todayProfitGross / todayProfitableSubtotal) : 0;
   const marginRatio = Math.max(0, Math.min(1, rawRatio));
-  const todayProfit = todayProfitGross - Math.round(todayReturnsCents * marginRatio);
+  // R-DASHBOARD-PROFIT-PARITY Fix 4: include standalone repair + unlock profit.
+  const todayProfit = todayProfitGross + todayRepairProfit + todayUnlockProfit
+    - Math.round(todayReturnsCents * marginRatio);
 
   // Profit margin on PROFITABLE subtotal (apples-to-apples with profit calc).
   const profitMargin = todayProfitableSubtotal > 0 ? ((todayProfit / todayProfitableSubtotal) * 100).toFixed(1) : '0.0';
