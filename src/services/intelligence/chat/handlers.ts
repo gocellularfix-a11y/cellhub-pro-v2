@@ -65,6 +65,9 @@ export function handleIntent(
     case 'best_customer':
       return handleBestCustomer(engine, lang);
 
+    case 'multi_phone_customers':
+      return handleMultiPhoneCustomers(engine, lang);
+
     case 'customer_history':
       return handleCustomerHistory(match, engine, es);
 
@@ -169,6 +172,36 @@ function handleBestCustomer(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     kind: 'answer',
     text: `${t('chat.bestCustomer.header')}\n\n${summary}\n\n${t('chat.bestCustomer.recommendation')}`,
   };
+}
+
+// ── Multi-phone customers (R-INTEL-MULTI-PHONE-CUSTOMERS) ──
+// Deterministic exact count of customers carrying more than one phone
+// number. Pure pass-through to engine.countMultiPhoneCustomers() — no
+// queue, no campaigns, no fallback, no approximations. Inline EN/ES/PT
+// strings (spec did not list translations.ts; this is a single-line
+// answer with simple plural/singular grammar).
+function handleMultiPhoneCustomers(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const count = engine.countMultiPhoneCustomers();
+
+  type Lines = { count: (n: number) => string; none: string };
+  const tables: Record<Lang3, Lines> = {
+    en: {
+      count: (n) => `${n} customer${n === 1 ? '' : 's'} ${n === 1 ? 'has' : 'have'} more than one phone number.`,
+      none: 'No customers have multiple phone numbers.',
+    },
+    es: {
+      count: (n) => `${n} cliente${n === 1 ? '' : 's'} ${n === 1 ? 'tiene' : 'tienen'} más de un número de teléfono.`,
+      none: 'Ningún cliente tiene múltiples números de teléfono.',
+    },
+    pt: {
+      count: (n) => `${n} cliente${n === 1 ? '' : 's'} ${n === 1 ? 'tem' : 'têm'} mais de um número de telefone.`,
+      none: 'Nenhum cliente tem múltiplos números de telefone.',
+    },
+  };
+  const lines = tables[lang] ?? tables.en;
+  const text = count === 0 ? lines.none : lines.count(count);
+
+  return { kind: 'answer', text };
 }
 
 // ── Customer history ────────────────────────────────────────

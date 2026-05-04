@@ -434,6 +434,22 @@ export class IntelligenceEngine {
     return this.analyze();
   }
 
+  // R-INTEL-MULTI-PHONE-CUSTOMERS: exact count of customers carrying more
+  // than one phone number. Uses the canonical phones[] array (Customer
+  // model field set by multi-line phone support); legacy customers with
+  // only a single string phone field count as 1. Pure compute — no cache,
+  // no engine.refresh() needed.
+  countMultiPhoneCustomers(): number {
+    let count = 0;
+    for (const c of this.customers) {
+      const phones = (c as { phones?: unknown }).phones;
+      if (Array.isArray(phones) && phones.filter((p) => typeof p === 'string' && p.trim().length > 0).length > 1) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   // R-PERF-INTELLIGENCE-CACHE: hot-swap input data without rebuilding the
   // engine instance. Module-side caller (IntelligenceModule.tsx) holds a
   // useRef-stable engine and calls updateData() per render — when refs

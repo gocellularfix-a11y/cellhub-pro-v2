@@ -25,6 +25,7 @@ export interface IntentContext {
 
 export type IntentId =
   | 'best_customer'
+  | 'multi_phone_customers'
   | 'customer_history'
   | 'sales_summary'
   | 'inventory_low'
@@ -83,6 +84,50 @@ const CUSTOMER_KEYWORDS = [
   'historial', 'history', 'cliente', 'customer',
   'gastado', 'spent', 'ganado con', 'earned from',
   'cuanto', 'cuánto', 'how much',
+];
+
+// R-INTEL-MULTI-PHONE-CUSTOMERS: deterministic count intent. Listed BEFORE
+// customer_history in the scores array so phrases like "customers with
+// multiple phone numbers" don't get swallowed by the generic name lookup.
+// Multi-phrase keyword bank ensures plenty of overlap on natural variants.
+const MULTI_PHONE_CUSTOMERS_KEYWORDS = [
+  // EN
+  'customers with multiple phone',
+  'customers with more than one number',
+  'customers with more than 1 phone',
+  'customers with more than 1 number',
+  'customers with multiple numbers',
+  'customers with multiple phones',
+  'how many customers have more than one number',
+  'how many customers have multiple phones',
+  'how many customers have more than 1 phone',
+  'multiple phone numbers',
+  'more than one phone',
+  'more than 1 phone',
+  'more than one number',
+  'more than 1 number',
+  // ES
+  'clientes con más de un número',
+  'clientes con mas de un numero',
+  'cuantos clientes tienen más de un número',
+  'cuántos clientes tienen más de un número',
+  'cuantos clientes tienen mas de un numero',
+  'clientes con múltiples teléfonos',
+  'clientes con multiples telefonos',
+  'más de un número',
+  'mas de un numero',
+  'múltiples teléfonos',
+  'multiples telefonos',
+  // PT
+  'clientes com mais de um número',
+  'clientes com mais de um numero',
+  'quantos clientes têm mais de um telefone',
+  'quantos clientes tem mais de um telefone',
+  'mais de um telefone',
+  'mais de um número',
+  'mais de um numero',
+  'múltiplos telefones',
+  'multiplos telefones',
 ];
 
 const SALES_KEYWORDS = [
@@ -326,6 +371,12 @@ export function classifyIntent(
   // Score each intent bank.
   const scores: Array<{ id: IntentId; score: number }> = [
     { id: 'best_customer',    score: scoreKeywords(query, BEST_CUSTOMER_KEYWORDS) },
+    // R-INTEL-MULTI-PHONE-CUSTOMERS: must run BEFORE customer_history so
+    // phrases like "customers with multiple phone numbers" don't fall
+    // through to the generic name-lookup path (which would extract a
+    // garbage name fragment and miss the count). List order also breaks
+    // score ties.
+    { id: 'multi_phone_customers', score: scoreKeywords(query, MULTI_PHONE_CUSTOMERS_KEYWORDS) },
     // R-INTEL-WHO-TO-CONTACT-TODAY: must run BEFORE customer_history so the
     // generic customer-name detection doesn't swallow "a quien contacto hoy"
     // into a (failed) name lookup. List order also breaks score ties.
@@ -382,7 +433,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -410,7 +461,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
