@@ -434,6 +434,67 @@ export class IntelligenceEngine {
     return this.analyze();
   }
 
+  // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
+  // today_summary intent. Filters sales by createdAt >= midnight + status
+  // not voided/refunded. Returns revenue, transaction count, average ticket
+  // (round-half-to-even via Math.round), and top-seller-by-revenue. Pure
+  // compute; safe to call on every chat handler invocation (cheap iteration
+  // over already-adapted sales array).
+  getTodayMetrics(): {
+    revenueCents: number;
+    transactions: number;
+    avgTicketCents: number;
+    topSeller: { name: string; revenueCents: number } | null;
+  } {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
+
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as { createdAt?: unknown }).createdAt;
+      if (!ca) return 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        return new Date(d).getTime();
+      } catch { return 0; }
+    };
+
+    const todaySales = this.sales.filter((s) => {
+      const t = tsOf(s);
+      if (!t || t < todayMs) return false;
+      const status = String((s as { status?: string }).status || '').toLowerCase();
+      return status !== 'voided' && status !== 'refunded';
+    });
+
+    const transactions = todaySales.length;
+    const revenueCents = todaySales.reduce((sum, s) => sum + ((s as { total?: number }).total || 0), 0);
+    const avgTicketCents = transactions > 0 ? Math.round(revenueCents / transactions) : 0;
+
+    // Top seller by aggregated line revenue (price × qty).
+    const itemRev = new Map<string, number>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        const name = String((item as { name?: string }).name || '').trim();
+        if (!name) continue;
+        const qty = (item as { qty?: number; quantity?: number }).qty
+          ?? (item as { quantity?: number }).quantity
+          ?? 1;
+        const lineRev = ((item as { price?: number }).price || 0) * qty;
+        itemRev.set(name, (itemRev.get(name) || 0) + lineRev);
+      }
+    }
+    let topSeller: { name: string; revenueCents: number } | null = null;
+    for (const [name, rev] of itemRev) {
+      if (rev > 0 && (!topSeller || rev > topSeller.revenueCents)) {
+        topSeller = { name, revenueCents: rev };
+      }
+    }
+
+    return { revenueCents, transactions, avgTicketCents, topSeller };
+  }
+
   // R-INTEL-MULTI-PHONE-CUSTOMERS: exact count of customers carrying more
   // than one phone number. Uses the canonical phones[] array (Customer
   // model field set by multi-line phone support); legacy customers with

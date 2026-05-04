@@ -146,6 +146,33 @@ export const translations: TranslationDictionary = {
   'chat.contact.header': { en: (n: number) => `${n} customers you should reach out to today:`, es: (n: number) => `${n} clientes que deberías contactar hoy:`, pt: (n: number) => `${n} clientes que você deve contatar hoje:` },
   'chat.contact.message': { en: (name: string, days: number) => `💬 "Hi ${name}, it's been ${days} days since your last visit. Stop by when you can!"`, es: (name: string, days: number) => `💬 "Hola ${name}, han pasado ${days} días desde tu última visita. ¡Pásate cuando puedas!"`, pt: (name: string, days: number) => `💬 "Oi ${name}, faz ${days} dias desde sua última visita. Passe por aqui quando puder!"` },
   'chat.contact.overdue': { en: 'overdue', es: 'atrasado', pt: 'atrasado' },
+  // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today_summary intent strings.
+  'chat.today.header': { en: '📊 Today', es: '📊 Hoy', pt: '📊 Hoje' },
+  'chat.today.empty': {
+    en: 'No sales today yet — let\'s get the first one.',
+    es: 'Aún no hay ventas hoy — vamos por la primera.',
+    pt: 'Ainda não há vendas hoje — vamos pela primeira.',
+  },
+  'chat.today.revenueLabel': { en: 'Revenue', es: 'Ventas', pt: 'Vendas' },
+  'chat.today.transactionsLabel': { en: 'Transactions', es: 'Transacciones', pt: 'Transações' },
+  'chat.today.avgTicketLabel': { en: 'Avg ticket', es: 'Ticket promedio', pt: 'Ticket médio' },
+  'chat.today.topSellerLabel': { en: 'Top seller', es: 'Más vendido', pt: 'Mais vendido' },
+  'chat.today.actionLabel': { en: 'Action', es: 'Acción', pt: 'Ação' },
+  'chat.today.actionWithTopSeller': {
+    en: (name: string) => `keep pushing ${name} or collect pending phone payments to close more today`,
+    es: (name: string) => `sigue empujando ${name} o revisa pagos pendientes para cerrar más hoy`,
+    pt: (name: string) => `continue empurrando ${name} ou cobre pagamentos pendentes para fechar mais hoje`,
+  },
+  'chat.today.actionGeneric': {
+    en: 'collect pending phone payments and follow up with recent customers to close more today',
+    es: 'revisa pagos pendientes y contacta clientes recientes para cerrar más hoy',
+    pt: 'cobre pagamentos pendentes e contate clientes recentes para fechar mais hoje',
+  },
+  'chat.today.followup': {
+    en: (revenue: string, tx: number, avgTicket: string) => `No major change since your last check: ${revenue} today, ${tx} transaction${tx === 1 ? '' : 's'}, avg ticket ${avgTicket}.`,
+    es: (revenue: string, tx: number, avgTicket: string) => `Sin cambios importantes desde la última consulta: ${revenue} hoy, ${tx} transaccion${tx === 1 ? '' : 'es'}, ticket promedio ${avgTicket}.`,
+    pt: (revenue: string, tx: number, avgTicket: string) => `Sem mudanças importantes desde a última consulta: ${revenue} hoje, ${tx} transaç${tx === 1 ? 'ão' : 'ões'}, ticket médio ${avgTicket}.`,
+  },
   // R-INTEL-WHO-TO-CONTACT-TODAY: deterministic top-3 outreach intent.
   'chat.whoToContact.header': { en: 'Contact these customers today:', es: 'Contacta a estos clientes hoy:', pt: 'Contate estes clientes hoje:' },
   'chat.whoToContact.empty': { en: 'No customers qualify for outreach right now.', es: 'Ningún cliente califica para contactar ahora.', pt: 'Nenhum cliente qualifica para contato agora.' },

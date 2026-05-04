@@ -71,6 +71,9 @@ export function handleIntent(
     case 'customer_history':
       return handleCustomerHistory(match, engine, es);
 
+    case 'today_summary':
+      return handleTodaySummary(engine, lang);
+
     case 'sales_summary':
       return handleSalesSummary(engine, es);
 
@@ -241,6 +244,59 @@ function handleCustomerHistory(
     kind: 'answer',
     text: summarizeCustomerHistory(history, es ? 'es' : 'en'),
   };
+}
+
+// ── Today summary (R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK) ─────
+// Module-level timestamp for the "no major change since last check"
+// compact follow-up. Within a single chat session, repeated today queries
+// inside the follow-up window get the compact variant. Resets on process
+// restart — acceptable for a UX nicety.
+let lastTodaySummaryAt = 0;
+const TODAY_SUMMARY_FOLLOWUP_WINDOW_MS = 30_000;
+
+function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const m = engine.getTodayMetrics();
+  const now = Date.now();
+  const isFollowup = (now - lastTodaySummaryAt) < TODAY_SUMMARY_FOLLOWUP_WINDOW_MS;
+  lastTodaySummaryAt = now;
+
+  // Empty path — no sales today yet.
+  if (m.transactions === 0) {
+    return { kind: 'answer', text: t('chat.today.empty') };
+  }
+
+  // Compact follow-up — same intent within the window.
+  if (isFollowup) {
+    return {
+      kind: 'answer',
+      text: t(
+        'chat.today.followup',
+        COP(m.revenueCents),
+        m.transactions,
+        COP(m.avgTicketCents),
+      ),
+    };
+  }
+
+  // Full card.
+  const lines: string[] = [];
+  lines.push(t('chat.today.header'));
+  lines.push('');
+  lines.push(`• ${t('chat.today.revenueLabel')}: ${COP(m.revenueCents)}`);
+  lines.push(`• ${t('chat.today.transactionsLabel')}: ${m.transactions}`);
+  lines.push(`• ${t('chat.today.avgTicketLabel')}: ${COP(m.avgTicketCents)}`);
+  if (m.topSeller) {
+    lines.push(`• ${t('chat.today.topSellerLabel')}: ${m.topSeller.name}`);
+  }
+  // Action recommendation — varies on whether we have a topSeller.
+  const actionText = m.topSeller
+    ? t('chat.today.actionWithTopSeller', m.topSeller.name)
+    : t('chat.today.actionGeneric');
+  lines.push('');
+  lines.push(`💡 ${t('chat.today.actionLabel')}: ${actionText}`);
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Sales summary ───────────────────────────────────────────
