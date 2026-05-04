@@ -10,11 +10,14 @@
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
-import type { ActionType } from '../types';
+import type { ActionType, ActionQueueItem } from '../types';
 import type { ActionPayload } from '../actions/actionEngine';
 import { buildActionPayload } from '../actions/actionEngine';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
+// R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
+// engine.refresh() — only handleWhoToContactToday triggers the queue.
+import { enqueueOutreachActions } from '../actions';
 
 const COP = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -94,6 +97,15 @@ export function handleIntent(
 
     case 'who_to_contact':
       return handleWhoToContact(engine, lang);
+
+    case 'who_to_contact_today':
+      return handleWhoToContactToday(engine, lang);
+
+    case 'marketing_campaign':
+      return handleMarketingCampaign(engine, lang);
+
+    case 'product_push':
+      return handleProductPush(match, engine, lang);
 
     case 'what_hurting_profit':
       return handleWhatHurtingProfit(engine, lang);
@@ -471,6 +483,385 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   });
 
   return { kind: 'answer', text: `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}` };
+}
+
+// ── Who to contact today (R-INTEL-WHO-TO-CONTACT-TODAY) ────
+// Deterministic top-3 outreach list ranked by:
+//   score = grossRevenueDollars + daysSinceLastVisit*2 + visitCount*10
+// Eligibility: customer has phone, ≥1 prior visit, valid lastVisit. Prefers
+// customers inactive ≥14 days; falls back to all qualifying customers when
+// fewer than 3 satisfy that filter. Reason + action are picked from a
+// deterministic decision tree (no randomness, no API calls).
+function handleWhoToContactToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const scores = engine.getCustomerScores();
+  if (scores.length === 0) {
+    return { kind: 'answer', text: t('chat.whoToContact.empty') };
+  }
+
+  type Candidate = {
+    name: string;
+    phone: string;
+    grossRevenue: number;
+    visitCount: number;
+    daysSinceLastVisit: number;
+    repairCount: number;
+    rankScore: number;
+  };
+
+  const now = Date.now();
+  const candidates: Candidate[] = [];
+  for (const cs of scores) {
+    const h = engine.getCustomerHistory(cs.customerId);
+    if (!h) continue;
+    const phone = h.customer.phone || '';
+    if (!phone) continue;                     // require contact channel
+    if (h.visitCount < 1) continue;           // require prior purchase
+    if (!h.lastVisit) continue;               // require valid last-visit date
+    const daysSinceLastVisit = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
+    const rankScore = (h.grossRevenue / 100) + daysSinceLastVisit * 2 + h.visitCount * 10;
+    candidates.push({
+      name: h.customer.name,
+      phone,
+      grossRevenue: h.grossRevenue,
+      visitCount: h.visitCount,
+      daysSinceLastVisit,
+      repairCount: h.linkedEntities?.repairCount || 0,
+      rankScore,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return { kind: 'answer', text: t('chat.whoToContact.empty') };
+  }
+
+  // Prefer inactive 14+ days; fall back to full pool if <3 qualify.
+  const inactivePool = candidates.filter((c) => c.daysSinceLastVisit >= 14);
+  const pool = inactivePool.length >= 3 ? inactivePool : candidates;
+
+  // High-spender threshold = 75th percentile of grossRevenue across the full
+  // candidate set (not just the chosen pool — keeps the threshold stable).
+  const sortedSpend = candidates.map((c) => c.grossRevenue).sort((a, b) => a - b);
+  const q3Index = Math.max(0, Math.floor(sortedSpend.length * 0.75));
+  const highSpenderThreshold = sortedSpend[q3Index] || 0;
+
+  const top = pool.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 3);
+
+  // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: persist queue items at handler-level
+  // so only this intent (who_to_contact_today) creates queue entries. Engine
+  // method is the canonical source — same scoring/eligibility/decision-tree;
+  // we just route the result to the persisted queue here. 24h dedup in
+  // actions.ts keeps repeat invocations idempotent. No auto-send.
+  try {
+    enqueueOutreachActions(engine.buildOutreachQueueItems());
+  } catch {
+    // Queue persistence is best-effort; never block chat response on it.
+  }
+
+  const lines = top.map((c) => {
+    const inactive = c.daysSinceLastVisit >= 14;
+    const recent = !inactive;
+    const highSpender = c.grossRevenue >= highSpenderThreshold && c.grossRevenue > 0;
+
+    // Reason: describes the WHY (3 buckets per spec).
+    let reason: string;
+    if (recent) {
+      reason = t('chat.whoToContact.reasonRecentBuyer', c.name, c.daysSinceLastVisit);
+    } else if (highSpender) {
+      reason = t('chat.whoToContact.reasonHighValueInactive', c.name, c.daysSinceLastVisit, COP(c.grossRevenue));
+    } else {
+      reason = t('chat.whoToContact.reasonFrequentInactive', c.name, c.visitCount, c.daysSinceLastVisit);
+    }
+
+    // Action: 4 buckets per spec, repair-customer takes priority.
+    let action: string;
+    if (c.repairCount > 0) {
+      action = t('chat.whoToContact.actionFollowUp');
+    } else if (recent) {
+      action = t('chat.whoToContact.actionAccessory');
+    } else if (highSpender) {
+      action = t('chat.whoToContact.actionComeback');
+    } else {
+      action = t('chat.whoToContact.actionRefill');
+    }
+
+    return `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total\n  ${reason}\n  ${action}`;
+  });
+
+  return {
+    kind: 'answer',
+    text: `${t('chat.whoToContact.header')}\n\n${lines.join('\n\n')}`,
+  };
+}
+
+// ── Marketing engine V1 (R-INTEL-MARKETING-ENGINE-V1) ──────
+// Deterministic 3-campaign output: Comeback (inactive 14+ days, high spend
+// or frequent), Accessory Upsell (recent buyers OR repair pickups), Dead
+// Stock Push (general — uses ProductOpportunity DEAD_STOCK signals). For
+// each customer-targeted campaign, persists up to 5 draft items to the
+// outreach queue with status='pending_approval'. Owner approves before
+// any send (not implemented in V1 — queue is owner-facing only). All
+// strings via tChat; no API calls; no randomness.
+function handleMarketingCampaign(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+
+  type Cand = {
+    customerId: string;
+    name: string;
+    phone: string;
+    grossRevenue: number;
+    visitCount: number;
+    daysSinceLastVisit: number;
+    repairCount: number;
+  };
+
+  const now = Date.now();
+  const scores = engine.getCustomerScores();
+  const candidates: Cand[] = [];
+  for (const cs of scores) {
+    const h = engine.getCustomerHistory(cs.customerId);
+    if (!h) continue;
+    const phone = h.customer.phone || '';
+    if (!phone) continue;
+    if (h.visitCount < 1) continue;
+    if (!h.lastVisit) continue;
+    const days = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
+    candidates.push({
+      customerId: cs.customerId,
+      name: h.customer.name,
+      phone,
+      grossRevenue: h.grossRevenue,
+      visitCount: h.visitCount,
+      daysSinceLastVisit: days,
+      repairCount: h.linkedEntities?.repairCount || 0,
+    });
+  }
+
+  // High-spender threshold = 75th percentile across all candidates.
+  const sortedSpend = candidates.map((c) => c.grossRevenue).sort((a, b) => a - b);
+  const q3Index = Math.max(0, Math.floor(sortedSpend.length * 0.75));
+  const highSpenderThreshold = sortedSpend[q3Index] || 0;
+
+  // Campaign 1 — Comeback: inactive 14+ days AND (high spend OR frequent).
+  const comebackTargets = candidates.filter(
+    (c) => c.daysSinceLastVisit >= 14
+      && ((c.grossRevenue >= highSpenderThreshold && c.grossRevenue > 0) || c.visitCount >= 5),
+  );
+
+  // Campaign 2 — Accessory Upsell: recent visit (<14d) OR has any repair.
+  const accessoryTargets = candidates.filter(
+    (c) => c.daysSinceLastVisit < 14 || c.repairCount > 0,
+  );
+
+  // Campaign 3 — Dead Stock Push: not customer-keyed, general campaign idea
+  // backed by current dead-stock SKUs (top 3 by name for the message hint).
+  const deadStock = engine.getProductOpportunities().filter((p) => p.type === 'DEAD_STOCK');
+  const deadStockSample = deadStock.slice(0, 3).map((p) => p.name).join(', ');
+
+  type CampaignDef = {
+    nameKey: string;
+    priority: 'high' | 'medium' | 'low';
+    priorityKey: string;
+    priorityWeight: number;
+    targetLabel: string;
+    why: string;
+    messageTemplate: string;     // for chat display, contains {customer} placeholder
+    queueTargets: Cand[];
+    enabled: boolean;
+  };
+
+  const campaigns: CampaignDef[] = [];
+
+  if (comebackTargets.length > 0) {
+    const top = comebackTargets.slice().sort((a, b) => b.grossRevenue - a.grossRevenue).slice(0, 5);
+    campaigns.push({
+      nameKey: 'chat.marketing.campaignComeback.name',
+      priority: 'high',
+      priorityKey: 'chat.marketing.priorityHigh',
+      priorityWeight: 2000,
+      targetLabel: t('chat.marketing.campaignComeback.target', comebackTargets.length),
+      why: t('chat.marketing.campaignComeback.why', comebackTargets.length),
+      messageTemplate: t('chat.marketing.campaignComeback.message', '{customer}'),
+      queueTargets: top,
+      enabled: true,
+    });
+  }
+
+  if (accessoryTargets.length > 0) {
+    const top = accessoryTargets.slice().sort((a, b) => b.grossRevenue - a.grossRevenue).slice(0, 5);
+    campaigns.push({
+      nameKey: 'chat.marketing.campaignAccessory.name',
+      priority: 'medium',
+      priorityKey: 'chat.marketing.priorityMedium',
+      priorityWeight: 1000,
+      targetLabel: t('chat.marketing.campaignAccessory.target', accessoryTargets.length),
+      why: t('chat.marketing.campaignAccessory.why', accessoryTargets.length),
+      messageTemplate: t('chat.marketing.campaignAccessory.message', '{customer}'),
+      queueTargets: top,
+      enabled: true,
+    });
+  }
+
+  if (deadStock.length > 0) {
+    // R-INTEL-MARKETING-ENGINE-FIX: dead-stock still needs outreach targets.
+    // Rank from full eligible candidate pool by grossRevenue desc (top
+    // spenders most likely to respond to a clearance push). Top 5.
+    const top = candidates.slice().sort((a, b) => b.grossRevenue - a.grossRevenue).slice(0, 5);
+    campaigns.push({
+      nameKey: 'chat.marketing.campaignDeadStock.name',
+      priority: 'low',
+      priorityKey: 'chat.marketing.priorityLow',
+      priorityWeight: 500,
+      targetLabel: t('chat.marketing.campaignDeadStock.target', deadStock.length, deadStockSample),
+      why: t('chat.marketing.campaignDeadStock.why', deadStockSample),
+      messageTemplate: t('chat.marketing.campaignDeadStock.message', deadStockSample),
+      queueTargets: top,
+      enabled: true,
+    });
+  }
+
+  if (campaigns.length === 0) {
+    return { kind: 'answer', text: t('chat.marketing.empty') };
+  }
+
+  // Persist draft queue items (pending_approval) for customer-targeted
+  // campaigns. Existing 24h dedup in actions.ts skips overlap with prior
+  // who_to_contact_today entries. Best-effort — never block chat response.
+  const queueItems: ActionQueueItem[] = [];
+  for (const camp of campaigns) {
+    for (const c of camp.queueTargets) {
+      const firstName = c.name.split(' ')[0] || c.name;
+      const messageKey = camp.priority === 'high'
+        ? 'chat.marketing.campaignComeback.message'
+        : camp.priority === 'medium'
+          ? 'chat.marketing.campaignAccessory.message'
+          : 'chat.marketing.campaignDeadStock.message';
+      queueItems.push({
+        id: `mkt-${camp.priority}-${c.customerId}-${now}`,
+        // R-INTEL-MARKETING-ENGINE-FIX: distinct type from who_to_contact_today's
+        // 'whatsapp' so the 24h dedup in actions.ts does NOT collide — same
+        // customer can hold both an outreach item and a marketing draft.
+        type: 'marketing_whatsapp',
+        customerId: c.customerId,
+        phone: c.phone,
+        message: t(messageKey, firstName),
+        priority: camp.priorityWeight,
+        reason: camp.why,
+        createdAt: now,
+        status: 'pending_approval',
+      });
+    }
+  }
+  if (queueItems.length > 0) {
+    try {
+      enqueueOutreachActions(queueItems);
+    } catch {
+      // Queue persistence is best-effort.
+    }
+  }
+
+  // Format chat response.
+  const targetWord = t('chat.marketing.targetLabel');
+  const whyWord = t('chat.marketing.whyLabel');
+  const messageWord = t('chat.marketing.messageLabel');
+  const lines = campaigns.map((camp) => {
+    const priorityText = t(camp.priorityKey);
+    return `📣 ${t(camp.nameKey)} [${priorityText}]\n  ${targetWord}: ${camp.targetLabel}\n  ${whyWord}: ${camp.why}\n  ${messageWord}: 💬 "${camp.messageTemplate}"`;
+  });
+
+  return {
+    kind: 'answer',
+    text: `${t('chat.marketing.header')}\n\n${lines.join('\n\n')}`,
+  };
+}
+
+// ── Product push (R-INTEL-PRODUCT-PUSH-ENGINE) ─────────────
+// Owner says "promote this product X" → router extracts X into
+// match.extractedProduct → this handler ranks customers by spend +
+// recency boost (≤30 days) + visit frequency, picks top 5, drafts a
+// per-customer WhatsApp message and persists pending_approval queue
+// items. Existing 24h dedup in actions.ts on (customerId, type=
+// 'whatsapp') prevents over-queueing same customer in same 24h window.
+function handleProductPush(match: IntentMatch, engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const productName = (match.extractedProduct || '').trim();
+  if (!productName) {
+    return { kind: 'answer', text: t('chat.productPush.noProduct') };
+  }
+
+  type Cand = {
+    customerId: string;
+    name: string;
+    phone: string;
+    grossRevenue: number;
+    visitCount: number;
+    daysSinceLastVisit: number;
+    rankScore: number;
+  };
+
+  const now = Date.now();
+  const scores = engine.getCustomerScores();
+  const candidates: Cand[] = [];
+  for (const cs of scores) {
+    const h = engine.getCustomerHistory(cs.customerId);
+    if (!h) continue;
+    const phone = h.customer.phone || '';
+    if (!phone) continue;                           // require contact channel
+    if (h.visitCount < 1) continue;                 // require prior purchase
+    if (!h.lastVisit) continue;
+    const days = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
+    // Recency boost favors customers active within last 30 days.
+    const recencyBoost = days <= 30 ? (30 - days) * 5 : 0;
+    const rankScore = (h.grossRevenue / 100) + recencyBoost + h.visitCount * 10;
+    candidates.push({
+      customerId: cs.customerId,
+      name: h.customer.name,
+      phone,
+      grossRevenue: h.grossRevenue,
+      visitCount: h.visitCount,
+      daysSinceLastVisit: days,
+      rankScore,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return { kind: 'answer', text: t('chat.productPush.empty', productName) };
+  }
+
+  const top = candidates.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
+
+  // R-INTEL-PRODUCT-PUSH-DEDUP-FIX: distinct type from who_to_contact_today's
+  // 'whatsapp' and marketing's 'marketing_whatsapp' so the 24h dedup in
+  // actions.ts (keyed on customerId+type) does NOT collide. High-intent
+  // single-product campaigns must always enqueue regardless of prior
+  // outreach activity for the same customer.
+  const queueItems: ActionQueueItem[] = top.map((c) => {
+    const firstName = c.name.split(' ')[0] || c.name;
+    return {
+      id: `pp-${c.customerId}-${now}`,
+      type: 'product_push_whatsapp',
+      customerId: c.customerId,
+      phone: c.phone,
+      message: t('chat.productPush.message', firstName, productName),
+      priority: 3000,                                // higher than marketing's max (2000)
+      reason: t('chat.productPush.reason', productName),
+      createdAt: now,
+      status: 'pending_approval',
+    };
+  });
+  try {
+    enqueueOutreachActions(queueItems);
+  } catch {
+    // Queue persistence is best-effort.
+  }
+
+  // Format chat response.
+  const lines = top.map((c) => `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total`);
+  const previewMessage = t('chat.productPush.message', '{customer}', productName);
+  return {
+    kind: 'answer',
+    text: `${t('chat.productPush.header', productName, top.length)}\n\n${lines.join('\n')}\n\n${t('chat.productPush.messagePreviewLabel')}: 💬 "${previewMessage}"`,
+  };
 }
 
 // ── Product opportunities (R-INTEL-2-PRODUCT) ───────────────

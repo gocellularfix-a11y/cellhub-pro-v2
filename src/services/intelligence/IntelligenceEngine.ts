@@ -28,6 +28,11 @@ import type { RepairScore } from './scoring/RepairScorer';
 import { getDaysAgo } from './utils/dateHelpers';
 import { adaptSale, adaptCustomer, adaptInventory, adaptRepair } from './adapters/schemaAdapter';
 import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations';
+// R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: refresh() is now side-effect-free.
+// buildOutreachQueueItems() stays as a pure helper — chat handlers (only
+// who_to_contact_today right now) call it explicitly and persist via
+// enqueueOutreachActions in actions.ts.
+import type { ActionQueueItem } from './types';
 
 export interface EngineConfig {
   storeId?: string;
@@ -389,6 +394,107 @@ export class IntelligenceEngine {
 
   refresh(): EngineResult {
     return this.analyze();
+  }
+
+  // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
+  // mirrors the score/eligibility/decision-tree of handleWhoToContactToday
+  // but emits ActionQueueItem instead of chat strings. Pure compute — no
+  // localStorage access here (actions.ts handles persistence).
+  // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: now public — chat handler calls
+  // it directly so only the who_to_contact_today intent triggers queue
+  // persistence (engine.refresh() is side-effect-free).
+  buildOutreachQueueItems(): ActionQueueItem[] {
+    const scores = this.cachedResult?.customerScores ?? [];
+    if (scores.length === 0) return [];
+
+    type Cand = {
+      customerId: string;
+      name: string;
+      phone: string;
+      grossRevenue: number;
+      visitCount: number;
+      daysSinceLastVisit: number;
+      repairCount: number;
+      rank: number;
+    };
+
+    const now = Date.now();
+    const cands: Cand[] = [];
+    for (const cs of scores) {
+      const h = this.getCustomerHistory(cs.customerId);
+      if (!h) continue;
+      const phone = h.customer.phone || '';
+      if (!phone) continue;
+      if (h.visitCount < 1) continue;
+      if (!h.lastVisit) continue;
+      const days = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
+      const rank = (h.grossRevenue / 100) + days * 2 + h.visitCount * 10;
+      cands.push({
+        customerId: cs.customerId,
+        name: h.customer.name,
+        phone,
+        grossRevenue: h.grossRevenue,
+        visitCount: h.visitCount,
+        daysSinceLastVisit: days,
+        repairCount: h.linkedEntities?.repairCount || 0,
+        rank,
+      });
+    }
+    if (cands.length === 0) return [];
+
+    const inactivePool = cands.filter((c) => c.daysSinceLastVisit >= 14);
+    const pool = inactivePool.length >= 3 ? inactivePool : cands;
+
+    const sortedSpend = cands.map((c) => c.grossRevenue).sort((a, b) => a - b);
+    const q3Index = Math.max(0, Math.floor(sortedSpend.length * 0.75));
+    const highSpenderThreshold = sortedSpend[q3Index] || 0;
+
+    const top = pool.slice().sort((a, b) => b.rank - a.rank).slice(0, 3);
+
+    const items: ActionQueueItem[] = [];
+    for (const c of top) {
+      const inactive = c.daysSinceLastVisit >= 14;
+      const recent = !inactive;
+      const highSpender = c.grossRevenue >= highSpenderThreshold && c.grossRevenue > 0;
+      const firstName = c.name.split(' ')[0] || c.name;
+
+      let reason: string;
+      if (recent) {
+        reason = `${c.name} bought ${c.daysSinceLastVisit} day(s) ago — fresh in mind`;
+      } else if (highSpender) {
+        reason = `${c.name} has spent $${(c.grossRevenue / 100).toFixed(2)} but hasn't visited in ${c.daysSinceLastVisit} days`;
+      } else {
+        reason = `${c.name} has ${c.visitCount} visits but hasn't been in for ${c.daysSinceLastVisit} days`;
+      }
+
+      let message: string;
+      if (c.repairCount > 0) {
+        message = `Hi ${firstName}, following up on your repair — how's everything working out?`;
+      } else if (recent) {
+        message = `Hi ${firstName}, thanks for stopping by! Interested in any accessories or add-ons?`;
+      } else if (highSpender) {
+        message = `Hi ${firstName}, we miss you — here's 10% off your next visit, or stop by for a free check-up.`;
+      } else {
+        message = `Hi ${firstName}, do you need a refill or any phone supplies? We've got you covered.`;
+      }
+
+      // Priority: rank baseline + boosts per spec (high-value, inactive 14+).
+      let priority = Math.round(c.rank);
+      if (highSpender) priority += 1000;
+      if (c.daysSinceLastVisit >= 14) priority += 500;
+
+      items.push({
+        id: `wac-${c.customerId}-${now}`,
+        type: 'whatsapp',
+        customerId: c.customerId,
+        phone: c.phone,
+        message,
+        priority,
+        reason,
+        createdAt: now,
+      });
+    }
+    return items;
   }
 
   // R-INTEL-CROSS-F3: surface repair ↔ inventory gaps as insights.

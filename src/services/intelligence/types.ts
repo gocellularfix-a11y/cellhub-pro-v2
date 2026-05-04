@@ -251,6 +251,34 @@ export interface CustomerHistorySummary {
   };
 }
 
+// R-INTEL-AUTO-ACTION-QUEUE: persisted outreach queue item. Intentionally
+// distinct from ActionItem (below) — that is a per-report action HINT (i18n
+// label + effort tier) returned by root-cause/slow-day reports, while this
+// is an actionable QUEUE entry the shop owner works through during the day.
+// Producer: IntelligenceEngine.refresh() (deterministic, no API calls).
+// Consumer: actions.ts queue API (localStorage-persisted, 24h dedup).
+export interface ActionQueueItem {
+  id: string;
+  // R-INTEL-MARKETING-ENGINE-FIX: distinct 'marketing_whatsapp' so the 24h
+  // dedup in actions.ts (keyed on customerId+type) does NOT collide with
+  // who_to_contact_today entries — same customer can be in both queues.
+  // R-INTEL-PRODUCT-PUSH-DEDUP-FIX: same isolation for product_push so
+  // high-intent single-product campaigns are never blocked by an existing
+  // 'whatsapp' or 'marketing_whatsapp' entry within the 24h window.
+  type: 'whatsapp' | 'marketing_whatsapp' | 'product_push_whatsapp' | 'task';
+  customerId?: string;
+  phone?: string;
+  message: string;        // ready-to-send content (English fallback; localize later if needed)
+  priority: number;       // higher = more urgent; high-value + inactive get a boost
+  reason: string;         // why this customer was queued (1-line, owner-facing)
+  createdAt: number;      // ms epoch
+  // R-INTEL-MARKETING-ENGINE-V1: marketing-campaign drafts get
+  // 'pending_approval' so the owner reviews before send. Items from
+  // who_to_contact_today omit the field (defaults to approved). No
+  // auto-send anywhere — gating is owner-side.
+  status?: 'pending_approval' | 'approved';
+}
+
 // R-INTEL-PHASE2-RC: root cause analysis types
 export type ActionType = 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder';
 

@@ -36,6 +36,9 @@ export type IntentId =
   | 'forecast_items'
   | 'anomaly_days'
   | 'who_to_contact'
+  | 'who_to_contact_today'
+  | 'marketing_campaign'
+  | 'product_push'
   | 'what_hurting_profit'
   | 'product_opportunities'
   | 'root_cause'
@@ -51,6 +54,9 @@ export interface IntentMatch {
   extractedName?: string;          // resolved customer name fragment
   matchedCustomer?: Customer;      // fuzzy-matched customer if applicable
   candidateCustomers?: Customer[]; // when >1 match → disambiguate
+  // R-INTEL-PRODUCT-PUSH-ENGINE: extracted product fragment from queries
+  // like "promote this product Galaxy S24" or "vender este producto iPhone".
+  extractedProduct?: string;
 }
 
 // ── Keyword banks ───────────────────────────────────────────
@@ -128,6 +134,64 @@ const WHO_TO_CONTACT_KEYWORDS = [
   'llamar', 'contactar', 'contact', 'reach out', 'follow up',
   'quién llamar', 'quien llamar', 'who should', 'a quién', 'a quien',
   'clientes que', 'customers to', 'follow-up', 'no han venido', 'not visited',
+];
+
+// R-INTEL-WHO-TO-CONTACT-TODAY: more-specific intent than WHO_TO_CONTACT.
+// Triggered when the question explicitly anchors on "today/hoy/hoje" — used
+// to surface a deterministic top-3 ranked outreach list (handler scores by
+// spend + recency + frequency, see handleWhoToContactToday). Listed BEFORE
+// customer_history in the scores array to win ties against the generic
+// customer-name detection.
+const WHO_TO_CONTACT_TODAY_KEYWORDS = [
+  // EN
+  'who should i contact today', 'who should i call today', 'who can i sell to today',
+  'customers to contact', 'who to contact today', 'who to call today',
+  'contact today', 'call today',
+  // ES
+  'a quien contacto hoy', 'a quién contacto hoy', 'a quien le escribo hoy', 'a quién le escribo hoy',
+  'clientes para contactar hoy', 'quien me puede comprar hoy', 'quién me puede comprar hoy',
+  'a quien llamo hoy', 'a quién llamo hoy', 'contactar hoy',
+  // PT
+  'quem devo contatar hoje', 'clientes para contatar hoje', 'para quem vender hoje',
+  'quem contatar hoje', 'quem ligar hoje', 'contatar hoje',
+];
+
+// R-INTEL-PRODUCT-PUSH-ENGINE: single-product outreach intent. Triggered
+// by phrases like "promote this product X". Singular product wording (vs
+// MARKETING_KEYWORDS which uses plural "products/productos") so the two
+// intents disambiguate naturally on count of keyword hits. Listed BEFORE
+// marketing_campaign and product_opportunities in the scores array so a
+// query containing both "promote" and a product name routes here.
+const PRODUCT_PUSH_KEYWORDS = [
+  // EN
+  'promote this product', 'push this product', 'sell this product',
+  'i want to move this item', 'move this item', 'push product',
+  'promote item', 'sell item',
+  // ES
+  'quiero vender este producto', 'empujar producto', 'sacar este producto',
+  'promocionar producto', 'vender producto', 'mover este producto',
+  // PT
+  'promover produto', 'vender este produto', 'empurrar produto',
+  'mover produto', 'vender produto',
+];
+
+// R-INTEL-MARKETING-ENGINE-V1: marketing-campaign intent. Listed BEFORE
+// product_opportunities in the scores array so phrases like "promote products"
+// route to the marketing engine (deterministic 3-campaign output) rather than
+// to the product-opportunity drilldown. Single-word "marketing/mercadeo/
+// campanha" triggers the intent on its own.
+const MARKETING_KEYWORDS = [
+  // EN
+  'marketing', 'create campaign', 'campaign ideas', 'campaign idea',
+  'who should i market to', 'who to market to', 'promote products',
+  'marketing campaign', 'marketing ideas',
+  // ES
+  'mercadeo', 'campaña', 'crear campaña', 'crear campana',
+  'a quien le hago marketing', 'a quién le hago marketing',
+  'promocionar productos', 'campañas',
+  // PT
+  'campanha', 'criar campanha', 'promover produtos',
+  'campanhas', 'ideias de campanha',
 ];
 
 const PRODUCT_OPPORTUNITY_KEYWORDS = [
@@ -253,6 +317,21 @@ export function classifyIntent(
   // Score each intent bank.
   const scores: Array<{ id: IntentId; score: number }> = [
     { id: 'best_customer',    score: scoreKeywords(query, BEST_CUSTOMER_KEYWORDS) },
+    // R-INTEL-WHO-TO-CONTACT-TODAY: must run BEFORE customer_history so the
+    // generic customer-name detection doesn't swallow "a quien contacto hoy"
+    // into a (failed) name lookup. List order also breaks score ties.
+    { id: 'who_to_contact_today', score: scoreKeywords(query, WHO_TO_CONTACT_TODAY_KEYWORDS) },
+    // R-INTEL-PRODUCT-PUSH-ENGINE: must run BEFORE marketing_campaign and
+    // product_opportunities so phrases like "promote this product Galaxy"
+    // route here (singular product). marketing_campaign keeps the plural
+    // "promote products" / "promocionar productos" path. List order also
+    // breaks score ties.
+    { id: 'product_push', score: scoreKeywords(query, PRODUCT_PUSH_KEYWORDS) },
+    // R-INTEL-MARKETING-ENGINE-V1: also before customer_history (broad
+    // single-word "marketing/mercadeo" triggers) and before product_opportunities
+    // (keyword overlap on "promote/promover" — we want marketing engine on phrases
+    // like "promote products"; product_opportunities still wins on "what to promote").
+    { id: 'marketing_campaign', score: scoreKeywords(query, MARKETING_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     { id: 'sales_summary', score: scoreKeywords(query, SALES_KEYWORDS) },
     { id: 'inventory_low', score: scoreKeywords(query, INVENTORY_LOW_KEYWORDS) },
@@ -290,7 +369,7 @@ export function classifyIntent(
       BEST_CUSTOMER_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
-      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
       DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, HELP_KEYWORDS,
     ];
@@ -306,6 +385,24 @@ export function classifyIntent(
         result.candidateCustomers = matches;
       }
     }
+  }
+
+  // R-INTEL-PRODUCT-PUSH-ENGINE: extract the product fragment from queries
+  // like "promote this product Galaxy S24" so the handler can both build a
+  // targeted message ("we just got Galaxy S24") and label the queue reason.
+  // Reuses extractName: flattens every keyword bank into stop words and
+  // returns the longest non-stop fragment — that's the product name.
+  if (winner.id === 'product_push') {
+    const allBanks = [
+      BEST_CUSTOMER_KEYWORDS, CUSTOMER_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
+      REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
+      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, HELP_KEYWORDS,
+    ];
+    const productFragment = extractName(query, allBanks);
+    if (productFragment) result.extractedProduct = productFragment;
   }
 
   return result;
