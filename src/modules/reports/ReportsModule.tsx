@@ -211,7 +211,12 @@ function classifyItem(item: SaleItem): ItemKind {
     // legacy services that are actually repairs
     const n = (item.name || '').toLowerCase();
     if (n.includes('repair') || n.includes('reparación')) return 'repair';
-    if (n.includes('unlock') || n.includes('desbloqueo')) return 'unlock';
+    // R-REPORTS-LAYAWAY-CATEGORY-FIX: "UNLOCKED" in a product name (e.g.
+    // "SAMSUNG GALAXY S24 ULTRA UNLOCKED — Layaway") is a product attribute,
+    // NOT a service-category signal. Skip name-based unlock detection when
+    // the item carries an explicit layawayId — those are layaway payments
+    // and must bucket under 'Layaway' (catName override below).
+    if (!item.layawayId && (n.includes('unlock') || n.includes('desbloqueo'))) return 'unlock';
     return 'service';
   }
   return 'product';
@@ -776,6 +781,34 @@ export default function ReportsModule() {
           profitCents = revenueCents - costCents;
         }
 
+        // R-LAYAWAY-PROFIT-PROPORTIONAL-FIX: layaway-linked items represent
+        // fractional payments toward a larger inventory item. Without this,
+        // item.cost is rarely stamped on the cart line, so the kind branches
+        // above leave costCents=0 and the full payment counts as 100% profit.
+        // Use the linked layaway's parts cost scaled by payment/totalPrice
+        // (round-half-to-even via Math.round inside the helper). Pseudo-item
+        // path below already applies the same helper, so we only override
+        // here when the item is NOT a pseudo-item (those paths are mutually
+        // exclusive at the if/else below). No NaN risk: helper returns 0 for
+        // any missing/zero denominator or missing inventory cost, and we
+        // only override when proportional > 0 (otherwise existing math stands).
+        if (item.layawayId && !isPseudoItem(item)) {
+          const linked = safeLayaways.find((l) => l.id === item.layawayId);
+          if (linked) {
+            const proportional = getLayawayProportionalCost(linked, inventory, revenueCents);
+            if (proportional > 0) {
+              costCents = proportional;
+              profitCents = revenueCents - proportional;
+            }
+          }
+        }
+
+        // R-REPORTS-LAYAWAY-CATEGORY-FIX: layaway-linked items always bucket
+        // under 'Layaway' regardless of surface kind/category. Cost/profit math
+        // computed above is unchanged — only the bucket label shifts. The
+        // pseudo-item proportional-cost path below uses `cat` after this rebind
+        // so layaway pseudo-items also consolidate under 'Layaway'.
+        if (item.layawayId) catName = 'Layaway';
         const cat = ensureCat(catName);
         cat.quantity += qty;
         cat.revenueCents += revenueCents;
