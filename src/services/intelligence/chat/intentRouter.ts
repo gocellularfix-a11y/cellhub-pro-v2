@@ -48,6 +48,7 @@ export type IntentId =
   | 'dead_stock_root_cause'
   | 'customer_churn_root_cause'
   | 'help'
+  | 'data_query'
   // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
@@ -327,6 +328,43 @@ const CUSTOMER_CHURN_KEYWORDS = [
   'não voltam', 'pararam de vir',
 ];
 
+// R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal "show me data" intent.
+// Catches operational metrics queries that don't fit the other intents:
+// "how many", "show me", "qué reparaciones están listas", "phone payments
+// today", "low stock", "top customers", etc. Listed AFTER the high-priority
+// intents (today_summary, product_push, who_to_contact_today, etc.) but
+// BEFORE customer_history / sales_summary / fallback_question so generic
+// data questions don't get swallowed by the name-lookup or last-30-days
+// summary path.
+const DATA_QUERY_KEYWORDS = [
+  // EN
+  'show me', 'how much', 'how many', 'what did we sell',
+  'sales today', 'sales yesterday', 'sales this week', 'sales this month',
+  'profit today', 'profit yesterday',
+  'repairs ready', 'ready repairs', 'pending layaways',
+  'low stock', 'dead stock', 'top customers', 'best customers',
+  'phone payments', 'unlocks today',
+  'inactive customers',
+  // ES
+  'cuánto', 'cuanto', 'cuántos', 'cuantos',
+  'qué vendimos', 'que vendimos',
+  'ventas de hoy', 'ventas de ayer', 'ventas esta semana', 'ventas este mes',
+  'ganancia de hoy',
+  'reparaciones listas', 'reparaciones están listas', 'reparaciones estan listas',
+  'layaways pendientes', 'apartados pendientes',
+  'bajo inventario', 'productos bajos', 'inventario bajo',
+  'productos muertos', 'stock muerto',
+  'mejores clientes',
+  'pagos de teléfono', 'pagos de telefono',
+  'clientes inactivos',
+  // PT
+  'quanto', 'quantos',
+  'vendas de hoje', 'vendas de ontem', 'vendas desta semana',
+  'reparos prontos', 'estoque baixo', 'estoque parado',
+  'melhores clientes', 'clientes inativos',
+  'pagamentos de telefone',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -411,6 +449,12 @@ export function classifyIntent(
     // (keyword overlap on "promote/promover" — we want marketing engine on phrases
     // like "promote products"; product_opportunities still wins on "what to promote").
     { id: 'marketing_campaign', score: scoreKeywords(query, MARKETING_KEYWORDS) },
+    // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
+    // the high-priority specific intents above and BEFORE customer_history
+    // and sales_summary so operational metrics ("low stock", "ready repairs",
+    // "phone payments today", etc.) don't get swallowed by name lookup or
+    // the generic 30-day sales summary.
+    { id: 'data_query', score: scoreKeywords(query, DATA_QUERY_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: must run BEFORE sales_summary so
     // queries like "hoy" / "como estamos hoy" route to today-only metrics.
@@ -461,7 +505,7 @@ export function classifyIntent(
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
-      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, HELP_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {
@@ -489,7 +533,7 @@ export function classifyIntent(
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
-      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, HELP_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
     ];
     const productFragment = extractName(query, allBanks);
     if (productFragment) result.extractedProduct = productFragment;

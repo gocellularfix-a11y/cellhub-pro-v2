@@ -18,6 +18,17 @@ import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
 // engine.refresh() — only handleWhoToContactToday triggers the queue.
 import { enqueueOutreachActions } from '../actions';
+// R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data_query intent reads
+// engine arrays via read-only getters and routes through the data
+// access layer for deterministic operational answers.
+import {
+  getSalesSummary, getInventorySummary, getLowStockItems, getDeadStockItems,
+  getCustomerSummary, getTopCustomers, getInactiveCustomers,
+  getRepairSummary, getReadyRepairs,
+  getUnlockSummary, getLayawaySummary, getPendingLayaways,
+  getPhonePaymentSummary, getSpecialOrderSummary, getReturnSummary,
+  type DateRange,
+} from '../dataAccess/cellhubDataAccess';
 
 const COP = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -133,6 +144,9 @@ export function handleIntent(
 
     case 'help':
       return handleHelp(es);
+
+    case 'data_query':
+      return handleDataQuery(match, engine, lang);
 
     case 'fallback_question':
       return handleFallbackQuestion(match, engine, lang);
@@ -875,8 +889,19 @@ function handleMarketingCampaign(engine: IntelligenceEngine, lang: Lang3): ChatR
 // items. Existing 24h dedup in actions.ts on (customerId, type=
 // 'whatsapp') prevents over-queueing same customer in same 24h window.
 function handleProductPush(match: IntentMatch, engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  // R-INTEL-INVENTORY-PROMOTE-BUTTON: thin adapter — delegates to
+  // runProductPush so non-chat callers (e.g. InventoryModule's Promote
+  // button) can invoke the same ranking + queue logic without going
+  // through the chat router.
+  return runProductPush(engine, lang, (match.extractedProduct || '').trim());
+}
+
+// R-INTEL-INVENTORY-PROMOTE-BUTTON: exported single-source helper. Same
+// scoring/eligibility/decision-tree as the chat handler — 1 implementation,
+// 2 callsites (chat handler + InventoryModule Promote button).
+export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProductName: string): ChatResponse {
   const t = tChat(lang);
-  const productName = (match.extractedProduct || '').trim();
+  const productName = (rawProductName || '').trim();
   if (!productName) {
     return { kind: 'answer', text: t('chat.productPush.noProduct') };
   }
@@ -1246,6 +1271,251 @@ function handleHelp(es: boolean): ChatResponse {
     kind: 'help',
     text: (es ? 'Puedo responder:\n' : 'I can answer:\n') + items.join('\n'),
   };
+}
+
+// ── Universal data query handler (R-INTEL-CELLHUB-DATA-ACCESS-LAYER) ─
+// Inspects the raw query, picks the right data access function, returns a
+// concise operator-format answer (header + key numbers + optional list +
+// action). Topic detection is regex-based and deterministic. Range
+// detection (today/yesterday/this_week/this_month/last_30_days) is
+// inferred from the query — defaults to last_30_days.
+function detectDataQueryRange(q: string): DateRange {
+  if (/today|hoy|hoje/.test(q)) return 'today';
+  if (/yesterday|ayer|ontem/.test(q)) return 'yesterday';
+  if (/this week|esta semana/.test(q)) return 'this_week';
+  if (/this month|este mes|este mês/.test(q)) return 'this_month';
+  return 'last_30_days';
+}
+
+function rangeLabel(range: DateRange, lang: Lang3): string {
+  const labels: Record<DateRange, Record<Lang3, string>> = {
+    today: { en: 'today', es: 'hoy', pt: 'hoje' },
+    yesterday: { en: 'yesterday', es: 'ayer', pt: 'ontem' },
+    this_week: { en: 'this week', es: 'esta semana', pt: 'esta semana' },
+    this_month: { en: 'this month', es: 'este mes', pt: 'este mês' },
+    last_30_days: { en: 'last 30 days', es: 'últimos 30 días', pt: 'últimos 30 dias' },
+  };
+  return labels[range][lang] ?? labels[range].en;
+}
+
+function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const q = (match.query || '').toLowerCase();
+  const range = detectDataQueryRange(q);
+  const actionLbl = t('chat.dataQuery.action');
+
+  // ── Repairs ────────────────────────────────────────────
+  if (/repair|repara|reparo/.test(q)) {
+    if (/ready|listas|listos|prontos/.test(q)) {
+      const list = getReadyRepairs(engine.getRepairs(), 10);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.repairsHeader')} — ${t('chat.dataQuery.readyItems')}: ${list.length}`, ''];
+      list.forEach((r, i) => {
+        const name = (r as { customerName?: string }).customerName || (r as { customer?: string }).customer || '—';
+        const dev = (r as { itemDescription?: string; deviceModel?: string }).itemDescription || (r as { deviceModel?: string }).deviceModel || '';
+        const total = (r as { total?: number; estimatedCost?: number }).total || (r as { estimatedCost?: number }).estimatedCost || 0;
+        lines.push(`${i + 1}. ${name}${dev ? ` — ${dev}` : ''}${total ? ` — ${COP(total)}` : ''}`);
+      });
+      lines.push('');
+      lines.push(`💡 ${actionLbl}: ${lang === 'es' ? 'manda WhatsApp a estos clientes para que pasen hoy' : lang === 'pt' ? 'envie WhatsApp para esses clientes virem hoje' : 'WhatsApp these customers to pick up today'}`);
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    const sum = getRepairSummary(engine.getRepairs());
+    const lines = [
+      t('chat.dataQuery.repairsHeader'),
+      '',
+      `• ${t('chat.dataQuery.readyItems')}: ${sum.ready}${sum.overdue > 0 ? ` (${sum.overdue} overdue)` : ''}`,
+      `• ${lang === 'es' ? 'Activas' : lang === 'pt' ? 'Ativas' : 'Active'}: ${sum.active}`,
+      `• ${lang === 'es' ? 'Recogidas' : lang === 'pt' ? 'Retiradas' : 'Picked up'}: ${sum.pickedUp}`,
+    ];
+    if (sum.ready > 0) {
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'contacta a los clientes con reparación lista' : lang === 'pt' ? 'contate clientes com reparo pronto' : 'contact customers with ready repairs'}`);
+    }
+    return { kind: 'answer', text: lines.join('\n') };
+  }
+
+  // ── Layaways ───────────────────────────────────────────
+  if (/layaway|apartado|reserva/.test(q)) {
+    if (/pend|partial|pendientes|pendentes/.test(q)) {
+      const list = getPendingLayaways(engine.getLayaways(), 10);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.layawaysHeader')} — ${t('chat.dataQuery.pendingItems')}: ${list.length}`, ''];
+      list.forEach((l, i) => {
+        const name = (l as { customerName?: string }).customerName || '—';
+        const desc = (l as { itemDescription?: string }).itemDescription || '';
+        const balance = (l as { balance?: number }).balance || 0;
+        lines.push(`${i + 1}. ${name}${desc ? ` — ${desc}` : ''} — ${COP(balance)} ${lang === 'es' ? 'pendiente' : lang === 'pt' ? 'pendente' : 'due'}`);
+      });
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'contacta para cobrar el saldo pendiente' : lang === 'pt' ? 'contate para receber o saldo pendente' : 'reach out to collect the outstanding balance'}`);
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    const sum = getLayawaySummary(engine.getLayaways());
+    return {
+      kind: 'answer',
+      text: [
+        t('chat.dataQuery.layawaysHeader'),
+        '',
+        `• ${lang === 'es' ? 'Activos' : lang === 'pt' ? 'Ativos' : 'Active'}: ${sum.active}`,
+        `• ${t('chat.dataQuery.pendingItems')}: ${sum.pending}`,
+        `• ${lang === 'es' ? 'Completados' : lang === 'pt' ? 'Concluídos' : 'Completed'}: ${sum.completed}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Inventory: low / dead / general ────────────────────
+  if (/inventor|stock|product|invent[áa]rio|estoque|produto/.test(q)) {
+    if (/low|baj|baixo|short|escaso/.test(q)) {
+      const list = getLowStockItems(engine.getInventory(), 5, 10);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.inventoryHeader')} — ${lang === 'es' ? 'bajo inventario' : lang === 'pt' ? 'estoque baixo' : 'low stock'}: ${list.length}`, ''];
+      list.slice(0, 5).forEach((it, i) => {
+        const name = (it as { name?: string }).name || '—';
+        const qty = (it as { qty?: number }).qty || 0;
+        lines.push(`${i + 1}. ${name} — ${qty}`);
+      });
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'repón primero los que más se venden' : lang === 'pt' ? 'reabasteça primeiro os que mais vendem' : 'restock the fast movers first'}`);
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    if (/dead|muerto|parado|sin venta/.test(q)) {
+      const list = getDeadStockItems(engine.getInventory(), engine.getSales(), 60, 10);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.inventoryHeader')} — ${lang === 'es' ? 'sin movimiento (60d)' : lang === 'pt' ? 'sem movimento (60d)' : 'dead stock (60d)'}: ${list.length}`, ''];
+      list.slice(0, 5).forEach((it, i) => {
+        const name = (it as { name?: string }).name || '—';
+        const qty = (it as { qty?: number }).qty || 0;
+        lines.push(`${i + 1}. ${name} — ${qty}`);
+      });
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'descuenta o promociona estos productos' : lang === 'pt' ? 'desconto ou promova esses produtos' : 'discount or promote these items'}`);
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    const sum = getInventorySummary(engine.getInventory(), 5);
+    return {
+      kind: 'answer',
+      text: [
+        t('chat.dataQuery.inventoryHeader'),
+        '',
+        `• ${lang === 'es' ? 'Total de productos' : lang === 'pt' ? 'Total de itens' : 'Total items'}: ${sum.totalItems}`,
+        `• ${lang === 'es' ? 'Valor en venta' : lang === 'pt' ? 'Valor em venda' : 'Retail value'}: ${COP(sum.totalValueCents)}`,
+        `• ${lang === 'es' ? 'Costo total' : lang === 'pt' ? 'Custo total' : 'Cost basis'}: ${COP(sum.totalCostCents)}`,
+        `• ${lang === 'es' ? 'Bajo inventario' : lang === 'pt' ? 'Estoque baixo' : 'Low stock'}: ${sum.lowStockCount}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Customers: top / inactive / general ────────────────
+  if (/customer|cliente/.test(q)) {
+    if (/top|mejor|melhor|best/.test(q)) {
+      const list = getTopCustomers(engine.getCustomers(), engine.getSales(), 5);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.customersHeader')} — top ${list.length}`, ''];
+      list.forEach((c, i) => {
+        lines.push(`${i + 1}. ${c.name || '—'} — ${COP(c.revenueCents)} (${c.visitCount} ${lang === 'es' ? 'visitas' : lang === 'pt' ? 'visitas' : 'visits'})`);
+      });
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    if (/inactive|inactivo|inativo/.test(q)) {
+      const list = getInactiveCustomers(engine.getCustomers(), engine.getSales(), 30, 10);
+      if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+      const lines = [`${t('chat.dataQuery.customersHeader')} — ${lang === 'es' ? 'inactivos 30d+' : lang === 'pt' ? 'inativos 30d+' : 'inactive 30d+'}: ${list.length}`, ''];
+      list.slice(0, 5).forEach((c, i) => {
+        lines.push(`${i + 1}. ${c.name} — ${c.daysSinceLastVisit}d`);
+      });
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'envía oferta de regreso' : lang === 'pt' ? 'envie oferta de retorno' : 'send a comeback offer'}`);
+      return { kind: 'answer', text: lines.join('\n') };
+    }
+    const sum = getCustomerSummary(engine.getCustomers(), engine.getSales());
+    return {
+      kind: 'answer',
+      text: [
+        t('chat.dataQuery.customersHeader'),
+        '',
+        `• Total: ${sum.total}`,
+        `• ${lang === 'es' ? 'Activos (30d)' : lang === 'pt' ? 'Ativos (30d)' : 'Active (30d)'}: ${sum.active30d}`,
+        `• ${lang === 'es' ? 'Inactivos (30d+)' : lang === 'pt' ? 'Inativos (30d+)' : 'Inactive (30d+)'}: ${sum.inactive30d}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Unlocks ────────────────────────────────────────────
+  if (/unlock|desbloque/.test(q)) {
+    const sum = getUnlockSummary(engine.getUnlocks());
+    return {
+      kind: 'answer',
+      text: [
+        t('chat.dataQuery.unlocksHeader'),
+        '',
+        `• ${lang === 'es' ? 'Activos' : lang === 'pt' ? 'Ativos' : 'Active'}: ${sum.active}`,
+        `• ${lang === 'es' ? 'Completados' : lang === 'pt' ? 'Concluídos' : 'Completed'}: ${sum.completed}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Phone payments ─────────────────────────────────────
+  if (/phone payment|pagos? de tel|pagamento.*tel|recharge|recarga/.test(q)) {
+    const sum = getPhonePaymentSummary(engine.getSales(), range);
+    if (sum.count === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+    return {
+      kind: 'answer',
+      text: [
+        `${t('chat.dataQuery.phonePaymentsHeader')} — ${rangeLabel(range, lang)}`,
+        '',
+        `• ${lang === 'es' ? 'Cantidad' : lang === 'pt' ? 'Quantidade' : 'Count'}: ${sum.count}`,
+        `• ${lang === 'es' ? 'Volumen' : lang === 'pt' ? 'Volume' : 'Volume'}: ${COP(sum.revenueCents)}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Special orders ─────────────────────────────────────
+  if (/special order|pedido especial|encargo|encomenda/.test(q)) {
+    const sum = getSpecialOrderSummary(engine.getSpecialOrders());
+    return {
+      kind: 'answer',
+      text: [
+        '📦 ' + (lang === 'es' ? 'Pedidos especiales' : lang === 'pt' ? 'Pedidos especiais' : 'Special orders'),
+        '',
+        `• ${lang === 'es' ? 'Activos' : lang === 'pt' ? 'Ativos' : 'Active'}: ${sum.active}`,
+        `• ${t('chat.dataQuery.readyItems')}: ${sum.ready}`,
+        `• ${lang === 'es' ? 'Recogidos' : lang === 'pt' ? 'Retirados' : 'Picked up'}: ${sum.pickedUp}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Returns ────────────────────────────────────────────
+  if (/return|devolu|reembols/.test(q)) {
+    const sum = getReturnSummary(engine.getReturns(), range);
+    return {
+      kind: 'answer',
+      text: [
+        '↩️ ' + (lang === 'es' ? 'Devoluciones' : lang === 'pt' ? 'Devoluções' : 'Returns') + ` — ${rangeLabel(range, lang)}`,
+        '',
+        `• ${lang === 'es' ? 'Cantidad' : lang === 'pt' ? 'Quantidade' : 'Count'}: ${sum.count}`,
+        `• ${lang === 'es' ? 'Total reembolsado' : lang === 'pt' ? 'Total reembolsado' : 'Total refunded'}: ${COP(sum.totalRefundedCents)}`,
+      ].join('\n'),
+    };
+  }
+
+  // ── Sales (default for "how much / cuánto / quanto / vendi") ───
+  if (/sale|venta|sold|vendi|how much|cuanto|cuánto|quanto|profit|ganancia|lucro/.test(q)) {
+    const sum = getSalesSummary(engine.getSales(), range);
+    if (sum.count === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+    const lines = [
+      `${t('chat.dataQuery.salesHeader')} — ${rangeLabel(range, lang)}`,
+      '',
+      `• ${lang === 'es' ? 'Ventas' : lang === 'pt' ? 'Vendas' : 'Revenue'}: ${COP(sum.revenueCents)}`,
+      `• ${lang === 'es' ? 'Transacciones' : lang === 'pt' ? 'Transações' : 'Transactions'}: ${sum.count}`,
+      `• ${lang === 'es' ? 'Ticket promedio' : lang === 'pt' ? 'Ticket médio' : 'Avg ticket'}: ${COP(sum.avgTicketCents)}`,
+    ];
+    if (sum.topSeller) {
+      lines.push(`• ${lang === 'es' ? 'Más vendido' : lang === 'pt' ? 'Mais vendido' : 'Top seller'}: ${sum.topSeller.name}`);
+    }
+    if (range === 'today') {
+      lines.push('', `💡 ${actionLbl}: ${lang === 'es' ? 'revisa pagos pendientes para cerrar más antes de terminar el día' : lang === 'pt' ? 'cobre pagamentos pendentes para fechar mais antes do fim do dia' : 'collect pending payments to close more before end of day'}`);
+    }
+    return { kind: 'answer', text: lines.join('\n') };
+  }
+
+  // No topic match — defer to fallback message.
+  return { kind: 'answer', text: t('chat.dataQuery.noData') };
 }
 
 // ── Fallback open-question handler ──────────────────────────

@@ -434,6 +434,19 @@ export class IntelligenceEngine {
     return this.analyze();
   }
 
+  // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: read-only getters so the chat
+  // data_query handler can route to cellhubDataAccess functions without
+  // accessing private fields. Returns the engine's adapted arrays
+  // (post-schemaAdapter normalization). Caller MUST treat as read-only.
+  getSales(): Sale[] { return this.sales; }
+  getInventory(): InventoryItem[] { return this.inventory; }
+  getCustomers(): Customer[] { return this.customers; }
+  getRepairs(): Repair[] { return this.repairs; }
+  getUnlocks(): Unlock[] { return this.unlocks; }
+  getLayaways(): Layaway[] { return this.layaways; }
+  getSpecialOrders(): SpecialOrder[] { return this.specialOrders; }
+  getReturns(): CustomerReturn[] { return this.customerReturns; }
+
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
   // today_summary intent. Filters sales by createdAt >= midnight + status
   // not voided/refunded. Returns revenue, transaction count, average ticket
