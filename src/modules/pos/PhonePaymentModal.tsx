@@ -736,20 +736,26 @@ export default function PhonePaymentModal({
         const normalizedCarrier = normalizeCarrier(lineCarrierRaw);
         const phone = normalizePhone(line.number);
         const lineNote = line.customerName || customerNote;
+        const priceCents = Math.round(parseFloat(line.amount) * 100);
+        const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+          ?? settings.defaultCommissionRate
+          ?? 0.07);
         items.push({
           id: generateId(),
           name: `${normalizedCarrier} - ${formatPhone(phone)}`,
           category: 'phone_payment',
-          price: Math.round(parseFloat(line.amount) * 100),
+          price: priceCents,
+          // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time so consumers
+          // (Dashboard/Reports/Tax) read profit directly via (price - cost) × qty
+          // instead of re-deriving via commission lookup. Math mirrors Reports.
+          cost: Math.round(priceCents * (1 - commRate)),
           qty: 1, taxable: false, cbeEligible: false,
           carrier: normalizedCarrier, phoneNumber: phone,
           // R-PHONE-FAMILY-MULTILINE-TOTALS: persist per-line rate so historical
           // reports (sum of item.price × item.commissionRate) match the preview.
           // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (was `?? 0` —
           // silent zero corrupted reports when carrier missing from settings).
-          commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-            ?? settings.defaultCommissionRate
-            ?? 0.07),
+          commissionRate: commRate,
           notes: lineNote,
         });
       });
@@ -768,11 +774,17 @@ export default function PhonePaymentModal({
       }
       const digits = sanitizePhone(phoneNumber);
       if (parseFloat(amount) <= 0) return [];
+      const priceCents = Math.round(parseFloat(amount) * 100);
+      const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+        ?? settings.defaultCommissionRate
+        ?? 0.07);
       items.push({
         id: generateId(),
         name: `${normalizedCarrier} - ${formatPhone(digits)}`,
         category: 'phone_payment',
-        price: Math.round(parseFloat(amount) * 100),
+        price: priceCents,
+        // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time (parity w/ multi-line path).
+        cost: Math.round(priceCents * (1 - commRate)),
         qty: 1, taxable: false, cbeEligible: false,
         carrier: normalizedCarrier,
         // Re-sanitize at the persist boundary (defense in depth) — never
@@ -783,9 +795,7 @@ export default function PhonePaymentModal({
         // handlePortalForLine/activation — reports need this to attribute
         // commission on historical single-line sales.
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-          ?? settings.defaultCommissionRate
-          ?? 0.07),
+        commissionRate: commRate,
         notes: customerNote,
       });
     }
@@ -980,11 +990,17 @@ export default function PhonePaymentModal({
     // and fall back to the global note for manually typed lines.
     const customerNote = line.customerName || `${firstName} ${lastName}`.trim();
 
+    const priceCents = Math.round(amt * 100);
+    const commRate = (settings.carrierCommissions?.[normCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
     const newItem: CartItem = {
       id: generateId(),
       name: `${normCarrier} - ${formatPhone(phone)}`,
       category: 'phone_payment',
-      price: Math.round(amt * 100),
+      price: priceCents,
+      // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time (parity w/ buildCartItems paths).
+      cost: Math.round(priceCents * (1 - commRate)),
       qty: 1,
       taxable: false,
       cbeEligible: false,
@@ -992,9 +1008,7 @@ export default function PhonePaymentModal({
       phoneNumber: phone,
       notes: customerNote,
       // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-      commissionRate: (settings.carrierCommissions?.[normCarrier]
-        ?? settings.defaultCommissionRate
-        ?? 0.07),
+      commissionRate: commRate,
     };
 
     // Open this carrier's portal (if URL configured).
@@ -1138,11 +1152,16 @@ export default function PhonePaymentModal({
     // or the customer gets double-charged.
     const customerNote = `${firstName} ${lastName}`.trim();
     if (planPriceCents > 0) {
+      const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+        ?? settings.defaultCommissionRate
+        ?? 0.07);
       newItems.push({
         id: generateId(),
         name: `📱 ${t('phonePay.itemPlanName')} ${normalizedCarrier}${planLabel}`,
         category: 'phone_payment',
         price: planPriceCents,
+        // R-PHONEPAYMENT-COST-STAMP: stamp cost on activation plan (treated as phone_payment by Reports).
+        cost: Math.round(planPriceCents * (1 - commRate)),
         qty: 1,
         taxable: false,
         cbeEligible: false,
@@ -1150,9 +1169,7 @@ export default function PhonePaymentModal({
         phoneNumber: phoneNorm,
         notes: [customerNote, actNotes.trim()].filter(Boolean).join(' — '),
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-          ?? settings.defaultCommissionRate
-          ?? 0.07),
+        commissionRate: commRate,
       });
     }
 
