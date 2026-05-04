@@ -22,9 +22,10 @@ import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
 // R-INTEL-INVENTORY-PROMOTE-BUTTON: per-row Promote button delegates to
 // the same Product Push engine the chat handler uses (single-source).
-import { IntelligenceEngine } from '@/services/intelligence/IntelligenceEngine';
-import { runProductPush } from '@/services/intelligence/chat/handlers';
-import { getOutreachQueue } from '@/services/intelligence/actions';
+// R-PERF-INVENTORY-PROMOTE-DYNAMIC-IMPORT: type-only import keeps the
+// intel runtime out of the Inventory chunk; the actual modules are
+// lazy-loaded inside handlePromote on first click.
+import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/intelligence/IntelligenceEngine';
 
 export default function InventoryModule() {
   const {
@@ -187,7 +188,7 @@ export default function InventoryModule() {
   // the cost; subsequent clicks reuse the same instance unless the
   // underlying data signature changes (sales/customers/inventory/repairs
   // length delta). Mirrors IntelligenceModule's useRef + sig pattern.
-  const promoteEngineRef = useRef<IntelligenceEngine | null>(null);
+  const promoteEngineRef = useRef<IntelligenceEngineType | null>(null);
   const promoteEngineSigRef = useRef<string>('');
 
   // ── CRUD ────────────────────────────────────────────────
@@ -297,9 +298,20 @@ export default function InventoryModule() {
   // Queue items get type='product_push_whatsapp' + status='pending_approval'
   // so they don't collide with other intents and require explicit
   // approval in the Intelligence queue UI before execute.
-  const handlePromote = useCallback((item: InventoryItem) => {
+  const handlePromote = useCallback(async (item: InventoryItem) => {
     try {
       const engineLang = (locale === 'es' || locale === 'pt') ? locale : 'en';
+
+      // R-PERF-INVENTORY-PROMOTE-DYNAMIC-IMPORT: lazy-load the intel
+      // runtime on first click so the Inventory chunk stays lean for
+      // shops that never use Promote. Subsequent clicks resolve from
+      // module cache (~free). Parallel imports minimize first-click
+      // latency vs serial.
+      const [{ IntelligenceEngine }, { runProductPush }, { getOutreachQueue }] = await Promise.all([
+        import('@/services/intelligence/IntelligenceEngine'),
+        import('@/services/intelligence/chat/handlers'),
+        import('@/services/intelligence/actions'),
+      ]);
 
       // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: reuse the engine across
       // clicks. dataSig keys on array lengths — cheap O(1) check that
