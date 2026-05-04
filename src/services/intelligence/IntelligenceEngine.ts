@@ -102,6 +102,18 @@ export class IntelligenceEngine {
   private cachedResult?: EngineResult;
   private lastRun?: Date;
 
+  // R-PERF-INTELLIGENCE-CACHE: raw input references kept so updateData()
+  // can ref-equality-skip when nothing changed across React re-renders.
+  // Adapted versions live in this.sales/customers/inventory/repairs above.
+  private _rawSales: Sale[] = [];
+  private _rawCustomers: Customer[] = [];
+  private _rawInventory: InventoryItem[] = [];
+  private _rawRepairs: Repair[] = [];
+  private _rawSpecialOrders: SpecialOrder[] = [];
+  private _rawUnlocks: Unlock[] = [];
+  private _rawLayaways: Layaway[] = [];
+  private _rawCustomerReturns: CustomerReturn[] = [];
+
   constructor(
     sales: Sale[],
     customers: Customer[],
@@ -127,6 +139,18 @@ export class IntelligenceEngine {
     this.unlocks = extras.unlocks ?? [];
     this.layaways = extras.layaways ?? [];
     this.customerReturns = extras.customerReturns ?? [];
+
+    // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
+    // ref-equality skip. Stored AFTER extras defaults so the same defaults
+    // are reused if updateData omits one (extras?.specialOrders ?? this.x).
+    this._rawSales = sales;
+    this._rawCustomers = customers;
+    this._rawInventory = inventory;
+    this._rawRepairs = repairs;
+    this._rawSpecialOrders = this.specialOrders;
+    this._rawUnlocks = this.unlocks;
+    this._rawLayaways = this.layaways;
+    this._rawCustomerReturns = this.customerReturns;
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -180,6 +204,20 @@ export class IntelligenceEngine {
   }
 
   analyze(window?: AnalysisWindow): EngineResult {
+    // R-PERF-INTELLIGENCE-CACHE: 60-second result cache so back-to-back
+    // analyze() calls (chat handlers each call engine.refresh() → analyze()
+    // → 9 chat queries per session) reuse the prior pass instead of redoing
+    // the full analyzers + scorers + alert engine work. Cache is invalidated
+    // by updateData() when input refs change; window-scoped queries skip
+    // the cache because the cached result is anchored to the default window.
+    if (
+      !window
+      && this.cachedResult
+      && this.lastRun
+      && (Date.now() - this.lastRun.getTime()) < 60_000
+    ) {
+      return this.cachedResult;
+    }
     const analysisWindow = window || {
       start: getDaysAgo(30),
       end: new Date(),
@@ -394,6 +432,76 @@ export class IntelligenceEngine {
 
   refresh(): EngineResult {
     return this.analyze();
+  }
+
+  // R-PERF-INTELLIGENCE-CACHE: hot-swap input data without rebuilding the
+  // engine instance. Module-side caller (IntelligenceModule.tsx) holds a
+  // useRef-stable engine and calls updateData() per render — when refs
+  // are unchanged this is a no-op (cheap), when changed it re-adapts the
+  // data, rebuilds the analyzers/scorers (which hold internal data refs),
+  // and invalidates the analyze() cache. Mirrors constructor data-setup
+  // logic; intentionally does not touch this.config (config-level changes
+  // still trigger a full engine rebuild on the module side).
+  updateData(
+    sales: Sale[],
+    customers: Customer[],
+    inventory: InventoryItem[],
+    repairs: Repair[],
+    extras: EngineExtras = {},
+  ): void {
+    const newSpecialOrders = extras.specialOrders ?? this._rawSpecialOrders;
+    const newUnlocks = extras.unlocks ?? this._rawUnlocks;
+    const newLayaways = extras.layaways ?? this._rawLayaways;
+    const newCustomerReturns = extras.customerReturns ?? this._rawCustomerReturns;
+
+    if (
+      sales === this._rawSales
+      && customers === this._rawCustomers
+      && inventory === this._rawInventory
+      && repairs === this._rawRepairs
+      && newSpecialOrders === this._rawSpecialOrders
+      && newUnlocks === this._rawUnlocks
+      && newLayaways === this._rawLayaways
+      && newCustomerReturns === this._rawCustomerReturns
+    ) {
+      return; // ref-equality: no work
+    }
+
+    this._rawSales = sales;
+    this._rawCustomers = customers;
+    this._rawInventory = inventory;
+    this._rawRepairs = repairs;
+    this._rawSpecialOrders = newSpecialOrders;
+    this._rawUnlocks = newUnlocks;
+    this._rawLayaways = newLayaways;
+    this._rawCustomerReturns = newCustomerReturns;
+
+    this.inventory = adaptInventory(inventory as unknown as unknown[]);
+    this.sales = adaptSale(sales as unknown as unknown[], this.inventory);
+    this.customers = adaptCustomer(customers as unknown as unknown[]);
+    this.repairs = adaptRepair(repairs as unknown as unknown[]);
+    this.specialOrders = newSpecialOrders;
+    this.unlocks = newUnlocks;
+    this.layaways = newLayaways;
+    this.customerReturns = newCustomerReturns;
+
+    // Analyzers / scorers hold internal references to the data arrays they
+    // were constructed with. Rebuild them so they see the fresh adapted
+    // arrays. Constructor signatures + arg order kept identical to the
+    // original constructor block above.
+    this.salesAnalyzer = new SalesAnalyzer(this.sales, this.customers, this.config.storeId, this.config.lang);
+    this.inventoryAnalyzer = new InventoryAnalyzer(this.inventory, this.sales, undefined, this.config.lang);
+    this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
+    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
+    this.customerScorer = new CustomerScorer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    this.inventoryScorer = new InventoryScorer(this.inventory, this.sales, this.config.storeId, this.config.lang);
+    this.repairScorer = new RepairScorer(this.repairs, this.config.storeId, this.config.lang);
+    // alertEngine does not hold data refs (only thresholds + lang) — keep.
+
+    // Invalidate analyze() cache so next call recomputes against fresh data.
+    this.cachedResult = undefined;
+    this.lastRun = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,

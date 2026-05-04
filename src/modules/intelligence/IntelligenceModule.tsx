@@ -3,7 +3,7 @@
 //
 // Layout: Chat → Today Summary → Smart Actions → Top Insight → Key Numbers → Alerts → Customer Lookup
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
@@ -43,16 +43,42 @@ export default function IntelligenceModule() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [externalQuery, setExternalQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
 
-  const engine = useMemo(() => {
-    return new IntelligenceEngine(
+  // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — was useMemo with 12
+  // dependencies, which forced a full constructor + adapter pass on every
+  // store mutation (~150-300ms with prod data). Now built once per session
+  // and rebuilt only when CONFIG-level inputs change (lang/store/refreshKey
+  // → user-driven, rare). Data refs flow through engine.updateData() below
+  // (cheap ref-equality skip when unchanged; rebuilds analyzers + invalidates
+  // cache when changed). analyze() itself has a 60s cache so back-to-back
+  // chat handler calls all hit the cached result.
+  const engineRef = useRef<IntelligenceEngine | null>(null);
+  const engineConfigSigRef = useRef<string>('');
+  const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}|${refreshKey}`;
+
+  if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
+    engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
       { specialOrders, unlocks, layaways, customerReturns },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, currentStoreId, consolidatedView, refreshKey]);
+    engineConfigSigRef.current = engineConfigSig;
+  }
+  const engine = engineRef.current;
 
-  const result: EngineResult = useMemo(() => engine.analyze(), [engine]);
+  // Push fresh data into the engine on every render. updateData() ref-
+  // equality skips when nothing changed — so minute-tick / search-input /
+  // unrelated-state re-renders cost nothing. When refs do change (new sale
+  // arrived, customer added), it re-adapts + rebuilds analyzers + drops
+  // the analyze() cache so the next analyze() runs fresh.
+  engine.updateData(sales, customers, inventory, repairs, {
+    specialOrders, unlocks, layaways, customerReturns,
+  });
+
+  const result: EngineResult = useMemo(
+    () => engine.analyze(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns],
+  );
 
   const nlgSummary = useMemo(() => summarizeDashboard(result, locale as 'en' | 'es' | 'pt'), [result, locale]);
   void nlgSummary; // available for future use
