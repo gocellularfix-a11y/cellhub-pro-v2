@@ -27,6 +27,23 @@ import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequir
 // lazy-loaded inside handlePromote on first click.
 import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/intelligence/IntelligenceEngine';
 
+// R-PERF-INVENTORY-PROMOTE-PRELOAD: module-level preload cache. The first
+// onMouseEnter/onFocus on a Promote button kicks off the intel chunk
+// download in parallel; the eventual click awaits the same promise so
+// it doesn't wait twice. Subsequent calls return the cached promise
+// (browser already has the modules) — near-zero cost.
+let promoteIntelPreloadPromise: Promise<unknown> | null = null;
+function preloadPromoteIntel(): Promise<unknown> {
+  if (!promoteIntelPreloadPromise) {
+    promoteIntelPreloadPromise = Promise.all([
+      import('@/services/intelligence/IntelligenceEngine'),
+      import('@/services/intelligence/chat/handlers'),
+      import('@/services/intelligence/actions'),
+    ]);
+  }
+  return promoteIntelPreloadPromise;
+}
+
 export default function InventoryModule() {
   const {
     // R-INTEL-INVENTORY-PROMOTE-BUTTON: customers, repairs, specialOrders,
@@ -115,7 +132,12 @@ export default function InventoryModule() {
     // shown as-is since it's already an acronym.
     if (!seen.has('SIM')) seen.set('SIM', 'SIM');
     return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, locale))];
-  }, [inventory, lang]);
+    // R-PERF-INVENTORY-LANG-SORT-REMOVE: dropped `lang` from deps. Latin-script
+    // sort order is near-identical across EN/ES/PT for inventory names; avoid
+    // re-sorting on every language toggle (was causing P2 lag in lang-switch
+    // perf audit). localeCompare still uses current locale at compute time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory]);
 
   // ── Conditions from data (plus static defaults) ─────────
   const conditions = useMemo(() => {
@@ -131,7 +153,9 @@ export default function InventoryModule() {
       if (!seen.has(key)) seen.set(key, cond);
     }
     return ['All', ...Array.from(seen.values()).sort((a, b) => a.localeCompare(b, locale))];
-  }, [inventory, lang]);
+    // R-PERF-INVENTORY-LANG-SORT-REMOVE: see categories memo comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory]);
 
   // ── Filtered list ───────────────────────────────────────
   const filtered = useMemo(() => {
@@ -150,7 +174,12 @@ export default function InventoryModule() {
         return matchesSearch(search, item.name, item.sku, item.barcode, item.imei, item.category);
       })
       .sort((a, b) => a.name.localeCompare(b.name, locale));
-  }, [inventory, filterCategory, filterCondition, showLowStockOnly, search, settings.lowStockThreshold, lang]);
+    // R-PERF-INVENTORY-LANG-SORT-REMOVE: dropped `lang` from deps for the same
+    // reason as the categories/conditions memos — Latin-script collation is
+    // near-identical across EN/ES/PT, so avoid re-running the full filter +
+    // sort on every language toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, filterCategory, filterCondition, showLowStockOnly, search, settings.lowStockThreshold]);
 
   // ── Stats ───────────────────────────────────────────────
   // Negative qty (oversells / data corruption) are clamped to 0 so they don't
@@ -305,13 +334,17 @@ export default function InventoryModule() {
       // R-PERF-INVENTORY-PROMOTE-DYNAMIC-IMPORT: lazy-load the intel
       // runtime on first click so the Inventory chunk stays lean for
       // shops that never use Promote. Subsequent clicks resolve from
-      // module cache (~free). Parallel imports minimize first-click
-      // latency vs serial.
-      const [{ IntelligenceEngine }, { runProductPush }, { getOutreachQueue }] = await Promise.all([
-        import('@/services/intelligence/IntelligenceEngine'),
-        import('@/services/intelligence/chat/handlers'),
-        import('@/services/intelligence/actions'),
-      ]);
+      // module cache (~free).
+      // R-PERF-INVENTORY-PROMOTE-PRELOAD: route through the shared
+      // preload cache — if the cashier hovered/focused a Promote
+      // button beforehand, the chunks are already downloading in
+      // parallel and this await is near-instant.
+      const [{ IntelligenceEngine }, { runProductPush }, { getOutreachQueue }] =
+        await preloadPromoteIntel() as [
+          typeof import('@/services/intelligence/IntelligenceEngine'),
+          typeof import('@/services/intelligence/chat/handlers'),
+          typeof import('@/services/intelligence/actions'),
+        ];
 
       // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: reuse the engine across
       // clicks. dataSig keys on array lengths — cheap O(1) check that
@@ -601,7 +634,10 @@ export default function InventoryModule() {
                         {/* R-INTEL-INVENTORY-PROMOTE-BUTTON: per-row promote
                             shortcut. Triggers the same Product Push engine
                             the chat handler uses (single-source). */}
-                        <button onClick={() => handlePromote(item)} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
+                        {/* R-PERF-INVENTORY-PROMOTE-PRELOAD: hover/focus
+                            kicks off the intel chunk download in parallel
+                            so the eventual click feels instant. */}
+                        <button onClick={() => handlePromote(item)} onMouseEnter={preloadPromoteIntel} onFocus={preloadPromoteIntel} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
                         <button onClick={() => { setEditItem(item); setShowModal(true); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
                         <button onClick={() => setDeleteConfirm(item.id)} title="Delete" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>🗑️</button>
                       </div>
