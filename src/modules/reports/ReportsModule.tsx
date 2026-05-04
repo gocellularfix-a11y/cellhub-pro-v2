@@ -624,6 +624,19 @@ export default function ReportsModule() {
       return categoryStats[key];
     };
 
+    // R-PERF-REPORTS-MAP-LOOKUP: replace per-item Array.find() lookups with
+    // O(1) Map.get() lookups. With ~1200 sales × ~3 items × 4 entity finds
+    // per item, the prior pattern was scanning safeRepairs/safeUnlocks/
+    // safeLayaways/safeSpecialOrders thousands of times per render. Behavior
+    // is identical: Map.get returns the same entity (or undefined) as
+    // Array.find on the id key. Maps built once at the top of this useMemo
+    // — they are recomputed only when the underlying arrays change (same
+    // dep churn that already triggers this useMemo).
+    const repairsById = new Map(safeRepairs.map((r) => [r.id, r]));
+    const unlocksById = new Map(safeUnlocks.map((u) => [u.id, u]));
+    const layawaysById = new Map(safeLayaways.map((l) => [l.id, l]));
+    const ordersById = new Map(safeSpecialOrders.map((o) => [o.id, o]));
+
     for (const sale of filteredSales) {
       const saleSubtotal = sale.subtotal || 0;
       const saleSubAfterDisc = sale.subtotalAfterDiscount ?? saleSubtotal;
@@ -737,7 +750,7 @@ export default function ReportsModule() {
         } else if (kind === 'repair') {
           catName = 'Repairs';
           if (item.repairId) {
-            const linkedRepair = safeRepairs.find((r) => r.id === item.repairId);
+            const linkedRepair = repairsById.get(item.repairId);
             if (linkedRepair) {
               const partsCost = (linkedRepair.parts || []).reduce((s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1), 0);
               const labor = linkedRepair.laborCost || 0;
@@ -754,7 +767,7 @@ export default function ReportsModule() {
         } else if (kind === 'unlock') {
           catName = 'Unlocks';
           if (item.unlockId) {
-            const linked = safeUnlocks.find((u) => u.id === item.unlockId);
+            const linked = unlocksById.get(item.unlockId);
             costCents = linked?.cost || 0;
           }
           profitCents = revenueCents - costCents;
@@ -793,7 +806,7 @@ export default function ReportsModule() {
         // any missing/zero denominator or missing inventory cost, and we
         // only override when proportional > 0 (otherwise existing math stands).
         if (item.layawayId && !isPseudoItem(item)) {
-          const linked = safeLayaways.find((l) => l.id === item.layawayId);
+          const linked = layawaysById.get(item.layawayId);
           if (linked) {
             const proportional = getLayawayProportionalCost(linked, inventory, revenueCents);
             if (proportional > 0) {
@@ -822,16 +835,16 @@ export default function ReportsModule() {
         if (isPseudoItem(item)) {
           let realCost = 0;
           if (item.layawayId) {
-            const linked = safeLayaways.find((l) => l.id === item.layawayId);
+            const linked = layawaysById.get(item.layawayId);
             if (linked) realCost = getLayawayProportionalCost(linked, inventory, revenueCents);
           } else if (item.specialOrderId) {
-            const linked = safeSpecialOrders.find((o) => o.id === item.specialOrderId);
+            const linked = ordersById.get(item.specialOrderId);
             if (linked) realCost = getSpecialOrderProportionalCost(linked, inventory, revenueCents);
           } else if (item.repairId) {
-            const linked = safeRepairs.find((r) => r.id === item.repairId);
+            const linked = repairsById.get(item.repairId);
             if (linked) realCost = getRepairProportionalCost(linked, inventory, revenueCents);
           } else if (item.unlockId) {
-            const linked = safeUnlocks.find((u) => u.id === item.unlockId);
+            const linked = unlocksById.get(item.unlockId);
             if (linked) realCost = getUnlockProportionalCost(linked, inventory, revenueCents);
           }
           if (realCost > 0) {
