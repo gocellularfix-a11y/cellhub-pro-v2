@@ -46,6 +46,11 @@ export type IntentId =
   | 'dead_stock_root_cause'
   | 'customer_churn_root_cause'
   | 'help'
+  // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
+  // for queries that don't trigger any keyword bank. Builds an answer
+  // from existing engine data (no external AI). 'unknown' kept in the
+  // union as a defensive default in the handler switch.
+  | 'fallback_question'
   | 'unknown';
 
 export interface IntentMatch {
@@ -57,6 +62,10 @@ export interface IntentMatch {
   // R-INTEL-PRODUCT-PUSH-ENGINE: extracted product fragment from queries
   // like "promote this product Galaxy S24" or "vender este producto iPhone".
   extractedProduct?: string;
+  // R-INTEL-FALLBACK-QUESTION-AWARE: raw query passed through to the
+  // fallback handler so it can detect topic keywords (day/product/customer/
+  // why/time) and tailor the response. Populated only for fallback_question.
+  query?: string;
 }
 
 // ── Keyword banks ───────────────────────────────────────────
@@ -357,7 +366,14 @@ export function classifyIntent(
   const winner = scores[0];
 
   if (winner.score === 0) {
-    return { id: 'unknown', confidence: 0 };
+    // R-INTEL-FALLBACK-OPEN-QUESTIONS: when no keyword bank matches,
+    // route to the deterministic fallback handler instead of the
+    // legacy 'unknown' help message. Known intents still win above
+    // (we only land here when every bank scored zero), so deterministic
+    // priority is preserved.
+    // R-INTEL-FALLBACK-QUESTION-AWARE: pass through the raw query so the
+    // handler can detect topic keywords and tailor the response.
+    return { id: 'fallback_question', confidence: 0, query: rawQuery };
   }
 
   const confidence = Math.min(1, winner.score / 2);
