@@ -154,7 +154,21 @@ export default function Dashboard() {
               if (km) rawCarrier = km[1].trim();
             }
             const normalized = normalizeCarrier(rawCarrier);
-            const carrierRate = normalized ? settings.carrierCommissions?.[normalized] : undefined;
+            // R-DASHBOARD-CARRIER-COMMISSION-LOOKUP-FIX: settings keys are
+            // Title Case ("AT&T", "Simple Mobile", "H2O") so a normalized-only
+            // lookup misses when normalizeCarrier returns different casing or
+            // spacing. Try raw → normalized → case-insensitive → default → 0.
+            const ccs: Record<string, number> = settings.carrierCommissions || {};
+            let carrierRate: number | undefined;
+            if (rawCarrier && typeof ccs[rawCarrier] === 'number') carrierRate = ccs[rawCarrier];
+            if (carrierRate == null && normalized && typeof ccs[normalized] === 'number') carrierRate = ccs[normalized];
+            if (carrierRate == null) {
+              const needle = (rawCarrier || normalized || '').toLowerCase();
+              if (needle) {
+                const hit = Object.keys(ccs).find((k) => k.toLowerCase() === needle);
+                if (hit && typeof ccs[hit] === 'number') carrierRate = ccs[hit];
+              }
+            }
             commRate = carrierRate ?? settings.defaultCommissionRate ?? 0;
           }
           if (!commRate) return p;
