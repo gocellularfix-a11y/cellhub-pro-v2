@@ -20,10 +20,19 @@ import { persist, persistSettings, remove } from '@/services/persist';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
+// R-INTEL-INVENTORY-PROMOTE-BUTTON: per-row Promote button delegates to
+// the same Product Push engine the chat handler uses (single-source).
+import { IntelligenceEngine } from '@/services/intelligence/IntelligenceEngine';
+import { runProductPush } from '@/services/intelligence/chat/handlers';
+import { getOutreachQueue } from '@/services/intelligence/actions';
 
 export default function InventoryModule() {
   const {
-    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders },
+    // R-INTEL-INVENTORY-PROMOTE-BUTTON: customers, repairs, specialOrders,
+    // unlocks, layaways, customerReturns destructured for IntelligenceEngine
+    // construction in the Promote click handler. Engine needs the full data
+    // set to score customers (getCustomerScores requires cachedResult).
+    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns },
     setInventory, setCart, dispatch,
   } = useApp();
 
@@ -172,6 +181,15 @@ export default function InventoryModule() {
   const inventoryRef = useRef(inventory);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
 
+  // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: cache the IntelligenceEngine
+  // across Promote clicks. Without this, every click rebuilt the engine
+  // and ran a full analyze() (~200-400ms freeze). Now: first click pays
+  // the cost; subsequent clicks reuse the same instance unless the
+  // underlying data signature changes (sales/customers/inventory/repairs
+  // length delta). Mirrors IntelligenceModule's useRef + sig pattern.
+  const promoteEngineRef = useRef<IntelligenceEngine | null>(null);
+  const promoteEngineSigRef = useRef<string>('');
+
   // ── CRUD ────────────────────────────────────────────────
   const handleSave = useCallback(
     (data: Partial<InventoryItem>, opts?: { skipMerge?: boolean }) => {
@@ -271,6 +289,54 @@ export default function InventoryModule() {
     },
     [setInventory, toast, t],
   );
+
+  // R-INTEL-INVENTORY-PROMOTE-BUTTON: click handler — instantiates a
+  // fresh IntelligenceEngine, calls the same runProductPush helper the
+  // chat handler uses, and surfaces a queue-count toast. Engine
+  // construction is ~150-300ms (one-shot, manual click — acceptable).
+  // Queue items get type='product_push_whatsapp' + status='pending_approval'
+  // so they don't collide with other intents and require explicit
+  // approval in the Intelligence queue UI before execute.
+  const handlePromote = useCallback((item: InventoryItem) => {
+    try {
+      const engineLang = (locale === 'es' || locale === 'pt') ? locale : 'en';
+
+      // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: reuse the engine across
+      // clicks. dataSig keys on array lengths — cheap O(1) check that
+      // catches add/remove mutations of the underlying entity arrays.
+      // Mutations to existing items (e.g. cost edit) won't bust the
+      // cache — acceptable for product-push ranking which is dominated
+      // by sale history and customer scores, not item field edits.
+      const sig = `${sales.length}|${customers.length}|${inventory.length}|${repairs.length}`;
+      if (!promoteEngineRef.current || promoteEngineSigRef.current !== sig) {
+        promoteEngineRef.current = new IntelligenceEngine(
+          sales, customers, inventory, repairs,
+          { lang: engineLang as 'en' | 'es' | 'pt', enableAlerts: false, enableScoring: true },
+          { specialOrders, unlocks, layaways, customerReturns },
+        );
+        // analyze() populates cachedResult so getCustomerScores() returns data.
+        promoteEngineRef.current.analyze();
+        promoteEngineSigRef.current = sig;
+      }
+      const engine = promoteEngineRef.current;
+      const before = getOutreachQueue().length;
+      // R-INTEL-PRODUCT-PUSH-NAME-NORMALIZATION: trim + lowercase the
+      // product name at the call site so casing/whitespace variations
+      // don't fragment matching in engine scoring. Engine + helper are
+      // unchanged — normalization is a caller concern only.
+      const cleanName = item.name.trim().toLowerCase();
+      runProductPush(engine, engineLang as 'en' | 'es' | 'pt', cleanName);
+      const after = getOutreachQueue().length;
+      const queued = Math.max(0, after - before);
+      if (queued > 0) {
+        toast(t('inventory.promoteSuccess', queued, item.name), 'success');
+      } else {
+        toast(t('inventory.promoteNoTargets', item.name), 'warning');
+      }
+    } catch {
+      toast(t('inventory.promoteNoTargets', item.name), 'error');
+    }
+  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, toast, t]);
 
   const handleQuickRestock = useCallback(
     (id: string) => {
@@ -520,6 +586,10 @@ export default function InventoryModule() {
                       <div className="flex gap-1.5 justify-end">
                         <button onClick={() => addToCart(item)} title="Add to cart" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>🛒</button>
                         <button onClick={() => handleQuickRestock(item.id)} title="+1 stock" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>+1</button>
+                        {/* R-INTEL-INVENTORY-PROMOTE-BUTTON: per-row promote
+                            shortcut. Triggers the same Product Push engine
+                            the chat handler uses (single-source). */}
+                        <button onClick={() => handlePromote(item)} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
                         <button onClick={() => { setEditItem(item); setShowModal(true); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
                         <button onClick={() => setDeleteConfirm(item.id)} title="Delete" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>🗑️</button>
                       </div>
