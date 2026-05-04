@@ -87,3 +87,92 @@ export function enqueueOutreachActions(
   writeQueue(queue);
   return inserted;
 }
+
+// ============================================================
+// R-INTEL-WHATSAPP-EXECUTION-V1
+// 1-click WhatsApp execution for queued intelligence actions.
+// Uses wa.me deep link only — no API calls, no auto-send. The owner
+// clicks an action, we open the WhatsApp link in a new window and
+// mark the item as sent so it cannot execute again.
+// ============================================================
+
+/**
+ * Normalize a phone number for use in a wa.me URL.
+ *
+ * - Strips all non-digit characters.
+ * - If the cleaned number is exactly 10 digits, prefixes the US country
+ *   code "1" (matches the dominant US use case for the shop).
+ * - If the number already has a country code (>10 digits), returns it
+ *   as-is (digits only).
+ * - Returns digits only — wa.me accepts the international number with
+ *   no leading "+" or formatting.
+ */
+export function normalizePhoneForWhatsApp(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return `1${digits}`;
+  return digits;
+}
+
+/**
+ * Mark an action as sent. Sets status='sent' and sentAt=now. Returns
+ * true if the item was found and updated, false otherwise. Standalone
+ * helper for callers that mark sent without going through the wa.me
+ * deep link (e.g. owner manually marking a message they sent another
+ * way).
+ */
+export function markActionAsSent(id: string): boolean {
+  const queue = readQueue();
+  const item = queue.find((q) => q.id === id);
+  if (!item) return false;
+  item.status = 'sent';
+  item.sentAt = Date.now();
+  writeQueue(queue);
+  return true;
+}
+
+/**
+ * Execute a queued WhatsApp action: build the wa.me deep link, open it
+ * in a new window, and mark the item as sent. Returns false if the
+ * item is missing/invalid, lacks a phone or message, or has already
+ * been sent. The caller is expected to refresh its UI after a true
+ * return (queue state changed).
+ *
+ * No external API is called — wa.me is a URL deep link that triggers
+ * the user's installed WhatsApp client (or the WhatsApp Web flow if
+ * not installed). Nothing is sent until the user presses Send in
+ * WhatsApp itself, so "auto-send" remains impossible.
+ */
+export function executeWhatsAppAction(id: string): boolean {
+  const queue = readQueue();
+  const item = queue.find((q) => q.id === id);
+  if (!item) return false;
+  if (!item.phone) return false;
+  if (!item.message) return false;
+  if (item.status === 'sent') return false;
+  // R-INTEL-WHATSAPP-APPROVAL-GATE: pending drafts must be explicitly
+  // approved before they can fire the wa.me deep link. Owner-side gate
+  // for marketing / product_push campaign drafts whose default status
+  // is 'pending_approval'. Items with status undefined or 'approved'
+  // (e.g. who_to_contact_today entries) still execute on click.
+  if (item.status === 'pending_approval') return false;
+
+  const phone = normalizePhoneForWhatsApp(item.phone);
+  if (!phone) return false;
+
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(item.message)}`;
+
+  if (typeof window === 'undefined' || typeof window.open !== 'function') {
+    return false;
+  }
+  try {
+    window.open(url, '_blank');
+  } catch {
+    return false;
+  }
+
+  item.status = 'sent';
+  item.sentAt = Date.now();
+  writeQueue(queue);
+  return true;
+}
+

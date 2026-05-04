@@ -276,7 +276,11 @@ export interface ActionQueueItem {
   // 'pending_approval' so the owner reviews before send. Items from
   // who_to_contact_today omit the field (defaults to approved). No
   // auto-send anywhere — gating is owner-side.
-  status?: 'pending_approval' | 'approved';
+  // R-INTEL-WHATSAPP-EXECUTION-V1: 'sent' = item already executed via
+  // executeWhatsAppAction (wa.me deep link opened). Sent items cannot
+  // re-execute. sentAt records the click timestamp.
+  status?: 'pending_approval' | 'approved' | 'sent';
+  sentAt?: number;
 }
 
 // R-INTEL-PHASE2-RC: root cause analysis types
