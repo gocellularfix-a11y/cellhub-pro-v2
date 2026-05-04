@@ -361,9 +361,15 @@ export default function PhonePaymentModal({
     };
 
     // Source 1: CustomerDB by normalized phone.
-    const customer = customersRef.current.find((c) =>
-      normalizePhone(c.phone || '') === norm,
-    );
+    // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: also scan c.phones[] so
+    // multi-line customers resolve when the cashier types ANY of their
+    // saved numbers (was: primary phone only).
+    const customer = customersRef.current.find((c) => {
+      if (normalizePhone(c.phone || '') === norm) return true;
+      const phones = (c as { phones?: string[] }).phones;
+      if (Array.isArray(phones) && phones.some((p) => normalizePhone(p) === norm)) return true;
+      return false;
+    });
 
     let freshFirst = '', freshLast = '', freshCarrier = '', freshAmount = '';
 
@@ -398,6 +404,18 @@ export default function PhonePaymentModal({
         const mp = (customer as any).monthlyPayment;
         if (mp) freshAmount = String(mp);
       }
+
+      // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: load full customer
+      // context so the Known Lines panel surfaces automatically — same
+      // behavior as the Customers money-icon flow. Preselect the typed
+      // matching phone in the panel (only when no prior selection exists,
+      // to preserve the cashier's manual checks). setSelectedCustomer
+      // with the same reference is short-circuited by React, so repeated
+      // typed-digit fires within the debounce window are idempotent.
+      setSelectedCustomer(customer);
+      setSelectedKnownLines((prev) =>
+        Object.keys(prev).length === 0 ? { [norm]: freshAmount || '' } : prev,
+      );
     } else {
       // Source 2: sales history (no customer record) — find latest
       // phone_payment for this number across all sales.
@@ -520,6 +538,37 @@ export default function PhonePaymentModal({
     applyCustomerSelection(c, chosenPhone);
   };
 
+  // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: lookup the most recent
+  // phone_payment price for this exact normalized phone number from the
+  // selected customer's sales history. Mirrors the auto-fill logic in
+  // lookupByPhone (L375-391). Returns formatted dollar string ("19.99")
+  // or empty when no historical sale exists.
+  const lookupHistoricalAmount = (norm: string): string => {
+    if (!selectedCustomer) return '';
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as { createdAt?: unknown }).createdAt;
+      if (!ca) return 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        return new Date(d).getTime();
+      } catch { return 0; }
+    };
+    const sorted = sales
+      .filter((s) => s.customerId === selectedCustomer.id)
+      .slice()
+      .sort((a, b) => tsOf(b) - tsOf(a));
+    for (const s of sorted) {
+      const item = (s.items || []).find((i) =>
+        i.category === 'phone_payment'
+        && normalizePhone(i.phoneNumber || '') === norm,
+      );
+      if (item?.price) return (item.price / 100).toFixed(2);
+    }
+    return '';
+  };
+
   // ── Toggle a known line on/off ────────────────────────────
   const toggleKnownLine = (norm: string) => {
     setSelectedKnownLines((prev) => {
@@ -527,7 +576,12 @@ export default function PhonePaymentModal({
       if (next[norm] !== undefined) {
         delete next[norm];
       } else {
-        next[norm] = '';
+        // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: prefer historical
+        // amount for this exact phone number (most-recent phone_payment
+        // for this customer), else fall back to the main amount input.
+        // Empty string means truly no configured default — never auto-
+        // fill 0 when a real amount exists in history or main input.
+        next[norm] = lookupHistoricalAmount(norm) || amount || '';
         // Auto-copy to clipboard when checking a line
         autoCopyPhone(norm);
       }
