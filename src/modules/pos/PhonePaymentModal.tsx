@@ -1180,6 +1180,26 @@ export default function PhonePaymentModal({
     setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
   }, [knownLines, selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
 
+  // ── Portal opener for a single known-line row ─────────────
+  // R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line 🌐 button in the Known
+  // Lines panel. Opens the carrier portal so the cashier can pay this
+  // specific number externally before clicking "Mark Paid & Next" in the
+  // runner. URL is read from settings.carrierPortalUrls[normCarrier] —
+  // same source used by handlePortalForLine and the activation flow.
+  // Spec called this getCarrierPortalUrl(carrier, phone); adapted to the
+  // existing carrierPortalUrls map (no helper of that name exists).
+  const handlePortalForKnownLine = (_phone: string) => {
+    void _phone;
+    if (!carrier) {
+      toast(t('phonePay.errPickCarrierLine'), 'error');
+      return;
+    }
+    const normCarrier = normalizeCarrier(carrier);
+    const url = settings.carrierPortalUrls?.[normCarrier];
+    if (!url) return;
+    window.open(url, '_blank');
+  };
+
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
   // stale-closure scenario where rapid add-line+type interleavings could
@@ -2177,6 +2197,29 @@ export default function PhonePaymentModal({
                         style={{ width: '90px', flexShrink: 0, fontSize: '0.82rem' }}
                       />
                     )}
+                    {/* R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line portal
+                        opener. Disabled until cashier picks a carrier (URL is
+                        keyed by normalized carrier name). */}
+                    <button
+                      type="button"
+                      onClick={() => handlePortalForKnownLine(norm)}
+                      disabled={!carrier}
+                      title={t('phonePay.openPortal')}
+                      aria-label={t('phonePay.openPortal')}
+                      style={{
+                        marginLeft: '0.5rem',
+                        padding: '0.3rem 0.5rem',
+                        borderRadius: '0.4rem',
+                        border: '1px solid rgba(59,130,246,0.4)',
+                        background: carrier ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                        color: carrier ? '#93c5fd' : '#64748b',
+                        cursor: carrier ? 'pointer' : 'not-allowed',
+                        fontSize: '0.75rem',
+                        flexShrink: 0,
+                      }}
+                    >
+                      🌐
+                    </button>
                   </div>
                 );
               })}
@@ -2388,7 +2431,13 @@ export default function PhonePaymentModal({
                         name={`line-number-${line.id}`}
                         autoComplete="off"
                         inputMode="numeric"
-                        maxLength={10}
+                        // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10} which
+                        // truncated formatted pastes like "(805) 403-8679" to
+                        // "(805) 403-" before the onChange handler could
+                        // sanitize. sanitizePhone() does the final 10-digit
+                        // cap. Allow up to 20 chars for typical formatted
+                        // phones: "+1 (805) 403-8679" = 18 chars.
+                        maxLength={20}
                         pattern="[0-9]*"
                         readOnly
                         onFocus={(e) => { e.currentTarget.readOnly = false; }}
@@ -2524,7 +2573,10 @@ export default function PhonePaymentModal({
                     placeholder="(555) 123-4567"
                     value={phoneNumber || ''}
                     inputMode="numeric"
-                    maxLength={10}
+                    // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10}; see
+                    // multi-line input comment for context. sanitizePhone()
+                    // performs the final 10-digit cap.
+                    maxLength={20}
                     pattern="[0-9]*"
                     onChange={(e) => {
                       setPhoneNumber(sanitizePhone(e.target.value));
@@ -2577,7 +2629,10 @@ export default function PhonePaymentModal({
                 placeholder={t('phonePay.newNumberPlaceholder')}
                 value={newLinePhone}
                 inputMode="numeric"
-                maxLength={10}
+                // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10}; see
+                // multi-line input comment for context. sanitizePhone()
+                // performs the final 10-digit cap.
+                maxLength={20}
                 pattern="[0-9]*"
                 autoComplete="off"
                 onChange={(e) => {
