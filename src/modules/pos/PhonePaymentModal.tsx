@@ -302,6 +302,13 @@ export default function PhonePaymentModal({
   // key: normalized phone, value: amount string
   const [selectedKnownLines, setSelectedKnownLines] = useState<Record<string, string>>({});
 
+  // R-PHONE-PAYMENTS-MULTILINE-RUNNER: per-line paid status for the runner.
+  // key: normalized phone, value: true once the cashier has confirmed the
+  // portal payment via "Mark Paid & Next". Drives the runner UI's progress
+  // counter and current/next derivation. Cleared on reset() and on customer
+  // change (applyCustomerSelection) — same lifecycle as selectedKnownLines.
+  const [paidKnownLines, setPaidKnownLines] = useState<Record<string, boolean>>({});
+
   // ── Phone selector (when customer has multiple phones[]) ──
   const [phoneSelectorCustomer, setPhoneSelectorCustomer] = useState<Customer | null>(null);
 
@@ -323,6 +330,7 @@ export default function PhonePaymentModal({
     const mp = (c as any).monthlyPayment;
     if (mp) setAmount(String(mp));
     setSelectedKnownLines({});
+    setPaidKnownLines({});
   };
 
   // ── R-PHONE-AUTOFILL: typed-phone auto-fill ──────────────────────────
@@ -630,6 +638,7 @@ export default function PhonePaymentModal({
     // CC fee removed — Cart.tsx handles it
     setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
     setSelectedKnownLines({});
+    setPaidKnownLines({});
     setNewLinePhone('');
     setNewLineAmount('');
   };
@@ -1092,6 +1101,84 @@ export default function PhonePaymentModal({
       return remaining;
     });
   }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer]);
+
+  // ── Multi-line runner: mark current paid & advance to next ──
+  // R-PHONE-PAYMENTS-MULTILINE-RUNNER: process selected known lines one at
+  // a time. Cashier opens portal externally, returns, clicks Mark Paid &
+  // Next → we add this line to cart (CartItem identical to handlePortalForLine
+  // output) and flip the line's paid flag. Re-derivation in JSX surfaces the
+  // next unpaid line as the new current. No portal automation.
+  const markPaidAndNext = useCallback(() => {
+    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: derive runner order from
+    // the knownLines memo (already normalized strings, sorted most-recent
+    // first inside the memo) rather than Object.keys(selectedKnownLines)
+    // — the latter's ordering depends on toggle/insertion sequence and
+    // can drift away from the panel rows the cashier actually sees.
+    const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+    const current = selectedNorms.find((n) => !paidKnownLines[n]);
+    if (!current) return;
+    // Safety: phone validation (defensive — known lines are normalized 10-digit).
+    if (!isValidPhone(current)) {
+      toast(t('phonePay.errInvalidPhoneShort'), 'error');
+      return;
+    }
+    // Safety: amount required.
+    const amtStr = selectedKnownLines[current] || '';
+    const amt = parseFloat(amtStr);
+    if (!amt || amt <= 0) {
+      toast(t('phonePay.errInvalidAmount'), 'error');
+      return;
+    }
+    // Carrier required (global state — known-lines flow uses the global pick).
+    if (!carrier) {
+      toast(t('phonePay.errPickCarrierLine'), 'error');
+      return;
+    }
+    // Duplicate guard (idempotent against rapid double-clicks).
+    if (paidKnownLines[current]) return;
+
+    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: cart-level duplicate
+    // protection. paidKnownLines can reset on customer/modal state
+    // changes while the item still lives in cartRef — cart is the
+    // final source of truth for "this line was already added".
+    const alreadyInCart = cartRef.current.some(
+      (item) => item.category === 'phone_payment' && item.phoneNumber === current,
+    );
+    if (alreadyInCart) {
+      setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
+      return;
+    }
+
+    const normCarrier = normalizeCarrier(carrier);
+    const phone = current;
+    const customerNote = `${firstName} ${lastName}`.trim();
+    const priceCents = Math.round(amt * 100);
+    const commRate = (settings.carrierCommissions?.[normCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
+    const newItem: CartItem = {
+      id: generateId(),
+      name: `${normCarrier} - ${formatPhone(phone)}`,
+      category: 'phone_payment',
+      price: priceCents,
+      // R-PHONEPAYMENT-COST-STAMP: parity with handlePortalForLine.
+      cost: Math.round(priceCents * (1 - commRate)),
+      qty: 1,
+      taxable: false,
+      cbeEligible: false,
+      carrier: normCarrier,
+      phoneNumber: phone,
+      notes: customerNote,
+      commissionRate: commRate,
+    };
+
+    const nextCart = [...cartRef.current, newItem];
+    cartRef.current = nextCart;
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
+    setCart(nextCart);
+
+    setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
+  }, [knownLines, selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
 
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
@@ -1890,6 +1977,7 @@ export default function PhonePaymentModal({
               setShowCustDropdown(true);
               setSelectedCustomer(null);
               setSelectedKnownLines({});
+    setPaidKnownLines({});
             }}
             onFocus={() => setShowCustDropdown(true)}
           />
@@ -1937,6 +2025,7 @@ export default function PhonePaymentModal({
                   setSelectedCustomer(null);
                   setCustSearch('');
                   setSelectedKnownLines({});
+    setPaidKnownLines({});
                   setFirstName('');
                   setLastName('');
                   setPhoneNumber('');
@@ -2112,6 +2201,84 @@ export default function PhonePaymentModal({
                 </span>
               </div>
             )}
+
+            {/* R-PHONE-PAYMENTS-MULTILINE-RUNNER: per-line runner shown when 2+
+                lines are selected. Tracks paid status and advances cashier
+                through unpaid lines one at a time. Inline EN/ES strings —
+                spec did not list translations.ts. */}
+            {selectedKnownCount > 1 && (() => {
+              // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: same deterministic
+              // order as markPaidAndNext (knownLines memo sequence) so the UI
+              // current/next display matches what the handler will actually
+              // process on click.
+              const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+              const paidCount = selectedNorms.filter((n) => paidKnownLines[n]).length;
+              const unpaidNorms = selectedNorms.filter((n) => !paidKnownLines[n]);
+              const currentNorm = unpaidNorms[0];
+              const nextNorm = unpaidNorms[1];
+              const allDone = unpaidNorms.length === 0;
+              const currentAmt = currentNorm ? parseFloat(selectedKnownLines[currentNorm] || '0') : 0;
+              const canAdvance = !allDone && currentAmt > 0 && !!carrier;
+              const isEs = lang === 'es';
+              return (
+                <div style={{
+                  padding: '0.625rem 1rem',
+                  borderTop: '1px solid rgba(102,126,234,0.2)',
+                  background: 'rgba(102,126,234,0.06)',
+                  display: 'flex', flexDirection: 'column', gap: '0.4rem',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#a5b4fc', fontWeight: 700 }}>
+                      🏁 {isEs ? 'Procesar línea por línea' : 'Run lines one by one'}
+                      {' '}
+                      <span style={{ color: '#cbd5e1', fontWeight: 500 }}>
+                        — {isEs ? 'Pagadas' : 'Paid'} {paidCount} / {selectedNorms.length}
+                      </span>
+                    </span>
+                    {allDone && (
+                      <span style={{ color: '#22c55e', fontWeight: 700, fontSize: '0.75rem' }}>
+                        ✓ {isEs ? 'Todas pagadas' : 'All selected lines paid'}
+                      </span>
+                    )}
+                  </div>
+                  {!allDone && currentNorm && (
+                    <>
+                      <div style={{ fontSize: '0.78rem', color: '#cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>
+                          {isEs ? 'Actual:' : 'Current:'}{' '}
+                          <strong style={{ color: '#fbbf24', fontFamily: 'monospace' }}>{formatPhone(currentNorm)}</strong>
+                          {' '}— ${currentAmt.toFixed(2)}
+                        </span>
+                        {nextNorm && (
+                          <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                            {isEs ? 'Siguiente:' : 'Next:'}{' '}
+                            <span style={{ fontFamily: 'monospace' }}>{formatPhone(nextNorm)}</span>
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={markPaidAndNext}
+                        disabled={!canAdvance}
+                        style={{
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '0.5rem',
+                          border: '1px solid rgba(34,197,94,0.4)',
+                          background: canAdvance ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.04)',
+                          color: canAdvance ? '#86efac' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: canAdvance ? 'pointer' : 'not-allowed',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        ✓ {isEs ? 'Marcar pagada y siguiente' : 'Mark Paid & Next'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
