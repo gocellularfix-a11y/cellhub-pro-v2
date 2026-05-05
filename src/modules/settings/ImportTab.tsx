@@ -27,6 +27,7 @@ import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
 import { normalizePhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
+import { mapItemCategory } from '@/services/import/legacyAdapter';
 import type { Customer, InventoryItem, InventoryCategory } from '@/store/types';
 
 // ── Inline CSV parser ─────────────────────────────────────
@@ -323,7 +324,7 @@ export default function ImportTab() {
           sku,
           barcode: sku || undefined,
           name,
-          category: ((mapped.category || 'accessory').toLowerCase()) as InventoryCategory,
+          category: mapItemCategory(mapped.category) as InventoryCategory,
           brand: (mapped.brand || '').trim(),
           supplier: (mapped.supplier || '').trim(),
           condition: 'New',
