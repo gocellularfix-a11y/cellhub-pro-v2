@@ -29,6 +29,7 @@ import {
   getPhonePaymentSummary, getSpecialOrderSummary, getReturnSummary,
   getExpenseSummary,
   getEmployeePerformance,
+  getAppointmentSummary,
   type DateRange,
 } from '../dataAccess/cellhubDataAccess';
 
@@ -1404,6 +1405,26 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   const q = (match.query || '').toLowerCase();
   const range = detectDataQueryRange(q);
   const actionLbl = t('chat.dataQuery.action');
+
+  // ── Appointments (R-DATA-APPOINTMENT-ACCESS-V1) ─────────
+  // Counts derived from estimatedDropOff midnight-anchored to local timezone,
+  // mirrors AppointmentsModule.tsx:96-106. Tested BEFORE other branches so the
+  // word "appointment" / "cita" / "agendamento" doesn't collide.
+  if (/appointment|cita|agendamento/.test(q)) {
+    const sum = getAppointmentSummary(engine.getAppointments());
+    if (sum.total === 0) return { kind: 'answer', text: t('chat.dataQuery.appointmentsEmpty') };
+    const lines = [
+      t('chat.dataQuery.appointmentsHeader'),
+      '',
+      `• ${t('chat.dataQuery.appointmentsToday', sum.today)}`,
+      `• ${t('chat.dataQuery.appointmentsTomorrow', sum.tomorrow)}`,
+      `• ${t('chat.dataQuery.appointmentsUpcoming', sum.upcoming7d)}`,
+    ];
+    if (sum.noShows > 0) {
+      lines.push(`• ${t('chat.dataQuery.appointmentsNoShows', sum.noShows)}`);
+    }
+    return { kind: 'answer', text: lines.join('\n') };
+  }
 
   // ── Employee performance (R-DATA-EMPLOYEE-ACCESS-V1) ────
   // Top 3 by revenue (DESC). Mirrors Reports' employeeStats. Tested

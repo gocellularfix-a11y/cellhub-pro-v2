@@ -9,7 +9,7 @@
 // ============================================================
 
 import type {
-  Sale, Customer, InventoryItem, Repair, Unlock, Layaway, SpecialOrder, CustomerReturn, Expense,
+  Sale, Customer, InventoryItem, Repair, Unlock, Layaway, SpecialOrder, CustomerReturn, Expense, Appointment,
 } from '@/store/types';
 
 export type DateRange = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days';
@@ -474,4 +474,49 @@ export function getEmployeePerformance(sales: Sale[], range: DateRange): Employe
   return Object.entries(stats)
     .map(([name, d]) => ({ name, transactions: d.transactions, revenueCents: d.revenueCents }))
     .sort((a, b) => b.revenueCents - a.revenueCents);
+}
+
+// ── Appointments (R-DATA-APPOINTMENT-ACCESS-V1) ────────────
+// Mirrors AppointmentsModule.tsx:96-106 exactly for "today" (midnight-anchored
+// comparison + status === 'scheduled' filter). Tomorrow uses the same midnight
+// pattern. Upcoming-7d covers scheduled appointments from now through +7 days.
+// noShows counts status === 'no_show' regardless of date (caller-provided range
+// not applied — no-show is a manual marker; range filter would mostly hide
+// genuine no-shows). Read-only.
+export interface AppointmentSummary {
+  total: number;
+  today: number;
+  tomorrow: number;
+  upcoming7d: number;
+  noShows: number;
+}
+
+export function getAppointmentSummary(appointments: Appointment[]): AppointmentSummary {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todayTs = startOfToday.getTime();
+  const tomorrowTs = todayTs + DAY_MS;
+  const sevenDaysOutTs = todayTs + 7 * DAY_MS;
+  const nowTs = Date.now();
+
+  let today = 0, tomorrow = 0, upcoming7d = 0, noShows = 0;
+  for (const a of appointments) {
+    const status = String(a.status || '').toLowerCase();
+    if (status === 'no_show') noShows++;
+
+    const dropOff = new Date(a.estimatedDropOff);
+    if (!Number.isFinite(dropOff.getTime())) continue;
+    const dayMidnight = new Date(dropOff);
+    dayMidnight.setHours(0, 0, 0, 0);
+    const dropOffMidnight = dayMidnight.getTime();
+
+    if (status === 'scheduled') {
+      if (dropOffMidnight === todayTs) today++;
+      else if (dropOffMidnight === tomorrowTs) tomorrow++;
+      // Upcoming-7d: any scheduled drop-off from now through 7 days out
+      // (raw timestamp comparison, not midnight-bucketed).
+      if (dropOff.getTime() >= nowTs && dropOff.getTime() < sevenDaysOutTs) upcoming7d++;
+    }
+  }
+  return { total: appointments.length, today, tomorrow, upcoming7d, noShows };
 }

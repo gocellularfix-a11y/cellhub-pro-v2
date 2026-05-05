@@ -403,6 +403,10 @@ const DATA_QUERY_KEYWORDS = [
   'top employee', 'best employee', 'sales per employee', 'employee performance',
   'mejor empleado', 'ventas por empleado', 'desempeño de empleados',
   'melhor funcionário', 'melhor funcionario', 'vendas por funcionário', 'desempenho dos funcionários',
+  // R-DATA-APPOINTMENT-ACCESS-V1: appointment triggers
+  'appointments', 'appointment today', 'upcoming appointments',
+  'citas', 'citas hoy', 'citas mañana',
+  'agendamentos', 'agendamentos hoje',
 ];
 
 const HELP_KEYWORDS = [

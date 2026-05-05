@@ -1,5 +1,5 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee } from '@/store/types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment } from '@/store/types';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
@@ -77,6 +77,9 @@ export interface EngineExtras {
   // R-DATA-EMPLOYEE-ACCESS-V1: roster pass-through. Engine reads only —
   // performance aggregation happens in cellhubDataAccess via sale.employeeName.
   employees?: Employee[];
+  // R-DATA-APPOINTMENT-ACCESS-V1: read-only pass-through. Filtering/counting
+  // happens in cellhubDataAccess using estimatedDropOff (ISO date-time).
+  appointments?: Appointment[];
 }
 
 export class IntelligenceEngine {
@@ -97,6 +100,8 @@ export class IntelligenceEngine {
   private expenses: Expense[];
   // R-DATA-EMPLOYEE-ACCESS-V1
   private employees: Employee[];
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  private appointments: Appointment[];
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -127,6 +132,8 @@ export class IntelligenceEngine {
   private _rawExpenses: Expense[] = [];
   // R-DATA-EMPLOYEE-ACCESS-V1
   private _rawEmployees: Employee[] = [];
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  private _rawAppointments: Appointment[] = [];
 
   constructor(
     sales: Sale[],
@@ -155,6 +162,7 @@ export class IntelligenceEngine {
     this.customerReturns = extras.customerReturns ?? [];
     this.expenses = extras.expenses ?? [];
     this.employees = extras.employees ?? [];
+    this.appointments = extras.appointments ?? [];
 
     // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
     // ref-equality skip. Stored AFTER extras defaults so the same defaults
@@ -169,6 +177,7 @@ export class IntelligenceEngine {
     this._rawCustomerReturns = this.customerReturns;
     this._rawExpenses = this.expenses;
     this._rawEmployees = this.employees;
+    this._rawAppointments = this.appointments;
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -468,6 +477,8 @@ export class IntelligenceEngine {
   getExpenses(): Expense[] { return this.expenses; }
   // R-DATA-EMPLOYEE-ACCESS-V1
   getEmployees(): Employee[] { return this.employees; }
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  getAppointments(): Appointment[] { return this.appointments; }
 
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
   // today_summary intent. Filters sales by createdAt >= midnight + status
@@ -567,6 +578,7 @@ export class IntelligenceEngine {
     const newCustomerReturns = extras.customerReturns ?? this._rawCustomerReturns;
     const newExpenses = extras.expenses ?? this._rawExpenses;
     const newEmployees = extras.employees ?? this._rawEmployees;
+    const newAppointments = extras.appointments ?? this._rawAppointments;
 
     if (
       sales === this._rawSales
@@ -579,6 +591,7 @@ export class IntelligenceEngine {
       && newCustomerReturns === this._rawCustomerReturns
       && newExpenses === this._rawExpenses
       && newEmployees === this._rawEmployees
+      && newAppointments === this._rawAppointments
     ) {
       return; // ref-equality: no work
     }
@@ -593,6 +606,7 @@ export class IntelligenceEngine {
     this._rawCustomerReturns = newCustomerReturns;
     this._rawExpenses = newExpenses;
     this._rawEmployees = newEmployees;
+    this._rawAppointments = newAppointments;
 
     this.inventory = adaptInventory(inventory as unknown as unknown[]);
     this.sales = adaptSale(sales as unknown as unknown[], this.inventory);
@@ -604,6 +618,7 @@ export class IntelligenceEngine {
     this.customerReturns = newCustomerReturns;
     this.expenses = newExpenses;
     this.employees = newEmployees;
+    this.appointments = newAppointments;
 
     // Analyzers / scorers hold internal references to the data arrays they
     // were constructed with. Rebuild them so they see the fresh adapted

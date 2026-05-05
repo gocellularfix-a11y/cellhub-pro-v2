@@ -326,6 +326,29 @@ export const translations: TranslationDictionary = {
     pt: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} venda${tx === 1 ? '' : 's'}`,
   },
   'chat.dataQuery.employeesEmpty': { en: 'No sales attributed to employees in this range.', es: 'No hay ventas atribuidas a empleados en este rango.', pt: 'Nenhuma venda atribuída a funcionários neste período.' },
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  'chat.dataQuery.appointmentsHeader': { en: '📅 Appointments', es: '📅 Citas', pt: '📅 Agendamentos' },
+  'chat.dataQuery.appointmentsToday': {
+    en: (n: number) => `Today: ${n}`,
+    es: (n: number) => `Hoy: ${n}`,
+    pt: (n: number) => `Hoje: ${n}`,
+  },
+  'chat.dataQuery.appointmentsTomorrow': {
+    en: (n: number) => `Tomorrow: ${n}`,
+    es: (n: number) => `Mañana: ${n}`,
+    pt: (n: number) => `Amanhã: ${n}`,
+  },
+  'chat.dataQuery.appointmentsUpcoming': {
+    en: (n: number) => `Upcoming (next 7 days): ${n}`,
+    es: (n: number) => `Próximas (7 días): ${n}`,
+    pt: (n: number) => `Próximos (7 dias): ${n}`,
+  },
+  'chat.dataQuery.appointmentsNoShows': {
+    en: (n: number) => `No-shows on record: ${n}`,
+    es: (n: number) => `No se presentaron: ${n}`,
+    pt: (n: number) => `Não compareceram: ${n}`,
+  },
+  'chat.dataQuery.appointmentsEmpty': { en: 'No appointments on record.', es: 'No hay citas registradas.', pt: 'Nenhum agendamento registrado.' },
   'chat.dataQuery.topItems': { en: 'Top items', es: 'Top artículos', pt: 'Top itens' },
   'chat.dataQuery.pendingItems': { en: 'Pending', es: 'Pendientes', pt: 'Pendentes' },
   'chat.dataQuery.readyItems': { en: 'Ready', es: 'Listas', pt: 'Prontos' },
