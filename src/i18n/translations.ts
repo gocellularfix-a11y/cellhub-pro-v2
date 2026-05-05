@@ -1577,6 +1577,15 @@ export const translations: TranslationDictionary = {
   'topUpModal.recipients': { en: 'Recipients', es: 'Destinatarios', pt: 'Destinatários' },
   'topUpModal.addLine': { en: 'Add Line', es: 'Agregar Línea', pt: 'Adicionar Linha' },
   'topUpModal.recipientPlaceholder': { en: 'Recipient number', es: 'Número del destinatario', pt: 'Número do destinatário' },
+  // R-TOPUP-AUTOCOPY-SENDER-RECIPIENT
+  'topUpModal.recipientLabel': { en: 'Recipient', es: 'Destinatario', pt: 'Destinatário' },
+  'topUpModal.copy': { en: 'Copy', es: 'Copiar', pt: 'Copiar' },
+  'topUpModal.copied': {
+    en: (label: string) => `${label} copied`,
+    es: (label: string) => `${label} copiado`,
+    pt: (label: string) => `${label} copiado`,
+  },
+  'topUpModal.nothingToCopy': { en: 'Nothing to copy', es: 'Nada que copiar', pt: 'Nada para copiar' },
   'topUpModal.amountPlaceholder': { en: 'Amount', es: 'Monto', pt: 'Valor' },
   'topUpModal.frequentLabel': { en: '📱 Frequent:', es: '📱 Frecuentes:', pt: '📱 Frequentes:' },
   'topUpModal.totalToCharge': { en: 'Total to Charge', es: 'Total a Cobrar', pt: 'Total a Cobrar' },

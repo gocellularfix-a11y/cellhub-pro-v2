@@ -6,6 +6,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { Modal } from '@/components/ui';
+import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
@@ -48,6 +49,21 @@ interface TopUpLine {
 export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalProps) {
   const { state: { lang, settings, sales, customers }, setCustomers } = useApp();
   const { t } = useTranslation();
+  const { toast } = useToast();
+
+  // R-TOPUP-AUTOCOPY-SENDER-RECIPIENT: copy field value to clipboard with
+  // toast feedback. Empty field shows "nothing to copy" instead of crashing.
+  const copyField = useCallback((value: string, label: string) => {
+    const v = (value || '').trim();
+    if (!v) {
+      toast(t('topUpModal.nothingToCopy'), 'info');
+      return;
+    }
+    navigator.clipboard.writeText(v).then(
+      () => toast(t('topUpModal.copied', label), 'success'),
+      () => toast(t('topUpModal.nothingToCopy'), 'error'),
+    );
+  }, [t, toast]);
 
   // r28b: customer-aware mode. When a customer is selected, the modal renders
   // their persistent topUpHistory cards. When NULL (walk-in), the legacy
@@ -448,13 +464,25 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
         <label style={labelStyle}>
           {t('topUpModal.senderNumber')} *
         </label>
-        <input
-          type="tel"
-          style={inputStyle}
-          value={sender}
-          onChange={(e) => setSender(e.target.value.replace(/\D/g, ''))}
-          placeholder={t('topUpModal.senderPlaceholder')}
-        />
+        {/* R-TOPUP-AUTOCOPY-SENDER-RECIPIENT: input + copy button row. */}
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'stretch' }}>
+          <input
+            type="tel"
+            style={{ ...inputStyle, flex: 1 }}
+            value={sender}
+            onChange={(e) => setSender(e.target.value.replace(/\D/g, ''))}
+            placeholder={t('topUpModal.senderPlaceholder')}
+          />
+          <button
+            type="button"
+            onClick={() => copyField(sender, t('topUpModal.senderNumber'))}
+            title={t('topUpModal.copy')}
+            aria-label={t('topUpModal.copy')}
+            style={copyBtnStyle}
+          >
+            📋
+          </button>
+        </div>
         {frequentSenders.length > 0 && (
           <div style={{ marginTop: '0.5rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
@@ -534,6 +562,16 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
                   onChange={(e) => handleLineChange(idx, 'recipient', e.target.value)}
                   placeholder={t('topUpModal.recipientPlaceholder')}
                 />
+                {/* R-TOPUP-AUTOCOPY-SENDER-RECIPIENT: per-line copy button. */}
+                <button
+                  type="button"
+                  onClick={() => copyField(line.recipient, t('topUpModal.recipientLabel'))}
+                  title={t('topUpModal.copy')}
+                  aria-label={t('topUpModal.copy')}
+                  style={copyBtnStyle}
+                >
+                  📋
+                </button>
                 <input
                   type="number"
                   step="0.01"
@@ -715,6 +753,20 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text-primary)',
   fontSize: '0.85rem',
   outline: 'none',
+};
+
+// R-TOPUP-AUTOCOPY-SENDER-RECIPIENT: minimal icon button matching the
+// existing POS chip aesthetic.
+const copyBtnStyle: React.CSSProperties = {
+  flexShrink: 0,
+  background: 'rgba(34,211,238,0.15)',
+  border: '1px solid rgba(34,211,238,0.3)',
+  borderRadius: '0.5rem',
+  padding: '0.4rem 0.6rem',
+  color: '#67e8f9',
+  fontSize: '0.95rem',
+  cursor: 'pointer',
+  lineHeight: 1,
 };
 
 const labelStyle: React.CSSProperties = {
