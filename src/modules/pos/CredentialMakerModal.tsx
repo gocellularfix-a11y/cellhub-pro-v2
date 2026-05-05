@@ -8,8 +8,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
-import { matchesSearch } from '@/utils/fuzzyMatch';
 import { Modal, SearchInput, ConfirmDialog } from '@/components/ui';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import type { Customer } from '@/store/types';
 import { persist } from '@/services/persist';
 import { openPrintWindow } from '@/hooks/usePrint';
@@ -159,9 +159,8 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
     setCustomers,
   } = useApp();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
-  const [credentialSearch, setCredentialSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showPhotoConfirm, setShowPhotoConfirm] = useState(false);
@@ -178,12 +177,16 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
   const customersRef = useRef(customers);
   useEffect(() => { customersRef.current = customers; }, [customers]);
 
-  // Filter customers
-  const filtered = credentialSearch.trim()
-    ? customers.filter((c) =>
-        matchesSearch(credentialSearch, c.name, c.phone, c.customerNumber),
-      ).slice(0, 15)
-    : [];
+  // R-CUSTOMERPICKER-CREDENTIAL-MIGRATION: inline customer add via picker.
+  // Mirrors TopUpModal pattern — append to customers state and persist.
+  const handleCreateNewCustomer = useCallback((c: Customer) => {
+    try {
+      const next = [...customersRef.current, c];
+      customersRef.current = next;
+      setCustomers(next);
+      persist.customer(c.id, c as unknown as Record<string, unknown>);
+    } catch (_) { /* defensive */ }
+  }, [setCustomers]);
 
   // ── Camera functions ────────────────────────────────────
 
@@ -259,7 +262,6 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
 
   // Reset on close
   const handleClose = () => {
-    setCredentialSearch('');
     setSelectedCustomer(null);
     setShowCamera(false);
     setPendingCustomer(null);
@@ -277,7 +279,6 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
     if (!pendingCustomer) return;
     setSelectedCustomer(pendingCustomer);
     setShowPhotoConfirm(false);
-    setCredentialSearch('');
     if (wantsPhoto) {
       setShowCamera(true);
     }
@@ -319,65 +320,22 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
     return (
       <>
         <Modal open={open} onClose={handleClose} title={`📇 ${t('credentialModalTitle')}`} size="max-w-xl">
-          {/* Search input */}
-          <div style={{ marginBottom: '1rem' }}>
+          {/* R-CUSTOMERPICKER-CREDENTIAL-MIGRATION: shared picker replaces inline
+              search + list. handleSelectCustomer still fires the photo confirmation
+              dialog — picker selection routes through that unchanged. */}
+          <div style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'block' }}>
               {t('searchCustomerLabel')}
             </label>
-            <input
-              type="text"
-              className="input"
+            <CustomerPicker
+              customers={customers}
+              selectedCustomer={null}
+              onSelect={(c) => { if (c) handleSelectCustomer(c); }}
+              lang={locale}
               placeholder={t('typeCustomer')}
-              value={credentialSearch}
-              onChange={(e) => setCredentialSearch(e.target.value)}
-              autoFocus
-              style={{ fontSize: '1.1rem' }}
+              onCreateCustomer={handleCreateNewCustomer}
             />
           </div>
-
-          {/* No search yet */}
-          {!credentialSearch.trim() && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-              <div style={{ fontSize: '3rem', opacity: 0.3, marginBottom: '0.75rem' }}>🔍</div>
-              <p>{t('credentialMaker.typeCustomerHint')}</p>
-            </div>
-          )}
-
-          {/* Customer results */}
-          {credentialSearch.trim() && (
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              {filtered.length > 0 ? filtered.map((customer) => (
-                <button
-                  key={customer.id}
-                  onClick={() => handleSelectCustomer(customer)}
-                  className="card"
-                  style={{
-                    width: '100%', padding: '1rem', textAlign: 'left', cursor: 'pointer',
-                    marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', background: 'var(--bg-input)',
-                    border: '1px solid var(--border-default)', borderRadius: '12px',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--text-accent-soft)' }}>{customer.name}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      {customer.phone?.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3') || ''}
-                    </div>
-                    {customer.customerNumber && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        #{customer.customerNumber}
-                      </div>
-                    )}
-                  </div>
-                  <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>🪪</span>
-                </button>
-              )) : (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  {t('noMatches')}
-                </div>
-              )}
-            </div>
-          )}
         </Modal>
 
         {/* Photo confirmation dialog */}
