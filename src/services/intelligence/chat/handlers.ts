@@ -82,6 +82,9 @@ export function handleIntent(
     case 'customer_history':
       return handleCustomerHistory(match, engine, es);
 
+    case 'daily_brief':
+      return handleDailyBrief(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -309,6 +312,41 @@ function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     : t('chat.today.actionGeneric');
   lines.push('');
   lines.push(`💡 ${t('chat.today.actionLabel')}: ${actionText}`);
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────
+// Composes existing engine signals into one action-first answer. Pure read —
+// no queue writes, no side effects. Customer name is resolved via
+// engine.getCustomerHistory(customerId) because ActionQueueItem has no name
+// field (deliberate — queue is keyed on customerId + phone for dedup).
+function handleDailyBrief(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const b = engine.getDailyBrief();
+
+  const lines: string[] = [];
+  lines.push(t('chat.dailyBrief.header'));
+  lines.push(t('chat.dailyBrief.today', COP(b.today.revenueCents), b.today.transactions));
+
+  if (b.outreach.length > 0) {
+    const top = b.outreach[0];
+    const h = top.customerId ? engine.getCustomerHistory(top.customerId) : null;
+    const name = h?.customer.name || top.phone || '';
+    if (name) lines.push(t('chat.dailyBrief.outreach', name));
+  }
+
+  if (b.reorder.length > 0) {
+    lines.push(t('chat.dailyBrief.reorder', b.reorder[0].name));
+  }
+
+  if (b.missed.slowDayLossCents > 0) {
+    lines.push(t('chat.dailyBrief.slowDay'));
+  }
+
+  if (b.missed.deadStockLockedCents > 0) {
+    lines.push(t('chat.dailyBrief.deadStock'));
+  }
 
   return { kind: 'answer', text: lines.join('\n') };
 }

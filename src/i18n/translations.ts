@@ -5052,6 +5052,26 @@ export const translations: TranslationDictionary = {
   'chat.churn.action.educate_customer':       { en: 'Follow up to understand their experience',                         es: 'Haz seguimiento para entender su experiencia',                             pt: 'Faça acompanhamento para entender a experiência' },
   'chat.churn.action.review_history':         { en: 'Review their purchase history for patterns',                       es: 'Revisa su historial de compras para detectar patrones',                    pt: 'Revise o histórico de compras para padrões' },
 
+  // R-DAILY-BRIEF-HANDLER-V1: action-first daily brief lines.
+  'chat.dailyBrief.header':       { en: '📋 Daily Brief', es: '📋 Resumen Diario', pt: '📋 Resumo Diário' },
+  'chat.dailyBrief.today':        {
+    en: (revenue: string, tx: number) => `• Today: ${revenue} · ${tx} sale${tx === 1 ? '' : 's'}`,
+    es: (revenue: string, tx: number) => `• Hoy: ${revenue} · ${tx} venta${tx === 1 ? '' : 's'}`,
+    pt: (revenue: string, tx: number) => `• Hoje: ${revenue} · ${tx} venda${tx === 1 ? '' : 's'}`,
+  },
+  'chat.dailyBrief.outreach':     {
+    en: (name: string) => `• Contact ${name} today`,
+    es: (name: string) => `• Contacta a ${name} hoy`,
+    pt: (name: string) => `• Contate ${name} hoje`,
+  },
+  'chat.dailyBrief.reorder':      {
+    en: (name: string) => `• Reorder ${name}`,
+    es: (name: string) => `• Reordena ${name}`,
+    pt: (name: string) => `• Reabasteça ${name}`,
+  },
+  'chat.dailyBrief.slowDay':      { en: '• Slow-day risk — push a promo',         es: '• Riesgo de día lento — empuja una promo',  pt: '• Risco de dia fraco — empurre uma promo' },
+  'chat.dailyBrief.deadStock':    { en: '• Dead stock locked up — review',         es: '• Stock muerto inmovilizado — revisa',      pt: '• Estoque parado retido — revise' },
+
   'chat.bestCustomer.header':         { en: 'Your best customer:', es: 'Tu mejor cliente:', pt: 'Seu melhor cliente:' },
   'chat.bestCustomer.empty':          { en: 'No customer data available yet.', es: 'Sin datos de clientes todavía.', pt: 'Sem dados de clientes ainda.' },
   'chat.bestCustomer.summary':        {

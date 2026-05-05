@@ -25,6 +25,7 @@ export interface IntentContext {
 
 export type IntentId =
   | 'best_customer'
+  | 'daily_brief'
   | 'today_summary'
   | 'multi_phone_customers'
   | 'customer_history'
@@ -148,6 +149,18 @@ const TODAY_SUMMARY_KEYWORDS = [
   // PT
   'hoje', 'como estamos hoje', 'vendas de hoje',
   'como vai hoje', 'como está hoje', 'como esta hoje',
+];
+
+// R-DAILY-BRIEF-HANDLER-V1: composer intent — anchored phrases route here
+// before plain "today" / "hoy" so the multi-signal brief wins over the
+// single-KPI today_summary when the cashier explicitly asks for a brief.
+const DAILY_BRIEF_KEYWORDS = [
+  // EN
+  'daily brief', 'morning briefing', 'what should i do today',
+  // ES
+  'resumen diario', 'qué hago hoy', 'que hago hoy',
+  // PT
+  'resumo diário', 'resumo diario', 'o que fazer hoje',
 ];
 
 const SALES_KEYWORDS = [
@@ -456,6 +469,11 @@ export function classifyIntent(
     // the generic 30-day sales summary.
     { id: 'data_query', score: scoreKeywords(query, DATA_QUERY_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
+    // R-DAILY-BRIEF-HANDLER-V1: scored ABOVE today_summary so anchored phrases
+    // ("daily brief", "resumen diario", "o que fazer hoje") route to the
+    // multi-signal composer. Plain "today"/"hoy"/"hoje" still falls to
+    // today_summary because DAILY_BRIEF_KEYWORDS only contains anchored phrases.
+    { id: 'daily_brief',   score: scoreKeywords(query, DAILY_BRIEF_KEYWORDS) },
     // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: must run BEFORE sales_summary so
     // queries like "hoy" / "como estamos hoy" route to today-only metrics.
     // Both banks include 'hoy'/'today' — list-order tie-break wins for TODAY.
@@ -500,7 +518,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -528,7 +546,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
