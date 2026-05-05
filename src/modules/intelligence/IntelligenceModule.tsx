@@ -13,7 +13,7 @@
 // module does not duplicate that logic, does not touch localStorage,
 // and does not execute action payloads.
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
@@ -141,6 +141,23 @@ export default function IntelligenceModule() {
   const fireChipKey = useCallback((queryKey: string) => {
     fireChat(t(queryKey));
   }, [t, fireChat]);
+
+  // R-DAILY-BRIEF-AUTO-V1: fire the daily brief once per store per day.
+  // Read-only — handler does not enqueue. Storage key scoped by storeId so
+  // multi-store operators see the brief once per shop. Failures (incognito,
+  // quota) silently skip; brief stays manually accessible via the chat.
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const sid = currentStoreId || 'default';
+    const key = `dailyBriefLastSeen:${sid}:${today}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      fireChat('daily brief');
+      localStorage.setItem(key, '1');
+    } catch {
+      // localStorage unavailable — skip silently.
+    }
+  }, [currentStoreId, fireChat]);
 
   // Refs to scroll-target panels
   const promoteRef = useRef<HTMLDivElement>(null);
