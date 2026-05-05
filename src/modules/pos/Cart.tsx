@@ -485,22 +485,29 @@ export default function Cart({
             >
               {t('cart.exact')}: ${(totals.total / 100).toFixed(2)}
             </button>
-            {cashAmount * 100 > totals.total && (
-              <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}>
-                <div className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{t('cart.change')}</div>
-                <div className="text-2xl font-bold text-emerald-400">
-                  ${(cashAmount - totals.total / 100).toFixed(2)}
+            {(() => {
+              // R-CHANGE-RECOMPUTE: cents-first to match saleBuilder.ts.
+              // Float math (cashAmount * 100) drifts on penny inputs and
+              // would trigger a phantom $0.00 change on exact payments.
+              const cashCents = Math.round((cashAmount || 0) * 100);
+              if (cashCents > totals.total) return (
+                <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}>
+                  <div className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{t('cart.change')}</div>
+                  <div className="text-2xl font-bold text-emerald-400">
+                    ${((cashCents - totals.total) / 100).toFixed(2)}
+                  </div>
                 </div>
-              </div>
-            )}
-            {cashAmount > 0 && cashAmount * 100 < totals.total && (
-              <div className="rounded-lg p-2 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                <div className="text-[0.65rem] text-red-400 uppercase tracking-wide">{t('cart.shortBy')}</div>
-                <div className="text-base font-bold text-red-400">
-                  ${(totals.total / 100 - cashAmount).toFixed(2)}
+              );
+              if (cashCents > 0 && cashCents < totals.total) return (
+                <div className="rounded-lg p-2 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <div className="text-[0.65rem] text-red-400 uppercase tracking-wide">{t('cart.shortBy')}</div>
+                  <div className="text-base font-bold text-red-400">
+                    ${((totals.total - cashCents) / 100).toFixed(2)}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+              return null;
+            })()}
           </div>
         )}
 
