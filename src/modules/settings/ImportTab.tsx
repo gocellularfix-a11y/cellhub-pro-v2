@@ -240,6 +240,12 @@ export default function ImportTab() {
     const existingPhones = new Set(
       customers.map((c) => normalizePhone(c.phone || '')).filter(Boolean),
     );
+    // R-IMPORTER-CUSTOMER-NAME-DEDUP: fallback name-key set for rows with no phone.
+    const existingNameKeys = new Set(
+      customers
+        .map((c) => `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase())
+        .filter(Boolean),
+    );
     const existingSkus = new Set(
       inventory.flatMap((i) => [
         (i.sku || '').toLowerCase(),
@@ -279,6 +285,16 @@ export default function ImportTab() {
           continue;
         }
         if (phone) existingPhones.add(phone);
+
+        // R-IMPORTER-CUSTOMER-NAME-DEDUP: name-key fallback when no phone is
+        // present — prevents duplicate phone-less rows with identical full names.
+        // Phone-bearing rows already deduped above.
+        const fullNameKey = `${firstName} ${lastName}`.trim().toLowerCase();
+        if (!phone && fullNameKey && existingNameKeys.has(fullNameKey)) {
+          skipped++;
+          continue;
+        }
+        if (!phone && fullNameKey) existingNameKeys.add(fullNameKey);
 
         const ts = Date.now().toString().slice(-8);
         const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
