@@ -1,6 +1,6 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -770,6 +770,20 @@ export class IntelligenceEngine {
 
   // R-INTEL-2-PRODUCT: margin + velocity + return-rate opportunity classification.
   // Passes customerReturns so return rate can be approximated at sale level.
+  // R-DAILY-BRIEF-ENGINE-V1: aggregate existing signals into one structured
+  // payload. Pure compose — no recomputation, no queue writes, no string output.
+  // Slices match the operator-console "what to do now" priority: top-3 outreach,
+  // top-1 reorder, top-1 opportunity. All ingredient methods already cache.
+  getDailyBrief(): DailyBriefResult {
+    return {
+      today: this.getTodayMetrics(),
+      outreach: this.buildOutreachQueueItems().slice(0, 3),
+      reorder: this.getReorderRecommendations().slice(0, 1),
+      opportunities: this.getProductOpportunities(1),
+      missed: this.getMissedRevenue(),
+    };
+  }
+
   getProductOpportunities(topN: number = 10): ProductOpportunity[] {
     return this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
   }

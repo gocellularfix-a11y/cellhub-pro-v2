@@ -283,6 +283,24 @@ export interface ActionQueueItem {
   sentAt?: number;
 }
 
+// R-DAILY-BRIEF-ENGINE-V1: structured aggregate of existing engine signals.
+// Composed by IntelligenceEngine.getDailyBrief() — pure read, no recomputation.
+// Inline `today` shape mirrors the inline return of getTodayMetrics() (the
+// engine method's inline shape is preserved to stay additive — extracting it
+// to a named interface would require updating the existing helper signature).
+export interface DailyBriefResult {
+  today: {
+    revenueCents: number;
+    transactions: number;
+    avgTicketCents: number;
+    topSeller: { name: string; revenueCents: number } | null;
+  };
+  outreach: ActionQueueItem[];
+  reorder: ReorderRecommendation[];
+  opportunities: ProductOpportunity[];
+  missed: MissedRevenueReport;
+}
+
 // R-INTEL-PHASE2-RC: root cause analysis types
 export type ActionType = 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder';
 
