@@ -216,7 +216,11 @@ function classifyItem(item: SaleItem): ItemKind {
     // NOT a service-category signal. Skip name-based unlock detection when
     // the item carries an explicit layawayId — those are layaway payments
     // and must bucket under 'Layaway' (catName override below).
-    if (!item.layawayId && (n.includes('unlock') || n.includes('desbloqueo'))) return 'unlock';
+    if (!item.layawayId && (n.includes('unlock') || n.includes('desbloqueo'))) {
+      // R-LAYAWAY-GUARD: prevent false unlock classification for layaway-related items
+      if (n.includes('layaway') || n.includes('apartado')) return 'service';
+      return 'unlock';
+    }
     return 'service';
   }
   return 'product';
