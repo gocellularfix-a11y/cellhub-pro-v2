@@ -56,6 +56,8 @@ export default function PrintPreviewModal({
   const [pageSize, setPageSize] = useState(initialPageSize || '4x6');
   const [landscape, setLandscape] = useState(initialLandscape || false);
   const [scaleFactor, setScaleFactor] = useState(100);
+  // R-PRINT-SHRINK-TO-FIT: default ON — auto-shrinks oversized content to fit page width.
+  const [shrinkToFit, setShrinkToFit] = useState(true);
   const [margins, setMargins] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
   const [zoom, setZoom] = useState(100);
   const [copies, setCopies] = useState(initialCopies || 1);
@@ -121,9 +123,16 @@ export default function PrintPreviewModal({
 
   const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
 
-  const scaledHtml = scaleFactor === 100
+  // R-PRINT-SHRINK-FALLBACK-FIX: predictable page-size-based shrink.
+  // Replaces the DOM-measurement helper, which couldn't see inside the
+  // sandboxed iframe and effectively returned 100 on every flow.
+  const effectiveScale = shrinkToFit
+    ? (pageSize === 'letter' ? 90 : 95)
+    : scaleFactor;
+
+  const scaledHtml = effectiveScale === 100
     ? html
-    : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${scaleFactor / 100}); transform-origin: center center;">`);
+    : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${effectiveScale / 100}); transform-origin: center center;">`);
 
   return (
     <div style={{
@@ -186,14 +195,43 @@ export default function PrintPreviewModal({
 
           {/* Scale */}
           <Field label="Print Scale">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <input type="number" min={25} max={200} step={1} value={scaleFactor}
+            {/* R-PRINT-SHRINK-TO-FIT: toggle disables manual scale and uses calculateAutoScale() */}
+            <label
+              title="Auto adjusts to fit page width"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#cbd5e1', fontSize: '0.8rem', cursor: 'pointer', marginBottom: '0.4rem' }}
+            >
+              <input
+                type="checkbox"
+                checked={shrinkToFit}
+                onChange={(e) => setShrinkToFit(e.target.checked)}
+                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+              />
+              Shrink to fit page
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: shrinkToFit ? 0.5 : 1 }}>
+              <input
+                type="number"
+                min={25}
+                max={200}
+                step={1}
+                value={shrinkToFit ? effectiveScale : scaleFactor}
+                disabled={shrinkToFit}
+                title={shrinkToFit ? 'Auto adjusts to fit page width' : ''}
                 onChange={(e) => setScaleFactor(Math.min(200, Math.max(25, parseFloat(e.target.value) || 100)))}
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }} />
+                style={{ ...inputStyle, width: '60px', textAlign: 'right', cursor: shrinkToFit ? 'not-allowed' : 'text' }}
+              />
               <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>%</span>
-              <input type="range" min={25} max={200} step={5} value={scaleFactor}
+              <input
+                type="range"
+                min={25}
+                max={200}
+                step={5}
+                value={shrinkToFit ? effectiveScale : scaleFactor}
+                disabled={shrinkToFit}
+                title={shrinkToFit ? 'Auto adjusts to fit page width' : ''}
                 onChange={(e) => setScaleFactor(Number(e.target.value))}
-                style={{ flex: 1, cursor: 'pointer' }} />
+                style={{ flex: 1, cursor: shrinkToFit ? 'not-allowed' : 'pointer' }}
+              />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748b' }}>
               <span>25%</span><span>100%</span><span>200%</span>
@@ -280,11 +318,14 @@ export default function PrintPreviewModal({
           {/* r-print-preview-iframe-foundation: direct HTML render via iframe srcDoc.
               This is the same pattern used in ReceiptModal (r-receipt-unify) which
               works reliably in Electron 31 sandbox. No PDF intermediate. */}
-          <div style={{
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: 'top center',
-            transition: 'transform 0.15s ease',
-          }}>
+          <div
+            id="print-content"
+            style={{
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.15s ease',
+            }}
+          >
             <iframe
               srcDoc={scaledHtml}
               title="Print preview"
