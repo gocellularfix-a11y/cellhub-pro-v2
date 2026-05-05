@@ -6,6 +6,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog, SearchInput, Modal } from '@/components/ui';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
@@ -138,7 +139,6 @@ export default function POSModule() {
   const [showLabelPrinter, setShowLabelPrinter] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [customerSearchQ, setCustomerSearchQ] = useState('');
 
   // ── Auto-open PhonePaymentModal when customer credential is scanned ──
   // AppShell scanner handler sets pendingPhonePaymentCustomerId when a GC-xxxx
@@ -216,13 +216,16 @@ export default function POSModule() {
     return filter ? inventory.filter(filter) : [];
   }, [activeCategory, inventory, customCategories]);
 
-  // Customer search results
-  const customerResults = useMemo(() => {
-    if (!customerSearchQ.trim()) return customers.slice(0, 10);
-    return customers.filter((c) =>
-      matchesSearch(customerSearchQ, c.name, c.phone, c.email, c.customerNumber),
-    );
-  }, [customerSearchQ, customers]);
+  // R-POS-CUSTOMERPICKER-MIGRATION: inline customer add via picker.
+  // Mirrors TopUpModal/CredentialMaker pattern — append to customers state and persist.
+  const handleCreateNewCustomer = useCallback((c: Customer) => {
+    try {
+      const next = [...customersRef.current, c];
+      customersRef.current = next;
+      setCustomers(next);
+      persist.customer(c.id, c as unknown as Record<string, unknown>);
+    } catch (_) { /* defensive */ }
+  }, [setCustomers]);
 
   // ── Helpers ─────────────────────────────────────────────
 
@@ -1177,58 +1180,32 @@ export default function POSModule() {
             </div>
 
             <div className="p-4">
-              <SearchInput
-                value={customerSearchQ}
-                onChange={setCustomerSearchQ}
+              {/* R-POS-CUSTOMERPICKER-MIGRATION: explicit Walk-in button preserves
+                  the affordance the inline list used to provide; picker handles the
+                  search/select/inline-create UX. */}
+              <button
+                onClick={() => {
+                  setSelectedCustomer(null);
+                  setShowCustomerSearch(false);
+                }}
+                className="w-full text-left px-3 py-2 mb-3 rounded-lg hover:bg-white/10 text-sm text-slate-400 border border-white/10"
+              >
+                🚶 {t('pos.walkInOption')}
+              </button>
+
+              <CustomerPicker
+                customers={customers}
+                selectedCustomer={selectedCustomer}
+                onSelect={(c) => {
+                  if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
+                    setSelectedCustomer(c);
+                  }
+                  setShowCustomerSearch(false);
+                }}
+                lang={lang}
                 placeholder={t('typeCustomer')}
-                autoFocus
-                className="mb-3"
+                onCreateCustomer={handleCreateNewCustomer}
               />
-
-              <div className="max-h-64 overflow-y-auto space-y-1">
-                {/* Walk-in option */}
-                <button
-                  onClick={() => {
-                    setSelectedCustomer(null);
-                    setShowCustomerSearch(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-slate-400"
-                >
-                  🚶 {t('pos.walkInOption')}
-                </button>
-
-                {customerResults.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setSelectedCustomer(c);
-                      setShowCustomerSearch(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 flex items-center gap-3"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 text-sm font-bold">
-                      {c.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm text-white">{c.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {c.phone}
-                        {c.storeCredit > 0 && (
-                          <span className="text-emerald-400 ml-2">
-                            {t('pos.creditPrefix')} {formatCurrency(c.storeCredit)}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-
-                {customerResults.length === 0 && customerSearchQ.trim() && (
-                  <p className="text-center text-slate-500 text-sm py-4">
-                    {t('noMatches')}
-                  </p>
-                )}
-              </div>
             </div>
           </div>
         </div>
