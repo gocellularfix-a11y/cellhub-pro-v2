@@ -28,6 +28,7 @@ import {
   getUnlockSummary, getLayawaySummary, getPendingLayaways,
   getPhonePaymentSummary, getSpecialOrderSummary, getReturnSummary,
   getExpenseSummary,
+  getEmployeePerformance,
   type DateRange,
 } from '../dataAccess/cellhubDataAccess';
 
@@ -1403,6 +1404,20 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   const q = (match.query || '').toLowerCase();
   const range = detectDataQueryRange(q);
   const actionLbl = t('chat.dataQuery.action');
+
+  // ── Employee performance (R-DATA-EMPLOYEE-ACCESS-V1) ────
+  // Top 3 by revenue (DESC). Mirrors Reports' employeeStats. Tested
+  // BEFORE the sales branch so "ventas por empleado" / "top employee"
+  // route here, not into the generic sales summary.
+  if (/employee|empleado|funcionário|funcionario/.test(q)) {
+    const rows = getEmployeePerformance(engine.getSales(), range);
+    if (rows.length === 0) return { kind: 'answer', text: t('chat.dataQuery.employeesEmpty') };
+    const lines = [t('chat.dataQuery.employeesHeader'), ''];
+    rows.slice(0, 3).forEach((r, i) => {
+      lines.push(`${i + 1}. ${t('chat.dataQuery.employeesRow', r.name, COP(r.revenueCents), r.transactions)}`);
+    });
+    return { kind: 'answer', text: lines.join('\n') };
+  }
 
   // ── Expenses (R-DATA-EXPENSE-ACCESS-V1) ─────────────────
   // Read-only summary. Does NOT compute net profit — sales-side profit

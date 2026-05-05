@@ -399,6 +399,10 @@ const DATA_QUERY_KEYWORDS = [
   'pagamentos de telefone',
   // R-DATA-EXPENSE-ACCESS-V1: PT expense triggers
   'despesas', 'quanto gastei',
+  // R-DATA-EMPLOYEE-ACCESS-V1: employee performance triggers
+  'top employee', 'best employee', 'sales per employee', 'employee performance',
+  'mejor empleado', 'ventas por empleado', 'desempeño de empleados',
+  'melhor funcionário', 'melhor funcionario', 'vendas por funcionário', 'desempenho dos funcionários',
 ];
 
 const HELP_KEYWORDS = [

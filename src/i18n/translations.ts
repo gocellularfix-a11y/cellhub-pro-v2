@@ -318,6 +318,14 @@ export const translations: TranslationDictionary = {
     es: (cat: string, amt: string) => `Categoría principal: ${cat} (${amt})`,
     pt: (cat: string, amt: string) => `Categoria principal: ${cat} (${amt})`,
   },
+  // R-DATA-EMPLOYEE-ACCESS-V1
+  'chat.dataQuery.employeesHeader': { en: '👥 Top employees', es: '👥 Mejores empleados', pt: '👥 Melhores funcionários' },
+  'chat.dataQuery.employeesRow': {
+    en: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} sale${tx === 1 ? '' : 's'}`,
+    es: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} venta${tx === 1 ? '' : 's'}`,
+    pt: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} venda${tx === 1 ? '' : 's'}`,
+  },
+  'chat.dataQuery.employeesEmpty': { en: 'No sales attributed to employees in this range.', es: 'No hay ventas atribuidas a empleados en este rango.', pt: 'Nenhuma venda atribuída a funcionários neste período.' },
   'chat.dataQuery.topItems': { en: 'Top items', es: 'Top artículos', pt: 'Top itens' },
   'chat.dataQuery.pendingItems': { en: 'Pending', es: 'Pendientes', pt: 'Pendentes' },
   'chat.dataQuery.readyItems': { en: 'Ready', es: 'Listas', pt: 'Prontos' },

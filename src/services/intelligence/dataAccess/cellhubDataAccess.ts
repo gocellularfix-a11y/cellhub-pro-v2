@@ -447,3 +447,31 @@ export function getExpenseSummary(expenses: Expense[], range: DateRange): Expens
   }
   return { range, count, totalCents, byCategory };
 }
+
+// ── Employee performance (R-DATA-EMPLOYEE-ACCESS-V1) ───────
+// Mirrors Reports' employeeStats logic exactly — keyed by sale.employeeName,
+// "Unknown" fallback, sums total + transaction count, sorts DESC by revenue.
+// Excludes voided/refunded sales (matches isCountableSale used elsewhere).
+// Money in cents. NO commission math, NO profit math — caller's spec.
+export interface EmployeePerformanceRow {
+  name: string;
+  transactions: number;
+  revenueCents: number;
+}
+
+export function getEmployeePerformance(sales: Sale[], range: DateRange): EmployeePerformanceRow[] {
+  const { start, end } = getDateBounds(range);
+  const stats: Record<string, { transactions: number; revenueCents: number }> = {};
+  for (const s of sales) {
+    if (!isCountableSale(s)) continue;
+    const t = timestampOf((s as { createdAt?: unknown }).createdAt);
+    if (t < start || t >= end) continue;
+    const name = (s as { employeeName?: string }).employeeName || 'Unknown';
+    if (!stats[name]) stats[name] = { transactions: 0, revenueCents: 0 };
+    stats[name].transactions++;
+    stats[name].revenueCents += (s as { total?: number }).total || 0;
+  }
+  return Object.entries(stats)
+    .map(([name, d]) => ({ name, transactions: d.transactions, revenueCents: d.revenueCents }))
+    .sort((a, b) => b.revenueCents - a.revenueCents);
+}
