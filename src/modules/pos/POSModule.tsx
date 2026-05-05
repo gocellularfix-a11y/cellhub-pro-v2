@@ -570,12 +570,17 @@ export default function POSModule() {
 
         const newDeposit = (repair.depositAmount || 0) + paidCents;
         const newBalance = Math.max(0, (repair.balance || 0) - paidCents);
+        // R-COMPLETEDAT-FIELD: stamp completedAt only on the transition to
+        // picked_up; preserve existing value if already set; leave untouched
+        // when balance > 0 (still active).
+        const nowIso = new Date().toISOString();
         updatedRepairs[ri] = {
           ...repair,
           depositAmount: newDeposit,
           balance: newBalance,
           status: newBalance === 0 ? 'picked_up' as const : repair.status,
-          updatedAt: new Date().toISOString(),
+          updatedAt: nowIso,
+          completedAt: newBalance === 0 ? (repair.completedAt ?? nowIso) : repair.completedAt,
         };
         repairOps.push({
           collection: 'repairTickets',

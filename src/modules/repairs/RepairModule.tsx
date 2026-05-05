@@ -867,7 +867,9 @@ export default function RepairModule() {
     const deposit = (repair as any).depositAmount || (repair as any).deposit || 0;
     if (balance === 0 && deposit === 0) {
       // Round R2: canonical snake_case on complete path (picked_up).
-      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
+      // R-COMPLETEDAT-FIELD: stamp completedAt once; preserve if already set.
+      const nowIso = new Date().toISOString();
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: nowIso, completedAt: repair.completedAt ?? nowIso };
       const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
       repairsRef.current = next;
       setRepairs(next);
@@ -926,7 +928,9 @@ export default function RepairModule() {
     // mutation here.
     if ((repair.balance || 0) === 0) {
       // Round R2: canonical snake_case on complete path (picked_up).
-      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
+      // R-COMPLETEDAT-FIELD: stamp completedAt once; preserve if already set.
+      const nowIso = new Date().toISOString();
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: nowIso, completedAt: repair.completedAt ?? nowIso };
       const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
       repairsRef.current = next;
       setRepairs(next);
