@@ -30,6 +30,7 @@ import {
   getExpenseSummary,
   getEmployeePerformance,
   getAppointmentSummary,
+  getLiabilitySummary,
   type DateRange,
 } from '../dataAccess/cellhubDataAccess';
 
@@ -1405,6 +1406,34 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   const q = (match.query || '').toLowerCase();
   const range = detectDataQueryRange(q);
   const actionLbl = t('chat.dataQuery.action');
+
+  // ── Liability: store credit + loyalty (R-DATA-LIABILITY-V1) ──
+  // Read-only. Points displayed as "X points" — NEVER converted to dollars.
+  // Tested BEFORE other branches so "store credit" / "puntos" / "pontos"
+  // doesn't get caught by the customer / sales regex.
+  if (/store credit|loyalty|points|crédito|credito|puntos|pontos|liability/.test(q)) {
+    const sum = getLiabilitySummary(engine.getCustomers());
+    if (sum.storeCredit.customerCount === 0 && sum.loyalty.customerCount === 0) {
+      return { kind: 'answer', text: t('chat.dataQuery.liabilityEmpty') };
+    }
+    const lines = [t('chat.dataQuery.liabilityHeader'), ''];
+    if (sum.storeCredit.totalCents > 0 || sum.storeCredit.customerCount > 0) {
+      lines.push(`• ${t('chat.dataQuery.liabilityCreditTotal', COP(sum.storeCredit.totalCents))}`);
+      lines.push(`• ${t('chat.dataQuery.liabilityCreditCount', sum.storeCredit.customerCount)}`);
+      sum.storeCredit.top.forEach((r) => {
+        lines.push(`  ${t('chat.dataQuery.liabilityTopRow', r.name, COP(r.cents || 0))}`);
+      });
+    }
+    if (sum.loyalty.totalPoints > 0 || sum.loyalty.customerCount > 0) {
+      if (lines.length > 2) lines.push('');
+      lines.push(`• ${t('chat.dataQuery.liabilityPointsTotal', sum.loyalty.totalPoints)}`);
+      lines.push(`• ${t('chat.dataQuery.liabilityPointsCount', sum.loyalty.customerCount)}`);
+      sum.loyalty.top.forEach((r) => {
+        lines.push(`  ${t('chat.dataQuery.liabilityTopRow', r.name, `${r.points || 0} pts`)}`);
+      });
+    }
+    return { kind: 'answer', text: lines.join('\n') };
+  }
 
   // ── Appointments (R-DATA-APPOINTMENT-ACCESS-V1) ─────────
   // Counts derived from estimatedDropOff midnight-anchored to local timezone,

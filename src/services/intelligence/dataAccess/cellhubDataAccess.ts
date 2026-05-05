@@ -476,6 +476,68 @@ export function getEmployeePerformance(sales: Sale[], range: DateRange): Employe
     .sort((a, b) => b.revenueCents - a.revenueCents);
 }
 
+// ── Liability — store credit + loyalty (R-DATA-LIABILITY-V1) ──
+// Read-only summary. Mirrors CustomerModule.tsx:476 (total store credit) +
+// :479 (customers-with-credit count). Points stay UNITLESS — no dollar
+// conversion (no documented redemption rate exists in the codebase).
+// Negative balances defensively clamped via Math.max(0, ...).
+export interface LiabilityTopRow {
+  name: string;
+  cents?: number;   // store credit branch
+  points?: number;  // loyalty branch
+}
+
+export interface LiabilitySummary {
+  storeCredit: {
+    totalCents: number;
+    customerCount: number;
+    top: LiabilityTopRow[];
+  };
+  loyalty: {
+    totalPoints: number;
+    customerCount: number;
+    top: LiabilityTopRow[];
+  };
+}
+
+export function getLiabilitySummary(customers: Customer[]): LiabilitySummary {
+  let totalCents = 0;
+  let totalPoints = 0;
+  let creditCount = 0;
+  let pointsCount = 0;
+  const creditCandidates: Array<{ name: string; cents: number }> = [];
+  const pointsCandidates: Array<{ name: string; points: number }> = [];
+
+  for (const c of customers) {
+    const cents = Math.max(0, c.storeCredit || 0);
+    const points = Math.max(0, c.loyaltyPoints || 0);
+    if (cents > 0) {
+      totalCents += cents;
+      creditCount++;
+      creditCandidates.push({ name: c.name || 'Unknown', cents });
+    }
+    if (points > 0) {
+      totalPoints += points;
+      pointsCount++;
+      pointsCandidates.push({ name: c.name || 'Unknown', points });
+    }
+  }
+
+  const topCredit = creditCandidates
+    .sort((a, b) => b.cents - a.cents)
+    .slice(0, 3)
+    .map((r) => ({ name: r.name, cents: r.cents }));
+  const topPoints = pointsCandidates
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 3)
+    .map((r) => ({ name: r.name, points: r.points }));
+
+  return {
+    storeCredit: { totalCents, customerCount: creditCount, top: topCredit },
+    loyalty:     { totalPoints, customerCount: pointsCount, top: topPoints },
+  };
+}
+
 // ── Appointments (R-DATA-APPOINTMENT-ACCESS-V1) ────────────
 // Mirrors AppointmentsModule.tsx:96-106 exactly for "today" (midnight-anchored
 // comparison + status === 'scheduled' filter). Tomorrow uses the same midnight

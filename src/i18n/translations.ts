@@ -349,6 +349,34 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `Não compareceram: ${n}`,
   },
   'chat.dataQuery.appointmentsEmpty': { en: 'No appointments on record.', es: 'No hay citas registradas.', pt: 'Nenhum agendamento registrado.' },
+  // R-DATA-LIABILITY-V1: store credit + loyalty liability (points stay unitless).
+  'chat.dataQuery.liabilityHeader': { en: '💳 Outstanding liability', es: '💳 Pasivo pendiente', pt: '💳 Passivo pendente' },
+  'chat.dataQuery.liabilityCreditTotal': {
+    en: (amt: string) => `Store credit total: ${amt}`,
+    es: (amt: string) => `Crédito total: ${amt}`,
+    pt: (amt: string) => `Crédito total: ${amt}`,
+  },
+  'chat.dataQuery.liabilityCreditCount': {
+    en: (n: number) => `${n} customer${n === 1 ? '' : 's'} with credit`,
+    es: (n: number) => `${n} cliente${n === 1 ? '' : 's'} con crédito`,
+    pt: (n: number) => `${n} cliente${n === 1 ? '' : 's'} com crédito`,
+  },
+  'chat.dataQuery.liabilityPointsTotal': {
+    en: (n: number) => `Loyalty points total: ${n} points`,
+    es: (n: number) => `Puntos de lealtad totales: ${n} puntos`,
+    pt: (n: number) => `Pontos de fidelidade totais: ${n} pontos`,
+  },
+  'chat.dataQuery.liabilityPointsCount': {
+    en: (n: number) => `${n} customer${n === 1 ? '' : 's'} with points`,
+    es: (n: number) => `${n} cliente${n === 1 ? '' : 's'} con puntos`,
+    pt: (n: number) => `${n} cliente${n === 1 ? '' : 's'} com pontos`,
+  },
+  'chat.dataQuery.liabilityTopRow': {
+    en: (name: string, value: string) => `${name}: ${value}`,
+    es: (name: string, value: string) => `${name}: ${value}`,
+    pt: (name: string, value: string) => `${name}: ${value}`,
+  },
+  'chat.dataQuery.liabilityEmpty': { en: 'No outstanding liability — no customers carry store credit or loyalty points.', es: 'Sin pasivo pendiente — ningún cliente tiene crédito ni puntos.', pt: 'Sem passivo pendente — nenhum cliente possui crédito ou pontos.' },
   'chat.dataQuery.topItems': { en: 'Top items', es: 'Top artículos', pt: 'Top itens' },
   'chat.dataQuery.pendingItems': { en: 'Pending', es: 'Pendientes', pt: 'Pendentes' },
   'chat.dataQuery.readyItems': { en: 'Ready', es: 'Listas', pt: 'Prontos' },

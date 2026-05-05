@@ -407,6 +407,10 @@ const DATA_QUERY_KEYWORDS = [
   'appointments', 'appointment today', 'upcoming appointments',
   'citas', 'citas hoy', 'citas mañana',
   'agendamentos', 'agendamentos hoje',
+  // R-DATA-LIABILITY-V1: store credit + loyalty triggers
+  'store credit', 'loyalty points', 'liability',
+  'crédito', 'credito', 'crédito tienda', 'credito tienda', 'puntos',
+  'pontos',
 ];
 
 const HELP_KEYWORDS = [
