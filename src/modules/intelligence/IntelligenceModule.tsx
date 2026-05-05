@@ -40,7 +40,7 @@ export default function IntelligenceModule() {
   const { state } = useApp();
   const {
     sales, customers, inventory, repairs,
-    specialOrders, unlocks, layaways, customerReturns,
+    specialOrders, unlocks, layaways, customerReturns, expenses,
     currentStoreId, consolidatedView,
   } = state;
   const { locale, t } = useTranslation();
@@ -65,14 +65,14 @@ export default function IntelligenceModule() {
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
-      { specialOrders, unlocks, layaways, customerReturns },
+      { specialOrders, unlocks, layaways, customerReturns, expenses },
     );
     engineConfigSigRef.current = engineConfigSig;
   }
   const engine = engineRef.current;
 
   engine.updateData(sales, customers, inventory, repairs, {
-    specialOrders, unlocks, layaways, customerReturns,
+    specialOrders, unlocks, layaways, customerReturns, expenses,
   });
 
   const result: EngineResult = useMemo(

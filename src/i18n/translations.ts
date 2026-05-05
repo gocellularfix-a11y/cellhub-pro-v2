@@ -301,6 +301,23 @@ export const translations: TranslationDictionary = {
   'chat.dataQuery.layawaysHeader': { en: '🏷️ Layaways', es: '🏷️ Apartados', pt: '🏷️ Reservas' },
   'chat.dataQuery.unlocksHeader': { en: '🔓 Unlocks', es: '🔓 Desbloqueos', pt: '🔓 Desbloqueios' },
   'chat.dataQuery.phonePaymentsHeader': { en: '📱 Phone payments', es: '📱 Pagos de teléfono', pt: '📱 Pagamentos de telefone' },
+  // R-DATA-EXPENSE-ACCESS-V1
+  'chat.dataQuery.expensesHeader': { en: '💸 Expenses', es: '💸 Gastos', pt: '💸 Despesas' },
+  'chat.dataQuery.expensesTotal': {
+    en: (amt: string) => `Total: ${amt}`,
+    es: (amt: string) => `Total: ${amt}`,
+    pt: (amt: string) => `Total: ${amt}`,
+  },
+  'chat.dataQuery.expensesCount': {
+    en: (n: number) => `${n} expense${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} gasto${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} despesa${n === 1 ? '' : 's'}`,
+  },
+  'chat.dataQuery.expensesTopCategory': {
+    en: (cat: string, amt: string) => `Top category: ${cat} (${amt})`,
+    es: (cat: string, amt: string) => `Categoría principal: ${cat} (${amt})`,
+    pt: (cat: string, amt: string) => `Categoria principal: ${cat} (${amt})`,
+  },
   'chat.dataQuery.topItems': { en: 'Top items', es: 'Top artículos', pt: 'Top itens' },
   'chat.dataQuery.pendingItems': { en: 'Pending', es: 'Pendientes', pt: 'Pendentes' },
   'chat.dataQuery.readyItems': { en: 'Ready', es: 'Listas', pt: 'Prontos' },

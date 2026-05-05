@@ -9,7 +9,7 @@
 // ============================================================
 
 import type {
-  Sale, Customer, InventoryItem, Repair, Unlock, Layaway, SpecialOrder, CustomerReturn,
+  Sale, Customer, InventoryItem, Repair, Unlock, Layaway, SpecialOrder, CustomerReturn, Expense,
 } from '@/store/types';
 
 export type DateRange = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days';
@@ -418,4 +418,32 @@ export function getReturnSummary(returns: CustomerReturn[], range: DateRange): R
     totalRefundedCents += Math.round(Number(total) * 100);
   }
   return { range, count, totalRefundedCents };
+}
+
+// ── Expenses (R-DATA-EXPENSE-ACCESS-V1) ────────────────────
+// Read-only summary. Filters by Expense.date (ISO "YYYY-MM-DD" string).
+// Money already in cents per Expense type. Does NOT compute net profit —
+// callers should not pair this with sales-profit math without explicit
+// formula spec.
+export interface ExpenseSummary {
+  range: DateRange;
+  count: number;
+  totalCents: number;
+  byCategory: Record<string, number>; // category → cents
+}
+
+export function getExpenseSummary(expenses: Expense[], range: DateRange): ExpenseSummary {
+  const { start, end } = getDateBounds(range);
+  let count = 0, totalCents = 0;
+  const byCategory: Record<string, number> = {};
+  for (const e of expenses) {
+    const t = timestampOf(e.date);
+    if (t < start || t >= end) continue;
+    count++;
+    const amount = e.amount || 0;
+    totalCents += amount;
+    const cat = String(e.category || 'other');
+    byCategory[cat] = (byCategory[cat] || 0) + amount;
+  }
+  return { range, count, totalCents, byCategory };
 }

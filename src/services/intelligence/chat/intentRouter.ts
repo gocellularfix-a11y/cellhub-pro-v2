@@ -387,12 +387,18 @@ const DATA_QUERY_KEYWORDS = [
   'mejores clientes',
   'pagos de teléfono', 'pagos de telefono',
   'clientes inactivos',
+  // R-DATA-EXPENSE-ACCESS-V1: expense triggers (EN already covered by 'how much')
+  'expenses', 'spend', 'how much did i spend',
+  // ES
+  'gastos', 'cuanto gaste', 'cuánto gasté', 'cuanto gasté',
   // PT
   'quanto', 'quantos',
   'vendas de hoje', 'vendas de ontem', 'vendas desta semana',
   'reparos prontos', 'estoque baixo', 'estoque parado',
   'melhores clientes', 'clientes inativos',
   'pagamentos de telefone',
+  // R-DATA-EXPENSE-ACCESS-V1: PT expense triggers
+  'despesas', 'quanto gastei',
 ];
 
 const HELP_KEYWORDS = [

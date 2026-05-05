@@ -1,5 +1,5 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense } from '@/store/types';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
@@ -71,6 +71,9 @@ export interface EngineExtras {
   unlocks?: Unlock[];
   layaways?: Layaway[];
   customerReturns?: CustomerReturn[];
+  // R-DATA-EXPENSE-ACCESS-V1: raw expenses list. Read-only — engine never
+  // computes net profit. Helpers in cellhubDataAccess summarize/filter.
+  expenses?: Expense[];
 }
 
 export class IntelligenceEngine {
@@ -87,6 +90,8 @@ export class IntelligenceEngine {
   private unlocks: Unlock[];
   private layaways: Layaway[];
   private customerReturns: CustomerReturn[];
+  // R-DATA-EXPENSE-ACCESS-V1
+  private expenses: Expense[];
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -113,6 +118,8 @@ export class IntelligenceEngine {
   private _rawUnlocks: Unlock[] = [];
   private _rawLayaways: Layaway[] = [];
   private _rawCustomerReturns: CustomerReturn[] = [];
+  // R-DATA-EXPENSE-ACCESS-V1
+  private _rawExpenses: Expense[] = [];
 
   constructor(
     sales: Sale[],
@@ -139,6 +146,7 @@ export class IntelligenceEngine {
     this.unlocks = extras.unlocks ?? [];
     this.layaways = extras.layaways ?? [];
     this.customerReturns = extras.customerReturns ?? [];
+    this.expenses = extras.expenses ?? [];
 
     // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
     // ref-equality skip. Stored AFTER extras defaults so the same defaults
@@ -151,6 +159,7 @@ export class IntelligenceEngine {
     this._rawUnlocks = this.unlocks;
     this._rawLayaways = this.layaways;
     this._rawCustomerReturns = this.customerReturns;
+    this._rawExpenses = this.expenses;
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -446,6 +455,8 @@ export class IntelligenceEngine {
   getLayaways(): Layaway[] { return this.layaways; }
   getSpecialOrders(): SpecialOrder[] { return this.specialOrders; }
   getReturns(): CustomerReturn[] { return this.customerReturns; }
+  // R-DATA-EXPENSE-ACCESS-V1
+  getExpenses(): Expense[] { return this.expenses; }
 
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
   // today_summary intent. Filters sales by createdAt >= midnight + status
@@ -543,6 +554,7 @@ export class IntelligenceEngine {
     const newUnlocks = extras.unlocks ?? this._rawUnlocks;
     const newLayaways = extras.layaways ?? this._rawLayaways;
     const newCustomerReturns = extras.customerReturns ?? this._rawCustomerReturns;
+    const newExpenses = extras.expenses ?? this._rawExpenses;
 
     if (
       sales === this._rawSales
@@ -553,6 +565,7 @@ export class IntelligenceEngine {
       && newUnlocks === this._rawUnlocks
       && newLayaways === this._rawLayaways
       && newCustomerReturns === this._rawCustomerReturns
+      && newExpenses === this._rawExpenses
     ) {
       return; // ref-equality: no work
     }
@@ -565,6 +578,7 @@ export class IntelligenceEngine {
     this._rawUnlocks = newUnlocks;
     this._rawLayaways = newLayaways;
     this._rawCustomerReturns = newCustomerReturns;
+    this._rawExpenses = newExpenses;
 
     this.inventory = adaptInventory(inventory as unknown as unknown[]);
     this.sales = adaptSale(sales as unknown as unknown[], this.inventory);
@@ -574,6 +588,7 @@ export class IntelligenceEngine {
     this.unlocks = newUnlocks;
     this.layaways = newLayaways;
     this.customerReturns = newCustomerReturns;
+    this.expenses = newExpenses;
 
     // Analyzers / scorers hold internal references to the data arrays they
     // were constructed with. Rebuild them so they see the fresh adapted

@@ -27,6 +27,7 @@ import {
   getRepairSummary, getReadyRepairs,
   getUnlockSummary, getLayawaySummary, getPendingLayaways,
   getPhonePaymentSummary, getSpecialOrderSummary, getReturnSummary,
+  getExpenseSummary,
   type DateRange,
 } from '../dataAccess/cellhubDataAccess';
 
@@ -1402,6 +1403,26 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   const q = (match.query || '').toLowerCase();
   const range = detectDataQueryRange(q);
   const actionLbl = t('chat.dataQuery.action');
+
+  // ── Expenses (R-DATA-EXPENSE-ACCESS-V1) ─────────────────
+  // Read-only summary. Does NOT compute net profit — sales-side profit
+  // formula is unresolved (see audit). Test BEFORE other branches so the
+  // word "spend" / "gasto" / "despesa" doesn't collide with sales regex.
+  if (/expense|spend|gasto|despesa/.test(q)) {
+    const sum = getExpenseSummary(engine.getExpenses(), range);
+    if (sum.count === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
+    const lines = [
+      t('chat.dataQuery.expensesHeader'),
+      '',
+      `• ${t('chat.dataQuery.expensesTotal', COP(sum.totalCents))}`,
+      `• ${t('chat.dataQuery.expensesCount', sum.count)}`,
+    ];
+    const topCat = Object.entries(sum.byCategory).sort((a, b) => b[1] - a[1])[0];
+    if (topCat && topCat[1] > 0) {
+      lines.push(`• ${t('chat.dataQuery.expensesTopCategory', topCat[0], COP(topCat[1]))}`);
+    }
+    return { kind: 'answer', text: lines.join('\n') };
+  }
 
   // ── Repairs ────────────────────────────────────────────
   if (/repair|repara|reparo/.test(q)) {
