@@ -604,6 +604,10 @@ function handleWhoToContactToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   if (scores.length === 0) {
     return { kind: 'answer', text: t('chat.whoToContact.empty') };
   }
+  // R-INTENT-CONTACT-TODAY-CONSENT-GUARD: consent lookup. CustomerHistorySummary
+  // exposes a narrow customer projection without consent, so read it from the
+  // engine's full customers array. Undefined = allowed (legacy records).
+  const consentById = new Map(engine.getCustomers().map((c) => [c.id, c.communicationConsent]));
 
   type Candidate = {
     name: string;
@@ -622,6 +626,10 @@ function handleWhoToContactToday(engine: IntelligenceEngine, lang: Lang3): ChatR
     if (!h) continue;
     const phone = h.customer.phone || '';
     if (!phone) continue;                     // require contact channel
+    // R-INTENT-CONTACT-TODAY-CONSENT-GUARD: skip customers who explicitly
+    // opted out of communications. Undefined treated as allowed (legacy
+    // records pre-dating the consent field).
+    if (consentById.get(cs.customerId) === false) continue;
     if (h.visitCount < 1) continue;           // require prior purchase
     if (!h.lastVisit) continue;               // require valid last-visit date
     const daysSinceLastVisit = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));

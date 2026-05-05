@@ -616,6 +616,10 @@ export class IntelligenceEngine {
       rank: number;
     };
 
+    // R-INTENT-CONTACT-TODAY-CONSENT-GUARD-QUEUE: parity with handler — exclude
+    // opted-out customers from the persisted queue. Undefined = allowed.
+    const consentById = new Map(this.getCustomers().map((c) => [c.id, c.communicationConsent]));
+
     const now = Date.now();
     const cands: Cand[] = [];
     for (const cs of scores) {
@@ -623,6 +627,7 @@ export class IntelligenceEngine {
       if (!h) continue;
       const phone = h.customer.phone || '';
       if (!phone) continue;
+      if (consentById.get(cs.customerId) === false) continue;
       if (h.visitCount < 1) continue;
       if (!h.lastVisit) continue;
       const days = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
