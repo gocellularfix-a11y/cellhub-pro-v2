@@ -5052,6 +5052,22 @@ export const translations: TranslationDictionary = {
   'chat.churn.action.educate_customer':       { en: 'Follow up to understand their experience',                         es: 'Haz seguimiento para entender su experiencia',                             pt: 'Faça acompanhamento para entender a experiência' },
   'chat.churn.action.review_history':         { en: 'Review their purchase history for patterns',                       es: 'Revisa su historial de compras para detectar patrones',                    pt: 'Revise o histórico de compras para padrões' },
 
+  // R-INTENT-LEAST-PROFITABLE: actionable margin-review answer (non-judgmental).
+  'chat.leastProfitable.header':         { en: 'Customers costing you margin:', es: 'Clientes que te cuestan margen:', pt: 'Clientes que custam margem:' },
+  'chat.leastProfitable.empty':          { en: 'Not enough data — need repeat customers with known costs.', es: 'Datos insuficientes — se necesitan clientes recurrentes con costos conocidos.', pt: 'Dados insuficientes — precisamos de clientes recorrentes com custos conhecidos.' },
+  'chat.leastProfitable.row':            {
+    en: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} over ${visits} visits (avg ${avg})`,
+    es: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} en ${visits} visitas (promedio ${avg})`,
+    pt: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} em ${visits} visitas (média ${avg})`,
+  },
+  'chat.leastProfitable.approximate':    { en: '  (approximate — limited cost data)', es: '  (aproximado — datos de costo limitados)', pt: '  (aproximado — dados de custo limitados)' },
+  'chat.leastProfitable.refundWarning':  {
+    en: (pct: number) => `  Refund rate: ${pct}%`,
+    es: (pct: number) => `  Tasa de reembolso: ${pct}%`,
+    pt: (pct: number) => `  Taxa de reembolso: ${pct}%`,
+  },
+  'chat.leastProfitable.recommendation': { en: 'Review pricing and discounting on these accounts. Focus on margin, not volume.', es: 'Revisa precios y descuentos en estas cuentas. Enfócate en el margen, no en el volumen.', pt: 'Revise preços e descontos nestas contas. Foque na margem, não no volume.' },
+
   // R-DAILY-BRIEF-HANDLER-V1: action-first daily brief lines.
   'chat.dailyBrief.header':       { en: '📋 Daily Brief', es: '📋 Resumen Diario', pt: '📋 Resumo Diário' },
   'chat.dailyBrief.today':        {

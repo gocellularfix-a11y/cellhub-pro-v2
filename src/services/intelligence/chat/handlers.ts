@@ -76,6 +76,9 @@ export function handleIntent(
     case 'best_customer':
       return handleBestCustomer(engine, lang);
 
+    case 'least_profitable_customers':
+      return handleLeastProfitable(engine, lang);
+
     case 'multi_phone_customers':
       return handleMultiPhoneCustomers(engine, lang);
 
@@ -192,6 +195,56 @@ function handleBestCustomer(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     kind: 'answer',
     text: `${t('chat.bestCustomer.header')}\n\n${summary}\n\n${t('chat.bestCustomer.recommendation')}`,
   };
+}
+
+// ── Least profitable customers (R-INTENT-LEAST-PROFITABLE) ──
+// Bottom-3 ranked by profit ASC. Eligibility filters protect against
+// shaming low-data customers: visitCount ≥ 2, grossRevenue ≥ $50,
+// costCoverage ≥ 0.5. Approximate-tag shown when costCoverage < 0.7.
+// Refund-rate note when refund/gross > 20%. Read-only — no queue writes.
+function handleLeastProfitable(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const customers = engine.getCustomers();
+
+  const results = [];
+  for (const c of customers) {
+    const h = engine.getCustomerHistory(c.id);
+    if (!h) continue;
+    if (h.visitCount < 2) continue;
+    if (h.grossRevenue < 5000) continue;
+    if (h.costCoverage < 0.5) continue;
+    results.push(h);
+  }
+
+  if (results.length === 0) {
+    return { kind: 'answer', text: t('chat.leastProfitable.empty') };
+  }
+
+  results.sort((a, b) => a.profit - b.profit);
+  const top = results.slice(0, 3);
+
+  const lines: string[] = [];
+  lines.push(t('chat.leastProfitable.header'));
+
+  for (const h of top) {
+    lines.push(t('chat.leastProfitable.row',
+      h.customer.name,
+      COP(h.profit),
+      h.visitCount,
+      COP(h.avgTicket),
+    ));
+    if (h.costCoverage < 0.7) {
+      lines.push(t('chat.leastProfitable.approximate'));
+    }
+    const ratio = h.grossRevenue > 0 ? h.totalRefunded / h.grossRevenue : 0;
+    if (ratio > 0.2) {
+      lines.push(t('chat.leastProfitable.refundWarning', Math.round(ratio * 100)));
+    }
+  }
+
+  lines.push(t('chat.leastProfitable.recommendation'));
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Multi-phone customers (R-INTEL-MULTI-PHONE-CUSTOMERS) ──

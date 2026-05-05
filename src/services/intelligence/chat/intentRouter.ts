@@ -25,6 +25,7 @@ export interface IntentContext {
 
 export type IntentId =
   | 'best_customer'
+  | 'least_profitable_customers'
   | 'daily_brief'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -81,6 +82,22 @@ const BEST_CUSTOMER_KEYWORDS = [
   'mi mejor cliente', 'mejor cliente', 'cliente más valioso', 'cliente que más compra',
   // PT
   'melhor cliente', 'meu melhor cliente', 'cliente mais valioso', 'cliente que mais compra',
+];
+
+// R-INTENT-LEAST-PROFITABLE: actionable bottom-3 ranked by profit ASC.
+// Routes "worst customer" / "peor cliente" / "pior cliente" verbiage to a
+// non-judgmental margin-review answer. Listed BEFORE customer_history so a
+// query like "peor cliente" doesn't get treated as a name lookup.
+const LEAST_PROFITABLE_KEYWORDS = [
+  // EN
+  'worst customer', 'least profitable customer', 'least profitable customers',
+  'unprofitable customers', 'who is losing me money',
+  // ES
+  'peor cliente', 'cliente menos rentable', 'clientes menos rentables',
+  'cliente que me cuesta',
+  // PT
+  'pior cliente', 'cliente menos lucrativo', 'clientes não lucrativos',
+  'quem me dá prejuízo',
 ];
 
 const CUSTOMER_KEYWORDS = [
@@ -441,6 +458,9 @@ export function classifyIntent(
   // Score each intent bank.
   const scores: Array<{ id: IntentId; score: number }> = [
     { id: 'best_customer',    score: scoreKeywords(query, BEST_CUSTOMER_KEYWORDS) },
+    // R-INTENT-LEAST-PROFITABLE: scored before customer_history so phrases
+    // like "peor cliente" route to the margin-review handler, not name lookup.
+    { id: 'least_profitable_customers', score: scoreKeywords(query, LEAST_PROFITABLE_KEYWORDS) },
     // R-INTEL-MULTI-PHONE-CUSTOMERS: must run BEFORE customer_history so
     // phrases like "customers with multiple phone numbers" don't fall
     // through to the generic name-lookup path (which would extract a
@@ -518,7 +538,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -546,7 +566,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
