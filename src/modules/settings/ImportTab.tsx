@@ -89,6 +89,9 @@ const CUSTOMER_FIELD_ALIASES: Record<string, string[]> = {
 const INVENTORY_FIELD_ALIASES: Record<string, string[]> = {
   name:     ['name', 'item_name', 'product_name', 'product', 'description', 'item', 'nombre', 'producto'],
   sku:      ['sku', 'barcode', 'upc', 'code', 'item_code', 'product_code', 'codigo'],
+  // R-IMPORTER-IMEI-GUARD: IMEI/serial alias so phone CSVs route the unique
+  // per-device id into its own dedup bucket (different from SKU).
+  imei:     ['imei', 'imei_number', 'serial', 'serial_number'],
   price:    ['price', 'sale_price', 'retail_price', 'list_price', 'precio'],
   cost:     ['cost', 'cost_price', 'purchase_price', 'wholesale', 'costo'],
   quantity: ['quantity', 'qty', 'stock', 'on_hand', 'cantidad', 'inventario'],
@@ -252,6 +255,11 @@ export default function ImportTab() {
         (i.barcode || '').toLowerCase(),
       ]).filter(Boolean),
     );
+    // R-IMPORTER-IMEI-GUARD: dedup phones/devices by IMEI so SKU collisions
+    // don't drop unique physical units. Mirrors InventoryModule's IMEI guard.
+    const existingImeis = new Set(
+      inventory.map((i) => (i.imei || '').trim()).filter(Boolean),
+    );
 
     const prefix = settings.customerNumberPrefix || 'GC';
 
@@ -324,11 +332,21 @@ export default function ImportTab() {
           continue;
         }
         const sku = (mapped.sku || '').trim();
-        if (sku && existingSkus.has(sku.toLowerCase())) {
+        // R-IMPORTER-IMEI-GUARD: IMEI takes precedence over SKU for dedup.
+        // - imei present → only IMEI collisions skip; SKU collisions allowed
+        //   (each physical device is unique even when sharing model SKU)
+        // - imei absent → preserve original SKU/barcode dedup behavior
+        const imei = (mapped.imei || '').trim();
+        if (imei && existingImeis.has(imei)) {
           skipped++;
           continue;
         }
-        if (sku) existingSkus.add(sku.toLowerCase());
+        if (!imei && sku && existingSkus.has(sku.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+        if (imei) existingImeis.add(imei);
+        if (!imei && sku) existingSkus.add(sku.toLowerCase());
 
         const priceCents = Math.round((parseFloat(mapped.price || '0') || 0) * 100);
         const costCents = Math.round((parseFloat(mapped.cost || '0') || 0) * 100);
@@ -339,6 +357,7 @@ export default function ImportTab() {
           storeId: currentStoreId || 'default',
           sku,
           barcode: sku || undefined,
+          imei: imei || undefined,
           name,
           category: mapItemCategory(mapped.category) as InventoryCategory,
           brand: (mapped.brand || '').trim(),
