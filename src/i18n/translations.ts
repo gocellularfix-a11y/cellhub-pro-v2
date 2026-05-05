@@ -4975,6 +4975,63 @@ export const translations: TranslationDictionary = {
   'intelligence.dash.todaySales':      { en: 'Sales Today',                                                       es: 'Ventas Hoy',                                                               pt: 'Vendas Hoje' },
   'intelligence.dash.viewBtn':         { en: 'Ask →',                                                             es: 'Preguntar →',                                                              pt: 'Perguntar →' },
 
+  // ── R-INTELLIGENCE-UI-OPERATOR-REDESIGN: operator console strings ───────────────────────────────────────────
+  'intelligence.console.todayLabel':           { en: 'TODAY',                                                       es: 'HOY',                                                                  pt: 'HOJE' },
+  'intelligence.console.salesAbbr':            { en: 'sales',                                                       es: 'ventas',                                                               pt: 'vendas' },
+  'intelligence.console.ordersAbbr':           { en: 'orders',                                                      es: 'órdenes',                                                              pt: 'pedidos' },
+  'intelligence.console.alertsAbbr':           { en: 'alerts',                                                      es: 'alertas',                                                              pt: 'alertas' },
+  'intelligence.console.biggestOpportunity':   { en: 'Biggest opportunity:',                                        es: 'Mayor oportunidad:',                                                   pt: 'Maior oportunidade:' },
+  'intelligence.console.opportunitiesFound':   { en: (n: number, amt: string) => `${n} opportunit${n === 1 ? 'y' : 'ies'} / ${amt}`, es: (n: number, amt: string) => `${n} oportunidad${n === 1 ? '' : 'es'} / ${amt}`, pt: (n: number, amt: string) => `${n} oportunidade${n === 1 ? '' : 's'} / ${amt}` },
+  'intelligence.console.collectPayments':      { en: 'Collect Payments',                                            es: 'Cobrar Pagos',                                                         pt: 'Cobrar Pagamentos' },
+  'intelligence.console.promoteProduct':       { en: 'Promote Product',                                             es: 'Promocionar Producto',                                                 pt: 'Promover Produto' },
+  'intelligence.console.contactCustomers':     { en: 'Contact Customers',                                           es: 'Contactar Clientes',                                                   pt: 'Contatar Clientes' },
+
+  'intelligence.console.makeMoneyTitle':       { en: '💰 Make Money',                                               es: '💰 Hacer Dinero',                                                      pt: '💰 Fazer Dinheiro' },
+  'intelligence.console.collectMoneyTitle':    { en: 'Collect Money',                                               es: 'Cobrar Dinero',                                                        pt: 'Cobrar Dinheiro' },
+  'intelligence.console.collectMoneySub':      { en: 'Pending payments, layaways, ready repairs',                   es: 'Pagos pendientes, apartados, reparaciones listas',                     pt: 'Pagamentos pendentes, apartados, reparos prontos' },
+  'intelligence.console.promoteSub':           { en: 'Push inventory through WhatsApp',                             es: 'Empujar inventario por WhatsApp',                                      pt: 'Promover inventário pelo WhatsApp' },
+  'intelligence.console.contactSub':           { en: 'VIPs, inactive customers, follow-ups',                        es: 'VIPs, clientes inactivos, seguimientos',                               pt: 'VIPs, clientes inativos, follow-ups' },
+  'intelligence.console.fixProfitTitle':       { en: 'Fix Profit Leaks',                                            es: 'Tapar Fugas de Ganancia',                                              pt: 'Corrigir Perdas de Lucro' },
+  'intelligence.console.fixProfitSub':         { en: 'Losses, slow days, dead stock',                               es: 'Pérdidas, días lentos, stock muerto',                                  pt: 'Perdas, dias lentos, estoque parado' },
+
+  'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
+  'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },
+  'intelligence.console.queuePending':         { en: (n: number) => `${n} pending`,                                 es: (n: number) => `${n} pendiente${n === 1 ? '' : 's'}`,                  pt: (n: number) => `${n} pendente${n === 1 ? '' : 's'}` },
+  'intelligence.console.approve':              { en: 'Approve',                                                     es: 'Aprobar',                                                              pt: 'Aprovar' },
+  'intelligence.console.cancel':               { en: 'Cancel',                                                      es: 'Cancelar',                                                             pt: 'Cancelar' },
+  'intelligence.console.openWhatsApp':         { en: 'WhatsApp',                                                    es: 'WhatsApp',                                                             pt: 'WhatsApp' },
+  'intelligence.console.clearCompleted':       { en: 'Clear completed',                                             es: 'Limpiar completadas',                                                  pt: 'Limpar concluídas' },
+
+  'intelligence.console.whatsappTitle':        { en: '📱 WhatsApp Actions',                                          es: '📱 Acciones de WhatsApp',                                              pt: '📱 Ações de WhatsApp' },
+  'intelligence.console.waCollect':            { en: 'Collect Payment',                                             es: 'Cobrar Pago',                                                          pt: 'Cobrar Pagamento' },
+  'intelligence.console.waNotifyRepair':       { en: 'Notify Repair',                                               es: 'Notificar Reparación',                                                 pt: 'Notificar Reparo' },
+  'intelligence.console.waSendPromo':          { en: 'Send Promo',                                                  es: 'Enviar Promoción',                                                     pt: 'Enviar Promoção' },
+  'intelligence.console.waLayaway':            { en: 'Layaway Reminder',                                            es: 'Recordatorio Apartado',                                                pt: 'Lembrete Apartado' },
+
+  'intelligence.console.promoteInvTitle':      { en: '🚀 Promote Inventory',                                        es: '🚀 Promocionar Inventario',                                            pt: '🚀 Promover Inventário' },
+  'intelligence.console.promoteInvEmpty':      { en: 'Select a product to generate a WhatsApp campaign.',           es: 'Selecciona un producto para generar una campaña de WhatsApp.',         pt: 'Selecione um produto para gerar uma campanha de WhatsApp.' },
+  'intelligence.console.searchProduct':        { en: 'Search product…',                                              es: 'Buscar producto…',                                                     pt: 'Buscar produto…' },
+  'intelligence.console.generateCampaign':     { en: 'Generate WhatsApp Campaign',                                  es: 'Generar Campaña de WhatsApp',                                          pt: 'Gerar Campanha de WhatsApp' },
+  'intelligence.console.changeProduct':        { en: 'Change product',                                              es: 'Cambiar producto',                                                     pt: 'Trocar produto' },
+
+  'intelligence.console.askTitle':             { en: '💬 Ask Your Shop',                                            es: '💬 Pregúntale a tu Tienda',                                            pt: '💬 Pergunte à sua Loja' },
+  'intelligence.console.quickQuestions':       { en: 'Quick questions:',                                            es: 'Preguntas rápidas:',                                                   pt: 'Perguntas rápidas:' },
+  'intelligence.console.chipToday':            { en: 'Today',                                                       es: 'Hoy',                                                                  pt: 'Hoje' },
+  'intelligence.console.chipWhoContact':       { en: 'Who to contact',                                              es: 'A quién llamar',                                                       pt: 'Quem contatar' },
+  'intelligence.console.chipWhatSell':         { en: 'What to sell',                                                es: 'Qué vender',                                                           pt: 'O que vender' },
+  'intelligence.console.chipProfit':           { en: 'Profit leaks',                                                es: 'Pérdidas',                                                             pt: 'Perdas' },
+  'intelligence.console.chipPromote':          { en: 'Promote product',                                             es: 'Promocionar producto',                                                 pt: 'Promover produto' },
+  'intelligence.console.chipReady':            { en: 'Ready repairs',                                               es: 'Reparaciones listas',                                                  pt: 'Reparos prontos' },
+
+  // Chat-fired query strings (must match chat intent keywords)
+  'intelligence.console.queryToday':           { en: 'how are we today',                                            es: 'cómo estamos hoy',                                                     pt: 'como estamos hoje' },
+  'intelligence.console.queryContactToday':    { en: 'who should I contact today',                                  es: 'a quién debo contactar hoy',                                           pt: 'quem devo contatar hoje' },
+  'intelligence.console.queryReadyRepairs':    { en: 'repairs ready',                                               es: 'reparaciones listas',                                                  pt: 'reparos prontos' },
+  'intelligence.console.queryPendingPayments': { en: 'customers with pending phone payments',                        es: 'clientes con pagos de teléfono pendientes',                            pt: 'clientes com pagamentos de telefone pendentes' },
+  'intelligence.console.queryPromoteGeneric':  { en: 'promote product',                                             es: 'promocionar producto',                                                 pt: 'promover produto' },
+  'intelligence.console.queryPendingLayaways': { en: 'pending layaways',                                            es: 'apartados pendientes',                                                 pt: 'apartados pendentes' },
+  'intelligence.console.queryPromoteThis':     { en: 'promote this product',                                        es: 'promocionar producto',                                                 pt: 'promover produto' },
+
   // ── Phase 2D: Customer Churn Root Cause ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   'chat.churn.header':                        { en: '👥 Customer Churn Analysis (last 90 days):',                       es: '👥 Análisis de clientes perdidos (últimos 90 días):',                      pt: '👥 Análise de clientes perdidos (últimos 90 dias):' },
   'chat.churn.noChurn':                       { en: 'No churned customers detected in the last 90 days.',               es: 'No se detectaron clientes perdidos en los últimos 90 días.',                pt: 'Nenhum cliente perdido detectado nos últimos 90 dias.' },
