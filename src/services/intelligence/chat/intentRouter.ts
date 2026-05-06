@@ -31,6 +31,7 @@ export type IntentId =
   | 'action_learning'
   | 'propose_deal'
   | 'deal_performance'
+  | 'proactive_opportunities'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -197,6 +198,35 @@ const PROPOSE_DEAL_KEYWORDS = [
   'hacer oferta', 'proponer oferta', 'mandar oferta', 'ofertar',
   // PT
   'fazer oferta', 'propor oferta', 'enviar oferta',
+];
+
+// R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: broad "what should I focus on"
+// trigger. Composes 1-3 ranked operator opportunities from existing engine
+// helpers (dead stock, stale repairs, outreach, product push, pending
+// deals). Listed BEFORE product_opportunities in the scores array so a
+// generic "opportunities" query routes to the multi-source briefing.
+const PROACTIVE_OPPORTUNITIES_KEYWORDS = [
+  // EN
+  'opportunity', 'opportunities',
+  'what opportunities', 'what opportunities do i have',
+  'how can i make more money', 'make more money',
+  'what should i push',
+  'what can i recover',
+  'what can improve', 'what can i improve',
+  // ES
+  'oportunidad', 'oportunidades',
+  'qué oportunidades', 'que oportunidades',
+  'cómo gano más', 'como gano más', 'cómo gano mas', 'como gano mas',
+  'cómo gano más dinero', 'como gano mas dinero',
+  'qué puedo recuperar', 'que puedo recuperar',
+  'qué debería empujar', 'que deberia empujar',
+  'qué puedo mejorar', 'que puedo mejorar',
+  // PT
+  'oportunidade', 'oportunidades',
+  'como ganhar mais', 'como ganhar mais dinheiro',
+  'o que posso recuperar',
+  'o que devo promover',
+  'o que posso melhorar',
 ];
 
 // R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: anchored phrasing for "which
@@ -718,6 +748,11 @@ export function classifyIntent(
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
+    // R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: list ABOVE product_opportunities
+    // so a bare "opportunities" query routes to the multi-source operator
+    // briefing. product_opportunities (product-only ranked list) still wins
+    // for product-anchored phrases like "what to promote" / "high margin".
+    { id: 'proactive_opportunities', score: scoreKeywords(query, PROACTIVE_OPPORTUNITIES_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
@@ -753,7 +788,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -781,7 +816,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

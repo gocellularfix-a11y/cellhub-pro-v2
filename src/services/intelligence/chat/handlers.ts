@@ -130,6 +130,9 @@ export function handleIntent(
     case 'deal_performance':
       return handleDealPerformance(lang);
 
+    case 'proactive_opportunities':
+      return handleProactiveOpportunities(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -881,6 +884,148 @@ function handleProposeDeal(
     // route back to it.
     establishesContext: { type: 'product', value: item.name },
   };
+}
+
+// ── Proactive Opportunities (R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1) ─
+// Composes 1-3 ranked operator opportunities from EXISTING engine helpers
+// and the existing localStorage chat queue. Pure read — no engine writes,
+// no background work, no polling, no AI. Runs ONLY when the user asks.
+// Each candidate source is wrapped in try/catch so a missing/empty source
+// silently skips without taking the others down.
+function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+
+  type Op = {
+    title: string;
+    reason: string;
+    action: string;
+    rank: number;
+  };
+  const ops: Op[] = [];
+
+  // Source 1: Dead stock — reuses engine.getMissedRevenue().
+  // Floor at $100 to filter noise from stores with one cheap dust-bunny.
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      ops.push({
+        title: t('chat.opportunities.deadStock.title'),
+        reason: t('chat.opportunities.deadStock.reason', COP(dead)),
+        action: t('chat.opportunities.deadStock.action'),
+        rank: dead,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 2: Repairs ready for pickup older than 3 days. Recoverable
+  // revenue = sum of remaining balances. Caps the scan at the engine's
+  // current repairs slice (already in memory; no external read).
+  try {
+    const repairs = engine.getRepairs();
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let staleCount = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      staleCount++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    if (staleCount > 0) {
+      ops.push({
+        title: t('chat.opportunities.staleRepairs.title'),
+        reason: t('chat.opportunities.staleRepairs.reason', staleCount, COP(recoverable)),
+        action: t('chat.opportunities.staleRepairs.action'),
+        rank: recoverable + staleCount * 1000,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 3: Outreach candidates — reuses engine.buildOutreachQueueItems().
+  // The engine already applies consent + 24h dedup; we just count.
+  try {
+    const candidates = engine.buildOutreachQueueItems();
+    if (candidates.length > 0) {
+      ops.push({
+        title: t('chat.opportunities.outreach.title'),
+        reason: t('chat.opportunities.outreach.reason', candidates.length),
+        action: t('chat.opportunities.outreach.action'),
+        rank: candidates.length * 500,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 4: Top product opportunity — reuses engine.getProductOpportunities(1).
+  try {
+    const opps = engine.getProductOpportunities(1);
+    if (opps && opps.length > 0) {
+      const top = opps[0];
+      const impact = top.impactCents || 0;
+      ops.push({
+        title: t('chat.opportunities.productPush.title'),
+        reason: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
+        action: t('chat.opportunities.productPush.action', top.name),
+        rank: impact,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 5: Approved pending deals waiting to be closed. Reads the
+  // existing chat queue localStorage key; cap scan at 200 entries (queue
+  // is user-bounded but keep defensive). No new persistence.
+  try {
+    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
+        let approved = 0;
+        for (const q of slice) {
+          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
+        }
+        if (approved > 0) {
+          ops.push({
+            title: t('chat.opportunities.pendingDeals.title'),
+            reason: t('chat.opportunities.pendingDeals.reason', approved),
+            action: t('chat.opportunities.pendingDeals.action'),
+            rank: approved * 800,
+          });
+        }
+      }
+    }
+  } catch { /* incognito / quota / parse fail — skip */ }
+
+  if (ops.length === 0) {
+    return { kind: 'answer', text: t('chat.opportunities.empty') };
+  }
+
+  ops.sort((a, b) => b.rank - a.rank);
+  const top = ops.slice(0, 3);
+
+  const lines: string[] = [];
+  lines.push(t('chat.opportunities.header'));
+  lines.push('');
+  top.forEach((op, i) => {
+    lines.push(`${i + 1}. ${op.title}`);
+    lines.push(`   ${op.reason}`);
+    lines.push(`   → ${op.action}`);
+    if (i < top.length - 1) lines.push('');
+  });
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Deal Performance (R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1) ─

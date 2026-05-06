@@ -5301,6 +5301,49 @@ export const translations: TranslationDictionary = {
     es: (range: string, ratePct: number, sample: number) => `Mejor rango de descuento: ${range}% (${ratePct}% éxito en ${sample} oferta${sample === 1 ? '' : 's'}).`,
     pt: (range: string, ratePct: number, sample: number) => `Melhor faixa de desconto: ${range}% (${ratePct}% sucesso em ${sample} oferta${sample === 1 ? '' : 's'}).`,
   },
+  // R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: 1-3 ranked operator opportunities.
+  'chat.opportunities.header':              { en: '💡 Top opportunities right now', es: '💡 Mejores oportunidades ahora', pt: '💡 Melhores oportunidades agora' },
+  'chat.opportunities.empty':               { en: 'Shop is in good shape — no high-impact opportunities flagged right now.', es: 'La tienda está bien — sin oportunidades de alto impacto en este momento.', pt: 'A loja está bem — sem oportunidades de alto impacto no momento.' },
+  'chat.opportunities.deadStock.title':     { en: 'Move dead stock', es: 'Mover stock muerto', pt: 'Mover estoque parado' },
+  'chat.opportunities.deadStock.reason': {
+    en: (locked: string) => `Around ${locked} is locked in slow-moving inventory.`,
+    es: (locked: string) => `Aproximadamente ${locked} bloqueados en inventario sin movimiento.`,
+    pt: (locked: string) => `Cerca de ${locked} parados em estoque sem movimento.`,
+  },
+  'chat.opportunities.deadStock.action':    { en: 'Run a clearance promotion or bundle deal.', es: 'Lanza una promoción de liquidación o un combo.', pt: 'Faça uma promoção de liquidação ou combo.' },
+  'chat.opportunities.staleRepairs.title':  { en: 'Recover repair revenue', es: 'Recupera ingresos de reparaciones', pt: 'Recupere receita de reparos' },
+  'chat.opportunities.staleRepairs.reason': {
+    en: (count: number, recoverable: string) => `${count} repair${count === 1 ? '' : 's'} ready for pickup over 3 days. Recoverable: ~${recoverable}.`,
+    es: (count: number, recoverable: string) => `${count} reparación${count === 1 ? '' : 'es'} lista${count === 1 ? '' : 's'} hace más de 3 días. Recuperable: ~${recoverable}.`,
+    pt: (count: number, recoverable: string) => `${count} repar${count === 1 ? 'o' : 'os'} pronto${count === 1 ? '' : 's'} há mais de 3 dias. Recuperável: ~${recoverable}.`,
+  },
+  'chat.opportunities.staleRepairs.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
+  'chat.opportunities.outreach.title':      { en: 'Re-engage customers', es: 'Re-engancha a clientes', pt: 'Re-engaje clientes' },
+  'chat.opportunities.outreach.reason': {
+    en: (count: number) => `${count} high-value customer${count === 1 ? '' : 's'} ready for outreach.`,
+    es: (count: number) => `${count} cliente${count === 1 ? '' : 's'} valioso${count === 1 ? '' : 's'} listo${count === 1 ? '' : 's'} para contactar.`,
+    pt: (count: number) => `${count} cliente${count === 1 ? '' : 's'} valioso${count === 1 ? '' : 's'} pronto${count === 1 ? '' : 's'} para contato.`,
+  },
+  'chat.opportunities.outreach.action':     { en: 'Send WhatsApp follow-up offers.', es: 'Envía ofertas de seguimiento por WhatsApp.', pt: 'Envie ofertas de acompanhamento pelo WhatsApp.' },
+  'chat.opportunities.productPush.title':   { en: 'Push a high-margin product', es: 'Promueve un producto de alto margen', pt: 'Promova um produto de alta margem' },
+  'chat.opportunities.productPush.reason': {
+    en: (name: string, impact: string) => `${name} stands out — estimated impact ${impact}.`,
+    es: (name: string, impact: string) => `${name} destaca — impacto estimado ${impact}.`,
+    pt: (name: string, impact: string) => `${name} se destaca — impacto estimado ${impact}.`,
+  },
+  'chat.opportunities.productPush.action': {
+    en: (name: string) => `Promote ${name} to top customers.`,
+    es: (name: string) => `Promueve ${name} a tus clientes top.`,
+    pt: (name: string) => `Promova ${name} para seus clientes top.`,
+  },
+  'chat.opportunities.pendingDeals.title':  { en: 'Close pending deals', es: 'Cierra ofertas pendientes', pt: 'Feche ofertas pendentes' },
+  'chat.opportunities.pendingDeals.reason': {
+    en: (count: number) => `${count} approved deal${count === 1 ? '' : 's'} waiting in the chat queue.`,
+    es: (count: number) => `${count} oferta${count === 1 ? '' : 's'} aprobada${count === 1 ? '' : 's'} esperando en la cola.`,
+    pt: (count: number) => `${count} oferta${count === 1 ? '' : 's'} aprovada${count === 1 ? '' : 's'} esperando na fila.`,
+  },
+  'chat.opportunities.pendingDeals.action': { en: 'Add them to POS cart and close the sale.', es: 'Agrégalas al carrito POS y cierra la venta.', pt: 'Adicione ao carrinho POS e feche a venda.' },
+
   'chat.dealPerformance.recommendation': {
     en: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
       ? `Your deals are converting well. Stay close to ${avgDiscPct}% discounts and keep sending offers.`
