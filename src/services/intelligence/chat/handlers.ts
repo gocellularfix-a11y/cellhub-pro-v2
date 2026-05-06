@@ -376,6 +376,126 @@ function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   return { kind: 'answer', text: lines.join('\n') };
 }
 
+// ── Root-cause analysis (R-INTELLIGENCE-ROOT-CAUSE-CHAINS-V1) ──
+// Single-pass analyzer for today_sales follow-up only. Walks sales once,
+// buckets by local-day midnight, computes 7-day prior averages excluding
+// today, then classifies via deterministic thresholds. Pure compute; no
+// state, no localStorage, no engine mutation. Runs ONLY when user asks
+// "why?" after a today_sales response — never on hot keystroke paths.
+type TodaySalesCause =
+  | 'not_enough_data'
+  | 'no_sales_today'
+  | 'revenue_above_average'
+  | 'low_transactions'
+  | 'low_avg_ticket'
+  | 'both_low'
+  | 'normal';
+
+interface TodaySalesCauseResult {
+  cause: TodaySalesCause;
+  todayRevenueCents: number;
+  todayTransactions: number;
+  todayAvgTicketCents: number;
+  avg7RevenueCents: number;
+  avg7Transactions: number;
+  avg7TicketCents: number;
+  comparableDays: number;
+}
+
+function analyzeTodaySalesCause(engine: IntelligenceEngine): TodaySalesCauseResult {
+  const m = engine.getTodayMetrics();
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+  const ms7Back = todayMs - 7 * 86400000;
+
+  // Single pass: bucket non-voided/non-refunded sales from the last 7 days
+  // (EXCLUDING today) into local-day buckets.
+  const byDay = new Map<number, { revenueCents: number; transactions: number }>();
+  for (const s of engine.getSales()) {
+    const ca = (s as { createdAt?: unknown }).createdAt;
+    if (!ca) continue;
+    let ts: number;
+    try {
+      const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+        ? (ca as { toDate: () => Date }).toDate()
+        : (ca as string | Date);
+      ts = new Date(d as string | Date).getTime();
+    } catch { continue; }
+    if (!Number.isFinite(ts) || ts >= todayMs || ts < ms7Back) continue;
+    const status = String((s as { status?: string }).status || '').toLowerCase();
+    if (status === 'voided' || status === 'refunded') continue;
+
+    const dayMidnight = new Date(ts); dayMidnight.setHours(0, 0, 0, 0);
+    const dayKey = dayMidnight.getTime();
+    const entry = byDay.get(dayKey) || { revenueCents: 0, transactions: 0 };
+    entry.revenueCents += (s as { total?: number }).total || 0;
+    entry.transactions++;
+    byDay.set(dayKey, entry);
+  }
+
+  const comparableDays = byDay.size;
+  let totalRev = 0, totalTx = 0;
+  for (const d of byDay.values()) { totalRev += d.revenueCents; totalTx += d.transactions; }
+  const avg7RevenueCents = comparableDays > 0 ? Math.round(totalRev / comparableDays) : 0;
+  const avg7Transactions = comparableDays > 0 ? totalTx / comparableDays : 0;
+  const avg7TicketCents = totalTx > 0 ? Math.round(totalRev / totalTx) : 0;
+
+  // Cause selection — spec order (first matching wins):
+  // 1. comparableDays < 3 → not_enough_data
+  // 2. transactions === 0 → no_sales_today
+  // 3. revenue >= 110% of 7d avg → revenue_above_average
+  // 4. tx < 80% of 7d avg AND ticket < 90% of 7d avg → both_low
+  // 5. tx < 80% of 7d avg → low_transactions
+  // 6. ticket < 90% of 7d avg → low_avg_ticket
+  // 7. else normal
+  let cause: TodaySalesCause;
+  if (comparableDays < 3) {
+    cause = 'not_enough_data';
+  } else if (m.transactions === 0) {
+    cause = 'no_sales_today';
+  } else if (m.revenueCents >= avg7RevenueCents * 1.1) {
+    cause = 'revenue_above_average';
+  } else {
+    const lowTx = m.transactions < avg7Transactions * 0.8;
+    const lowTicket = m.avgTicketCents < avg7TicketCents * 0.9;
+    if (lowTx && lowTicket) cause = 'both_low';
+    else if (lowTx) cause = 'low_transactions';
+    else if (lowTicket) cause = 'low_avg_ticket';
+    else cause = 'normal';
+  }
+
+  return {
+    cause,
+    todayRevenueCents: m.revenueCents,
+    todayTransactions: m.transactions,
+    todayAvgTicketCents: m.avgTicketCents,
+    avg7RevenueCents,
+    avg7Transactions: Math.round(avg7Transactions),
+    avg7TicketCents,
+    comparableDays,
+  };
+}
+
+const TODAY_CAUSE_KEYS: Record<TodaySalesCause, string> = {
+  not_enough_data:       'chat.todaySalesCause.notEnoughData',
+  no_sales_today:        'chat.todaySalesCause.noSalesToday',
+  revenue_above_average: 'chat.todaySalesCause.revenueAboveAverage',
+  low_transactions:      'chat.todaySalesCause.lowTransactions',
+  low_avg_ticket:        'chat.todaySalesCause.lowAvgTicket',
+  both_low:              'chat.todaySalesCause.bothLow',
+  normal:                'chat.todaySalesCause.normal',
+};
+
+const TODAY_CAUSE_ACTION_KEYS: Record<TodaySalesCause, string> = {
+  not_enough_data:       'chat.todaySalesCause.action.notEnoughData',
+  no_sales_today:        'chat.todaySalesCause.action.noSalesToday',
+  revenue_above_average: 'chat.todaySalesCause.action.revenueAboveAverage',
+  low_transactions:      'chat.todaySalesCause.action.lowTransactions',
+  low_avg_ticket:        'chat.todaySalesCause.action.lowAvgTicket',
+  both_low:              'chat.todaySalesCause.action.bothLow',
+  normal:                'chat.todaySalesCause.action.normal',
+};
+
 // ── Follow-up handler (R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1) ───
 // Re-uses the LAST matched intent's context to answer short follow-ups
 // ("why?", "what should I do?", etc.) without re-running classifyIntent
@@ -399,11 +519,18 @@ export function handleFollowUp(
 
   switch (context.intentId) {
     case 'today_sales': {
-      const m = engine.getTodayMetrics();
-      lines.push(t('chat.followup.because',
-        t('chat.followup.todaySales', COP(m.revenueCents), m.transactions, COP(m.avgTicketCents))));
-      lines.push(t('chat.followup.action',
-        t('chat.followup.actionTodaySales')));
+      // R-INTELLIGENCE-ROOT-CAUSE-CHAINS-V1: replace generic explanation
+      // with deterministic cause + evidence + action chain.
+      const r = analyzeTodaySalesCause(engine);
+      lines.length = 0; // drop the generic followup header — use root-cause header instead
+      lines.push(t('chat.todaySalesCause.header'));
+      lines.push(t(TODAY_CAUSE_KEYS[r.cause]));
+      if (r.comparableDays >= 3) {
+        lines.push(t('chat.todaySalesCause.evidence',
+          COP(r.todayRevenueCents), r.todayTransactions, COP(r.todayAvgTicketCents),
+          COP(r.avg7RevenueCents), r.avg7Transactions, COP(r.avg7TicketCents)));
+      }
+      lines.push(t('chat.todaySalesCause.action', t(TODAY_CAUSE_ACTION_KEYS[r.cause])));
       break;
     }
     case 'product_opportunities':

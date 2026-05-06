@@ -5153,6 +5153,36 @@ export const translations: TranslationDictionary = {
   },
   'chat.leastProfitable.recommendation': { en: 'Review pricing and discounting on these accounts. Focus on margin, not volume.', es: 'Revisa precios y descuentos en estas cuentas. Enfócate en el margen, no en el volumen.', pt: 'Revise preços e descontos nestas contas. Foque na margem, não no volume.' },
 
+  // R-INTELLIGENCE-ROOT-CAUSE-CHAINS-V1: deterministic cause + evidence + action.
+  'chat.todaySalesCause.header':                            { en: '🔎 Root cause', es: '🔎 Causa raíz', pt: '🔎 Causa raiz' },
+  'chat.todaySalesCause.evidence':                          {
+    en: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidence — Today: ${todayRev} / ${todayTx} sales / avg ${todayAvg}. Last 7d avg: ${avg7Rev} / ${avg7Tx} sales / avg ${avg7Avg}.`,
+    es: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidencia — Hoy: ${todayRev} / ${todayTx} ventas / promedio ${todayAvg}. Promedio 7d: ${avg7Rev} / ${avg7Tx} ventas / promedio ${avg7Avg}.`,
+    pt: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidência — Hoje: ${todayRev} / ${todayTx} vendas / média ${todayAvg}. Média 7d: ${avg7Rev} / ${avg7Tx} vendas / média ${avg7Avg}.`,
+  },
+  'chat.todaySalesCause.action':                            {
+    en: (txt: string) => `→ ${txt}`,
+    es: (txt: string) => `→ ${txt}`,
+    pt: (txt: string) => `→ ${txt}`,
+  },
+  'chat.todaySalesCause.notEnoughData':                     { en: "I don't have enough prior sales days to compare yet.",                                  es: 'No tengo suficientes días previos de ventas para comparar todavía.',                       pt: 'Ainda não tenho dias anteriores suficientes para comparar.' },
+  'chat.todaySalesCause.noSalesToday':                      { en: 'No sales recorded today yet.',                                                          es: 'Aún no hay ventas registradas hoy.',                                                       pt: 'Nenhuma venda registrada hoje ainda.' },
+  'chat.todaySalesCause.revenueAboveAverage':               { en: 'Today is above your recent average.',                                                   es: 'Hoy está por encima de tu promedio reciente.',                                             pt: 'Hoje está acima da sua média recente.' },
+  'chat.todaySalesCause.lowTransactions':                   { en: 'Traffic is the issue. You have fewer transactions than your recent daily average.',    es: 'El tráfico es el problema. Tienes menos transacciones que tu promedio diario reciente.',  pt: 'O tráfego é o problema. Você tem menos transações que sua média diária recente.' },
+  'chat.todaySalesCause.lowAvgTicket':                      { en: 'Ticket size is the issue. Customers are buying, but spending less.',                   es: 'El tamaño del ticket es el problema. Los clientes compran, pero gastan menos.',           pt: 'O tamanho do ticket é o problema. Os clientes compram, mas gastam menos.' },
+  'chat.todaySalesCause.bothLow':                           { en: 'Both traffic and ticket size are down.',                                                es: 'Tanto el tráfico como el tamaño del ticket están bajos.',                                  pt: 'Tanto o tráfego quanto o tamanho do ticket estão baixos.' },
+  'chat.todaySalesCause.normal':                            { en: 'Today is in line with your recent average.',                                            es: 'Hoy está en línea con tu promedio reciente.',                                              pt: 'Hoje está em linha com sua média recente.' },
+  'chat.todaySalesCause.action.notEnoughData':              { en: "Track a few more days, but use today's sales count and avg ticket as baseline.",        es: 'Registra unos días más, pero usa las ventas de hoy y el ticket promedio como base.',     pt: 'Registre mais alguns dias, mas use as vendas de hoje e o ticket médio como base.' },
+  'chat.todaySalesCause.action.noSalesToday':               { en: 'Start with recent customers, repairs ready for pickup, or phone payment reminders.',   es: 'Empieza con clientes recientes, reparaciones listas para recoger, o recordatorios de pago.', pt: 'Comece com clientes recentes, reparos prontos para retirada, ou lembretes de pagamento.' },
+  'chat.todaySalesCause.action.revenueAboveAverage':        { en: 'Protect momentum: keep pushing the top seller.',                                        es: 'Protege el impulso: sigue empujando el más vendido.',                                      pt: 'Proteja o impulso: continue promovendo o mais vendido.' },
+  'chat.todaySalesCause.action.lowTransactions':            { en: 'Contact recent customers or push a same-day offer.',                                    es: 'Contacta a clientes recientes o lanza una oferta del día.',                                pt: 'Contate clientes recentes ou lance uma oferta do dia.' },
+  'chat.todaySalesCause.action.lowAvgTicket':               { en: 'Offer accessories, bundles, or protection add-ons.',                                    es: 'Ofrece accesorios, paquetes o complementos de protección.',                                pt: 'Ofereça acessórios, pacotes ou complementos de proteção.' },
+  'chat.todaySalesCause.action.bothLow':                    { en: 'Run a direct outreach + bundle offer today.',                                           es: 'Lanza un contacto directo + oferta de paquete hoy.',                                       pt: 'Faça um contato direto + oferta de pacote hoje.' },
+  'chat.todaySalesCause.action.normal':                     { en: 'Keep your usual rhythm and watch for late-day momentum.',                                es: 'Mantén tu ritmo habitual y observa el impulso del final del día.',                         pt: 'Mantenha seu ritmo habitual e observe o impulso do final do dia.' },
+
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
   'chat.followup.because':               {
