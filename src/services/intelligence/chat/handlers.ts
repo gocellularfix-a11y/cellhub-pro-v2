@@ -496,6 +496,22 @@ const TODAY_CAUSE_ACTION_KEYS: Record<TodaySalesCause, string> = {
   normal:                'chat.todaySalesCause.action.normal',
 };
 
+// R-INTELLIGENCE-TODAY-SALES-ROOT-CAUSE-ACTIONS-V1: which causes get
+// follow-up "tip" lines pointing to existing safe intents. No ChatActionUI
+// buttons attached — those would require concrete customerId/SKU targets
+// the cause analyzer doesn't have. Tip text routes user to the existing
+// safe intents (who_to_contact_today, product_push) which already include
+// consent filtering, 24h dedup, and manual approval.
+const TODAY_CAUSE_TIPS: Record<TodaySalesCause, string[]> = {
+  not_enough_data:       [],
+  no_sales_today:        ['chat.todaySalesCause.tipContact'],
+  revenue_above_average: ['chat.todaySalesCause.tipPromote'],
+  low_transactions:      ['chat.todaySalesCause.tipContact'],
+  low_avg_ticket:        ['chat.todaySalesCause.tipPromote'],
+  both_low:              ['chat.todaySalesCause.tipContact', 'chat.todaySalesCause.tipPromote'],
+  normal:                [],
+};
+
 // ── Follow-up handler (R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1) ───
 // Re-uses the LAST matched intent's context to answer short follow-ups
 // ("why?", "what should I do?", etc.) without re-running classifyIntent
@@ -531,6 +547,12 @@ export function handleFollowUp(
           COP(r.avg7RevenueCents), r.avg7Transactions, COP(r.avg7TicketCents)));
       }
       lines.push(t('chat.todaySalesCause.action', t(TODAY_CAUSE_ACTION_KEYS[r.cause])));
+      // R-INTELLIGENCE-TODAY-SALES-ROOT-CAUSE-ACTIONS-V1: per-cause tips
+      // pointing user to existing safe intents (no auto-execution, no new
+      // queue items, no consent risk).
+      for (const tipKey of TODAY_CAUSE_TIPS[r.cause]) {
+        lines.push(t(tipKey));
+      }
       break;
     }
     case 'product_opportunities':
