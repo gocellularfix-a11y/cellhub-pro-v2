@@ -185,6 +185,123 @@ export function getDealOutcomeLog(): DealOutcomeLogEntry[] {
   }
 }
 
+// R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1 ────────────────────
+// Tracks proposals/promotions sent via manual WhatsApp so the owner
+// can manage follow-ups even though there's no WhatsApp API. Pure
+// localStorage write/read; no scraping, no auto-send, no inbound
+// listener. Status is owner-recorded.
+
+export type ProposalFollowupStatus =
+  | 'sent'
+  | 'replied'
+  | 'interested'
+  | 'won'
+  | 'lost'
+  | 'no_response';
+
+export interface ProposalFollowup {
+  id: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productName?: string;
+  proposedPriceCents?: number;
+  sourceActionId?: string;
+  status: ProposalFollowupStatus;
+  sentAt: number;
+  lastReplyText?: string;
+  lastReplyAt?: number;
+}
+
+const PROPOSAL_FOLLOWUP_KEY = 'cellhub:intelligence:proposalFollowups:v1';
+const MAX_PROPOSAL_FOLLOWUPS = 300;
+
+export function getProposalFollowups(): ProposalFollowup[] {
+  try {
+    const raw = localStorage.getItem(PROPOSAL_FOLLOWUP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addProposalFollowup(entry: ProposalFollowup): void {
+  try {
+    const list = getProposalFollowups();
+    list.push(entry);
+    const trimmed = list.length > MAX_PROPOSAL_FOLLOWUPS
+      ? list.slice(list.length - MAX_PROPOSAL_FOLLOWUPS)
+      : list;
+    localStorage.setItem(PROPOSAL_FOLLOWUP_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* incognito / quota — best-effort, never block */
+  }
+}
+
+export function updateProposalFollowup(
+  id: string,
+  patch: Partial<ProposalFollowup>,
+): void {
+  try {
+    const list = getProposalFollowups();
+    const idx = list.findIndex((f) => f.id === id);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch };
+    localStorage.setItem(PROPOSAL_FOLLOWUP_KEY, JSON.stringify(list));
+  } catch {
+    /* skip */
+  }
+}
+
+// Find the most recent OPEN follow-up that matches by customer name
+// or phone. Open = status not in (won, lost, no_response). Phone is
+// the strongest signal; name fallback uses substring + first-name
+// match. Pure read; no mutation.
+export function findOpenFollowupByCustomerOrProduct(
+  customerName?: string,
+  customerPhone?: string,
+): ProposalFollowup | null {
+  const list = getProposalFollowups();
+  const open = list.filter(
+    (f) => f.status !== 'won' && f.status !== 'lost' && f.status !== 'no_response',
+  );
+  if (open.length === 0) return null;
+
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+  const targetPhone = normalizePhone(customerPhone || '');
+  const targetName = (customerName || '').toLowerCase().trim();
+
+  let best: ProposalFollowup | null = null;
+  let bestScore = 0;
+  for (const f of open) {
+    let score = 0;
+    if (targetPhone && f.customerPhone) {
+      const fp = normalizePhone(f.customerPhone);
+      if (fp === targetPhone) score = 100;
+      else if (fp && (fp.endsWith(targetPhone) || targetPhone.endsWith(fp))) score = 50;
+    }
+    if (targetName && f.customerName) {
+      const fn = f.customerName.toLowerCase().trim();
+      if (fn === targetName) score = Math.max(score, 80);
+      else {
+        const firstWord = fn.split(' ')[0];
+        if (firstWord && (firstWord === targetName || targetName.startsWith(firstWord))) {
+          score = Math.max(score, 60);
+        } else if (fn.includes(targetName) || targetName.includes(fn)) {
+          score = Math.max(score, 40);
+        }
+      }
+    }
+    if (score > bestScore || (score > 0 && score === bestScore && f.sentAt > (best?.sentAt || 0))) {
+      best = f;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
 export function addDealOutcomeLog(entry: DealOutcomeLogEntry): void {
   try {
     const log = getDealOutcomeLog();

@@ -24,6 +24,7 @@ import {
   addAutomationOutcome,
   addAutomationExecutionLog,
   addDealOutcomeLog,
+  addProposalFollowup,
 } from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem, AutomationOutcome, DealOutcome } from '@/services/intelligence/automation/automationQueue';
 import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
@@ -795,6 +796,25 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                 if (pendingWaAction) {
                   window.open(pendingWaAction.url, '_blank');
                   setFeedbackForAction(pendingWaAction.action.id, 'WhatsApp opened.');
+                  // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: record the
+                  // manual outreach as a 'sent' follow-up. No WhatsApp API,
+                  // no scraping — this just stamps that the owner clicked
+                  // Open WhatsApp so the chat can later list pending
+                  // follow-ups and link pasted replies to a record.
+                  const a = pendingWaAction.action;
+                  if (a.payload.customerId || a.payload.customerPhone || a.payload.customerName) {
+                    addProposalFollowup({
+                      id: generateId(),
+                      customerId: a.payload.customerId,
+                      customerName: a.payload.customerName,
+                      customerPhone: a.payload.customerPhone,
+                      productName: a.pendingDeal?.productName,
+                      proposedPriceCents: a.pendingDeal?.proposedPriceCents,
+                      sourceActionId: a.id,
+                      status: 'sent',
+                      sentAt: Date.now(),
+                    });
+                  }
                 }
                 setPendingWaAction(null);
               }}

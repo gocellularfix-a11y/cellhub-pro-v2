@@ -22,6 +22,13 @@ import type { PendingDeal } from '../deals/dealTypes';
 // R-INTELLIGENCE-CONVERSATION-RUNNER-MODULE-V1: handler extracted to its
 // own per-domain module per the modularity rule.
 import { handleConversationRunner } from './conversationRunner';
+// R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: manual proposal-tracking
+// helpers for the new proposal_followup + record_reply intents.
+import {
+  getProposalFollowups,
+  updateProposalFollowup,
+  findOpenFollowupByCustomerOrProduct,
+} from '../automation/automationQueue';
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: product-promotion handlers
 // extracted. runProductPush is re-exported below so the InventoryModule
 // "Promote" button (which imports from this file) keeps working without
@@ -163,6 +170,9 @@ export function handleIntent(
 
     case 'operator_mode':
       return handleOperatorMode(engine, lang);
+
+    case 'proposal_followup':
+      return handleProposalFollowup(match, lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -1548,6 +1558,108 @@ function handleOperatorMode(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     text: lines.join('\n'),
     actions: actions.length > 0 ? actions : undefined,
   };
+}
+
+// ── Proposal Follow-up Inbox (R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1)
+// Manual-only follow-up tracker for WhatsApp proposals. Owner clicks
+// Open WhatsApp → IntelligenceChat records a 'sent' follow-up; owner
+// later pastes a reply → record_reply handler links + classifies.
+// Pure deterministic — no inbound API, no scraping, no auto-send.
+
+function formatTimeSince(t: (key: string, ...args: unknown[]) => string, ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60000));
+  if (minutes < 60) return t('chat.followups.timeMinutes', minutes);
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('chat.followups.timeHours', hours);
+  const days = Math.floor(hours / 24);
+  return t('chat.followups.timeDays', days);
+}
+
+// Parse a pasted reply query — supports both colon-anchored
+// ("Juan replied: ...") and non-colon ("Juan replied I'll take it",
+// "Maria said she wants pictures") patterns. Pure regex; no engine call.
+function parseReplyQuery(rawQuery: string): { name?: string; replyText: string } | null {
+  const q = rawQuery.trim();
+  if (!q) return null;
+  // Single regex covers EN/ES/PT verbs with optional colon. Captures
+  // the first split point — words BEFORE belong to the name slot,
+  // words AFTER are the reply text.
+  const splitRegex = /\b(replied|reply|said|respondi[óo]|respondeu|contest[óo]|me dijo|me respondeu)\b\s*:?\s*/i;
+  const m = q.match(splitRegex);
+  if (!m || m.index === undefined) return null;
+  const before = q.slice(0, m.index).trim();
+  const after = q.slice(m.index + m[0].length).trim();
+  if (!after) return null;
+  // Strip leading filler words from "before" to leave just the name.
+  const name = before
+    .replace(/^(customer|el cliente|la cliente|cliente|el|la|the|mi cliente|o cliente|a cliente)\s+/i, '')
+    .trim();
+  return { name: name || undefined, replyText: after };
+}
+
+// Single intent handler — branches on whether the query parses as a
+// pasted reply ("{name} replied ...") or is a list query ("who needs
+// follow up?"). Pure deterministic; reuses handleConversationRunner
+// for the suggested-move briefing on reply-record path.
+function handleProposalFollowup(match: IntentMatch, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const rawQuery = (match.query || '').trim();
+
+  // Branch A: pasted reply path
+  const parsed = parseReplyQuery(rawQuery);
+  if (parsed) {
+    const followup = findOpenFollowupByCustomerOrProduct(parsed.name);
+    if (!followup) {
+      return { kind: 'answer', text: t('chat.followups.replyNoMatch') };
+    }
+    updateProposalFollowup(followup.id, {
+      status: 'replied',
+      lastReplyText: parsed.replyText,
+      lastReplyAt: Date.now(),
+    });
+    // Defer to conversation runner for the suggested move. Pass the
+    // parsed reply text only so the classifier reads the reply alone.
+    const innerMatch: IntentMatch = { id: 'conversation_runner', confidence: 1, query: parsed.replyText };
+    const sub = handleConversationRunner(innerMatch, lang);
+    const customer = followup.customerName || parsed.name || t('chat.followups.unknownCustomer');
+    const lead = t('chat.followups.replyHeader', customer);
+    return { kind: 'answer', text: `${lead}\n\n${sub.text}` };
+  }
+
+  // Branch B: list-open-followups path
+  const all = getProposalFollowups();
+  const open = all.filter(
+    (f) => f.status === 'sent' || f.status === 'replied' || f.status === 'interested',
+  );
+  if (open.length === 0) {
+    return { kind: 'answer', text: `${t('chat.followups.headerEmpty')}\n\n${t('chat.followups.empty')}` };
+  }
+  // Ranking: oldest unanswered first (sent), then replied/interested
+  // (most recent activity), then recent sent. Group + sort.
+  const now = Date.now();
+  open.sort((a, b) => {
+    // Oldest sent (no reply yet) gets top priority.
+    const aAge = a.status === 'sent' ? (now - a.sentAt) : 0;
+    const bAge = b.status === 'sent' ? (now - b.sentAt) : 0;
+    if (aAge !== bAge) return bAge - aAge;
+    // Then by status weight: replied/interested (active) > sent (cold).
+    const w = (s: string) => (s === 'interested' ? 3 : s === 'replied' ? 2 : 1);
+    return w(b.status) - w(a.status);
+  });
+  const top = open.slice(0, 5);
+  const lines: string[] = [];
+  lines.push(t('chat.followups.header', open.length));
+  lines.push('');
+  top.forEach((f, i) => {
+    const customer = f.customerName || f.customerPhone || t('chat.followups.unknownCustomer');
+    const product = f.productName || t('chat.followups.unknownProduct');
+    const since = formatTimeSince(t, now - f.sentAt);
+    lines.push(`${i + 1}. ${customer} · ${product} · ${since}`);
+    lines.push(`   ${t('chat.followups.statusLabel')} ${t(`chat.followups.status.${f.status}`)}`);
+    lines.push(`   ${t('chat.followups.suggestLabel')} ${t(`chat.followups.suggest.${f.status}`)}`);
+    if (i < top.length - 1) lines.push('');
+  });
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────

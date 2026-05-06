@@ -36,6 +36,7 @@ export type IntentId =
   | 'daily_operator_brief'
   | 'today_money_map'
   | 'operator_mode'
+  | 'proposal_followup'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -330,6 +331,40 @@ const DAILY_BRIEF_KEYWORDS = [
   'resumen diario', 'qué hago hoy', 'que hago hoy',
   // PT
   'resumo diário', 'resumo diario', 'o que fazer hoje',
+];
+
+// R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: single intent for both
+// listing open follow-ups AND recording manually pasted replies.
+// Handler branches internally on parseable reply pattern. Scored
+// ABOVE conversation_runner so reply-tracking phrases route here
+// first; conversation_runner stays the fallback for plain pasted
+// replies without follow-up linking.
+const PROPOSAL_FOLLOWUP_KEYWORDS = [
+  // EN — list queries
+  'follow ups', 'follow-ups', 'followups',
+  'proposal follow ups', 'proposal followups',
+  'who needs follow up', 'who needs followup',
+  'waiting for replies',
+  // EN — manual reply phrases
+  'customer replied', 'he replied', 'she replied', 'they replied',
+  'replied:', 'reply:',
+  // ES — list queries
+  'seguimientos',
+  'seguimiento de propuestas',
+  'quién necesita seguimiento', 'quien necesita seguimiento',
+  'esperando respuestas',
+  // ES — manual reply phrases
+  'cliente respondió', 'cliente respondio',
+  'me contestó', 'me contesto',
+  'respondió:', 'respondio:', 'contestó:', 'contesto:',
+  // PT — list queries
+  'acompanhamentos',
+  'acompanhamento de propostas',
+  'quem precisa de acompanhamento',
+  'esperando respostas',
+  // PT — manual reply phrases
+  'cliente respondeu', 'me respondeu',
+  'respondeu:',
 ];
 
 // R-INTELLIGENCE-OPERATOR-MODE-V1: combined operational plan trigger.
@@ -822,6 +857,10 @@ export function classifyIntent(
     // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply runner.
     // Listed ABOVE customer_history so phrases like "he said the lowest"
     // route to the conversational classifier, not the name-lookup path.
+    // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: single intent for both
+    // listing open follow-ups AND recording manually pasted replies.
+    // Listed ABOVE conversation_runner so reply phrases route here first.
+    { id: 'proposal_followup', score: scoreKeywords(query, PROPOSAL_FOLLOWUP_KEYWORDS) },
     { id: 'conversation_runner', score: scoreKeywords(query, CONVERSATION_RUNNER_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
@@ -902,10 +941,17 @@ export function classifyIntent(
     result.query = rawQuery;
   }
 
+  // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: pass raw query so the
+  // single proposal_followup handler can branch — list mode vs.
+  // record-reply mode (parses "{name} replied: {text}" patterns).
+  if (winner.id === 'proposal_followup') {
+    result.query = rawQuery;
+  }
+
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -933,7 +979,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

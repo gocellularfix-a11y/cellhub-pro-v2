@@ -5438,6 +5438,54 @@ export const translations: TranslationDictionary = {
   'chat.operatorMode.moveLabel':    { en: 'Next move:', es: 'Próximo movimiento:', pt: 'Próximo movimento:' },
   'chat.operatorMode.empty':        { en: 'Store is quiet. Stay close to the floor and protect customer experience.', es: 'La tienda está tranquila. Mantente cerca del piso y cuida la experiencia del cliente.', pt: 'A loja está tranquila. Fique perto do balcão e cuide da experiência do cliente.' },
 
+  // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: manual proposal-followup tracker.
+  'chat.followups.headerEmpty':       { en: '📥 Follow-ups', es: '📥 Seguimientos', pt: '📥 Acompanhamentos' },
+  'chat.followups.header': {
+    en: (n: number) => `📥 Follow-ups (${n} waiting)`,
+    es: (n: number) => `📥 Seguimientos (${n} en espera)`,
+    pt: (n: number) => `📥 Acompanhamentos (${n} aguardando)`,
+  },
+  'chat.followups.empty':             { en: 'No active follow-ups. Send a WhatsApp proposal first.', es: 'No hay seguimientos activos. Envía primero una propuesta por WhatsApp.', pt: 'Nenhum acompanhamento ativo. Envie primeiro uma proposta pelo WhatsApp.' },
+  'chat.followups.statusLabel':       { en: 'Status:',  es: 'Estado:',     pt: 'Status:' },
+  'chat.followups.suggestLabel':      { en: 'Suggest:', es: 'Sugerencia:', pt: 'Sugestão:' },
+  'chat.followups.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.followups.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  'chat.followups.timeMinutes': {
+    en: (n: number) => `${n}m ago`,
+    es: (n: number) => `hace ${n}m`,
+    pt: (n: number) => `${n}m atrás`,
+  },
+  'chat.followups.timeHours': {
+    en: (n: number) => `${n}h ago`,
+    es: (n: number) => `hace ${n}h`,
+    pt: (n: number) => `${n}h atrás`,
+  },
+  'chat.followups.timeDays': {
+    en: (n: number) => `${n}d ago`,
+    es: (n: number) => `hace ${n}d`,
+    pt: (n: number) => `${n}d atrás`,
+  },
+
+  // Status labels (open statuses listed by the inbox).
+  'chat.followups.status.sent':       { en: 'Sent — no reply yet',         es: 'Enviado — sin respuesta',        pt: 'Enviado — sem resposta' },
+  'chat.followups.status.replied':    { en: 'Replied — awaiting next move', es: 'Respondido — siguiente paso',    pt: 'Respondeu — próximo passo' },
+  'chat.followups.status.interested': { en: 'Interested — push to close',  es: 'Interesado — empuja al cierre',  pt: 'Interessado — avance para fechar' },
+
+  // Suggestions per status.
+  'chat.followups.suggest.sent':       { en: 'Send a check-in or wait a bit longer.',                    es: 'Envía un seguimiento o espera un poco más.',          pt: 'Envie um lembrete ou espere mais um pouco.' },
+  'chat.followups.suggest.replied':    { en: 'Paste their reply: "{name} replied: ...".',                es: 'Pega su respuesta: "{nombre} respondió: ...".',       pt: 'Cole a resposta: "{nome} respondeu: ...".' },
+  'chat.followups.suggest.interested': { en: 'Move toward commitment — confirm pickup or draft a deal.', es: 'Avanza al compromiso — confirma recogida o crea oferta.', pt: 'Avance para o compromisso — confirme retirada ou crie oferta.' },
+
+  // record_reply handler messages.
+  'chat.followups.replyHeader': {
+    en: (name: string) => `📨 Reply recorded for ${name}`,
+    es: (name: string) => `📨 Respuesta registrada de ${name}`,
+    pt: (name: string) => `📨 Resposta registrada de ${name}`,
+  },
+  'chat.followups.replyNoMatch':      { en: "Couldn't match this reply to an open follow-up. Include the customer name (e.g., \"Juan replied: ...\").", es: 'No pude vincular esta respuesta con un seguimiento abierto. Incluye el nombre del cliente (ej. "Juan respondió: ...").', pt: 'Não consegui vincular essa resposta a um acompanhamento aberto. Inclua o nome do cliente (ex.: "João respondeu: ...").' },
+  'chat.followups.replyHowTo':        { en: 'Paste the reply like: "Juan replied: what\'s the lowest?".', es: 'Pega la respuesta así: "Juan respondió: cuál es lo más bajo?".', pt: 'Cole a resposta assim: "João respondeu: qual o mais baixo?".' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },
