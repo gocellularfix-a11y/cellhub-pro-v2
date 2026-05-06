@@ -2,7 +2,7 @@
 // CellHub Pro — Inventory Module
 // ============================================================
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useLicense } from '@/contexts/LicenseContext';
 import { useToast } from '@/components/ui/Toast';
@@ -158,6 +158,11 @@ export default function InventoryModule() {
   }, [inventory]);
 
   // ── Filtered list ───────────────────────────────────────
+  // R-PERF-HARDENING-V1 #3: defer the search input so the O(N) filter+sort
+  // doesn't run on every keystroke when typing fast. The text input stays
+  // responsive (commits to `search` immediately); the heavy filter follows
+  // when the renderer has bandwidth.
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
     return inventory
       .filter((item) => {
@@ -171,7 +176,7 @@ export default function InventoryModule() {
         if (filterCategory !== 'All' && normCat(item.category || '').toLowerCase() !== filterCategory.toLowerCase()) return false;
         if (filterCondition !== 'All' && (item.condition || '').toLowerCase() !== filterCondition.toLowerCase()) return false;
         if (showLowStockOnly && item.qty > (settings.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD)) return false;
-        return matchesSearch(search, item.name, item.sku, item.barcode, item.imei, item.category);
+        return matchesSearch(deferredSearch, item.name, item.sku, item.barcode, item.imei, item.category);
       })
       .sort((a, b) => a.name.localeCompare(b.name, locale));
     // R-PERF-INVENTORY-LANG-SORT-REMOVE: dropped `lang` from deps for the same
@@ -179,7 +184,7 @@ export default function InventoryModule() {
     // near-identical across EN/ES/PT, so avoid re-running the full filter +
     // sort on every language toggle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inventory, filterCategory, filterCondition, showLowStockOnly, search, settings.lowStockThreshold]);
+  }, [inventory, filterCategory, filterCondition, showLowStockOnly, deferredSearch, settings.lowStockThreshold]);
 
   // ── Stats ───────────────────────────────────────────────
   // Negative qty (oversells / data corruption) are clamped to 0 so they don't

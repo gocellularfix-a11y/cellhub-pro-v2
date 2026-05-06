@@ -7,7 +7,7 @@
 // owner questions deterministically.
 // ============================================================
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
@@ -114,6 +114,15 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   function clearActionFeedback() {
     setActionFeedbackById({});
   }
+
+  // R-PERF-HARDENING-V1 #1: pre-compute priority scores ONCE per render
+  // instead of calling scoreAutomationItem twice per item (sort comparator
+  // + map body). Single pass; only re-runs when automationQueue changes.
+  const sortedQueueWithPriority = useMemo(() => {
+    return automationQueue
+      .map((item) => ({ item, priority: scoreAutomationItem(item) }))
+      .sort((a, b) => b.priority.score - a.priority.score);
+  }, [automationQueue]);
 
   function createQueueItemFromChatAction(action: ChatActionUI): AutomationQueueItem {
     const kindMap = {
@@ -591,8 +600,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             </div>
           </div>
           <div className="space-y-1 max-h-36 overflow-y-auto">
-            {[...automationQueue].sort((a, b) => scoreAutomationItem(b).score - scoreAutomationItem(a).score).map(item => {
-              const priority = scoreAutomationItem(item);
+            {sortedQueueWithPriority.map(({ item, priority }) => {
               return (
               <div key={item.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-surface-700 border border-surface-600">
                 <div className="min-w-0 flex-1">

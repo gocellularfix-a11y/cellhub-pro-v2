@@ -2,7 +2,7 @@
 // CellHub Pro — POS Module (Main Orchestrator)
 // ============================================================
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog, SearchInput, Modal } from '@/components/ui';
@@ -179,15 +179,21 @@ export default function POSModule() {
   );
 
   // Search across inventory
+  // R-PERF-HARDENING-V1 #3: useDeferredValue lets React skip re-running the
+  // O(N) inventory filter on intermediate keystrokes when typing fast. The
+  // input stays responsive (commits immediately to searchTerm); the heavy
+  // filter follows when the renderer has bandwidth.
   const isSearchActive = searchTerm.trim().length > 0;
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const searchResults = useMemo(() => {
     if (!isSearchActive) return [];
-    const q = searchTerm.trim();
+    const q = deferredSearchTerm.trim();
+    if (!q) return [];
     return inventory.filter((item) =>
       matchesSearch(q, item.name, item.sku, item.barcode, item.imei, item.category),
     );
-  }, [searchTerm, inventory, isSearchActive]);
+  }, [deferredSearchTerm, inventory, isSearchActive]);
 
   // Items filtered by active category
   const categoryItems = useMemo(() => {
