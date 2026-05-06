@@ -376,6 +376,60 @@ function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   return { kind: 'answer', text: lines.join('\n') };
 }
 
+// ── Follow-up handler (R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1) ───
+// Re-uses the LAST matched intent's context to answer short follow-ups
+// ("why?", "what should I do?", etc.) without re-running classifyIntent
+// or scanning all data. Single switch on intentId, single engine call
+// only when the topic genuinely needs a fresh number (today_sales).
+// All other branches are text-only — pure helpers per spec perf rules.
+export interface FollowUpContext {
+  intentId: string;
+  query: string;
+  responseText: string;
+  ts: number;
+}
+
+export function handleFollowUp(
+  context: FollowUpContext,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const t = tChat(lang);
+  const lines: string[] = [t('chat.followup.header')];
+
+  switch (context.intentId) {
+    case 'today_sales': {
+      const m = engine.getTodayMetrics();
+      lines.push(t('chat.followup.because',
+        t('chat.followup.todaySales', COP(m.revenueCents), m.transactions, COP(m.avgTicketCents))));
+      lines.push(t('chat.followup.action',
+        t('chat.followup.actionTodaySales')));
+      break;
+    }
+    case 'product_opportunities':
+    case 'product_push':
+    case 'marketing_campaign': {
+      lines.push(t('chat.followup.because', t('chat.followup.productOpportunity')));
+      lines.push(t('chat.followup.action', t('chat.followup.actionProduct')));
+      break;
+    }
+    case 'best_customer': {
+      lines.push(t('chat.followup.because', t('chat.followup.bestCustomer')));
+      lines.push(t('chat.followup.action', t('chat.followup.actionBestCustomer')));
+      break;
+    }
+    case 'who_to_contact':
+    case 'who_to_contact_today': {
+      lines.push(t('chat.followup.because', t('chat.followup.contactToday')));
+      lines.push(t('chat.followup.action', t('chat.followup.actionContact')));
+      break;
+    }
+    default:
+      lines.push(t('chat.followup.fallback'));
+  }
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
 // ── Today sales (R-INTELLIGENCE-TODAY-SALES-DATA-INTENT) ─────
 // Focused today-only summary. Reuses engine.getTodayMetrics() for the
 // canonical local-day filter (mirrors AppointmentsModule today logic).

@@ -5153,6 +5153,32 @@ export const translations: TranslationDictionary = {
   },
   'chat.leastProfitable.recommendation': { en: 'Review pricing and discounting on these accounts. Focus on margin, not volume.', es: 'Revisa precios y descuentos en estas cuentas. Enfócate en el margen, no en el volumen.', pt: 'Revise preços e descontos nestas contas. Foque na margem, não no volume.' },
 
+  // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
+  'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
+  'chat.followup.because':               {
+    en: (txt: string) => `Because: ${txt}`,
+    es: (txt: string) => `Porque: ${txt}`,
+    pt: (txt: string) => `Porque: ${txt}`,
+  },
+  'chat.followup.action':                {
+    en: (txt: string) => `→ ${txt}`,
+    es: (txt: string) => `→ ${txt}`,
+    pt: (txt: string) => `→ ${txt}`,
+  },
+  'chat.followup.todaySales':            {
+    en: (rev: string, tx: number, avg: string) => `today's revenue is ${rev} from ${tx} sale${tx === 1 ? '' : 's'} (avg ticket ${avg}).`,
+    es: (rev: string, tx: number, avg: string) => `los ingresos de hoy son ${rev} en ${tx} venta${tx === 1 ? '' : 's'} (ticket promedio ${avg}).`,
+    pt: (rev: string, tx: number, avg: string) => `a receita de hoje é ${rev} em ${tx} venda${tx === 1 ? '' : 's'} (ticket médio ${avg}).`,
+  },
+  'chat.followup.actionTodaySales':      { en: 'Contact recent customers or push the top-selling accessory today.', es: 'Contacta a clientes recientes o promociona el accesorio más vendido hoy.', pt: 'Contate clientes recentes ou promova o acessório mais vendido hoje.' },
+  'chat.followup.productOpportunity':    { en: 'this product was selected based on inventory and revenue opportunity signals.', es: 'este producto fue seleccionado por señales de inventario y oportunidad de ingresos.', pt: 'este produto foi selecionado com base em sinais de estoque e oportunidade de receita.' },
+  'chat.followup.actionProduct':         { en: 'Promote the top item to recent buyers or walk-ins.', es: 'Promociona el producto a clientes recientes o walk-ins.', pt: 'Promova o produto a clientes recentes ou walk-ins.' },
+  'chat.followup.bestCustomer':          { en: 'this customer ranks high on spend and visit frequency.', es: 'este cliente destaca por gasto y frecuencia de visitas.', pt: 'este cliente se destaca por gasto e frequência de visitas.' },
+  'chat.followup.actionBestCustomer':    { en: 'Consider a loyalty reward or personal outreach.', es: 'Considera una recompensa de lealtad o contacto personal.', pt: 'Considere uma recompensa de fidelidade ou contato pessoal.' },
+  'chat.followup.contactToday':          { en: 'these customers were ranked by recent activity and outreach opportunity.', es: 'estos clientes se rankearon por actividad reciente y oportunidad de contacto.', pt: 'esses clientes foram classificados por atividade recente e oportunidade de contato.' },
+  'chat.followup.actionContact':         { en: 'Send a WhatsApp or call them today.', es: 'Manda un WhatsApp o llama hoy.', pt: 'Envie WhatsApp ou ligue hoje.' },
+  'chat.followup.fallback':              { en: 'I can explain this better when the previous answer is a sales, customer, product, or contact insight.', es: 'Puedo explicar mejor cuando la respuesta anterior es sobre ventas, clientes, productos o contactos.', pt: 'Posso explicar melhor quando a resposta anterior é sobre vendas, clientes, produtos ou contatos.' },
+
   // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
   'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },
   'chat.todaySales.summary':          {

@@ -441,6 +441,25 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases that re-use
+// the last intent's context instead of running classifyIntent. Match on
+// exact normalized phrase (set lookup) — pure O(1), no scan, no engine call.
+const FOLLOWUP_PHRASES = new Set([
+  // EN
+  'why', 'why is that', 'explain', 'explain that', 'explain it',
+  'what should i do', 'what now', 'show me more',
+  // ES
+  'por que', 'por qué', 'porque',
+  'explica', 'explicame', 'explícame',
+  'que hago', 'qué hago', 'ahora que', 'y ahora',
+  // PT (note: 'por que' shared with ES; added unique forms)
+  'por quê', 'o que faço', 'o que faco', 'e agora',
+]);
+
+export function isFollowUpQuery(query: string): boolean {
+  return FOLLOWUP_PHRASES.has(normalize(query));
+}
+
 // Count how many keywords from a bank appear in the query.
 function scoreKeywords(query: string, keywords: string[]): number {
   let hits = 0;

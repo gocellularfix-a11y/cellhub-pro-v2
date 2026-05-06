@@ -10,8 +10,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
-import { classifyIntent } from '@/services/intelligence/chat/intentRouter';
-import { handleIntent } from '@/services/intelligence/chat/handlers';
+import { classifyIntent, isFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
+import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 import {
@@ -71,6 +71,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // (StrictMode double-invoke, race-condition re-fire, etc.). Same query
   // fired again later (different click, different seq) is still allowed.
   const lastResponseRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
+  // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: remember last matched intent so
+  // short follow-ups ("why?", "qué hago", "explica") can re-use its
+  // context instead of running classifyIntent over a generic phrase.
+  const lastIntentRef = useRef<{ intentId: string; query: string; responseText: string; ts: number } | null>(null);
 
   // Auto-submit when parent fires a quick-action chip.
   const engineRef = useRef(engine);
@@ -128,8 +132,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }
 
   const fireQuery = useCallback((query: string) => {
-    const match = classifyIntent(query, customersRef.current, langRef.current);
-    const response = handleIntent(match, engineRef.current, langRef.current);
+    // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases re-use
+    // the last intent's context. Early return — no classifyIntent, no scan.
+    let response;
+    let matchedIntentId: string;
+    if (isFollowUpQuery(query) && lastIntentRef.current) {
+      response = handleFollowUp(lastIntentRef.current, engineRef.current, langRef.current);
+      matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
+    } else {
+      const match = classifyIntent(query, customersRef.current, langRef.current);
+      response = handleIntent(match, engineRef.current, langRef.current);
+      matchedIntentId = match.id;
+    }
     // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: skip identical assistant push
     // within 500ms of the last identical response (prevents double-render
     // from StrictMode/race re-fire). Always refresh the timestamp so a
@@ -140,6 +154,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       return;
     }
     lastResponseRef.current = { text: response.text, ts: now };
+    // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: store last intent for next follow-up.
+    lastIntentRef.current = { intentId: matchedIntentId, query, responseText: response.text, ts: now };
     clearActionFeedback();
     if (response.actions?.length) {
       addAutomationItems(response.actions.map(createQueueItemFromChatAction));
@@ -184,8 +200,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       timestamp: new Date(),
     };
 
-    const match = classifyIntent(query, customers, lang);
-    const response = handleIntent(match, engine, lang);
+    // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: same follow-up branch as fireQuery.
+    let response;
+    let matchedIntentId: string;
+    if (isFollowUpQuery(query) && lastIntentRef.current) {
+      response = handleFollowUp(lastIntentRef.current, engine, lang);
+      matchedIntentId = lastIntentRef.current.intentId;
+    } else {
+      const match = classifyIntent(query, customers, lang);
+      response = handleIntent(match, engine, lang);
+      matchedIntentId = match.id;
+    }
 
     // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: same dedup guard as fireQuery.
     const now = Date.now();
@@ -195,6 +220,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       return;
     }
     lastResponseRef.current = { text: response.text, ts: now };
+    lastIntentRef.current = { intentId: matchedIntentId, query, responseText: response.text, ts: now };
 
     const assistantMsg: ChatMessage = {
       id: `a-${now}`,
