@@ -82,6 +82,12 @@ export function useAutocomplete(
       selectOption(results[activeIndex]);
     } else if (e.key === 'Escape') {
       close();
+    } else if (e.key === 'Tab') {
+      // R-REPAIRS-AUTOCOMPLETE-TAB-FLOW-FIX: close the dropdown but do NOT
+      // preventDefault — Tab must follow normal browser form navigation
+      // and advance focus to the next field. Pairs with tabIndex={-1} on
+      // dropdown buttons (AutocompleteInput.tsx) so Tab skips them.
+      close();
     }
   }, [isOpen, results, activeIndex, selectOption, close]);
 
