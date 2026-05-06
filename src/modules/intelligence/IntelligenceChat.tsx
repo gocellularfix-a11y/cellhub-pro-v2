@@ -545,41 +545,51 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     );
   }
 
-  const handleSuggestion = (suggestion: string) => {
-    setInput(suggestion);
-  };
+  // R-INTELLIGENCE-INTERFACE-ORGANIZATION-V1: Quick Action cards auto-submit
+  // (matches the IntelligenceModule chip pattern). The plain EmptyState
+  // suggestions used setInput-only; the new larger cards fire immediately
+  // so the operator command-center feel is consistent across the page.
+  const handleSuggestion = useCallback((suggestion: string) => {
+    fireQuery(suggestion);
+  }, [fireQuery]);
 
   const clearChat = () => setMessages([]);
 
   return (
-    <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={{ minHeight: '400px', maxHeight: '600px' }}>
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-surface-700 flex items-center justify-between">
+    // R-INTELLIGENCE-INTERFACE-ORGANIZATION-V1: chat panel sized to feel like
+    // the dominant workspace surface (was 400-600px). The conversation
+    // column inside is constrained via max-w-3xl mx-auto so messages/input
+    // read like a focused operator dialog, not an edge-to-edge log viewer.
+    <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={{ minHeight: '560px', maxHeight: '760px' }}>
+      {/* Header — bigger, more breathing room */}
+      <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-slate-200">
+          <h3 className="text-xl font-semibold text-slate-100">
             💬 {t('intelligence.askYourShop')}
           </h3>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-400 mt-0.5">
             {t('intelligence.chatDescription')}
           </p>
         </div>
         {messages.length > 0 && (
           <button
             onClick={clearChat}
-            className="text-xs px-2 py-1 rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
+            className="text-xs px-3 py-1.5 rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
           >
             {t('intelligence.clear')}
           </button>
         )}
       </div>
 
-      {/* Messages */}
-      <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 ? (
-          <EmptyState onSuggestion={handleSuggestion} />
-        ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
-        )}
+      {/* Messages — centered conversation column for premium readability */}
+      <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-5">
+        <div className="max-w-3xl mx-auto space-y-3">
+          {messages.length === 0 ? (
+            <QuickActionGrid onQuickAction={handleSuggestion} />
+          ) : (
+            messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
+          )}
+        </div>
       </div>
 
       {/* Automation Queue */}
@@ -713,24 +723,26 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         </div>
       )}
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-surface-700 p-3 flex gap-2 shrink-0">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={t('intelligence.chatPlaceholder')}
-          className="flex-1 bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-blue-500"
-          style={{ transform: 'translateZ(0)' }}
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-surface-700 disabled:text-slate-500 text-white text-sm font-medium"
-        >
-          {t('intelligence.send')}
-        </button>
-      </form>
+      {/* Input — larger, centered to match the conversation column above */}
+      <div className="border-t border-surface-700 p-4 shrink-0">
+        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={t('intelligence.chatPlaceholder')}
+            className="flex-1 bg-surface-700 text-slate-100 rounded-lg px-4 py-3 text-sm border border-surface-600 focus:outline-none focus:border-blue-500 placeholder-slate-500"
+            style={{ transform: 'translateZ(0)' }}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-surface-700 disabled:text-slate-500 text-white text-sm font-semibold"
+          >
+            {t('intelligence.send')}
+          </button>
+        </form>
+      </div>
 
       <Modal
         open={!!pendingWaAction}
@@ -822,29 +834,68 @@ function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; 
   );
 }
 
-// ── Empty state with suggestions ────────────────────────────
-function EmptyState({ onSuggestion }: { es?: boolean; onSuggestion: (s: string) => void }) {
+// ── Quick Action Grid (R-INTELLIGENCE-INTERFACE-ORGANIZATION-V1) ─────
+// Replaces the old chip-style EmptyState with a 2-column grid of larger
+// operator-style action cards. Each card auto-submits the matching query
+// (matches the IntelligenceModule chip behavior). Reuses existing
+// translation keys for titles + the actual queries fired; descriptions
+// use inline locale ternary, mirroring the prior EmptyState pattern so
+// no new translation keys are needed and bilingual coverage stays
+// consistent. UI-only — no logic changes, no new state, no new effects.
+function QuickActionGrid({ onQuickAction }: { onQuickAction: (text: string) => void }) {
   const { t, locale } = useTranslation();
-  const suggestions = locale === 'es'
-    ? ['cómo van las ventas', 'qué vendo más', 'qué me falta', 'cómo está la tienda', 'reparaciones atrasadas', 'ayuda']
-    : locale === 'pt'
-    ? ['como estão as vendas', 'itens mais vendidos', 'o que preciso', 'saúde da loja', 'reparos atrasados', 'ajuda']
-    : ['how are sales', 'top items', 'what do I need', 'store health', 'overdue repairs', 'help'];
+
+  type Card = { icon: string; titleKey: string; queryKey: string; desc: string };
+  const D = {
+    today:    locale === 'es' ? 'Ingresos, transacciones y ritmo de hoy.'
+            : locale === 'pt' ? 'Receita, transações e ritmo de hoje.'
+            : "Today's revenue, transactions, and pace.",
+    contact:  locale === 'es' ? 'Clientes valiosos para contactar por WhatsApp hoy.'
+            : locale === 'pt' ? 'Clientes valiosos para contatar pelo WhatsApp hoje.'
+            : 'High-value customers worth a WhatsApp today.',
+    sell:     locale === 'es' ? 'Oportunidades de mayor margen para hoy.'
+            : locale === 'pt' ? 'Oportunidades de maior margem para hoje.'
+            : 'Highest-margin opportunities for today.',
+    profit:   locale === 'es' ? 'Días lentos, stock muerto e ingresos perdidos.'
+            : locale === 'pt' ? 'Dias lentos, estoque morto e receita perdida.'
+            : 'Slow days, dead stock, and missed revenue.',
+    promote:  locale === 'es' ? 'Promociona un producto a tus clientes top.'
+            : locale === 'pt' ? 'Promova um produto para seus clientes top.'
+            : 'Push a specific item to top customers.',
+    ready:    locale === 'es' ? 'Reparaciones listas para entrega ahora.'
+            : locale === 'pt' ? 'Reparos prontos para retirada agora.'
+            : 'Repairs ready for pickup right now.',
+  };
+
+  const cards: Card[] = [
+    { icon: '📊', titleKey: 'intelligence.console.chipToday',      queryKey: 'intelligence.console.queryToday',          desc: D.today },
+    { icon: '📞', titleKey: 'intelligence.console.chipWhoContact', queryKey: 'intelligence.console.queryContactToday',   desc: D.contact },
+    { icon: '🎯', titleKey: 'intelligence.console.chipWhatSell',   queryKey: 'intelligence.dash.quickSell',              desc: D.sell },
+    { icon: '💸', titleKey: 'intelligence.console.chipProfit',     queryKey: 'intelligence.dash.quickProfit',            desc: D.profit },
+    { icon: '🚀', titleKey: 'intelligence.console.chipPromote',    queryKey: 'intelligence.console.queryPromoteGeneric', desc: D.promote },
+    { icon: '🔧', titleKey: 'intelligence.console.chipReady',      queryKey: 'intelligence.console.queryReadyRepairs',   desc: D.ready },
+  ];
 
   return (
-    <div className="text-center py-6">
-      <div className="text-4xl mb-2">💬</div>
-      <p className="text-sm text-slate-300 mb-4">
-        {t('intelligence.tryQuestion')}
-      </p>
-      <div className="flex flex-wrap gap-2 justify-center">
-        {suggestions.map((s) => (
+    <div className="py-4">
+      <div className="text-center mb-5">
+        <div className="text-4xl mb-2">💬</div>
+        <p className="text-sm text-slate-300">{t('intelligence.tryQuestion')}</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {cards.map((c) => (
           <button
-            key={s}
-            onClick={() => onSuggestion(s)}
-            className="px-3 py-1 text-xs rounded-full bg-surface-700 hover:bg-surface-600 text-slate-300 border border-surface-600"
+            key={c.titleKey}
+            onClick={() => onQuickAction(t(c.queryKey))}
+            className="text-left rounded-lg border border-surface-600 bg-surface-700/50 hover:bg-surface-700 px-4 py-3.5 transition-colors duration-150 active:scale-[0.99]"
           >
-            {s}
+            <div className="flex items-start gap-3">
+              <span className="text-2xl leading-none shrink-0 mt-0.5">{c.icon}</span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-100">{t(c.titleKey)}</div>
+                <div className="text-xs text-slate-400 mt-0.5 leading-snug">{c.desc}</div>
+              </div>
+            </div>
           </button>
         ))}
       </div>
