@@ -600,11 +600,48 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   // and the difference is 0 → row hidden.
   const discountAmount = sale.subtotal - (sale.subtotalAfterDiscount ?? sale.subtotal);
 
-  const itemRows = sale.items.map((item) => `
+  // R-RECEIPT-LINE-DISCOUNT-DISPLAY-FIX: distribute the sale-wide discount
+  // proportionally across discountable line items so each printed line
+  // reflects the EFFECTIVE amount the customer paid before tax. Pure
+  // presentation — no totals/tax/cart math touched. Phone payments and
+  // top-ups are excluded from discount (matches calculateCartTotals).
+  // Rounding residue is absorbed by the last discountable item so the
+  // sum of effective lines exactly equals subtotalAfterDiscount.
+  const perItemDiscount: Record<string, number> = {};
+  if (discountAmount > 0) {
+    let discountableTotal = 0;
+    const discountableIds: string[] = [];
+    for (const item of sale.items) {
+      if (item.category === 'phone_payment' || item.category === 'top_up') continue;
+      discountableTotal += item.price * item.qty;
+      discountableIds.push(item.id);
+    }
+    if (discountableTotal > 0 && discountableIds.length > 0) {
+      let allocated = 0;
+      for (const item of sale.items) {
+        if (!discountableIds.includes(item.id)) continue;
+        const share = Math.round((item.price * item.qty / discountableTotal) * discountAmount);
+        perItemDiscount[item.id] = share;
+        allocated += share;
+      }
+      const residue = discountAmount - allocated;
+      if (residue !== 0) {
+        const lastId = discountableIds[discountableIds.length - 1];
+        perItemDiscount[lastId] = (perItemDiscount[lastId] || 0) + residue;
+      }
+    }
+  }
+
+  const itemRows = sale.items.map((item) => {
+    const lineTotal = item.price * item.qty;
+    const share = perItemDiscount[item.id] || 0;
+    const effective = lineTotal - share;
+    return `
     <tr>
       <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${item.imei ? `<br><small style="color:#666;font-family:monospace">IMEI: ${escHtml(item.imei)}</small>` : ''}</td>
-      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600">${fmt(item.price * item.qty)}</td>
-    </tr>`).join('');
+      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600">${fmt(effective)}</td>
+    </tr>`;
+  }).join('');
 
   // R-COMMS-SMS-HARD-DISABLE: TCPA disclaimer block removed from receipt
   // template. With SMS sending disabled, the printed opt-in checkboxes
@@ -653,8 +690,14 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
 
   <!-- Totals -->
   <table style="margin-bottom:5px">
-    <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotal)}</td></tr>
-    ${discountAmount > 0 ? `<tr><td>${es ? 'Descuento' : 'Discount'}:</td><td style="text-align:right;color:#c00;">-${fmt(discountAmount)}</td></tr>` : ''}
+    <!-- R-RECEIPT-LINE-DISCOUNT-DISPLAY-FIX: Subtotal now shows the post-
+         discount value because each item line above already reflects its
+         effective per-item price. Standalone Discount row removed to avoid
+         the double-subtraction look ($279 line + $4 discount = $275 paid).
+         When a discount is present, render an italic "Saved" annotation
+         under the subtotal so the customer still sees the savings call-out. -->
+    <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotalAfterDiscount ?? sale.subtotal)}</td></tr>
+    ${discountAmount > 0 ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : 'Saved'}: ${fmt(discountAmount)}</td></tr>` : ''}
     ${(sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined) ? `
       ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
       ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}
