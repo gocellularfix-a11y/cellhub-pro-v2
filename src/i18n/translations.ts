@@ -263,6 +263,25 @@ export const translations: TranslationDictionary = {
     es: (product: string) => `Sin clientes elegibles para promover "${product}" en este momento.`,
     pt: (product: string) => `Sem clientes elegíveis para promover "${product}" no momento.`,
   },
+  // R-INTELLIGENCE-COORDINATED-RESPONSES-V1: operator-style fallback when
+  // direct customer targeting isn't possible. Points the owner at the
+  // broader WhatsApp campaign path (Promote Inventory panel → Generate
+  // Campaign button) that's already on screen.
+  'chat.productPush.noDirectMatches': {
+    en: (product: string) => `No high-confidence customer matches found for "${product}" right now.`,
+    es: (product: string) => `Sin coincidencias directas de clientes para "${product}" en este momento.`,
+    pt: (product: string) => `Sem correspondências diretas de clientes para "${product}" no momento.`,
+  },
+  'chat.productPush.broaderCampaignSuggestion': {
+    en: 'A broader WhatsApp campaign may still help move inventory.',
+    es: 'Una campaña amplia de WhatsApp todavía puede ayudar a mover inventario.',
+    pt: 'Uma campanha ampla de WhatsApp ainda pode ajudar a mover estoque.',
+  },
+  'chat.productPush.fallbackPromotionAction': {
+    en: 'Use the 🚀 Generate Campaign button on the Promote Inventory panel to send to recent customers.',
+    es: 'Usa el botón 🚀 Generar Campaña en el panel Promover Inventario para enviar a clientes recientes.',
+    pt: 'Use o botão 🚀 Gerar Campanha no painel Promover Estoque para enviar aos clientes recentes.',
+  },
   'chat.productPush.noProduct': {
     en: 'Tell me which product to push, e.g. "promote this product Galaxy S24".',
     es: 'Dime qué producto promover, ej. "promocionar producto Galaxy S24".',

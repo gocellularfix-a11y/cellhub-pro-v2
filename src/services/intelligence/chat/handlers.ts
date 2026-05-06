@@ -1575,7 +1575,20 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
   }
 
   if (candidates.length === 0) {
-    return { kind: 'answer', text: t('chat.productPush.empty', productName) };
+    // R-INTELLIGENCE-COORDINATED-RESPONSES-V1: replace the hard dead-end
+    // ("No eligible customers…") with an operator-style pivot. When direct
+    // high-confidence customer matches are unavailable, point the owner at
+    // the broader WhatsApp-campaign path that's already visible in the UI
+    // (Promote Inventory panel → Generate Campaign button). Keeps the chat
+    // response aligned with the visible action surfaces; no new buttons,
+    // no new queue items, no new infrastructure.
+    const lines = [
+      t('chat.productPush.noDirectMatches', productName),
+      '',
+      t('chat.productPush.broaderCampaignSuggestion'),
+      t('chat.productPush.fallbackPromotionAction'),
+    ];
+    return { kind: 'answer', text: lines.join('\n') };
   }
 
   const top = candidates.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
