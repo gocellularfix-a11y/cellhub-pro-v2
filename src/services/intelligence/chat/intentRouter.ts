@@ -32,6 +32,7 @@ export type IntentId =
   | 'propose_deal'
   | 'deal_performance'
   | 'proactive_opportunities'
+  | 'conversation_runner'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -205,6 +206,43 @@ const PROPOSE_DEAL_KEYWORDS = [
 // helpers (dead stock, stale repairs, outreach, product push, pending
 // deals). Listed BEFORE product_opportunities in the scores array so a
 // generic "opportunities" query routes to the multi-source briefing.
+// R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply trigger.
+// Catches both explicit "owner is reporting a customer reply" prefixes
+// ("he said", "customer said", "respondió") AND common pasted reply
+// phrases ("how much", "lowest", "interested"). The handler runs a
+// deterministic regex classifier — no AI, no agents.
+const CONVERSATION_RUNNER_KEYWORDS = [
+  // Explicit reporting prefixes — EN
+  'he said', 'she said', 'they said', 'customer said', 'they replied',
+  'they asked', 'they want', 'reply was', 'their reply',
+  // ES
+  'respondió', 'respondio', 'contestó', 'contesto', 'me dijo',
+  'el cliente dijo', 'la cliente dijo', 'ella dijo', 'él dijo', 'el dijo',
+  'el cliente respondió', 'la cliente respondió',
+  // PT
+  'ele respondeu', 'ela respondeu', 'cliente respondeu', 'eles responderam',
+  'me disse', 'o cliente disse', 'a cliente disse',
+  // Common pasted-reply cues — EN
+  'how much', "what's the lowest", 'whats the lowest', 'can you do better',
+  'too expensive', 'too pricey', 'too much', 'maybe later',
+  'send pics', 'send photos', 'where are you located',
+  'can you hold it', 'hold it for me', "i'll take it", 'ill take it',
+  // ES
+  'cuánto cuesta', 'cuanto cuesta', 'qué precio', 'que precio',
+  'lo más bajo', 'lo mas bajo', 'precio más bajo', 'precio mas bajo',
+  'muy caro', 'demasiado caro', 'tal vez después', 'tal vez despues',
+  'mándame fotos', 'mandame fotos', 'envíame fotos', 'enviame fotos',
+  'dónde están', 'donde estan', 'me lo llevo', 'lo quiero',
+  'guárdamelo', 'guardamelo', 'resérvalo', 'reservalo',
+  // PT
+  'quanto custa', 'qual o preço', 'qual o preco',
+  'mais barato', 'pode fazer melhor',
+  'muito caro', 'caro demais', 'talvez depois',
+  'manda fotos', 'envie fotos',
+  'onde fica', 'onde estão', 'onde estao',
+  'vou levar', 'eu levo', 'guarda pra mim', 'reserva pra mim',
+];
+
 const PROACTIVE_OPPORTUNITIES_KEYWORDS = [
   // EN
   'opportunity', 'opportunities',
@@ -721,6 +759,10 @@ export function classifyIntent(
     { id: 'propose_deal', score: scoreKeywords(query, PROPOSE_DEAL_KEYWORDS) },
     // R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: deal outcome aggregation.
     { id: 'deal_performance', score: scoreKeywords(query, DEAL_PERFORMANCE_KEYWORDS) },
+    // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply runner.
+    // Listed ABOVE customer_history so phrases like "he said the lowest"
+    // route to the conversational classifier, not the name-lookup path.
+    { id: 'conversation_runner', score: scoreKeywords(query, CONVERSATION_RUNNER_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
     // and sales_summary so operational metrics ("low stock", "ready repairs",
@@ -785,10 +827,16 @@ export function classifyIntent(
     result.query = rawQuery;
   }
 
+  // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: pass raw query so the
+  // deterministic reply-classifier in handlers.ts can scan it.
+  if (winner.id === 'conversation_runner') {
+    result.query = rawQuery;
+  }
+
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -816,7 +864,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

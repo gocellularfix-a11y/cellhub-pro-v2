@@ -139,6 +139,9 @@ export function handleIntent(
     case 'proactive_opportunities':
       return handleProactiveOpportunities(engine, lang);
 
+    case 'conversation_runner':
+      return handleConversationRunner(match, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1036,6 +1039,88 @@ function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): 
     lines.push(`   → ${op.action}`);
     if (i < top.length - 1) lines.push('');
   });
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Conversation Runner (R-INTELLIGENCE-CONVERSATION-RUNNER-V1) ────
+// Owner pastes a customer reply; this handler classifies it via a static
+// regex table → returns operator-style guidance + suggested reply.
+// Pure deterministic — no AI, no agents, no autonomous messaging, no
+// session memory beyond what the chat shell already tracks. Reuses the
+// existing PendingDeal flow VIA TEXT GUIDANCE only (no new buttons).
+
+type ReplyCategory =
+  | 'PRICE_NEGOTIATION'
+  | 'PRICE_TOO_HIGH'
+  | 'MAYBE_LATER'
+  | 'READY_TO_BUY'
+  | 'INTERESTED'
+  | 'ASKING_LOCATION'
+  | 'ASKING_PHOTOS'
+  | 'HOLD_REQUEST'
+  | 'UNKNOWN';
+
+// Order matters — first match wins. MAYBE_LATER is placed before
+// READY_TO_BUY so "i'll take it later" classifies as deferred, not closed.
+const REPLY_PATTERNS: Array<{ regex: RegExp; category: ReplyCategory }> = [
+  // PRICE_NEGOTIATION — owner is being asked for a better number.
+  { regex: /\b(lowest|best price|can you do better|cheaper|negotiate|do better than|cu[aá]nto m[aá]s barato|m[aá]s barato|mejor precio|precio m[aá]s bajo|lo m[aá]s bajo|pode fazer melhor|mais barato|melhor pre[cç]o)\b/i, category: 'PRICE_NEGOTIATION' },
+  // PRICE_TOO_HIGH — overt rejection of price.
+  { regex: /\b(too expensive|too pricey|too much|overpriced|too high|out of (my )?budget|muy caro|demasiado caro|caro demais|muito caro)\b/i, category: 'PRICE_TOO_HIGH' },
+  // MAYBE_LATER — defer / not now.
+  { regex: /\b(maybe later|later|next week|next month|not now|tal vez (m[aá]s tarde|despu[eé]s)|m[aá]s tarde|despu[eé]s|talvez (mais tarde|depois)|mais tarde|depois)\b/i, category: 'MAYBE_LATER' },
+  // READY_TO_BUY — clear close signal.
+  { regex: /\b(i'?ll take it|i want it|i'?m in|sold|deal|me lo llevo|lo quiero|cerrado|cierra|fechado|fechou|vou levar|eu levo|levo)\b/i, category: 'READY_TO_BUY' },
+  // INTERESTED — engaged, not closed yet.
+  { regex: /\b(interested|sounds good|tell me more|yes please|interesado|interesada|me interesa|interessado|interessada|me interessa)\b/i, category: 'INTERESTED' },
+  // ASKING_LOCATION
+  { regex: /\b(where are you located|where are you|address|location|directions|how do i get there|d[oó]nde est[aá]n|d[oó]nde queda|direcci[oó]n|ubicaci[oó]n|onde fica|onde est[aã]o|endere[cç]o)\b/i, category: 'ASKING_LOCATION' },
+  // ASKING_PHOTOS
+  { regex: /\b(send pics|send photos|photos|pictures|m[aá]ndame fotos|env[ií]ame fotos|fotos por favor|manda fotos|envie fotos|me envia fotos)\b/i, category: 'ASKING_PHOTOS' },
+  // HOLD_REQUEST — wants you to set it aside.
+  { regex: /\b(can you hold|hold it|reserve it|set it aside|gu[aá]rdamelo|res[eé]rvalo|reservar|guardar|guarda pra mim|reserva pra mim|guarda para mim)\b/i, category: 'HOLD_REQUEST' },
+];
+
+function classifyReply(query: string): ReplyCategory {
+  const q = query.toLowerCase();
+  for (const p of REPLY_PATTERNS) {
+    if (p.regex.test(q)) return p.category;
+  }
+  return 'UNKNOWN';
+}
+
+function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const rawQuery = (match.query || '').trim();
+
+  // Empty or no query — nudge with help text.
+  if (!rawQuery) {
+    return { kind: 'help', text: t('chat.conversation.empty') };
+  }
+
+  const category = classifyReply(rawQuery);
+
+  const lines: string[] = [];
+  lines.push(t('chat.conversation.header'));
+  lines.push('');
+  lines.push(t('chat.conversation.intentLabel'));
+  lines.push(t(`chat.conversation.category.${category}`));
+  lines.push('');
+  lines.push(t('chat.conversation.moveLabel'));
+  lines.push(t(`chat.conversation.move.${category}`));
+  lines.push('');
+  lines.push(t('chat.conversation.replyLabel'));
+  lines.push(`"${t(`chat.conversation.reply.${category}`)}"`);
+
+  // Reuse existing PendingDeal flow: when the reply is a strong close
+  // signal, hint at the propose_deal command instead of inventing a new
+  // button. Owner types the command (or uses voice) — no new path,
+  // no autonomous send, no auto-discount math.
+  if (category === 'READY_TO_BUY' || category === 'INTERESTED') {
+    lines.push('');
+    lines.push(`💡 ${t('chat.conversation.dealHint')}`);
+  }
 
   return { kind: 'answer', text: lines.join('\n') };
 }

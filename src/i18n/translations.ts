@@ -5401,6 +5401,48 @@ export const translations: TranslationDictionary = {
   },
   'chat.opportunities.pendingDeals.action': { en: 'Add them to POS cart and close the sale.', es: 'Agrégalas al carrito POS y cierra la venta.', pt: 'Adicione ao carrinho POS e feche a venda.' },
 
+  // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
+  // Operator-style guidance, deterministic — no AI, no auto-send.
+  'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },
+  'chat.conversation.empty':        { en: 'Paste the customer reply (e.g., "he said what\'s the lowest").', es: 'Pega la respuesta del cliente (ej. "respondió cuál es lo más bajo").', pt: 'Cole a resposta do cliente (ex. "ele respondeu qual o mais barato").' },
+  'chat.conversation.intentLabel':  { en: 'Customer intent:', es: 'Intención del cliente:', pt: 'Intenção do cliente:' },
+  'chat.conversation.moveLabel':    { en: 'Recommended move:', es: 'Movimiento recomendado:', pt: 'Movimento recomendado:' },
+  'chat.conversation.replyLabel':   { en: 'Suggested reply:', es: 'Respuesta sugerida:', pt: 'Resposta sugerida:' },
+  'chat.conversation.dealHint':     { en: 'To draft a deal, type: "make offer to <customer> for <product> at <price>".', es: 'Para crear una oferta, escribe: "hacer oferta a <cliente> por <producto> a <precio>".', pt: 'Para criar uma oferta, digite: "fazer oferta para <cliente> por <produto> a <preço>".' },
+
+  // Category labels.
+  'chat.conversation.category.PRICE_NEGOTIATION': { en: 'Price negotiation', es: 'Negociación de precio', pt: 'Negociação de preço' },
+  'chat.conversation.category.PRICE_TOO_HIGH':    { en: 'Price objection',    es: 'Objeción de precio',     pt: 'Objeção de preço' },
+  'chat.conversation.category.MAYBE_LATER':       { en: 'Deferred / not now', es: 'Aplazado / no ahora',    pt: 'Adiado / não agora' },
+  'chat.conversation.category.READY_TO_BUY':      { en: 'Ready to buy',       es: 'Listo para comprar',     pt: 'Pronto para comprar' },
+  'chat.conversation.category.INTERESTED':        { en: 'Interested',         es: 'Interesado',             pt: 'Interessado' },
+  'chat.conversation.category.ASKING_LOCATION':   { en: 'Asking for location',es: 'Pregunta por ubicación', pt: 'Pergunta sobre localização' },
+  'chat.conversation.category.ASKING_PHOTOS':     { en: 'Asking for photos',  es: 'Pide fotos',             pt: 'Pede fotos' },
+  'chat.conversation.category.HOLD_REQUEST':      { en: 'Hold request',       es: 'Pide apartar',           pt: 'Pede para reservar' },
+  'chat.conversation.category.UNKNOWN':           { en: 'Unclear — ask follow-up', es: 'No claro — pide aclaración', pt: 'Pouco claro — peça esclarecimento' },
+
+  // Recommended moves — concise operator guidance.
+  'chat.conversation.move.PRICE_NEGOTIATION': { en: 'Hold margin. Offer a small, time-bound concession.',                       es: 'Protege el margen. Ofrece una pequeña concesión con tiempo límite.',           pt: 'Proteja a margem. Ofereça uma pequena concessão com prazo.' },
+  'chat.conversation.move.PRICE_TOO_HIGH':    { en: 'Acknowledge, frame value, offer ONE small concession at most.',            es: 'Reconoce, enfatiza el valor, ofrece UNA concesión pequeña como máximo.',       pt: 'Reconheça, reforce o valor, ofereça UMA concessão pequena no máximo.' },
+  'chat.conversation.move.MAYBE_LATER':       { en: 'Soft close. Offer to follow up later — preserve relationship.',            es: 'Cierre suave. Ofrece seguimiento más tarde — preserva la relación.',          pt: 'Fechamento suave. Ofereça acompanhamento depois — preserve o relacionamento.' },
+  'chat.conversation.move.READY_TO_BUY':      { en: 'Lock the sale fast. Confirm pickup window.',                               es: 'Cierra la venta rápido. Confirma horario de recogida.',                       pt: 'Feche a venda rápido. Confirme horário de retirada.' },
+  'chat.conversation.move.INTERESTED':        { en: 'Move toward the close. Offer a clear next step.',                          es: 'Avanza hacia el cierre. Ofrece un próximo paso claro.',                       pt: 'Avance para o fechamento. Ofereça um próximo passo claro.' },
+  'chat.conversation.move.ASKING_LOCATION':   { en: 'Send address + hours. Offer to set it aside.',                             es: 'Envía dirección + horario. Ofrece apartarlo.',                                pt: 'Envie endereço + horário. Ofereça reservar.' },
+  'chat.conversation.move.ASKING_PHOTOS':     { en: 'Send photos quickly, then pivot to close.',                                es: 'Envía fotos rápido, luego pivota al cierre.',                                 pt: 'Envie fotos rápido, depois caminhe para o fechamento.' },
+  'chat.conversation.move.HOLD_REQUEST':      { en: 'Confirm a clear hold window. Build urgency.',                              es: 'Confirma un horario claro de reserva. Genera urgencia.',                      pt: 'Confirme um prazo claro de reserva. Crie urgência.' },
+  'chat.conversation.move.UNKNOWN':           { en: 'Ask a clarifying question to qualify the lead.',                           es: 'Haz una pregunta de aclaración para calificar al cliente.',                   pt: 'Faça uma pergunta para qualificar o cliente.' },
+
+  // Suggested replies — copy-paste templates with placeholders ($X, [address], etc.) for the owner to edit.
+  'chat.conversation.reply.PRICE_NEGOTIATION': { en: 'I can do $X today if you pick it up before 6 PM.',                  es: 'Puedo dejarlo en $X hoy si pasas a recogerlo antes de las 6 PM.',          pt: 'Posso fazer $X hoje se você buscar antes das 18h.' },
+  'chat.conversation.reply.PRICE_TOO_HIGH':    { en: "I hear you. The lowest I can go is $X today — that's our best price.", es: 'Te entiendo. Lo más bajo que puedo es $X hoy — es nuestro mejor precio.', pt: 'Entendo. O mais baixo que posso é $X hoje — é nosso melhor preço.' },
+  'chat.conversation.reply.MAYBE_LATER':       { en: "No problem. I'll keep you in mind if it goes on sale or another comes in.", es: 'Sin problema. Te aviso si baja de precio o llega otro.',              pt: 'Sem problema. Te aviso se baixar o preço ou chegar outro.' },
+  'chat.conversation.reply.READY_TO_BUY':      { en: "Awesome! I'll set it aside for you. Can you stop by today before 6 PM?", es: '¡Excelente! Te lo aparto. ¿Puedes pasar hoy antes de las 6 PM?',          pt: 'Ótimo! Vou separar para você. Pode passar hoje antes das 18h?' },
+  'chat.conversation.reply.INTERESTED':        { en: "Glad to hear it! Want me to set it aside for you to pick up today?",  es: '¡Qué bueno! ¿Quieres que te lo aparte para recogerlo hoy?',                pt: 'Que bom! Quer que eu separe para você buscar hoje?' },
+  'chat.conversation.reply.ASKING_LOCATION':   { en: "We're at [address], open until 6 PM today. Want me to set it aside?", es: 'Estamos en [dirección], abrimos hasta las 6 PM hoy. ¿Te lo aparto?',       pt: 'Estamos em [endereço], aberto até as 18h hoje. Quer que eu separe?' },
+  'chat.conversation.reply.ASKING_PHOTOS':     { en: "Sending photos now. It's in great condition — want to come check it out today?", es: 'Te mando fotos ahora. Está en excelentes condiciones — ¿pasas hoy a verlo?', pt: 'Enviando fotos agora. Está em ótimo estado — quer vir ver hoje?' },
+  'chat.conversation.reply.HOLD_REQUEST':      { en: 'Sure, I can hold it until 6 PM today. Can you confirm pickup time?', es: 'Claro, te lo aparto hasta las 6 PM hoy. ¿Me confirmas la hora de recogida?', pt: 'Claro, reservo até as 18h hoje. Pode confirmar o horário de retirada?' },
+  'chat.conversation.reply.UNKNOWN':           { en: 'Could you tell me a bit more about what you\'re looking for?',       es: '¿Me puedes contar un poco más sobre lo que buscas?',                       pt: 'Pode me contar um pouco mais sobre o que está procurando?' },
+
   'chat.dealPerformance.recommendation': {
     en: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
       ? `Your deals are converting well. Stay close to ${avgDiscPct}% discounts and keep sending offers.`
