@@ -158,6 +158,9 @@ export function handleIntent(
     case 'daily_operator_brief':
       return handleDailyOperatorBrief(engine, lang);
 
+    case 'today_money_map':
+      return handleTodayMoneyMap(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1239,6 +1242,142 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(`${i + 1}. ${t('chat.dailyBrief2.priorityLabel')} ${p.title}`);
     lines.push(`   ${t('chat.dailyBrief2.whyLabel')} ${p.why}`);
     lines.push(`   ${t('chat.dailyBrief2.actionLabel')} ${p.action}`);
+    if (i < top3.length - 1) lines.push('');
+  });
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Today Money Map (R-INTELLIGENCE-TODAY-MONEY-MAP-V1) ──────
+// Tactical "where can revenue move fastest TODAY" — ranks by speed-to-
+// close, not theoretical impact. Reuses the same engine helpers as the
+// daily-operator-brief / proactive-opportunities composers but biases
+// toward already-approved deals + money-already-owed signals. Pure
+// deterministic read; no engine mutation, no AI, no auto-send.
+function handleTodayMoneyMap(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  type Mo = { title: string; money: string; move: string; rank: number };
+  const ops: Mo[] = [];
+
+  // Source 1: Stale ready repairs (>= $20 recoverable, > 3 days waiting).
+  // "money already owed" — boosted rank.
+  try {
+    const repairs = engine.getRepairs();
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let staleCount = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      staleCount++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    if (staleCount > 0 && recoverable >= 2000) {
+      ops.push({
+        title: t('chat.opportunities.staleRepairs.title'),
+        money: t('chat.opportunities.staleRepairs.reason', staleCount, COP(recoverable)),
+        move: t('chat.opportunities.staleRepairs.action'),
+        rank: recoverable + staleCount * 1500,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 2: Approved pending deals — already-approved is the fastest
+  // close path; bias toward the top of the briefing.
+  try {
+    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
+        let approved = 0;
+        for (const q of slice) {
+          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
+        }
+        if (approved > 0) {
+          ops.push({
+            title: t('chat.opportunities.pendingDeals.title'),
+            money: t('chat.opportunities.pendingDeals.reason', approved),
+            move: t('chat.opportunities.pendingDeals.action'),
+            rank: approved * 2000,
+          });
+        }
+      }
+    }
+  } catch { /* skip */ }
+
+  // Source 3: Strong product opportunity (>= $10 impact). Theoretical —
+  // de-prioritized vs already-approved deals.
+  try {
+    const opps = engine.getProductOpportunities(1);
+    if (opps && opps.length > 0) {
+      const top = opps[0];
+      const impact = top.impactCents || 0;
+      if (impact >= 1000) {
+        ops.push({
+          title: t('chat.opportunities.productPush.title'),
+          money: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
+          move: t('chat.opportunities.productPush.action', top.name),
+          rank: impact,
+        });
+      }
+    }
+  } catch { /* skip */ }
+
+  // Source 4: Outreach candidates (>= 2). Immediate-contact opportunity.
+  try {
+    const candidates = engine.buildOutreachQueueItems();
+    if (candidates.length >= 2) {
+      ops.push({
+        title: t('chat.opportunities.outreach.title'),
+        money: t('chat.opportunities.outreach.reason', candidates.length),
+        move: t('chat.opportunities.outreach.action'),
+        rank: candidates.length * 600,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 5: Dead stock liquidation (>= $100 locked). Low-dollar
+  // inventory de-prioritized — rank halved.
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      ops.push({
+        title: t('chat.opportunities.deadStock.title'),
+        money: t('chat.opportunities.deadStock.reason', COP(dead)),
+        move: t('chat.opportunities.deadStock.action'),
+        rank: Math.floor(dead / 2),
+      });
+    }
+  } catch { /* skip */ }
+
+  if (ops.length === 0) {
+    return { kind: 'answer', text: `${t('chat.moneyMap.header')}\n\n${t('chat.moneyMap.empty')}` };
+  }
+
+  ops.sort((a, b) => b.rank - a.rank);
+  const top3 = ops.slice(0, 3);
+
+  const lines: string[] = [];
+  lines.push(t('chat.moneyMap.header'));
+  lines.push('');
+  top3.forEach((o, i) => {
+    lines.push(`${i + 1}. ${t('chat.moneyMap.opportunityLabel')} ${o.title}`);
+    lines.push(`   ${t('chat.moneyMap.moneyLabel')} ${o.money}`);
+    lines.push(`   ${t('chat.moneyMap.moveLabel')} ${o.move}`);
     if (i < top3.length - 1) lines.push('');
   });
 

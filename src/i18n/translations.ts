@@ -5413,6 +5413,15 @@ export const translations: TranslationDictionary = {
   'chat.dailyBrief2.noSalesToday.why':        { en: 'No transactions yet today.', es: 'Aún no hay transacciones hoy.', pt: 'Ainda não há transações hoje.' },
   'chat.dailyBrief2.noSalesToday.action':     { en: 'Ping recent customers, run a flash promo, or open with a tile demo.', es: 'Contacta clientes recientes, lanza una promo rápida o abre con una demo del catálogo.', pt: 'Contate clientes recentes, faça uma promo rápida ou abra com uma demo do catálogo.' },
 
+  // R-INTELLIGENCE-TODAY-MONEY-MAP-V1: tactical money-map briefing.
+  // Per-priority Money/Move strings reuse the existing chat.opportunities.*
+  // keys (already shipped EN/ES/PT) — only labels + framing are new here.
+  'chat.moneyMap.header':            { en: '💰 Today Money Map', es: '💰 Mapa de Dinero de Hoy', pt: '💰 Mapa de Dinheiro de Hoje' },
+  'chat.moneyMap.opportunityLabel':  { en: 'Revenue opportunity:', es: 'Oportunidad de ingresos:', pt: 'Oportunidade de receita:' },
+  'chat.moneyMap.moneyLabel':        { en: 'Money:',               es: 'Dinero:',                  pt: 'Dinheiro:' },
+  'chat.moneyMap.moveLabel':         { en: 'Fastest move:',        es: 'Movimiento más rápido:',   pt: 'Movimento mais rápido:' },
+  'chat.moneyMap.empty':             { en: 'No major blocked revenue detected today. Focus on live sales and customer experience.', es: 'No se detectó ingreso bloqueado importante hoy. Enfócate en ventas en vivo y experiencia del cliente.', pt: 'Nenhuma receita bloqueada importante detectada hoje. Foque em vendas ao vivo e experiência do cliente.' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },
