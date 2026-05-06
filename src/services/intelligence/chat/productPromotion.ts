@@ -108,6 +108,19 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
   const ranked = candidates.slice().sort((a, b) => b.rankScore - a.rankScore);
   const top = ranked.slice(0, 5);
 
+  // R-INVENTORY-PRODUCT-PHOTOS-V1: detect whether any inventory item
+  // matching the product name has a local photo. If so, the WhatsApp
+  // message gets a mention sentence so the owner knows a real photo is
+  // available to attach manually. No autonomous send, no auto-attach.
+  const productLower = productName.toLowerCase();
+  const hasPhoto = engine.getInventory().some(
+    (i) => !!(i as { image?: string }).image && (i.name || '').toLowerCase().includes(productLower),
+  );
+  const composeMessage = (firstName: string): string => {
+    const base = t('chat.productPush.message', firstName, productName);
+    return hasPhoto ? `${base} ${t('chat.productPush.photoMention')}` : base;
+  };
+
   // R-INTEL-PRODUCT-PUSH-DEDUP-FIX: distinct type from who_to_contact_today's
   // 'whatsapp' and marketing's 'marketing_whatsapp' so the 24h dedup in
   // actions.ts (keyed on customerId+type) does NOT collide. High-intent
@@ -120,7 +133,7 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
       type: 'product_push_whatsapp',
       customerId: c.customerId,
       phone: c.phone,
-      message: t('chat.productPush.message', firstName, productName),
+      message: composeMessage(firstName),
       priority: 3000,                                // higher than marketing's max (2000)
       reason: t('chat.productPush.reason', productName),
       createdAt: now,
@@ -153,7 +166,7 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
       actionType: 'whatsapp',
       payload: {
         type: 'whatsapp',
-        customMessage: t('chat.productPush.message', firstName, productName),
+        customMessage: composeMessage(firstName),
         customerId: c.customerId,
         customerName: c.name,
         customerPhone: c.phone,
@@ -165,7 +178,7 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
 
   // Format chat response.
   const lines = visible.map((c) => `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total`);
-  const previewMessage = t('chat.productPush.message', '{customer}', productName);
+  const previewMessage = composeMessage('{customer}');
   const bodyParts: string[] = [
     t('chat.productPush.header', productName, visible.length),
     '',

@@ -310,6 +310,10 @@ export const translations: TranslationDictionary = {
     pt: (product: string) => `Promoção de produto: ${product}`,
   },
   'chat.productPush.messagePreviewLabel': { en: 'Suggested message', es: 'Mensaje sugerido', pt: 'Mensagem sugerida' },
+  // R-INVENTORY-PRODUCT-PHOTOS-V1: appended to the WA message when the
+  // matching inventory item has a local photo. The owner can then attach
+  // it manually inside WhatsApp — the app does NOT auto-attach.
+  'chat.productPush.photoMention':        { en: 'I can send you a real photo of the item.', es: 'Puedo enviarte una foto real del producto.', pt: 'Posso te enviar uma foto real do produto.' },
   // R-INTELLIGENCE-MANUAL-WHATSAPP-PRODUCT-PROMOTION-V1: inline WhatsApp
   // buttons + summary line when more candidates exist beyond the visible top.
   'chat.productPush.waActionLabel': {
@@ -2737,6 +2741,12 @@ export const translations: TranslationDictionary = {
   'inventory.form.potentialProfit': { en: 'Potential profit',    es: 'Ganancia potencial',            pt: 'Lucro potencial' },
   'inventory.form.notes':        { en: 'Notes',                  es: 'Notas',                         pt: 'Notas' },
   'inventory.form.notesPlaceholder': { en: 'Any notes (optional)', es: 'Notas opcionales...', pt: 'Notas (opcional)' },
+  // R-INVENTORY-PRODUCT-PHOTOS-V1: local product-photo upload UI.
+  'inventory.form.photoLabel':       { en: 'Product photo (local, optional)', es: 'Foto del producto (local, opcional)', pt: 'Foto do produto (local, opcional)' },
+  'inventory.form.photoLoaded':      { en: 'Photo loaded',     es: 'Foto cargada',     pt: 'Foto carregada' },
+  'inventory.form.photoRemove':      { en: 'Remove photo',     es: 'Quitar foto',      pt: 'Remover foto' },
+  'inventory.form.photoTooLarge':    { en: 'Image too large (>2MB). Pick a smaller file.', es: 'Imagen muy grande (>2MB). Elige un archivo más pequeño.', pt: 'Imagem muito grande (>2MB). Escolha um arquivo menor.' },
+  'inventory.form.photoReadError':   { en: "Couldn't read the image file.", es: 'No se pudo leer el archivo de imagen.', pt: 'Não foi possível ler o arquivo de imagem.' },
   'inventory.form.customFields': { en: '✨ Custom Fields',        es: '✨ Campos Personalizados',       pt: '✨ Campos Personalizados' },
   'inventory.form.customSelect': { en: '-- Select --',           es: '-- Selecciona --',              pt: '-- Selecione --' },
   'inventory.form.generate':     { en: 'Generate',               es: 'Generar',                       pt: 'Gerar' },

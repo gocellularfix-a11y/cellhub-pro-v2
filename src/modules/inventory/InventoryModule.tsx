@@ -621,8 +621,20 @@ export default function InventoryModule() {
                     style={isHighlighted(item.id) ? { outline: '2px solid #667eea', background: 'rgba(102,126,234,0.08)' } : undefined}>
                     <td className="font-mono text-xs text-slate-500">{item.sku || item.imei || '—'}</td>
                     <td>
-                      <p className="text-sm text-white font-medium">{item.name}</p>
-                      {item.description && <p className="text-xs text-slate-500">{item.description}</p>}
+                      {/* R-INVENTORY-PRODUCT-PHOTOS-V1: thumbnail when image set. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {item.image && (
+                          <img
+                            src={item.image}
+                            alt=""
+                            style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: '0.25rem', border: '1px solid var(--border-default)', flexShrink: 0 }}
+                          />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <p className="text-sm text-white font-medium">{item.name}</p>
+                          {item.description && <p className="text-xs text-slate-500">{item.description}</p>}
+                        </div>
+                      </div>
                     </td>
                     <td><span className="badge badge-neutral">{item.category}</span></td>
                     <td className="text-right text-sm text-slate-400">{formatCurrency(item.cost)}</td>
@@ -840,6 +852,10 @@ function InventoryFormModal({
     taxable:           item?.taxable ?? true,
     cbeEligible:       item?.cbeEligible ?? false,
     screenFeeEligible: item?.screenFeeEligible ?? false,
+    // R-INVENTORY-PRODUCT-PHOTOS-V1: local-only product photo (data URL).
+    // No remote upload, no online image search — owner picks a file from
+    // disk, FileReader → data URL → stored on the inventory record.
+    image:             item?.image || '',
     customFields:      (item?.customFields as Record<string, string | number>) || {},
   });
 
@@ -1127,6 +1143,7 @@ function InventoryFormModal({
         cost: 0, price: 0, qty: 1,
         supplier: '', brand: '',
         taxable: true, cbeEligible: false, screenFeeEligible: false,
+        image: '',
         customFields: {},
       });
     }
@@ -1646,6 +1663,58 @@ function InventoryFormModal({
         </div>
         )}
 
+        {/* ── Product photo (R-INVENTORY-PRODUCT-PHOTOS-V1) ──
+            Local-only file → data URL via FileReader. No remote upload,
+            no online image search, no AI-generated images. Soft 2MB cap
+            keeps localStorage from bloating with phone-camera dumps. */}
+        <div>
+          <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+            {t('inventory.form.photoLabel')}
+          </label>
+          {form.image ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', border: '1px solid var(--border-default)', borderRadius: '0.5rem', background: 'var(--bg-input)' }}>
+              <img
+                src={form.image}
+                alt={form.name || 'product'}
+                style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: '0.375rem', border: '1px solid var(--border-strong)' }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('inventory.form.photoLoaded')}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, image: '' })}
+                className="btn btn-secondary btn-sm"
+              >
+                {t('inventory.form.photoRemove')}
+              </button>
+            </div>
+          ) : (
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 2 * 1024 * 1024) {
+                  toast(t('inventory.form.photoTooLarge'), 'warning');
+                  e.target.value = '';
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+                  if (dataUrl) setForm((f) => ({ ...f, image: dataUrl }));
+                };
+                reader.onerror = () => toast(t('inventory.form.photoReadError'), 'error');
+                reader.readAsDataURL(file);
+              }}
+              className="input"
+              style={{ padding: '0.4rem' }}
+            />
+          )}
+        </div>
+
         {/* ── Custom Fields (user-defined) ── */}
         {fieldConfig.customFields.length > 0 && (
           <div style={{
@@ -1763,7 +1832,7 @@ function InventoryFormModal({
 
         {/* Clear */}
         <button
-          onClick={() => setForm({ sku: '', imei: '', barcode: '', name: '', description: '', category: 'accessory', condition: 'New', cost: 0, price: 0, qty: 1, supplier: '', brand: '', taxable: true, cbeEligible: false, screenFeeEligible: false, customFields: {} })}
+          onClick={() => setForm({ sku: '', imei: '', barcode: '', name: '', description: '', category: 'accessory', condition: 'New', cost: 0, price: 0, qty: 1, supplier: '', brand: '', taxable: true, cbeEligible: false, screenFeeEligible: false, image: '', customFields: {} })}
           style={{
             padding: '0 0.875rem', borderRadius: '0.625rem',
             border: '1px solid rgba(255,255,255,0.15)',
