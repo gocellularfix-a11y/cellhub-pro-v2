@@ -18,7 +18,7 @@ import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
 // engine.refresh() — only handleWhoToContactToday triggers the queue.
 import { enqueueOutreachActions } from '../actions';
-import { getActionImpact } from '../actions/actionExecutor';
+import { getActionImpact, getActionLearning } from '../actions/actionExecutor';
 // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data_query intent reads
 // engine arrays via read-only getters and routes through the data
 // access layer for deterministic operational answers.
@@ -98,6 +98,9 @@ export function handleIntent(
 
     case 'action_impact':
       return handleActionImpact(engine, lang);
+
+    case 'action_learning':
+      return handleActionLearning(engine, lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -691,6 +694,30 @@ function handleActionImpact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     kind: 'answer',
     text: t('chat.actionImpact.summary', r.totalActions, r.conversions, COP(r.revenue)),
   };
+}
+
+// ── Action learning (R-INTELLIGENCE-LEARNING-LOOP-V1) ────────
+// Wraps existing action-impact attribution with a deterministic
+// recommendation bucket. Pure read; no log writes; runs only on user query.
+function handleActionLearning(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const r = getActionLearning(engine.getSales());
+  if (r.totalActions === 0) {
+    return { kind: 'answer', text: t('chat.actionLearning.empty') };
+  }
+  const ratePct = Math.round(r.conversionRate * 100);
+  const recKey: Record<typeof r.recommendation, string> = {
+    not_enough_data:    'chat.actionLearning.notEnoughData',
+    needs_more_actions: 'chat.actionLearning.needsMoreActions',
+    working:            'chat.actionLearning.working',
+    keep_contacting:    'chat.actionLearning.keepContacting',
+  };
+  const lines = [
+    t('chat.actionLearning.summary', r.totalActions, r.conversions, ratePct, COP(r.revenue)),
+    '',
+    t(recKey[r.recommendation]),
+  ];
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────

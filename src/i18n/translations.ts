@@ -5205,6 +5205,18 @@ export const translations: TranslationDictionary = {
   },
   'chat.actionImpact.empty': { en: 'No actions executed yet — click a WhatsApp or follow-up button to start tracking impact.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a medir impacto.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a medir o impacto.' },
 
+  // R-INTELLIGENCE-LEARNING-LOOP-V1: deterministic recommendation buckets.
+  'chat.actionLearning.empty':            { en: 'No actions executed yet — click a WhatsApp or follow-up button to start learning what works.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a aprender qué funciona.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a aprender o que funciona.' },
+  'chat.actionLearning.summary':          {
+    en: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Learning — ${total} action${total === 1 ? '' : 's'} executed.\n${conv} converted (${ratePct}% rate).\nRevenue attributed: ${rev}.`,
+    es: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizaje — ${total} acción${total === 1 ? '' : 'es'} ejecutada${total === 1 ? '' : 's'}.\n${conv} convirtieron (${ratePct}% tasa).\nIngresos atribuidos: ${rev}.`,
+    pt: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizado — ${total} ação${total === 1 ? '' : 'ões'} executada${total === 1 ? '' : 's'}.\n${conv} converteram (${ratePct}% taxa).\nReceita atribuída: ${rev}.`,
+  },
+  'chat.actionLearning.notEnoughData':    { en: 'Not enough action history yet. Execute at least 3 actions to start learning.',                       es: 'Aún no hay suficiente historial. Ejecuta al menos 3 acciones para empezar a aprender.',                  pt: 'Histórico de ações insuficiente. Execute pelo menos 3 ações para começar a aprender.' },
+  'chat.actionLearning.needsMoreActions': { en: 'No conversions yet. Keep testing outreach and follow up with recent customers.',                      es: 'Aún sin conversiones. Sigue probando el contacto y haz seguimiento con clientes recientes.',             pt: 'Ainda sem conversões. Continue testando contato e faça acompanhamento com clientes recentes.' },
+  'chat.actionLearning.working':          { en: 'Your actions are working. Keep using customer outreach — it is producing revenue.',                   es: 'Tus acciones están funcionando. Sigue usando el contacto con clientes — está generando ingresos.',       pt: 'Suas ações estão funcionando. Continue usando o contato com clientes — está gerando receita.' },
+  'chat.actionLearning.keepContacting':   { en: 'Some actions are working. Keep contacting customers and watch conversion rate.',                      es: 'Algunas acciones están funcionando. Sigue contactando clientes y observa la tasa de conversión.',        pt: 'Algumas ações estão funcionando. Continue contatando clientes e observe a taxa de conversão.' },
+
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
   'chat.followup.because':               {

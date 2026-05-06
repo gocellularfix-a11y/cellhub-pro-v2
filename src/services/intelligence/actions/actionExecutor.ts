@@ -62,6 +62,50 @@ function tsOfSale(sale: Sale): number {
   } catch { return 0; }
 }
 
+export type ActionLearningRecommendation =
+  | 'not_enough_data'
+  | 'keep_contacting'
+  | 'needs_more_actions'
+  | 'working';
+
+export interface ActionLearningResult {
+  totalActions: number;
+  conversions: number;
+  revenue: number;
+  conversionRate: number;
+  bestActionType?: string;
+  recommendation: ActionLearningRecommendation;
+}
+
+// R-INTELLIGENCE-LEARNING-LOOP-V1: deterministic recommendation derived from
+// existing execution log + sales attribution. Pure read — no mutation, no
+// background work, no localStorage writes. Thresholds:
+//   totalActions < 3        → not_enough_data
+//   conversions === 0       → needs_more_actions
+//   conversionRate ≥ 0.30   → working
+//   else                    → keep_contacting
+export function getActionLearning(sales: Sale[]): ActionLearningResult {
+  const r = getActionImpact(sales);
+  const conversionRate = r.totalActions > 0 ? r.conversions / r.totalActions : 0;
+  let recommendation: ActionLearningRecommendation;
+  if (r.totalActions < 3) {
+    recommendation = 'not_enough_data';
+  } else if (r.conversions === 0) {
+    recommendation = 'needs_more_actions';
+  } else if (conversionRate >= 0.3) {
+    recommendation = 'working';
+  } else {
+    recommendation = 'keep_contacting';
+  }
+  return {
+    totalActions: r.totalActions,
+    conversions: r.conversions,
+    revenue: r.revenue,
+    conversionRate,
+    recommendation,
+  };
+}
+
 export function getActionImpact(sales: Sale[]): {
   totalActions: number;
   conversions: number;
