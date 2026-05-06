@@ -161,6 +161,9 @@ export function handleIntent(
     case 'today_money_map':
       return handleTodayMoneyMap(engine, lang);
 
+    case 'operator_mode':
+      return handleOperatorMode(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1382,6 +1385,169 @@ function handleTodayMoneyMap(engine: IntelligenceEngine, lang: Lang3): ChatRespo
   });
 
   return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Operator Mode (R-INTELLIGENCE-OPERATOR-MODE-V1) ──────────
+// Combines 5 distinct intelligence sources into ONE coordinated action
+// plan. Reuses existing engine helpers + the existing chat queue
+// localStorage; no new infrastructure. Pure deterministic composition —
+// no AI agents, no orchestration engine, no scheduler, no memory layer.
+// Each source is wrapped in try/catch so a missing/empty source skips.
+function handleOperatorMode(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  type Plan = {
+    title: string;
+    why: string;
+    move: string;
+    actions?: ChatActionUI[];
+    rank: number;
+  };
+  const plan: Plan[] = [];
+
+  // Source 1: Stale ready repairs — money already owed, fastest collect.
+  try {
+    const repairs = engine.getRepairs();
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let staleCount = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      staleCount++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    if (staleCount > 0 && recoverable >= 2000) {
+      plan.push({
+        title: t('chat.opportunities.staleRepairs.title'),
+        why: t('chat.opportunities.staleRepairs.reason', staleCount, COP(recoverable)),
+        move: t('chat.opportunities.staleRepairs.action'),
+        rank: recoverable + staleCount * 1500,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 2: Approved pending deals — easiest execution + same-day close.
+  // Highest rank weight per spec ordering rules.
+  try {
+    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
+        let approved = 0;
+        for (const q of slice) {
+          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
+        }
+        if (approved > 0) {
+          plan.push({
+            title: t('chat.opportunities.pendingDeals.title'),
+            why: t('chat.opportunities.pendingDeals.reason', approved),
+            move: t('chat.opportunities.pendingDeals.action'),
+            rank: approved * 2000,
+          });
+        }
+      }
+    }
+  } catch { /* skip */ }
+
+  // Source 3: Top outreach candidate — best customer to contact.
+  try {
+    const candidates = engine.buildOutreachQueueItems();
+    if (candidates.length >= 2) {
+      plan.push({
+        title: t('chat.opportunities.outreach.title'),
+        why: t('chat.opportunities.outreach.reason', candidates.length),
+        move: t('chat.opportunities.outreach.action'),
+        rank: candidates.length * 600,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 4: Top product opportunity — attaches a "Promote {name}"
+  // chat-replay button per R-INTELLIGENCE-ACTION-BUTTONS-V1 (existing
+  // safe path; no new execution system).
+  try {
+    const opps = engine.getProductOpportunities(1);
+    if (opps && opps.length > 0) {
+      const top = opps[0];
+      const impact = top.impactCents || 0;
+      if (impact >= 1000) {
+        const promoteAction: ChatActionUI = {
+          id: `op-mode-promote-${top.name}-${Date.now()}`,
+          label: t('chat.productOps.promoteAction', top.name),
+          actionType: 'whatsapp',
+          triggerQuery: `promote ${top.name}`,
+          payload: {
+            type: 'whatsapp',
+            executable: true,
+            executionTarget: 'none',
+          },
+        };
+        plan.push({
+          title: t('chat.opportunities.productPush.title'),
+          why: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
+          move: t('chat.opportunities.productPush.action', top.name),
+          actions: [promoteAction],
+          rank: impact,
+        });
+      }
+    }
+  } catch { /* skip */ }
+
+  // Source 5: Operational risk — dead stock locked.
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      plan.push({
+        title: t('chat.opportunities.deadStock.title'),
+        why: t('chat.opportunities.deadStock.reason', COP(dead)),
+        move: t('chat.opportunities.deadStock.action'),
+        rank: Math.floor(dead / 2),
+      });
+    }
+  } catch { /* skip */ }
+
+  if (plan.length === 0) {
+    return { kind: 'answer', text: `${t('chat.operatorMode.header')}\n\n${t('chat.operatorMode.empty')}` };
+  }
+
+  plan.sort((a, b) => b.rank - a.rank);
+  const top = plan.slice(0, 5);
+
+  // Collect any inline action buttons across the priorities.
+  const actions: ChatActionUI[] = [];
+  for (const p of top) {
+    if (p.actions) actions.push(...p.actions);
+  }
+
+  const lines: string[] = [];
+  lines.push(t('chat.operatorMode.header'));
+  lines.push('');
+  top.forEach((p, i) => {
+    lines.push(`${i + 1}. ${t('chat.operatorMode.focusLabel')} ${p.title}`);
+    lines.push(`   ${t('chat.operatorMode.whyLabel')} ${p.why}`);
+    lines.push(`   ${t('chat.operatorMode.moveLabel')} ${p.move}`);
+    if (i < top.length - 1) lines.push('');
+  });
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    actions: actions.length > 0 ? actions : undefined,
+  };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────

@@ -35,6 +35,7 @@ export type IntentId =
   | 'conversation_runner'
   | 'daily_operator_brief'
   | 'today_money_map'
+  | 'operator_mode'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -329,6 +330,26 @@ const DAILY_BRIEF_KEYWORDS = [
   'resumen diario', 'qué hago hoy', 'que hago hoy',
   // PT
   'resumo diário', 'resumo diario', 'o que fazer hoje',
+];
+
+// R-INTELLIGENCE-OPERATOR-MODE-V1: combined operational plan trigger.
+// Composes 5 distinct intelligence sources into one prioritized briefing
+// (fastest revenue, best contact, top deal, top product, operational risk).
+const OPERATOR_MODE_KEYWORDS = [
+  // EN
+  'operator mode', 'help me close sales today',
+  'what should i focus on right now', 'run the store',
+  'help me operate today',
+  // ES
+  'modo operador',
+  'ayúdame a cerrar ventas hoy', 'ayudame a cerrar ventas hoy',
+  'qué debo enfocarme ahorita', 'que debo enfocarme ahorita',
+  'ayúdame a operar hoy', 'ayudame a operar hoy',
+  // PT
+  'modo operador',
+  'me ajude a fechar vendas hoje',
+  'no que devo focar agora',
+  'me ajude a operar hoje',
 ];
 
 // R-INTELLIGENCE-TODAY-MONEY-MAP-V1: tactical "where can revenue move
@@ -815,6 +836,9 @@ export function classifyIntent(
     // R-INTELLIGENCE-TODAY-MONEY-MAP-V1: tactical money-map briefing.
     // Anchored multi-word phrases — no overlap with daily_brief/today_summary.
     { id: 'today_money_map', score: scoreKeywords(query, TODAY_MONEY_MAP_KEYWORDS) },
+    // R-INTELLIGENCE-OPERATOR-MODE-V1: coordinated operational plan.
+    // All multi-word triggers — no collision with single-word intents.
+    { id: 'operator_mode', score: scoreKeywords(query, OPERATOR_MODE_KEYWORDS) },
     // R-DAILY-BRIEF-HANDLER-V1: scored ABOVE today_summary so anchored phrases
     // ("daily brief", "resumen diario", "o que fazer hoje") route to the
     // multi-signal composer. Plain "today"/"hoy"/"hoje" still falls to
@@ -881,7 +905,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -909,7 +933,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

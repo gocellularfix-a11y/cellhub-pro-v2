@@ -5422,6 +5422,15 @@ export const translations: TranslationDictionary = {
   'chat.moneyMap.moveLabel':         { en: 'Fastest move:',        es: 'Movimiento más rápido:',   pt: 'Movimento mais rápido:' },
   'chat.moneyMap.empty':             { en: 'No major blocked revenue detected today. Focus on live sales and customer experience.', es: 'No se detectó ingreso bloqueado importante hoy. Enfócate en ventas en vivo y experiencia del cliente.', pt: 'Nenhuma receita bloqueada importante detectada hoje. Foque em vendas ao vivo e experiência do cliente.' },
 
+  // R-INTELLIGENCE-OPERATOR-MODE-V1: coordinated 5-source operational plan.
+  // Per-priority Why/Move strings reuse the existing chat.opportunities.*
+  // keys (already shipped EN/ES/PT). Only labels + framing are new here.
+  'chat.operatorMode.header':       { en: '🎯 Operator Mode', es: '🎯 Modo Operador', pt: '🎯 Modo Operador' },
+  'chat.operatorMode.focusLabel':   { en: 'Focus:',     es: 'Enfoque:',         pt: 'Foco:' },
+  'chat.operatorMode.whyLabel':     { en: 'Why:',       es: 'Por qué:',         pt: 'Por quê:' },
+  'chat.operatorMode.moveLabel':    { en: 'Next move:', es: 'Próximo movimiento:', pt: 'Próximo movimento:' },
+  'chat.operatorMode.empty':        { en: 'Store is quiet. Stay close to the floor and protect customer experience.', es: 'La tienda está tranquila. Mantente cerca del piso y cuida la experiencia del cliente.', pt: 'A loja está tranquila. Fique perto do balcão e cuide da experiência do cliente.' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },
