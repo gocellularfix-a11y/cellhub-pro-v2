@@ -1090,6 +1090,23 @@ function classifyReply(query: string): ReplyCategory {
   return 'UNKNOWN';
 }
 
+// R-INTELLIGENCE-DEAL-CLOSER-V1: deterministic product-category detector
+// for upsell guidance. Pure regex over the same query — no engine call,
+// no inventory scan, no learning. Returns null when nothing recognizable.
+type UpsellCategory = 'phone' | 'repair' | 'console';
+function detectProductCategory(query: string): UpsellCategory | null {
+  const q = query.toLowerCase();
+  if (/\b(phone|iphone|samsung|galaxy|pixel|android|celular|tel[eé]fono|tel[eé]fone|smartphone)\b/i.test(q)) return 'phone';
+  if (/\b(repair|screen|pantalla|tela|battery|bater[íi]a|fix|arreglo|conserto|reparo|reparaci[oó]n)\b/i.test(q)) return 'repair';
+  if (/\b(console|ps5|ps4|xbox|nintendo|switch|gaming|consola|videogame|videogame)\b/i.test(q)) return 'console';
+  return null;
+}
+
+// Categories that warrant a closing-strategy line (active sales motion).
+const CLOSING_STRATEGY_CATEGORIES: ReplyCategory[] = [
+  'PRICE_NEGOTIATION', 'READY_TO_BUY', 'INTERESTED', 'HOLD_REQUEST',
+];
+
 function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const rawQuery = (match.query || '').trim();
@@ -1100,26 +1117,51 @@ function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse
   }
 
   const category = classifyReply(rawQuery);
+  // R-INTELLIGENCE-DEAL-CLOSER-V1: detect product cue from the same query
+  // text so an optional upsell line can attach. No engine call, no
+  // inventory mutation, no auto-bundling.
+  const upsellCategory = detectProductCategory(rawQuery);
 
   const lines: string[] = [];
   lines.push(t('chat.conversation.header'));
   lines.push('');
+
+  // 1. Customer intent (always)
   lines.push(t('chat.conversation.intentLabel'));
   lines.push(t(`chat.conversation.category.${category}`));
   lines.push('');
+
+  // 2. Recommended move (always)
   lines.push(t('chat.conversation.moveLabel'));
   lines.push(t(`chat.conversation.move.${category}`));
+
+  // 3. Closing strategy (only for active-sales categories) — R-INTELLIGENCE-DEAL-CLOSER-V1
+  if (CLOSING_STRATEGY_CATEGORIES.includes(category)) {
+    lines.push('');
+    lines.push(t('chat.conversation.strategyLabel'));
+    lines.push(t(`chat.conversation.strategy.${category}`));
+  }
+
+  // 4. Suggested reply (always)
   lines.push('');
   lines.push(t('chat.conversation.replyLabel'));
   lines.push(`"${t(`chat.conversation.reply.${category}`)}"`);
 
-  // Reuse existing PendingDeal flow: when the reply is a strong close
-  // signal, hint at the propose_deal command instead of inventing a new
-  // button. Owner types the command (or uses voice) — no new path,
-  // no autonomous send, no auto-discount math.
+  // 5. Optional upsell (only when a product cue exists AND the lead is
+  // still active — skip for MAYBE_LATER / UNKNOWN). R-INTELLIGENCE-DEAL-CLOSER-V1
+  if (upsellCategory && category !== 'MAYBE_LATER' && category !== 'UNKNOWN') {
+    lines.push('');
+    lines.push(t('chat.conversation.upsellLabel'));
+    lines.push(t(`chat.conversation.upsell.${upsellCategory}`));
+  }
+
+  // 6. Optional deal progression — replaces the prior single-line dealHint
+  // with the structured section per R-INTELLIGENCE-DEAL-CLOSER-V1 spec.
+  // Reuses the existing Pending Deal text path; no new flow.
   if (category === 'READY_TO_BUY' || category === 'INTERESTED') {
     lines.push('');
-    lines.push(`💡 ${t('chat.conversation.dealHint')}`);
+    lines.push(t('chat.conversation.progressionLabel'));
+    lines.push(t(`chat.conversation.progression.${category}`));
   }
 
   return { kind: 'answer', text: lines.join('\n') };

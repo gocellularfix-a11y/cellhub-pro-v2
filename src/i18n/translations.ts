@@ -5443,6 +5443,26 @@ export const translations: TranslationDictionary = {
   'chat.conversation.reply.HOLD_REQUEST':      { en: 'Sure, I can hold it until 6 PM today. Can you confirm pickup time?', es: 'Claro, te lo aparto hasta las 6 PM hoy. ¿Me confirmas la hora de recogida?', pt: 'Claro, reservo até as 18h hoje. Pode confirmar o horário de retirada?' },
   'chat.conversation.reply.UNKNOWN':           { en: 'Could you tell me a bit more about what you\'re looking for?',       es: '¿Me puedes contar un poco más sobre lo que buscas?',                       pt: 'Pode me contar um pouco mais sobre o que está procurando?' },
 
+  // R-INTELLIGENCE-DEAL-CLOSER-V1: closing strategy + optional upsell + structured deal-progression keys.
+  'chat.conversation.strategyLabel':    { en: 'Closing strategy:', es: 'Estrategia de cierre:', pt: 'Estratégia de fechamento:' },
+  'chat.conversation.upsellLabel':      { en: 'Optional upsell:',  es: 'Venta adicional (opcional):', pt: 'Venda adicional (opcional):' },
+  'chat.conversation.progressionLabel': { en: 'Optional deal progression:', es: 'Progresión de la oferta (opcional):', pt: 'Progressão da oferta (opcional):' },
+
+  // Closing strategy — only for active-sales categories.
+  'chat.conversation.strategy.PRICE_NEGOTIATION': { en: 'Trade urgency for the discount. Avoid open-ended negotiation.', es: 'Cambia el descuento por urgencia. Evita la negociación abierta.', pt: 'Troque o desconto por urgência. Evite negociação aberta.' },
+  'chat.conversation.strategy.READY_TO_BUY':      { en: 'Move toward commitment fast. Lock pickup time.',                es: 'Avanza al compromiso rápido. Cierra horario de recogida.',         pt: 'Avance para o compromisso rápido. Fixe horário de retirada.' },
+  'chat.conversation.strategy.INTERESTED':        { en: 'Reduce friction. Offer a clear next step.',                     es: 'Reduce fricción. Ofrece un próximo paso claro.',                   pt: 'Reduza atrito. Ofereça um próximo passo claro.' },
+  'chat.conversation.strategy.HOLD_REQUEST':      { en: 'Set a clear hold window. Suggest a deposit.',                   es: 'Define un horario claro de reserva. Sugiere un depósito.',         pt: 'Defina um prazo claro de reserva. Sugira um depósito.' },
+
+  // Optional upsell — keyed by detected product category.
+  'chat.conversation.upsell.phone':    { en: 'Suggest a case + screen protector bundle at checkout.',         es: 'Sugiere un combo de funda + protector de pantalla en el cierre.',  pt: 'Sugira um combo de capa + película protetora no fechamento.' },
+  'chat.conversation.upsell.repair':   { en: 'Offer a tempered glass screen protector at pickup.',            es: 'Ofrece un protector de vidrio templado al entregar.',              pt: 'Ofereça uma película de vidro temperado na retirada.' },
+  'chat.conversation.upsell.console':  { en: 'Suggest a second controller or popular game at pickup.',        es: 'Sugiere un segundo control o un juego popular al entregar.',       pt: 'Sugira um segundo controle ou jogo popular na retirada.' },
+
+  // Optional deal progression — reuses Pending Deal command guidance.
+  'chat.conversation.progression.READY_TO_BUY': { en: 'Confirm pickup window or draft a Pending Deal: "make offer to <customer> for <product> at <price>".', es: 'Confirma el horario de recogida o crea una oferta: "hacer oferta a <cliente> por <producto> a <precio>".', pt: 'Confirme o horário de retirada ou crie uma oferta: "fazer oferta para <cliente> por <produto> a <preço>".' },
+  'chat.conversation.progression.INTERESTED':   { en: 'Suggest a same-day visit or draft a Pending Deal to lock the price.',                                  es: 'Sugiere una visita el mismo día o crea una oferta para fijar el precio.',                                  pt: 'Sugira uma visita no mesmo dia ou crie uma oferta para fixar o preço.' },
+
   'chat.dealPerformance.recommendation': {
     en: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
       ? `Your deals are converting well. Stay close to ${avgDiscPct}% discounts and keep sending offers.`
