@@ -962,9 +962,11 @@ function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): 
 
   // Source 3: Outreach candidates — reuses engine.buildOutreachQueueItems().
   // The engine already applies consent + 24h dedup; we just count.
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: require >=2 candidates so a single
+  // borderline customer doesn't burn an opportunity slot.
   try {
     const candidates = engine.buildOutreachQueueItems();
-    if (candidates.length > 0) {
+    if (candidates.length >= 2) {
       ops.push({
         title: t('chat.opportunities.outreach.title'),
         reason: t('chat.opportunities.outreach.reason', candidates.length),
@@ -975,17 +977,21 @@ function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): 
   } catch { /* skip */ }
 
   // Source 4: Top product opportunity — reuses engine.getProductOpportunities(1).
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: require impactCents >= $10 so noisy
+  // tiny-margin entries don't surface as top-3 operator picks.
   try {
     const opps = engine.getProductOpportunities(1);
     if (opps && opps.length > 0) {
       const top = opps[0];
       const impact = top.impactCents || 0;
-      ops.push({
-        title: t('chat.opportunities.productPush.title'),
-        reason: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
-        action: t('chat.opportunities.productPush.action', top.name),
-        rank: impact,
-      });
+      if (impact >= 1000) {
+        ops.push({
+          title: t('chat.opportunities.productPush.title'),
+          reason: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
+          action: t('chat.opportunities.productPush.action', top.name),
+          rank: impact,
+        });
+      }
     }
   } catch { /* skip */ }
 
@@ -1368,7 +1374,12 @@ function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatR
 // same scoring — presentation only.
 function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
-  const predictions = engine.getNextVisitPredictions(10);
+  const rawPredictions = engine.getNextVisitPredictions(10);
+
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: only show reachable + actually-overdue
+  // customers. No phone = no actionable channel; overdueByDays <= 0 = not
+  // yet due. Engine ranking is preserved; this is a defensive post-filter.
+  const predictions = rawPredictions.filter((p) => !!p.phone && p.overdueByDays > 0);
 
   if (predictions.length === 0) {
     return { kind: 'answer', text: t('chat.contact.empty') };
@@ -1850,10 +1861,23 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
 // presentation changes. Pure deterministic — no scoring change, no AI.
 function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
-  const opps = engine.getProductOpportunities();
+  const oppsRaw = engine.getProductOpportunities();
 
-  if (opps.length === 0) {
+  if (oppsRaw.length === 0) {
     return { kind: 'answer', text: t('chat.product.empty') };
+  }
+
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: suppress weak opportunities. Only keep
+  // entries with meaningful estimated impact (≥$10), or DEAD_STOCK (always
+  // worth a clearance look), or strong margin (≥35%). Pure deterministic
+  // gate — same engine call, same ranking, additive filter.
+  const opps = oppsRaw.filter((o) =>
+    o.impactCents >= 1000 ||
+    o.type === 'DEAD_STOCK' ||
+    o.marginPct >= 35,
+  );
+  if (opps.length === 0) {
+    return { kind: 'answer', text: t('chat.product.weak') };
   }
 
   const REASON_KEY: Record<string, string> = {

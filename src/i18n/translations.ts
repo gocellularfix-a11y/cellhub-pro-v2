@@ -443,6 +443,10 @@ export const translations: TranslationDictionary = {
   'chat.product.action.promote': { en: 'PROMOTE', es: 'PROMOVER', pt: 'PROMOVER' },
   'chat.product.action.review': { en: 'REVIEW', es: 'REVISAR', pt: 'REVISAR' },
   'chat.product.empty': { en: 'No product opportunities detected right now.', es: 'No se detectaron oportunidades de producto por ahora.', pt: 'Nenhuma oportunidade de produto detectada agora.' },
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: stable response when all candidates
+  // fail the impact / type / margin quality gate. Operator-style — points
+  // at next-best-action instead of dumping a weak list.
+  'chat.product.weak': { en: 'No strong product opportunity right now. Keep checkout moving and follow up with customers.', es: 'Sin oportunidad de producto fuerte ahora. Mantén el flujo de venta y haz seguimiento con clientes.', pt: 'Sem oportunidade de produto forte agora. Mantenha o fluxo de venda e faça acompanhamento com clientes.' },
   'chat.product.header': { en: (n: number) => `${n} product opportunit${n === 1 ? 'y' : 'ies'} found:`, es: (n: number) => `${n} oportunidad${n === 1 ? '' : 'es'} de producto detectada${n === 1 ? '' : 's'}:`, pt: (n: number) => `${n} oportunidade${n === 1 ? '' : 's'} de produto encontrada${n === 1 ? '' : 's'}:` },
   'chat.product.impact': { en: 'est. impact', es: 'impacto est.', pt: 'impacto est.' },
   'chat.product.margin': { en: 'margin', es: 'margen', pt: 'margem' },
