@@ -173,12 +173,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     fireQuery(externalQuery.text);
   }, [externalQuery, fireQuery]);
 
-  // R-INTELLIGENCE-DAILY-AUTOMATION-V1: once-per-device-per-day auto-trigger.
-  // Runs on chat mount, gated by localStorage so refresh doesn't re-fire.
-  // Decision logic: 0 sales today → "no_sales_today" automation; <5 sales →
-  // "low_transactions"; otherwise no automation. Reuses existing engine
-  // helpers (consent + dedup baked in). NEVER auto-sends — actions only
-  // open WhatsApp deep links via existing executor pipeline.
+  // R-INTELLIGENCE-DAILY-AUTOMATION-V1 + R-INTELLIGENCE-PRIORITY-SCORING-V1:
+  // once-per-device-per-day auto-trigger with deterministic priority scoring.
+  // Mounts → checks localStorage guard → computes today metrics → builds
+  // consent-filtered candidates → scores 3 mutually-overlapping options
+  // (no_sales_today=100, low_transactions=80, contact_customers_available=60)
+  // → picks highest. Reuses existing engine helpers; no auto-send; max 1
+  // message per day; max 3 buttons.
   useEffect(() => {
     const STORAGE_KEY = 'cellhub:intelligence:dailyAutomation:lastRun';
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -188,22 +189,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
     const eng = engineRef.current;
     const m = eng.getTodayMetrics();
-    let kind: 'no_sales_today' | 'low_transactions' | null = null;
-    if (m.transactions === 0) kind = 'no_sales_today';
-    else if (m.transactions < 5) kind = 'low_transactions';
-    if (!kind) {
-      // No automation triggered, but mark today as "checked" so we don't
-      // re-evaluate on every refresh.
-      try { localStorage.setItem(STORAGE_KEY, today); } catch {}
-      return;
-    }
 
-    // Reuse existing safe contact pipeline (consent-filtered).
+    // Reuse existing safe contact pipeline (consent-filtered + 24h-deduped).
     const candidates = eng.buildOutreachQueueItems().slice(0, 3);
     if (candidates.length === 0) {
       // No candidates → skip without storing, so a later analyze pass with
-      // populated scores can still trigger (per spec "do not trigger if no
-      // candidates found").
+      // populated scores can still trigger.
       return;
     }
     const nameById = new Map(eng.getCustomers().map((c) => [c.id, c.name]));
@@ -228,14 +219,33 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     if (built.length === 0) return;
 
-    const text = kind === 'no_sales_today'
-      ? t('chat.dailyAutomation.noSalesToday')
-      : t('chat.dailyAutomation.lowTransactions');
+    // R-INTELLIGENCE-PRIORITY-SCORING-V1: build all applicable options, then
+    // pick highest-scoring. Only one daily message ever pushed.
+    type DailyAutomationOption = { kind: string; score: number; text: string };
+    const options: DailyAutomationOption[] = [];
+    if (m.transactions === 0) {
+      options.push({ kind: 'no_sales_today', score: 100, text: t('chat.dailyAutomation.noSalesToday') });
+    }
+    if (m.transactions > 0 && m.transactions < 5) {
+      options.push({ kind: 'low_transactions', score: 80, text: t('chat.dailyAutomation.lowTransactions') });
+    }
+    // contact_customers_available is unconditional when candidates exist.
+    options.push({ kind: 'contact_customers_available', score: 60, text: t('chat.dailyAutomation.contactCustomersAvailable') });
+
+    options.sort((a, b) => b.score - a.score);
+    const best = options[0];
+    if (!best) {
+      // Defensive — should not happen since contact_customers_available is
+      // always added when candidates exist. If it ever does, store today so
+      // we don't loop on retries.
+      try { localStorage.setItem(STORAGE_KEY, today); } catch {}
+      return;
+    }
 
     const now = Date.now();
     setMessages((prev) => [
       ...prev,
-      { id: `a-${now}`, role: 'assistant', content: text, timestamp: new Date(), kind: 'answer', actions: built },
+      { id: `a-${now}`, role: 'assistant', content: best.text, timestamp: new Date(), kind: 'answer', actions: built },
     ]);
     addAutomationItems(built.map(createQueueItemFromChatAction));
     try { localStorage.setItem(STORAGE_KEY, today); } catch {}

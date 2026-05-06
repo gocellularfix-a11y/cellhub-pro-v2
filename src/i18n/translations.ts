@@ -5192,8 +5192,10 @@ export const translations: TranslationDictionary = {
     pt: (name: string) => `WhatsApp ${name}`,
   },
   // R-INTELLIGENCE-DAILY-AUTOMATION-V1: once-per-day proactive recommendation.
-  'chat.dailyAutomation.noSalesToday':    { en: '⚡ Daily Action: You have no sales yet today. Contact these customers now.',                  es: '⚡ Acción del día: Aún no tienes ventas hoy. Contacta a estos clientes.',                                pt: '⚡ Ação do dia: Ainda não há vendas hoje. Contate esses clientes.' },
-  'chat.dailyAutomation.lowTransactions': { en: '⚡ Daily Action: Sales are slow today. Contact these customers to boost traffic.',           es: '⚡ Acción del día: Las ventas están lentas hoy. Contacta a estos clientes para impulsar el tráfico.',     pt: '⚡ Ação do dia: As vendas estão lentas hoje. Contate esses clientes para impulsionar o tráfego.' },
+  'chat.dailyAutomation.noSalesToday':              { en: '⚡ Daily Action: You have no sales yet today. Contact these customers now.',                  es: '⚡ Acción del día: Aún no tienes ventas hoy. Contacta a estos clientes.',                                pt: '⚡ Ação do dia: Ainda não há vendas hoje. Contate esses clientes.' },
+  'chat.dailyAutomation.lowTransactions':           { en: '⚡ Daily Action: Sales are slow today. Contact these customers to boost traffic.',           es: '⚡ Acción del día: Las ventas están lentas hoy. Contacta a estos clientes para impulsar el tráfico.',     pt: '⚡ Ação do dia: As vendas estão lentas hoje. Contate esses clientes para impulsionar o tráfego.' },
+  // R-INTELLIGENCE-PRIORITY-SCORING-V1: lower-priority always-on option.
+  'chat.dailyAutomation.contactCustomersAvailable': { en: '⚡ Daily Action: You have customers worth contacting today.',                                  es: '⚡ Acción del día: Tienes clientes que vale la pena contactar hoy.',                                       pt: '⚡ Ação do dia: Você tem clientes que vale a pena contatar hoje.' },
 
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
