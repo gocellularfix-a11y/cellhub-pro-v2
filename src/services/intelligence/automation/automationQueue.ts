@@ -255,6 +255,137 @@ export function updateProposalFollowup(
   }
 }
 
+// R-INTELLIGENCE-DEAL-PIPELINE-V1 ─────────────────────────────
+// Lightweight manual deal pipeline. Tracks active sales opportunities
+// from proposal → reply → interested → close. All mutations are
+// triggered by explicit owner actions (Open WhatsApp click, paste
+// reply, "mark X deal won"). No autonomous transitions. localStorage
+// only; no remote sync, no scraping.
+
+export type DealStage =
+  | 'proposal_sent'
+  | 'customer_replied'
+  | 'interested'
+  | 'negotiating'
+  | 'pending_approval'
+  | 'pending_pickup'
+  | 'won'
+  | 'lost';
+
+export interface DealPipelineItem {
+  id: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productName?: string;
+  proposedPriceCents?: number;
+  stage: DealStage;
+  sourceFollowupId?: string;
+  sourceActionId?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastReplyText?: string;
+  lastRecommendation?: string;
+}
+
+const DEAL_PIPELINE_KEY = 'cellhub:intelligence:dealPipeline:v1';
+const MAX_DEAL_PIPELINE = 300;
+
+export function getDealPipeline(): DealPipelineItem[] {
+  try {
+    const raw = localStorage.getItem(DEAL_PIPELINE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addDealPipelineItem(entry: DealPipelineItem): void {
+  try {
+    const list = getDealPipeline();
+    list.push(entry);
+    const trimmed = list.length > MAX_DEAL_PIPELINE
+      ? list.slice(list.length - MAX_DEAL_PIPELINE)
+      : list;
+    localStorage.setItem(DEAL_PIPELINE_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* skip */
+  }
+}
+
+export function updateDealPipelineItem(
+  id: string,
+  patch: Partial<DealPipelineItem>,
+): void {
+  try {
+    const list = getDealPipeline();
+    const idx = list.findIndex((d) => d.id === id);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch, updatedAt: Date.now() };
+    localStorage.setItem(DEAL_PIPELINE_KEY, JSON.stringify(list));
+  } catch {
+    /* skip */
+  }
+}
+
+// Phone-first match (exact=100), name fallback (exact=80, first-name=60,
+// substring=40), optional product-name boost (+20). Open = stage not in
+// (won, lost). Pure read; no mutation.
+export function findOpenDealByCustomerOrProduct(
+  customerName?: string,
+  customerPhone?: string,
+  productName?: string,
+): DealPipelineItem | null {
+  const list = getDealPipeline();
+  const open = list.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+  if (open.length === 0) return null;
+
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+  const targetPhone = normalizePhone(customerPhone || '');
+  const targetName = (customerName || '').toLowerCase().trim();
+  const targetProduct = (productName || '').toLowerCase().trim();
+
+  let best: DealPipelineItem | null = null;
+  let bestScore = 0;
+  for (const d of open) {
+    let score = 0;
+    if (targetPhone && d.customerPhone) {
+      const dp = normalizePhone(d.customerPhone);
+      if (dp === targetPhone) score = 100;
+      else if (dp && (dp.endsWith(targetPhone) || targetPhone.endsWith(dp))) score = 50;
+    }
+    if (targetName && d.customerName) {
+      const dn = d.customerName.toLowerCase().trim();
+      if (dn === targetName) score = Math.max(score, 80);
+      else {
+        const firstWord = dn.split(' ')[0];
+        if (firstWord && (firstWord === targetName || targetName.startsWith(firstWord))) {
+          score = Math.max(score, 60);
+        } else if (dn.includes(targetName) || targetName.includes(dn)) {
+          score = Math.max(score, 40);
+        }
+      }
+    }
+    if (targetProduct && d.productName) {
+      const dpn = d.productName.toLowerCase();
+      if (dpn === targetProduct || dpn.includes(targetProduct) || targetProduct.includes(dpn)) {
+        score += 20;
+      }
+    }
+    if (score > bestScore || (score > 0 && score === bestScore && d.updatedAt > (best?.updatedAt || 0))) {
+      best = d;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+export function closeDealPipelineItem(id: string, stage: 'won' | 'lost'): void {
+  updateDealPipelineItem(id, { stage });
+}
+
 // Find the most recent OPEN follow-up that matches by customer name
 // or phone. Open = status not in (won, lost, no_response). Phone is
 // the strongest signal; name fallback uses substring + first-name

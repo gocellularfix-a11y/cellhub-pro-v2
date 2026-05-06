@@ -37,6 +37,8 @@ export type IntentId =
   | 'today_money_map'
   | 'operator_mode'
   | 'proposal_followup'
+  | 'deal_pipeline'
+  | 'mark_deal_stage'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -365,6 +367,40 @@ const PROPOSAL_FOLLOWUP_KEYWORDS = [
   // PT — manual reply phrases
   'cliente respondeu', 'me respondeu',
   'respondeu:',
+];
+
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: list active sales-pipeline opportunities.
+const DEAL_PIPELINE_KEYWORDS = [
+  // EN
+  'active deals', 'deal pipeline', 'open deals', 'pending deals',
+  'what deals can close', 'sales pipeline',
+  // ES
+  'tratos activos', 'pipeline de ventas',
+  'ventas pendientes', 'tratos pendientes',
+  'qué tratos puedo cerrar', 'que tratos puedo cerrar',
+  // PT
+  'negócios ativos', 'negocios ativos',
+  'pipeline de vendas',
+  'vendas pendentes', 'negócios pendentes', 'negocios pendentes',
+  'quais negócios posso fechar', 'quais negocios posso fechar',
+];
+
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: manual stage-marking commands.
+// Anchored phrases — the handler parses customer name + target stage
+// from the raw query.
+const MARK_DEAL_STAGE_KEYWORDS = [
+  // EN
+  'deal won', 'deal lost', 'deal pending pickup', 'deal pending',
+  'mark deal', 'mark sale',
+  // ES
+  'trato ganado', 'trato perdido', 'trato cerrado',
+  'venta cerrada', 'venta perdida',
+  'marcar trato',
+  // PT
+  'negócio ganho', 'negocio ganho',
+  'negócio perdido', 'negocio perdido',
+  'venda fechada', 'venda perdida',
+  'marcar negócio', 'marcar negocio',
 ];
 
 // R-INTELLIGENCE-OPERATOR-MODE-V1: combined operational plan trigger.
@@ -861,6 +897,11 @@ export function classifyIntent(
     // listing open follow-ups AND recording manually pasted replies.
     // Listed ABOVE conversation_runner so reply phrases route here first.
     { id: 'proposal_followup', score: scoreKeywords(query, PROPOSAL_FOLLOWUP_KEYWORDS) },
+    // R-INTELLIGENCE-DEAL-PIPELINE-V1: list active sales pipeline + manual
+    // stage marking. Anchored multi-word phrases — no overlap with
+    // proposal_followup or conversation_runner.
+    { id: 'deal_pipeline',    score: scoreKeywords(query, DEAL_PIPELINE_KEYWORDS) },
+    { id: 'mark_deal_stage',  score: scoreKeywords(query, MARK_DEAL_STAGE_KEYWORDS) },
     { id: 'conversation_runner', score: scoreKeywords(query, CONVERSATION_RUNNER_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
@@ -948,10 +989,17 @@ export function classifyIntent(
     result.query = rawQuery;
   }
 
+  // R-INTELLIGENCE-DEAL-PIPELINE-V1: pass raw query so the manual
+  // stage-marker handler can parse "mark Juan deal won" / "Juan trato
+  // ganado" patterns. List handler doesn't need it but it's cheap.
+  if (winner.id === 'mark_deal_stage' || winner.id === 'deal_pipeline') {
+    result.query = rawQuery;
+  }
+
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, DEAL_PIPELINE_KEYWORDS, MARK_DEAL_STAGE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -979,7 +1027,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, DEAL_PIPELINE_KEYWORDS, MARK_DEAL_STAGE_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

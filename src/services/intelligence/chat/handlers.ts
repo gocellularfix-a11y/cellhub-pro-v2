@@ -21,14 +21,21 @@ import { buildPendingDeal } from '../deals/dealEngine';
 import type { PendingDeal } from '../deals/dealTypes';
 // R-INTELLIGENCE-CONVERSATION-RUNNER-MODULE-V1: handler extracted to its
 // own per-domain module per the modularity rule.
-import { handleConversationRunner } from './conversationRunner';
+import { handleConversationRunner, classifyReply } from './conversationRunner';
+import type { ReplyCategory } from './conversationRunner';
 // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: manual proposal-tracking
 // helpers for the new proposal_followup + record_reply intents.
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: deal-pipeline helpers + types.
 import {
   getProposalFollowups,
   updateProposalFollowup,
   findOpenFollowupByCustomerOrProduct,
+  getDealPipeline,
+  updateDealPipelineItem,
+  findOpenDealByCustomerOrProduct,
+  closeDealPipelineItem,
 } from '../automation/automationQueue';
+import type { DealStage } from '../automation/automationQueue';
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: product-promotion handlers
 // extracted. runProductPush is re-exported below so the InventoryModule
 // "Promote" button (which imports from this file) keeps working without
@@ -173,6 +180,12 @@ export function handleIntent(
 
     case 'proposal_followup':
       return handleProposalFollowup(match, lang);
+
+    case 'deal_pipeline':
+      return handleDealPipeline(lang);
+
+    case 'mark_deal_stage':
+      return handleMarkDealStage(match, lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -1597,6 +1610,23 @@ function parseReplyQuery(rawQuery: string): { name?: string; replyText: string }
   return { name: name || undefined, replyText: after };
 }
 
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: deterministic mapping from a
+// classified reply category to the corresponding deal stage.
+function categoryToStage(cat: ReplyCategory): DealStage {
+  switch (cat) {
+    case 'READY_TO_BUY':       return 'pending_pickup';
+    case 'PRICE_NEGOTIATION':
+    case 'PRICE_TOO_HIGH':     return 'negotiating';
+    case 'INTERESTED':
+    case 'ASKING_PHOTOS':
+    case 'ASKING_LOCATION':
+    case 'HOLD_REQUEST':       return 'interested';
+    case 'MAYBE_LATER':
+    case 'UNKNOWN':
+    default:                   return 'customer_replied';
+  }
+}
+
 // Single intent handler — branches on whether the query parses as a
 // pasted reply ("{name} replied ...") or is a list query ("who needs
 // follow up?"). Pure deterministic; reuses handleConversationRunner
@@ -1617,6 +1647,23 @@ function handleProposalFollowup(match: IntentMatch, lang: Lang3): ChatResponse {
       lastReplyText: parsed.replyText,
       lastReplyAt: Date.now(),
     });
+    // R-INTELLIGENCE-DEAL-PIPELINE-V1: map the classified reply to a
+    // pipeline stage and update the matching open deal in place. No
+    // pipeline mutation if no deal exists for this customer.
+    const replyCategory = classifyReply(parsed.replyText);
+    const newStage = categoryToStage(replyCategory);
+    const deal = findOpenDealByCustomerOrProduct(
+      parsed.name || followup.customerName,
+      followup.customerPhone,
+      followup.productName,
+    );
+    if (deal) {
+      updateDealPipelineItem(deal.id, {
+        stage: newStage,
+        lastReplyText: parsed.replyText,
+        lastRecommendation: replyCategory,
+      });
+    }
     // Defer to conversation runner for the suggested move. Pass the
     // parsed reply text only so the classifier reads the reply alone.
     const innerMatch: IntentMatch = { id: 'conversation_runner', confidence: 1, query: parsed.replyText };
@@ -1660,6 +1707,112 @@ function handleProposalFollowup(match: IntentMatch, lang: Lang3): ChatResponse {
     if (i < top.length - 1) lines.push('');
   });
   return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Deal Pipeline (R-INTELLIGENCE-DEAL-PIPELINE-V1) ──────────
+// Manual sales-pipeline tracker. List + manual stage update only — no
+// autonomous transitions. Stage changes from owner pasting a customer
+// reply happen inside handleProposalFollowup above; this section
+// handles "active deals" listing + "mark X deal won/lost" commands.
+
+const DEAL_STAGE_RANK: Record<DealStage, number> = {
+  pending_pickup:    100,
+  pending_approval:  90,
+  negotiating:       80,
+  interested:        70,
+  customer_replied:  60,
+  proposal_sent:     50,
+  won:               0,   // suppressed from active list
+  lost:              0,   // suppressed from active list
+};
+
+function handleDealPipeline(lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const all = getDealPipeline();
+  const active = all.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+  if (active.length === 0) {
+    return { kind: 'answer', text: `${t('chat.dealPipeline.headerEmpty')}\n\n${t('chat.dealPipeline.empty')}` };
+  }
+  // Rank by stage priority desc, then most recently updated.
+  active.sort((a, b) => {
+    const sa = DEAL_STAGE_RANK[a.stage] || 0;
+    const sb = DEAL_STAGE_RANK[b.stage] || 0;
+    if (sa !== sb) return sb - sa;
+    return b.updatedAt - a.updatedAt;
+  });
+  const top = active.slice(0, 5);
+  const lines: string[] = [];
+  lines.push(t('chat.dealPipeline.header', active.length));
+  lines.push('');
+  top.forEach((d, i) => {
+    const customer = d.customerName || d.customerPhone || t('chat.dealPipeline.unknownCustomer');
+    const product = d.productName || t('chat.dealPipeline.unknownProduct');
+    lines.push(`${i + 1}. ${customer} · ${product}`);
+    lines.push(`   ${t('chat.dealPipeline.stageLabel')} ${t(`chat.dealPipeline.stage.${d.stage}`)}`);
+    if (d.lastReplyText) {
+      const reply = d.lastReplyText.length > 80 ? d.lastReplyText.slice(0, 80) + '…' : d.lastReplyText;
+      lines.push(`   ${t('chat.dealPipeline.replyLabel')} "${reply}"`);
+    }
+    lines.push(`   ${t('chat.dealPipeline.moveLabel')} ${t(`chat.dealPipeline.move.${d.stage}`)}`);
+    if (i < top.length - 1) lines.push('');
+  });
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// Parse "mark Juan deal won" / "Juan trato ganado" / "mark Maria deal
+// pending pickup" / "Pedro venda fechada" — extract { name, stage }.
+// Pure regex; no engine call.
+function parseMarkDealQuery(rawQuery: string): { name?: string; stage: DealStage } | null {
+  const q = rawQuery.toLowerCase().trim();
+  if (!q) return null;
+  // Stage keyword detection — first match wins.
+  const stagePatterns: Array<{ pat: RegExp; stage: DealStage }> = [
+    { pat: /\b(deal|trato|venda)\b.*\b(won|ganado|ganho|fechad[ao])\b/, stage: 'won' },
+    { pat: /\b(deal|trato|venda|negocio|negócio)\b.*\b(lost|perdid[ao])\b/, stage: 'lost' },
+    { pat: /\b(deal|trato|venda)\b.*\b(pending pickup|pickup|recogida|retirada)\b/, stage: 'pending_pickup' },
+    { pat: /\b(deal|trato|venda)\b.*\b(pending|pendiente)\b/, stage: 'pending_approval' },
+    { pat: /\b(won|ganado|ganho|fechad[ao]|cerrad[ao])\b/, stage: 'won' },
+    { pat: /\b(lost|perdid[ao])\b/, stage: 'lost' },
+  ];
+  let matchedStage: DealStage | null = null;
+  for (const sp of stagePatterns) {
+    if (sp.pat.test(q)) {
+      matchedStage = sp.stage;
+      break;
+    }
+  }
+  if (!matchedStage) return null;
+  // Extract name — strip command verbs and stage keywords, keep the rest.
+  const name = q
+    .replace(/\b(mark|marcar|el|la|the)\b/g, '')
+    .replace(/\b(deal|trato|venda|negocio|negócio|sale|venta)\b/g, '')
+    .replace(/\b(won|lost|ganado|perdido|ganho|fechad[ao]|cerrad[ao]|pending(?: pickup)?|pendiente|recogida|retirada|perdid[ao])\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { name: name || undefined, stage: matchedStage };
+}
+
+function handleMarkDealStage(match: IntentMatch, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const rawQuery = (match.query || '').trim();
+  const parsed = parseMarkDealQuery(rawQuery);
+  if (!parsed) {
+    return { kind: 'help', text: t('chat.dealPipeline.markHowTo') };
+  }
+  const deal = findOpenDealByCustomerOrProduct(parsed.name);
+  if (!deal) {
+    return { kind: 'answer', text: t('chat.dealPipeline.markNoMatch') };
+  }
+  if (parsed.stage === 'won' || parsed.stage === 'lost') {
+    closeDealPipelineItem(deal.id, parsed.stage);
+  } else {
+    updateDealPipelineItem(deal.id, { stage: parsed.stage });
+  }
+  const customer = deal.customerName || parsed.name || t('chat.dealPipeline.unknownCustomer');
+  return {
+    kind: 'answer',
+    text: t('chat.dealPipeline.markedHeader', customer, t(`chat.dealPipeline.stage.${parsed.stage}`)),
+  };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────

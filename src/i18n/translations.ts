@@ -5509,6 +5509,49 @@ export const translations: TranslationDictionary = {
   'chat.followups.replyNoMatch':      { en: "Couldn't match this reply to an open follow-up. Include the customer name (e.g., \"Juan replied: ...\").", es: 'No pude vincular esta respuesta con un seguimiento abierto. Incluye el nombre del cliente (ej. "Juan respondió: ...").', pt: 'Não consegui vincular essa resposta a um acompanhamento aberto. Inclua o nome do cliente (ex.: "João respondeu: ...").' },
   'chat.followups.replyHowTo':        { en: 'Paste the reply like: "Juan replied: what\'s the lowest?".', es: 'Pega la respuesta así: "Juan respondió: cuál es lo más bajo?".', pt: 'Cole a resposta assim: "João respondeu: qual o mais baixo?".' },
 
+  // R-INTELLIGENCE-DEAL-PIPELINE-V1: manual sales-pipeline tracking.
+  'chat.dealPipeline.headerEmpty':       { en: '🧭 Deal Pipeline', es: '🧭 Pipeline de Ventas', pt: '🧭 Pipeline de Vendas' },
+  'chat.dealPipeline.header': {
+    en: (n: number) => `🧭 Deal Pipeline (${n} active)`,
+    es: (n: number) => `🧭 Pipeline de Ventas (${n} activos)`,
+    pt: (n: number) => `🧭 Pipeline de Vendas (${n} ativos)`,
+  },
+  'chat.dealPipeline.empty':             { en: 'No active deals. Send a WhatsApp proposal to start a pipeline entry.', es: 'Sin tratos activos. Envía una propuesta por WhatsApp para iniciar un trato.', pt: 'Sem negócios ativos. Envie uma proposta pelo WhatsApp para iniciar um negócio.' },
+  'chat.dealPipeline.stageLabel':        { en: 'Stage:',  es: 'Etapa:',     pt: 'Etapa:' },
+  'chat.dealPipeline.replyLabel':        { en: 'Reply:',  es: 'Respuesta:', pt: 'Resposta:' },
+  'chat.dealPipeline.moveLabel':         { en: 'Next:',   es: 'Siguiente:', pt: 'Próximo:' },
+  'chat.dealPipeline.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.dealPipeline.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // Stage labels (8 total — won/lost included for the mark command response).
+  'chat.dealPipeline.stage.proposal_sent':    { en: 'Proposal sent',     es: 'Propuesta enviada',  pt: 'Proposta enviada' },
+  'chat.dealPipeline.stage.customer_replied': { en: 'Customer replied',  es: 'Cliente respondió',  pt: 'Cliente respondeu' },
+  'chat.dealPipeline.stage.interested':       { en: 'Interested',        es: 'Interesado',         pt: 'Interessado' },
+  'chat.dealPipeline.stage.negotiating':      { en: 'Negotiating price', es: 'Negociando precio',  pt: 'Negociando preço' },
+  'chat.dealPipeline.stage.pending_approval': { en: 'Pending approval',  es: 'Pendiente aprobación', pt: 'Aguardando aprovação' },
+  'chat.dealPipeline.stage.pending_pickup':   { en: 'Pending pickup',    es: 'Pendiente recogida', pt: 'Aguardando retirada' },
+  'chat.dealPipeline.stage.won':              { en: 'Won',               es: 'Ganado',             pt: 'Ganho' },
+  'chat.dealPipeline.stage.lost':             { en: 'Lost',              es: 'Perdido',            pt: 'Perdido' },
+
+  // Recommended next-move per stage.
+  'chat.dealPipeline.move.proposal_sent':    { en: 'Send a check-in or wait for the reply to come in.',     es: 'Envía un seguimiento o espera la respuesta.',                pt: 'Envie um lembrete ou aguarde a resposta.' },
+  'chat.dealPipeline.move.customer_replied': { en: 'Read their message; classify intent; reply quickly.',   es: 'Lee el mensaje, clasifica la intención y responde rápido.',  pt: 'Leia a mensagem, classifique a intenção e responda rápido.' },
+  'chat.dealPipeline.move.interested':       { en: 'Reduce friction. Offer a clear next step.',             es: 'Reduce fricción. Ofrece un próximo paso claro.',             pt: 'Reduza atrito. Ofereça um próximo passo claro.' },
+  'chat.dealPipeline.move.negotiating':      { en: 'Hold margin. Offer ONE small time-bound concession.',   es: 'Protege el margen. Ofrece UNA concesión pequeña con tiempo.', pt: 'Proteja a margem. Ofereça UMA concessão pequena com prazo.' },
+  'chat.dealPipeline.move.pending_approval': { en: 'Confirm details and approve via POS when ready.',       es: 'Confirma detalles y aprueba en POS cuando esté listo.',      pt: 'Confirme detalhes e aprove no POS quando estiver pronto.' },
+  'chat.dealPipeline.move.pending_pickup':   { en: 'Lock pickup window. Move to POS to close the sale.',    es: 'Cierra horario de recogida. Pasa al POS para cerrar la venta.', pt: 'Fixe o horário de retirada. Vá ao POS para fechar a venda.' },
+  'chat.dealPipeline.move.won':              { en: 'Closed — log outcome via POS sale.',                    es: 'Cerrado — registra el resultado con la venta en POS.',       pt: 'Fechado — registre o resultado na venda do POS.' },
+  'chat.dealPipeline.move.lost':             { en: 'Closed — keep contact for future opportunities.',       es: 'Cerrado — mantén el contacto para futuras oportunidades.',   pt: 'Fechado — mantenha contato para futuras oportunidades.' },
+
+  // mark_deal_stage handler messages.
+  'chat.dealPipeline.markedHeader': {
+    en: (customer: string, stageLabel: string) => `✅ ${customer} deal marked: ${stageLabel}.`,
+    es: (customer: string, stageLabel: string) => `✅ Trato de ${customer} marcado: ${stageLabel}.`,
+    pt: (customer: string, stageLabel: string) => `✅ Negócio de ${customer} marcado: ${stageLabel}.`,
+  },
+  'chat.dealPipeline.markNoMatch':       { en: "Couldn't match an open deal to that customer name.", es: 'No se pudo encontrar un trato abierto con ese nombre de cliente.', pt: 'Não foi possível encontrar um negócio aberto com esse nome de cliente.' },
+  'chat.dealPipeline.markHowTo':         { en: 'Try: "mark Juan deal won" or "mark Maria deal pending pickup".', es: 'Prueba: "marcar trato de Juan ganado" o "Maria trato pendiente de recogida".', pt: 'Tente: "marcar negócio do João ganho" ou "Maria negócio aguardando retirada".' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },

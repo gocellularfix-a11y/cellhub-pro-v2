@@ -19,7 +19,9 @@ import { tChat } from './handlers';
 
 // ── Reply category (R-INTELLIGENCE-CONVERSATION-RUNNER-V1) ────
 
-type ReplyCategory =
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: exported so handlers.ts can map a
+// classified reply to a DealStage transition. No behavior change.
+export type ReplyCategory =
   | 'PRICE_NEGOTIATION'
   | 'PRICE_TOO_HIGH'
   | 'MAYBE_LATER'
@@ -51,7 +53,11 @@ const REPLY_PATTERNS: Array<{ regex: RegExp; category: ReplyCategory }> = [
   { regex: /\b(can you hold|hold it|reserve it|set it aside|gu[aá]rdamelo|res[eé]rvalo|reservar|guardar|guarda pra mim|reserva pra mim|guarda para mim)\b/i, category: 'HOLD_REQUEST' },
 ];
 
-function classifyReply(query: string): ReplyCategory {
+// R-INTELLIGENCE-DEAL-PIPELINE-V1: exported so the proposal_followup
+// handler can stage the deal pipeline based on the same classifier the
+// conversation runner uses (single source of truth — no duplicate
+// regex table). No behavior change.
+export function classifyReply(query: string): ReplyCategory {
   const q = query.toLowerCase();
   for (const p of REPLY_PATTERNS) {
     if (p.regex.test(q)) return p.category;

@@ -25,6 +25,8 @@ import {
   addAutomationExecutionLog,
   addDealOutcomeLog,
   addProposalFollowup,
+  addDealPipelineItem,
+  findOpenDealByCustomerOrProduct,
 } from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem, AutomationOutcome, DealOutcome } from '@/services/intelligence/automation/automationQueue';
 import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
@@ -803,8 +805,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   // follow-ups and link pasted replies to a record.
                   const a = pendingWaAction.action;
                   if (a.payload.customerId || a.payload.customerPhone || a.payload.customerName) {
+                    const followupId = generateId();
                     addProposalFollowup({
-                      id: generateId(),
+                      id: followupId,
                       customerId: a.payload.customerId,
                       customerName: a.payload.customerName,
                       customerPhone: a.payload.customerPhone,
@@ -814,6 +817,32 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                       status: 'sent',
                       sentAt: Date.now(),
                     });
+                    // R-INTELLIGENCE-DEAL-PIPELINE-V1: also stamp a
+                    // pipeline item at stage='proposal_sent'. Skip if
+                    // there's already an open deal for the same customer
+                    // + product to avoid duplicates. Pure status record;
+                    // no cart, no sale, no autonomous transitions.
+                    const dup = findOpenDealByCustomerOrProduct(
+                      a.payload.customerName,
+                      a.payload.customerPhone,
+                      a.pendingDeal?.productName,
+                    );
+                    if (!dup) {
+                      const nowMs = Date.now();
+                      addDealPipelineItem({
+                        id: generateId(),
+                        customerId: a.payload.customerId,
+                        customerName: a.payload.customerName,
+                        customerPhone: a.payload.customerPhone,
+                        productName: a.pendingDeal?.productName,
+                        proposedPriceCents: a.pendingDeal?.proposedPriceCents,
+                        stage: 'proposal_sent',
+                        sourceFollowupId: followupId,
+                        sourceActionId: a.id,
+                        createdAt: nowMs,
+                        updatedAt: nowMs,
+                      });
+                    }
                   }
                 }
                 setPendingWaAction(null);
