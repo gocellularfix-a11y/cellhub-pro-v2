@@ -532,6 +532,9 @@ export function handleFollowUp(
 ): ChatResponse {
   const t = tChat(lang);
   const lines: string[] = [t('chat.followup.header')];
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V2-CONTACT: optional ChatActionUI[]
+  // attached only by the today_sales contact-cause branch below.
+  let actionsOut: ChatActionUI[] | undefined;
 
   switch (context.intentId) {
     case 'today_sales': {
@@ -552,6 +555,37 @@ export function handleFollowUp(
       // queue items, no consent risk).
       for (const tipKey of TODAY_CAUSE_TIPS[r.cause]) {
         lines.push(t(tipKey));
+      }
+      // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V2-CONTACT: WhatsApp deep-link
+      // buttons for contact-style causes only. Reuses engine helper that
+      // already filters consent + phone presence. Promotion-style causes
+      // (low_avg_ticket, revenue_above_average) stay text-only — no safe
+      // SKU resolution from today_sales context.
+      if (r.cause === 'no_sales_today' || r.cause === 'low_transactions' || r.cause === 'both_low') {
+        const candidates = engine.buildOutreachQueueItems().slice(0, 3);
+        if (candidates.length > 0) {
+          const nameById = new Map(engine.getCustomers().map((c) => [c.id, c.name]));
+          const built: ChatActionUI[] = [];
+          for (const item of candidates) {
+            if (!item.customerId) continue;
+            const name = nameById.get(item.customerId) || item.phone || '';
+            if (!name) continue;
+            built.push({
+              id: `ts-contact-${item.customerId}`,
+              label: t('chat.action.contactCustomer', name),
+              actionType: 'whatsapp',
+              payload: {
+                type: 'whatsapp',
+                messageKey: 'whatsapp.template.reconnect',
+                customerId: item.customerId,
+                customerName: nameById.get(item.customerId),
+                executable: true,
+                executionTarget: 'whatsapp_url',
+              },
+            });
+          }
+          if (built.length > 0) actionsOut = built;
+        }
       }
       break;
     }
@@ -576,7 +610,7 @@ export function handleFollowUp(
     default:
       lines.push(t('chat.followup.fallback'));
   }
-  return { kind: 'answer', text: lines.join('\n') };
+  return { kind: 'answer', text: lines.join('\n'), actions: actionsOut };
 }
 
 // ── Today sales (R-INTELLIGENCE-TODAY-SALES-DATA-INTENT) ─────

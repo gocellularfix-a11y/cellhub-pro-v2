@@ -5185,6 +5185,12 @@ export const translations: TranslationDictionary = {
   // R-INTELLIGENCE-TODAY-SALES-ROOT-CAUSE-ACTIONS-V1: per-cause tip lines.
   'chat.todaySalesCause.tipContact':                        { en: "💬 Tip: ask \"who should I contact today\" for a ranked outreach list (consent-filtered).", es: '💬 Tip: pregunta "a quién debo contactar hoy" para una lista priorizada (con filtro de consentimiento).', pt: '💬 Dica: pergunte "quem devo contatar hoje" para uma lista priorizada (com filtro de consentimento).' },
   'chat.todaySalesCause.tipPromote':                        { en: '💬 Tip: ask "promote this product <name>" to push a specific item.',                       es: '💬 Tip: pregunta "promocionar este producto <nombre>" para empujar un artículo específico.',           pt: '💬 Dica: pergunte "promover este produto <nome>" para promover um item específico.' },
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V2-CONTACT: button label for WhatsApp deep-link.
+  'chat.action.contactCustomer':                            {
+    en: (name: string) => `WhatsApp ${name}`,
+    es: (name: string) => `WhatsApp ${name}`,
+    pt: (name: string) => `WhatsApp ${name}`,
+  },
 
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
