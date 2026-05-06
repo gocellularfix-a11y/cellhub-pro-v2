@@ -1107,6 +1107,50 @@ const CLOSING_STRATEGY_CATEGORIES: ReplyCategory[] = [
   'PRICE_NEGOTIATION', 'READY_TO_BUY', 'INTERESTED', 'HOLD_REQUEST',
 ];
 
+// R-INTELLIGENCE-SALES-PLAYBOOKS-V1: deterministic retail-coaching layer.
+// Maps (reply category × product cue × keyword signals) → ONE playbook id.
+// Pure function; no engine call, no learning, no model. Returns null when
+// no playbook fits — section is then skipped from the response.
+type PlaybookId =
+  | 'UPGRADE_CLOSE'
+  | 'ACCESSORY_ATTACH'
+  | 'SAME_DAY_URGENCY'
+  | 'REPAIR_RECOVERY'
+  | 'FINANCING_PUSH'
+  | 'TRADE_IN_POSITIONING'
+  | 'DEPOSIT_COMMITMENT';
+
+function resolvePlaybook(
+  category: ReplyCategory,
+  upsellCategory: UpsellCategory | null,
+  query: string,
+): PlaybookId | null {
+  const q = query.toLowerCase();
+
+  // Trade-in signal — strongest, wins regardless of category/product cue.
+  if (/\btrade.?in|cambio de equipo|intercambio|troca|trocar\b/i.test(q)) {
+    return 'TRADE_IN_POSITIONING';
+  }
+  // Hold request → deposit commitment regardless of product.
+  if (category === 'HOLD_REQUEST') return 'DEPOSIT_COMMITMENT';
+  // Repair context wins next — most repair conversations want urgency
+  // around device downtime, not pricing motion.
+  if (upsellCategory === 'repair') return 'REPAIR_RECOVERY';
+  // Phone-specific cascades.
+  if (upsellCategory === 'phone') {
+    if (category === 'PRICE_NEGOTIATION') return 'SAME_DAY_URGENCY';
+    if (category === 'READY_TO_BUY') return 'ACCESSORY_ATTACH';
+    if (category === 'INTERESTED') return 'FINANCING_PUSH';
+  }
+  // Console close-of-sale → accessory attach (controllers / games).
+  if (upsellCategory === 'console' && category === 'READY_TO_BUY') {
+    return 'ACCESSORY_ATTACH';
+  }
+  // INTERESTED with no product cue — generic upgrade-close coaching.
+  if (category === 'INTERESTED') return 'UPGRADE_CLOSE';
+  return null;
+}
+
 function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const rawQuery = (match.query || '').trim();
@@ -1121,6 +1165,9 @@ function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse
   // text so an optional upsell line can attach. No engine call, no
   // inventory mutation, no auto-bundling.
   const upsellCategory = detectProductCategory(rawQuery);
+  // R-INTELLIGENCE-SALES-PLAYBOOKS-V1: deterministic playbook resolver
+  // off the same inputs. Adds operator coaching, not automation.
+  const playbook = resolvePlaybook(category, upsellCategory, rawQuery);
 
   const lines: string[] = [];
   lines.push(t('chat.conversation.header'));
@@ -1142,12 +1189,19 @@ function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse
     lines.push(t(`chat.conversation.strategy.${category}`));
   }
 
-  // 4. Suggested reply (always)
+  // 4. Sales playbook (only when resolver returns a hit) — R-INTELLIGENCE-SALES-PLAYBOOKS-V1
+  if (playbook) {
+    lines.push('');
+    lines.push(t('chat.conversation.playbookLabel'));
+    lines.push(t(`chat.conversation.playbook.${playbook}`));
+  }
+
+  // 5. Suggested reply (always)
   lines.push('');
   lines.push(t('chat.conversation.replyLabel'));
   lines.push(`"${t(`chat.conversation.reply.${category}`)}"`);
 
-  // 5. Optional upsell (only when a product cue exists AND the lead is
+  // 6. Optional upsell (only when a product cue exists AND the lead is
   // still active — skip for MAYBE_LATER / UNKNOWN). R-INTELLIGENCE-DEAL-CLOSER-V1
   if (upsellCategory && category !== 'MAYBE_LATER' && category !== 'UNKNOWN') {
     lines.push('');
@@ -1155,7 +1209,7 @@ function handleConversationRunner(match: IntentMatch, lang: Lang3): ChatResponse
     lines.push(t(`chat.conversation.upsell.${upsellCategory}`));
   }
 
-  // 6. Optional deal progression — replaces the prior single-line dealHint
+  // 7. Optional deal progression — replaces the prior single-line dealHint
   // with the structured section per R-INTELLIGENCE-DEAL-CLOSER-V1 spec.
   // Reuses the existing Pending Deal text path; no new flow.
   if (category === 'READY_TO_BUY' || category === 'INTERESTED') {
