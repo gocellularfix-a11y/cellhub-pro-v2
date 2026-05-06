@@ -173,6 +173,75 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     fireQuery(externalQuery.text);
   }, [externalQuery, fireQuery]);
 
+  // R-INTELLIGENCE-DAILY-AUTOMATION-V1: once-per-device-per-day auto-trigger.
+  // Runs on chat mount, gated by localStorage so refresh doesn't re-fire.
+  // Decision logic: 0 sales today → "no_sales_today" automation; <5 sales →
+  // "low_transactions"; otherwise no automation. Reuses existing engine
+  // helpers (consent + dedup baked in). NEVER auto-sends — actions only
+  // open WhatsApp deep links via existing executor pipeline.
+  useEffect(() => {
+    const STORAGE_KEY = 'cellhub:intelligence:dailyAutomation:lastRun';
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    try {
+      if (localStorage.getItem(STORAGE_KEY) === today) return;
+    } catch { /* incognito / quota — proceed without guard */ }
+
+    const eng = engineRef.current;
+    const m = eng.getTodayMetrics();
+    let kind: 'no_sales_today' | 'low_transactions' | null = null;
+    if (m.transactions === 0) kind = 'no_sales_today';
+    else if (m.transactions < 5) kind = 'low_transactions';
+    if (!kind) {
+      // No automation triggered, but mark today as "checked" so we don't
+      // re-evaluate on every refresh.
+      try { localStorage.setItem(STORAGE_KEY, today); } catch {}
+      return;
+    }
+
+    // Reuse existing safe contact pipeline (consent-filtered).
+    const candidates = eng.buildOutreachQueueItems().slice(0, 3);
+    if (candidates.length === 0) {
+      // No candidates → skip without storing, so a later analyze pass with
+      // populated scores can still trigger (per spec "do not trigger if no
+      // candidates found").
+      return;
+    }
+    const nameById = new Map(eng.getCustomers().map((c) => [c.id, c.name]));
+    const built: ChatActionUI[] = [];
+    for (const item of candidates) {
+      if (!item.customerId) continue;
+      const name = nameById.get(item.customerId) || item.phone || '';
+      if (!name) continue;
+      built.push({
+        id: `da-contact-${item.customerId}`,
+        label: t('chat.action.contactCustomer', name),
+        actionType: 'whatsapp',
+        payload: {
+          type: 'whatsapp',
+          messageKey: 'whatsapp.template.reconnect',
+          customerId: item.customerId,
+          customerName: nameById.get(item.customerId),
+          executable: true,
+          executionTarget: 'whatsapp_url',
+        },
+      });
+    }
+    if (built.length === 0) return;
+
+    const text = kind === 'no_sales_today'
+      ? t('chat.dailyAutomation.noSalesToday')
+      : t('chat.dailyAutomation.lowTransactions');
+
+    const now = Date.now();
+    setMessages((prev) => [
+      ...prev,
+      { id: `a-${now}`, role: 'assistant', content: text, timestamp: new Date(), kind: 'answer', actions: built },
+    ]);
+    addAutomationItems(built.map(createQueueItemFromChatAction));
+    try { localStorage.setItem(STORAGE_KEY, today); } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(AUTOMATION_QUEUE_STORAGE_KEY, JSON.stringify(automationQueue));

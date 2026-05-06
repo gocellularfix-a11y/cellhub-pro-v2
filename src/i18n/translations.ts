@@ -5191,6 +5191,9 @@ export const translations: TranslationDictionary = {
     es: (name: string) => `WhatsApp ${name}`,
     pt: (name: string) => `WhatsApp ${name}`,
   },
+  // R-INTELLIGENCE-DAILY-AUTOMATION-V1: once-per-day proactive recommendation.
+  'chat.dailyAutomation.noSalesToday':    { en: '⚡ Daily Action: You have no sales yet today. Contact these customers now.',                  es: '⚡ Acción del día: Aún no tienes ventas hoy. Contacta a estos clientes.',                                pt: '⚡ Ação do dia: Ainda não há vendas hoje. Contate esses clientes.' },
+  'chat.dailyAutomation.lowTransactions': { en: '⚡ Daily Action: Sales are slow today. Contact these customers to boost traffic.',           es: '⚡ Acción del día: Las ventas están lentas hoy. Contacta a estos clientes para impulsar el tráfico.',     pt: '⚡ Ação do dia: As vendas estão lentas hoje. Contate esses clientes para impulsionar o tráfego.' },
 
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
