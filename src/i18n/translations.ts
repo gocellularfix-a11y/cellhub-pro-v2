@@ -5197,6 +5197,14 @@ export const translations: TranslationDictionary = {
   // R-INTELLIGENCE-PRIORITY-SCORING-V1: lower-priority always-on option.
   'chat.dailyAutomation.contactCustomersAvailable': { en: '⚡ Daily Action: You have customers worth contacting today.',                                  es: '⚡ Acción del día: Tienes clientes que vale la pena contactar hoy.',                                       pt: '⚡ Ação do dia: Você tem clientes que vale a pena contatar hoje.' },
 
+  // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: 72h-window action conversion summary.
+  'chat.actionImpact.summary': {
+    en: (total: number, conv: number, rev: string) => `📈 You executed ${total} action${total === 1 ? '' : 's'}.\n${conv} converted within 72 hours.\nGenerated ${rev}.`,
+    es: (total: number, conv: number, rev: string) => `📈 Ejecutaste ${total} acción${total === 1 ? '' : 'es'}.\n${conv} convirtieron en 72 horas.\nGeneraron ${rev}.`,
+    pt: (total: number, conv: number, rev: string) => `📈 Você executou ${total} ação${total === 1 ? '' : 'ões'}.\n${conv} converteram em 72 horas.\nGerou ${rev}.`,
+  },
+  'chat.actionImpact.empty': { en: 'No actions executed yet — click a WhatsApp or follow-up button to start tracking impact.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a medir impacto.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a medir o impacto.' },
+
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
   'chat.followup.because':               {

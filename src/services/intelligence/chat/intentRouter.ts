@@ -27,6 +27,7 @@ export type IntentId =
   | 'best_customer'
   | 'least_profitable_customers'
   | 'daily_brief'
+  | 'action_impact'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -167,6 +168,20 @@ const TODAY_SUMMARY_KEYWORDS = [
   // PT
   'hoje', 'como estamos hoje', 'vendas de hoje',
   'como vai hoje', 'como está hoje', 'como esta hoje',
+];
+
+// R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: anchored phrasing for action
+// outcome query — "action impact" / "resultado de acciones" / "impacto ações".
+const ACTION_IMPACT_KEYWORDS = [
+  // EN
+  'action impact', 'how much did actions generate', 'actions generated',
+  'action results', 'action conversion',
+  // ES
+  'resultado de acciones', 'resultado acciones', 'impacto acciones',
+  'cuanto generaron las acciones', 'cuánto generaron las acciones',
+  // PT
+  'resultado ações', 'resultado de ações', 'impacto ações',
+  'quanto as ações geraram',
 ];
 
 // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: anchored "sales today" phrasing
@@ -543,6 +558,8 @@ export function classifyIntent(
     // Anchored phrasing only — plain "today" / "hoy" still routes to
     // today_summary (which has the broader generic-day greeting keywords).
     { id: 'today_sales', score: scoreKeywords(query, TODAY_SALES_KEYWORDS) },
+    // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: action conversion summary.
+    { id: 'action_impact', score: scoreKeywords(query, ACTION_IMPACT_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
     // and sales_summary so operational metrics ("low stock", "ready repairs",
@@ -599,7 +616,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -627,7 +644,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

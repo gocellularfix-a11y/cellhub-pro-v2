@@ -18,6 +18,7 @@ import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
 // engine.refresh() — only handleWhoToContactToday triggers the queue.
 import { enqueueOutreachActions } from '../actions';
+import { getActionImpact } from '../actions/actionExecutor';
 // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data_query intent reads
 // engine arrays via read-only getters and routes through the data
 // access layer for deterministic operational answers.
@@ -94,6 +95,9 @@ export function handleIntent(
 
     case 'today_sales':
       return handleTodaySales(engine, lang);
+
+    case 'action_impact':
+      return handleActionImpact(engine, lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -671,6 +675,22 @@ function handleTodaySales(engine: IntelligenceEngine, lang: Lang3): ChatResponse
   }
 
   return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Action impact (R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1) ─
+// Reads execution log + walks engine sales (already in memory) to attribute
+// revenue. Single-pass map build; no background jobs; runs only on user
+// query. Strict 72h post-action customerId match.
+function handleActionImpact(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const r = getActionImpact(engine.getSales());
+  if (r.totalActions === 0) {
+    return { kind: 'answer', text: t('chat.actionImpact.empty') };
+  }
+  return {
+    kind: 'answer',
+    text: t('chat.actionImpact.summary', r.totalActions, r.conversions, COP(r.revenue)),
+  };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────
