@@ -310,6 +310,18 @@ export const translations: TranslationDictionary = {
     pt: (product: string) => `Promoção de produto: ${product}`,
   },
   'chat.productPush.messagePreviewLabel': { en: 'Suggested message', es: 'Mensaje sugerido', pt: 'Mensagem sugerida' },
+  // R-INTELLIGENCE-MANUAL-WHATSAPP-PRODUCT-PROMOTION-V1: inline WhatsApp
+  // buttons + summary line when more candidates exist beyond the visible top.
+  'chat.productPush.waActionLabel': {
+    en: (firstName: string) => `Promote to ${firstName}`,
+    es: (firstName: string) => `Promover a ${firstName}`,
+    pt: (firstName: string) => `Promover a ${firstName}`,
+  },
+  'chat.productPush.remaining': {
+    en: (n: number) => `${n} more candidate${n === 1 ? '' : 's'} also queued.`,
+    es: (n: number) => `${n} candidato${n === 1 ? '' : 's'} más en cola.`,
+    pt: (n: number) => `${n} candidato${n === 1 ? '' : 's'} também na fila.`,
+  },
   // R-INTEL-INVENTORY-PROMOTE-BUTTON: Inventory row Promote button + toast.
   'inventory.promoteBtn': { en: 'Promote', es: 'Promover', pt: 'Promover' },
   'inventory.promoteTooltip': { en: 'Promote this product to top customers', es: 'Promocionar este producto a clientes top', pt: 'Promover este produto para clientes top' },

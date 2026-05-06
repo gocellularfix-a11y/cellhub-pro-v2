@@ -1814,7 +1814,8 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     };
   }
 
-  const top = candidates.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
+  const ranked = candidates.slice().sort((a, b) => b.rankScore - a.rankScore);
+  const top = ranked.slice(0, 5);
 
   // R-INTEL-PRODUCT-PUSH-DEDUP-FIX: distinct type from who_to_contact_today's
   // 'whatsapp' and marketing's 'marketing_whatsapp' so the 24h dedup in
@@ -1841,12 +1842,55 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     // Queue persistence is best-effort.
   }
 
+  // R-INTELLIGENCE-MANUAL-WHATSAPP-PRODUCT-PROMOTION-V1: surface inline
+  // WhatsApp ChatActionUI buttons for the top 3 candidates so the owner
+  // can launch the prepared message in one click. Reuses the EXISTING
+  // executionTarget='whatsapp_url' path → wa.me deep link → owner manually
+  // sends in WhatsApp Web/desktop. No autonomous send. The visible list
+  // is trimmed to the same top-3 (matches button count); a remaining
+  // count line summarizes the rest.
+  const visible = top.slice(0, 3);
+  const remainingVisible = Math.max(0, ranked.length - visible.length);
+
+  const actions: ChatActionUI[] = [];
+  for (const c of visible) {
+    if (!c.phone) continue;
+    const firstName = c.name.split(' ')[0] || c.name;
+    actions.push({
+      id: `pp-action-${c.customerId}-${now}`,
+      label: t('chat.productPush.waActionLabel', firstName),
+      actionType: 'whatsapp',
+      payload: {
+        type: 'whatsapp',
+        customMessage: t('chat.productPush.message', firstName, productName),
+        customerId: c.customerId,
+        customerName: c.name,
+        customerPhone: c.phone,
+        executable: true,
+        executionTarget: 'whatsapp_url',
+      },
+    });
+  }
+
   // Format chat response.
-  const lines = top.map((c) => `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total`);
+  const lines = visible.map((c) => `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total`);
   const previewMessage = t('chat.productPush.message', '{customer}', productName);
+  const bodyParts: string[] = [
+    t('chat.productPush.header', productName, visible.length),
+    '',
+    lines.join('\n'),
+  ];
+  if (remainingVisible > 0) {
+    bodyParts.push('');
+    bodyParts.push(t('chat.productPush.remaining', remainingVisible));
+  }
+  bodyParts.push('');
+  bodyParts.push(`${t('chat.productPush.messagePreviewLabel')}: 💬 "${previewMessage}"`);
+
   return {
     kind: 'answer',
-    text: `${t('chat.productPush.header', productName, top.length)}\n\n${lines.join('\n')}\n\n${t('chat.productPush.messagePreviewLabel')}: 💬 "${previewMessage}"`,
+    text: bodyParts.join('\n'),
+    actions: actions.length > 0 ? actions : undefined,
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: stamp the product so vague
     // follow-ups ("promote it", "what about accessories", "who else")
     // route back to this entity on the next turn.
