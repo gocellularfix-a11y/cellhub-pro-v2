@@ -5154,6 +5154,11 @@ export const translations: TranslationDictionary = {
   'intelligence.console.contactSub':           { en: 'VIPs, inactive customers, follow-ups',                        es: 'VIPs, clientes inactivos, seguimientos',                               pt: 'VIPs, clientes inativos, follow-ups' },
   'intelligence.console.fixProfitTitle':       { en: 'Fix Profit Leaks',                                            es: 'Tapar Fugas de Ganancia',                                              pt: 'Corrigir Perdas de Lucro' },
   'intelligence.console.fixProfitSub':         { en: 'Losses, slow days, dead stock',                               es: 'Pérdidas, días lentos, stock muerto',                                  pt: 'Perdas, dias lentos, estoque parado' },
+  // R-INTELLIGENCE-OPERATOR-UX-V1: 2 new operational cards (Close Deals + Repairs Ready).
+  'intelligence.console.closeDealsTitle':      { en: 'Close Deals',                                                 es: 'Cerrar Ventas',                                                        pt: 'Fechar Vendas' },
+  'intelligence.console.closeDealsSub':        { en: 'Approved deals, fastest revenue, today commitments',          es: 'Ofertas aprobadas, ingreso más rápido, cierres de hoy',                pt: 'Ofertas aprovadas, receita mais rápida, fechamentos de hoje' },
+  'intelligence.console.repairsReadyTitle':    { en: 'Repairs Ready',                                               es: 'Reparaciones Listas',                                                  pt: 'Reparos Prontos' },
+  'intelligence.console.repairsReadySub':      { en: 'Recover pickup revenue, send reminders',                      es: 'Recupera ingresos de recogida, manda recordatorios',                   pt: 'Recupere receita de retirada, envie lembretes' },
 
   'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
   'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },

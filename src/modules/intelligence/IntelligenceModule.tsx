@@ -218,77 +218,84 @@ export default function IntelligenceModule() {
         </div>
       </div>
 
-      {/* ── 2. MAKE MONEY TILES ─────────────────────────────── */}
-      <div>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
-          {t('intelligence.console.makeMoneyTitle')}
-        </p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          <MoneyTile
-            title={t('intelligence.console.collectMoneyTitle')}
-            sub={t('intelligence.console.collectMoneySub')}
-            accent="#10B981"
-            onClick={() => fireChipKey('intelligence.console.queryContactToday')}
-          />
-          <MoneyTile
-            title={t('intelligence.console.promoteProduct')}
-            sub={t('intelligence.console.promoteSub')}
-            accent="#8B5CF6"
-            onClick={focusPromote}
-          />
-          <MoneyTile
-            title={t('intelligence.console.contactCustomers')}
-            sub={t('intelligence.console.contactSub')}
-            accent="#3B82F6"
-            onClick={() => fireChipKey('intelligence.console.queryContactToday')}
-          />
-          <MoneyTile
-            title={t('intelligence.console.fixProfitTitle')}
-            sub={t('intelligence.console.fixProfitSub')}
-            accent="#EF4444"
-            onClick={() => fireChipKey('intelligence.dash.quickProfit')}
-          />
-        </div>
-      </div>
-
-      {/* ── 3. ASK YOUR SHOP — chat owns its own queue UI/handlers ── */}
-      <div className="space-y-2">
-        <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-            {t('intelligence.console.askTitle')}
-          </p>
-          <p className="text-[10px] text-slate-500 mb-2">{t('intelligence.console.quickQuestions')}</p>
-          <div className="flex flex-wrap gap-1.5">
-            <Chip label={t('intelligence.console.chipToday')}        color="#10B981" onClick={() => fireChipKey('intelligence.console.queryToday')} />
-            <Chip label={t('intelligence.console.chipWhoContact')}   color="#3B82F6" onClick={() => fireChipKey('intelligence.console.queryContactToday')} />
-            <Chip label={t('intelligence.console.chipWhatSell')}     color="#8B5CF6" onClick={() => fireChipKey('intelligence.dash.quickSell')} />
-            <Chip label={t('intelligence.console.chipProfit')}       color="#EF4444" onClick={() => fireChipKey('intelligence.dash.quickProfit')} />
-            <Chip label={t('intelligence.console.chipPromote')}      color="#A855F7" onClick={() => fireChipKey('intelligence.console.queryPromoteGeneric')} />
-            <Chip label={t('intelligence.console.chipReady')}        color="#F59E0B" onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')} />
-          </div>
-        </div>
-        <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} />
-      </div>
-
-      {/* ── 4. WHATSAPP ACTIONS + 5. PROMOTE INVENTORY ──────── */}
+      {/* ── 2. OPERATIONAL CARDS (LEFT) + CHAT PANEL (RIGHT) ──
+          R-INTELLIGENCE-OPERATOR-UX-V1: redesigned to a Quick-Actions-
+          inspired command-center hierarchy. 6 large action cards
+          dominate the left; chat lives in a narrower right sidebar so
+          it supports operations instead of dominating the viewport.
+          All firing actions reuse the existing fireChat / focusPromote
+          callbacks — no intelligence logic changed. */}
       <div className="grid grid-cols-12 gap-3">
 
-        {/* WhatsApp Actions */}
-        <div className="col-span-12 lg:col-span-5 rounded-lg border p-3"
-          style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-            {t('intelligence.console.whatsappTitle')}
+        {/* LEFT: Operational cards grid */}
+        <div className="col-span-12 lg:col-span-8">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+            {t('intelligence.console.makeMoneyTitle')}
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            <WaBtn label={t('intelligence.console.waCollect')}      accent="#10B981" onClick={() => fireChipKey('intelligence.console.queryPendingPayments')} />
-            <WaBtn label={t('intelligence.console.waNotifyRepair')} accent="#3B82F6" onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')} />
-            <WaBtn label={t('intelligence.console.waSendPromo')}    accent="#8B5CF6" onClick={() => fireChipKey('intelligence.console.queryPromoteGeneric')} />
-            <WaBtn label={t('intelligence.console.waLayaway')}      accent="#F59E0B" onClick={() => fireChipKey('intelligence.console.queryPendingLayaways')} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <OpCard
+              icon="💰"
+              title={t('intelligence.console.collectMoneyTitle')}
+              description={t('intelligence.console.collectMoneySub')}
+              stat={missedRev.deadStockLockedCents > 0 ? formatCurrency(missedRev.deadStockLockedCents) : undefined}
+              accent="#10B981"
+              onClick={() => fireChat('where is money stuck')}
+            />
+            <OpCard
+              icon="🤝"
+              title={t('intelligence.console.closeDealsTitle')}
+              description={t('intelligence.console.closeDealsSub')}
+              accent="#22C55E"
+              onClick={() => fireChat('help me close sales today')}
+            />
+            <OpCard
+              icon="🚀"
+              title={t('intelligence.console.promoteProduct')}
+              description={t('intelligence.console.promoteSub')}
+              stat={productOpps.length > 0 ? String(productOpps.length) : undefined}
+              accent="#8B5CF6"
+              onClick={focusPromote}
+            />
+            <OpCard
+              icon="📞"
+              title={t('intelligence.console.contactCustomers')}
+              description={t('intelligence.console.contactSub')}
+              accent="#3B82F6"
+              onClick={() => fireChipKey('intelligence.console.queryContactToday')}
+            />
+            <OpCard
+              icon="🔧"
+              title={t('intelligence.console.repairsReadyTitle')}
+              description={t('intelligence.console.repairsReadySub')}
+              stat={kpi.repairs.pending > 0 ? String(kpi.repairs.pending) : undefined}
+              accent="#F59E0B"
+              onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')}
+            />
+            <OpCard
+              icon="💸"
+              title={t('intelligence.console.fixProfitTitle')}
+              description={t('intelligence.console.fixProfitSub')}
+              stat={biggestLeak > 0 ? formatCurrency(biggestLeak) : undefined}
+              accent="#EF4444"
+              onClick={() => fireChipKey('intelligence.dash.quickProfit')}
+            />
           </div>
         </div>
 
+        {/* RIGHT: Chat sidebar — narrower assistant panel */}
+        <div className="col-span-12 lg:col-span-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+            {t('intelligence.console.askTitle')}
+          </p>
+          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} />
+        </div>
+      </div>
+
+      {/* ── 3. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      <div className="grid grid-cols-12 gap-3">
+
         {/* Promote Inventory */}
-        <div ref={promoteRef} className="col-span-12 lg:col-span-7 rounded-lg border p-3"
+        <div ref={promoteRef} className="col-span-12 lg:col-span-6 rounded-lg border p-3"
           style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
           <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
             {t('intelligence.console.promoteInvTitle')}
@@ -345,14 +352,13 @@ export default function IntelligenceModule() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* ── 6. CUSTOMER LOOKUP (preserved) ──────────────────── */}
-      <div className="rounded-lg p-4 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-200">🔍 {t('intelligence.customerHistory')}</h3>
-            <p className="text-xs text-slate-400">{t('intelligence.searchPlaceholder')}</p>
+        {/* Customer Lookup — sibling to Promote Inventory (same grid row) */}
+        <div className="col-span-12 lg:col-span-6 rounded-lg p-4 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-200">🔍 {t('intelligence.customerHistory')}</h3>
+              <p className="text-xs text-slate-400">{t('intelligence.searchPlaceholder')}</p>
           </div>
           {selectedCustomerId && (
             <button
@@ -395,7 +401,8 @@ export default function IntelligenceModule() {
           </div>
         )}
 
-        {history && <CustomerHistoryCard history={history} />}
+          {history && <CustomerHistoryCard history={history} />}
+        </div>
       </div>
 
       {/* Refresh button (bottom) */}
@@ -412,6 +419,44 @@ export default function IntelligenceModule() {
 }
 
 // ── Presentational sub-components ─────────────────────────────
+
+// R-INTELLIGENCE-OPERATOR-UX-V1: large operational action card —
+// Quick-Actions inspired. Action-first, optional stat, clear CTA.
+// No animations, no shadows, no blur — lightweight transitions only.
+function OpCard({
+  icon, title, description, stat, accent, onClick,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  stat?: string;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left rounded-lg border p-4 hover:border-slate-500 transition-colors duration-150 active:scale-[0.99] w-full"
+      style={{
+        background: CARD_BG,
+        borderColor: CARD_BORDER,
+        borderLeftWidth: 3,
+        borderLeftColor: accent,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span className="text-2xl shrink-0">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-slate-100 leading-snug">{title}</div>
+          {stat && (
+            <div className="text-lg font-bold mt-1" style={{ color: accent }}>{stat}</div>
+          )}
+          <div className="text-xs text-slate-400 mt-1 leading-snug">{description}</div>
+        </div>
+      </div>
+    </button>
+  );
+}
 
 function ConsoleBtn({ label, accent, onClick }: { label: string; accent: string; onClick: () => void }) {
   return (
