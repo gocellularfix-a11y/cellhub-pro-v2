@@ -199,3 +199,91 @@ export function addDealOutcomeLog(entry: DealOutcomeLogEntry): void {
     /* incognito / quota — best-effort, never block */
   }
 }
+
+// R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1 ─────────────────
+// Deterministic aggregation over the dealOutcomeLog. Pure read — no
+// mutation, no side effects, no UI. Called on demand by the chat handler
+// (no background work). Discount range bins follow the spec exactly:
+// 0-10, 11-20, 21-30, 31+.
+
+export interface DealPerformanceResult {
+  totalDeals: number;
+  won: number;
+  lost: number;
+  noResponse: number;
+  winRate: number;            // 0..1
+  avgDiscountPercent: number; // 0..100 (integer)
+  bestCategory?: { category: string; wins: number };
+  bestDiscountRange?: { range: '0-10' | '11-20' | '21-30' | '31+'; winRate: number; sample: number };
+}
+
+export function getDealPerformance(): DealPerformanceResult {
+  // Defensive read-side cap: the writer already FIFO-trims at 500, but a
+  // future migration or direct localStorage import could bypass that cap.
+  // Always analyze only the most recent MAX_DEAL_OUTCOME_LOG entries so
+  // this stays O(500) even if the underlying array grew.
+  const raw = getDealOutcomeLog();
+  const log = raw.length > MAX_DEAL_OUTCOME_LOG
+    ? raw.slice(raw.length - MAX_DEAL_OUTCOME_LOG)
+    : raw;
+  const totalDeals = log.length;
+
+  let won = 0, lost = 0, noResponse = 0;
+  let totalDiscountPct = 0;
+
+  const catWins = new Map<string, number>();
+  type RangeId = '0-10' | '11-20' | '21-30' | '31+';
+  const rangeStats: Record<RangeId, { won: number; total: number }> = {
+    '0-10':  { won: 0, total: 0 },
+    '11-20': { won: 0, total: 0 },
+    '21-30': { won: 0, total: 0 },
+    '31+':   { won: 0, total: 0 },
+  };
+  const bucketFor = (pct: number): RangeId => {
+    if (pct <= 10) return '0-10';
+    if (pct <= 20) return '11-20';
+    if (pct <= 30) return '21-30';
+    return '31+';
+  };
+
+  for (const entry of log) {
+    if (entry.outcome === 'won') won++;
+    else if (entry.outcome === 'lost') lost++;
+    else if (entry.outcome === 'no_response') noResponse++;
+
+    const discountPct = entry.originalPriceCents > 0
+      ? Math.round(((entry.originalPriceCents - entry.proposedPriceCents) / entry.originalPriceCents) * 100)
+      : 0;
+    totalDiscountPct += discountPct;
+
+    if (entry.outcome === 'won' && entry.category) {
+      catWins.set(entry.category, (catWins.get(entry.category) || 0) + 1);
+    }
+
+    const bucket = bucketFor(discountPct);
+    rangeStats[bucket].total++;
+    if (entry.outcome === 'won') rangeStats[bucket].won++;
+  }
+
+  const winRate = totalDeals > 0 ? won / totalDeals : 0;
+  const avgDiscountPercent = totalDeals > 0 ? Math.round(totalDiscountPct / totalDeals) : 0;
+
+  // Best category by absolute wins. Tie-break: first-seen (Map iteration order).
+  let bestCategory: { category: string; wins: number } | undefined;
+  for (const [cat, wins] of catWins) {
+    if (!bestCategory || wins > bestCategory.wins) bestCategory = { category: cat, wins };
+  }
+
+  // Best discount range by win rate. Require sample >= 2 to avoid 1-deal noise.
+  let bestDiscountRange: DealPerformanceResult['bestDiscountRange'];
+  for (const id of Object.keys(rangeStats) as RangeId[]) {
+    const s = rangeStats[id];
+    if (s.total < 2) continue;
+    const rate = s.won / s.total;
+    if (!bestDiscountRange || rate > bestDiscountRange.winRate) {
+      bestDiscountRange = { range: id, winRate: rate, sample: s.total };
+    }
+  }
+
+  return { totalDeals, won, lost, noResponse, winRate, avgDiscountPercent, bestCategory, bestDiscountRange };
+}

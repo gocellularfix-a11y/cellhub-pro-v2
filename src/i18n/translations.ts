@@ -5263,6 +5263,37 @@ export const translations: TranslationDictionary = {
   'chat.proposeDeal.noResponse':      { en: 'No Response', es: 'Sin respuesta', pt: 'Sem resposta' },
   'chat.proposeDeal.outcomeSaved':    { en: 'Deal outcome saved.', es: 'Resultado de la oferta guardado.', pt: 'Resultado da oferta salvo.' },
 
+  // R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: aggregated deal-outcome insights.
+  'chat.dealPerformance.header':         { en: '💼 Deal Performance', es: '💼 Rendimiento de ofertas', pt: '💼 Desempenho das ofertas' },
+  'chat.dealPerformance.notEnoughData':  { en: 'Not enough deal history yet. Track at least 3 deal outcomes to see performance.', es: 'Aún no hay suficiente historial de ofertas. Registra al menos 3 resultados para ver el rendimiento.', pt: 'Histórico de ofertas insuficiente. Registre pelo menos 3 resultados para ver o desempenho.' },
+  'chat.dealPerformance.noWins':         { en: 'Deals are not converting yet. Try smaller discounts or different products.', es: 'Las ofertas aún no están convirtiendo. Prueba descuentos más pequeños o productos diferentes.', pt: 'As ofertas ainda não estão convertendo. Tente descontos menores ou produtos diferentes.' },
+  'chat.dealPerformance.summary': {
+    en: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} deal${total === 1 ? '' : 's'} tracked · ${won} won (${ratePct}% win rate) · avg discount ${avgDiscPct}%.`,
+    es: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} oferta${total === 1 ? '' : 's'} registrada${total === 1 ? '' : 's'} · ${won} ganada${won === 1 ? '' : 's'} (${ratePct}% tasa de éxito) · descuento promedio ${avgDiscPct}%.`,
+    pt: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} oferta${total === 1 ? '' : 's'} registrada${total === 1 ? '' : 's'} · ${won} ganha${won === 1 ? '' : 's'} (${ratePct}% taxa de sucesso) · desconto médio ${avgDiscPct}%.`,
+  },
+  'chat.dealPerformance.bestCategory': {
+    en: (category: string, wins: number) => `Best category: ${category} (${wins} win${wins === 1 ? '' : 's'}).`,
+    es: (category: string, wins: number) => `Mejor categoría: ${category} (${wins} venta${wins === 1 ? '' : 's'}).`,
+    pt: (category: string, wins: number) => `Melhor categoria: ${category} (${wins} venda${wins === 1 ? '' : 's'}).`,
+  },
+  'chat.dealPerformance.bestDiscountRange': {
+    en: (range: string, ratePct: number, sample: number) => `Best discount range: ${range}% (${ratePct}% win rate over ${sample} deal${sample === 1 ? '' : 's'}).`,
+    es: (range: string, ratePct: number, sample: number) => `Mejor rango de descuento: ${range}% (${ratePct}% éxito en ${sample} oferta${sample === 1 ? '' : 's'}).`,
+    pt: (range: string, ratePct: number, sample: number) => `Melhor faixa de desconto: ${range}% (${ratePct}% sucesso em ${sample} oferta${sample === 1 ? '' : 's'}).`,
+  },
+  'chat.dealPerformance.recommendation': {
+    en: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Your deals are converting well. Stay close to ${avgDiscPct}% discounts and keep sending offers.`
+      : `Win rate is ${winRatePct}%. Test smaller discount ranges to see what converts better.`,
+    es: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Tus ofertas están convirtiendo bien. Mantén descuentos cerca del ${avgDiscPct}% y sigue enviando.`
+      : `Tasa de éxito ${winRatePct}%. Prueba rangos de descuento más pequeños para ver qué convierte mejor.`,
+    pt: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Suas ofertas estão convertendo bem. Mantenha descontos próximos a ${avgDiscPct}% e continue enviando.`
+      : `Taxa de sucesso ${winRatePct}%. Teste faixas de desconto menores para ver o que converte melhor.`,
+  },
+
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
   'chat.followup.because':               {

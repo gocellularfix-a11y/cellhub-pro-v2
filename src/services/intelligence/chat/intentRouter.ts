@@ -30,6 +30,7 @@ export type IntentId =
   | 'action_impact'
   | 'action_learning'
   | 'propose_deal'
+  | 'deal_performance'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -196,6 +197,23 @@ const PROPOSE_DEAL_KEYWORDS = [
   'hacer oferta', 'proponer oferta', 'mandar oferta', 'ofertar',
   // PT
   'fazer oferta', 'propor oferta', 'enviar oferta',
+];
+
+// R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: anchored phrasing for "which
+// deals are working". Reads getDealOutcomeLog() and returns deterministic
+// aggregated metrics — no charts, no dashboard, no autonomous learning.
+const DEAL_PERFORMANCE_KEYWORDS = [
+  // EN
+  'which deals work', 'deal performance', 'offer performance',
+  'which offers work', 'are deals working',
+  // ES
+  'qué ofertas funcionan', 'que ofertas funcionan',
+  'cuales ofertas funcionan', 'cuáles ofertas funcionan',
+  'rendimiento de ofertas', 'resultados de ofertas',
+  'funcionan las ofertas',
+  // PT
+  'quais ofertas funcionam', 'desempenho das ofertas',
+  'resultado das ofertas', 'as ofertas funcionam',
 ];
 
 // R-INTELLIGENCE-LEARNING-LOOP-V1: anchored phrasing for "what's working"
@@ -594,6 +612,8 @@ export function classifyIntent(
     { id: 'action_learning', score: scoreKeywords(query, ACTION_LEARNING_KEYWORDS) },
     // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated offer drafting.
     { id: 'propose_deal', score: scoreKeywords(query, PROPOSE_DEAL_KEYWORDS) },
+    // R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: deal outcome aggregation.
+    { id: 'deal_performance', score: scoreKeywords(query, DEAL_PERFORMANCE_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
     // and sales_summary so operational metrics ("low stock", "ready repairs",
@@ -656,7 +676,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -684,7 +704,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

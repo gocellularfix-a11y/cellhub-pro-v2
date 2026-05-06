@@ -13,6 +13,7 @@ import type { IntentMatch } from './intentRouter';
 import type { ActionType, ActionQueueItem } from '../types';
 import type { ActionPayload } from '../actions/actionEngine';
 import type { AutomationKind } from '../automation/automationQueue';
+import { getDealPerformance } from '../automation/automationQueue';
 import { buildActionPayload } from '../actions/actionEngine';
 // R-INTELLIGENCE-PENDING-DEAL-V1: deterministic deal builder for owner-mediated
 // offer drafting. Pure helper — no mutation, no cart writes.
@@ -119,6 +120,9 @@ export function handleIntent(
 
     case 'propose_deal':
       return handleProposeDeal(match, engine, lang);
+
+    case 'deal_performance':
+      return handleDealPerformance(lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -861,6 +865,42 @@ function handleProposeDeal(
     text: `${t('chat.proposeDeal.header')}\n\n${draftText}`,
     actions: [action],
   };
+}
+
+// ── Deal Performance (R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1) ─
+// Reads getDealOutcomeLog() (via getDealPerformance aggregator) and returns
+// a deterministic summary + recommendation. Pure read; no UI, no charts,
+// no autonomous learning. Runs only on user query.
+function handleDealPerformance(lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const r = getDealPerformance();
+
+  if (r.totalDeals < 3) {
+    return { kind: 'answer', text: t('chat.dealPerformance.notEnoughData') };
+  }
+  if (r.won === 0) {
+    return { kind: 'answer', text: t('chat.dealPerformance.noWins') };
+  }
+
+  const winRatePct = Math.round(r.winRate * 100);
+  const lines: string[] = [];
+  lines.push(t('chat.dealPerformance.header'));
+  lines.push(t('chat.dealPerformance.summary', r.totalDeals, r.won, winRatePct, r.avgDiscountPercent));
+
+  if (r.bestCategory) {
+    lines.push(t('chat.dealPerformance.bestCategory', r.bestCategory.category, r.bestCategory.wins));
+  }
+  if (r.bestDiscountRange) {
+    const rangeRatePct = Math.round(r.bestDiscountRange.winRate * 100);
+    lines.push(t(
+      'chat.dealPerformance.bestDiscountRange',
+      r.bestDiscountRange.range, rangeRatePct, r.bestDiscountRange.sample,
+    ));
+  }
+  lines.push('');
+  lines.push(t('chat.dealPerformance.recommendation', winRatePct, r.avgDiscountPercent));
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────
