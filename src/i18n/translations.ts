@@ -144,6 +144,12 @@ export const translations: TranslationDictionary = {
   'chat.contact.dayPlural': { en: (n: number) => `${n} days`, es: (n: number) => `${n} días`, pt: (n: number) => `${n} dias` },
   'chat.contact.empty': { en: 'No customers with an expected visit are overdue. All caught up!', es: 'Ningún cliente con visita esperada está atrasado. ¡Todos al día!', pt: 'Nenhum cliente com visita esperada está atrasado. Tudo em dia!' },
   'chat.contact.header': { en: (n: number) => `${n} customers you should reach out to today:`, es: (n: number) => `${n} clientes que deberías contactar hoy:`, pt: (n: number) => `${n} clientes que você deve contatar hoje:` },
+  // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: summary line when more candidates exist beyond the visible top 3.
+  'chat.contact.remaining': {
+    en: (n: number) => `${n} more on the list.`,
+    es: (n: number) => `${n} más en la lista.`,
+    pt: (n: number) => `${n} mais na lista.`,
+  },
   'chat.contact.message': { en: (name: string, days: number) => `💬 "Hi ${name}, it's been ${days} days since your last visit. Stop by when you can!"`, es: (name: string, days: number) => `💬 "Hola ${name}, han pasado ${days} días desde tu última visita. ¡Pásate cuando puedas!"`, pt: (name: string, days: number) => `💬 "Oi ${name}, faz ${days} dias desde sua última visita. Passe por aqui quando puder!"` },
   'chat.contact.overdue': { en: 'overdue', es: 'atrasado', pt: 'atrasado' },
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today_summary intent strings.
@@ -438,6 +444,29 @@ export const translations: TranslationDictionary = {
   'chat.product.type.highMargin': { en: 'High margin', es: 'Alto margen', pt: 'Alta margem' },
   'chat.product.type.highReturn': { en: 'High return rate', es: 'Alta devolución', pt: 'Alta devolução' },
   'chat.product.type.lowMargin': { en: 'Low margin', es: 'Bajo margen', pt: 'Baixa margem' },
+
+  // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: operator-briefing keys for product
+  // opportunities. Replace the 8-bullet dump with: best-prominent + secondary
+  // names + remaining count. Concise, decision-oriented, no analytics tone.
+  'chat.productOps.bestHeader':         { en: 'Best opportunity:', es: 'Mejor oportunidad:', pt: 'Melhor oportunidade:' },
+  'chat.productOps.whyLabel':           { en: 'Why:', es: 'Por qué:', pt: 'Por quê:' },
+  'chat.productOps.upsideLabel':        { en: 'Estimated upside:', es: 'Impacto estimado:', pt: 'Impacto estimado:' },
+  'chat.productOps.actionLabel':        { en: 'Recommended action:', es: 'Acción recomendada:', pt: 'Ação recomendada:' },
+  'chat.productOps.alsoWatching':       { en: 'Also worth watching:', es: 'También vigila:', pt: 'Também vale a pena:' },
+  'chat.productOps.remaining': {
+    en: (n: number) => `${n} more lower-priority opportunit${n === 1 ? 'y' : 'ies'} available.`,
+    es: (n: number) => `${n} oportunidad${n === 1 ? '' : 'es'} adicional${n === 1 ? '' : 'es'} de menor prioridad disponible${n === 1 ? '' : 's'}.`,
+    pt: (n: number) => `${n} oportunidade${n === 1 ? '' : 's'} adicional${n === 1 ? '' : 'is'} de menor prioridade disponíve${n === 1 ? 'l' : 'is'}.`,
+  },
+  'chat.productOps.reason.highMargin':  { en: 'High margin + strong demand signal.', es: 'Alto margen + señal de demanda fuerte.', pt: 'Alta margem + sinal de demanda forte.' },
+  'chat.productOps.reason.deadStock':   { en: 'Sitting in inventory — clearance can free capital.', es: 'Sin movimiento — una liquidación puede liberar capital.', pt: 'Parado em estoque — liquidação pode liberar capital.' },
+  'chat.productOps.reason.highReturn':  { en: 'Returns are eating margin — review quality or pricing.', es: 'Las devoluciones afectan el margen — revisa calidad o precio.', pt: 'Devoluções estão prejudicando a margem — revise qualidade ou preço.' },
+  'chat.productOps.reason.lowMargin':   { en: 'Margin is thin — price up or replace SKU.', es: 'Margen estrecho — sube el precio o reemplaza el SKU.', pt: 'Margem apertada — aumente o preço ou substitua o SKU.' },
+  'chat.productOps.reason.generic':     { en: 'Worth a focused push.', es: 'Vale la pena un esfuerzo dirigido.', pt: 'Vale a pena um esforço direcionado.' },
+  'chat.productOps.action.promote':     { en: 'Promote to recent buyers.', es: 'Promueve a compradores recientes.', pt: 'Promova para compradores recentes.' },
+  'chat.productOps.action.discount':    { en: 'Run a clearance discount.', es: 'Aplica un descuento de liquidación.', pt: 'Faça um desconto de liquidação.' },
+  'chat.productOps.action.bundle':      { en: 'Bundle with high-velocity items.', es: 'Combina con artículos de alta rotación.', pt: 'Combine com itens de alta rotatividade.' },
+  'chat.productOps.action.review':      { en: 'Review supplier or pricing.', es: 'Revisa proveedor o precio.', pt: 'Revise fornecedor ou preço.' },
   'chat.reorder.days': { en: (n: number) => `${n} day${n === 1 ? '' : 's'}`, es: (n: number) => `${n} día${n === 1 ? '' : 's'}`, pt: (n: number) => `${n} dia${n === 1 ? '' : 's'}` },
   'chat.reorder.daysLessThanOne': { en: '<1 day', es: '<1 día', pt: '<1 dia' },
   'chat.reorder.empty': { en: 'Nothing on reorder alert. Stock looks healthy.', es: 'Nada en alerta de reorden. Stock saludable.', pt: 'Nada em alerta de reposição. Estoque saudável.' },

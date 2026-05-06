@@ -1357,6 +1357,9 @@ function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatR
 }
 
 // ── Who to contact (R-INTEL-2-CONTACT) ─────────────────────
+// R-INTELLIGENCE-OPERATOR-RESPONSES-V1: cap visible list to top 3; summarize
+// the rest as a one-line count instead of dumping all 10. Same engine call,
+// same scoring — presentation only.
 function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const predictions = engine.getNextVisitPredictions(10);
@@ -1365,7 +1368,10 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     return { kind: 'answer', text: t('chat.contact.empty') };
   }
 
-  const lines = predictions.map(p => {
+  const top = predictions.slice(0, 3);
+  const remaining = Math.max(0, predictions.length - top.length);
+
+  const lines = top.map(p => {
     const phone = p.phone ? ` · ${p.phone}` : '';
     const overdue = p.overdueByDays === 1
       ? t('chat.contact.daySingular')
@@ -1374,7 +1380,11 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     return `• ${p.name}${phone} — ${t('chat.contact.overdue')} ${overdue}\n  ${msg}`;
   });
 
-  return { kind: 'answer', text: `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}` };
+  const body = `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}`;
+  if (remaining > 0) {
+    return { kind: 'answer', text: `${body}\n\n${t('chat.contact.remaining', remaining)}` };
+  }
+  return { kind: 'answer', text: body };
 }
 
 // ── Who to contact today (R-INTEL-WHO-TO-CONTACT-TODAY) ────
@@ -1801,6 +1811,10 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
 }
 
 // ── Product opportunities (R-INTEL-2-PRODUCT) ───────────────
+// R-INTELLIGENCE-OPERATOR-RESPONSES-V1: rewritten from a flat 8-bullet dump
+// into operator-briefing form — best opportunity prominent, up to 2 secondary
+// names, summary count for the rest. Same engine call, same actions; only the
+// presentation changes. Pure deterministic — no scoring change, no AI.
 function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const opps = engine.getProductOpportunities();
@@ -1809,27 +1823,52 @@ function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): Ch
     return { kind: 'answer', text: t('chat.product.empty') };
   }
 
-  const TYPE_LABEL: Record<string, string> = {
-    HIGH_MARGIN: t('chat.product.type.highMargin'),
-    LOW_MARGIN:  t('chat.product.type.lowMargin'),
-    DEAD_STOCK:  t('chat.product.type.deadStock'),
-    HIGH_RETURN: t('chat.product.type.highReturn'),
+  const REASON_KEY: Record<string, string> = {
+    HIGH_MARGIN: 'chat.productOps.reason.highMargin',
+    LOW_MARGIN:  'chat.productOps.reason.lowMargin',
+    DEAD_STOCK:  'chat.productOps.reason.deadStock',
+    HIGH_RETURN: 'chat.productOps.reason.highReturn',
+  };
+  const ACTION_KEY: Record<string, string> = {
+    PROMOTE:  'chat.productOps.action.promote',
+    DISCOUNT: 'chat.productOps.action.discount',
+    BUNDLE:   'chat.productOps.action.bundle',
+    REVIEW:   'chat.productOps.action.review',
   };
 
-  const ACTION_LABEL: Record<string, string> = {
-    PROMOTE:  t('chat.product.action.promote'),
-    DISCOUNT: t('chat.product.action.discount'),
-    BUNDLE:   t('chat.product.action.bundle'),
-    REVIEW:   t('chat.product.action.review'),
-  };
+  const top = opps[0];
+  const secondary = opps.slice(1, 3); // up to 2
+  const remaining = Math.max(0, opps.length - (1 + secondary.length));
 
-  const lines = opps.slice(0, 8).map(o => {
-    const margin = o.marginPct > 0 ? ` · ${o.marginPct.toFixed(1)}% ${t('chat.product.margin')}` : '';
-    const impact = o.impactCents > 0 ? ` · ${COP(o.impactCents)} ${t('chat.product.impact')}` : '';
-    return `• ${o.name} [${TYPE_LABEL[o.type]}] → ${ACTION_LABEL[o.action]}${margin}${impact}`;
-  });
+  const lines: string[] = [];
+  lines.push(t('chat.productOps.bestHeader'));
+  lines.push(top.name);
+  lines.push('');
+  lines.push(t('chat.productOps.whyLabel'));
+  lines.push(t(REASON_KEY[top.type] || 'chat.productOps.reason.generic'));
+  if (top.impactCents > 0) {
+    lines.push('');
+    lines.push(t('chat.productOps.upsideLabel'));
+    lines.push(`~${COP(top.impactCents)}`);
+  }
+  lines.push('');
+  lines.push(t('chat.productOps.actionLabel'));
+  lines.push(t(ACTION_KEY[top.action] || 'chat.productOps.action.review'));
 
-  return { kind: 'answer', text: `${t('chat.product.header', opps.length)}\n${lines.join('\n')}` };
+  if (secondary.length > 0) {
+    lines.push('');
+    lines.push(t('chat.productOps.alsoWatching'));
+    for (const s of secondary) {
+      lines.push(`• ${s.name}`);
+    }
+  }
+
+  if (remaining > 0) {
+    lines.push('');
+    lines.push(t('chat.productOps.remaining', remaining));
+  }
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Dead stock root cause (R-INTEL-PHASE2C-RC) ─────────────

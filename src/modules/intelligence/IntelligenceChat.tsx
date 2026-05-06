@@ -821,13 +821,17 @@ function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+        // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: relaxed leading + slightly
+        // more padding so blank-line section breaks in operator-style
+        // briefings actually breathe. text-sm preserved; whitespace-pre-wrap
+        // handles the existing newline structure. No animations, no markdown.
+        className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
           isUser
             ? 'bg-blue-600 text-white'
             : `bg-surface-700 text-slate-200 border ${colorClass}`
         }`}
       >
-        {!isUser && <div className="text-xs text-slate-400 mb-1">🤖 {es ? 'Intelligence' : 'Intelligence'}</div>}
+        {!isUser && <div className="text-xs text-slate-400 mb-1.5">🤖 {es ? 'Intelligence' : 'Intelligence'}</div>}
         {msg.content}
         {!isUser && msg.actions && msg.actions.length > 0 && (
           <div className="flex flex-wrap mt-2">
