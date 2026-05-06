@@ -5153,6 +5153,31 @@ export const translations: TranslationDictionary = {
   },
   'chat.leastProfitable.recommendation': { en: 'Review pricing and discounting on these accounts. Focus on margin, not volume.', es: 'Revisa precios y descuentos en estas cuentas. Enfócate en el margen, no en el volumen.', pt: 'Revise preços e descontos nestas contas. Foque na margem, não no volume.' },
 
+  // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
+  'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },
+  'chat.todaySales.summary':          {
+    en: (amt: string) => `Revenue: ${amt}`,
+    es: (amt: string) => `Ingresos: ${amt}`,
+    pt: (amt: string) => `Receita: ${amt}`,
+  },
+  'chat.todaySales.transactions':     {
+    en: (n: number) => `${n} sale${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} venta${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} venda${n === 1 ? '' : 's'}`,
+  },
+  'chat.todaySales.avgTicket':        {
+    en: (amt: string) => `Avg ticket: ${amt}`,
+    es: (amt: string) => `Ticket promedio: ${amt}`,
+    pt: (amt: string) => `Ticket médio: ${amt}`,
+  },
+  'chat.todaySales.topItem':          {
+    en: (name: string, amt: string) => `Top seller: ${name} (${amt})`,
+    es: (name: string, amt: string) => `Más vendido: ${name} (${amt})`,
+    pt: (name: string, amt: string) => `Mais vendido: ${name} (${amt})`,
+  },
+  'chat.todaySales.paymentBreakdown': { en: 'By payment method:', es: 'Por método de pago:', pt: 'Por método de pagamento:' },
+  'chat.todaySales.empty':            { en: 'No sales recorded today yet.', es: 'Aún no hay ventas registradas hoy.', pt: 'Nenhuma venda registrada hoje ainda.' },
+
   // R-DAILY-BRIEF-HANDLER-V1: action-first daily brief lines.
   'chat.dailyBrief.header':       { en: '📋 Daily Brief', es: '📋 Resumen Diario', pt: '📋 Resumo Diário' },
   'chat.dailyBrief.today':        {

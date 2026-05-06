@@ -27,6 +27,7 @@ export type IntentId =
   | 'best_customer'
   | 'least_profitable_customers'
   | 'daily_brief'
+  | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
   | 'customer_history'
@@ -166,6 +167,23 @@ const TODAY_SUMMARY_KEYWORDS = [
   // PT
   'hoje', 'como estamos hoje', 'vendas de hoje',
   'como vai hoje', 'como está hoje', 'como esta hoje',
+];
+
+// R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: anchored "sales today" phrasing
+// — must score BEFORE data_query (which has overlapping 'sales today'/'ventas
+// de hoy'/'vendas de hoje' keywords) so the dedicated today-only handler
+// wins over the generic data summary. Phrases are deliberately anchored
+// ("sales" + "today" / "vendí hoy" / "vendi hoje") to avoid swallowing
+// plain "today" / "hoy" / "hoje" which still falls to today_summary.
+const TODAY_SALES_KEYWORDS = [
+  // EN
+  'today sales', 'todays sales', "today's sales", 'sales today',
+  'revenue today', 'today revenue', 'how much did i sell today',
+  // ES
+  'ventas hoy', 'ventas de hoy', 'cuanto vendi hoy', 'cuánto vendí hoy',
+  'cuanto vendí hoy', 'ingresos hoy', 'ingresos de hoy',
+  // PT
+  'vendas hoje', 'vendas de hoje', 'quanto vendi hoje', 'receita hoje',
 ];
 
 // R-DAILY-BRIEF-HANDLER-V1: composer intent — anchored phrases route here
@@ -500,6 +518,12 @@ export function classifyIntent(
     // (keyword overlap on "promote/promover" — we want marketing engine on phrases
     // like "promote products"; product_opportunities still wins on "what to promote").
     { id: 'marketing_campaign', score: scoreKeywords(query, MARKETING_KEYWORDS) },
+    // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: dedicated today-only sales
+    // handler — must score BEFORE data_query and today_summary because both
+    // banks contain "sales today" / "ventas de hoy" / "vendas de hoje".
+    // Anchored phrasing only — plain "today" / "hoy" still routes to
+    // today_summary (which has the broader generic-day greeting keywords).
+    { id: 'today_sales', score: scoreKeywords(query, TODAY_SALES_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
     // and sales_summary so operational metrics ("low stock", "ready repairs",
@@ -556,7 +580,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -584,7 +608,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

@@ -66,6 +66,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   });
   const messageListRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);
+  // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: defensive last-response guard.
+  // Prevents identical back-to-back assistant pushes within a short window
+  // (StrictMode double-invoke, race-condition re-fire, etc.). Same query
+  // fired again later (different click, different seq) is still allowed.
+  const lastResponseRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
 
   // Auto-submit when parent fires a quick-action chip.
   const engineRef = useRef(engine);
@@ -125,14 +130,24 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const fireQuery = useCallback((query: string) => {
     const match = classifyIntent(query, customersRef.current, langRef.current);
     const response = handleIntent(match, engineRef.current, langRef.current);
+    // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: skip identical assistant push
+    // within 500ms of the last identical response (prevents double-render
+    // from StrictMode/race re-fire). Always refresh the timestamp so a
+    // legitimate repeat query later still pushes.
+    const now = Date.now();
+    if (response.text === lastResponseRef.current.text && now - lastResponseRef.current.ts < 500) {
+      lastResponseRef.current.ts = now;
+      return;
+    }
+    lastResponseRef.current = { text: response.text, ts: now };
     clearActionFeedback();
     if (response.actions?.length) {
       addAutomationItems(response.actions.map(createQueueItemFromChatAction));
     }
     setMessages(prev => [
       ...prev,
-      { id: `u-${Date.now()}`, role: 'user', content: query, timestamp: new Date() },
-      { id: `a-${Date.now() + 1}`, role: 'assistant', content: response.text, timestamp: new Date(), kind: response.kind, actions: response.actions },
+      { id: `u-${now}`, role: 'user', content: query, timestamp: new Date() },
+      { id: `a-${now + 1}`, role: 'assistant', content: response.text, timestamp: new Date(), kind: response.kind, actions: response.actions },
     ]);
   }, []);
 
@@ -172,8 +187,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     const match = classifyIntent(query, customers, lang);
     const response = handleIntent(match, engine, lang);
 
+    // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: same dedup guard as fireQuery.
+    const now = Date.now();
+    if (response.text === lastResponseRef.current.text && now - lastResponseRef.current.ts < 500) {
+      lastResponseRef.current.ts = now;
+      setInput('');
+      return;
+    }
+    lastResponseRef.current = { text: response.text, ts: now };
+
     const assistantMsg: ChatMessage = {
-      id: `a-${Date.now()}`,
+      id: `a-${now}`,
       role: 'assistant',
       content: response.text,
       timestamp: new Date(),

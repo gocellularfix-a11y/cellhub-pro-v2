@@ -1087,40 +1087,44 @@ export default function POSModule() {
 
       {/* ── Modals ─────────────────────────────────────── */}
 
-      <PhonePaymentModal
-        open={showPhonePayment}
-        onClose={() => setShowPhonePayment(false)}
-        settings={settings}
-        cart={cart}
-        setCart={setCart}
-        customers={customers}
-        setCustomers={setCustomers}
-        sales={sales}
-        lang={lang}
-        L={L}
-        // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: mirror TopUpModal r28b-fix
-        setSelectedCustomer={(c) => {
-          if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
-            setSelectedCustomer(c);
-          }
-        }}
-      />
+      {showPhonePayment && (
+        <PhonePaymentModal
+          open={showPhonePayment}
+          onClose={() => setShowPhonePayment(false)}
+          settings={settings}
+          cart={cart}
+          setCart={setCart}
+          customers={customers}
+          setCustomers={setCustomers}
+          sales={sales}
+          lang={lang}
+          L={L}
+          // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: mirror TopUpModal r28b-fix
+          setSelectedCustomer={(c) => {
+            if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
+              setSelectedCustomer(c);
+            }
+          }}
+        />
+      )}
 
-      <PaymentModal
-        open={showPayment}
-        onClose={() => setShowPayment(false)}
-        cart={cart}
-        totals={totals}
-        paymentMethod={paymentMethod}
-        cashAmount={cashAmount}
-        cardAmount={cardAmount}
-        selectedCustomer={selectedCustomer}
-        currentEmployee={currentEmployee}
-        settings={settings}
-        onComplete={handleCompleteSale}
-        lang={lang}
-        L={L}
-      />
+      {showPayment && (
+        <PaymentModal
+          open={showPayment}
+          onClose={() => setShowPayment(false)}
+          cart={cart}
+          totals={totals}
+          paymentMethod={paymentMethod}
+          cashAmount={cashAmount}
+          cardAmount={cardAmount}
+          selectedCustomer={selectedCustomer}
+          currentEmployee={currentEmployee}
+          settings={settings}
+          onComplete={handleCompleteSale}
+          lang={lang}
+          L={L}
+        />
+      )}
 
       <ReceiptModal
         open={showReceipt}
@@ -1212,50 +1216,62 @@ export default function POSModule() {
       )}
 
       {/* Credential Maker */}
-      <CredentialMakerModal
-        open={showCredentialMaker}
-        onClose={() => setShowCredentialMaker(false)}
-      />
+      {showCredentialMaker && (
+        <CredentialMakerModal
+          open={showCredentialMaker}
+          onClose={() => setShowCredentialMaker(false)}
+        />
+      )}
 
       {/* Notepad */}
-      <NotepadModal
-        open={showNotepad}
-        onClose={() => setShowNotepad(false)}
-      />
+      {showNotepad && (
+        <NotepadModal
+          open={showNotepad}
+          onClose={() => setShowNotepad(false)}
+        />
+      )}
 
       {/* Estimate */}
-      <EstimateModal
-        open={showEstimate}
-        onClose={() => setShowEstimate(false)}
-      />
+      {showEstimate && (
+        <EstimateModal
+          open={showEstimate}
+          onClose={() => setShowEstimate(false)}
+        />
+      )}
 
       {/* RMA Label */}
-      <RMALabelModal
-        open={showRMALabel}
-        onClose={() => setShowRMALabel(false)}
-      />
+      {showRMALabel && (
+        <RMALabelModal
+          open={showRMALabel}
+          onClose={() => setShowRMALabel(false)}
+        />
+      )}
 
       {/* Label Printer */}
-      <LabelPrinterModal
-        open={showLabelPrinter}
-        onClose={() => setShowLabelPrinter(false)}
-      />
+      {showLabelPrinter && (
+        <LabelPrinterModal
+          open={showLabelPrinter}
+          onClose={() => setShowLabelPrinter(false)}
+        />
+      )}
 
       {/* International Top-Up */}
-      <TopUpModal
-        open={showTopUp}
-        onClose={() => setShowTopUp(false)}
-        onAddToCart={(items, customer) => {
-          // r28b-fix: propagate customer selected inside TopUpModal to POS state
-          // so sale.customerId is set at checkout and recordTopUpsToCustomer runs.
-          if (customer && (!selectedCustomer || selectedCustomer.id !== customer.id)) {
-            setSelectedCustomer(customer);
-          }
-          setCart([...cart, ...items]);
-          setShowTopUp(false);
-          toast(t('pos.topUpsAdded', items.length), 'success');
-        }}
-      />
+      {showTopUp && (
+        <TopUpModal
+          open={showTopUp}
+          onClose={() => setShowTopUp(false)}
+          onAddToCart={(items, customer) => {
+            // r28b-fix: propagate customer selected inside TopUpModal to POS state
+            // so sale.customerId is set at checkout and recordTopUpsToCustomer runs.
+            if (customer && (!selectedCustomer || selectedCustomer.id !== customer.id)) {
+              setSelectedCustomer(customer);
+            }
+            setCart([...cart, ...items]);
+            setShowTopUp(false);
+            toast(t('pos.topUpsAdded', items.length), 'success');
+          }}
+        />
+      )}
     </>
   );
 }

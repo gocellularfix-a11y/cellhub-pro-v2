@@ -92,6 +92,9 @@ export function handleIntent(
     case 'daily_brief':
       return handleDailyBrief(engine, lang);
 
+    case 'today_sales':
+      return handleTodaySales(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -369,6 +372,66 @@ function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     : t('chat.today.actionGeneric');
   lines.push('');
   lines.push(`💡 ${t('chat.today.actionLabel')}: ${actionText}`);
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Today sales (R-INTELLIGENCE-TODAY-SALES-DATA-INTENT) ─────
+// Focused today-only summary. Reuses engine.getTodayMetrics() for the
+// canonical local-day filter (mirrors AppointmentsModule today logic).
+// Adds payment-method breakdown by walking today's sales once with the
+// same filter — no new date helper, no engine change.
+function handleTodaySales(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const m = engine.getTodayMetrics();
+
+  if (m.transactions === 0) {
+    return { kind: 'answer', text: t('chat.todaySales.empty') };
+  }
+
+  const lines: string[] = [];
+  lines.push(t('chat.todaySales.header'));
+  lines.push('');
+  lines.push(`• ${t('chat.todaySales.summary', COP(m.revenueCents))}`);
+  lines.push(`• ${t('chat.todaySales.transactions', m.transactions)}`);
+  lines.push(`• ${t('chat.todaySales.avgTicket', COP(m.avgTicketCents))}`);
+  if (m.topSeller) {
+    lines.push(`• ${t('chat.todaySales.topItem', m.topSeller.name, COP(m.topSeller.revenueCents))}`);
+  }
+
+  // Payment-method breakdown for today's countable sales (same filter as
+  // getTodayMetrics: status !== voided/refunded, createdAt >= midnight).
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+  const tsOf = (sale: { createdAt?: unknown }): number => {
+    const ca = sale.createdAt;
+    if (!ca) return 0;
+    try {
+      const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+        ? (ca as { toDate: () => Date }).toDate()
+        : (ca as string | Date);
+      return new Date(d as string | Date).getTime();
+    } catch { return 0; }
+  };
+  const byMethod: Record<string, { count: number; cents: number }> = {};
+  for (const s of engine.getSales()) {
+    const tt = tsOf(s as { createdAt?: unknown });
+    if (!tt || tt < todayMs) continue;
+    const status = String((s as { status?: string }).status || '').toLowerCase();
+    if (status === 'voided' || status === 'refunded') continue;
+    const method = String((s as { paymentMethod?: string }).paymentMethod || 'Unknown');
+    if (!byMethod[method]) byMethod[method] = { count: 0, cents: 0 };
+    byMethod[method].count++;
+    byMethod[method].cents += (s as { total?: number }).total || 0;
+  }
+  const methodEntries = Object.entries(byMethod).sort((a, b) => b[1].cents - a[1].cents);
+  if (methodEntries.length > 0) {
+    lines.push('');
+    lines.push(t('chat.todaySales.paymentBreakdown'));
+    for (const [method, d] of methodEntries) {
+      lines.push(`  ${method}: ${COP(d.cents)} (${d.count})`);
+    }
+  }
 
   return { kind: 'answer', text: lines.join('\n') };
 }
