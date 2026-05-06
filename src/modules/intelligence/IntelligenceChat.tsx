@@ -22,8 +22,9 @@ import {
   markAutomationFailed,
   addAutomationOutcome,
   addAutomationExecutionLog,
+  addDealOutcomeLog,
 } from '@/services/intelligence/automation/automationQueue';
-import type { AutomationQueueItem, AutomationOutcome } from '@/services/intelligence/automation/automationQueue';
+import type { AutomationQueueItem, AutomationOutcome, DealOutcome } from '@/services/intelligence/automation/automationQueue';
 import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
 import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
@@ -485,6 +486,44 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     toast(t('chat.proposeDeal.addedToCart'), 'success');
   }
 
+  // R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner records the real-world
+  // outcome of a pending deal after WhatsApp outreach. Pure logging — no
+  // sale creation, no inventory mutation, no auto-checkout. The queue item
+  // moves to 'completed' with resultType=`deal_${outcome}` so the existing
+  // status pill + completed-section UX still works.
+  function handleDealOutcome(id: string, outcome: DealOutcome) {
+    const item = automationQueue.find((i) => i.id === id);
+    if (!item) return;
+    const deal = (item.payload as { pendingDeal?: import('@/services/intelligence/deals/dealTypes').PendingDeal })?.pendingDeal;
+    if (!deal) {
+      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      return;
+    }
+
+    // Re-resolve inventory category at outcome time for analytics. May be
+    // missing if the item was deleted since the deal was drafted — that's
+    // fine, we log without it.
+    const inv = inventory.find((i) => i.id === deal.inventoryId);
+
+    addDealOutcomeLog({
+      id: generateId(),
+      dealId: item.id,
+      customerId: deal.customerId,
+      inventoryId: deal.inventoryId,
+      category: inv?.category,
+      proposedPriceCents: deal.proposedPriceCents,
+      originalPriceCents: deal.originalPriceCents,
+      outcome,
+      timestamp: Date.now(),
+    });
+
+    setAutomationQueue((prev) =>
+      prev.map((i) => (i.id === id ? markAutomationExecuted(i, `deal_${outcome}`) : i)),
+    );
+
+    toast(t('chat.proposeDeal.outcomeSaved'), 'success');
+  }
+
   function handleCancelAutomation(id: string) {
     setAutomationQueue(prev =>
       prev.map(item => item.id === id ? cancelAutomationItem(item) : item)
@@ -606,6 +645,32 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                     >
                       {t('chat.proposeDeal.addToCart')}
                     </button>
+                  )}
+                  {/* R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner records
+                      Won / Lost / No Response after the WhatsApp send. Pure
+                      logging — no sale creation, no checkout. Visible only
+                      while approved; click moves item to 'completed'. */}
+                  {item.kind === 'pending_deal' && item.status === 'approved' && (
+                    <>
+                      <button
+                        onClick={() => handleDealOutcome(item.id, 'won')}
+                        className="text-[10px] px-2 py-0.5 rounded border border-green-700 text-green-300 hover:bg-green-900/30"
+                      >
+                        {t('chat.proposeDeal.won')}
+                      </button>
+                      <button
+                        onClick={() => handleDealOutcome(item.id, 'lost')}
+                        className="text-[10px] px-2 py-0.5 rounded border border-red-700 text-red-300 hover:bg-red-900/30"
+                      >
+                        {t('chat.proposeDeal.lost')}
+                      </button>
+                      <button
+                        onClick={() => handleDealOutcome(item.id, 'no_response')}
+                        className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-surface-600"
+                      >
+                        {t('chat.proposeDeal.noResponse')}
+                      </button>
+                    </>
                   )}
                   {item.status !== 'pending' ? (
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${

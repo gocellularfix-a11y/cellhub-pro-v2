@@ -5257,6 +5257,11 @@ export const translations: TranslationDictionary = {
   'chat.proposeDeal.addedToCart':     { en: 'Deal added to POS cart.',                      es: 'Oferta agregada al carrito POS.',                     pt: 'Oferta adicionada ao carrinho POS.' },
   'chat.proposeDeal.outOfStock':      { en: 'Out of stock — cannot add deal to cart.',      es: 'Sin stock — no se puede agregar la oferta al carrito.', pt: 'Sem estoque — não é possível adicionar a oferta ao carrinho.' },
   'chat.proposeDeal.invalidDeal':     { en: 'Deal is no longer valid (price or product changed). Cart not updated.', es: 'La oferta ya no es válida (precio o producto cambió). Carrito no actualizado.', pt: 'A oferta não é mais válida (preço ou produto mudou). Carrinho não atualizado.' },
+  // R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner-recorded outcome buttons.
+  'chat.proposeDeal.won':             { en: 'Won',         es: 'Ganada',     pt: 'Ganha' },
+  'chat.proposeDeal.lost':            { en: 'Lost',        es: 'Perdida',    pt: 'Perdida' },
+  'chat.proposeDeal.noResponse':      { en: 'No Response', es: 'Sin respuesta', pt: 'Sem resposta' },
+  'chat.proposeDeal.outcomeSaved':    { en: 'Deal outcome saved.', es: 'Resultado de la oferta guardado.', pt: 'Resultado da oferta salvo.' },
 
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },

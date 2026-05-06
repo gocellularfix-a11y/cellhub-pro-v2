@@ -150,3 +150,52 @@ export function addAutomationOutcome(
     ],
   };
 }
+
+// R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1 ─────────────────────
+// Owner-recorded outcome for a pending_deal after WhatsApp outreach.
+// Pure read/write helpers around localStorage — no UI, no engine wiring,
+// no automatic learning. Mirrors the executionLog pattern in
+// actionExecutor.ts (FIFO cap, best-effort writes, never blocks).
+
+export type DealOutcome = 'won' | 'lost' | 'no_response';
+
+export interface DealOutcomeLogEntry {
+  id: string;
+  dealId: string;
+  customerId?: string;
+  inventoryId?: string;
+  category?: string;
+  proposedPriceCents: number;
+  originalPriceCents: number;
+  outcome: DealOutcome;
+  timestamp: number;
+}
+
+const DEAL_OUTCOME_LOG_KEY = 'cellhub:intelligence:dealOutcomeLog:v1';
+const MAX_DEAL_OUTCOME_LOG = 500;
+
+export function getDealOutcomeLog(): DealOutcomeLogEntry[] {
+  try {
+    const raw = localStorage.getItem(DEAL_OUTCOME_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addDealOutcomeLog(entry: DealOutcomeLogEntry): void {
+  try {
+    const log = getDealOutcomeLog();
+    log.push(entry);
+    // FIFO cap — drop oldest entries if exceeding MAX. Same shape as
+    // executionLog so unbounded outcome history doesn't bloat storage.
+    const trimmed = log.length > MAX_DEAL_OUTCOME_LOG
+      ? log.slice(log.length - MAX_DEAL_OUTCOME_LOG)
+      : log;
+    localStorage.setItem(DEAL_OUTCOME_LOG_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* incognito / quota — best-effort, never block */
+  }
+}
