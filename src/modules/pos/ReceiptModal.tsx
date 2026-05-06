@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
-import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
+import { openWhatsApp } from '@/services/whatsapp';
 // R-COMMS-SMS-HARD-DISABLE: sendSms + buildReceiptSmsMessage imports removed
 // (post-sale SMS button retired; WhatsApp button is now the sole comm channel
 // from this modal). Service files deleted in next round.
@@ -547,22 +547,34 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       {/* Actions */}
       <div className="flex gap-3 mt-4">
         <button onClick={onClose} className="btn btn-secondary flex-1">{t('close')}</button>
-        {settings.waEnabled !== false && (sale?.customerPhone || assignedCustomer?.phone) && (
+        {settings.waEnabled !== false && (
           <button
             onClick={() => {
+              // R-RECEIPT-WHATSAPP-SEND-V1: manual receipt send via wa.me.
+              // No WhatsApp API; no auto-send; no PDF/image attachment. The
+              // owner clicks → wa.me opens with prefilled receipt text →
+              // owner manually presses Send. Phone-missing path shows a
+              // localized toast instead of silently no-oping.
               const phone = sale?.customerPhone || assignedCustomer?.phone || '';
-              const name = sale?.customerName || assignedCustomer?.name || t('receiptModal.customerFallback');
-              const msg = buildWaMessage('thankYou', {
-                customerName: name,
-                storeName: settings.storeName || 'Go Cellular',
-                storePhone: settings.storePhone || '',
-              }, lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en', (settings as any).waTemplateThankYou || '');
+              if (!phone.trim()) {
+                toast(t('receiptWa.missingPhone'), 'warning');
+                return;
+              }
+              const fmtCents = (c: number) => `$${(c / 100).toFixed(2)}`;
+              const msg = t(
+                'receiptWa.message',
+                settings.storeName || 'Go Cellular',
+                sale.invoiceNumber,
+                formatDate(sale.createdAt),
+                fmtCents(sale.total),
+                sale.paymentMethod || '',
+              );
               openWhatsApp(phone, msg);
             }}
             className="btn flex-1"
             style={{ background: '#25D366', color: '#fff', fontWeight: 700, border: 'none' }}
           >
-            📲 WhatsApp
+            📲 {t('receiptWa.buttonLabel')}
           </button>
         )}
         {/* R-COMMS-SMS-HARD-DISABLE: post-sale SMS button removed.

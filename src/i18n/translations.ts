@@ -1855,6 +1855,19 @@ export const translations: TranslationDictionary = {
   'receiptModal.systemDefault': { en: '(system default)', es: '(predeterminada)', pt: '(padrão do sistema)' },
   'receiptModal.copies': { en: 'Copies', es: 'Copias', pt: 'Cópias' },
   'receiptModal.printReceipt': { en: 'Print Receipt (4×6)', es: 'Imprimir Recibo (4×6)', pt: 'Imprimir Recibo (4×6)' },
+  // R-RECEIPT-WHATSAPP-SEND-V1: manual receipt-to-WhatsApp via wa.me deep link.
+  // Owner clicks → WhatsApp opens with prefilled text → owner manually sends.
+  // No WhatsApp API, no auto-send, no PDF/image attachment.
+  'receiptWa.buttonLabel':   { en: 'Send via WhatsApp', es: 'Enviar por WhatsApp', pt: 'Enviar por WhatsApp' },
+  'receiptWa.missingPhone':  { en: 'Customer phone required to send receipt by WhatsApp.', es: 'Se requiere el teléfono del cliente para enviar el recibo por WhatsApp.', pt: 'Telefone do cliente necessário para enviar o recibo pelo WhatsApp.' },
+  'receiptWa.message': {
+    en: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Receipt #${invoice}\nDate: ${date}\nTotal: ${total}${payment ? `\nPayment: ${payment}` : ''}\n\nThank you for your purchase!\nReply here if you have any questions.`,
+    es: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Recibo #${invoice}\nFecha: ${date}\nTotal: ${total}${payment ? `\nPago: ${payment}` : ''}\n\n¡Gracias por su compra!\nResponde aquí si tienes alguna duda.`,
+    pt: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Recibo #${invoice}\nData: ${date}\nTotal: ${total}${payment ? `\nPagamento: ${payment}` : ''}\n\nObrigado pela sua compra!\nResponda aqui se tiver dúvidas.`,
+  },
   'receiptModal.customerFallback': { en: 'Customer', es: 'Cliente', pt: 'Cliente' },
   'receiptModal.assignSalePrompt': {
     en: (n: number) => `Assign this sale to a customer? +${n} pts`,
