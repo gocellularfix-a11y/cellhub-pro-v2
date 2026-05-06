@@ -17,6 +17,7 @@ import { buildActionPayload } from '../actions/actionEngine';
 // R-INTELLIGENCE-PENDING-DEAL-V1: deterministic deal builder for owner-mediated
 // offer drafting. Pure helper — no mutation, no cart writes.
 import { buildPendingDeal } from '../deals/dealEngine';
+import type { PendingDeal } from '../deals/dealTypes';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
@@ -71,6 +72,11 @@ export interface ChatActionUI {
   // → kind map. Used for 'pending_deal' so deal drafts don't get bucketed as
   // generic whatsapp_reconnect items.
   queueKind?: AutomationKind;
+  // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: full deal record so the
+  // queue item carries everything needed for the later "Add to POS Cart"
+  // click (productName, proposedPriceCents, originalPriceCents, qty, etc.).
+  // Only populated for pending_deal actions.
+  pendingDeal?: PendingDeal;
 }
 
 export interface ChatResponse {
@@ -831,6 +837,7 @@ function handleProposeDeal(
     label: t('chat.proposeDeal.approveLabel', customer.name),
     actionType: 'whatsapp',
     queueKind: 'pending_deal',
+    pendingDeal: deal,
     payload: {
       type: 'whatsapp',
       customMessage: deal.offerText,

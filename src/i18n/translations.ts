@@ -5252,6 +5252,11 @@ export const translations: TranslationDictionary = {
     es: (names: string) => `Varios productos coinciden (${names}). Usa un nombre de producto más específico.`,
     pt: (names: string) => `Vários produtos correspondem (${names}). Use um nome de produto mais específico.`,
   },
+  // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: approved deal → POS cart line.
+  'chat.proposeDeal.addToCart':       { en: 'Add to POS Cart',                              es: 'Agregar al carrito POS',                              pt: 'Adicionar ao Carrinho POS' },
+  'chat.proposeDeal.addedToCart':     { en: 'Deal added to POS cart.',                      es: 'Oferta agregada al carrito POS.',                     pt: 'Oferta adicionada ao carrinho POS.' },
+  'chat.proposeDeal.outOfStock':      { en: 'Out of stock — cannot add deal to cart.',      es: 'Sin stock — no se puede agregar la oferta al carrito.', pt: 'Sem estoque — não é possível adicionar a oferta ao carrinho.' },
+  'chat.proposeDeal.invalidDeal':     { en: 'Deal is no longer valid (price or product changed). Cart not updated.', es: 'La oferta ya no es válida (precio o producto cambió). Carrito no actualizado.', pt: 'A oferta não é mais válida (preço ou produto mudou). Carrinho não atualizado.' },
 
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },

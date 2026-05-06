@@ -9,7 +9,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
-import type { Customer } from '@/store/types';
+import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
@@ -21,11 +21,15 @@ import {
   markAutomationExecuted,
   markAutomationFailed,
   addAutomationOutcome,
+  addAutomationExecutionLog,
 } from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem, AutomationOutcome } from '@/services/intelligence/automation/automationQueue';
 import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
-import { Modal } from '@/components/ui';
+import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
+// R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
+import { useApp } from '@/store/AppProvider';
+import { generateId } from '@/utils/dates';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -48,6 +52,15 @@ const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
 export default function IntelligenceChat({ engine, customers, lang, externalQuery }: Props) {
   const { locale, t } = useTranslation();
+  // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
+  // for converting approved deals into POS cart lines. Mirrors the pattern
+  // used by RepairModule, UnlockModule, SpecialOrdersModule, ReturnsModule.
+  const {
+    state: { cart, inventory },
+    setCart,
+    dispatch,
+  } = useApp();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
@@ -117,7 +130,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       customerId: action.payload.customerId,
       customerName: action.payload.customerName,
       sku: action.payload.sku,
-      payload: { actionPayload: action.payload },
+      // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: persist the full deal record
+      // alongside the actionPayload so the later "Add to POS Cart" click can
+      // read proposedPriceCents / originalPriceCents / qty without re-deriving.
+      payload: action.pendingDeal
+        ? { actionPayload: action.payload, pendingDeal: action.pendingDeal }
+        : { actionPayload: action.payload },
     });
   }
 
@@ -378,8 +396,93 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           break;
       }
 
+      // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: pending_deal stays at
+      // 'approved' after the WhatsApp window opens, so the owner can later
+      // click "Add to POS Cart". All other kinds keep the existing
+      // approve+complete-in-one-step behavior (unchanged).
+      if (item.kind === 'pending_deal') {
+        return prev.map(i =>
+          i.id === id
+            ? addAutomationExecutionLog(approveAutomationItem(i), {
+                executedAt: new Date().toISOString(),
+                result: 'success',
+                resultType: result.type,
+              })
+            : i,
+        );
+      }
+
       return prev.map(i => i.id === id ? markAutomationExecuted(approveAutomationItem(i), result.type) : i);
     });
+  }
+
+  // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert an approved deal into
+  // a POS cart line. Re-validates against current inventory (stock + cost
+  // floor); does NOT decrement inventory, NOT create a sale, NOT auto-checkout.
+  // Owner runs the normal POS checkout afterwards.
+  function handleAddDealToCart(id: string) {
+    const item = automationQueue.find((i) => i.id === id);
+    if (!item) return;
+    const deal = (item.payload as { pendingDeal?: import('@/services/intelligence/deals/dealTypes').PendingDeal })?.pendingDeal;
+    if (!deal) {
+      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      setAutomationQueue((prev) => prev.map((i) => (i.id === id ? markAutomationFailed(i, 'missing_pending_deal') : i)));
+      return;
+    }
+
+    const inv = inventory.find((i) => i.id === deal.inventoryId);
+    if (!inv) {
+      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      setAutomationQueue((prev) => prev.map((i) => (i.id === id ? markAutomationFailed(i, 'inventory_not_found') : i)));
+      return;
+    }
+
+    // Re-check stock against current inventory (deal could be hours/days old).
+    // Services are unlimited; everything else needs qty > 0.
+    const currentQty = (inv.qty ?? (inv as { quantity?: number }).quantity ?? 0);
+    if (inv.category !== 'service' && currentQty <= 0) {
+      toast(t('chat.proposeDeal.outOfStock'), 'warning');
+      return;
+    }
+
+    // Re-validate cost floor in case product cost was edited up since draft.
+    if (deal.proposedPriceCents <= 0 || deal.proposedPriceCents < (inv.cost || 0)) {
+      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      return;
+    }
+
+    const taxable = !['service', 'quick_charge', 'phone_payment', 'top_up'].includes(inv.category);
+
+    const cartItem: CartItem = {
+      id: generateId(),
+      inventoryId: inv.id,
+      name: deal.productName,
+      sku: inv.sku,
+      imei: (inv as { imei?: string }).imei,
+      category: inv.category,
+      price: deal.proposedPriceCents,
+      originalPrice: deal.originalPriceCents,
+      cost: inv.cost,
+      qty: deal.qty || 1,
+      taxable,
+      cbeEligible: !!inv.cbeEligible,
+      screenFeeEligible: !!(inv as { screenFeeEligible?: boolean }).screenFeeEligible,
+      notes: `Deal — was $${(deal.originalPriceCents / 100).toFixed(2)}`,
+    };
+
+    // Direct push — DO NOT merge with any existing line at the original price
+    // (different intent). New cart line keyed by generateId(); inventoryId is
+    // preserved for stock decrement at checkout.
+    setCart([...cart, cartItem]);
+
+    dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: deal.customerId });
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+
+    setAutomationQueue((prev) =>
+      prev.map((i) => (i.id === id ? markAutomationExecuted(i, 'cart_added') : i)),
+    );
+
+    toast(t('chat.proposeDeal.addedToCart'), 'success');
   }
 
   function handleCancelAutomation(id: string) {
@@ -492,6 +595,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {/* R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: approved deals
+                      surface an "Add to POS Cart" button. Sits next to the
+                      status pill (rendered below) so the owner can act after
+                      the WhatsApp message has opened. */}
+                  {item.kind === 'pending_deal' && item.status === 'approved' && (
+                    <button
+                      onClick={() => handleAddDealToCart(item.id)}
+                      className="text-[10px] px-2 py-0.5 rounded border border-blue-700 text-blue-300 hover:bg-blue-900/30"
+                    >
+                      {t('chat.proposeDeal.addToCart')}
+                    </button>
+                  )}
                   {item.status !== 'pending' ? (
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
                       item.status === 'completed' ? 'border-green-600/50 text-green-400' :
