@@ -5,8 +5,14 @@ import type { ActionItem } from '../types';
 export interface ActionPayload {
   type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder';
   messageKey?: string;
+  // R-INTELLIGENCE-PENDING-DEAL-V1: optional dynamic message text for cases
+  // where the static messageKey templates can't carry per-instance details
+  // (e.g., a deal's product name + price). When present, executor uses this
+  // verbatim; messageKey path remains the default for existing callers.
+  customMessage?: string;
   customerName?: string;
   customerId?: string;
+  customerPhone?: string;
   sku?: string;
   executable: boolean;
   executionTarget:

@@ -110,7 +110,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       review:   'manual_review',
     } as const;
     return createAutomationItem({
-      kind: kindMap[action.actionType ?? 'review'],
+      // R-INTELLIGENCE-PENDING-DEAL-V1: queueKind overrides the default
+      // actionType→kind map (e.g., 'pending_deal' instead of 'whatsapp_reconnect').
+      kind: action.queueKind ?? kindMap[action.actionType ?? 'review'],
       label: action.label,
       customerId: action.payload.customerId,
       customerName: action.payload.customerName,

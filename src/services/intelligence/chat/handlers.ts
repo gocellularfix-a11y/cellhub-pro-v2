@@ -12,7 +12,11 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
 import type { ActionType, ActionQueueItem } from '../types';
 import type { ActionPayload } from '../actions/actionEngine';
+import type { AutomationKind } from '../automation/automationQueue';
 import { buildActionPayload } from '../actions/actionEngine';
+// R-INTELLIGENCE-PENDING-DEAL-V1: deterministic deal builder for owner-mediated
+// offer drafting. Pure helper — no mutation, no cart writes.
+import { buildPendingDeal } from '../deals/dealEngine';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
@@ -62,6 +66,11 @@ export interface ChatActionUI {
   label: string;
   actionType?: ActionType;
   payload: ActionPayload;
+  // R-INTELLIGENCE-PENDING-DEAL-V1: optional override so a chat action gets
+  // queued under a specific AutomationKind instead of the default actionType
+  // → kind map. Used for 'pending_deal' so deal drafts don't get bucketed as
+  // generic whatsapp_reconnect items.
+  queueKind?: AutomationKind;
 }
 
 export interface ChatResponse {
@@ -101,6 +110,9 @@ export function handleIntent(
 
     case 'action_learning':
       return handleActionLearning(engine, lang);
+
+    case 'propose_deal':
+      return handleProposeDeal(match, engine, lang);
 
     case 'today_summary':
       return handleTodaySummary(engine, lang);
@@ -718,6 +730,130 @@ function handleActionLearning(engine: IntelligenceEngine, lang: Lang3): ChatResp
     t(recKey[r.recommendation]),
   ];
   return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Propose Deal (R-INTELLIGENCE-PENDING-DEAL-V1) ───────────
+// Owner-mediated deal drafting:
+//   query → parse customer + product + price → buildPendingDeal → guard →
+//   ChatActionUI(approve / cancel). Approval opens WhatsApp with the offer
+//   text; the owner sends manually. NO cart write, NO inventory mutation,
+//   NO checkout — guards (no_inventory_match, below_cost) short-circuit
+//   before any queue item is created.
+function handleProposeDeal(
+  match: IntentMatch,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const t = tChat(lang);
+  const rawQuery = (match.query || '').toLowerCase();
+
+  // Extract proposed price — first $-prefixed or bare decimal number.
+  const priceMatch = rawQuery.match(/\$?\s*(\d+(?:\.\d{1,2})?)/);
+  if (!priceMatch) {
+    return { kind: 'error', text: t('chat.proposeDeal.missingPrice') };
+  }
+  const proposedPriceCents = Math.round(parseFloat(priceMatch[1]) * 100);
+  if (proposedPriceCents <= 0) {
+    return { kind: 'error', text: t('chat.proposeDeal.missingPrice') };
+  }
+
+  // Resolve customer — substring match against full name; fallback to first
+  // name as a word-boundary match (avoids "Ana" matching "Banana").
+  const customers = engine.getCustomers();
+  const customerMatches = customers.filter((c) => {
+    const name = (c.name || '').toLowerCase().trim();
+    if (!name) return false;
+    if (rawQuery.includes(name)) return true;
+    const first = name.split(' ')[0] || '';
+    if (first.length < 3) return false;
+    const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(rawQuery);
+  });
+  if (customerMatches.length === 0) {
+    return { kind: 'error', text: t('chat.proposeDeal.missingCustomer') };
+  }
+  if (customerMatches.length > 1) {
+    return {
+      kind: 'disambiguation',
+      text: t(
+        'chat.proposeDeal.ambiguousCustomer',
+        customerMatches.slice(0, 5).map((c) => c.name).join(', '),
+      ),
+    };
+  }
+  const customer = customerMatches[0];
+
+  // Resolve product — substring match against name; fallback to sku.
+  const inventory = engine.getInventory();
+  const itemMatches = inventory.filter((i) => {
+    const name = (i.name || '').toLowerCase().trim();
+    if (!name) return false;
+    return rawQuery.includes(name);
+  });
+  if (itemMatches.length === 0) {
+    const skuMatches = inventory.filter((i) => {
+      const sku = ((i as { sku?: string }).sku || '').toLowerCase().trim();
+      return !!sku && rawQuery.includes(sku);
+    });
+    if (skuMatches.length === 1) itemMatches.push(skuMatches[0]);
+  }
+  if (itemMatches.length === 0) {
+    return { kind: 'error', text: t('chat.proposeDeal.missingProduct') };
+  }
+  if (itemMatches.length > 1) {
+    return {
+      kind: 'disambiguation',
+      text: t(
+        'chat.proposeDeal.ambiguousProduct',
+        itemMatches.slice(0, 5).map((i) => i.name).join(', '),
+      ),
+    };
+  }
+  const item = itemMatches[0];
+
+  const deal = buildPendingDeal(
+    { customerId: customer.id, inventoryId: item.id, proposedPriceCents },
+    engine,
+  );
+
+  if (deal.guardResult === 'no_inventory_match') {
+    return { kind: 'error', text: t('chat.proposeDeal.noInventory') };
+  }
+  if (deal.guardResult === 'below_cost') {
+    return {
+      kind: 'error',
+      text: t('chat.proposeDeal.belowCost', COP(deal.costCentsAtDraft || 0)),
+    };
+  }
+
+  const action: ChatActionUI = {
+    id: `deal-${Date.now()}-${customer.id}`,
+    label: t('chat.proposeDeal.approveLabel', customer.name),
+    actionType: 'whatsapp',
+    queueKind: 'pending_deal',
+    payload: {
+      type: 'whatsapp',
+      customMessage: deal.offerText,
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPhone: (customer as { phone?: string }).phone,
+      executable: true,
+      executionTarget: 'whatsapp_url',
+    },
+  };
+
+  const draftText = t(
+    'chat.proposeDeal.draft',
+    customer.name, item.name,
+    COP(deal.originalPriceCents), COP(deal.proposedPriceCents),
+    deal.offerText,
+  );
+
+  return {
+    kind: 'answer',
+    text: `${t('chat.proposeDeal.header')}\n\n${draftText}`,
+    actions: [action],
+  };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────

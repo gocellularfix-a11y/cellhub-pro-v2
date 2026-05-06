@@ -175,18 +175,32 @@ function buildMessage(messageKey: string, customerName?: string): string {
 export function executeActionPayload(payload: ActionPayload): ExecutionResult {
   switch (payload.executionTarget) {
     case 'whatsapp_url': {
-      if (!payload.messageKey) {
-        return { ok: false, reason: 'missing_template' };
-      }
       if (!payload.customerName && !payload.customerId) {
         return { ok: false, reason: 'missing_customer' };
       }
-      const text = buildMessage(payload.messageKey, payload.customerName);
-      if (!text || text.trim().length === 0) {
-        return { ok: false, reason: 'missing_template' };
+      // R-INTELLIGENCE-PENDING-DEAL-V1: customMessage overrides the static
+      // template path. Existing callers (no customMessage) continue to use
+      // messageKey + buildMessage exactly as before.
+      let text: string;
+      if (payload.customMessage && payload.customMessage.trim().length > 0) {
+        text = payload.customMessage;
+      } else {
+        if (!payload.messageKey) {
+          return { ok: false, reason: 'missing_template' };
+        }
+        text = buildMessage(payload.messageKey, payload.customerName);
+        if (!text || text.trim().length === 0) {
+          return { ok: false, reason: 'missing_template' };
+        }
       }
       const encoded = encodeURIComponent(text);
-      const url = `https://wa.me/?text=${encoded}`;
+      // Honor customer phone when provided — opens chat directly with that
+      // number instead of the generic recipient picker.
+      const phoneDigits = (payload.customerPhone || '').replace(/\D/g, '');
+      const phoneSegment = phoneDigits.length === 10 ? `1${phoneDigits}` : phoneDigits;
+      const url = phoneSegment
+        ? `https://wa.me/${phoneSegment}?text=${encoded}`
+        : `https://wa.me/?text=${encoded}`;
       appendExecutionLog(payload);
       return { ok: true, type: 'whatsapp_url', url };
     }

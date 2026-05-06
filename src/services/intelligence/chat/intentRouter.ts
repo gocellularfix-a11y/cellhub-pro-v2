@@ -29,6 +29,7 @@ export type IntentId =
   | 'daily_brief'
   | 'action_impact'
   | 'action_learning'
+  | 'propose_deal'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -183,6 +184,18 @@ const ACTION_IMPACT_KEYWORDS = [
   // PT
   'resultado ações', 'resultado de ações', 'impacto ações',
   'quanto as ações geraram',
+];
+
+// R-INTELLIGENCE-PENDING-DEAL-V1: anchored phrasing for owner-mediated deal
+// drafting. Trigger phrase is followed by customer name + product + price
+// in the user's free-form query — handler does the parsing.
+const PROPOSE_DEAL_KEYWORDS = [
+  // EN
+  'propose deal', 'make offer', 'send offer', 'offer deal',
+  // ES
+  'hacer oferta', 'proponer oferta', 'mandar oferta', 'ofertar',
+  // PT
+  'fazer oferta', 'propor oferta', 'enviar oferta',
 ];
 
 // R-INTELLIGENCE-LEARNING-LOOP-V1: anchored phrasing for "what's working"
@@ -579,6 +592,8 @@ export function classifyIntent(
     { id: 'action_impact', score: scoreKeywords(query, ACTION_IMPACT_KEYWORDS) },
     // R-INTELLIGENCE-LEARNING-LOOP-V1: deterministic "what's working" classifier.
     { id: 'action_learning', score: scoreKeywords(query, ACTION_LEARNING_KEYWORDS) },
+    // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated offer drafting.
+    { id: 'propose_deal', score: scoreKeywords(query, PROPOSE_DEAL_KEYWORDS) },
     // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data query — runs AFTER
     // the high-priority specific intents above and BEFORE customer_history
     // and sales_summary so operational metrics ("low stock", "ready repairs",
@@ -632,10 +647,16 @@ export function classifyIntent(
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
 
+  // R-INTELLIGENCE-PENDING-DEAL-V1: pass raw query so the handler can parse
+  // customer + product + price (deterministic substring + digit scan).
+  if (winner.id === 'propose_deal') {
+    result.query = rawQuery;
+  }
+
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -663,7 +684,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,

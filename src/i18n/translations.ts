@@ -5217,6 +5217,42 @@ export const translations: TranslationDictionary = {
   'chat.actionLearning.working':          { en: 'Your actions are working. Keep using customer outreach — it is producing revenue.',                   es: 'Tus acciones están funcionando. Sigue usando el contacto con clientes — está generando ingresos.',       pt: 'Suas ações estão funcionando. Continue usando o contato com clientes — está gerando receita.' },
   'chat.actionLearning.keepContacting':   { en: 'Some actions are working. Keep contacting customers and watch conversion rate.',                      es: 'Algunas acciones están funcionando. Sigue contactando clientes y observa la tasa de conversión.',        pt: 'Algumas ações estão funcionando. Continue contatando clientes e observe a taxa de conversão.' },
 
+  // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated deal drafting. Approval
+  // opens WhatsApp with the offer text; owner sends manually.
+  'chat.proposeDeal.header':              { en: '💼 Pending deal draft', es: '💼 Borrador de oferta pendiente', pt: '💼 Rascunho de oferta pendente' },
+  'chat.proposeDeal.draft': {
+    en: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Customer: ${customer}\nProduct: ${product}\nOriginal: ${original} → Offer: ${proposed}\n\nMessage:\n"${offer}"`,
+    es: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Cliente: ${customer}\nProducto: ${product}\nOriginal: ${original} → Oferta: ${proposed}\n\nMensaje:\n"${offer}"`,
+    pt: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Cliente: ${customer}\nProduto: ${product}\nOriginal: ${original} → Oferta: ${proposed}\n\nMensagem:\n"${offer}"`,
+  },
+  'chat.proposeDeal.approveLabel': {
+    en: (customer: string) => `Send offer to ${customer}`,
+    es: (customer: string) => `Enviar oferta a ${customer}`,
+    pt: (customer: string) => `Enviar oferta para ${customer}`,
+  },
+  'chat.proposeDeal.belowCost': {
+    en: (cost: string) => `Proposed price is below cost (${cost}). Deal not created.`,
+    es: (cost: string) => `El precio propuesto está debajo del costo (${cost}). Oferta no creada.`,
+    pt: (cost: string) => `Preço proposto está abaixo do custo (${cost}). Oferta não criada.`,
+  },
+  'chat.proposeDeal.noInventory':         { en: 'Could not resolve customer or product. Deal not created.', es: 'No se pudo resolver cliente o producto. Oferta no creada.', pt: 'Não foi possível resolver cliente ou produto. Oferta não criada.' },
+  'chat.proposeDeal.missingPrice':        { en: 'Add a price to the offer (e.g., "make offer to John for case at 25").', es: 'Incluye un precio en la oferta (ej.: "hacer oferta a Juan por case a 25").', pt: 'Inclua um preço na oferta (ex.: "fazer oferta para João por case a 25").' },
+  'chat.proposeDeal.missingCustomer':     { en: 'Could not find a matching customer in your message.', es: 'No se encontró un cliente que coincida en tu mensaje.', pt: 'Nenhum cliente correspondente encontrado na sua mensagem.' },
+  'chat.proposeDeal.ambiguousCustomer': {
+    en: (names: string) => `Multiple customers match (${names}). Use a more specific name.`,
+    es: (names: string) => `Varios clientes coinciden (${names}). Usa un nombre más específico.`,
+    pt: (names: string) => `Vários clientes correspondem (${names}). Use um nome mais específico.`,
+  },
+  'chat.proposeDeal.missingProduct':      { en: 'Could not find a matching product in your message.', es: 'No se encontró un producto que coincida en tu mensaje.', pt: 'Nenhum produto correspondente encontrado na sua mensagem.' },
+  'chat.proposeDeal.ambiguousProduct': {
+    en: (names: string) => `Multiple products match (${names}). Use a more specific product name.`,
+    es: (names: string) => `Varios productos coinciden (${names}). Usa un nombre de producto más específico.`,
+    pt: (names: string) => `Vários produtos correspondem (${names}). Use um nome de produto mais específico.`,
+  },
+
   // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
   'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
   'chat.followup.because':               {

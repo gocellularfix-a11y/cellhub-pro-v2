@@ -16,7 +16,10 @@ export type AutomationKind =
   | 'discount_review'
   | 'bundle_review'
   | 'reminder_followup'
-  | 'manual_review';
+  | 'manual_review'
+  // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated deal draft. Approval opens
+  // WhatsApp with the deal's offer text; outcome marked manually by owner.
+  | 'pending_deal';
 
 export interface AutomationExecutionLog {
   executedAt: string;
