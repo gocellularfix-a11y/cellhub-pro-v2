@@ -10,7 +10,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer, CartItem } from '@/store/types';
-import { classifyIntent, isFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
+import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
+import type { OperationalContext } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
@@ -89,6 +90,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // short follow-ups ("why?", "qué hago", "explica") can re-use its
   // context instead of running classifyIntent over a generic phrase.
   const lastIntentRef = useRef<{ intentId: string; query: string; responseText: string; ts: number } | null>(null);
+  // R-INTELLIGENCE-CONTEXT-MEMORY-V1: session-only operational context
+  // (max depth 1). Populated when a context-establishing handler returns
+  // ChatResponse.establishesContext + non-error kind. Read by the
+  // enrichFollowUpQuery rewrite step below. Ref-based (no re-render),
+  // not persisted, not synced — a page refresh clears it. O(1) read.
+  const operationalContextRef = useRef<OperationalContext | null>(null);
 
   // Auto-submit when parent fires a quick-action chip.
   const engineRef = useRef(engine);
@@ -170,7 +177,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       response = handleFollowUp(lastIntentRef.current, engineRef.current, langRef.current);
       matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
     } else {
-      const match = classifyIntent(query, customersRef.current, langRef.current);
+      // R-INTELLIGENCE-CONTEXT-MEMORY-V1: deterministic operational
+      // follow-up enrichment. If the raw query matches a known vague
+      // follow-up pattern AND we have an active context (depth 1),
+      // rewrite the query into a fully-specified one BEFORE classify.
+      // O(1) over a small fixed rule list. Pure, no AI, no I/O.
+      const enrichedQuery = enrichFollowUpQuery(query, operationalContextRef.current);
+      const queryToRoute = enrichedQuery ?? query;
+      const match = classifyIntent(queryToRoute, customersRef.current, langRef.current);
       response = handleIntent(match, engineRef.current, langRef.current);
       matchedIntentId = match.id;
     }
@@ -186,6 +200,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     lastResponseRef.current = { text: response.text, ts: now };
     // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: store last intent for next follow-up.
     lastIntentRef.current = { intentId: matchedIntentId, query, responseText: response.text, ts: now };
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: capture operational context only
+    // on successful actionable responses (kind !== 'error'). Replace any
+    // prior context — depth-1 single-slot, session-only, no persistence.
+    if (response.establishesContext && response.kind !== 'error') {
+      operationalContextRef.current = {
+        type: response.establishesContext.type,
+        value: response.establishesContext.value,
+        timestamp: now,
+      };
+    }
     clearActionFeedback();
     if (response.actions?.length) {
       addAutomationItems(response.actions.map(createQueueItemFromChatAction));

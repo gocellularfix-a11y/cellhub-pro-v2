@@ -523,6 +523,83 @@ export function isFollowUpQuery(query: string): boolean {
   return FOLLOWUP_PHRASES.has(normalize(query));
 }
 
+// R-INTELLIGENCE-CONTEXT-MEMORY-V1 ──────────────────────────────
+// Lightweight session-only operational context. Pure type + a
+// deterministic rewrite helper — NO AI, NO embeddings, NO learning,
+// NO persistence, NO background work. The chat module owns ONE active
+// context (max depth 1) in a ref, populated whenever a context-
+// establishing handler runs. This helper rewrites vague follow-ups
+// like "promote it" or "what about accessories" into fully-specified
+// queries so the existing intent classifier can route them normally.
+//
+// Type union supports product / customer / deal / category / repair
+// per spec. V1 rewrite rules only target product context (most useful
+// follow-up surface); other types are harmless no-ops here.
+
+export interface OperationalContext {
+  type: 'product' | 'customer' | 'deal' | 'category' | 'repair';
+  value: string;
+  timestamp: number;
+}
+
+const CONTEXT_FOLLOWUP_RULES: Array<{
+  test: (normalized: string) => boolean;
+  applies: (ctx: OperationalContext) => boolean;
+  template: (ctx: OperationalContext) => string;
+}> = [
+  // Accessories follow-up — products only.
+  // EN/ES/PT in one rule for compactness.
+  {
+    test: (q) =>
+      /^(what about|and) (accessor|case|charger)/i.test(q) ||
+      /^(qu[eé] tal|y los?) (accesorio|case|cargador)/i.test(q) ||
+      /^(que tal|e os) (acess[oó]rio|case|carregador)/i.test(q),
+    applies: (c) => c.type === 'product',
+    template: (c) => `promote accessories for ${c.value}`,
+  },
+  // Re-promote / "show me more" / "who else" — products only.
+  {
+    test: (q) =>
+      /^(promote it|push it|sell it|show another|anything else|who else|send to more|anyone else|more customers)\b/i.test(q) ||
+      /^(prom[oó]cionalo|prom[oó]vela|v[eé]ndelo|qui[eé]n m[aá]s|m[aá]ndale a m[aá]s|otro|algo m[aá]s|m[aá]s clientes)\b/i.test(q) ||
+      /^(promova|venda|quem mais|envie para mais|outro|algo mais|mais clientes)\b/i.test(q),
+    applies: (c) => c.type === 'product',
+    template: (c) => `promote ${c.value}`,
+  },
+  // Discount follow-up — products only.
+  {
+    test: (q) =>
+      /^(discount it|put a discount|lower the price)\b/i.test(q) ||
+      /^(descu[eé]ntalo|baja el precio|hazle un descuento)\b/i.test(q) ||
+      /^(d[eê] desconto|baixe o pre[cç]o)\b/i.test(q),
+    applies: (c) => c.type === 'product',
+    template: (c) => `discount ${c.value}`,
+  },
+];
+
+/**
+ * Deterministic follow-up enrichment. Returns a rewritten query string
+ * when the raw query matches a known operational follow-up pattern AND
+ * the active context applies; returns null otherwise.
+ *
+ * Pure — no I/O, no clock reads, no state mutation. O(1) over a small
+ * fixed rule list.
+ */
+export function enrichFollowUpQuery(
+  rawQuery: string,
+  context: OperationalContext | null,
+): string | null {
+  if (!context) return null;
+  const q = normalize(rawQuery);
+  if (!q) return null;
+  for (const rule of CONTEXT_FOLLOWUP_RULES) {
+    if (rule.test(q) && rule.applies(context)) {
+      return rule.template(context);
+    }
+  }
+  return null;
+}
+
 // Count how many keywords from a bank appear in the query.
 function scoreKeywords(query: string, keywords: string[]): number {
   let hits = 0;

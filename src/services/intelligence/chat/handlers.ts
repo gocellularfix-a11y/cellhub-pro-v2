@@ -9,7 +9,7 @@
 // ============================================================
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
-import type { IntentMatch } from './intentRouter';
+import type { IntentMatch, OperationalContext } from './intentRouter';
 import type { ActionType, ActionQueueItem } from '../types';
 import type { ActionPayload } from '../actions/actionEngine';
 import type { AutomationKind } from '../automation/automationQueue';
@@ -84,6 +84,12 @@ export interface ChatResponse {
   text: string;
   kind: 'answer' | 'disambiguation' | 'error' | 'help';
   actions?: ChatActionUI[];
+  // R-INTELLIGENCE-CONTEXT-MEMORY-V1: optional hint that this response
+  // established an actionable entity worth remembering for the NEXT
+  // user turn (e.g., the product the owner just asked about). The chat
+  // shell stamps a timestamp and stores at depth-1; handlers stay
+  // clock-agnostic. Pure data; no behavior change for existing callers.
+  establishesContext?: { type: OperationalContext['type']; value: string };
 }
 
 export function handleIntent(
@@ -349,6 +355,11 @@ function handleCustomerHistory(
   return {
     kind: 'answer',
     text: summarizeCustomerHistory(history, es ? 'es' : 'en'),
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: stamp customer so vague follow-ups
+    // (e.g., "show another", "anything else") can resolve back to this
+    // customer on the next turn. V1 enrichment rules only target product
+    // context; customer context is recorded for symmetry / future use.
+    establishesContext: { type: 'customer', value: match.matchedCustomer.name },
   };
 }
 
@@ -864,6 +875,11 @@ function handleProposeDeal(
     kind: 'answer',
     text: `${t('chat.proposeDeal.header')}\n\n${draftText}`,
     actions: [action],
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: a successfully drafted deal
+    // establishes the product as the active operational entity — the
+    // owner is now thinking about this item; vague follow-ups should
+    // route back to it.
+    establishesContext: { type: 'product', value: item.name },
   };
 }
 
@@ -1588,7 +1604,15 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
       t('chat.productPush.broaderCampaignSuggestion'),
       t('chat.productPush.fallbackPromotionAction'),
     ];
-    return { kind: 'answer', text: lines.join('\n') };
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: even when direct candidates are
+    // empty, the owner is still "thinking about" this product — stamp
+    // context so the next vague follow-up ("what about accessories?",
+    // "discount it") routes back to the same entity.
+    return {
+      kind: 'answer',
+      text: lines.join('\n'),
+      establishesContext: { type: 'product', value: productName },
+    };
   }
 
   const top = candidates.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
@@ -1624,6 +1648,10 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
   return {
     kind: 'answer',
     text: `${t('chat.productPush.header', productName, top.length)}\n\n${lines.join('\n')}\n\n${t('chat.productPush.messagePreviewLabel')}: 💬 "${previewMessage}"`,
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: stamp the product so vague
+    // follow-ups ("promote it", "what about accessories", "who else")
+    // route back to this entity on the next turn.
+    establishesContext: { type: 'product', value: productName },
   };
 }
 
