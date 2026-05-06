@@ -150,6 +150,12 @@ export const translations: TranslationDictionary = {
     es: (n: number) => `${n} más en la lista.`,
     pt: (n: number) => `${n} mais na lista.`,
   },
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: per-customer WhatsApp button label.
+  'chat.contact.waActionLabel': {
+    en: (firstName: string) => `WhatsApp ${firstName}`,
+    es: (firstName: string) => `WhatsApp ${firstName}`,
+    pt: (firstName: string) => `WhatsApp ${firstName}`,
+  },
   'chat.contact.message': { en: (name: string, days: number) => `💬 "Hi ${name}, it's been ${days} days since your last visit. Stop by when you can!"`, es: (name: string, days: number) => `💬 "Hola ${name}, han pasado ${days} días desde tu última visita. ¡Pásate cuando puedas!"`, pt: (name: string, days: number) => `💬 "Oi ${name}, faz ${days} dias desde sua última visita. Passe por aqui quando puder!"` },
   'chat.contact.overdue': { en: 'overdue', es: 'atrasado', pt: 'atrasado' },
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today_summary intent strings.
@@ -467,6 +473,12 @@ export const translations: TranslationDictionary = {
   'chat.productOps.action.discount':    { en: 'Run a clearance discount.', es: 'Aplica un descuento de liquidación.', pt: 'Faça um desconto de liquidação.' },
   'chat.productOps.action.bundle':      { en: 'Bundle with high-velocity items.', es: 'Combina con artículos de alta rotación.', pt: 'Combine com itens de alta rotatividade.' },
   'chat.productOps.action.review':      { en: 'Review supplier or pricing.', es: 'Revisa proveedor o precio.', pt: 'Revise fornecedor ou preço.' },
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: "Promote {name}" chat-replay button.
+  'chat.productOps.promoteAction': {
+    en: (name: string) => `Promote ${name}`,
+    es: (name: string) => `Promover ${name}`,
+    pt: (name: string) => `Promover ${name}`,
+  },
   'chat.reorder.days': { en: (n: number) => `${n} day${n === 1 ? '' : 's'}`, es: (n: number) => `${n} día${n === 1 ? '' : 's'}`, pt: (n: number) => `${n} dia${n === 1 ? '' : 's'}` },
   'chat.reorder.daysLessThanOne': { en: '<1 day', es: '<1 día', pt: '<1 dia' },
   'chat.reorder.empty': { en: 'Nothing on reorder alert. Stock looks healthy.', es: 'Nada en alerta de reorden. Stock saludable.', pt: 'Nada em alerta de reposição. Estoque saudável.' },

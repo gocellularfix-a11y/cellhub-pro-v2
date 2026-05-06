@@ -373,6 +373,15 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   };
 
   function handleActionClick(action: ChatActionUI) {
+    // R-INTELLIGENCE-ACTION-BUTTONS-V1: chat-replay buttons (e.g., "Promote
+    // {product}") fire a follow-up query through the SAME fireQuery
+    // pipeline the user already uses. No new execution system, no
+    // autonomous send — the button is a deterministic shortcut that
+    // re-asks the question.
+    if (action.triggerQuery && action.triggerQuery.trim().length > 0) {
+      fireQuery(action.triggerQuery);
+      return;
+    }
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
       setFeedbackForAction(action.id, `Action not available: ${result.reason}`);

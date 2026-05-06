@@ -78,6 +78,12 @@ export interface ChatActionUI {
   // click (productName, proposedPriceCents, originalPriceCents, qty, etc.).
   // Only populated for pending_deal actions.
   pendingDeal?: PendingDeal;
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: optional chat-replay hook. When set,
+  // clicking the button RE-FIRES the chat query through the existing
+  // fireQuery → classifyIntent → handleIntent pipeline (no new execution
+  // system, no autonomous send). Used by the "Promote Product" button on
+  // operator-style product opportunity responses.
+  triggerQuery?: string;
 }
 
 export interface ChatResponse {
@@ -1370,6 +1376,7 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
 
   const top = predictions.slice(0, 3);
   const remaining = Math.max(0, predictions.length - top.length);
+  const now = Date.now();
 
   const lines = top.map(p => {
     const phone = p.phone ? ` · ${p.phone}` : '';
@@ -1380,11 +1387,37 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     return `• ${p.name}${phone} — ${t('chat.contact.overdue')} ${overdue}\n  ${msg}`;
   });
 
-  const body = `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}`;
-  if (remaining > 0) {
-    return { kind: 'answer', text: `${body}\n\n${t('chat.contact.remaining', remaining)}` };
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: attach one WhatsApp action per top
+  // prediction. Reuses the EXISTING actionType='whatsapp' /
+  // executionTarget='whatsapp_url' path → executeActionPayload opens wa.me
+  // with the prepared message. Owner manually sends. No autonomous send,
+  // no new infrastructure. Customers without a phone are skipped (executor
+  // would fail "missing_customer" anyway).
+  const actions: ChatActionUI[] = [];
+  for (const p of top) {
+    if (!p.phone) continue;
+    const firstName = p.name.split(' ')[0] || p.name;
+    actions.push({
+      id: `contact-${p.customerId}-${now}`,
+      label: t('chat.contact.waActionLabel', firstName),
+      actionType: 'whatsapp',
+      payload: {
+        type: 'whatsapp',
+        customMessage: t('chat.contact.message', firstName, p.overdueByDays),
+        customerId: p.customerId,
+        customerName: p.name,
+        customerPhone: p.phone,
+        executable: true,
+        executionTarget: 'whatsapp_url',
+      },
+    });
   }
-  return { kind: 'answer', text: body };
+
+  const body = `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}`;
+  const text = remaining > 0 ? `${body}\n\n${t('chat.contact.remaining', remaining)}` : body;
+  return actions.length > 0
+    ? { kind: 'answer', text, actions }
+    : { kind: 'answer', text };
 }
 
 // ── Who to contact today (R-INTEL-WHO-TO-CONTACT-TODAY) ────
@@ -1868,7 +1901,24 @@ function handleProductOpportunities(engine: IntelligenceEngine, lang: Lang3): Ch
     lines.push(t('chat.productOps.remaining', remaining));
   }
 
-  return { kind: 'answer', text: lines.join('\n') };
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: attach a "Promote Product" button
+  // that REPLAYS the chat through the existing product_push intent. No new
+  // execution system; no autonomous send. The button reuses fireQuery →
+  // classifyIntent → handleProductPush — same path the user already gets
+  // when typing "promote {name}" manually.
+  const promoteAction: ChatActionUI = {
+    id: `promote-${top.name}-${Date.now()}`,
+    label: t('chat.productOps.promoteAction', top.name),
+    actionType: 'whatsapp',
+    triggerQuery: `promote ${top.name}`,
+    payload: {
+      type: 'whatsapp',
+      executable: true,
+      executionTarget: 'none', // chat-replay; the executor branch is bypassed
+    },
+  };
+
+  return { kind: 'answer', text: lines.join('\n'), actions: [promoteAction] };
 }
 
 // ── Dead stock root cause (R-INTEL-PHASE2C-RC) ─────────────
