@@ -5577,6 +5577,58 @@ export const translations: TranslationDictionary = {
   'chat.closeToday.why.customer_replied': { en: 'Customer replied — needs a quick read + reply.',      es: 'El cliente respondió — requiere lectura y respuesta rápida.', pt: 'Cliente respondeu — precisa de leitura e resposta rápida.' },
   'chat.closeToday.why.proposal_sent':    { en: 'Proposal sent — owner can nudge for the first reply.', es: 'Propuesta enviada — puedes empujar la primera respuesta.', pt: 'Proposta enviada — você pode incentivar a primeira resposta.' },
 
+  // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks.
+  // Read-only — no mutation, no automation, no autosend.
+  'chat.missions.headerEmpty':         { en: '🎯 Revenue Missions', es: '🎯 Misiones de Ingresos', pt: '🎯 Missões de Receita' },
+  'chat.missions.header':              { en: '🎯 Revenue Missions', es: '🎯 Misiones de Ingresos', pt: '🎯 Missões de Receita' },
+  'chat.missions.empty':               { en: 'No urgent revenue missions right now.', es: 'Sin misiones urgentes de ingresos por ahora.', pt: 'Sem missões urgentes de receita no momento.' },
+  'chat.missions.whyLabel':            { en: 'Why:',  es: 'Por qué:', pt: 'Por quê:' },
+  'chat.missions.nextLabel':           { en: 'Next:', es: 'Siguiente:', pt: 'Próximo:' },
+  'chat.missions.unknownCustomer':     { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.missions.unknownProduct':      { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // close_deal missions
+  'chat.missions.closeTitle': {
+    en: (customer: string, product: string) => `Close ${customer}'s ${product} deal`,
+    es: (customer: string, product: string) => `Cierra el trato de ${customer} por ${product}`,
+    pt: (customer: string, product: string) => `Feche o negócio de ${customer} pelo ${product}`,
+  },
+  'chat.missions.closeWhy.pending_pickup':   { en: 'Customer agreed; pickup is the only step left.',         es: 'El cliente aceptó; solo falta la recogida.',                pt: 'Cliente concordou; só falta a retirada.' },
+  'chat.missions.closeWhy.negotiating':      { en: 'Customer engaged on price — momentum still warm.',       es: 'Negociando precio — el interés sigue activo.',              pt: 'Engajado no preço — o interesse ainda está ativo.' },
+  'chat.missions.closeWhy.interested':       { en: 'Customer signaled interest and is reachable.',           es: 'Mostró interés y es contactable.',                          pt: 'Demonstrou interesse e está acessível.' },
+  'chat.missions.closeNext.pending_pickup':  { en: 'Confirm a final pickup window today.',                   es: 'Confirma una ventana final de recogida hoy.',               pt: 'Confirme uma janela final de retirada hoje.' },
+  'chat.missions.closeNext.negotiating':     { en: 'Offer one small time-bound concession; lock pickup.',    es: 'Ofrece una concesión pequeña con tiempo; cierra recogida.', pt: 'Ofereça uma concessão pequena com prazo; feche retirada.' },
+  'chat.missions.closeNext.interested':      { en: 'Send one nudge with a clear next step.',                 es: 'Envía un mensaje con un próximo paso claro.',               pt: 'Envie uma mensagem com um próximo passo claro.' },
+
+  // follow_up missions
+  'chat.missions.followupTitle': {
+    en: (customer: string) => `Follow up with ${customer}`,
+    es: (customer: string) => `Haz seguimiento con ${customer}`,
+    pt: (customer: string) => `Faça acompanhamento com ${customer}`,
+  },
+  'chat.missions.followupWhyReplied':  { en: 'Customer replied — needs a quick response.',           es: 'El cliente respondió — necesita respuesta rápida.',              pt: 'Cliente respondeu — precisa de resposta rápida.' },
+  'chat.missions.followupWhyStale':    { en: 'Proposal sent over 24h ago without a reply.',          es: 'Propuesta enviada hace más de 24h sin respuesta.',               pt: 'Proposta enviada há mais de 24h sem resposta.' },
+  'chat.missions.followupNextReplied': { en: 'Read their message and reply with a concrete offer.',  es: 'Lee su mensaje y responde con una oferta concreta.',             pt: 'Leia a mensagem e responda com uma oferta concreta.' },
+  'chat.missions.followupNextStale':   { en: 'Send one short reminder; offer a real product photo.', es: 'Envía un recordatorio breve; ofrece una foto real del producto.', pt: 'Envie um lembrete breve; ofereça uma foto real do produto.' },
+
+  // inventory_push (dead stock) mission
+  'chat.missions.deadStockTitle':      { en: 'Push aging inventory',                                 es: 'Empuja inventario sin movimiento',                                pt: 'Promova estoque parado' },
+  'chat.missions.deadStockWhy': {
+    en: (amount: string) => `Around ${amount} locked in slow-moving stock.`,
+    es: (amount: string) => `Aproximadamente ${amount} bloqueados en stock sin movimiento.`,
+    pt: (amount: string) => `Cerca de ${amount} parados em estoque sem movimento.`,
+  },
+  'chat.missions.deadStockNext':       { en: 'Run a clearance promo or bundle pricing today.',       es: 'Lanza una promoción de liquidación o precio combo hoy.',         pt: 'Faça uma promoção de liquidação ou combo hoje.' },
+
+  // customer_reactivation mission
+  'chat.missions.outreachTitle': {
+    en: (n: number) => `Reach ${n} high-value customers`,
+    es: (n: number) => `Contacta a ${n} clientes valiosos`,
+    pt: (n: number) => `Contate ${n} clientes valiosos`,
+  },
+  'chat.missions.outreachWhy':         { en: 'Several customers are due for outreach today.',         es: 'Varios clientes están listos para contactar hoy.',                pt: 'Vários clientes estão prontos para contato hoje.' },
+  'chat.missions.outreachNext':        { en: 'Send WhatsApp follow-up offers from the cards above.', es: 'Envía ofertas por WhatsApp desde las tarjetas de arriba.',        pt: 'Envie ofertas pelo WhatsApp pelos cards acima.' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },

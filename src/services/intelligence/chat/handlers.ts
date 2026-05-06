@@ -190,6 +190,9 @@ export function handleIntent(
     case 'close_today':
       return handleCloseToday(lang);
 
+    case 'daily_revenue_missions':
+      return handleDailyRevenueMissions(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1880,6 +1883,103 @@ function handleCloseToday(lang: Lang3): ChatResponse {
     if (i < top.length - 1) lines.push('');
   });
 
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Daily Revenue Missions (R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1)
+// Composes top-7 money-making tasks from existing pipeline + follow-up
+// + engine signals. READ-ONLY — no mutations, no autonomous actions,
+// no automation/queue writes, no WhatsApp drafts, no POS/cart/checkout.
+function handleDailyRevenueMissions(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  type Mission = { priority: number; title: string; why: string; nextAction: string };
+  const missions: Mission[] = [];
+  const now = Date.now();
+  const HOUR_24 = 24 * 60 * 60 * 1000;
+
+  // Source A: Active pipeline deals worth closing today.
+  try {
+    const pipeline = getDealPipeline();
+    const stagePri: Record<string, number> = {
+      pending_pickup: 100,
+      negotiating:    80,
+      interested:     60,
+    };
+    for (const d of pipeline) {
+      const pri = stagePri[d.stage];
+      if (!pri) continue; // skip won/lost/proposal_sent/etc
+      const customer = d.customerName || d.customerPhone || t('chat.missions.unknownCustomer');
+      const product = d.productName || t('chat.missions.unknownProduct');
+      missions.push({
+        priority: pri,
+        title: t('chat.missions.closeTitle', customer, product),
+        why: t(`chat.missions.closeWhy.${d.stage}`),
+        nextAction: t(`chat.missions.closeNext.${d.stage}`),
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source B: Open follow-ups (replied → highest, stale > 24h → next).
+  try {
+    const followups = getProposalFollowups();
+    for (const f of followups) {
+      if (f.status === 'won' || f.status === 'lost' || f.status === 'no_response') continue;
+      const replied = f.status === 'replied' || f.status === 'interested';
+      const stale = f.status === 'sent' && (now - f.sentAt) > HOUR_24;
+      if (!replied && !stale) continue;
+      const customer = f.customerName || f.customerPhone || t('chat.missions.unknownCustomer');
+      missions.push({
+        priority: replied ? 70 : 50,
+        title: t('chat.missions.followupTitle', customer),
+        why: replied ? t('chat.missions.followupWhyReplied') : t('chat.missions.followupWhyStale'),
+        nextAction: replied ? t('chat.missions.followupNextReplied') : t('chat.missions.followupNextStale'),
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source C: Dead-stock push (when locked >= $100).
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      missions.push({
+        priority: 40,
+        title: t('chat.missions.deadStockTitle'),
+        why: t('chat.missions.deadStockWhy', COP(dead)),
+        nextAction: t('chat.missions.deadStockNext'),
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source D: Customer reactivation (>= 2 outreach candidates).
+  try {
+    const candidates = engine.buildOutreachQueueItems();
+    if (candidates.length >= 2) {
+      missions.push({
+        priority: 35,
+        title: t('chat.missions.outreachTitle', candidates.length),
+        why: t('chat.missions.outreachWhy'),
+        nextAction: t('chat.missions.outreachNext'),
+      });
+    }
+  } catch { /* skip */ }
+
+  if (missions.length === 0) {
+    return { kind: 'answer', text: `${t('chat.missions.headerEmpty')}\n\n${t('chat.missions.empty')}` };
+  }
+
+  missions.sort((a, b) => b.priority - a.priority);
+  const top = missions.slice(0, 7);
+
+  const lines: string[] = [];
+  lines.push(t('chat.missions.header'));
+  lines.push('');
+  top.forEach((m, i) => {
+    lines.push(`${i + 1}. ${m.title}`);
+    lines.push(`   ${t('chat.missions.whyLabel')} ${m.why}`);
+    lines.push(`   ${t('chat.missions.nextLabel')} ${m.nextAction}`);
+    if (i < top.length - 1) lines.push('');
+  });
   return { kind: 'answer', text: lines.join('\n') };
 }
 
