@@ -5552,6 +5552,31 @@ export const translations: TranslationDictionary = {
   'chat.dealPipeline.markNoMatch':       { en: "Couldn't match an open deal to that customer name.", es: 'No se pudo encontrar un trato abierto con ese nombre de cliente.', pt: 'Não foi possível encontrar um negócio aberto com esse nome de cliente.' },
   'chat.dealPipeline.markHowTo':         { en: 'Try: "mark Juan deal won" or "mark Maria deal pending pickup".', es: 'Prueba: "marcar trato de Juan ganado" o "Maria trato pendiente de recogida".', pt: 'Tente: "marcar negócio do João ganho" ou "Maria negócio aguardando retirada".' },
 
+  // R-INTELLIGENCE-CLOSE-TODAY-V1: deterministic close-likelihood ranker.
+  // Read-only — Next-move strings reuse the existing
+  // chat.dealPipeline.move.{stage} keys (one source of truth).
+  'chat.closeToday.headerEmpty':       { en: '🔥 Close Today', es: '🔥 Cerrar Hoy', pt: '🔥 Fechar Hoje' },
+  'chat.closeToday.header':            { en: '🔥 Close Today', es: '🔥 Cerrar Hoy', pt: '🔥 Fechar Hoje' },
+  'chat.closeToday.empty':             { en: 'No active deals ready to close. Send a product proposal first.', es: 'Sin tratos activos listos para cerrar. Envía una propuesta primero.', pt: 'Sem negócios ativos prontos para fechar. Envie uma proposta primeiro.' },
+  'chat.closeToday.likelihoodLabel':   { en: 'Likelihood:', es: 'Probabilidad:', pt: 'Probabilidade:' },
+  'chat.closeToday.whyLabel':          { en: 'Why:',        es: 'Por qué:',     pt: 'Por quê:' },
+  'chat.closeToday.nextLabel':         { en: 'Next:',       es: 'Siguiente:',   pt: 'Próximo:' },
+  'chat.closeToday.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.closeToday.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // Likelihood labels.
+  'chat.closeToday.label.high':        { en: 'High',   es: 'Alta',   pt: 'Alta' },
+  'chat.closeToday.label.medium':      { en: 'Medium', es: 'Media',  pt: 'Média' },
+  'chat.closeToday.label.low':         { en: 'Low',    es: 'Baja',   pt: 'Baixa' },
+
+  // WHY-it-can-close, one per active stage.
+  'chat.closeToday.why.pending_pickup':   { en: 'Customer agreed; pickup is the only remaining step.', es: 'El cliente aceptó; solo falta la recogida.',                pt: 'Cliente concordou; só falta a retirada.' },
+  'chat.closeToday.why.pending_approval': { en: 'Awaiting your approval before final close.',          es: 'Esperando tu aprobación antes del cierre final.',           pt: 'Aguardando sua aprovação antes do fechamento final.' },
+  'chat.closeToday.why.negotiating':      { en: 'Customer engaged on price — momentum still warm.',    es: 'El cliente está negociando precio — el interés sigue activo.', pt: 'Cliente engajado no preço — o interesse ainda está ativo.' },
+  'chat.closeToday.why.interested':       { en: 'Customer signaled interest and is reachable.',        es: 'El cliente mostró interés y es contactable.',               pt: 'Cliente demonstrou interesse e está acessível.' },
+  'chat.closeToday.why.customer_replied': { en: 'Customer replied — needs a quick read + reply.',      es: 'El cliente respondió — requiere lectura y respuesta rápida.', pt: 'Cliente respondeu — precisa de leitura e resposta rápida.' },
+  'chat.closeToday.why.proposal_sent':    { en: 'Proposal sent — owner can nudge for the first reply.', es: 'Propuesta enviada — puedes empujar la primera respuesta.', pt: 'Proposta enviada — você pode incentivar a primeira resposta.' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },

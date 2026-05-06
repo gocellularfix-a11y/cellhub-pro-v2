@@ -187,6 +187,9 @@ export function handleIntent(
     case 'mark_deal_stage':
       return handleMarkDealStage(match, lang);
 
+    case 'close_today':
+      return handleCloseToday(lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1813,6 +1816,71 @@ function handleMarkDealStage(match: IntentMatch, lang: Lang3): ChatResponse {
     kind: 'answer',
     text: t('chat.dealPipeline.markedHeader', customer, t(`chat.dealPipeline.stage.${parsed.stage}`)),
   };
+}
+
+// ── Close Today (R-INTELLIGENCE-CLOSE-TODAY-V1) ──────────────
+// Deterministic ranker for active deals most likely to close today.
+// READ-ONLY — does not mutate the pipeline, does not create follow-ups,
+// does not create WhatsApp actions, does not touch POS/cart/checkout.
+function handleCloseToday(lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const all = getDealPipeline();
+  const active = all.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+  if (active.length === 0) {
+    return { kind: 'answer', text: `${t('chat.closeToday.headerEmpty')}\n\n${t('chat.closeToday.empty')}` };
+  }
+
+  // Stage-base scores per spec.
+  const STAGE_BASE: Record<string, number> = {
+    pending_pickup:    100,
+    pending_approval:  85,
+    negotiating:       70,
+    interested:        55,
+    customer_replied:  45,
+    proposal_sent:     25,
+  };
+  // Buying-language regex — matches the spec's example phrases plus
+  // common close cues. EN/ES/PT.
+  const BUYING_PATTERN = /\b(take it|i'?ll take it|lo quiero|quiero|me interesa|how much|lowest|today|ahorita|voy|pickup|pick it up|hoy)\b/i;
+  const now = Date.now();
+  const HOUR_24 = 24 * 60 * 60 * 1000;
+  const HOUR_72 = 72 * 60 * 60 * 1000;
+  const DAY_7   = 7  * 24 * 60 * 60 * 1000;
+
+  const scored = active.map((d) => {
+    let score = STAGE_BASE[d.stage] || 0;
+    if (d.customerPhone && d.customerPhone.trim()) score += 15;
+    if (d.lastReplyText && d.lastReplyText.trim()) score += 15;
+    if (d.lastReplyText && BUYING_PATTERN.test(d.lastReplyText)) score += 20;
+    if ((now - d.updatedAt) < HOUR_24) score += 20;
+    if ((now - d.createdAt) < HOUR_72) score += 10;
+    if ((now - d.createdAt) > DAY_7 && !d.lastReplyText) score -= 30;
+    return { deal: d, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, 5);
+
+  const labelFor = (s: number): 'high' | 'medium' | 'low' =>
+    s >= 90 ? 'high' : s >= 60 ? 'medium' : 'low';
+
+  const lines: string[] = [];
+  lines.push(t('chat.closeToday.header'));
+  lines.push('');
+  top.forEach(({ deal: d, score }, i) => {
+    const customer = d.customerName || d.customerPhone || t('chat.closeToday.unknownCustomer');
+    const product = d.productName || t('chat.closeToday.unknownProduct');
+    const lbl = labelFor(score);
+    lines.push(`${i + 1}. ${customer} · ${product}`);
+    lines.push(`   ${t('chat.closeToday.likelihoodLabel')} ${t(`chat.closeToday.label.${lbl}`)}`);
+    lines.push(`   ${t('chat.closeToday.whyLabel')} ${t(`chat.closeToday.why.${d.stage}`)}`);
+    // Reuse the existing chat.dealPipeline.move.{stage} keys — they
+    // already cover all 6 active stages with the right operator-style
+    // next-move text.
+    lines.push(`   ${t('chat.closeToday.nextLabel')} ${t(`chat.dealPipeline.move.${d.stage}`)}`);
+    if (i < top.length - 1) lines.push('');
+  });
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // ── Daily Brief (R-DAILY-BRIEF-HANDLER-V1) ──────────────────
