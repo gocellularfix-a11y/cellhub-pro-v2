@@ -632,14 +632,23 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     }
   }
 
+  // R-RECEIPT-HYBRID-DISCOUNT-DISPLAY-V1: render the ORIGINAL line amount
+  // (so the customer sees the anchored price + the savings call-out) and
+  // attach a small inline "Discount Applied: -$X" annotation directly
+  // under the price column when this line received a per-item allocation.
+  // Subtotal still shows the post-discount value (`subtotalAfterDiscount`)
+  // so there's no separate "Discount" row that would visually double-count.
+  // perItemDiscount allocation reused verbatim from the prior round.
   const itemRows = sale.items.map((item) => {
     const lineTotal = item.price * item.qty;
     const share = perItemDiscount[item.id] || 0;
-    const effective = lineTotal - share;
+    const discountAnnotation = share > 0
+      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(share)}</span>`
+      : '';
     return `
     <tr>
       <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${item.imei ? `<br><small style="color:#666;font-family:monospace">IMEI: ${escHtml(item.imei)}</small>` : ''}</td>
-      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600">${fmt(effective)}</td>
+      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(lineTotal)}${discountAnnotation}</td>
     </tr>`;
   }).join('');
 
