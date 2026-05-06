@@ -5159,6 +5159,8 @@ export const translations: TranslationDictionary = {
   'intelligence.console.closeDealsSub':        { en: 'Approved deals, fastest revenue, today commitments',          es: 'Ofertas aprobadas, ingreso más rápido, cierres de hoy',                pt: 'Ofertas aprovadas, receita mais rápida, fechamentos de hoje' },
   'intelligence.console.repairsReadyTitle':    { en: 'Repairs Ready',                                               es: 'Reparaciones Listas',                                                  pt: 'Reparos Prontos' },
   'intelligence.console.repairsReadySub':      { en: 'Recover pickup revenue, send reminders',                      es: 'Recupera ingresos de recogida, manda recordatorios',                   pt: 'Recupere receita de retirada, envie lembretes' },
+  // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: short label inline next to repair stat.
+  'intelligence.console.staleLabel':           { en: 'stale', es: 'atrasados', pt: 'atrasados' },
 
   'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
   'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },

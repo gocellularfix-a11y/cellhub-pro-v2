@@ -96,6 +96,40 @@ export default function IntelligenceModule() {
     Math.max(missedRev.slowDayLossCents, missedRev.slowHourLossCents, missedRev.deadStockLockedCents),
   [missedRev]);
 
+  // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: lightweight derived stats for
+  // the 6 operator cards. Pure useMemo over already-in-scope state — no
+  // new effects, no polling, no background. Same threshold logic the
+  // chat handlers use (handleProactiveOpportunities, today_money_map).
+  const staleRepairStats = useMemo(() => {
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let count = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      count++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    return { count, recoverable };
+  }, [repairs]);
+
+  const outreachCount = useMemo(() => {
+    try { return engine.buildOutreachQueueItems().length; }
+    catch { return 0; }
+  }, [engine]);
+
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
     if (missedRev.slowDayLossCents > 0)
@@ -237,7 +271,13 @@ export default function IntelligenceModule() {
               icon="💰"
               title={t('intelligence.console.collectMoneyTitle')}
               description={t('intelligence.console.collectMoneySub')}
-              stat={missedRev.deadStockLockedCents > 0 ? formatCurrency(missedRev.deadStockLockedCents) : undefined}
+              stat={
+                staleRepairStats.recoverable >= 2000
+                  ? formatCurrency(staleRepairStats.recoverable)
+                  : missedRev.deadStockLockedCents > 0
+                    ? formatCurrency(missedRev.deadStockLockedCents)
+                    : undefined
+              }
               accent="#10B981"
               onClick={() => fireChat('where is money stuck')}
             />
@@ -260,6 +300,7 @@ export default function IntelligenceModule() {
               icon="📞"
               title={t('intelligence.console.contactCustomers')}
               description={t('intelligence.console.contactSub')}
+              stat={outreachCount >= 2 ? String(outreachCount) : undefined}
               accent="#3B82F6"
               onClick={() => fireChipKey('intelligence.console.queryContactToday')}
             />
@@ -267,7 +308,13 @@ export default function IntelligenceModule() {
               icon="🔧"
               title={t('intelligence.console.repairsReadyTitle')}
               description={t('intelligence.console.repairsReadySub')}
-              stat={kpi.repairs.pending > 0 ? String(kpi.repairs.pending) : undefined}
+              stat={
+                kpi.repairs.pending > 0
+                  ? (staleRepairStats.count > 0
+                      ? `${kpi.repairs.pending} · ${staleRepairStats.count} ${t('intelligence.console.staleLabel')}`
+                      : String(kpi.repairs.pending))
+                  : undefined
+              }
               accent="#F59E0B"
               onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')}
             />
