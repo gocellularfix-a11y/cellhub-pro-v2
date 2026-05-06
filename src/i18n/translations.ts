@@ -5401,6 +5401,18 @@ export const translations: TranslationDictionary = {
   },
   'chat.opportunities.pendingDeals.action': { en: 'Add them to POS cart and close the sale.', es: 'Agrégalas al carrito POS y cierra la venta.', pt: 'Adicione ao carrinho POS e feche a venda.' },
 
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: action-first daily focus list.
+  // Per-priority Why/Action strings reuse the existing chat.opportunities.*
+  // keys to avoid translation duplication; these are namespace-only.
+  'chat.dailyBrief2.header':                  { en: '📋 Daily Operator Brief', es: '📋 Resumen Operativo Diario', pt: '📋 Resumo Operacional Diário' },
+  'chat.dailyBrief2.priorityLabel':           { en: 'Priority:', es: 'Prioridad:', pt: 'Prioridade:' },
+  'chat.dailyBrief2.whyLabel':                { en: 'Why:',      es: 'Por qué:',  pt: 'Por quê:' },
+  'chat.dailyBrief2.actionLabel':             { en: 'Action:',   es: 'Acción:',   pt: 'Ação:' },
+  'chat.dailyBrief2.empty':                   { en: 'Store looks stable today. Focus on fast checkout, clean follow-ups, and customer experience.', es: 'La tienda se ve estable hoy. Enfócate en checkout rápido, seguimientos limpios y experiencia del cliente.', pt: 'A loja parece estável hoje. Foque em checkout rápido, acompanhamentos limpos e experiência do cliente.' },
+  'chat.dailyBrief2.noSalesToday.title':      { en: 'Push the first sale of the day', es: 'Empuja la primera venta del día', pt: 'Empurre a primeira venda do dia' },
+  'chat.dailyBrief2.noSalesToday.why':        { en: 'No transactions yet today.', es: 'Aún no hay transacciones hoy.', pt: 'Ainda não há transações hoje.' },
+  'chat.dailyBrief2.noSalesToday.action':     { en: 'Ping recent customers, run a flash promo, or open with a tile demo.', es: 'Contacta clientes recientes, lanza una promo rápida o abre con una demo del catálogo.', pt: 'Contate clientes recentes, faça uma promo rápida ou abra com uma demo do catálogo.' },
+
   // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
   // Operator-style guidance, deterministic — no AI, no auto-send.
   'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },

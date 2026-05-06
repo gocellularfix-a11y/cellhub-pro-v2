@@ -155,6 +155,9 @@ export function handleIntent(
     case 'conversation_runner':
       return handleConversationRunner(match, lang);
 
+    case 'daily_operator_brief':
+      return handleDailyOperatorBrief(engine, lang);
+
     case 'today_summary':
       return handleTodaySummary(engine, lang);
 
@@ -1092,6 +1095,152 @@ function handleDealPerformance(lang: Lang3): ChatResponse {
   }
   lines.push('');
   lines.push(t('chat.dealPerformance.recommendation', winRatePct, r.avgDiscountPercent));
+
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
+// ── Daily Operator Brief (R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1) ──
+// Action-first daily focus list. Composes max 3 priorities from existing
+// engine helpers + the existing chat queue. Pure read — no engine writes,
+// no background work, no polling, no AI. Each source is wrapped in
+// try/catch so a missing/empty source silently skips. Reuses the same
+// `chat.opportunities.*` translation keys as proactive_opportunities for
+// the per-priority Why/Action lines (no new strings duplicated).
+function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  type Pri = { title: string; why: string; action: string; rank: number };
+  const pris: Pri[] = [];
+
+  // Source 1: No sales today (highest urgency — always wins #1).
+  try {
+    const m = engine.getTodayMetrics();
+    if (m && m.transactions === 0) {
+      pris.push({
+        title: t('chat.dailyBrief2.noSalesToday.title'),
+        why: t('chat.dailyBrief2.noSalesToday.why'),
+        action: t('chat.dailyBrief2.noSalesToday.action'),
+        rank: 99999,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 2: Stale repairs ready for pickup (>3 days).
+  try {
+    const repairs = engine.getRepairs();
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let staleCount = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      staleCount++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    if (staleCount > 0) {
+      pris.push({
+        title: t('chat.opportunities.staleRepairs.title'),
+        why: t('chat.opportunities.staleRepairs.reason', staleCount, COP(recoverable)),
+        action: t('chat.opportunities.staleRepairs.action'),
+        rank: recoverable + staleCount * 1000,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 3: Outreach candidates (consent + 24h dedup already applied).
+  try {
+    const candidates = engine.buildOutreachQueueItems();
+    if (candidates.length >= 2) {
+      pris.push({
+        title: t('chat.opportunities.outreach.title'),
+        why: t('chat.opportunities.outreach.reason', candidates.length),
+        action: t('chat.opportunities.outreach.action'),
+        rank: candidates.length * 500,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Source 4: Approved pending deals waiting in chat queue (cap 200 entries).
+  try {
+    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
+        let approved = 0;
+        for (const q of slice) {
+          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
+        }
+        if (approved > 0) {
+          pris.push({
+            title: t('chat.opportunities.pendingDeals.title'),
+            why: t('chat.opportunities.pendingDeals.reason', approved),
+            action: t('chat.opportunities.pendingDeals.action'),
+            rank: approved * 800,
+          });
+        }
+      }
+    }
+  } catch { /* incognito / quota / parse fail — skip */ }
+
+  // Source 5: Strong product opportunity (impact >= $10).
+  try {
+    const opps = engine.getProductOpportunities(1);
+    if (opps && opps.length > 0) {
+      const top = opps[0];
+      const impact = top.impactCents || 0;
+      if (impact >= 1000) {
+        pris.push({
+          title: t('chat.opportunities.productPush.title'),
+          why: t('chat.opportunities.productPush.reason', top.name, COP(impact)),
+          action: t('chat.opportunities.productPush.action', top.name),
+          rank: impact,
+        });
+      }
+    }
+  } catch { /* skip */ }
+
+  // Source 6: Dead stock locked (>= $100).
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      pris.push({
+        title: t('chat.opportunities.deadStock.title'),
+        why: t('chat.opportunities.deadStock.reason', COP(dead)),
+        action: t('chat.opportunities.deadStock.action'),
+        rank: dead,
+      });
+    }
+  } catch { /* skip */ }
+
+  if (pris.length === 0) {
+    return { kind: 'answer', text: `${t('chat.dailyBrief2.header')}\n\n${t('chat.dailyBrief2.empty')}` };
+  }
+
+  pris.sort((a, b) => b.rank - a.rank);
+  const top3 = pris.slice(0, 3);
+
+  const lines: string[] = [];
+  lines.push(t('chat.dailyBrief2.header'));
+  lines.push('');
+  top3.forEach((p, i) => {
+    lines.push(`${i + 1}. ${t('chat.dailyBrief2.priorityLabel')} ${p.title}`);
+    lines.push(`   ${t('chat.dailyBrief2.whyLabel')} ${p.why}`);
+    lines.push(`   ${t('chat.dailyBrief2.actionLabel')} ${p.action}`);
+    if (i < top3.length - 1) lines.push('');
+  });
 
   return { kind: 'answer', text: lines.join('\n') };
 }

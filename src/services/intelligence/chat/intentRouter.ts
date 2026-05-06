@@ -33,6 +33,7 @@ export type IntentId =
   | 'deal_performance'
   | 'proactive_opportunities'
   | 'conversation_runner'
+  | 'daily_operator_brief'
   | 'today_sales'
   | 'today_summary'
   | 'multi_phone_customers'
@@ -327,6 +328,23 @@ const DAILY_BRIEF_KEYWORDS = [
   'resumen diario', 'qué hago hoy', 'que hago hoy',
   // PT
   'resumo diário', 'resumo diario', 'o que fazer hoje',
+];
+
+// R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: action-first daily focus list.
+// Listed BEFORE daily_brief in the scores array so anchored phrases route
+// to the new operator-style briefing. Wider phrasing coverage than the
+// existing daily_brief bank.
+const DAILY_OPERATOR_BRIEF_KEYWORDS = [
+  // EN
+  'daily brief', 'today brief', 'operator brief',
+  'what should i do today', 'what matters today',
+  // ES
+  'resumen diario', 'resumen de hoy',
+  'qué hago hoy', 'que hago hoy',
+  'qué importa hoy', 'que importa hoy',
+  // PT
+  'resumo diário', 'resumo diario', 'resumo de hoje',
+  'o que faço hoje', 'o que faco hoje', 'o que importa hoje',
 ];
 
 const SALES_KEYWORDS = [
@@ -770,6 +788,9 @@ export function classifyIntent(
     // the generic 30-day sales summary.
     { id: 'data_query', score: scoreKeywords(query, DATA_QUERY_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
+    // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: listed ABOVE daily_brief so
+    // overlapping anchored phrases route to the action-first briefing.
+    { id: 'daily_operator_brief', score: scoreKeywords(query, DAILY_OPERATOR_BRIEF_KEYWORDS) },
     // R-DAILY-BRIEF-HANDLER-V1: scored ABOVE today_summary so anchored phrases
     // ("daily brief", "resumen diario", "o que fazer hoje") route to the
     // multi-signal composer. Plain "today"/"hoy"/"hoje" still falls to
@@ -836,7 +857,7 @@ export function classifyIntent(
   // For customer_history intent, resolve the name.
   if (winner.id === 'customer_history') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
@@ -864,7 +885,7 @@ export function classifyIntent(
   // returns the longest non-stop fragment — that's the product name.
   if (winner.id === 'product_push') {
     const allBanks = [
-      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
       REPAIRS_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
