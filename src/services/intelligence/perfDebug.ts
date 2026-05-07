@@ -25,6 +25,12 @@ function isEnabled(): boolean {
 // Read the flag once per module load. Owner must reload after toggling.
 const INTEL_PERF_DEBUG = isEnabled();
 
+// R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: exported so call-sites can skip
+// `performance.now()` allocations entirely when the flag is off. Previously,
+// IntelligenceModule called `performance.now()` 2× per render even in
+// production with the flag disabled — small but pure waste.
+export const INTEL_PERF_ENABLED = INTEL_PERF_DEBUG;
+
 const THRESHOLD_MS = 10;
 
 /**

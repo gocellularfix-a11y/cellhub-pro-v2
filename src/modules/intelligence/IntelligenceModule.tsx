@@ -22,7 +22,10 @@ import {
   summarizeCustomerHistory,
 } from '@/services/intelligence';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
-import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
+// R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: import the flag so the
+// `performance.now()` calls in render-prep can be skipped entirely
+// when perfDebug is off (which is always, in production).
+import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/perfDebug';
 import IntelligenceChat from './IntelligenceChat';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -40,7 +43,10 @@ const DAY_LOCAL: Record<string, Record<string, string>> = {
 
 export default function IntelligenceModule() {
   // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: time the full render-prep block.
-  const _renderT0 = performance.now();
+  // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: only allocate when the flag is on
+  // (off in production by default). Previously this ran on every render even
+  // though the matching perfLog at the bottom would skip emission.
+  const _renderT0 = INTEL_PERF_ENABLED ? performance.now() : 0;
   const { state } = useApp();
   const {
     sales, customers, inventory, repairs,
@@ -73,23 +79,24 @@ export default function IntelligenceModule() {
   const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}`;
 
   if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
-    const _t = performance.now();
+    // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: gate timestamp allocations.
+    const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
       { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments },
     );
     engineConfigSigRef.current = engineConfigSig;
-    perfLog('intel.module.engine.create', _t);
+    if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.create', _t);
   }
   const engine = engineRef.current;
 
   {
-    const _t = performance.now();
+    const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engine.updateData(sales, customers, inventory, repairs, {
       specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
     });
-    perfLog('intel.module.engine.updateData', _t);
+    if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
@@ -249,6 +256,18 @@ export default function IntelligenceModule() {
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: hand-off callback for chat-action
+  // "Promote {name}" clicks. Auto-selects the exact product (productId is
+  // the real inventory id from ProductOpportunity.inventoryId, not a
+  // string-matched reconstruction), clears the search field so the
+  // confirmation card renders immediately, and scrolls the panel into
+  // view. No chat-replay, no manual product search step.
+  const handleOpenPromote = useCallback((productId: string, productName: string) => {
+    setSelectedProduct({ id: productId, name: productName });
+    setProductSearch('');
+    promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   const handleGenerateCampaign = useCallback(() => {
     if (!selectedProduct) return;
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${selectedProduct.name}`);
@@ -260,7 +279,7 @@ export default function IntelligenceModule() {
   // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: total render-prep cost for the
   // module. JSX construction itself is React-internal and not measured
   // here — only the synchronous work above (engine + memos + cards).
-  perfLog('intel.module.render.total', _renderT0);
+  if (INTEL_PERF_ENABLED) perfLog('intel.module.render.total', _renderT0);
 
   return (
     <div className="space-y-3 p-3 pb-8" style={{ background: PAGE_BG, minHeight: '100%' }}>
@@ -389,7 +408,7 @@ export default function IntelligenceModule() {
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
             {t('intelligence.console.askTitle')}
           </p>
-          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} />
+          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} onOpenPromote={handleOpenPromote} />
         </div>
       </div>
 

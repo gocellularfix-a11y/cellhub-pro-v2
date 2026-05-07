@@ -44,6 +44,12 @@ interface Props {
   lang: 'en' | 'es';
   // When this changes (new seq), the chat auto-submits the query text.
   externalQuery?: { text: string; seq: number };
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: callback invoked when the user clicks
+  // an open_promote_panel action. The parent IntelligenceModule wires this
+  // to setSelectedProduct + scrollIntoView so clicking "Promote {name}"
+  // jumps directly to the Promote Inventory panel with the exact product
+  // already selected. No manual search, no chat-replay dead-end.
+  onOpenPromote?: (productId: string, productName: string) => void;
 }
 
 interface ChatMessage {
@@ -57,7 +63,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -307,6 +313,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }, []);
 
   function runDailyAutomation(STORAGE_KEY: string, today: string) {
+    // R-INTEL-DAILY-AUTOMATION-GUARD-FIX: stamp the storage guard at the
+    // START of the run, not at success. Previously the early returns at
+    // candidates=[] / built=[] left STORAGE_KEY unwritten, so the next
+    // mount that day re-fired the entire pipeline (engine.getTodayMetrics
+    // + buildOutreachQueueItems including full customer scoring). Empty-
+    // state shops with no recent sales hit this on every tab switch /
+    // page reload / Electron window reopen — observable mount lag.
+    // Setting the guard up-front means "we attempted today" — exactly
+    // what the once-per-day semantic should mean. Failures (incognito,
+    // quota) silently skip; the rest of the flow proceeds either way.
+    try { localStorage.setItem(STORAGE_KEY, today); } catch { /* incognito / quota */ }
+
     const _t = performance.now();
     const eng = engineRef.current;
     const m = perfTime('intel.chat.daily.getTodayMetrics', () => eng.getTodayMetrics());
@@ -315,8 +333,6 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     const candidates = perfTime('intel.chat.daily.buildOutreachQueueItems',
       () => eng.buildOutreachQueueItems()).slice(0, 3);
     if (candidates.length === 0) {
-      // No candidates → skip without storing, so a later analyze pass with
-      // populated scores can still trigger.
       return;
     }
     const nameById = new Map(eng.getCustomers().map((c) => [c.id, c.name]));
@@ -474,6 +490,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       case 'reminder_queue':
         setFeedbackForAction(action.id, 'Reminder action prepared.');
         break;
+      // R-OPERATOR-EXECUTABLE-ACTIONS-V1: deterministic hand-off into the
+      // Promote Inventory panel. Parent module callback opens the panel +
+      // auto-selects the product. No chat-replay, no audience dead-end.
+      case 'open_promote_panel':
+        if (onOpenPromote) {
+          onOpenPromote(result.productId, result.productName);
+          setFeedbackForAction(action.id, t('chat.promote.opening', result.productName));
+        } else {
+          setFeedbackForAction(action.id, t('chat.promote.unavailable'));
+        }
+        break;
     }
   }
 
@@ -507,6 +534,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           break;
         case 'reminder_queue':
           console.log('Approved reminder automation:', result.customerName);
+          break;
+        // R-OPERATOR-EXECUTABLE-ACTIONS-V1: same hand-off when the action
+        // came in via the queue instead of an inline chat button.
+        case 'open_promote_panel':
+          if (onOpenPromote) onOpenPromote(result.productId, result.productName);
           break;
       }
 
