@@ -632,23 +632,25 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     }
   }
 
-  // R-RECEIPT-HYBRID-DISCOUNT-DISPLAY-V1: render the ORIGINAL line amount
-  // (so the customer sees the anchored price + the savings call-out) and
-  // attach a small inline "Discount Applied: -$X" annotation directly
-  // under the price column when this line received a per-item allocation.
-  // Subtotal still shows the post-discount value (`subtotalAfterDiscount`)
-  // so there's no separate "Discount" row that would visually double-count.
-  // perItemDiscount allocation reused verbatim from the prior round.
+  // R-RECEIPT-HYBRID-DISCOUNT-DISPLAY-V1 + R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1:
+  // the right column anchors on the ORIGINAL line amount (item.originalPrice * qty
+  // when set, else item.price * qty). The annotation combines BOTH per-line
+  // discount (originalPrice - effective price) AND the cart-distributed share
+  // from perItemDiscount — single "Discount Applied: -$X" line so the customer
+  // sees one consolidated savings number, not a double-counted set.
   const itemRows = sale.items.map((item) => {
-    const lineTotal = item.price * item.qty;
-    const share = perItemDiscount[item.id] || 0;
-    const discountAnnotation = share > 0
-      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(share)}</span>`
+    const orig = (item.originalPrice ?? item.price) * item.qty;     // anchor
+    const lineTotal = item.price * item.qty;                        // post-line-discount
+    const lineSavings = Math.max(0, orig - lineTotal);              // per-line discount baked into item.price
+    const cartShare = perItemDiscount[item.id] || 0;                // global cart-discount allocation
+    const totalDiscount = lineSavings + cartShare;
+    const discountAnnotation = totalDiscount > 0
+      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(totalDiscount)}</span>`
       : '';
     return `
     <tr>
       <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${item.imei ? `<br><small style="color:#666;font-family:monospace">IMEI: ${escHtml(item.imei)}</small>` : ''}</td>
-      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(lineTotal)}${discountAnnotation}</td>
+      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(orig)}${discountAnnotation}</td>
     </tr>`;
   }).join('');
 
@@ -706,7 +708,21 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
          When a discount is present, render an italic "Saved" annotation
          under the subtotal so the customer still sees the savings call-out. -->
     <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotalAfterDiscount ?? sale.subtotal)}</td></tr>
-    ${discountAmount > 0 ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : 'Saved'}: ${fmt(discountAmount)}</td></tr>` : ''}
+    ${(() => {
+      // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: total savings = cart-level
+      // discount + sum of per-line discounts (originalPrice - effective price).
+      // Keeps the "Saved" callout aligned with the per-item annotations above.
+      let lineSavingsTotal = 0;
+      for (const it of sale.items) {
+        const o = (it.originalPrice ?? it.price) * it.qty;
+        const p = it.price * it.qty;
+        if (o > p) lineSavingsTotal += (o - p);
+      }
+      const totalSaved = discountAmount + lineSavingsTotal;
+      return totalSaved > 0
+        ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : 'Saved'}: ${fmt(totalSaved)}</td></tr>`
+        : '';
+    })()}
     ${(sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined) ? `
       ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
       ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}

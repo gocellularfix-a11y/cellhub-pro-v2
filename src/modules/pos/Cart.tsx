@@ -8,6 +8,11 @@ import type { CartTotals, DiscountState } from './types';
 import { formatCurrency } from '@/utils/currency';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
+// R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: compact modal for per-line
+// override / amount-off / percent-off. Effective per-unit price is
+// written back into item.price so downstream totals/tax/receipts
+// keep working without ANY math changes.
+import Modal from '@/components/ui/Modal';
 
 function resolveDefaultCcFeeCents(settings: StoreSettings): number {
   const shadow = (settings as any).creditCardFeeCents as number | undefined;
@@ -69,6 +74,78 @@ export default function Cart({
   const { t } = useTranslation();
   const { toast } = useToast();
   const [showCcFeeOverride, setShowCcFeeOverride] = useState(false);
+
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: line-discount modal state.
+  // discountTarget is the cart line being edited; mode picks one of the
+  // three exclusive mechanisms. Computed effective price overwrites
+  // item.price; item.originalPrice is preserved (or stamped if absent).
+  const [discountTarget, setDiscountTarget] = useState<CartItem | null>(null);
+  const [discountMode, setDiscountMode] = useState<'override' | 'amount' | 'percent'>('amount');
+  const [discountValue, setDiscountValue] = useState<string>('');
+  const [discountReason, setDiscountReason] = useState<string>('');
+
+  const openLineDiscount = useCallback((item: CartItem) => {
+    setDiscountTarget(item);
+    setDiscountMode('amount');
+    setDiscountValue('');
+    setDiscountReason(item.lineDiscountReason || '');
+  }, []);
+
+  const closeLineDiscount = useCallback(() => {
+    setDiscountTarget(null);
+    setDiscountValue('');
+    setDiscountReason('');
+  }, []);
+
+  const resetLineDiscount = useCallback(() => {
+    if (!discountTarget) return;
+    const original = discountTarget.originalPrice ?? discountTarget.price;
+    setCart(cart.map((c) =>
+      c.id === discountTarget.id
+        ? { ...c, price: original, lineDiscountReason: undefined, lineDiscountApprovedBy: undefined }
+        : c,
+    ));
+    closeLineDiscount();
+  }, [cart, setCart, discountTarget, closeLineDiscount]);
+
+  const applyLineDiscount = useCallback(() => {
+    if (!discountTarget) return;
+    const raw = parseFloat(discountValue);
+    if (!Number.isFinite(raw) || raw < 0) {
+      toast(t('cart.lineDiscount.invalid'), 'warning');
+      return;
+    }
+    const original = discountTarget.originalPrice ?? discountTarget.price;
+    let effective = original;
+    if (discountMode === 'override') {
+      // Final per-unit price entered as dollars; convert to cents.
+      effective = Math.round(raw * 100);
+    } else if (discountMode === 'amount') {
+      // Amount-off per UNIT entered as dollars. Clamp to >= 0.
+      effective = Math.max(0, original - Math.round(raw * 100));
+    } else if (discountMode === 'percent') {
+      if (raw > 100) {
+        toast(t('cart.lineDiscount.invalid'), 'warning');
+        return;
+      }
+      effective = Math.max(0, Math.round(original * (1 - raw / 100)));
+    }
+    if (effective < 0) {
+      toast(t('cart.lineDiscount.invalid'), 'warning');
+      return;
+    }
+    setCart(cart.map((c) =>
+      c.id === discountTarget.id
+        ? {
+            ...c,
+            price: effective,
+            originalPrice: c.originalPrice ?? original,
+            lineDiscountReason: discountReason.trim() || undefined,
+          }
+        : c,
+    ));
+    closeLineDiscount();
+  }, [cart, setCart, discountTarget, discountMode, discountValue, discountReason, t, toast, closeLineDiscount]);
 
   const updateQty = useCallback(
     (itemId: string, delta: number) => {
@@ -227,7 +304,7 @@ export default function Cart({
             </div>
 
             <div className="flex items-center justify-between mt-2">
-              {/* Qty controls */}
+              {/* Qty controls + line-discount button */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => updateQty(item.id, -1)}
@@ -242,11 +319,47 @@ export default function Cart({
                 >
                   +
                 </button>
+                {/* R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: per-line edit. */}
+                <button
+                  onClick={() => openLineDiscount(item)}
+                  title={t('cart.lineDiscount.edit')}
+                  className="w-6 h-6 rounded bg-white/10 text-white text-xs flex items-center justify-center hover:bg-white/20"
+                  style={{ marginLeft: 4 }}
+                >
+                  ✏️
+                </button>
               </div>
 
-              <p className="text-sm font-medium text-emerald-400">
-                {formatCurrency(item.price * item.qty)}
-              </p>
+              {/* Price column. When item.originalPrice differs from
+                  item.price, show struck-through original above the
+                  effective line total + a small DISCOUNTED badge. */}
+              <div style={{ textAlign: 'right' }}>
+                {item.originalPrice !== undefined && item.originalPrice !== item.price && (
+                  <p className="text-[10px] text-slate-500" style={{ textDecoration: 'line-through', marginBottom: 1 }}>
+                    {formatCurrency(item.originalPrice * item.qty)}
+                  </p>
+                )}
+                <p className="text-sm font-medium text-emerald-400">
+                  {formatCurrency(item.price * item.qty)}
+                </p>
+                {item.originalPrice !== undefined && item.originalPrice !== item.price && (
+                  <span style={{
+                    display: 'inline-block',
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background: 'rgba(245,158,11,0.15)',
+                    color: '#fbbf24',
+                    marginTop: 2,
+                    letterSpacing: '0.04em',
+                  }}>
+                    {item.price === 0
+                      ? t('cart.lineDiscount.badgeFree')
+                      : (item.lineDiscountReason ? t('cart.lineDiscount.badgeDiscounted') : t('cart.lineDiscount.badgeOverride'))}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Notes */}
@@ -742,6 +855,104 @@ export default function Cart({
           {t('completeSale')} — {formatCurrency(totals.total)}
         </button>
       </div>
+
+      {/* R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: per-line override / amount-off /
+          percent-off picker. Effective per-unit price overwrites item.price
+          so totals/tax/receipts pick it up via existing math — no parallel
+          accounting introduced. originalPrice is preserved across edits. */}
+      <Modal
+        open={!!discountTarget}
+        onClose={closeLineDiscount}
+        title={t('cart.lineDiscount.title')}
+        size="max-w-sm"
+        footer={
+          <>
+            {discountTarget && discountTarget.originalPrice !== undefined &&
+             discountTarget.originalPrice !== discountTarget.price && (
+              <button
+                className="btn btn-secondary"
+                onClick={resetLineDiscount}
+                style={{ marginRight: 'auto' }}
+              >
+                {t('cart.lineDiscount.reset')}
+              </button>
+            )}
+            <button className="btn btn-secondary" onClick={closeLineDiscount}>
+              {t('cancel')}
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={applyLineDiscount}
+              disabled={!discountValue.trim()}
+            >
+              {t('cart.lineDiscount.apply')}
+            </button>
+          </>
+        }
+      >
+        {discountTarget && (
+          <div className="space-y-3">
+            <div className="text-xs text-slate-400">
+              {discountTarget.name}
+              <br />
+              {t('cart.lineDiscount.originalLabel')}: {' '}
+              <strong className="text-slate-200">
+                {formatCurrency(discountTarget.originalPrice ?? discountTarget.price)}
+              </strong>
+            </div>
+            {/* Mode picker */}
+            <div className="grid grid-cols-3 gap-1">
+              {(['amount', 'percent', 'override'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setDiscountMode(m); setDiscountValue(''); }}
+                  className="px-2 py-1.5 rounded text-xs font-semibold transition-colors duration-150"
+                  style={{
+                    background: discountMode === m ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${discountMode === m ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    color: discountMode === m ? '#a5b4fc' : '#94a3b8',
+                  }}
+                >
+                  {t(`cart.lineDiscount.mode.${m}`)}
+                </button>
+              ))}
+            </div>
+            {/* Value input — units depend on mode */}
+            <div>
+              <label className="text-xs text-slate-400 font-semibold block mb-1">
+                {discountMode === 'percent'
+                  ? t('cart.lineDiscount.valuePercentLabel')
+                  : t('cart.lineDiscount.valueDollarsLabel')}
+              </label>
+              <input
+                type="number"
+                step={discountMode === 'percent' ? '1' : '0.01'}
+                min="0"
+                max={discountMode === 'percent' ? '100' : undefined}
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                placeholder={discountMode === 'percent' ? '10' : '5.00'}
+                className="input"
+                autoFocus
+              />
+            </div>
+            {/* Reason — optional */}
+            <div>
+              <label className="text-xs text-slate-400 font-semibold block mb-1">
+                {t('cart.lineDiscount.reasonLabel')}
+              </label>
+              <input
+                type="text"
+                value={discountReason}
+                onChange={(e) => setDiscountReason(e.target.value)}
+                placeholder={t('cart.lineDiscount.reasonPlaceholder')}
+                className="input"
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

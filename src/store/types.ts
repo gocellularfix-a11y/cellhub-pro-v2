@@ -627,6 +627,15 @@ export interface CartItem {
   specialOrderId?: string;
   unlockId?: string;
   layawayId?: string;
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: optional audit fields stamped
+  // when the cashier applies a per-line override / discount via the new
+  // line-discount modal. The effective per-unit price stays in `price`
+  // (existing field) so all downstream math (totals, tax, receipts,
+  // reports) keeps working without changes. `originalPrice` already
+  // existed and is stamped at addToCart — we just preserve it across
+  // line-discount edits.
+  lineDiscountReason?: string;
+  lineDiscountApprovedBy?: string; // future-ready; not yet enforced
 }
 
 // ── Sale ──────────────────────────────────────────────────
@@ -660,6 +669,11 @@ export interface SaleItem {
   specialOrderId?: string;
   unlockId?: string;
   layawayId?: string;
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: audit fields preserved from
+  // CartItem at checkout. Pure record metadata — totals/tax already
+  // reflect the post-line-discount `price` value above.
+  lineDiscountReason?: string;
+  lineDiscountApprovedBy?: string;
 }
 
 export interface Sale {
