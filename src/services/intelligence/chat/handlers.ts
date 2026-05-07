@@ -34,6 +34,8 @@ import {
   updateDealPipelineItem,
   findOpenDealByCustomerOrProduct,
   closeDealPipelineItem,
+  // R-INTEL-QUEUE-PARSE-DEDUP: shared helper for approved pending-deals count.
+  countApprovedPendingDeals,
 } from '../automation/automationQueue';
 import type { DealStage } from '../automation/automationQueue';
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: product-promotion handlers
@@ -1052,30 +1054,19 @@ function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): 
     }
   } catch { /* skip */ }
 
-  // Source 5: Approved pending deals waiting to be closed. Reads the
-  // existing chat queue localStorage key; cap scan at 200 entries (queue
-  // is user-bounded but keep defensive). No new persistence.
-  try {
-    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
-        let approved = 0;
-        for (const q of slice) {
-          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
-        }
-        if (approved > 0) {
-          ops.push({
-            title: t('chat.opportunities.pendingDeals.title'),
-            reason: t('chat.opportunities.pendingDeals.reason', approved),
-            action: t('chat.opportunities.pendingDeals.action'),
-            rank: approved * 800,
-          });
-        }
-      }
+  // Source 5: Approved pending deals waiting to be closed.
+  // R-INTEL-QUEUE-PARSE-DEDUP: shared count helper (was: inline parse + iterate).
+  {
+    const approved = countApprovedPendingDeals();
+    if (approved > 0) {
+      ops.push({
+        title: t('chat.opportunities.pendingDeals.title'),
+        reason: t('chat.opportunities.pendingDeals.reason', approved),
+        action: t('chat.opportunities.pendingDeals.action'),
+        rank: approved * 800,
+      });
     }
-  } catch { /* incognito / quota / parse fail — skip */ }
+  }
 
   if (ops.length === 0) {
     return { kind: 'answer', text: t('chat.opportunities.empty') };
@@ -1209,28 +1200,19 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
     }
   } catch { /* skip */ }
 
-  // Source 4: Approved pending deals waiting in chat queue (cap 200 entries).
-  try {
-    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
-        let approved = 0;
-        for (const q of slice) {
-          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
-        }
-        if (approved > 0) {
-          pris.push({
-            title: t('chat.opportunities.pendingDeals.title'),
-            why: t('chat.opportunities.pendingDeals.reason', approved),
-            action: t('chat.opportunities.pendingDeals.action'),
-            rank: approved * 800,
-          });
-        }
-      }
+  // Source 4: Approved pending deals waiting in chat queue.
+  // R-INTEL-QUEUE-PARSE-DEDUP: shared count helper.
+  {
+    const approved = countApprovedPendingDeals();
+    if (approved > 0) {
+      pris.push({
+        title: t('chat.opportunities.pendingDeals.title'),
+        why: t('chat.opportunities.pendingDeals.reason', approved),
+        action: t('chat.opportunities.pendingDeals.action'),
+        rank: approved * 800,
+      });
     }
-  } catch { /* incognito / quota / parse fail — skip */ }
+  }
 
   // Source 5: Strong product opportunity (impact >= $10).
   try {
@@ -1331,27 +1313,18 @@ function handleTodayMoneyMap(engine: IntelligenceEngine, lang: Lang3): ChatRespo
 
   // Source 2: Approved pending deals — already-approved is the fastest
   // close path; bias toward the top of the briefing.
-  try {
-    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
-        let approved = 0;
-        for (const q of slice) {
-          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
-        }
-        if (approved > 0) {
-          ops.push({
-            title: t('chat.opportunities.pendingDeals.title'),
-            money: t('chat.opportunities.pendingDeals.reason', approved),
-            move: t('chat.opportunities.pendingDeals.action'),
-            rank: approved * 2000,
-          });
-        }
-      }
+  // R-INTEL-QUEUE-PARSE-DEDUP: shared count helper.
+  {
+    const approved = countApprovedPendingDeals();
+    if (approved > 0) {
+      ops.push({
+        title: t('chat.opportunities.pendingDeals.title'),
+        money: t('chat.opportunities.pendingDeals.reason', approved),
+        move: t('chat.opportunities.pendingDeals.action'),
+        rank: approved * 2000,
+      });
     }
-  } catch { /* skip */ }
+  }
 
   // Source 3: Strong product opportunity (>= $10 impact). Theoretical —
   // de-prioritized vs already-approved deals.
@@ -1472,27 +1445,18 @@ function handleOperatorMode(engine: IntelligenceEngine, lang: Lang3): ChatRespon
 
   // Source 2: Approved pending deals — easiest execution + same-day close.
   // Highest rank weight per spec ordering rules.
-  try {
-    const raw = localStorage.getItem('cellhub:intelligence:automationQueue:v1');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const slice = parsed.length > 200 ? parsed.slice(parsed.length - 200) : parsed;
-        let approved = 0;
-        for (const q of slice) {
-          if (q && q.kind === 'pending_deal' && q.status === 'approved') approved++;
-        }
-        if (approved > 0) {
-          plan.push({
-            title: t('chat.opportunities.pendingDeals.title'),
-            why: t('chat.opportunities.pendingDeals.reason', approved),
-            move: t('chat.opportunities.pendingDeals.action'),
-            rank: approved * 2000,
-          });
-        }
-      }
+  // R-INTEL-QUEUE-PARSE-DEDUP: shared count helper.
+  {
+    const approved = countApprovedPendingDeals();
+    if (approved > 0) {
+      plan.push({
+        title: t('chat.opportunities.pendingDeals.title'),
+        why: t('chat.opportunities.pendingDeals.reason', approved),
+        move: t('chat.opportunities.pendingDeals.action'),
+        rank: approved * 2000,
+      });
     }
-  } catch { /* skip */ }
+  }
 
   // Source 3: Top outreach candidate — best customer to contact.
   try {

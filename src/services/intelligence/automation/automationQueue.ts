@@ -4,6 +4,38 @@
 
 import type { ActionPayload } from '../actions/actionEngine';
 
+// R-INTEL-QUEUE-PARSE-DEDUP: shared key + read helper. Four chat handlers
+// (handleProactiveOpportunities, handleTodayMoneyMap, handleDailyOperatorBrief,
+// handleDailyRevenueMissions) previously duplicated the same
+// `localStorage.getItem` + `JSON.parse` + slice + count loop to surface
+// approved pending-deals. Each chat query that hit any of those intents
+// paid the parse cost. Centralizing makes the read trivially shared and
+// gives one definition of "approved pending deals" for the whole module.
+export const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
+
+const QUEUE_SLICE_CAP = 200;
+
+export function readPersistedAutomationQueue(): AutomationQueueItem[] {
+  try {
+    const raw = localStorage.getItem(AUTOMATION_QUEUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.length > QUEUE_SLICE_CAP ? parsed.slice(parsed.length - QUEUE_SLICE_CAP) : parsed;
+  } catch {
+    return [];
+  }
+}
+
+export function countApprovedPendingDeals(): number {
+  const slice = readPersistedAutomationQueue();
+  let count = 0;
+  for (const q of slice) {
+    if (q && q.kind === 'pending_deal' && q.status === 'approved') count++;
+  }
+  return count;
+}
+
 export type AutomationStatus =
   | 'pending'
   | 'approved'
