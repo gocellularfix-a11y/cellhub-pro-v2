@@ -115,6 +115,25 @@ export interface ChatActionUI {
   triggerQuery?: string;
 }
 
+// R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: optional hand-off shape for the
+// Promote Inventory panel widget. Producer (runProductPush) populates this
+// alongside the existing chat response when product-push intent fires;
+// consumer (IntelligenceChat → IntelligenceModule via new prop callback)
+// renders the editable template + recipient list inside the panel itself,
+// not just the chat sidebar. Empty `candidates` means broad campaign mode
+// (no targeted audience). Existing callers ignoring this field are
+// unaffected — purely additive.
+export interface PanelCampaignDraft {
+  productId: string;
+  productName: string;
+  templateMessage: string;        // contains {customer} placeholder for substitution
+  candidates: Array<{
+    customerId: string;
+    name: string;
+    phone: string;
+  }>;
+}
+
 export interface ChatResponse {
   text: string;
   kind: 'answer' | 'disambiguation' | 'error' | 'help';
@@ -125,6 +144,9 @@ export interface ChatResponse {
   // shell stamps a timestamp and stores at depth-1; handlers stay
   // clock-agnostic. Pure data; no behavior change for existing callers.
   establishesContext?: { type: OperationalContext['type']; value: string };
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: optional draft for the Promote
+  // Inventory panel widget. Set by handleProductPush / runProductPush.
+  panelCampaign?: PanelCampaignDraft;
 }
 
 export function handleIntent(

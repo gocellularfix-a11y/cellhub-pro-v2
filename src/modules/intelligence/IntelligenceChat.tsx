@@ -13,7 +13,7 @@ import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
 import type { OperationalContext } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
-import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
+import type { ChatActionUI, PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 import {
   createAutomationItem,
@@ -50,6 +50,12 @@ interface Props {
   // jumps directly to the Promote Inventory panel with the exact product
   // already selected. No manual search, no chat-replay dead-end.
   onOpenPromote?: (productId: string, productName: string) => void;
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: callback invoked whenever a chat
+  // response carries a panelCampaign draft (today: only product_push).
+  // The parent IntelligenceModule renders an editable textarea + per-
+  // recipient WhatsApp buttons inside the Promote Inventory panel using
+  // the existing buildWhatsAppUrl helper. No autonomous send, no API.
+  onPanelCampaign?: (draft: PanelCampaignDraft) => void;
 }
 
 interface ChatMessage {
@@ -63,7 +69,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -274,6 +280,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         addAutomationItems(queueable.map(createQueueItemFromChatAction));
       }
     }
+    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: forward panelCampaign so the
+    // module can render the editable widget. No-op when prop unwired.
+    if (response.panelCampaign && onPanelCampaign) {
+      onPanelCampaign(response.panelCampaign);
+    }
     setMessages(prev => [
       ...prev,
       { id: `u-${now}`, role: 'user', content: query, timestamp: new Date() },
@@ -454,6 +465,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       if (queueable.length > 0) {
         addAutomationItems(queueable.map(createQueueItemFromChatAction));
       }
+    }
+    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: forward panelCampaign here too.
+    if (response.panelCampaign && onPanelCampaign) {
+      onPanelCampaign(response.panelCampaign);
     }
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');

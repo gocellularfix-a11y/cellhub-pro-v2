@@ -17,7 +17,7 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
 import type { ActionQueueItem } from '../types';
 import { enqueueOutreachActions } from '../actions';
-import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
+import type { ChatResponse, ChatActionUI, Lang3, PanelCampaignDraft } from './handlers';
 import { tChat, COP } from './handlers';
 
 // R-OPERATOR-EXECUTABLE-ACTIONS-V1: shared audience-viability check.
@@ -166,6 +166,21 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
           false,
         )]
       : undefined;
+    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: emit a panel-side draft for
+    // the broad-campaign case. Empty `candidates` signals broadcast mode;
+    // the panel renders the editable template + a single "Open WhatsApp
+    // draft" button (recipient picker). Template uses {customer} so the
+    // panel can substitute first names if the user later adds recipients.
+    const broadTemplateBase = t('chat.productPush.message', '{customer}', productName);
+    const broadTemplate = String(broadTemplateBase || '').trim();
+    const panelCampaign: PanelCampaignDraft | undefined = matchedInv && broadTemplate.length > 0
+      ? {
+          productId: matchedInv.id,
+          productName: matchedInv.name,
+          templateMessage: broadTemplate,
+          candidates: [],
+        }
+      : undefined;
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: even when direct candidates are
     // empty, the owner is still "thinking about" this product — stamp
     // context so the next vague follow-up ("what about accessories?",
@@ -174,6 +189,7 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
       kind: 'answer',
       text: lines.join('\n'),
       actions,
+      panelCampaign,
       establishesContext: { type: 'product', value: productName },
     };
   }
@@ -264,10 +280,36 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
   bodyParts.push('');
   bodyParts.push(`${t('chat.productPush.messagePreviewLabel')}: 💬 "${previewMessage}"`);
 
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: emit panel-side draft. Resolve
+  // the inventoryId by deterministic case-insensitive match against the
+  // engine's inventory. previewMessage already contains {customer} as the
+  // template (composeMessage('{customer}') above) — reused verbatim so the
+  // panel textarea and chat-side preview line stay in sync. candidates
+  // carry name + phone + customerId so the panel can build per-recipient
+  // wa.me links via the canonical buildWhatsAppUrl helper.
+  const inventoryMatch = engine.getInventory().find(
+    (i) => (i.name || '').toLowerCase() === productLower,
+  ) ?? engine.getInventory().find(
+    (i) => (i.name || '').toLowerCase().includes(productLower),
+  );
+  const panelCampaign: PanelCampaignDraft | undefined = inventoryMatch
+    ? {
+        productId: inventoryMatch.id,
+        productName: inventoryMatch.name,
+        templateMessage: previewMessage,
+        candidates: visible.map((c) => ({
+          customerId: c.customerId,
+          name: c.name,
+          phone: c.phone,
+        })),
+      }
+    : undefined;
+
   return {
     kind: 'answer',
     text: bodyParts.join('\n'),
     actions: actions.length > 0 ? actions : undefined,
+    panelCampaign,
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: stamp the product so vague
     // follow-ups ("promote it", "what about accessories", "who else")
     // route back to this entity on the next turn.

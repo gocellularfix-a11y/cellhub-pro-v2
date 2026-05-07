@@ -5337,6 +5337,19 @@ export const translations: TranslationDictionary = {
   'intelligence.console.searchProduct':        { en: 'Search product…',                                              es: 'Buscar producto…',                                                     pt: 'Buscar produto…' },
   'intelligence.console.generateCampaign':     { en: 'Generate WhatsApp Campaign',                                  es: 'Generar Campaña de WhatsApp',                                          pt: 'Gerar Campanha de WhatsApp' },
   'intelligence.console.changeProduct':        { en: 'Change product',                                              es: 'Cambiar producto',                                                     pt: 'Trocar produto' },
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: editable campaign widget keys.
+  'intelligence.console.campaignDraftTitle':   { en: 'Campaign draft',                                              es: 'Borrador de campaña',                                                  pt: 'Rascunho da campanha' },
+  'intelligence.console.campaignEditedHint':   { en: '✎ edited',                                                    es: '✎ editado',                                                            pt: '✎ editado' },
+  'intelligence.console.campaignDraftPlaceholder': { en: 'Edit the message before sending…',                       es: 'Edita el mensaje antes de enviar…',                                    pt: 'Edite a mensagem antes de enviar…' },
+  'intelligence.console.campaignSubstitutionHint': { en: 'Use {customer} as placeholder for the recipient first name.', es: 'Usa {customer} como marcador para el nombre del destinatario.',     pt: 'Use {customer} como marcador para o primeiro nome do destinatário.' },
+  'intelligence.console.campaignRecipientsLabel': {
+    en: (n: number) => `Recipients (${n}):`,
+    es: (n: number) => `Destinatarios (${n}):`,
+    pt: (n: number) => `Destinatários (${n}):`,
+  },
+  'intelligence.console.campaignSendLabel':    { en: 'Open',                                                        es: 'Abrir',                                                                pt: 'Abrir' },
+  'intelligence.console.campaignSendTooltip':  { en: 'Open WhatsApp with this message — you press Send manually',   es: 'Abre WhatsApp con este mensaje — presiona Enviar manualmente',         pt: 'Abre o WhatsApp com esta mensagem — você pressiona Enviar manualmente' },
+  'intelligence.console.campaignBroadcastLabel': { en: '📲 Open WhatsApp draft (pick recipient)',                  es: '📲 Abrir borrador de WhatsApp (elegir destinatario)',                pt: '📲 Abrir rascunho do WhatsApp (escolher destinatário)' },
 
   'intelligence.console.askTitle':             { en: '💬 Ask Your Shop',                                            es: '💬 Pregúntale a tu Tienda',                                            pt: '💬 Pergunte à sua Loja' },
   'intelligence.console.quickQuestions':       { en: 'Quick questions:',                                            es: 'Preguntas rápidas:',                                                   pt: 'Perguntas rápidas:' },

@@ -21,6 +21,10 @@ import {
   type CustomerHistorySummary,
   summarizeCustomerHistory,
 } from '@/services/intelligence';
+import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+// R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: canonical wa.me builder reused for
+// the per-recipient buttons inside the new panel widget. No new send path.
+import { buildWhatsAppUrl } from '@/services/whatsapp';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: import the flag so the
 // `performance.now()` calls in render-prep can be skipped entirely
@@ -65,6 +69,14 @@ export default function IntelligenceModule() {
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: campaign draft + locally-edited
+  // message text. Draft arrives from runProductPush via the chat callback
+  // (auto-fired in handleOpenPromote). Cleared whenever the selected
+  // product changes — avoids showing a stale draft for product B after
+  // the user re-selects product A. draftMessage starts equal to the
+  // template; user edits diverge, indicated visually via `edited` flag.
+  const [panelCampaign, setPanelCampaign] = useState<PanelCampaignDraft | null>(null);
+  const [draftMessage, setDraftMessage] = useState<string>('');
 
   // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — preserved verbatim.
   // R-OPERATOR-STABILIZATION-AUDIT-V1: refreshKey REMOVED from sig. Including
@@ -272,9 +284,49 @@ export default function IntelligenceModule() {
   const handleOpenPromote = useCallback((productId: string, productName: string) => {
     setSelectedProduct({ id: productId, name: productName });
     setProductSearch('');
+    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: clear any prior draft so the
+    // panel starts clean while the auto-fired chat re-populates it.
+    setPanelCampaign(null);
+    setDraftMessage('');
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
   }, [fireChat, t]);
+
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: callback invoked by IntelligenceChat
+  // when a chat response carries panelCampaign. Stash the draft + seed the
+  // local textarea content. If the panel currently shows a different
+  // product than the draft references, ignore — draft belongs to a
+  // different selection (defensive — in practice the auto-fire flow keeps
+  // them aligned, but a manual chat query for a different product
+  // shouldn't override the user's panel selection).
+  const handlePanelCampaign = useCallback((draft: PanelCampaignDraft) => {
+    if (selectedProduct && selectedProduct.id !== draft.productId) return;
+    setPanelCampaign(draft);
+    setDraftMessage(draft.templateMessage);
+  }, [selectedProduct]);
+
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: per-recipient send. Substitutes
+  // {customer} in the user-edited draft with the recipient's first name,
+  // routes through canonical buildWhatsAppUrl. No autonomous send — wa.me
+  // opens, owner presses Send manually inside WhatsApp.
+  const handlePanelSend = useCallback((customerName: string, phone: string) => {
+    const firstName = customerName.split(' ')[0] || customerName;
+    const finalText = draftMessage.replace(/\{customer\}/g, firstName);
+    const url = phone
+      ? buildWhatsAppUrl(phone, finalText)
+      : `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [draftMessage]);
+
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: broadcast send for the empty-
+  // candidates case. Substitutes {customer} with empty string (the broad
+  // template typically reads naturally with or without a name) and opens
+  // the wa.me recipient picker.
+  const handlePanelBroadcast = useCallback(() => {
+    const finalText = draftMessage.replace(/\{customer\}/g, '').replace(/\s+/g, ' ').trim();
+    const url = `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [draftMessage]);
 
   const handleGenerateCampaign = useCallback(() => {
     if (!selectedProduct) return;
@@ -416,7 +468,7 @@ export default function IntelligenceModule() {
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
             {t('intelligence.console.askTitle')}
           </p>
-          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} onOpenPromote={handleOpenPromote} />
+          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} onOpenPromote={handleOpenPromote} onPanelCampaign={handlePanelCampaign} />
         </div>
       </div>
 
@@ -466,7 +518,7 @@ export default function IntelligenceModule() {
                   <div className="text-sm text-slate-100 font-medium truncate">{selectedProduct.name}</div>
                 </div>
                 <button
-                  onClick={() => setSelectedProduct(null)}
+                  onClick={() => { setSelectedProduct(null); setPanelCampaign(null); setDraftMessage(''); }}
                   className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600 shrink-0"
                 >
                   {t('intelligence.console.changeProduct')}
@@ -478,6 +530,71 @@ export default function IntelligenceModule() {
               >
                 🚀 {t('intelligence.console.generateCampaign')}
               </button>
+
+              {/* R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: editable campaign draft +
+                  per-recipient WhatsApp launch buttons. Renders only when the
+                  draft matches the currently-selected product. The textarea
+                  is locally editable; per-recipient send substitutes
+                  {customer} at click time using the canonical buildWhatsAppUrl
+                  helper. Empty candidates → single broadcast button (recipient
+                  picker). No autonomous send, no API. */}
+              {panelCampaign && panelCampaign.productId === selectedProduct.id && (
+                <div className="mt-2 pt-3 border-t border-surface-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      {t('intelligence.console.campaignDraftTitle')}
+                    </span>
+                    {draftMessage !== panelCampaign.templateMessage && (
+                      <span className="text-[10px] text-amber-400">
+                        {t('intelligence.console.campaignEditedHint')}
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    value={draftMessage}
+                    onChange={(e) => setDraftMessage(e.target.value)}
+                    rows={4}
+                    className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-xs border border-surface-600 focus:outline-none focus:border-purple-500 font-mono leading-relaxed"
+                    placeholder={t('intelligence.console.campaignDraftPlaceholder')}
+                  />
+                  <p className="text-[10px] text-slate-500 italic">
+                    {t('intelligence.console.campaignSubstitutionHint')}
+                  </p>
+                  {panelCampaign.candidates.length > 0 ? (
+                    <>
+                      <p className="text-[11px] text-slate-400 mt-2">
+                        {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
+                      </p>
+                      <div className="rounded border border-surface-700 divide-y divide-surface-700">
+                        {panelCampaign.candidates.map((c) => (
+                          <div key={c.customerId} className="flex items-center justify-between gap-2 px-3 py-2">
+                            <div className="min-w-0">
+                              <div className="text-sm text-slate-200 truncate">{c.name}</div>
+                              <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
+                            </div>
+                            <button
+                              onClick={() => handlePanelSend(c.name, c.phone)}
+                              disabled={!draftMessage.trim()}
+                              className="px-2.5 py-1 rounded text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                              title={t('intelligence.console.campaignSendTooltip')}
+                            >
+                              📲 {t('intelligence.console.campaignSendLabel')}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handlePanelBroadcast}
+                      disabled={!draftMessage.trim()}
+                      className="w-full px-3 py-2 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      📲 {t('intelligence.console.campaignBroadcastLabel')}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
