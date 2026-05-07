@@ -21,6 +21,8 @@ import {
   type CustomerHistorySummary,
   summarizeCustomerHistory,
 } from '@/services/intelligence';
+// R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
+import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
 import IntelligenceChat from './IntelligenceChat';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -37,6 +39,8 @@ const DAY_LOCAL: Record<string, Record<string, string>> = {
 };
 
 export default function IntelligenceModule() {
+  // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: time the full render-prep block.
+  const _renderT0 = performance.now();
   const { state } = useApp();
   const {
     sales, customers, inventory, repairs,
@@ -62,29 +66,35 @@ export default function IntelligenceModule() {
   const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}|${refreshKey}`;
 
   if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
+    const _t = performance.now();
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
       { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments },
     );
     engineConfigSigRef.current = engineConfigSig;
+    perfLog('intel.module.engine.create', _t);
   }
   const engine = engineRef.current;
 
-  engine.updateData(sales, customers, inventory, repairs, {
-    specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
-  });
+  {
+    const _t = performance.now();
+    engine.updateData(sales, customers, inventory, repairs, {
+      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
+    });
+    perfLog('intel.module.engine.updateData', _t);
+  }
 
   const result: EngineResult = useMemo(
-    () => engine.analyze(),
+    () => perfTime('intel.module.engine.analyze', () => engine.analyze()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns],
   );
 
   // ── Engine-derived data ──────────────────────────────────
-  const reorderRecs  = useMemo(() => engine.getReorderRecommendations(), [engine]);
-  const productOpps  = useMemo(() => engine.getProductOpportunities(3), [engine]);
-  const missedRev    = useMemo(() => engine.getMissedRevenue(), [engine]);
+  const reorderRecs  = useMemo(() => perfTime('intel.module.getReorderRecommendations', () => engine.getReorderRecommendations()), [engine]);
+  const productOpps  = useMemo(() => perfTime('intel.module.getProductOpportunities',   () => engine.getProductOpportunities(3)), [engine]);
+  const missedRev    = useMemo(() => perfTime('intel.module.getMissedRevenue',          () => engine.getMissedRevenue()), [engine]);
 
   const todaySales = useMemo(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -100,7 +110,7 @@ export default function IntelligenceModule() {
   // the 6 operator cards. Pure useMemo over already-in-scope state — no
   // new effects, no polling, no background. Same threshold logic the
   // chat handlers use (handleProactiveOpportunities, today_money_map).
-  const staleRepairStats = useMemo(() => {
+  const staleRepairStats = useMemo(() => perfTime('intel.module.cards.staleRepairStats', () => {
     const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     let count = 0;
@@ -123,12 +133,12 @@ export default function IntelligenceModule() {
       recoverable += (r as { balance?: number }).balance || 0;
     }
     return { count, recoverable };
-  }, [repairs]);
+  }), [repairs]);
 
-  const outreachCount = useMemo(() => {
+  const outreachCount = useMemo(() => perfTime('intel.module.cards.outreachCount', () => {
     try { return engine.buildOutreachQueueItems().length; }
     catch { return 0; }
-  }, [engine]);
+  }), [engine]);
 
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
@@ -217,6 +227,11 @@ export default function IntelligenceModule() {
 
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
+
+  // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: total render-prep cost for the
+  // module. JSX construction itself is React-internal and not measured
+  // here — only the synchronous work above (engine + memos + cards).
+  perfLog('intel.module.render.total', _renderT0);
 
   return (
     <div className="space-y-3 p-3 pb-8" style={{ background: PAGE_BG, minHeight: '100%' }}>

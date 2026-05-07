@@ -35,6 +35,8 @@ import { useTranslation } from '@/i18n';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
+// R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
+import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -73,6 +75,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     Record<string, { message: string; ts: number }>
   >({});
   const [automationQueue, setAutomationQueue] = useState<AutomationQueueItem[]>(() => {
+    const _t = performance.now();
     try {
       const raw = localStorage.getItem(AUTOMATION_QUEUE_STORAGE_KEY);
       if (!raw) return [];
@@ -80,6 +83,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
+    } finally {
+      perfLog('intel.chat.queue.hydrate', _t);
     }
   });
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -128,11 +133,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // R-PERF-HARDENING-V1 #1: pre-compute priority scores ONCE per render
   // instead of calling scoreAutomationItem twice per item (sort comparator
   // + map body). Single pass; only re-runs when automationQueue changes.
-  const sortedQueueWithPriority = useMemo(() => {
+  const sortedQueueWithPriority = useMemo(() => perfTime('intel.chat.queue.scoreAndSort', () => {
     return automationQueue
       .map((item) => ({ item, priority: scoreAutomationItem(item) }))
       .sort((a, b) => b.priority.score - a.priority.score);
-  }, [automationQueue]);
+  }), [automationQueue]);
 
   function createQueueItemFromChatAction(action: ChatActionUI): AutomationQueueItem {
     const kindMap = {
@@ -183,12 +188,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }
 
   const fireQuery = useCallback((query: string) => {
+    // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: time the full chat dispatch path
+    // (classify + handle). Heaviest single hot path on the Intelligence tab.
+    const _fireT0 = performance.now();
     // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases re-use
     // the last intent's context. Early return — no classifyIntent, no scan.
     let response;
     let matchedIntentId: string;
     if (isFollowUpQuery(query) && lastIntentRef.current) {
-      response = handleFollowUp(lastIntentRef.current, engineRef.current, langRef.current);
+      response = perfTime('intel.chat.handleFollowUp',
+        () => handleFollowUp(lastIntentRef.current!, engineRef.current, langRef.current));
       matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
     } else {
       // R-INTELLIGENCE-CONTEXT-MEMORY-V1: deterministic operational
@@ -198,10 +207,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       // O(1) over a small fixed rule list. Pure, no AI, no I/O.
       const enrichedQuery = enrichFollowUpQuery(query, operationalContextRef.current);
       const queryToRoute = enrichedQuery ?? query;
-      const match = classifyIntent(queryToRoute, customersRef.current, langRef.current);
-      response = handleIntent(match, engineRef.current, langRef.current);
+      const match = perfTime('intel.chat.classifyIntent',
+        () => classifyIntent(queryToRoute, customersRef.current, langRef.current));
+      response = perfTime(`intel.chat.handleIntent.${match.id}`,
+        () => handleIntent(match, engineRef.current, langRef.current));
       matchedIntentId = match.id;
     }
+    perfLog('intel.chat.fireQuery.total', _fireT0);
     // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: skip identical assistant push
     // within 500ms of the last identical response (prevents double-render
     // from StrictMode/race re-fire). Always refresh the timestamp so a
@@ -270,11 +282,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }, []);
 
   function runDailyAutomation(STORAGE_KEY: string, today: string) {
+    const _t = performance.now();
     const eng = engineRef.current;
-    const m = eng.getTodayMetrics();
+    const m = perfTime('intel.chat.daily.getTodayMetrics', () => eng.getTodayMetrics());
 
     // Reuse existing safe contact pipeline (consent-filtered + 24h-deduped).
-    const candidates = eng.buildOutreachQueueItems().slice(0, 3);
+    const candidates = perfTime('intel.chat.daily.buildOutreachQueueItems',
+      () => eng.buildOutreachQueueItems()).slice(0, 3);
     if (candidates.length === 0) {
       // No candidates → skip without storing, so a later analyze pass with
       // populated scores can still trigger.
@@ -332,6 +346,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     ]);
     addAutomationItems(built.filter(isQueueableAction).map(createQueueItemFromChatAction));
     try { localStorage.setItem(STORAGE_KEY, today); } catch {}
+    perfLog('intel.chat.daily.runDailyAutomation.total', _t);
   }
 
   useEffect(() => {
