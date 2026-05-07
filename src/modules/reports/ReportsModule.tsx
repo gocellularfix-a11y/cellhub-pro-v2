@@ -1207,7 +1207,7 @@ export default function ReportsModule() {
     for (const sale of filteredSales) {
       for (const item of (sale.items || [])) {
         const kind = classifyItem(item);
-        const catGuess = kind === 'phone_payment' ? 'Phone Payments'
+        let catGuess = kind === 'phone_payment' ? 'Phone Payments'
           : kind === 'topup' ? 'Top-Ups'
           : kind === 'repair' ? 'Repairs'
           : kind === 'unlock' ? 'Unlocks'
@@ -1215,6 +1215,13 @@ export default function ReportsModule() {
           : kind === 'cc_fee' ? 'CC Fees'
           : kind === 'service' ? 'Services'
           : (item.category || 'Products');
+        // R-REPORTS-ANALYTICS-FINANCIAL-AUDIT-V1: mirror the aggregation
+        // rule at line ~828 — layaway-linked items always bucket under
+        // 'Layaway'. Without this, the breakdown shows "Layaway × 1" but
+        // clicking the row finds 0 items because the drilldown filter
+        // here was using item.category (e.g., 'cellphones') instead of
+        // the layaway override. Pure presentation alignment; no math.
+        if (item.layawayId) catGuess = 'Layaway';
         // Round 10 fix 4: compare on normalized key so case variants match.
         if (normalizeCategoryKey(catGuess) !== wantKey) continue;
         items.push({
