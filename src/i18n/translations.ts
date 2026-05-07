@@ -279,20 +279,24 @@ export const translations: TranslationDictionary = {
   // direct customer targeting isn't possible. Points the owner at the
   // broader WhatsApp campaign path (Promote Inventory panel → Generate
   // Campaign button) that's already on screen.
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: decisive strategy language replacing
+  // the prior dead-end phrasing. Operator should sound operational, not
+  // apologetic — when targeted outreach isn't available, recommend the
+  // broad campaign as the right move, not as a fallback.
   'chat.productPush.noDirectMatches': {
-    en: (product: string) => `No high-confidence customer matches found for "${product}" right now.`,
-    es: (product: string) => `Sin coincidencias directas de clientes para "${product}" en este momento.`,
-    pt: (product: string) => `Sem correspondências diretas de clientes para "${product}" no momento.`,
+    en: (product: string) => `Best strategy for "${product}": broad WhatsApp/Status campaign.`,
+    es: (product: string) => `Mejor estrategia para "${product}": campaña amplia de WhatsApp/Estado.`,
+    pt: (product: string) => `Melhor estratégia para "${product}": campanha ampla de WhatsApp/Status.`,
   },
   'chat.productPush.broaderCampaignSuggestion': {
-    en: 'A broader WhatsApp campaign may still help move inventory.',
-    es: 'Una campaña amplia de WhatsApp todavía puede ayudar a mover inventario.',
-    pt: 'Uma campanha ampla de WhatsApp ainda pode ajudar a mover estoque.',
+    en: 'Use this campaign to move stale inventory.',
+    es: 'Usa esta campaña para mover inventario lento.',
+    pt: 'Use esta campanha para movimentar estoque parado.',
   },
   'chat.productPush.fallbackPromotionAction': {
-    en: 'Use the 🚀 Generate Campaign button on the Promote Inventory panel to send to recent customers.',
-    es: 'Usa el botón 🚀 Generar Campaña en el panel Promover Inventario para enviar a clientes recientes.',
-    pt: 'Use o botão 🚀 Gerar Campanha no painel Promover Estoque para enviar aos clientes recentes.',
+    en: 'Click Promote to open the campaign panel — the draft will be ready.',
+    es: 'Haz clic en Promover para abrir el panel de campaña — el borrador estará listo.',
+    pt: 'Clique em Promover para abrir o painel da campanha — o rascunho estará pronto.',
   },
   'chat.productPush.noProduct': {
     en: 'Tell me which product to push, e.g. "promote this product Galaxy S24".',

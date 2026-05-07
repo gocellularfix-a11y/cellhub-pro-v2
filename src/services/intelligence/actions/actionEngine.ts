@@ -19,6 +19,16 @@ export interface ActionPayload {
   // auto-selects with no manual search step.
   productId?: string;
   productName?: string;
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: optional metadata so the producer
+  // (handleProductOpportunities) can communicate WHICH strategy was
+  // recommended and on what channel. Consumers may show this info or
+  // gate UX paths off it; it's purely informational and never required
+  // for execution. preparedMessage is reserved for future flows where
+  // the producer pre-builds a message draft (today the chat re-runs the
+  // product-push handler on panel open to produce per-customer drafts).
+  strategy?: 'targeted_whatsapp' | 'broad_campaign' | 'in_store' | 'status_post';
+  recommendedChannel?: 'whatsapp' | 'whatsapp_status' | 'in_store' | 'marketplace';
+  preparedMessage?: string;
   executable: boolean;
   executionTarget:
     | 'whatsapp_url'

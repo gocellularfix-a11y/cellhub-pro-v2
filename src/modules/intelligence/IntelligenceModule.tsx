@@ -262,11 +262,19 @@ export default function IntelligenceModule() {
   // string-matched reconstruction), clears the search field so the
   // confirmation card renders immediately, and scrolls the panel into
   // view. No chat-replay, no manual product search step.
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: also auto-fires the campaign chat
+  // query so the user doesn't have to click "Generate Campaign" — the
+  // draft (per-customer WhatsApp messages with action buttons, OR the
+  // broad-campaign fallback text) appears immediately in the chat
+  // sidebar. The chat handler is the same one used when the user types
+  // "promote {name}" manually, so behavior is unified. The 500ms chat
+  // dedup guard already prevents accidental double-fire on rapid clicks.
   const handleOpenPromote = useCallback((productId: string, productName: string) => {
     setSelectedProduct({ id: productId, name: productName });
     setProductSearch('');
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+    fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
+  }, [fireChat, t]);
 
   const handleGenerateCampaign = useCallback(() => {
     if (!selectedProduct) return;

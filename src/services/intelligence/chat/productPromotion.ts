@@ -42,10 +42,17 @@ function hasViablePromotionAudience(engine: IntelligenceEngine): boolean {
 // R-OPERATOR-EXECUTABLE-ACTIONS-V1: build the executable open_promote_panel
 // action button. Uses real inventory id (no string matching). Returns null
 // if the inventory item is missing — caller falls back to chat-replay.
+// R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: now stamps the recommended strategy +
+// channel onto the payload. When audience exists we recommend targeted
+// WhatsApp; without audience we recommend broad campaign (Status/Marketplace).
+// The downstream consumer (IntelligenceModule.handleOpenPromote) auto-fires
+// the chat campaign on click so the panel opens with the draft already
+// generated below — no extra "Generate Campaign" click required.
 function buildOpenPromoteAction(
   inventoryId: string,
   productName: string,
   label: string,
+  audienceAvailable: boolean = false,
 ): ChatActionUI {
   return {
     id: `open-promote-${inventoryId}-${Date.now()}`,
@@ -55,6 +62,8 @@ function buildOpenPromoteAction(
       type: 'promote_product',
       productId: inventoryId,
       productName,
+      strategy: audienceAvailable ? 'targeted_whatsapp' : 'broad_campaign',
+      recommendedChannel: audienceAvailable ? 'whatsapp' : 'whatsapp_status',
       executable: true,
       executionTarget: 'open_promote_panel',
     },
@@ -147,11 +156,14 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     ) ?? engine.getInventory().find(
       (i) => (i.name || '').toLowerCase().includes(productLowerForMatch),
     );
+    // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: empty-candidates path → broad
+    // campaign strategy (audience not viable for targeted outreach).
     const actions: ChatActionUI[] | undefined = matchedInv
       ? [buildOpenPromoteAction(
           matchedInv.id,
           matchedInv.name,
           t('chat.productOps.promoteAction', matchedInv.name),
+          false,
         )]
       : undefined;
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: even when direct candidates are
@@ -354,10 +366,14 @@ export function handleProductOpportunities(engine: IntelligenceEngine, lang: Lan
     lines.push(t('chat.productOps.audienceFallbackBody'));
   }
 
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: stamp strategy + channel based on
+  // the audience-availability check we already ran above. Targeted when
+  // direct outreach is viable, broad campaign otherwise.
   const promoteAction = buildOpenPromoteAction(
     top.inventoryId,
     top.name,
     t('chat.productOps.promoteAction', top.name),
+    audienceAvailable,
   );
 
   return { kind: 'answer', text: lines.join('\n'), actions: [promoteAction] };
