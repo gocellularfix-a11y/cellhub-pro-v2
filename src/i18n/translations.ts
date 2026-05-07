@@ -494,10 +494,37 @@ export const translations: TranslationDictionary = {
   'chat.productOps.action.bundle':      { en: 'Bundle with high-velocity items.', es: 'Combina con artículos de alta rotación.', pt: 'Combine com itens de alta rotatividade.' },
   'chat.productOps.action.review':      { en: 'Review supplier or pricing.', es: 'Revisa proveedor o precio.', pt: 'Revise fornecedor ou preço.' },
   // R-INTELLIGENCE-ACTION-BUTTONS-V1: "Promote {name}" chat-replay button.
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: same label, but the click now opens
+  // the Promote Inventory panel directly with the product preselected.
   'chat.productOps.promoteAction': {
     en: (name: string) => `Promote ${name}`,
     es: (name: string) => `Promover ${name}`,
     pt: (name: string) => `Promover ${name}`,
+  },
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: strategy fallback when no eligible
+  // direct-outreach audience exists. Communicates the WHY (no audience)
+  // and the alternate strategy (in-store, clearance, Status, Marketplace).
+  'chat.productOps.audienceFallbackHeader': {
+    en: 'Strategy:',
+    es: 'Estrategia:',
+    pt: 'Estratégia:',
+  },
+  'chat.productOps.audienceFallbackBody': {
+    en: 'No strong direct-outreach audience for this product. Suggest public push: in-store display, clearance pricing, WhatsApp Status, or Marketplace.',
+    es: 'Sin audiencia fuerte para contacto directo. Sugerencia: empuje público: exhibición en tienda, precio de liquidación, Estado de WhatsApp o Marketplace.',
+    pt: 'Sem audiência forte para contato direto. Sugestão: divulgação pública: exposição na loja, preço de liquidação, Status do WhatsApp ou Marketplace.',
+  },
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: action-button feedback shown when
+  // the chat clicks open_promote_panel (success / no-callback fallback).
+  'chat.promote.opening': {
+    en: (name: string) => `Opening promotion panel for ${name}…`,
+    es: (name: string) => `Abriendo panel de promoción para ${name}…`,
+    pt: (name: string) => `Abrindo painel de promoção para ${name}…`,
+  },
+  'chat.promote.unavailable': {
+    en: 'Promotion panel unavailable here.',
+    es: 'Panel de promoción no disponible aquí.',
+    pt: 'Painel de promoção indisponível aqui.',
   },
   'chat.reorder.days': { en: (n: number) => `${n} day${n === 1 ? '' : 's'}`, es: (n: number) => `${n} día${n === 1 ? '' : 's'}`, pt: (n: number) => `${n} dia${n === 1 ? '' : 's'}` },
   'chat.reorder.daysLessThanOne': { en: '<1 day', es: '<1 día', pt: '<1 dia' },

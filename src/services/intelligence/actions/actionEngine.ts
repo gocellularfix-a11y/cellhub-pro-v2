@@ -3,7 +3,7 @@
 import type { ActionItem } from '../types';
 
 export interface ActionPayload {
-  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder';
+  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder' | 'promote_product';
   messageKey?: string;
   // R-INTELLIGENCE-PENDING-DEAL-V1: optional dynamic message text for cases
   // where the static messageKey templates can't carry per-instance details
@@ -14,6 +14,11 @@ export interface ActionPayload {
   customerId?: string;
   customerPhone?: string;
   sku?: string;
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: real inventory references for the
+  // open_promote_panel hand-off. Carries the exact product so the panel
+  // auto-selects with no manual search step.
+  productId?: string;
+  productName?: string;
   executable: boolean;
   executionTarget:
     | 'whatsapp_url'
@@ -21,6 +26,7 @@ export interface ActionPayload {
     | 'pos_bundle'
     | 'review_panel'
     | 'reminder_queue'
+    | 'open_promote_panel'
     | 'none';
 }
 

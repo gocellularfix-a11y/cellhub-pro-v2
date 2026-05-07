@@ -20,6 +20,47 @@ import { enqueueOutreachActions } from '../actions';
 import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
 import { tChat, COP } from './handlers';
 
+// R-OPERATOR-EXECUTABLE-ACTIONS-V1: shared audience-viability check.
+// Returns true as soon as ONE customer meets the basic outreach criteria
+// (has phone, has ≥1 prior visit, has lastVisit). Mirrors the exact
+// filter runProductPush uses, so handleProductOpportunities can decide
+// the strategy BEFORE recommending — eliminating the contradictory
+// "promote → no audience" dead-end. Pure read; no enqueue, no side effects.
+function hasViablePromotionAudience(engine: IntelligenceEngine): boolean {
+  const scores = engine.getCustomerScores();
+  for (const cs of scores) {
+    const h = engine.getCustomerHistory(cs.customerId);
+    if (!h) continue;
+    if (!h.customer.phone) continue;
+    if (h.visitCount < 1) continue;
+    if (!h.lastVisit) continue;
+    return true;
+  }
+  return false;
+}
+
+// R-OPERATOR-EXECUTABLE-ACTIONS-V1: build the executable open_promote_panel
+// action button. Uses real inventory id (no string matching). Returns null
+// if the inventory item is missing — caller falls back to chat-replay.
+function buildOpenPromoteAction(
+  inventoryId: string,
+  productName: string,
+  label: string,
+): ChatActionUI {
+  return {
+    id: `open-promote-${inventoryId}-${Date.now()}`,
+    label,
+    actionType: 'whatsapp', // any actionType works; executor branches on executionTarget
+    payload: {
+      type: 'promote_product',
+      productId: inventoryId,
+      productName,
+      executable: true,
+      executionTarget: 'open_promote_panel',
+    },
+  };
+}
+
 // ── Product push (R-INTEL-PRODUCT-PUSH-ENGINE) ─────────────
 // Owner says "promote this product X" → router extracts X into
 // match.extractedProduct → this handler ranks customers by spend +
@@ -88,12 +129,31 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     // (Promote Inventory panel → Generate Campaign button). Keeps the chat
     // response aligned with the visible action surfaces; no new buttons,
     // no new queue items, no new infrastructure.
+    // R-OPERATOR-EXECUTABLE-ACTIONS-V1: also attach an executable button
+    // so the owner can jump directly into the Promote Inventory panel
+    // with the product preselected. We need the real inventory id —
+    // resolved via deterministic case-insensitive match against the
+    // engine's inventory snapshot. If no match (e.g. user typed a name
+    // that's not in inventory), we fall back to text-only response.
     const lines = [
       t('chat.productPush.noDirectMatches', productName),
       '',
       t('chat.productPush.broaderCampaignSuggestion'),
       t('chat.productPush.fallbackPromotionAction'),
     ];
+    const productLowerForMatch = productName.toLowerCase();
+    const matchedInv = engine.getInventory().find(
+      (i) => (i.name || '').toLowerCase() === productLowerForMatch,
+    ) ?? engine.getInventory().find(
+      (i) => (i.name || '').toLowerCase().includes(productLowerForMatch),
+    );
+    const actions: ChatActionUI[] | undefined = matchedInv
+      ? [buildOpenPromoteAction(
+          matchedInv.id,
+          matchedInv.name,
+          t('chat.productOps.promoteAction', matchedInv.name),
+        )]
+      : undefined;
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: even when direct candidates are
     // empty, the owner is still "thinking about" this product — stamp
     // context so the next vague follow-up ("what about accessories?",
@@ -101,6 +161,7 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     return {
       kind: 'answer',
       text: lines.join('\n'),
+      actions,
       establishesContext: { type: 'product', value: productName },
     };
   }
@@ -273,22 +334,31 @@ export function handleProductOpportunities(engine: IntelligenceEngine, lang: Lan
     lines.push(t('chat.productOps.remaining', remaining));
   }
 
-  // R-INTELLIGENCE-ACTION-BUTTONS-V1: attach a "Promote Product" button
-  // that REPLAYS the chat through the existing product_push intent. No new
-  // execution system; no autonomous send. The button reuses fireQuery →
-  // classifyIntent → handleProductPush — same path the user already gets
-  // when typing "promote {name}" manually.
-  const promoteAction: ChatActionUI = {
-    id: `promote-${top.name}-${Date.now()}`,
-    label: t('chat.productOps.promoteAction', top.name),
-    actionType: 'whatsapp',
-    triggerQuery: `promote ${top.name}`,
-    payload: {
-      type: 'whatsapp',
-      executable: true,
-      executionTarget: 'none', // chat-replay; the executor branch is bypassed
-    },
-  };
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: audience-validation + executable
+  // hand-off. The previous chat-replay shortcut (triggerQuery: 'promote
+  // {name}') re-fired the same query through the chat pipeline, which
+  // dead-ended in runProductPush when no eligible customers existed —
+  // a contradictory flow ("promote this!" → "no audience"). Now we:
+  //   1. Validate audience BEFORE attaching the action.
+  //   2. Switch the response strategy when audience is empty (fallback
+  //      strategies: in-store push, clearance, WhatsApp Status,
+  //      Marketplace) instead of recommending direct outreach.
+  //   3. Attach an open_promote_panel action carrying the REAL
+  //      inventoryId so the click jumps straight into the Promote
+  //      Inventory panel with the exact product preselected — no manual
+  //      search, no string matching.
+  const audienceAvailable = hasViablePromotionAudience(engine);
+  if (!audienceAvailable) {
+    lines.push('');
+    lines.push(t('chat.productOps.audienceFallbackHeader'));
+    lines.push(t('chat.productOps.audienceFallbackBody'));
+  }
+
+  const promoteAction = buildOpenPromoteAction(
+    top.inventoryId,
+    top.name,
+    t('chat.productOps.promoteAction', top.name),
+  );
 
   return { kind: 'answer', text: lines.join('\n'), actions: [promoteAction] };
 }

@@ -166,7 +166,11 @@ export type ExecutionResult =
   | { ok: true;  type: 'pos_bundle';      sku: string }
   | { ok: true;  type: 'review_panel' }
   | { ok: true;  type: 'reminder_queue';  customerId?: string; customerName?: string }
-  | { ok: false; reason: 'not_executable' | 'missing_customer' | 'missing_sku' | 'missing_template' };
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: deterministic hand-off into the
+  // Promote Inventory panel. The executor returns a structured result;
+  // IntelligenceChat translates it into a UI side-effect via onOpenPromote.
+  | { ok: true;  type: 'open_promote_panel'; productId: string; productName: string }
+  | { ok: false; reason: 'not_executable' | 'missing_customer' | 'missing_sku' | 'missing_template' | 'missing_product' };
 
 function buildMessage(messageKey: string, customerName?: string): string {
   switch (messageKey) {
@@ -243,6 +247,23 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
         type: 'reminder_queue',
         customerId: payload.customerId,
         customerName: payload.customerName,
+      };
+    }
+
+    // R-OPERATOR-EXECUTABLE-ACTIONS-V1: hand-off into the Promote Inventory
+    // panel. The chat-side caller (handleActionClick) wires the result into
+    // the IntelligenceModule via the onOpenPromote callback prop. No URL
+    // opened here; no autonomous send; no state mutation in this executor.
+    case 'open_promote_panel': {
+      if (!payload.productId || !payload.productName) {
+        return { ok: false, reason: 'missing_product' };
+      }
+      appendExecutionLog(payload);
+      return {
+        ok: true,
+        type: 'open_promote_panel',
+        productId: payload.productId,
+        productName: payload.productName,
       };
     }
 
