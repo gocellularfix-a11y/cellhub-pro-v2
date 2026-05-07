@@ -92,7 +92,10 @@ const PSEUDO_ITEM_PREFIXES = [
   'so balance', 'so deposit',
   'unlock balance', 'unlock deposit',
 ];
-function isPseudoItem(item: SaleItem): boolean {
+// R-DASHBOARD-PROFIT-RECONCILE-V1: exported so Dashboard.tsx reuses the
+// SAME pseudo-item detection (single source of truth — no parallel
+// accounting). No behavior change.
+export function isPseudoItem(item: SaleItem): boolean {
   const n = String(item?.name || '').toLowerCase().trim();
   if (!n) return false;
   return PSEUDO_ITEM_PREFIXES.some((p) => n.startsWith(p));
@@ -107,7 +110,10 @@ function isPseudoItem(item: SaleItem): boolean {
  * exists. Any missing field returns 0 → caller preserves Round 10 behavior.
  * Integer cents in / integer cents out; single final Math.round.
  */
-function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[], paymentCents: number): number {
+// R-DASHBOARD-PROFIT-RECONCILE-V1: exported (with siblings below) so
+// Dashboard.tsx applies the same proportional-cost slice for layaway-
+// linked sale items. No behavior change.
+export function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const denominator = entity.totalPrice || 0;
   if (denominator <= 0) return 0;
@@ -122,7 +128,7 @@ function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[],
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: InventoryItem[], paymentCents: number): number {
+export function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const totalCostCents = entity.cost || 0;
   const denominator = entity.price || 0;
@@ -130,7 +136,7 @@ function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: Inven
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], paymentCents: number): number {
+export function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const partsCost = (entity.parts || []).reduce(
     (s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1),
@@ -143,7 +149,7 @@ function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], 
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
+export function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const cost = entity.cost || 0;
   const denominator = entity.price || 0;

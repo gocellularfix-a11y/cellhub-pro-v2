@@ -20,6 +20,16 @@ import { loadLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 import { normalizeCarrier } from '@/utils/normalize';
+// R-DASHBOARD-PROFIT-RECONCILE-V1: reuse Reports' pseudo-item detection
+// + proportional-cost helpers so the Dashboard's profit pipeline applies
+// the SAME accounting rules as Reports (no duplicated math).
+import {
+  isPseudoItem,
+  getLayawayProportionalCost,
+  getSpecialOrderProportionalCost,
+  getRepairProportionalCost,
+  getUnlockProportionalCost,
+} from '@/modules/reports/ReportsModule';
 
 /** Sale is countable for revenue if not voided/refunded. Handles legacy case variations. */
 function isSaleCountable(s: { status?: string }): boolean {
@@ -132,6 +142,14 @@ export default function Dashboard() {
   //   4) profit = revenue × commRate (Reports: cost = revenue × (1-commRate)).
   // Strict rule: if no commission resolvable → that item's profit = 0
   // (NO 0.07 fallback — refuse to fabricate profit).
+  // R-DASHBOARD-PROFIT-RECONCILE-V1: precomputed entity Maps so per-item
+  // proportional-cost lookups are O(1). Built once per source array
+  // change — no per-render scans.
+  const layawaysById       = useMemo(() => new Map((layaways || []).map((l) => [l.id, l])), [layaways]);
+  const specialOrdersById  = useMemo(() => new Map((specialOrders || []).map((o) => [o.id, o])), [specialOrders]);
+  const repairsById        = useMemo(() => new Map((repairs || []).map((r) => [r.id, r])), [repairs]);
+  const unlocksById        = useMemo(() => new Map((unlocks || []).map((u) => [u.id, u])), [unlocks]);
+
   const todayProfitGross = useMemo(
     () => todaySales.reduce((sum, s) => {
       const itemProfit = (s.items || []).reduce((p, item) => {
@@ -176,11 +194,55 @@ export default function Dashboard() {
           return p + (revenueCents - costCents);
         }
 
+        // R-DASHBOARD-PROFIT-RECONCILE-V1: pseudo-item branch. Mirrors
+        // ReportsModule lines 839-863. Layaway/Repair/SO/Unlock Deposit
+        // and Balance pseudo-items ship with cost=0 → without this branch
+        // they trivially booked 100% margin and inflated dashboard profit.
+        // When the linked entity has reliable cost+price data, inherit
+        // a proportional slice (payment / totalPrice * totalCost). When
+        // the helper returns 0 (missing cost data), the pseudo-item is
+        // EXCLUDED from profit (matches Reports' Round 10 fix 3 — they
+        // contribute to revenue display only, not to margin numerator).
+        if (isPseudoItem(item)) {
+          let realCost = 0;
+          if (item.layawayId) {
+            const linked = layawaysById.get(item.layawayId);
+            if (linked) realCost = getLayawayProportionalCost(linked, inventory, revenueCents);
+          } else if (item.specialOrderId) {
+            const linked = specialOrdersById.get(item.specialOrderId);
+            if (linked) realCost = getSpecialOrderProportionalCost(linked, inventory, revenueCents);
+          } else if (item.repairId) {
+            const linked = repairsById.get(item.repairId);
+            if (linked) realCost = getRepairProportionalCost(linked, inventory, revenueCents);
+          } else if (item.unlockId) {
+            const linked = unlocksById.get(item.unlockId);
+            if (linked) realCost = getUnlockProportionalCost(linked, inventory, revenueCents);
+          }
+          if (realCost > 0) {
+            return p + (revenueCents - realCost);
+          }
+          return p; // pseudo-item with no recoverable cost — exclude from profit
+        }
+
+        // R-DASHBOARD-PROFIT-RECONCILE-V1: layaway-linked NON-pseudo items
+        // also use proportional cost (mirrors Reports lines 812-821). Cart
+        // lines tied to a layaway often ship with cost=undefined; without
+        // this they'd book 100% margin too.
+        if (item.layawayId) {
+          const linked = layawaysById.get(item.layawayId);
+          if (linked) {
+            const proportional = getLayawayProportionalCost(linked, inventory, revenueCents);
+            if (proportional > 0) {
+              return p + (revenueCents - proportional);
+            }
+          }
+        }
+
         return p + (revenueCents - (item.cost || 0) * qty);
       }, 0);
       // CC fee is 100% margin — add directly to sum (no cost to deduct).
       return sum + itemProfit + (s.creditCardFee || 0);
-    }, 0), [todaySales, settings],
+    }, 0), [todaySales, settings, inventory, layawaysById, specialOrdersById, repairsById, unlocksById],
   );
 
   // Subtotal of ONLY profit-generating items + CC fee (apples-to-apples with
