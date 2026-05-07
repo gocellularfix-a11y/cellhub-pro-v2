@@ -75,8 +75,12 @@ export default function IntelligenceModule() {
   // product changes — avoids showing a stale draft for product B after
   // the user re-selects product A. draftMessage starts equal to the
   // template; user edits diverge, indicated visually via `edited` flag.
+  // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: selected recipient drives
+  // the single primary "Open WhatsApp" button. Auto-set to the first
+  // candidate when the campaign loads; cleared on product change.
   const [panelCampaign, setPanelCampaign] = useState<PanelCampaignDraft | null>(null);
   const [draftMessage, setDraftMessage] = useState<string>('');
+  const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState<string | null>(null);
 
   // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — preserved verbatim.
   // R-OPERATOR-STABILIZATION-AUDIT-V1: refreshKey REMOVED from sig. Including
@@ -286,8 +290,11 @@ export default function IntelligenceModule() {
     setProductSearch('');
     // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: clear any prior draft so the
     // panel starts clean while the auto-fired chat re-populates it.
+    // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: also clear recipient
+    // selection — auto-select happens in handlePanelCampaign.
     setPanelCampaign(null);
     setDraftMessage('');
+    setSelectedCampaignRecipientId(null);
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
   }, [fireChat, t]);
@@ -303,6 +310,10 @@ export default function IntelligenceModule() {
     if (selectedProduct && selectedProduct.id !== draft.productId) return;
     setPanelCampaign(draft);
     setDraftMessage(draft.templateMessage);
+    // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: auto-select the first
+    // candidate so the primary "Open WhatsApp" button is immediately
+    // actionable. Empty candidates → null (broadcast button shown).
+    setSelectedCampaignRecipientId(draft.candidates.length > 0 ? draft.candidates[0].customerId : null);
   }, [selectedProduct]);
 
   // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: per-recipient send. Substitutes
@@ -512,88 +523,137 @@ export default function IntelligenceModule() {
               ) : null}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* ── 1. PRODUCT / STRATEGY SUMMARY (top) ────────────────── */}
               <div className="flex items-center justify-between gap-2 px-3 py-2 rounded border border-purple-500/30 bg-purple-500/5">
                 <div className="min-w-0">
                   <div className="text-sm text-slate-100 font-medium truncate">{selectedProduct.name}</div>
+                  {/* R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: strategy line
+                      derived from candidates — targeted vs broad. Pure read,
+                      no scan. */}
+                  {panelCampaign && panelCampaign.productId === selectedProduct.id && (
+                    <div className="text-[11px] text-purple-300 mt-0.5">
+                      {panelCampaign.candidates.length > 0
+                        ? t('intelligence.console.campaignStrategyTargeted', panelCampaign.candidates.length)
+                        : t('intelligence.console.campaignStrategyBroad')}
+                    </div>
+                  )}
                 </div>
                 <button
-                  onClick={() => { setSelectedProduct(null); setPanelCampaign(null); setDraftMessage(''); }}
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    setPanelCampaign(null);
+                    setDraftMessage('');
+                    setSelectedCampaignRecipientId(null);
+                  }}
                   className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600 shrink-0"
                 >
                   {t('intelligence.console.changeProduct')}
                 </button>
               </div>
-              <button
-                onClick={handleGenerateCampaign}
-                className="w-full px-3 py-2 rounded text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition"
-              >
-                🚀 {t('intelligence.console.generateCampaign')}
-              </button>
 
-              {/* R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: editable campaign draft +
-                  per-recipient WhatsApp launch buttons. Renders only when the
-                  draft matches the currently-selected product. The textarea
-                  is locally editable; per-recipient send substitutes
-                  {customer} at click time using the canonical buildWhatsAppUrl
-                  helper. Empty candidates → single broadcast button (recipient
-                  picker). No autonomous send, no API. */}
+              {/* ── 2. NO-CAMPAIGN STATE: manual generate fallback ─────── */}
+              {(!panelCampaign || panelCampaign.productId !== selectedProduct.id) && (
+                <button
+                  onClick={handleGenerateCampaign}
+                  className="w-full px-3 py-2 rounded text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition"
+                >
+                  🚀 {t('intelligence.console.generateCampaign')}
+                </button>
+              )}
+
+              {/* ── 3. CAMPAIGN WORKSPACE ──────────────────────────────
+                  R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: selectable rows
+                  (no per-row buttons), single primary action at the bottom.
+                  Layout order matches spec: textarea → recipients → action. */}
               {panelCampaign && panelCampaign.productId === selectedProduct.id && (
-                <div className="mt-2 pt-3 border-t border-surface-700 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      {t('intelligence.console.campaignDraftTitle')}
-                    </span>
-                    {draftMessage !== panelCampaign.templateMessage && (
-                      <span className="text-[10px] text-amber-400">
-                        {t('intelligence.console.campaignEditedHint')}
+                <>
+                  {/* 3a. Campaign draft textarea (center) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                        {t('intelligence.console.campaignDraftTitle')}
                       </span>
-                    )}
+                      {draftMessage !== panelCampaign.templateMessage && (
+                        <span className="text-[10px] text-amber-400">
+                          {t('intelligence.console.campaignEditedHint')}
+                        </span>
+                      )}
+                    </div>
+                    <textarea
+                      value={draftMessage}
+                      onChange={(e) => setDraftMessage(e.target.value)}
+                      rows={4}
+                      className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-xs border border-surface-600 focus:outline-none focus:border-purple-500 font-mono leading-relaxed"
+                      placeholder={t('intelligence.console.campaignDraftPlaceholder')}
+                    />
+                    <p className="text-[10px] text-slate-500 italic">
+                      {t('intelligence.console.campaignSubstitutionHint')}
+                    </p>
                   </div>
-                  <textarea
-                    value={draftMessage}
-                    onChange={(e) => setDraftMessage(e.target.value)}
-                    rows={4}
-                    className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-xs border border-surface-600 focus:outline-none focus:border-purple-500 font-mono leading-relaxed"
-                    placeholder={t('intelligence.console.campaignDraftPlaceholder')}
-                  />
-                  <p className="text-[10px] text-slate-500 italic">
-                    {t('intelligence.console.campaignSubstitutionHint')}
-                  </p>
-                  {panelCampaign.candidates.length > 0 ? (
-                    <>
-                      <p className="text-[11px] text-slate-400 mt-2">
+
+                  {/* 3b. Recipients (selectable rows, no per-row buttons) */}
+                  {panelCampaign.candidates.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-slate-400">
                         {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
                       </p>
-                      <div className="rounded border border-surface-700 divide-y divide-surface-700">
-                        {panelCampaign.candidates.map((c) => (
-                          <div key={c.customerId} className="flex items-center justify-between gap-2 px-3 py-2">
-                            <div className="min-w-0">
-                              <div className="text-sm text-slate-200 truncate">{c.name}</div>
-                              <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
-                            </div>
+                      <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden">
+                        {panelCampaign.candidates.map((c) => {
+                          const isSelected = selectedCampaignRecipientId === c.customerId;
+                          return (
                             <button
-                              onClick={() => handlePanelSend(c.name, c.phone)}
-                              disabled={!draftMessage.trim()}
-                              className="px-2.5 py-1 rounded text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                              title={t('intelligence.console.campaignSendTooltip')}
+                              key={c.customerId}
+                              type="button"
+                              onClick={() => setSelectedCampaignRecipientId(c.customerId)}
+                              className={`w-full text-left flex items-center gap-2 px-3 py-2 transition ${
+                                isSelected ? 'bg-purple-500/10' : 'hover:bg-surface-700'
+                              }`}
                             >
-                              📲 {t('intelligence.console.campaignSendLabel')}
+                              {/* Radio-style indicator */}
+                              <span
+                                className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                                  isSelected ? 'border-purple-400 bg-purple-400' : 'border-slate-500'
+                                }`}
+                                aria-hidden
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-sm truncate ${isSelected ? 'text-purple-200 font-medium' : 'text-slate-200'}`}>
+                                  {c.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
+                              </div>
                             </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    </>
+                    </div>
+                  )}
+
+                  {/* 3c. ONE primary action button (bottom) */}
+                  {panelCampaign.candidates.length > 0 ? (
+                    <button
+                      onClick={() => {
+                        const sel = panelCampaign.candidates.find((c) => c.customerId === selectedCampaignRecipientId);
+                        if (!sel) return;
+                        handlePanelSend(sel.name, sel.phone);
+                      }}
+                      disabled={!draftMessage.trim() || !selectedCampaignRecipientId}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={t('intelligence.console.campaignSendTooltip')}
+                    >
+                      📲 {t('intelligence.console.campaignOpenWhatsAppLabel')}
+                    </button>
                   ) : (
                     <button
                       onClick={handlePanelBroadcast}
                       disabled={!draftMessage.trim()}
-                      className="w-full px-3 py-2 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       📲 {t('intelligence.console.campaignBroadcastLabel')}
                     </button>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}

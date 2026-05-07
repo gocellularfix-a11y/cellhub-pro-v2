@@ -5350,6 +5350,14 @@ export const translations: TranslationDictionary = {
   'intelligence.console.campaignSendLabel':    { en: 'Open',                                                        es: 'Abrir',                                                                pt: 'Abrir' },
   'intelligence.console.campaignSendTooltip':  { en: 'Open WhatsApp with this message — you press Send manually',   es: 'Abre WhatsApp con este mensaje — presiona Enviar manualmente',         pt: 'Abre o WhatsApp com esta mensagem — você pressiona Enviar manualmente' },
   'intelligence.console.campaignBroadcastLabel': { en: '📲 Open WhatsApp draft (pick recipient)',                  es: '📲 Abrir borrador de WhatsApp (elegir destinatario)',                pt: '📲 Abrir rascunho do WhatsApp (escolher destinatário)' },
+  // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: workspace hierarchy keys.
+  'intelligence.console.campaignStrategyTargeted': {
+    en: (n: number) => `Targeted: ${n} ${n === 1 ? 'customer' : 'customers'}`,
+    es: (n: number) => `Dirigido: ${n} ${n === 1 ? 'cliente' : 'clientes'}`,
+    pt: (n: number) => `Direcionado: ${n} ${n === 1 ? 'cliente' : 'clientes'}`,
+  },
+  'intelligence.console.campaignStrategyBroad': { en: 'Broad campaign — pick recipient in WhatsApp',               es: 'Campaña amplia — elige destinatario en WhatsApp',                      pt: 'Campanha ampla — escolha destinatário no WhatsApp' },
+  'intelligence.console.campaignOpenWhatsAppLabel': { en: 'Open WhatsApp',                                          es: 'Abrir WhatsApp',                                                       pt: 'Abrir WhatsApp' },
 
   'intelligence.console.askTitle':             { en: '💬 Ask Your Shop',                                            es: '💬 Pregúntale a tu Tienda',                                            pt: '💬 Pergunte à sua Loja' },
   'intelligence.console.quickQuestions':       { en: 'Quick questions:',                                            es: 'Preguntas rápidas:',                                                   pt: 'Perguntas rápidas:' },
