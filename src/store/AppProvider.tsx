@@ -23,6 +23,7 @@ import type {
   StoreSettings,
   PurchaseOrder,
   Expense,
+  InventoryLoss,
   Appointment,
   CustomerReturn,
   VendorReturn,
@@ -48,6 +49,7 @@ const initialState: AppState = {
   employees: [],
   purchaseOrders: [],
   expenses: [],
+  inventoryLosses: [],
   appointments: [],
   customerReturns: [],
   vendorReturns: [],
@@ -106,6 +108,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, purchaseOrders: action.payload };
     case 'SET_EXPENSES':
       return { ...state, expenses: action.payload };
+    case 'SET_INVENTORY_LOSSES':
+      return { ...state, inventoryLosses: action.payload };
     case 'SET_APPOINTMENTS':
       return { ...state, appointments: action.payload };
     case 'SET_CUSTOMER_RETURNS':
@@ -163,6 +167,7 @@ interface AppContextValue {
   setEmployees: (e: Employee[]) => void;
   setPurchaseOrders: (po: PurchaseOrder[]) => void;
   setExpenses: (e: Expense[]) => void;
+  setInventoryLosses: (l: InventoryLoss[]) => void;
   setAppointments: (a: Appointment[]) => void;
   setCustomerReturns: (r: CustomerReturn[]) => void;
   setVendorReturns: (r: VendorReturn[]) => void;
@@ -192,6 +197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setEmployees = useCallback((e: Employee[]) => dispatch({ type: 'SET_EMPLOYEES', payload: e }), []);
   const setPurchaseOrders = useCallback((po: PurchaseOrder[]) => dispatch({ type: 'SET_PURCHASE_ORDERS', payload: po }), []);
   const setExpenses = useCallback((e: Expense[]) => dispatch({ type: 'SET_EXPENSES', payload: e }), []);
+  const setInventoryLosses = useCallback((l: InventoryLoss[]) => dispatch({ type: 'SET_INVENTORY_LOSSES', payload: l }), []);
   const setAppointments = useCallback((a: Appointment[]) => dispatch({ type: 'SET_APPOINTMENTS', payload: a }), []);
   const setCustomerReturns = useCallback((r: CustomerReturn[]) => dispatch({ type: 'SET_CUSTOMER_RETURNS', payload: r }), []);
   const setVendorReturns = useCallback((r: VendorReturn[]) => dispatch({ type: 'SET_VENDOR_RETURNS', payload: r }), []);
@@ -224,6 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       specialOrders: state.specialOrders.filter((o) => belongs(o.storeId)),
       layaways: state.layaways.filter((l) => belongs(l.storeId)),
       expenses: state.expenses.filter((e) => belongs(e.storeId)),
+      inventoryLosses: state.inventoryLosses.filter((l) => belongs(l.storeId)),
       appointments: state.appointments.filter((a) => belongs(a.storeId)),
       purchaseOrders: state.purchaseOrders.filter((po) => belongs(po.storeId)),
       customerReturns: state.customerReturns.filter((r) => belongs(r.storeId)),
@@ -251,6 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEmployees,
     setPurchaseOrders,
     setExpenses,
+    setInventoryLosses,
     setAppointments,
     setCustomerReturns,
     setVendorReturns,

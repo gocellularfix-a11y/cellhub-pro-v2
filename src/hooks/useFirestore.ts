@@ -91,6 +91,9 @@ const SYNC_MANIFEST: SyncEntry[] = [
   { localKey: 'expenses',         collectionName: COLLECTIONS.expenses,       actionType: 'SET_EXPENSES',          mergeMode: 'timestamp' },
   { localKey: 'customer_returns', collectionName: COLLECTIONS.customerReturns,actionType: 'SET_CUSTOMER_RETURNS',  mergeMode: 'union' },
   { localKey: 'vendor_returns',   collectionName: COLLECTIONS.vendorReturns,  actionType: 'SET_VENDOR_RETURNS',    mergeMode: 'union' },
+  // R-LOSSES-SHRINKAGE-V1: append-only audit shape — losses are never
+  // edited or hard-deleted in V1, so union merge mode mirrors sales/returns.
+  { localKey: 'inventory_losses', collectionName: COLLECTIONS.inventoryLosses,actionType: 'SET_INVENTORY_LOSSES',  mergeMode: 'union' },
 ];
 
 /**

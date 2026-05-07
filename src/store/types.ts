@@ -1085,6 +1085,36 @@ export interface Expense {
   updatedAt?: string;
 }
 
+// ── Inventory Loss / Shrinkage ────────────────────────────
+// R-LOSSES-SHRINKAGE-V1: business loss recorded when stock leaves the
+// store as defective / damaged / unsellable. NOT a sale, NOT a refund,
+// NOT a void — separate audit shape. Inventory qty is decremented at
+// time of record creation; the InventoryLoss record itself is the
+// audit trail (never edited or hard-deleted in V1).
+
+export type LossReason =
+  | 'defective'
+  | 'damaged'
+  | 'unsellable_return'
+  | 'vendor_non_returnable'
+  | 'opened_package'
+  | 'other';
+
+export interface InventoryLoss {
+  id: string;
+  storeId?: string;
+  itemId: string;
+  sku?: string;
+  itemName: string;
+  qty: number;
+  unitCost: number;     // cents
+  totalLoss: number;    // cents (qty * unitCost)
+  reason: LossReason;
+  notes?: string;
+  createdAt: string;    // ISO
+  approvedBy?: string;
+}
+
 // ── Purchase Order ────────────────────────────────────────
 
 export type POStatus = 'draft' | 'ordered' | 'partial' | 'received' | 'cancelled';
@@ -1141,6 +1171,7 @@ export interface AppState {
   employees: Employee[];
   purchaseOrders: PurchaseOrder[];
   expenses: Expense[];
+  inventoryLosses: InventoryLoss[];
   appointments: Appointment[];
   customerReturns: CustomerReturn[];
   vendorReturns: VendorReturn[];
@@ -1213,6 +1244,7 @@ export type AppAction =
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
   | { type: 'SET_PURCHASE_ORDERS'; payload: PurchaseOrder[] }
   | { type: 'SET_EXPENSES'; payload: Expense[] }
+  | { type: 'SET_INVENTORY_LOSSES'; payload: InventoryLoss[] }
   | { type: 'SET_APPOINTMENTS'; payload: Appointment[] }
   | { type: 'SET_CUSTOMER_RETURNS'; payload: CustomerReturn[] }
   | { type: 'SET_VENDOR_RETURNS'; payload: VendorReturn[] }

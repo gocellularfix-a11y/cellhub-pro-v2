@@ -242,4 +242,6 @@ export const COLLECTIONS = {
   // first-class Firestore collections with typed state + hydration.
   customerReturns: 'customerReturns',
   vendorReturns: 'vendorReturns',
+  // R-LOSSES-SHRINKAGE-V1: inventory shrinkage / business-loss audit.
+  inventoryLosses: 'inventoryLosses',
 } as const;

@@ -79,6 +79,8 @@ const LOCAL_KEYS: Record<string, string> = {
   // those consumers keep working without modification.
   [COLLECTIONS.customerReturns]:  'customer_returns',
   [COLLECTIONS.vendorReturns]:    'vendor_returns',
+  // R-LOSSES-SHRINKAGE-V1
+  [COLLECTIONS.inventoryLosses]:  'inventory_losses',
 };
 
 // ── Local helpers ─────────────────────────────────────────
@@ -229,6 +231,8 @@ export const persist = {
   // r-pkg-b3: Returns foundation
   customerReturn:(id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.customerReturns, id, data),
   vendorReturn:  (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.vendorReturns,   id, data),
+  // R-LOSSES-SHRINKAGE-V1
+  inventoryLoss: (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.inventoryLosses, id, data),
 };
 
 export const remove = {

@@ -15,8 +15,11 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import JsBarcode from 'jsbarcode';
-import type { InventoryItem, Sale, PurchaseOrder } from '@/store/types';
+import type { InventoryItem, Sale, PurchaseOrder, InventoryLoss, LossReason } from '@/store/types';
 import { persist, persistSettings, remove } from '@/services/persist';
+// R-LOSSES-SHRINKAGE-V1: admin-PIN guard reused from the canonical
+// AdminPinGate component. Mark-as-Loss is owner/manager only.
+import AdminPinGate from '@/components/shared/AdminPinGate';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
@@ -50,8 +53,8 @@ export default function InventoryModule() {
     // unlocks, layaways, customerReturns destructured for IntelligenceEngine
     // construction in the Promote click handler. Engine needs the full data
     // set to score customers (getCustomerScores requires cachedResult).
-    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns },
-    setInventory, setCart, dispatch,
+    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns, inventoryLosses, currentEmployee },
+    setInventory, setCart, setInventoryLosses, dispatch,
   } = useApp();
 
   const { toast } = useToast();
@@ -98,6 +101,16 @@ export default function InventoryModule() {
   const [showFieldCustomizer, setShowFieldCustomizer] = useState(false);
   // R-SIM-MANAGER-UI: dedicated SIM Card manager modal (toolbar button).
   const [showSimManager, setShowSimManager] = useState(false);
+  // R-LOSSES-SHRINKAGE-V1: mark-as-loss flow state. The flow is gated by
+  // the canonical AdminPinGate (manager/admin PIN) and decrements
+  // inventory.qty + creates an InventoryLoss record on success. Losses
+  // are NOT sales / refunds / voids — separate audit shape.
+  const [lossTarget, setLossTarget] = useState<InventoryItem | null>(null);
+  const [lossQty, setLossQty] = useState<string>('1');
+  const [lossReason, setLossReason] = useState<LossReason | ''>('');
+  const [lossNotes, setLossNotes] = useState<string>('');
+  const [lossPinOpen, setLossPinOpen] = useState(false);
+  const [committingLoss, setCommittingLoss] = useState(false);
 
   // Resolve field config (with defaults) for use throughout the module
   const fieldConfig = useMemo(
@@ -324,6 +337,103 @@ export default function InventoryModule() {
     },
     [setInventory, toast, t],
   );
+
+  // R-LOSSES-SHRINKAGE-V1: open the Mark-as-Loss modal pre-filled from
+  // the row item. Cost-zero items are blocked here (V1 policy — fake
+  // loss accounting prevention). Out-of-stock items are also blocked
+  // since there's nothing to write off.
+  const openMarkAsLoss = useCallback((item: InventoryItem) => {
+    if ((item.qty || 0) <= 0) {
+      toast(t('inventory.loss.outOfStock'), 'warning');
+      return;
+    }
+    if ((item.cost || 0) <= 0) {
+      toast(t('inventory.loss.costMissing'), 'warning');
+      return;
+    }
+    setLossTarget(item);
+    setLossQty('1');
+    setLossReason('');
+    setLossNotes('');
+  }, [toast, t]);
+
+  // R-LOSSES-SHRINKAGE-V1: commit handler. Runs only after the
+  // AdminPinGate succeeds. Validates again at commit time (defense
+  // in depth — qty/stock/reason re-checked against fresh inventory),
+  // creates the InventoryLoss record, decrements the item's qty,
+  // and persists both via the canonical persist surface (full record
+  // spread per CLAUDE.md / persist contract — no partial writes).
+  const handleCommitLoss = useCallback(() => {
+    if (committingLoss) return;
+    const target = lossTarget;
+    if (!target) return;
+    const qtyNum = parseInt(lossQty, 10);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+      toast(t('inventory.loss.invalidQty'), 'warning');
+      return;
+    }
+    if (!lossReason) {
+      toast(t('inventory.loss.reasonRequired'), 'warning');
+      return;
+    }
+    // Re-read fresh inventory at commit time so concurrent edits don't
+    // let us write off more than what's actually on hand.
+    const fresh = inventoryRef.current.find((i) => i.id === target.id);
+    if (!fresh) {
+      toast(t('inventory.loss.notFound'), 'error');
+      return;
+    }
+    if ((fresh.qty || 0) < qtyNum) {
+      toast(t('inventory.loss.exceedsStock'), 'warning');
+      return;
+    }
+    if ((fresh.cost || 0) <= 0) {
+      toast(t('inventory.loss.costMissing'), 'warning');
+      return;
+    }
+    setCommittingLoss(true);
+    try {
+      const now = new Date().toISOString();
+      const totalLossCents = (fresh.cost || 0) * qtyNum;
+      const lossRecord: InventoryLoss = {
+        id: generateId(),
+        itemId: fresh.id,
+        sku: fresh.sku,
+        itemName: fresh.name,
+        qty: qtyNum,
+        unitCost: fresh.cost || 0,
+        totalLoss: totalLossCents,
+        reason: lossReason as LossReason,
+        notes: lossNotes.trim() || undefined,
+        createdAt: now,
+        approvedBy: currentEmployee?.name || '—',
+      };
+      const updatedItem: InventoryItem = {
+        ...fresh,
+        qty: (fresh.qty || 0) - qtyNum,
+      };
+      const nextInventory = inventoryRef.current.map((i) =>
+        i.id === fresh.id ? updatedItem : i,
+      );
+      inventoryRef.current = nextInventory;
+      setInventory(nextInventory);
+      const nextLosses = [...(Array.isArray(inventoryLosses) ? inventoryLosses : []), lossRecord];
+      setInventoryLosses(nextLosses);
+      persist.inventory(updatedItem.id, updatedItem as unknown as Record<string, unknown>);
+      persist.inventoryLoss(lossRecord.id, lossRecord as unknown as Record<string, unknown>);
+      toast(t('inventory.loss.recorded', fresh.name), 'success');
+      setLossTarget(null);
+      setLossQty('1');
+      setLossReason('');
+      setLossNotes('');
+      setLossPinOpen(false);
+    } catch (err) {
+      console.error('[mark-as-loss] failed', err);
+      toast(t('inventory.loss.failed'), 'error');
+    } finally {
+      setCommittingLoss(false);
+    }
+  }, [lossTarget, lossQty, lossReason, lossNotes, committingLoss, currentEmployee, inventoryLosses, setInventory, setInventoryLosses, toast, t]);
 
   // R-INTEL-INVENTORY-PROMOTE-BUTTON: click handler — instantiates a
   // fresh IntelligenceEngine, calls the same runProductPush helper the
@@ -656,6 +766,9 @@ export default function InventoryModule() {
                             so the eventual click feels instant. */}
                         <button onClick={() => handlePromote(item)} onMouseEnter={preloadPromoteIntel} onFocus={preloadPromoteIntel} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
                         <button onClick={() => { setEditItem(item); setShowModal(true); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
+                        {/* R-LOSSES-SHRINKAGE-V1: Mark as Loss — opens the
+                            shrinkage modal; manager-PIN guarded on commit. */}
+                        <button onClick={() => openMarkAsLoss(item)} title={t('inventory.loss.button')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(234,88,12,0.15)', color: '#fb923c' }}>📉</button>
                         <button onClick={() => setDeleteConfirm(item.id)} title="Delete" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>🗑️</button>
                       </div>
                     </td>
@@ -742,6 +855,111 @@ export default function InventoryModule() {
         setInventory={setInventory}
         toast={toast}
         t={t}
+      />
+
+      {/* R-LOSSES-SHRINKAGE-V1: Mark as Loss modal — qty + reason + notes,
+          shows unit cost and total loss preview, gated by AdminPinGate
+          on Continue. Inventory qty decrement and InventoryLoss record
+          creation happen in handleCommitLoss after the PIN succeeds. */}
+      {lossTarget && (() => {
+        const qtyNum = parseInt(lossQty, 10);
+        const validQty = Number.isFinite(qtyNum) && qtyNum > 0 && qtyNum <= (lossTarget.qty || 0);
+        const previewTotal = (validQty ? qtyNum : 0) * (lossTarget.cost || 0);
+        const REASONS: LossReason[] = ['defective','damaged','unsellable_return','vendor_non_returnable','opened_package','other'];
+        return (
+          <Modal
+            open={!!lossTarget && !lossPinOpen}
+            onClose={() => { setLossTarget(null); setLossReason(''); setLossNotes(''); }}
+            title={`📉 ${t('inventory.loss.title')}`}
+            size="max-w-md"
+            footer={
+              <>
+                <button className="btn btn-secondary" onClick={() => { setLossTarget(null); setLossReason(''); setLossNotes(''); }}>
+                  {t('cancel')}
+                </button>
+                <button
+                  className="btn"
+                  style={{ background: '#ea580c', color: '#fff', fontWeight: 700, border: 'none' }}
+                  disabled={!validQty || !lossReason || committingLoss}
+                  onClick={() => setLossPinOpen(true)}
+                >
+                  {t('inventory.loss.continue')}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <div className="text-xs text-slate-400">
+                {t('inventory.loss.itemLabel')}: <strong className="text-slate-200">{lossTarget.name}</strong>
+                {lossTarget.sku ? <> · <span style={{ fontFamily: 'monospace' }}>{lossTarget.sku}</span></> : null}
+                <br />
+                {t('inventory.loss.onHandLabel')}: <strong className="text-slate-200">{lossTarget.qty}</strong>
+                {' · '}
+                {t('inventory.loss.unitCostLabel')}: <strong className="text-amber-300">{formatCurrency(lossTarget.cost || 0)}</strong>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-semibold block mb-1">
+                  {t('inventory.loss.qtyLabel')} <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={lossTarget.qty}
+                  className="input"
+                  value={lossQty}
+                  onChange={(e) => setLossQty(e.target.value)}
+                />
+                {!validQty && lossQty.trim() !== '' && (
+                  <p className="text-[11px] mt-1" style={{ color: '#fca5a5' }}>
+                    {t('inventory.loss.invalidQtyHint')}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-semibold block mb-1">
+                  {t('inventory.loss.reasonLabel')} <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select className="select" value={lossReason} onChange={(e) => setLossReason(e.target.value as LossReason)}>
+                  <option value="">{t('inventory.loss.reasonPick')}</option>
+                  {REASONS.map((r) => (
+                    <option key={r} value={r}>{t(`inventory.loss.reason.${r}`)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-semibold block mb-1">
+                  {t('inventory.loss.notesLabel')}
+                </label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={lossNotes}
+                  onChange={(e) => setLossNotes(e.target.value)}
+                  placeholder={t('inventory.loss.notesPlaceholder')}
+                />
+              </div>
+              <div className="rounded-md p-3" style={{ background: 'rgba(234,88,12,0.08)', border: '1px solid rgba(234,88,12,0.25)' }}>
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: '#fdba74' }}>{t('inventory.loss.totalLossLabel')}</span>
+                  <strong style={{ color: '#fb923c' }}>{formatCurrency(previewTotal)}</strong>
+                </div>
+                <p className="text-[11px] mt-2" style={{ color: '#fdba74', lineHeight: 1.5 }}>
+                  ⚠️ {t('inventory.loss.warning')}
+                </p>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* R-LOSSES-SHRINKAGE-V1: PIN gate — opens only after user confirms
+          qty + reason. Successful authorization commits the loss + qty
+          decrement via handleCommitLoss. */}
+      <AdminPinGate
+        open={lossPinOpen && !!lossTarget}
+        adminPin={settings.adminPin || ''}
+        onSuccess={handleCommitLoss}
+        onCancel={() => setLossPinOpen(false)}
       />
     </>
   );

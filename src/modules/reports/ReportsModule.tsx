@@ -295,7 +295,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns, inventoryLosses },
     dispatch,
   } = useApp();
 
@@ -499,6 +499,36 @@ export default function ReportsModule() {
     safeVendorReturns.filter((v) => inRange((v as any).createdAt)),
     [safeVendorReturns, inRange]
   );
+
+  // R-LOSSES-SHRINKAGE-V1: filtered losses + summary for the Losses /
+  // Shrinkage section. Newest first. Losses are NOT sales / refunds /
+  // voids — they don't contribute to revenue, tax, or COGS in V1, just
+  // their own audit + total. Net-profit integration is documented as a
+  // follow-up so we don't hack a fake sale/refund pathway.
+  const filteredLosses = useMemo(() => {
+    const src = Array.isArray(inventoryLosses) ? inventoryLosses : [];
+    return src
+      .filter((l) => inRange(l.createdAt))
+      .sort((a, b) => {
+        const da = toDateSafe(a.createdAt)?.getTime() || 0;
+        const db = toDateSafe(b.createdAt)?.getTime() || 0;
+        return db - da;
+      });
+  }, [inventoryLosses, inRange]);
+
+  const lossesSummary = useMemo(() => {
+    let totalLossCents = 0;
+    let totalQty = 0;
+    for (const l of filteredLosses) {
+      totalLossCents += l.totalLoss || 0;
+      totalQty += l.qty || 0;
+    }
+    return {
+      count: filteredLosses.length,
+      totalLossCents,
+      totalQty,
+    };
+  }, [filteredLosses]);
 
   // ── Returns (live AppState — replaces legacy localStorage bridge) ──
   const allReturns = useMemo((): NormalizedReturn[] => {
@@ -2529,6 +2559,77 @@ tr:last-child td { border-bottom: none; }
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* R-LOSSES-SHRINKAGE-V1: Losses / Shrinkage section.
+              Pure visibility — losses are NOT counted as sales,
+              refunds, or voids. Net-profit deduction integration is a
+              documented follow-up (see Phase E in the round spec). */}
+          <div id="reports-losses-section" style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                📉 {t('reports.losses.title')} ({lossesSummary.count})
+              </span>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                  {t('reports.losses.totalUnits')}: <strong style={{ color: '#e2e8f0' }}>{lossesSummary.totalQty}</strong>
+                </span>
+                <span style={{ fontSize: '0.78rem' }}>
+                  {t('reports.losses.totalLoss')}: <strong style={{ color: '#fb923c' }}>{formatCurrency(lossesSummary.totalLossCents)}</strong>
+                </span>
+              </div>
+            </div>
+            <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              {filteredLosses.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '0.85rem' }}>
+                  {t('reports.losses.empty')}
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      {[
+                        t('reports.losses.col.date'),
+                        t('reports.losses.col.item'),
+                        t('reports.losses.col.sku'),
+                        t('reports.losses.col.qty'),
+                        t('reports.losses.col.reason'),
+                        t('reports.losses.col.unitCost'),
+                        t('reports.losses.col.totalLoss'),
+                        t('reports.losses.col.approvedBy'),
+                      ].map((h, i) => (
+                        <th key={h + i} style={{
+                          textAlign: (h === t('reports.losses.col.qty') || h === t('reports.losses.col.unitCost') || h === t('reports.losses.col.totalLoss')) ? 'right' : 'left',
+                          padding: '0.5rem 0.75rem',
+                          color: '#64748b',
+                          fontSize: '0.68rem',
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLosses.map((l) => (
+                      <tr key={l.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(l.createdAt)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#e2e8f0' }}>{l.itemName}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.72rem' }}>{l.sku || '—'}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#e2e8f0', fontWeight: 600 }}>{l.qty}</td>
+                        <td style={{ padding: '0.5rem 0.75rem' }}>
+                          <span style={{ padding: '0.1rem 0.5rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(234,88,12,0.15)', color: '#fb923c' }}>
+                            {t(`inventory.loss.reason.${l.reason}`)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#94a3b8' }}>{formatCurrency(l.unitCost)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: '#fb923c' }}>{formatCurrency(l.totalLoss)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.75rem' }}>{l.approvedBy || '—'}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
