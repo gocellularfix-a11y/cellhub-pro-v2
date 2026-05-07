@@ -15,6 +15,10 @@ interface ProductGridProps {
   L: Record<string, any>;
   onAddToCart: (item: InventoryItem) => void;
   onBack: () => void;
+  /** R-POS-POSTSALE-FOCUS-RETURN-FLOW-V1: auto-focus the category search
+   *  input on mount so the cashier can start typing immediately when
+   *  opening Accessories / Phones / etc. Default true. */
+  autoFocus?: boolean;
 }
 
 export default function ProductGrid({
@@ -25,6 +29,7 @@ export default function ProductGrid({
   L,
   onAddToCart,
   onBack,
+  autoFocus = true,
 }: ProductGridProps) {
   const [search, setSearch] = useState('');
 
@@ -61,6 +66,7 @@ export default function ProductGrid({
         onChange={setSearch}
         placeholder={L.searchItems || 'Search items…'}
         className="mb-4"
+        autoFocus={autoFocus}
       />
 
       {/* Grid */}

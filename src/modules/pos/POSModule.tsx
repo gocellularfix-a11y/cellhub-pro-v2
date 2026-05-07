@@ -93,6 +93,13 @@ export default function POSModule() {
   // ── Local State ─────────────────────────────────────────
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // R-POS-POSTSALE-FOCUS-RETURN-FLOW-V1: bumped each time the receipt
+  // modal closes after a completed sale. Used as `key` on ProductGrid
+  // so the category view remounts with a fresh internal search='' and
+  // re-runs the autoFocus effect — cashier returns to the same
+  // Accessories/Phones view they started in, with the cursor in search
+  // ready for the next purchase.
+  const [productGridKey, setProductGridKey] = useState(0);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState(() => loadLocal('global_search', ''));
 
@@ -962,6 +969,7 @@ export default function POSModule() {
       const { title, subtitle } = getCategoryTitle();
       return (
         <ProductGrid
+          key={productGridKey}
           title={title}
           subtitle={subtitle}
           items={categoryItems}
@@ -1136,7 +1144,14 @@ export default function POSModule() {
         open={showReceipt}
         sale={lastSale}
         settings={settings}
-        onClose={() => setShowReceipt(false)}
+        onClose={() => {
+          setShowReceipt(false);
+          // R-POS-POSTSALE-FOCUS-RETURN-FLOW-V1: bump the key so the
+          // active ProductGrid remounts (clears internal search, re-
+          // focuses input) AFTER the receipt modal closes. No effect
+          // when no category is active (key is unread).
+          setProductGridKey((k) => k + 1);
+        }}
         customers={customers}
         setCustomers={setCustomers}
         setSales={setSales}
