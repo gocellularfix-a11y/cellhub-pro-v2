@@ -171,6 +171,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     });
   }
 
+  // R-INTELLIGENCE-AUTOMATION-QUEUE-FAIL-FREEZE-FIX: only enqueue actions
+  // that map to a real executor. Chat-replay (triggerQuery) shortcuts and
+  // actions with executionTarget='none' would land in the queue, then fail
+  // with reason='not_executable' on Approve — surfacing a confusing
+  // "whatsapp_reconnect · failed: not_executable" item to the owner.
+  function isQueueableAction(action: ChatActionUI): boolean {
+    if (action.triggerQuery && action.triggerQuery.trim().length > 0) return false;
+    if (action.payload.executionTarget === 'none') return false;
+    return true;
+  }
+
   const fireQuery = useCallback((query: string) => {
     // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases re-use
     // the last intent's context. Early return — no classifyIntent, no scan.
@@ -215,7 +226,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     clearActionFeedback();
     if (response.actions?.length) {
-      addAutomationItems(response.actions.map(createQueueItemFromChatAction));
+      const queueable = response.actions.filter(isQueueableAction);
+      if (queueable.length > 0) {
+        addAutomationItems(queueable.map(createQueueItemFromChatAction));
+      }
     }
     setMessages(prev => [
       ...prev,
@@ -237,6 +251,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // (no_sales_today=100, low_transactions=80, contact_customers_available=60)
   // → picks highest. Reuses existing engine helpers; no auto-send; max 1
   // message per day; max 3 buttons.
+  // R-INTELLIGENCE-AUTOMATION-QUEUE-FAIL-FREEZE-FIX: body deferred via
+  // setTimeout(0) so the heavy engine pipeline build + customer-Map
+  // construction runs AFTER first paint instead of blocking the
+  // Intelligence tab's mount.
   useEffect(() => {
     const STORAGE_KEY = 'cellhub:intelligence:dailyAutomation:lastRun';
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -244,6 +262,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       if (localStorage.getItem(STORAGE_KEY) === today) return;
     } catch { /* incognito / quota — proceed without guard */ }
 
+    const tid = window.setTimeout(() => {
+      runDailyAutomation(STORAGE_KEY, today);
+    }, 0);
+    return () => window.clearTimeout(tid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function runDailyAutomation(STORAGE_KEY: string, today: string) {
     const eng = engineRef.current;
     const m = eng.getTodayMetrics();
 
@@ -304,10 +330,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       ...prev,
       { id: `a-${now}`, role: 'assistant', content: best.text, timestamp: new Date(), kind: 'answer', actions: built },
     ]);
-    addAutomationItems(built.map(createQueueItemFromChatAction));
+    addAutomationItems(built.filter(isQueueableAction).map(createQueueItemFromChatAction));
     try { localStorage.setItem(STORAGE_KEY, today); } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
 
   useEffect(() => {
     try {
@@ -369,7 +394,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
     clearActionFeedback();
     if (response.actions?.length) {
-      addAutomationItems(response.actions.map(createQueueItemFromChatAction));
+      const queueable = response.actions.filter(isQueueableAction);
+      if (queueable.length > 0) {
+        addAutomationItems(queueable.map(createQueueItemFromChatAction));
+      }
     }
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');

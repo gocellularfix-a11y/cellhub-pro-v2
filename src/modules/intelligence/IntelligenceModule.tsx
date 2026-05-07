@@ -180,17 +180,28 @@ export default function IntelligenceModule() {
   // Read-only — handler does not enqueue. Storage key scoped by storeId so
   // multi-store operators see the brief once per shop. Failures (incognito,
   // quota) silently skip; brief stays manually accessible via the chat.
+  // R-INTELLIGENCE-AUTOMATION-QUEUE-FAIL-FREEZE-FIX: deferred via
+  // setTimeout(0) so the heavy synchronous chain (fireChat → externalQuery
+  // → classifyIntent → handleIntent → engine analyze) runs AFTER the tab's
+  // first paint instead of blocking the mount.
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const sid = currentStoreId || 'default';
     const key = `dailyBriefLastSeen:${sid}:${today}`;
     try {
       if (localStorage.getItem(key)) return;
-      fireChat('daily brief');
-      localStorage.setItem(key, '1');
     } catch {
-      // localStorage unavailable — skip silently.
+      return;
     }
+    const tid = window.setTimeout(() => {
+      try {
+        fireChat('daily brief');
+        localStorage.setItem(key, '1');
+      } catch {
+        /* localStorage unavailable — skip silently. */
+      }
+    }, 0);
+    return () => window.clearTimeout(tid);
   }, [currentStoreId, fireChat]);
 
   // Refs to scroll-target panels
