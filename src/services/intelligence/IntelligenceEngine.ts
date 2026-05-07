@@ -128,6 +128,16 @@ export class IntelligenceEngine {
   private cachedMissedRev?: MissedRevenueReport;
   private cachedProductOpps?: Map<number, ProductOpportunity[]>;
 
+  // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
+  // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
+  // every scored customer, and `getCustomerHistory` itself scans 6 collections
+  // per call (sales, repairs, SOs, unlocks, layaways, customerReturns) — total
+  // O(C × Σ collections). Same pattern in `runProductPush`. The cache means
+  // each customer's rollup is computed at most once per data snapshot,
+  // collapsing cost to O(C + Σ) for the first pass and O(C) for re-asks.
+  // Invalidated alongside cachedResult in updateData() and invalidateCache().
+  private cachedCustomerHistory?: Map<string, CustomerHistorySummary | null>;
+
   // R-PERF-INTELLIGENCE-CACHE: raw input references kept so updateData()
   // can ref-equality-skip when nothing changed across React re-renders.
   // Adapted versions live in this.sales/customers/inventory/repairs above.
@@ -648,11 +658,13 @@ export class IntelligenceEngine {
     // Invalidate analyze() cache so next call recomputes against fresh data.
     // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: also clear the
     // per-getter caches added this round.
+    // R-INTEL-CUSTOMER-INDEX-V1: also clear per-customer history cache.
     this.cachedResult = undefined;
     this.lastRun = undefined;
     this.cachedReorderRecs = undefined;
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
+    this.cachedCustomerHistory = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -664,12 +676,14 @@ export class IntelligenceEngine {
   // from scratch", which this method does in two assignments.
   // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: now also clears
   // per-getter caches.
+  // R-INTEL-CUSTOMER-INDEX-V1: now also clears per-customer history cache.
   invalidateCache(): void {
     this.cachedResult = undefined;
     this.lastRun = undefined;
     this.cachedReorderRecs = undefined;
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
+    this.cachedCustomerHistory = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -919,8 +933,20 @@ export class IntelligenceEngine {
   // Returns null if the customer isn't found. Callers should handle the
   // null case (e.g. disambiguate via fuzzy search before calling).
   getCustomerHistory(customerId: string): CustomerHistorySummary | null {
+    // R-INTEL-CUSTOMER-INDEX-V1: cache check. Loop callers (buildOutreach,
+    // runProductPush) re-ask for the same customers across iterations — and
+    // even within a single chat query, multiple handlers may need the same
+    // rollup. Cache hit is O(1) Map lookup; miss falls through to the full
+    // computation below.
+    if (!this.cachedCustomerHistory) this.cachedCustomerHistory = new Map();
+    if (this.cachedCustomerHistory.has(customerId)) {
+      return this.cachedCustomerHistory.get(customerId) ?? null;
+    }
     const customer = this.customers.find(c => c.id === customerId);
-    if (!customer) return null;
+    if (!customer) {
+      this.cachedCustomerHistory.set(customerId, null);
+      return null;
+    }
 
     const customerSales = this.sales.filter(s => s.customerId === customerId);
 
@@ -986,7 +1012,7 @@ export class IntelligenceEngine {
       customerUnlocks.reduce((s, u) => s + (u.balance || 0), 0) +
       customerLayaways.reduce((s, l) => s + (l.balance || 0), 0);
 
-    return {
+    const summary: CustomerHistorySummary = {
       customer: {
         id: customer.id,
         name: customer.name,
@@ -1020,5 +1046,9 @@ export class IntelligenceEngine {
         activeBalance,
       },
     };
+    // R-INTEL-CUSTOMER-INDEX-V1: stash the result so subsequent same-id
+    // calls within this data snapshot return O(1).
+    this.cachedCustomerHistory!.set(customerId, summary);
+    return summary;
   }
 }
