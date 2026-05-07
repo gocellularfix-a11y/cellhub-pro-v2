@@ -131,6 +131,16 @@ export interface PanelCampaignDraft {
     customerId: string;
     name: string;
     phone: string;
+    // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: optional explanation of WHY
+    // this customer was selected — drives the small reason line + confidence
+    // badge under each recipient row in the Promote panel. All fields
+    // optional so older callers stay compatible. reasonKey is a
+    // translation key; reasonArg threads parametric values (visit count,
+    // days-since-visit) when the reason is parametric.
+    reasonKey?: string;
+    reasonArg?: number | string;
+    confidence?: 'high' | 'medium' | 'low';
+    lastVisitDays?: number;
   }>;
 }
 

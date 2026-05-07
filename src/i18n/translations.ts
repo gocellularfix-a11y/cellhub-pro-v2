@@ -5358,6 +5358,27 @@ export const translations: TranslationDictionary = {
   },
   'intelligence.console.campaignStrategyBroad': { en: 'Broad campaign — pick recipient in WhatsApp',               es: 'Campaña amplia — elige destinatario en WhatsApp',                      pt: 'Campanha ampla — escolha destinatário no WhatsApp' },
   'intelligence.console.campaignOpenWhatsAppLabel': { en: 'Open WhatsApp',                                          es: 'Abrir WhatsApp',                                                       pt: 'Abrir WhatsApp' },
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: confidence pill labels.
+  'intelligence.console.confidenceHigh':       { en: 'HIGH',                                                        es: 'ALTA',                                                                 pt: 'ALTA' },
+  'intelligence.console.confidenceMedium':     { en: 'MED',                                                         es: 'MED',                                                                  pt: 'MED' },
+  'intelligence.console.confidenceLow':        { en: 'LOW',                                                         es: 'BAJA',                                                                 pt: 'BAIXA' },
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: deterministic reason strings.
+  // Order matches the priority chain in productPromotion.ts.
+  'chat.productPush.reason.boughtBefore':      { en: 'Bought this before',                                          es: 'Compró antes',                                                         pt: 'Comprou antes' },
+  'chat.productPush.reason.topSpenderRecent':  { en: 'Top spender, recently active',                                es: 'Cliente top, activo recientemente',                                    pt: 'Top cliente, ativo recentemente' },
+  'chat.productPush.reason.highValue':         { en: 'High purchase history',                                       es: 'Alto historial de compras',                                            pt: 'Alto histórico de compras' },
+  'chat.productPush.reason.frequentVisitor':   {
+    en: (visits: number) => `Frequent visitor (${visits} visits)`,
+    es: (visits: number) => `Visitante frecuente (${visits} visitas)`,
+    pt: (visits: number) => `Visitante frequente (${visits} visitas)`,
+  },
+  'chat.productPush.reason.recentCustomer':    {
+    en: (days: number) => days === 0 ? 'Recent customer (today)' : days === 1 ? 'Recent customer (yesterday)' : `Recent customer (${days} days ago)`,
+    es: (days: number) => days === 0 ? 'Cliente reciente (hoy)' : days === 1 ? 'Cliente reciente (ayer)' : `Cliente reciente (hace ${days} días)`,
+    pt: (days: number) => days === 0 ? 'Cliente recente (hoje)' : days === 1 ? 'Cliente recente (ontem)' : `Cliente recente (${days} dias atrás)`,
+  },
+  'chat.productPush.reason.activeCustomer':    { en: 'Active customer',                                             es: 'Cliente activo',                                                       pt: 'Cliente ativo' },
+  'chat.productPush.reason.returningCustomer': { en: 'Returning customer',                                          es: 'Cliente recurrente',                                                   pt: 'Cliente recorrente' },
 
   'intelligence.console.askTitle':             { en: '💬 Ask Your Shop',                                            es: '💬 Pregúntale a tu Tienda',                                            pt: '💬 Pergunte à sua Loja' },
   'intelligence.console.quickQuestions':       { en: 'Quick questions:',                                            es: 'Preguntas rápidas:',                                                   pt: 'Perguntas rápidas:' },

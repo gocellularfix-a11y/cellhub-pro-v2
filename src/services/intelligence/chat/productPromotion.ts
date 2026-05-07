@@ -103,7 +103,18 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     visitCount: number;
     daysSinceLastVisit: number;
     rankScore: number;
+    // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: deterministic-only reason +
+    // confidence derived from data already in scope (h.topItems for
+    // bought-before; gross/visit/days for the rest). No AI, no random.
+    reasonKey: string;
+    reasonArg?: number | string;
+    confidence: 'high' | 'medium' | 'low';
   };
+
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: hoist productLower once for
+  // the bought-before substring check inside the per-candidate loop.
+  // Same lower-cased value is reused below for the existing hasPhoto check.
+  const productLowerForReason = productName.toLowerCase();
 
   const now = Date.now();
   const scores = engine.getCustomerScores();
@@ -119,6 +130,50 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
     // Recency boost favors customers active within last 30 days.
     const recencyBoost = days <= 30 ? (30 - days) * 5 : 0;
     const rankScore = (h.grossRevenue / 100) + recencyBoost + h.visitCount * 10;
+
+    // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: deterministic reason rules.
+    // First match wins. Bought-before is the strongest signal (repeat
+    // customer is the highest-value outreach target). Thresholds:
+    //   - high value: $500+ gross revenue (50000 cents)
+    //   - frequent: 5+ visits
+    //   - recent: visit within last 7 days
+    //   - active: 2+ visits within last 30 days
+    // h.topItems is already O(5) and pre-computed by getCustomerHistory
+    // (cached via R-INTEL-CUSTOMER-INDEX-V1) — bought-before lookup is
+    // constant time per candidate.
+    const boughtBefore = h.topItems.some((it) => {
+      const itLower = (it.name || '').toLowerCase();
+      if (!itLower) return false;
+      return itLower.includes(productLowerForReason) || productLowerForReason.includes(itLower);
+    });
+    let reasonKey: string;
+    let reasonArg: number | string | undefined;
+    let confidence: 'high' | 'medium' | 'low';
+    if (boughtBefore) {
+      reasonKey = 'chat.productPush.reason.boughtBefore';
+      confidence = 'high';
+    } else if (h.grossRevenue >= 50000 && days <= 14) {
+      reasonKey = 'chat.productPush.reason.topSpenderRecent';
+      confidence = 'high';
+    } else if (h.grossRevenue >= 50000) {
+      reasonKey = 'chat.productPush.reason.highValue';
+      confidence = 'medium';
+    } else if (h.visitCount >= 5) {
+      reasonKey = 'chat.productPush.reason.frequentVisitor';
+      reasonArg = h.visitCount;
+      confidence = 'medium';
+    } else if (days <= 7) {
+      reasonKey = 'chat.productPush.reason.recentCustomer';
+      reasonArg = days;
+      confidence = 'medium';
+    } else if (h.visitCount >= 2 && days <= 30) {
+      reasonKey = 'chat.productPush.reason.activeCustomer';
+      confidence = 'low';
+    } else {
+      reasonKey = 'chat.productPush.reason.returningCustomer';
+      confidence = 'low';
+    }
+
     candidates.push({
       customerId: cs.customerId,
       name: h.customer.name,
@@ -127,6 +182,9 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
       visitCount: h.visitCount,
       daysSinceLastVisit: days,
       rankScore,
+      reasonKey,
+      reasonArg,
+      confidence,
     });
   }
 
@@ -292,6 +350,11 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
   ) ?? engine.getInventory().find(
     (i) => (i.name || '').toLowerCase().includes(productLower),
   );
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: forward the deterministic
+  // reason + confidence + lastVisitDays so the panel widget can render
+  // the WHY line + confidence badge under each row. lastVisitDays is just
+  // a re-export of the Cand.daysSinceLastVisit value (same number, named
+  // for the consumer's intent).
   const panelCampaign: PanelCampaignDraft | undefined = inventoryMatch
     ? {
         productId: inventoryMatch.id,
@@ -301,6 +364,10 @@ export function runProductPush(engine: IntelligenceEngine, lang: Lang3, rawProdu
           customerId: c.customerId,
           name: c.name,
           phone: c.phone,
+          reasonKey: c.reasonKey,
+          reasonArg: c.reasonArg,
+          confidence: c.confidence,
+          lastVisitDays: c.daysSinceLastVisit,
         })),
       }
     : undefined;

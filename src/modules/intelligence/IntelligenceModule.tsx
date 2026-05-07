@@ -601,6 +601,20 @@ export default function IntelligenceModule() {
                       <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden">
                         {panelCampaign.candidates.map((c) => {
                           const isSelected = selectedCampaignRecipientId === c.customerId;
+                          // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: confidence
+                          // badge styling — emerald for high, amber for medium,
+                          // slate for low. Compact pill, 9px text, fits on the
+                          // same line as the reason without breaking layout.
+                          const confidenceClass = c.confidence === 'high'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : c.confidence === 'medium'
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : 'bg-slate-500/20 text-slate-400';
+                          const confidenceLabel = c.confidence === 'high'
+                            ? t('intelligence.console.confidenceHigh')
+                            : c.confidence === 'medium'
+                              ? t('intelligence.console.confidenceMedium')
+                              : t('intelligence.console.confidenceLow');
                           return (
                             <button
                               key={c.customerId}
@@ -612,7 +626,7 @@ export default function IntelligenceModule() {
                             >
                               {/* Radio-style indicator */}
                               <span
-                                className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                                className={`w-3 h-3 rounded-full border-2 shrink-0 mt-1 ${
                                   isSelected ? 'border-purple-400 bg-purple-400' : 'border-slate-500'
                                 }`}
                                 aria-hidden
@@ -622,6 +636,21 @@ export default function IntelligenceModule() {
                                   {c.name}
                                 </div>
                                 <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
+                                {/* R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1:
+                                    reason line + confidence pill. Renders only
+                                    if the producer supplied a reasonKey. */}
+                                {c.reasonKey && (
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[11px] text-slate-400 truncate">
+                                      💡 {t(c.reasonKey, c.reasonArg)}
+                                    </span>
+                                    {c.confidence && (
+                                      <span className={`px-1.5 py-0 text-[9px] font-bold rounded shrink-0 ${confidenceClass}`}>
+                                        {confidenceLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </button>
                           );
