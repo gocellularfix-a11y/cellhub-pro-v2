@@ -639,6 +639,18 @@ export class IntelligenceEngine {
     this.lastRun = undefined;
   }
 
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
+  // the Refresh button. Previously, the module signaled "refresh" by adding
+  // refreshKey to engineConfigSig, which forced a brand-new IntelligenceEngine
+  // instance (5 analyzers + 3 scorers + adapter passes — wasted work since
+  // the data refs were unchanged). The correct semantic is "expire the
+  // 60-second analyze() cache and let the next memo recomputation run analyze()
+  // from scratch", which this method does in two assignments.
+  invalidateCache(): void {
+    this.cachedResult = undefined;
+    this.lastRun = undefined;
+  }
+
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
   // mirrors the score/eligibility/decision-tree of handleWhoToContactToday
   // but emits ActionQueueItem instead of chat strings. Pure compute — no

@@ -61,9 +61,16 @@ export default function IntelligenceModule() {
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — preserved verbatim.
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: refreshKey REMOVED from sig. Including
+  // it forced a brand-new engine instance (5 analyzers + 3 scorers + 4 adapter
+  // passes) on every Refresh click — defeating the whole point of the
+  // useRef-stable engine + updateData() pattern. Refresh now invalidates the
+  // 60s analyze() cache via engine.invalidateCache() and bumps refreshKey only
+  // for the result useMemo deps (forcing analyze() to re-run against fresh
+  // data without rebuilding analyzers/scorers).
   const engineRef = useRef<IntelligenceEngine | null>(null);
   const engineConfigSigRef = useRef<string>('');
-  const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}|${refreshKey}`;
+  const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}`;
 
   if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
     const _t = performance.now();
@@ -85,16 +92,24 @@ export default function IntelligenceModule() {
     perfLog('intel.module.engine.updateData', _t);
   }
 
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
+  // collections updateData() propagates (added expenses/employees/appointments)
+  // plus refreshKey. refreshKey is the explicit "force re-analyze" signal from
+  // the Refresh button — combined with engine.invalidateCache() in the handler,
+  // this re-runs analyze() against fresh data without rebuilding the engine.
   const result: EngineResult = useMemo(
     () => perfTime('intel.module.engine.analyze', () => engine.analyze()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns],
+    [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, refreshKey],
   );
 
   // ── Engine-derived data ──────────────────────────────────
-  const reorderRecs  = useMemo(() => perfTime('intel.module.getReorderRecommendations', () => engine.getReorderRecommendations()), [engine]);
-  const productOpps  = useMemo(() => perfTime('intel.module.getProductOpportunities',   () => engine.getProductOpportunities(3)), [engine]);
-  const missedRev    = useMemo(() => perfTime('intel.module.getMissedRevenue',          () => engine.getMissedRevenue()), [engine]);
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: include `result` in deps so these
+  // getters invalidate when analyze() reruns (engine internals refreshed).
+  // Without this, after Bug #1 fix the engine ref is stable across refresh,
+  // so [engine] alone would never re-trigger the getters.
+  const reorderRecs  = useMemo(() => perfTime('intel.module.getReorderRecommendations', () => engine.getReorderRecommendations()), [engine, result]);
+  const productOpps  = useMemo(() => perfTime('intel.module.getProductOpportunities',   () => engine.getProductOpportunities(3)), [engine, result]);
+  const missedRev    = useMemo(() => perfTime('intel.module.getMissedRevenue',          () => engine.getMissedRevenue()), [engine, result]);
 
   const todaySales = useMemo(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -135,10 +150,13 @@ export default function IntelligenceModule() {
     return { count, recoverable };
   }), [repairs]);
 
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: include `result` so refresh invalidates
+  // this — buildOutreachQueueItems reads cachedResult.customerScores populated
+  // by analyze().
   const outreachCount = useMemo(() => perfTime('intel.module.cards.outreachCount', () => {
     try { return engine.buildOutreachQueueItems().length; }
     catch { return 0; }
-  }), [engine]);
+  }), [engine, result]);
 
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
@@ -150,14 +168,17 @@ export default function IntelligenceModule() {
     return t('intelligence.dash.insightAllGood');
   }, [missedRev, reorderRecs, locale, t]);
 
-  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX:
-  // wrap refreshKey bump in useTransition so the heavy engine recreate
-  // + analyze + memo cascade happens off the urgent render path. The
-  // button is also disabled while the transition is pending — owner
-  // can't spam-click and stack rebuilds.
+  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX +
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: wrap refresh work in useTransition so
+  // the heavy memo cascade happens off the urgent render path. Button is
+  // disabled while pending so the owner can't stack work. Refresh now
+  // invalidates the engine's analyze() cache (cheap — two assignments)
+  // instead of rebuilding the engine instance; the refreshKey bump only
+  // exists to invalidate the result memo dep.
   const [isRefreshing, startRefreshTransition] = useTransition();
   const handleRefresh = useCallback(() => {
     if (isRefreshing) return;
+    engineRef.current?.invalidateCache();
     startRefreshTransition(() => setRefreshKey((k) => k + 1));
   }, [isRefreshing]);
   const matches = useMemo(() => {
