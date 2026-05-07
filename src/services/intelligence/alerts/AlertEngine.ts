@@ -41,89 +41,119 @@ export class AlertEngine {
     return items.filter(item => (item as any).storeId === this.storeId);
   }
 
+  // R-INTEL-ALERT-ENGINE-FUSE-PASS: previous version did ~10 separate
+  // collection scans (each `.filter()` re-parsing `new Date(...)` per item)
+  // plus an O(C × S × log S) churnRisk scan that re-filtered every customer's
+  // sales then sorted them. Fused into one pass per collection: every cutoff
+  // is precomputed once outside the loops, every record's createdAt is parsed
+  // once, and churnRisk uses a single sales sweep building a
+  // Map<customerId, latestTimestamp> instead of filter+sort per customer.
+  // Same return contract; same business logic; same alert outcomes — just
+  // single-pass arithmetic.
   private buildContext(
     sales: Sale[],
     inventory: InventoryItem[],
     repairs: Repair[],
     customers: Customer[]
   ): AlertContext {
-    const recentSales = sales.filter(s => {
-      const created = new Date(s.createdAt as string);
-      return created >= getDaysAgo(1);
-    });
-    const prevSales = sales.filter(s => {
-      const created = new Date(s.createdAt as string);
-      return created >= getDaysAgo(2) && created < getDaysAgo(1);
-    });
+    // Hoist all cutoffs once.
+    const cutoff1d = getDaysAgo(1).getTime();
+    const cutoff2d = getDaysAgo(2).getTime();
+    const cutoffDeadStock = getDaysAgo(this.thresholds.inventory.deadStockDays).getTime();
+    const cutoffOverdue = getDaysAgo(this.thresholds.repairs.overdueDays).getTime();
+    const cutoffNewCustomer = getDaysAgo(30).getTime();
+    const cutoffInactive = getDaysAgo(this.thresholds.customers.inactivityDays).getTime();
+    const lowStockMax = this.thresholds.inventory.lowStockDays * 2;
+    const minLoyaltyPoints = this.thresholds.customers.minLoyaltyPoints;
 
-    const todayRevenue = recentSales.reduce((sum, s) => sum + (s.total || 0), 0);
-    const prevRevenue = prevSales.reduce((sum, s) => sum + (s.total || 0), 0);
+    // Single sales pass: today + prev-day buckets + per-customer last-sale
+    // index for churnRisk in one sweep.
+    let todayRevenue = 0;
+    let recentSalesCount = 0;
+    let prevRevenue = 0;
+    const lastSaleByCustomer = new Map<string, number>();
+    for (const s of sales) {
+      const ts = new Date(s.createdAt as string).getTime();
+      if (ts >= cutoff1d) {
+        todayRevenue += s.total || 0;
+        recentSalesCount++;
+      } else if (ts >= cutoff2d) {
+        prevRevenue += s.total || 0;
+      }
+      const cid = s.customerId;
+      if (cid) {
+        const prior = lastSaleByCustomer.get(cid);
+        if (prior === undefined || ts > prior) lastSaleByCustomer.set(cid, ts);
+      }
+    }
     const trend = prevRevenue > 0 ? ((todayRevenue - prevRevenue) / prevRevenue) * 100 : 0;
 
-    const lowStock = inventory.filter(i => {
-      if ((i.qty || 0) <= 0) return false;
-      return (i.qty || 0) <= this.thresholds.inventory.lowStockDays * 2;
-    });
+    // Single inventory pass: lowStockCount + deadStockCount.
+    let lowStockCount = 0;
+    let deadStockCount = 0;
+    for (const i of inventory) {
+      const qty = i.qty || 0;
+      if (qty <= 0) continue;
+      if (qty <= lowStockMax) lowStockCount++;
+      const created = new Date(i.createdAt as string).getTime();
+      if (created < cutoffDeadStock) deadStockCount++;
+    }
 
-    const deadStock = inventory.filter(i => {
-      if ((i.qty || 0) <= 0) return false;
-      const created = new Date(i.createdAt as string);
-      return created < getDaysAgo(this.thresholds.inventory.deadStockDays);
-    });
+    // Single repairs pass: pending + overdue + highPriority + recentRepairRevenue.
+    let pendingCount = 0;
+    let overdueCount = 0;
+    let highPriorityCount = 0;
+    let recentRepairRevenue = 0;
+    for (const r of repairs) {
+      const status = r.status;
+      const isClosed = status === 'picked_up' || status === 'cancelled';
+      if (!isClosed) pendingCount++;
+      if (r.priority === 'high' || r.priority === 'urgent') highPriorityCount++;
+      if (!isClosed) {
+        const created = new Date(r.createdAt as string).getTime();
+        if (created < cutoffOverdue) overdueCount++;
+      }
+      recentRepairRevenue += r.total || r.estimatedCost || 0;
+    }
 
-    const cutoff = getDaysAgo(this.thresholds.repairs.overdueDays);
-    const overdue = repairs.filter(r => {
-      if (r.status === 'picked_up' || r.status === 'cancelled') return false;
-      const created = new Date(r.createdAt as string);
-      return created < cutoff;
-    });
+    // Single customers pass: newCustomers + churnRisk + vipCount.
+    let newCustomerCount = 0;
+    let churnRiskCount = 0;
+    let vipCount = 0;
+    for (const c of customers) {
+      const created = new Date((c as { createdAt?: string }).createdAt as string).getTime();
+      if (created >= cutoffNewCustomer) newCustomerCount++;
+      const lastTs = lastSaleByCustomer.get(c.id);
+      if (lastTs === undefined || lastTs < cutoffInactive) churnRiskCount++;
+      if (c.loyaltyPoints >= minLoyaltyPoints) vipCount++;
+    }
 
-    const highPriority = repairs.filter(
-      r => r.priority === 'high' || r.priority === 'urgent'
-    );
-
-    const inactiveCustomerCutoff = getDaysAgo(this.thresholds.customers.inactivityDays);
-    const churnRisk = customers.filter(c => {
-      const lastSale = sales
-        .filter(s => s.customerId === c.id)
-        .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())[0];
-      if (!lastSale) return true;
-      return new Date(lastSale.createdAt as string) < inactiveCustomerCutoff;
-    });
-
-    const recentRepairRevenue = repairs.reduce((sum, r) => sum + (r.total || r.estimatedCost || 0), 0);
-    const recentCOGS = 0;
-    const grossMargin = recentRepairRevenue > 0
-      ? ((recentRepairRevenue - recentCOGS) / recentRepairRevenue) * 100
-      : 0;
+    const grossMargin = recentRepairRevenue > 0 ? 100 : 0; // recentCOGS = 0 → identical to prior result
 
     return {
       sales: {
         dailyRevenue: todayRevenue,
-        transactionCount: recentSales.length,
-        avgTransactionSize: recentSales.length > 0 ? todayRevenue / recentSales.length : 0,
+        transactionCount: recentSalesCount,
+        avgTransactionSize: recentSalesCount > 0 ? todayRevenue / recentSalesCount : 0,
         trend,
       },
       inventory: {
         totalItems: inventory.length,
-        lowStockCount: lowStock.length,
-        deadStockCount: deadStock.length,
-        reorderAlertCount: lowStock.length,
+        lowStockCount,
+        deadStockCount,
+        reorderAlertCount: lowStockCount,
       },
       repairs: {
-        pendingCount: repairs.filter(r => r.status !== 'picked_up' && r.status !== 'cancelled').length,
-        overdueCount: overdue.length,
-        highPriorityCount: highPriority.length,
+        pendingCount,
+        overdueCount,
+        highPriorityCount,
         avgTurnaroundHours: 24,
       },
       customers: {
         totalCustomers: customers.length,
-        newCustomers: customers.filter(c => {
-          const created = new Date((c as any).createdAt as string);
-          return created >= getDaysAgo(30);
-        }).length,
-        churnRiskCount: churnRisk.length,
-        vipCount: customers.filter(c => c.loyaltyPoints >= this.thresholds.customers.minLoyaltyPoints).length,
+        newCustomers: newCustomerCount,
+        churnRiskCount,
+        vipCount,
       },
       financial: {
         grossMargin,
