@@ -117,6 +117,17 @@ export class IntelligenceEngine {
   private cachedResult?: EngineResult;
   private lastRun?: Date;
 
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: per-getter caches
+  // for the three engine methods that bypass the analyze() result cache.
+  // Both the IntelligenceModule (refresh memos) and chat handlers
+  // (handleQuickProfit, handleProductOpportunities, etc.) call these
+  // independently — without caching, the same scan ran multiple times per
+  // refresh + per chat query. Invalidated alongside cachedResult in
+  // updateData() and invalidateCache().
+  private cachedReorderRecs?: ReorderRecommendation[];
+  private cachedMissedRev?: MissedRevenueReport;
+  private cachedProductOpps?: Map<number, ProductOpportunity[]>;
+
   // R-PERF-INTELLIGENCE-CACHE: raw input references kept so updateData()
   // can ref-equality-skip when nothing changed across React re-renders.
   // Adapted versions live in this.sales/customers/inventory/repairs above.
@@ -635,8 +646,13 @@ export class IntelligenceEngine {
     // alertEngine does not hold data refs (only thresholds + lang) — keep.
 
     // Invalidate analyze() cache so next call recomputes against fresh data.
+    // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: also clear the
+    // per-getter caches added this round.
     this.cachedResult = undefined;
     this.lastRun = undefined;
+    this.cachedReorderRecs = undefined;
+    this.cachedMissedRev = undefined;
+    this.cachedProductOpps = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -646,9 +662,14 @@ export class IntelligenceEngine {
   // the data refs were unchanged). The correct semantic is "expire the
   // 60-second analyze() cache and let the next memo recomputation run analyze()
   // from scratch", which this method does in two assignments.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: now also clears
+  // per-getter caches.
   invalidateCache(): void {
     this.cachedResult = undefined;
     this.lastRun = undefined;
+    this.cachedReorderRecs = undefined;
+    this.cachedMissedRev = undefined;
+    this.cachedProductOpps = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -806,8 +827,13 @@ export class IntelligenceEngine {
   // R-INTEL-2-REORDER: full reorder recommendations with suggested qty,
   // priority tier, and lost-revenue risk. Supersedes the binary
   // getReorderAlerts() insight for action-oriented consumers.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized — module
+  // memo + chat handlers no longer pay the inventory+sales scan twice.
   getReorderRecommendations(): ReorderRecommendation[] {
-    return this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
+    if (this.cachedReorderRecs) return this.cachedReorderRecs;
+    const result = this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
+    this.cachedReorderRecs = result;
+    return result;
   }
 
   // R-INTEL-2-CONTACT: overdue customers sorted by urgency.
@@ -818,11 +844,17 @@ export class IntelligenceEngine {
 
   // R-INTEL-2-MISSED: aggregate missed-revenue signals from sales and
   // inventory analyzers into a single report for the chat handler + future UI.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized — three
+  // analyzer scans (sales×2 + inventory×1) collapse to a single cached read
+  // until updateData/invalidateCache fires.
   getMissedRevenue(): MissedRevenueReport {
+    if (this.cachedMissedRev) return this.cachedMissedRev;
     const { slowDayLossCents, slowestDayName } = this.salesAnalyzer.getMissedRevenueByDay();
     const { slowHourLossCents } = this.salesAnalyzer.getMissedRevenueByHour();
     const { deadStockLockedCents, opportunityCostCents } = this.inventoryAnalyzer.getDeadStockOpportunityCost();
-    return { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
+    const result: MissedRevenueReport = { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
+    this.cachedMissedRev = result;
+    return result;
   }
 
   // R-INTEL-2-PRODUCT: margin + velocity + return-rate opportunity classification.
@@ -841,8 +873,17 @@ export class IntelligenceEngine {
     };
   }
 
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized by topN.
+  // Callers ask for varying slice sizes (1 from getDailyBrief, 3 from the
+  // module top card, 10 default from chat handlers) — keep a small per-N
+  // cache so each N is computed once until invalidated.
   getProductOpportunities(topN: number = 10): ProductOpportunity[] {
-    return this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
+    if (!this.cachedProductOpps) this.cachedProductOpps = new Map();
+    const cached = this.cachedProductOpps.get(topN);
+    if (cached) return cached;
+    const result = this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
+    this.cachedProductOpps.set(topN, result);
+    return result;
   }
 
   // R-INTEL-PHASE2-RC: revenue decline root cause — compares last 7 days

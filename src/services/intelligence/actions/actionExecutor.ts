@@ -3,6 +3,13 @@
 // Callers receive a structured result and decide what to do with it.
 import type { ActionPayload } from './actionEngine';
 import type { Sale } from '@/store/types';
+// R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: converge wa.me URL
+// construction onto the canonical service. The previous inline build skipped
+// sanitizeToBMP, which on Windows + Electron corrupts non-BMP emojis in the
+// message text (UTF-16 surrogate pair handling in shell.openExternal). The
+// canonical helper also handles the 10-digit→US-prefix normalization in one
+// codepath instead of two.
+import { buildWhatsAppUrl } from '@/services/whatsapp';
 
 // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: lightweight execution log so we
 // can later attribute revenue to actions the owner clicked. Logs live in
@@ -193,14 +200,15 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
           return { ok: false, reason: 'missing_template' };
         }
       }
-      const encoded = encodeURIComponent(text);
-      // Honor customer phone when provided — opens chat directly with that
-      // number instead of the generic recipient picker.
+      // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: route through
+      // the canonical buildWhatsAppUrl helper. When phone is missing, fall
+      // back to the recipient-picker URL (wa.me/?text=...) — buildWhatsAppUrl
+      // returns a malformed empty-segment URL for empty input, so we keep
+      // the explicit empty-phone branch for parity with prior behavior.
       const phoneDigits = (payload.customerPhone || '').replace(/\D/g, '');
-      const phoneSegment = phoneDigits.length === 10 ? `1${phoneDigits}` : phoneDigits;
-      const url = phoneSegment
-        ? `https://wa.me/${phoneSegment}?text=${encoded}`
-        : `https://wa.me/?text=${encoded}`;
+      const url = phoneDigits.length > 0
+        ? buildWhatsAppUrl(payload.customerPhone || '', text)
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
       appendExecutionLog(payload);
       return { ok: true, type: 'whatsapp_url', url };
     }
