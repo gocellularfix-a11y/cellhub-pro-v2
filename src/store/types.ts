@@ -689,6 +689,12 @@ export interface Sale {
   employeeName?: string;
   notes?: string;
   voidReason?: string;
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: audit fields populated by
+  // the manager-PIN-gated void flow in Reports. Voided sales remain in
+  // the sales array (no hard delete); existing isCountableSale / status
+  // filters already exclude them from active totals/profit/KPIs.
+  voidedAt?: string;        // ISO timestamp
+  voidedBy?: string;        // employee name at void time
   refundReason?: string;
   // Return tracking (written by ReturnsModule.processReturn)
   hasReturn?: boolean;

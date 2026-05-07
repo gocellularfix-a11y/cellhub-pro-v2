@@ -5008,6 +5008,32 @@ export const translations: TranslationDictionary = {
   'reports.transLabel':          { en: 'trans.',              es: 'trans.',                             pt: 'trans.' },
   'reports.reprint':             { en: 'Reprint',             es: 'Reimprimir',                         pt: 'Reimprimir' },
 
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow strings.
+  'reports.voidSale':                  { en: 'Void Sale',          es: 'Anular Venta',           pt: 'Anular Venda' },
+  'reports.voidContinue':              { en: 'Void with manager PIN', es: 'Anular con PIN de gerente', pt: 'Anular com PIN do gerente' },
+  'reports.voidInvoiceLabel':          { en: 'Invoice',            es: 'Factura',                pt: 'Fatura' },
+  'reports.voidTotalLabel':            { en: 'Total',              es: 'Total',                  pt: 'Total' },
+  'reports.voidReasonLabel':           { en: 'Reason',             es: 'Motivo',                 pt: 'Motivo' },
+  'reports.voidReasonPick':            { en: 'Pick a reason…',     es: 'Elige un motivo…',       pt: 'Escolha um motivo…' },
+  'reports.voidReasonRequired':        { en: 'Reason is required to void a sale.', es: 'El motivo es obligatorio para anular la venta.', pt: 'O motivo é obrigatório para anular a venda.' },
+  'reports.voidReason.duplicate':           { en: 'Duplicate transaction',          es: 'Transacción duplicada',           pt: 'Transação duplicada' },
+  'reports.voidReason.cashierError':        { en: 'Cashier error',                  es: 'Error del cajero',                pt: 'Erro do caixa' },
+  'reports.voidReason.customerChangedMind': { en: 'Customer changed mind',          es: 'El cliente cambió de opinión',    pt: 'Cliente mudou de ideia' },
+  'reports.voidReason.paymentFailed':       { en: 'Payment failed / declined',      es: 'Pago falló / rechazado',          pt: 'Pagamento falhou / recusado' },
+  'reports.voidReason.testTransaction':     { en: 'Test transaction',               es: 'Transacción de prueba',           pt: 'Transação de teste' },
+  'reports.voidReason.other':               { en: 'Other',                          es: 'Otro',                            pt: 'Outro' },
+  'reports.voidPaymentWarning':        { en: 'This only voids the sale record. Refund the payment separately if the customer was charged.', es: 'Esto solo anula el registro de la venta. Reembolsa el pago por separado si al cliente ya se le cobró.', pt: 'Isso apenas anula o registro da venda. Reembolse o pagamento separadamente se o cliente já foi cobrado.' },
+  'reports.voidInventoryNote':         { en: 'Inventory will be restored for stockable items only (skips phone payments, top-ups, services, fees).', es: 'El inventario se restaurará solo para artículos en stock (omite pagos de teléfono, top-ups, servicios, cuotas).', pt: 'O estoque será restaurado apenas para itens em estoque (ignora pagamentos de telefone, top-ups, serviços, taxas).' },
+  'reports.voidedToast': {
+    en: (invoice: string) => `Sale ${invoice} voided.`,
+    es: (invoice: string) => `Venta ${invoice} anulada.`,
+    pt: (invoice: string) => `Venda ${invoice} anulada.`,
+  },
+  'reports.voidPaymentReminder':       { en: 'Reminder: refund the payment separately if the customer was charged.', es: 'Recuerda: reembolsa el pago por separado si al cliente ya se le cobró.', pt: 'Lembre-se: reembolse o pagamento separadamente se o cliente já foi cobrado.' },
+  'reports.voidAlreadyVoided':         { en: 'This sale is already voided.',  es: 'Esta venta ya está anulada.',  pt: 'Esta venda já está anulada.' },
+  'reports.voidAlreadyRefunded':       { en: 'This sale is already refunded.', es: 'Esta venta ya está reembolsada.', pt: 'Esta venda já está reembolsada.' },
+  'reports.voidFailed':                { en: 'Could not void this sale. Try again.', es: 'No se pudo anular la venta. Inténtalo de nuevo.', pt: 'Não foi possível anular a venda. Tente novamente.' },
+
   // ── Tax Center i18n ───────────────────────────────────────
   'tax.taxCenter':                   { en: 'TAX CENTER',                       es: 'CENTRO FISCAL',                        pt: 'CENTRO FISCAL' },
   'tax.caSalesTaxQuarterly':         { en: 'California Sales Tax · Quarterly', es: 'Impuesto CA · Trimestral',             pt: 'Imposto CA · Trimestral' },

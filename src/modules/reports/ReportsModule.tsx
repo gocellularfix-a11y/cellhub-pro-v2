@@ -18,7 +18,11 @@ import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
-import { SearchInput } from '@/components/ui';
+import { SearchInput, Modal, useToast } from '@/components/ui';
+// R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow uses the
+// canonical admin-PIN gate + persist surface used elsewhere in the app.
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { persist } from '@/services/persist';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
@@ -323,6 +327,104 @@ export default function ReportsModule() {
   const [searchDateTo, setSearchDateTo] = useState('');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
   const [reprintSale, setReprintSale] = useState<Sale | null>(null);
+
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow state.
+  // The sale is voided as a STATUS CHANGE (status='voided' + voidedAt +
+  // voidedBy + voidReason). Existing isCountableSale / dashboard /
+  // intelligence filters already exclude voided sales from active
+  // totals/profit/KPIs. Inventory restored only for stockable line
+  // items (skips phone_payment / top_up / service / cc_fee / etc.).
+  // External payment refund is NOT triggered — owner handles payment-
+  // processor refund separately.
+  const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
+  const [voidReason, setVoidReason] = useState<string>('');
+  const [voidPinOpen, setVoidPinOpen] = useState(false);
+  const [voiding, setVoiding] = useState(false);
+  const { toast } = useToast();
+
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: stockable item filter.
+  // Mirrors POSModule's decrement: only items with an inventoryId AND
+  // a non-service category get inventory restored on void. Phone-
+  // payments, top-ups, services, CC fees, fees and pseudo deposits/
+  // balances are NOT in inventory, so we don't touch stock for them.
+  const isStockableForVoid = useCallback((item: SaleItem): boolean => {
+    if (!item.inventoryId) return false;
+    const cat = String(item.category || '').toLowerCase();
+    if (cat === 'phone_payment' || cat === 'top_up' || cat === 'topup') return false;
+    if (cat === 'service' || cat === 'services') return false;
+    if (cat === 'cc_fee' || cat === 'fee') return false;
+    return true;
+  }, []);
+
+  const handleVoidSale = useCallback((sale: Sale, reason: string) => {
+    if (voiding) return;
+    if (sale.status === 'voided') {
+      toast(t('reports.voidAlreadyVoided'), 'warning');
+      return;
+    }
+    if (sale.status === 'refunded') {
+      toast(t('reports.voidAlreadyRefunded'), 'warning');
+      return;
+    }
+    if (!reason || !reason.trim()) {
+      toast(t('reports.voidReasonRequired'), 'warning');
+      return;
+    }
+    setVoiding(true);
+    try {
+      const now = new Date().toISOString();
+      // Build the voided sale record — full spread per persist contract.
+      const voidedSale: Sale = {
+        ...sale,
+        status: 'voided',
+        voidedAt: now,
+        voidedBy: currentEmployee?.name || '—',
+        voidReason: reason.trim(),
+      };
+      // Restore inventory for stockable line items only.
+      const inventoryUpdates: { id: string; data: InventoryItem }[] = [];
+      const nextInventory = inventory.map((inv) => {
+        const restoreItems = (sale.items || []).filter(
+          (it) => isStockableForVoid(it) && it.inventoryId === inv.id,
+        );
+        if (restoreItems.length === 0) return inv;
+        const restoreQty = restoreItems.reduce(
+          (sum, it) => sum + (it.qty || (it as { quantity?: number }).quantity || 0),
+          0,
+        );
+        if (restoreQty <= 0) return inv;
+        const updated: InventoryItem = { ...inv, qty: (inv.qty || 0) + restoreQty };
+        inventoryUpdates.push({ id: inv.id, data: updated });
+        return updated;
+      });
+      // Persist sale + each touched inventory item via the existing
+      // persist surface. Full record spread per CLAUDE.md / persist
+      // contract — no partial writes.
+      const nextSales = sales.map((s) => (s.id === sale.id ? voidedSale : s));
+      dispatch({ type: 'SET_SALES', payload: nextSales });
+      persist.sale(voidedSale.id, voidedSale as unknown as Record<string, unknown>);
+      if (inventoryUpdates.length > 0) {
+        dispatch({ type: 'SET_INVENTORY', payload: nextInventory });
+        for (const upd of inventoryUpdates) {
+          persist.inventory(upd.id, upd.data as unknown as Record<string, unknown>);
+        }
+      }
+      toast(t('reports.voidedToast', sale.invoiceNumber), 'success');
+      // Show the manual-refund warning as a follow-up toast so the
+      // owner is reminded that no payment processor was contacted.
+      window.setTimeout(() => {
+        toast(t('reports.voidPaymentReminder'), 'info');
+      }, 600);
+      setVoidTarget(null);
+      setVoidReason('');
+      setVoidPinOpen(false);
+    } catch (err) {
+      console.error('[void-sale] failed', err);
+      toast(t('reports.voidFailed'), 'error');
+    } finally {
+      setVoiding(false);
+    }
+  }, [voiding, sales, inventory, currentEmployee, dispatch, isStockableForVoid, t, toast]);
 
   // ── Consume globalSearchTerm ──────────────────────────────
   useEffect(() => {
@@ -2410,9 +2512,19 @@ tr:last-child td { border-bottom: none; }
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(sale.createdAt)}</td>
                           <td style={{ padding: '0.5rem 0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setReprintSale(sale)}
-                              style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(102,126,234,0.3)', background: 'rgba(102,126,234,0.1)', color: '#a5b4fc', cursor: 'pointer', fontSize: '0.75rem' }}
-                              title={t('reports.reprint')}>🖨️</button>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              <button onClick={() => setReprintSale(sale)}
+                                style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(102,126,234,0.3)', background: 'rgba(102,126,234,0.1)', color: '#a5b4fc', cursor: 'pointer', fontSize: '0.75rem' }}
+                                title={t('reports.reprint')}>🖨️</button>
+                              {/* R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: only show Void
+                                  when the sale is still active. Already-voided/refunded
+                                  rows already render the VOID/REF badge; no second action. */}
+                              {!isVoided && !isRefunded && (
+                                <button onClick={() => { setVoidTarget(sale); setVoidReason(''); }}
+                                  style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  title={t('reports.voidSale')}>🚫</button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2492,6 +2604,79 @@ tr:last-child td { border-bottom: none; }
           </div>
         </div>
       )}
+
+      {/* R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: Void Sale modal —
+          reason picker + manager-PIN guard. Sale is marked voided as a
+          STATUS CHANGE (no hard delete); inventory restored only for
+          stockable line items; existing isCountableSale filter excludes
+          voided sales from active totals/profit/KPIs everywhere. */}
+      {voidTarget && (
+        <Modal
+          open={!!voidTarget && !voidPinOpen}
+          onClose={() => { setVoidTarget(null); setVoidReason(''); }}
+          title={`🚫 ${t('reports.voidSale')}`}
+          size="max-w-md"
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => { setVoidTarget(null); setVoidReason(''); }}>
+                {t('cancel')}
+              </button>
+              <button
+                className="btn"
+                style={{ background: '#dc2626', color: '#fff', fontWeight: 700, border: 'none' }}
+                disabled={!voidReason.trim() || voiding}
+                onClick={() => setVoidPinOpen(true)}
+              >
+                {t('reports.voidContinue')}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="text-xs text-slate-400">
+              {t('reports.voidInvoiceLabel')}: <strong className="text-slate-200" style={{ fontFamily: 'monospace' }}>{voidTarget.invoiceNumber}</strong>
+              <br />
+              {t('reports.voidTotalLabel')}: <strong className="text-emerald-400">{formatCurrency(voidTarget.total)}</strong>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 font-semibold block mb-1">
+                {t('reports.voidReasonLabel')} <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                className="select"
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+              >
+                <option value="">{t('reports.voidReasonPick')}</option>
+                <option value="duplicate">{t('reports.voidReason.duplicate')}</option>
+                <option value="cashier_error">{t('reports.voidReason.cashierError')}</option>
+                <option value="customer_changed_mind">{t('reports.voidReason.customerChangedMind')}</option>
+                <option value="payment_failed">{t('reports.voidReason.paymentFailed')}</option>
+                <option value="test_transaction">{t('reports.voidReason.testTransaction')}</option>
+                <option value="other">{t('reports.voidReason.other')}</option>
+              </select>
+            </div>
+            <div className="rounded-md p-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+              <p className="text-xs" style={{ color: '#fca5a5', lineHeight: 1.5 }}>
+                ⚠️ {t('reports.voidPaymentWarning')}
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {t('reports.voidInventoryNote')}
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {/* PIN gate — opens only after the owner confirms reason */}
+      <AdminPinGate
+        open={voidPinOpen && !!voidTarget}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => {
+          if (voidTarget) handleVoidSale(voidTarget, voidReason);
+        }}
+        onCancel={() => setVoidPinOpen(false)}
+      />
     </div>
   );
 }
