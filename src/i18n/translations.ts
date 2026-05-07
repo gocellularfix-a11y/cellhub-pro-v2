@@ -5185,6 +5185,20 @@ export const translations: TranslationDictionary = {
   // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: short label inline next to repair stat.
   'intelligence.console.staleLabel':           { en: 'stale', es: 'atrasados', pt: 'atrasados' },
 
+  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX: repairs_ready chat intent.
+  'chat.repairsReady.empty':  { en: '🔧 No repairs ready for pickup right now.', es: '🔧 No hay reparaciones listas para recoger ahora.', pt: '🔧 Nenhum reparo pronto para retirada agora.' },
+  'chat.repairsReady.header': {
+    en: (n: number) => `🔧 ${n} repair${n === 1 ? '' : 's'} ready for pickup.`,
+    es: (n: number) => `🔧 ${n} reparación${n === 1 ? '' : 'es'} lista${n === 1 ? '' : 's'} para recoger.`,
+    pt: (n: number) => `🔧 ${n} reparo${n === 1 ? '' : 's'} pronto${n === 1 ? '' : 's'} para retirada.`,
+  },
+  'chat.repairsReady.stale': {
+    en: (n: number) => `   ${n} have been waiting more than 3 days.`,
+    es: (n: number) => `   ${n} llevan más de 3 días esperando.`,
+    pt: (n: number) => `   ${n} estão aguardando há mais de 3 dias.`,
+  },
+  'chat.repairsReady.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
+
   'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
   'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },
   'intelligence.console.queuePending':         { en: (n: number) => `${n} pending`,                                 es: (n: number) => `${n} pendiente${n === 1 ? '' : 's'}`,                  pt: (n: number) => `${n} pendente${n === 1 ? '' : 's'}` },

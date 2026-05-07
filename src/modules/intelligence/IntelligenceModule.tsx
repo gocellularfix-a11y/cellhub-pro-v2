@@ -13,7 +13,7 @@
 // module does not duplicate that logic, does not touch localStorage,
 // and does not execute action payloads.
 
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
@@ -150,8 +150,16 @@ export default function IntelligenceModule() {
     return t('intelligence.dash.insightAllGood');
   }, [missedRev, reorderRecs, locale, t]);
 
-  // Customer lookup
-  const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
+  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX:
+  // wrap refreshKey bump in useTransition so the heavy engine recreate
+  // + analyze + memo cascade happens off the urgent render path. The
+  // button is also disabled while the transition is pending — owner
+  // can't spam-click and stack rebuilds.
+  const [isRefreshing, startRefreshTransition] = useTransition();
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    startRefreshTransition(() => setRefreshKey((k) => k + 1));
+  }, [isRefreshing]);
   const matches = useMemo(() => {
     const q = lookupQuery.trim();
     if (q.length < 2) return [];
@@ -482,7 +490,8 @@ export default function IntelligenceModule() {
       <div className="flex justify-end">
         <button
           onClick={handleRefresh}
-          className="text-xs px-3 py-1.5 rounded border border-surface-700 hover:border-surface-500 text-slate-400 hover:text-slate-300 transition"
+          disabled={isRefreshing}
+          className="text-xs px-3 py-1.5 rounded border border-surface-700 hover:border-surface-500 text-slate-400 hover:text-slate-300 transition disabled:opacity-50 disabled:cursor-wait"
         >
           🔄 {t('intelligence.refresh')}
         </button>

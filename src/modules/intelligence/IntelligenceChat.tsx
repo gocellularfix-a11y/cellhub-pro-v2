@@ -76,16 +76,41 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   >({});
   const [automationQueue, setAutomationQueue] = useState<AutomationQueueItem[]>(() => {
     const _t = performance.now();
+    let parsed: AutomationQueueItem[] = [];
     try {
       const raw = localStorage.getItem(AUTOMATION_QUEUE_STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (raw) {
+        const candidate = JSON.parse(raw);
+        if (Array.isArray(candidate)) parsed = candidate;
+      }
     } catch {
-      return [];
-    } finally {
-      perfLog('intel.chat.queue.hydrate', _t);
+      /* incognito / quota — proceed with empty */
     }
+    // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX:
+    // strip legacy non-executable queue items so the persisted
+    // "whatsapp_reconnect · failed: not_executable" leftovers from
+    // earlier sessions disappear on hydrate. Two cleanup rules:
+    //   1. payload.actionPayload.executionTarget === 'none' (chat-replay
+    //      shortcuts that never had a real executor)
+    //   2. status === 'failed' AND last execution-log reason ===
+    //      'not_executable' (already-failed legacy items)
+    // Persist back so the cleanup is durable; only writes when the
+    // filtered list differs to avoid spurious persistence churn.
+    const cleaned = parsed.filter((item) => {
+      const ap = item.payload?.actionPayload;
+      if (ap?.executionTarget === 'none') return false;
+      const log = item.executionLog;
+      if (item.status === 'failed' && log && log.length > 0) {
+        const last = log[log.length - 1];
+        if (last && last.reason === 'not_executable') return false;
+      }
+      return true;
+    });
+    if (cleaned.length !== parsed.length) {
+      try { localStorage.setItem(AUTOMATION_QUEUE_STORAGE_KEY, JSON.stringify(cleaned)); } catch {}
+    }
+    perfLog('intel.chat.queue.hydrate', _t);
+    return cleaned;
   });
   const messageListRef = useRef<HTMLDivElement>(null);
   const prevExternalSeq = useRef(-1);

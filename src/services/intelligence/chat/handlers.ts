@@ -214,6 +214,9 @@ export function handleIntent(
     case 'repairs_overdue':
       return handleRepairsOverdue(engine, es);
 
+    case 'repairs_ready':
+      return handleRepairsReady(engine, lang);
+
     case 'health_check':
       return handleHealthCheck(engine, es);
 
@@ -2163,6 +2166,51 @@ function handleRepairsOverdue(engine: IntelligenceEngine, es: boolean): ChatResp
 }
 
 // ── Health check ────────────────────────────────────────────
+// ── Repairs Ready (R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX)
+// Mirrors the live operator card's logic: kpi.repairs.pending for the
+// total ready-for-pickup count + a stale-3-day scan for stragglers.
+// Pure read; no engine/inventory mutation, no automation.
+function handleRepairsReady(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const result = engine.refresh();
+  const ready = result.kpiDashboard.repairs.pending;
+
+  if (ready === 0) {
+    return { kind: 'answer', text: t('chat.repairsReady.empty') };
+  }
+
+  // Stale-pickup scan (matches the live card's threshold + filter).
+  const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  let staleCount = 0;
+  try {
+    for (const r of engine.getRepairs()) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) > PICKUP_THRESHOLD_MS) staleCount++;
+    }
+  } catch { /* skip — handler stays on the kpi count */ }
+
+  const lines: string[] = [];
+  lines.push(t('chat.repairsReady.header', ready));
+  if (staleCount > 0) {
+    lines.push(t('chat.repairsReady.stale', staleCount));
+  }
+  lines.push('');
+  lines.push(`💡 ${t('chat.repairsReady.action')}`);
+  return { kind: 'answer', text: lines.join('\n') };
+}
+
 function handleHealthCheck(engine: IntelligenceEngine, es: boolean): ChatResponse {
   const result = engine.refresh();
   const h = result.healthScore;
