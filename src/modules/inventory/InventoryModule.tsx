@@ -1141,18 +1141,38 @@ function InventoryFormModal({
   // restore focus after a successful add — cashier-scan flow.
   const skuInputRef = useRef<HTMLInputElement>(null);
 
-  // R-INVENTORY-SCAN-DEDUP-V1: auto-focus the unified SKU/IMEI input on
-  // Add Item modal open so the cashier can scan immediately. Edit-mode
-  // skipped because the user may want to land on a different field.
-  // requestAnimationFrame defers until after first paint so the focus
-  // call lands on the freshly mounted input.
+  // R-INVENTORY-FOCUS-HARDEN-V1: belt-and-suspenders focus helper.
+  // The previous double-rAF pattern was racing against late renders
+  // triggered by autofill setForm, banner mount/unmount, the Add Item
+  // button's disable/enable, label-print toasts, and the duplicate
+  // banner. This helper:
+  //   1. defers via rAF past the current commit
+  //   2. focuses + selects (so the next scan replaces any leftover
+  //      text, e.g. an autofilled identifier)
+  //   3. queues a setTimeout(0) tail that re-asserts focus after any
+  //      task-queue microtasks (toast render, setForm follow-ups)
+  // Stable identity (empty deps) — safe to include in effect deps.
+  const focusSkuInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      skuInputRef.current?.focus();
+      skuInputRef.current?.select?.();
+      setTimeout(() => skuInputRef.current?.focus(), 0);
+    });
+  }, []);
+
+  // R-INVENTORY-SCAN-DEDUP-V1 + R-INVENTORY-FOCUS-HARDEN-V1: auto-focus
+  // the unified SKU/IMEI input on Add Item modal open so the cashier
+  // can scan immediately. Edit-mode skipped because the user may want
+  // to land on a different field. Now routed through focusSkuInput so
+  // the focus survives late renders (button enabling, async printer
+  // load, etc.).
   useEffect(() => {
     if (!isEdit) {
-      requestAnimationFrame(() => skuInputRef.current?.focus());
+      focusSkuInput();
     }
     // Mount-only: depending on isEdit (immutable for a given modal
     // instance) means this fires exactly once per modal open.
-  }, [isEdit]);
+  }, [isEdit, focusSkuInput]);
 
   // ── Existing-item detection ────────────────────────────
   // R-INVENTORY-SCAN-DEDUP-V1: matches across sku, imei, and barcode
@@ -1236,19 +1256,20 @@ function InventoryFormModal({
       imei:              matched.imei || '',
       customFields:      { ...((matched.customFields as Record<string, string | number>) || {}) },
     }));
-    // R-INVENTORY-FOCUS-RESTORE-V1: re-assert focus on the SKU/IMEI
-    // input after autofill, in case the setForm-driven rerender briefly
-    // shifted focus elsewhere. Cheap rAF, no-op when focus is already
-    // there.
-    requestAnimationFrame(() => skuInputRef.current?.focus());
-  }, [duplicateItem, isEdit]);
+    // R-INVENTORY-FOCUS-HARDEN-V1: re-assert focus through the hardened
+    // helper after autofill, in case the setForm-driven rerender
+    // briefly shifted focus elsewhere. Also selects the existing text
+    // so the cashier's next scan replaces it cleanly.
+    focusSkuInput();
+  }, [duplicateItem, isEdit, focusSkuInput]);
 
-  // R-INVENTORY-FOCUS-RESTORE-V1: shared post-add / manual-clear reset
-  // helper. Wipes the form and all dedup/autofill bookkeeping, then
-  // re-focuses the unified SKU/IMEI input via a double-rAF so focus
-  // survives any re-render triggered by the duplicate-state clears
-  // (banner removal) or the autofill effect's ref reset. The cashier
-  // workflow is scan → enter → save → next scan, with no mouse touch.
+  // R-INVENTORY-FOCUS-RESTORE-V1 + R-INVENTORY-FOCUS-HARDEN-V1: shared
+  // post-add / manual-clear reset helper. Wipes the form and all
+  // dedup/autofill bookkeeping, then re-focuses via the hardened
+  // focusSkuInput helper (rAF + focus + select + setTimeout(0) tail)
+  // so focus survives the cascade of follow-up renders triggered by
+  // the state clears above, the auto-print-label toast, and the
+  // duplicate banner unmount.
   const resetFormAndFocus = useCallback(() => {
     setForm({
       sku: '', imei: '', barcode: '', name: '', description: '',
@@ -1262,14 +1283,8 @@ function InventoryFormModal({
     setDuplicateItem(null);
     setDuplicateMatchField(null);
     lastAutofilledIdRef.current = null;
-    // Two ticks: first lands after the current commit; second re-asserts
-    // focus after any follow-up render triggered by the state clears
-    // above (autofill-effect ref reset, banner unmount, etc.).
-    requestAnimationFrame(() => {
-      skuInputRef.current?.focus();
-      requestAnimationFrame(() => skuInputRef.current?.focus());
-    });
-  }, []);
+    focusSkuInput();
+  }, [focusSkuInput]);
 
   // ── Autocomplete suggestions (name, supplier, brand) ───
   const autocompletePool = useMemo(() => ({
