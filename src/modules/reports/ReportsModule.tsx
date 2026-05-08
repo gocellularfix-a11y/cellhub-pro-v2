@@ -27,9 +27,15 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import { normalizeCarrier } from '@/utils/normalize';
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
+// R-REPORTS-EDIT-SALE-ITEM-V1: shared totals helper + audit trail helpers.
+// calculateCartTotals re-derives subtotal/salesTax/total from the modified
+// items so we don't reimplement tax math here. captureSnapshot/appendEditEntry
+// match the audit conventions used by repair/unlock/SO modules.
+import { calculateCartTotals } from '@/modules/pos/types';
+import { captureSnapshot, appendEditEntry } from '@/services/editAudit';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -340,6 +346,18 @@ export default function ReportsModule() {
   const [voidReason, setVoidReason] = useState<string>('');
   const [voidPinOpen, setVoidPinOpen] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  // R-REPORTS-EDIT-SALE-ITEM-V1: edit-sale-item flow state. Owner clicks ✏️
+  // on a sale row → modal lists items → click an item → edit price/qty +
+  // pick reason + add notes → PIN gate → recalc + persist + audit.
+  const [editTarget, setEditTarget] = useState<Sale | null>(null);
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState<string>('');
+  const [editQty, setEditQty] = useState<string>('1');
+  const [editReason, setEditReason] = useState<'refund' | 'absorbed' | 'typo_correction' | ''>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editPinOpen, setEditPinOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState(false);
+  const [reprintAfterEdit, setReprintAfterEdit] = useState<Sale | null>(null);
   const { toast } = useToast();
 
   // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: stockable item filter.
@@ -425,6 +443,160 @@ export default function ReportsModule() {
       setVoiding(false);
     }
   }, [voiding, sales, inventory, currentEmployee, dispatch, isStockableForVoid, t, toast]);
+
+  // R-REPORTS-EDIT-SALE-ITEM-V1: edit a single sale item's price + qty after
+  // checkout. Owner-only via AdminPinGate. Mutates the sale's items array
+  // and recalculates subtotal/salesTax/total via calculateCartTotals (single
+  // source of truth, same code POS uses). Preserves the original cart-level
+  // discount as a flat dollar amount, all phone-payment fees (utility tax,
+  // mobility surcharge), CC fees, CBE fee, screen fee. Appends to
+  // editHistory; captures originalSnapshot on first edit. NO new sale
+  // record, NO inventory mutation, NO refund-record creation. The audit
+  // log is the single record of the edit; cash drawer reconciliation is
+  // owner-handled per the chosen reason.
+  const handleEditSaleItem = useCallback((
+    sale: Sale,
+    itemId: string,
+    newPriceCents: number,
+    newQty: number,
+    reason: 'refund' | 'absorbed' | 'typo_correction',
+    notes: string,
+  ) => {
+    if (editingSale) return;
+    if (sale.status === 'voided' || sale.status === 'refunded') {
+      toast(t('reports.editSale.blockTerminal'), 'warning');
+      return;
+    }
+    const fresh = sales.find((s) => s.id === sale.id);
+    if (!fresh) {
+      toast(t('reports.editSale.notFound'), 'error');
+      return;
+    }
+    const item = fresh.items.find((it) => it.id === itemId);
+    if (!item) {
+      toast(t('reports.editSale.itemNotFound'), 'error');
+      return;
+    }
+    if ((item.returnedQty || 0) > 0 || item.fullyReturned) {
+      toast(t('reports.editSale.blockReturned'), 'warning');
+      return;
+    }
+    if (!Number.isFinite(newPriceCents) || newPriceCents < 0) {
+      toast(t('reports.editSale.invalidPrice'), 'warning');
+      return;
+    }
+    if (!Number.isFinite(newQty) || newQty < 1) {
+      toast(t('reports.editSale.invalidQty'), 'warning');
+      return;
+    }
+    if (!reason) {
+      toast(t('reports.editSale.reasonRequired'), 'warning');
+      return;
+    }
+    const history = fresh.editHistory ?? [];
+    if (history.length >= 100) {
+      toast(t('reports.editSale.historyFull'), 'error');
+      return;
+    }
+
+    setEditingSale(true);
+    try {
+      const now = new Date().toISOString();
+      // Build modified items: replace target with new price + qty.
+      const oldItem = item;
+      const newItem: SaleItem = { ...oldItem, price: newPriceCents, qty: newQty };
+      const modifiedItems = fresh.items.map((it) => (it.id === itemId ? newItem : it));
+
+      // Preserve the original cart-level discount as a flat dollar amount so
+      // calculateCartTotals reproduces it on the new subtotal. type='dollar'
+      // amount in DOLLARS (the helper multiplies by 100 internally).
+      const originalDiscountCents = Math.max(
+        0,
+        (fresh.subtotal || 0) - (fresh.subtotalAfterDiscount ?? fresh.subtotal ?? 0),
+      );
+      const recalc = calculateCartTotals(
+        modifiedItems as unknown as CartItem[],
+        settings,
+        { type: 'dollar' as const, amount: originalDiscountCents / 100, reason: '' },
+        fresh.paymentMethod,
+        (fresh.creditCardFee ?? 0) > 0,
+        undefined,
+        fresh.creditCardFee ?? 0,
+      );
+
+      // Build edit-audit entry. fieldsChanged captures what changed; sideEffects
+      // carries the dollar delta + reason-specific fields.
+      const totalDelta = (fresh.total || 0) - (recalc.total || 0); // positive = customer owed back
+      const fieldsChanged: { field: string; oldValue: unknown; newValue: unknown }[] = [];
+      if (oldItem.price !== newItem.price) {
+        fieldsChanged.push({ field: `items[${itemId}].price`, oldValue: oldItem.price, newValue: newItem.price });
+      }
+      if (oldItem.qty !== newItem.qty) {
+        fieldsChanged.push({ field: `items[${itemId}].qty`, oldValue: oldItem.qty, newValue: newItem.qty });
+      }
+
+      const sideEffects: { refundOwedAmount?: number; absorbedAmount?: number } = {};
+      if (reason === 'refund' && totalDelta > 0) sideEffects.refundOwedAmount = totalDelta;
+      if (reason === 'absorbed' && totalDelta > 0) sideEffects.absorbedAmount = totalDelta;
+
+      const entry = {
+        editedAt: now,
+        editedBy: currentEmployee?.name || '—',
+        pinUsedBy: currentEmployee?.name || '—',
+        reason,
+        fieldsChanged,
+        note: notes.trim() || undefined,
+        sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
+      };
+      const newHistory = appendEditEntry(history, entry);
+      if (newHistory === null) {
+        toast(t('reports.editSale.historyFull'), 'error');
+        setEditingSale(false);
+        return;
+      }
+
+      const editedSale: Sale = {
+        ...fresh,
+        items: modifiedItems,
+        subtotal: recalc.subtotal,
+        subtotalAfterDiscount: recalc.subtotalAfterDiscount,
+        salesTax: recalc.salesTax,
+        utilityTax: recalc.utilityTax,
+        mobileSurcharge: recalc.mobileSurcharge,
+        cbeTotal: recalc.cbeFee,
+        screenFeeTotal: recalc.screenFee,
+        // taxAmount kept as legacy aggregate.
+        taxAmount: (recalc.salesTax || 0) + (recalc.utilityTax || 0) + (recalc.mobileSurcharge || 0),
+        total: recalc.total,
+        editHistory: newHistory,
+        // Capture originalSnapshot ONCE on the first edit (never overwritten).
+        originalSnapshot: fresh.originalSnapshot ?? captureSnapshot(fresh as unknown as Record<string, unknown>),
+      };
+
+      const nextSales = sales.map((s) => (s.id === sale.id ? editedSale : s));
+      dispatch({ type: 'SET_SALES', payload: nextSales });
+      persist.sale(editedSale.id, editedSale as unknown as Record<string, unknown>);
+
+      toast(t('reports.editSale.savedToast', editedSale.invoiceNumber), 'success');
+      // Offer a corrected-receipt reprint for non-typo edits (typo doesn't
+      // change money — no need to reissue). Owner can decline.
+      if (reason !== 'typo_correction') {
+        setReprintAfterEdit(editedSale);
+      }
+      setEditTarget(null);
+      setEditItemId(null);
+      setEditPrice('');
+      setEditQty('1');
+      setEditReason('');
+      setEditNotes('');
+      setEditPinOpen(false);
+    } catch (err) {
+      console.error('[edit-sale-item] failed', err);
+      toast(t('reports.editSale.failed'), 'error');
+    } finally {
+      setEditingSale(false);
+    }
+  }, [editingSale, sales, settings, currentEmployee, dispatch, t, toast]);
 
   // ── Consume globalSearchTerm ──────────────────────────────
   useEffect(() => {
@@ -2554,6 +2726,22 @@ tr:last-child td { border-bottom: none; }
                                   style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
                                   title={t('reports.voidSale')}>🚫</button>
                               )}
+                              {/* R-REPORTS-EDIT-SALE-ITEM-V1: edit a line-item
+                                  price/qty post-checkout (manager-PIN gated).
+                                  Hidden on voided/refunded sales — those are
+                                  terminal and shouldn't be retroactively edited. */}
+                              {!isVoided && !isRefunded && (
+                                <button onClick={() => {
+                                  setEditTarget(sale);
+                                  setEditItemId(null);
+                                  setEditPrice('');
+                                  setEditQty('1');
+                                  setEditReason('');
+                                  setEditNotes('');
+                                }}
+                                  style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.1)', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  title={t('reports.editSale.tooltip')}>✏️</button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2778,6 +2966,251 @@ tr:last-child td { border-bottom: none; }
         }}
         onCancel={() => setVoidPinOpen(false)}
       />
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: edit-item modal — picks an item from
+          the sale, lets owner edit price + qty, requires reason + notes,
+          then opens the AdminPinGate. Same modal layout style as Void Sale. */}
+      {editTarget && (() => {
+        const sale = editTarget;
+        const item = sale.items.find((it) => it.id === editItemId);
+        const newPriceCents = Math.round((parseFloat(editPrice) || 0) * 100);
+        const newQty = parseInt(editQty, 10);
+        const validInputs = !!item && Number.isFinite(newPriceCents) && newPriceCents >= 0 && Number.isFinite(newQty) && newQty >= 1;
+        const validReason = editReason !== '';
+        const oldLineTotal = item ? (item.price * item.qty) : 0;
+        const newLineTotal = item ? (newPriceCents * newQty) : 0;
+        const lineDelta = oldLineTotal - newLineTotal;
+        // Stale-sale warning (>24h old).
+        const saleDate = (() => {
+          try { return new Date(sale.createdAt as string); } catch { return null; }
+        })();
+        const isStale = saleDate ? (Date.now() - saleDate.getTime() > 86400000) : false;
+        return (
+          <Modal
+            open={!!editTarget && !editPinOpen}
+            onClose={() => {
+              setEditTarget(null);
+              setEditItemId(null);
+              setEditPrice('');
+              setEditQty('1');
+              setEditReason('');
+              setEditNotes('');
+            }}
+            title={`✏️ ${t('reports.editSale.title')}`}
+            size="max-w-lg"
+            footer={
+              <>
+                <button className="btn btn-secondary" onClick={() => {
+                  setEditTarget(null);
+                  setEditItemId(null);
+                  setEditPrice('');
+                  setEditQty('1');
+                  setEditReason('');
+                  setEditNotes('');
+                }}>
+                  {t('cancel')}
+                </button>
+                <button
+                  className="btn"
+                  style={{ background: '#a855f7', color: '#fff', fontWeight: 700, border: 'none' }}
+                  disabled={!editItemId || !validInputs || !validReason || editingSale}
+                  onClick={() => setEditPinOpen(true)}
+                >
+                  {t('reports.editSale.continue')}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <div className="text-xs text-slate-400">
+                {t('reports.editSale.invoiceLabel')}: <strong className="text-slate-200" style={{ fontFamily: 'monospace' }}>{sale.invoiceNumber}</strong>
+                {' · '}
+                {t('reports.editSale.totalLabel')}: <strong className="text-emerald-400">{formatCurrency(sale.total)}</strong>
+              </div>
+              {isStale && (
+                <div className="rounded-md p-2.5" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                  <p className="text-[11px]" style={{ color: '#fcd34d', lineHeight: 1.5 }}>
+                    ⚠️ {t('reports.editSale.staleWarning')}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-slate-400 font-semibold block mb-1">
+                  {t('reports.editSale.pickItemLabel')}
+                </label>
+                <div className="rounded border border-surface-700 divide-y divide-surface-700 max-h-44 overflow-y-auto">
+                  {sale.items.map((it) => {
+                    const isSelected = editItemId === it.id;
+                    const isReturned = (it.returnedQty || 0) > 0 || it.fullyReturned;
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        disabled={isReturned}
+                        onClick={() => {
+                          if (isReturned) return;
+                          setEditItemId(it.id);
+                          setEditPrice(((it.price || 0) / 100).toFixed(2));
+                          setEditQty(String(it.qty || 1));
+                        }}
+                        className={`w-full text-left flex items-center gap-2 px-3 py-2 transition ${
+                          isSelected ? 'bg-purple-500/10' : 'hover:bg-surface-700'
+                        } ${isReturned ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                            isSelected ? 'border-purple-400 bg-purple-400' : 'border-slate-500'
+                          }`}
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-slate-200 truncate">{it.name}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {formatCurrency(it.price)} × {it.qty} = {formatCurrency(it.price * it.qty)}
+                            {isReturned ? ` · ${t('reports.editSale.returnedTag')}` : ''}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {item && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 font-semibold block mb-1">
+                        {t('reports.editSale.priceLabel')}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="input"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 font-semibold block mb-1">
+                        {t('reports.editSale.qtyLabel')}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className="input"
+                        value={editQty}
+                        onChange={(e) => setEditQty(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-md p-2.5" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                    <div className="flex justify-between text-xs">
+                      <span style={{ color: '#c4b5fd' }}>{t('reports.editSale.lineDeltaLabel')}</span>
+                      <strong style={{ color: lineDelta > 0 ? '#fb923c' : lineDelta < 0 ? '#fcd34d' : '#94a3b8' }}>
+                        {lineDelta > 0 ? '−' : lineDelta < 0 ? '+' : ''}{formatCurrency(Math.abs(lineDelta))}
+                      </strong>
+                    </div>
+                    {lineDelta > 0 && (
+                      <p className="text-[10px] mt-1" style={{ color: '#fdba74' }}>
+                        {t('reports.editSale.refundOwedHint')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold block mb-1">
+                      {t('reports.editSale.reasonLabel')} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select className="select" value={editReason} onChange={(e) => setEditReason(e.target.value as 'refund' | 'absorbed' | 'typo_correction' | '')}>
+                      <option value="">{t('reports.editSale.reasonPick')}</option>
+                      <option value="refund">{t('reports.editSale.reason.refund')}</option>
+                      <option value="absorbed">{t('reports.editSale.reason.absorbed')}</option>
+                      <option value="typo_correction">{t('reports.editSale.reason.typoCorrection')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold block mb-1">
+                      {t('reports.editSale.notesLabel')}
+                    </label>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder={t('reports.editSale.notesPlaceholder')}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: PIN gate — opens after owner confirms
+          item + price + qty + reason. Successful auth fires handleEditSaleItem. */}
+      <AdminPinGate
+        open={editPinOpen && !!editTarget && !!editItemId}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => {
+          if (editTarget && editItemId && editReason) {
+            handleEditSaleItem(
+              editTarget,
+              editItemId,
+              Math.round((parseFloat(editPrice) || 0) * 100),
+              parseInt(editQty, 10),
+              editReason,
+              editNotes,
+            );
+          }
+        }}
+        onCancel={() => setEditPinOpen(false)}
+      />
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: optional corrected-receipt reprint
+          after a money-impacting edit (refund / absorbed). Owner can decline. */}
+      {reprintAfterEdit && (
+        <Modal
+          open={!!reprintAfterEdit}
+          onClose={() => setReprintAfterEdit(null)}
+          title={t('reports.editSale.reprintTitle')}
+          size="max-w-sm"
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setReprintAfterEdit(null)}>
+                {t('reports.editSale.reprintLater')}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const sale = reprintAfterEdit;
+                  if (!sale) return;
+                  try {
+                    const bsvg = renderBarcodeSvg(sale.invoiceNumber);
+                    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
+                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+                  } catch (err) {
+                    console.error('[edit-sale-item] reprint failed', err);
+                  }
+                  setReprintAfterEdit(null);
+                }}
+              >
+                🖨️ {t('print')}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-300">
+            {t('reports.editSale.reprintBody', reprintAfterEdit.invoiceNumber)}
+          </p>
+        </Modal>
+      )}
     </div>
   );
 }

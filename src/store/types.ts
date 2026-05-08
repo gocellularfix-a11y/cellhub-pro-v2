@@ -716,6 +716,12 @@ export interface Sale {
   // R9-1 linked cancellation cross-ref (written to refund sales when Returns cancels
   // a linked repair/unlock/SO/layaway entity as part of processing a return).
   linkedRefunds?: { type: string; id: string; depositCents: number }[];
+  // R-REPORTS-EDIT-SALE-ITEM-V1: post-completion line-item price/qty edits.
+  // Mirrors the audit shape used by repair/unlock/SO modules. originalSnapshot
+  // is captured ONCE on the first edit (never overwritten); editHistory is
+  // append-only with a 100-entry cap.
+  originalSnapshot?: EditAuditSnapshot;
+  editHistory?: EditAuditEntry[];
   createdAt: Timestamp | Date | string;
 }
 
