@@ -2049,6 +2049,13 @@ export const translations: TranslationDictionary = {
   'phonePay.planPrice': { en: 'Plan price ($)', es: 'Costo del plan ($)', pt: 'Preço do plano ($)' },
   'phonePay.firstMonthHint': { en: 'First month of plan', es: 'Primer mes del plan', pt: 'Primeiro mês do plano' },
   'phonePay.activationFeeLabel': { en: 'Activation fee ($) *', es: 'Cargo de activación ($) *', pt: 'Taxa de ativação ($) *' },
+  // R-PHONE-ACTIVATION-ESIM-HINT-V1: subtle helper under the activation
+  // fee input — purely informational, no logic.
+  'phonePay.activationFeeEsimHint': {
+    en: 'Commonly used for eSIM setup',
+    es: 'Comúnmente usado para configuración eSIM',
+    pt: 'Comumente usado para configuração eSIM',
+  },
   'phonePay.internalNotes': { en: 'Internal notes', es: 'Notas internas', pt: 'Notas internas' },
   'phonePay.internalNotesPlaceholder': { en: 'IMEI, activation notes...', es: 'IMEI, notas de activación...', pt: 'IMEI, notas de ativação...' },
   'phonePay.changeCustomer': { en: '× Change customer', es: '× Cambiar cliente', pt: '× Trocar cliente' },

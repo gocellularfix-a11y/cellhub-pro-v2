@@ -1336,6 +1336,10 @@ export default function PhonePaymentModal({
 
     // ── Item 2: Activation / SIM / setup fee — 100% profit for the owner ──
     // No commission, no utility tax, no mobility fee. Fixed price.
+    // R-PHONE-ACTIVATION-FEE-TAX-LOCK-V1: activation fee is a service/setup
+    // fee — MUST stay non-taxable per business rule. category='activation'
+    // (not 'phone_payment') ensures utility-tax + mobility-surcharge in
+    // calculateCartTotals are also skipped. Do not flip taxable:true.
     if (amountCents > 0) {
       newItems.push({
         id: generateId(),
@@ -1745,8 +1749,12 @@ export default function PhonePaymentModal({
                 <input className="input" type="number" min="0" step="0.01"
                   value={actAmount} onChange={(e) => setActAmount(e.target.value)}
                   placeholder="0.00" />
+                {/* R-PHONE-ACTIVATION-ESIM-HINT-V1: eSIM hint under the
+                    activation fee. Subtle styling (muted color, not red),
+                    purely informational — does not auto-fill, does not
+                    enforce, does not change logic. */}
                 <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  SIM / setup
+                  {t('phonePay.activationFeeEsimHint')}
                 </p>
               </div>
             </div>
