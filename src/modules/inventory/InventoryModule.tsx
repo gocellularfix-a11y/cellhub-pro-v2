@@ -1019,6 +1019,22 @@ function useAutocompleteKeyboard(opts: {
   return { activeIdx, onKeyDown };
 }
 
+// R-INVENTORY-SKUIMEI-V2: classify a unified scan-field value as
+// IMEI-like vs SKU-like so we can keep the UI as one field while the
+// underlying record stays correctly partitioned (imei vs sku).
+//
+// Rules:
+//  - strip spaces and dashes (scanners and stickers vary)
+//  - must be all digits after normalization
+//  - 14–16 digits = IMEI (15) / IMEISV (16) / MEID-decimal-ish (14)
+// Anything else (alphanumeric SKUs, short codes, blanks) is treated
+// as a normal SKU.
+function isLikelyImei(raw: string): boolean {
+  const s = (raw || '').replace(/[\s-]/g, '');
+  if (!/^\d+$/.test(s)) return false;
+  return s.length >= 14 && s.length <= 16;
+}
+
 // ── Inventory Form Modal ──────────────────────────────────
 
 function InventoryFormModal({
@@ -1055,7 +1071,13 @@ function InventoryFormModal({
   const [zeroPriceConfirm, setZeroPriceConfirm] = useState(false);
 
   const [form, setForm] = useState({
-    sku:               item?.sku || '',
+    // R-INVENTORY-SKUIMEI-V2: form.sku holds whatever the unified field
+    // shows (SKU or IMEI as typed). On submit, doSubmit routes IMEI-like
+    // values into the imei column and clears sku. Fall back to item.imei
+    // here so editing an IMEI-only legacy record still surfaces the value
+    // in the unified input. form.imei keeps the canonical IMEI value and
+    // is preserved unless the user explicitly types a new IMEI.
+    sku:               item?.sku || item?.imei || '',
     imei:              item?.imei || '',
     barcode:           item?.barcode || '',
     name:              item?.name || '',
@@ -1092,6 +1114,10 @@ function InventoryFormModal({
 
   const [batchMode, setBatchMode] = useState(false);
   const [batchCount, setBatchCount] = useState(1);
+
+  // R-INVENTORY-SKUIMEI-V1: ref for the unified SKU/IMEI input so we can
+  // restore focus after a successful add — cashier-scan flow.
+  const skuInputRef = useRef<HTMLInputElement>(null);
 
   // ── Duplicate SKU detection ────────────────────────────
   const [duplicateItem, setDuplicateItem] = useState<InventoryItem | null>(null);
@@ -1315,12 +1341,22 @@ function InventoryFormModal({
   };
 
   const doSubmit = () => {
+    // R-INVENTORY-SKUIMEI-V2: route the typed unified value to the
+    // correct underlying column. IMEI-like input (digits, 14–16 chars
+    // after normalization) lands in `imei` and clears `sku`; everything
+    // else writes to `sku` and preserves the existing `imei` (per spec:
+    // form.imei is replaced only when an IMEI is explicitly entered).
+    const typed = form.sku;
+    const routed = isLikelyImei(typed)
+      ? { ...form, imei: typed.replace(/[\s-]/g, ''), sku: '' }
+      : form;
+
     if (batchMode && batchCount > 1) {
       // Find max existing suffix for this SKU prefix to avoid collisions on re-run.
       // E.g. if "ABC-1", "ABC-2", "ABC-3" already exist, start the new batch at "ABC-4".
       let startIdx = 1;
-      if (form.sku) {
-        const escaped = form.sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (routed.sku) {
+        const escaped = routed.sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const re = new RegExp(`^${escaped}-(\\d+)$`, 'i');
         const max = allInventory.reduce((m, it) => {
           const match = (it.sku || '').match(re);
@@ -1334,16 +1370,16 @@ function InventoryFormModal({
       // SKU. silent=true so N back-to-back calls go straight to the configured
       // printer instead of fighting over the preview-modal state.
       for (let i = 0; i < batchCount; i++) {
-        const itemSku = form.sku ? `${form.sku}-${startIdx + i}` : '';
+        const itemSku = routed.sku ? `${routed.sku}-${startIdx + i}` : '';
         onSave({
-          ...form,
+          ...routed,
           sku: itemSku,
           qty: 1,
         } as Partial<InventoryItem>, { skipMerge: true });
         if (!isEdit) handleLabel({ sku: itemSku, silent: true });
       }
     } else {
-      onSave(form as Partial<InventoryItem>);
+      onSave(routed as Partial<InventoryItem>);
       // BUG-5: auto-print label after creating a single new item. Edit-mode
       // saves don't trigger auto-print (label content didn't change in
       // a meaningful way for the operator).
@@ -1364,6 +1400,11 @@ function InventoryFormModal({
         image: '',
         customFields: {},
       });
+      // R-INVENTORY-SKUIMEI-V1: return focus to the SKU/IMEI input so the
+      // cashier can immediately scan/type the next item without a click.
+      // requestAnimationFrame defers until after the post-setForm re-render,
+      // so the focus call lands on the freshly mounted/updated input.
+      requestAnimationFrame(() => skuInputRef.current?.focus());
     }
   };
 
@@ -1416,22 +1457,33 @@ function InventoryFormModal({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: '68vh', overflowY: 'auto', paddingRight: '2px' }}>
 
-        {/* SKU + Generate + Label */}
+        {/* SKU / IMEI + Generate + Label.
+            R-INVENTORY-SKUIMEI-V1: unified scan field. Accepts either a
+            normal SKU or an IMEI — whatever the cashier scans/types lands
+            in form.sku. Existing form.imei is preserved on edit (the form
+            state is initialized from item?.imei) so phones with IMEIs
+            captured prior to this change keep their value. */}
         {show('sku') && (
         <div>
           <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            SKU{req('sku') && ' *'}
+            {t('inventory.skuImei')}{req('sku') && ' *'}
           </label>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <input
+              ref={skuInputRef}
               className="input"
               style={{ flex: 1 }}
-              placeholder="SKU"
+              placeholder={t('inventory.skuImei')}
               value={form.sku}
               onChange={(e) => {
                 const v = e.target.value;
                 setForm({ ...form, sku: v });
-                checkDuplicate(v);
+                // R-INVENTORY-SKUIMEI-V2: SKU duplicate-merge logic does
+                // not apply to IMEI scans (IMEIs are unique per device,
+                // no quantity merging). Suppress the banner so an
+                // unrelated SKU=="123…" record can't false-positive
+                // against an IMEI being typed in.
+                checkDuplicate(isLikelyImei(v) ? '' : v);
               }}
             />
             <button
@@ -1459,21 +1511,6 @@ function InventoryFormModal({
               🏷️ {t('inventory.form.labelBtn')}
             </button>
           </div>
-        </div>
-        )}
-
-        {/* IMEI — separate from SKU. Optional, mostly used for phones. */}
-        {show('sku') && (
-        <div>
-          <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
-            IMEI <span style={{ color: '#64748b', fontWeight: 400 }}>({t('inventory.form.imeiOptional')})</span>
-          </label>
-          <input
-            className="input"
-            placeholder="IMEI"
-            value={form.imei}
-            onChange={(e) => setForm({ ...form, imei: e.target.value })}
-          />
         </div>
         )}
 

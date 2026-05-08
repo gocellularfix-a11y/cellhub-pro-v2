@@ -2771,7 +2771,7 @@ export const translations: TranslationDictionary = {
   },
   'inventory.allConditions':     { en: 'All Conditions',         es: 'Todas las Condiciones',         pt: 'Todas as Condições' },
   'inventory.searchPlaceholder': { en: 'Search customers, phones, accessories, SKU, barcode…', es: 'Buscar clientes, teléfonos, accesorios, SKU, código de barras…', pt: 'Buscar clientes, celulares, acessórios, SKU, código de barras…' },
-  'inventory.skuImei':           { en: 'SKU/IMEI',               es: 'SKU/IMEI',                      pt: 'SKU/IMEI' },
+  'inventory.skuImei':           { en: 'SKU / IMEI',             es: 'SKU / IMEI',                    pt: 'SKU / IMEI' },
   'inventory.customizeTitle':    { en: 'Customize form fields',  es: 'Personalizar campos del formulario', pt: 'Personalizar campos do formulário' },
   'inventory.fieldsBtn':         { en: 'Fields',                 es: 'Campos',                        pt: 'Campos' },
   'inventory.skuDiffImei':       { en: 'SKU exists but IMEI differs — creating new item', es: 'SKU existe pero IMEI diferente — creando item nuevo', pt: 'SKU existe mas IMEI diferente — criando novo item' },
