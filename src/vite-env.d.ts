@@ -39,6 +39,9 @@ interface ElectronAPI {
     copies?: number;
     color?: boolean;
     margins?: { top?: number; bottom?: number; left?: number; right?: number };
+    // R-PRINT-PAGE-RANGES-V1: optional page-range filter (Electron expects
+    // 1-based, inclusive {from, to} pairs). Empty/undefined = all pages.
+    pageRanges?: Array<{ from: number; to: number }>;
   }) => Promise<{ success: boolean; error?: string | null }>;
   checkForUpdates: () => Promise<void>;
   installUpdate: () => void;

@@ -352,6 +352,12 @@ function registerIpcHandlers() {
                 right: inchesToMicrons(payload.margins.right),
               }
             : { marginType: 'none' },
+          // R-PRINT-PAGE-RANGES-V1: forward parsed pageRanges from the
+          // print preview modal. webContents.print accepts an array of
+          // {from, to} (1-based, inclusive). Omitted = all pages.
+          ...(Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0
+            ? { pageRanges: payload.pageRanges }
+            : {}),
         };
         console.log('[print:run] options:', JSON.stringify(printOptions));
         printWin.webContents.print(printOptions, (success, failureReason) => {

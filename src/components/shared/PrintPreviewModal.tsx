@@ -64,6 +64,11 @@ export default function PrintPreviewModal({
 
   const [printing, setPrinting] = useState(false);
   const [printResult, setPrintResult] = useState<string | null>(null);
+  // R-PRINT-PAGE-RANGES-V1: page-range UI. 'all' is the default; 'custom'
+  // exposes a free-text input where the owner enters "1", "2", "1-2",
+  // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
+  const [pageRangeMode, setPageRangeMode] = useState<'all' | 'custom'>('all');
+  const [pageRangeInput, setPageRangeInput] = useState<string>('');
 
   // ── Load printers on open ─────────────────────────────────
   useEffect(() => {
@@ -84,6 +89,29 @@ export default function PrintPreviewModal({
   }, [open, html]);
 
 
+  // R-PRINT-PAGE-RANGES-V1: parse user-typed range like "1", "2", "1-2", "1,3",
+  // "1-2,4" into Electron's `pageRanges: [{from, to}]` shape (1-based, inclusive).
+  // Returns undefined when the input doesn't parse — caller falls back to all pages.
+  const parsePageRanges = (input: string): Array<{ from: number; to: number }> | undefined => {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return undefined;
+    const out: Array<{ from: number; to: number }> = [];
+    for (const part of trimmed.split(',')) {
+      const seg = part.trim();
+      if (!seg) continue;
+      if (seg.includes('-')) {
+        const [a, b] = seg.split('-').map((s) => parseInt(s.trim(), 10));
+        if (Number.isFinite(a) && Number.isFinite(b) && a >= 1 && b >= a) {
+          out.push({ from: a, to: b });
+        }
+      } else {
+        const n = parseInt(seg, 10);
+        if (Number.isFinite(n) && n >= 1) out.push({ from: n, to: n });
+      }
+    }
+    return out.length > 0 ? out : undefined;
+  };
+
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = async () => {
     if (!window.electronAPI?.printRun || !selectedPrinter) return;
@@ -92,14 +120,23 @@ export default function PrintPreviewModal({
     setPrintResult(null);
     try {
       const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+      // R-PRINT-SHRINK-FIX-V1: pass the effective scale to Electron's
+      // printRun. Previously this was hardcoded to 100 — the "Shrink to
+      // fit" toggle scaled the PREVIEW iframe via CSS transform but never
+      // affected the actual print, so multi-page reports kept printing
+      // at 100% and spilling onto two pages. CSS transforms don't survive
+      // the print pipeline; scaleFactor (passed to webContents.print) does.
+      // R-PRINT-PAGE-RANGES-V1: parsed pageRanges (or undefined for "all").
+      const pageRanges = pageRangeMode === 'custom' ? parsePageRanges(pageRangeInput) : undefined;
       const result = await window.electronAPI.printRun({
-        html: scaledHtml,
+        html,
         deviceName: selectedPrinter,
         pageSize: { width: ps.width, height: ps.height },
         landscape,
-        scaleFactor: 100,
+        scaleFactor: effectiveScale,
         copies,
         margins,
+        pageRanges,
       });
       if (result.success) {
         setPrintResult('✅ Sent to printer');
@@ -126,8 +163,13 @@ export default function PrintPreviewModal({
   // R-PRINT-SHRINK-FALLBACK-FIX: predictable page-size-based shrink.
   // Replaces the DOM-measurement helper, which couldn't see inside the
   // sandboxed iframe and effectively returned 100 on every flow.
+  // R-PRINT-SHRINK-FIX-V1: bumped letter scale 90→80 — at 90% a typical
+  // sales report still spilled to 2 pages. 80% reliably fits the
+  // 4-card summary + 4 sections + net banner on one letter page.
+  // Owner can override with manual scale if a specific report needs
+  // different sizing.
   const effectiveScale = shrinkToFit
-    ? (pageSize === 'letter' ? 90 : 95)
+    ? (pageSize === 'letter' ? 80 : 95)
     : scaleFactor;
 
   const scaledHtml = effectiveScale === 100
@@ -258,6 +300,30 @@ export default function PrintPreviewModal({
             <input type="number" min={1} max={99} value={copies}
               onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
               style={inputStyle} />
+          </Field>
+
+          {/* R-PRINT-PAGE-RANGES-V1: page-range picker. "All" = print every
+              page (default). "Custom" exposes a free-text input the owner
+              fills with page numbers / ranges (e.g., "1", "2", "1-2",
+              "1,3"). Empty/invalid input falls back to all pages. */}
+          <Field label="Pages">
+            <select
+              value={pageRangeMode}
+              onChange={(e) => setPageRangeMode(e.target.value as 'all' | 'custom')}
+              style={selectStyle}
+            >
+              <option value="all">All pages</option>
+              <option value="custom">Custom range…</option>
+            </select>
+            {pageRangeMode === 'custom' && (
+              <input
+                type="text"
+                value={pageRangeInput}
+                onChange={(e) => setPageRangeInput(e.target.value)}
+                placeholder="e.g., 1 or 1-2 or 1,3"
+                style={{ ...inputStyle, marginTop: '0.4rem', width: '100%' }}
+              />
+            )}
           </Field>
 
           {/* Preview Zoom */}
