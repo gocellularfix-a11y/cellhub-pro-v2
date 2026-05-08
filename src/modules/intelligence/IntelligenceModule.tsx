@@ -285,16 +285,25 @@ export default function IntelligenceModule() {
   // sidebar. The chat handler is the same one used when the user types
   // "promote {name}" manually, so behavior is unified. The 500ms chat
   // dedup guard already prevents accidental double-fire on rapid clicks.
+  // R-OPERATOR-PROMOTE-EXECUTION-FIX-V1: only reset panel-side draft state
+  // when the user is switching to a DIFFERENT product. Previously we cleared
+  // panelCampaign/draftMessage/recipient unconditionally — combined with the
+  // chat dedup early-return (now fixed), a re-clicked Promote on the same
+  // product wiped panel state and never repopulated it. With this guard,
+  // re-clicking the same Promote button is a safe no-op for panel state
+  // (the chat re-fire will still run, but the existing draft survives if
+  // the dispatch is dedup'd).
   const handleOpenPromote = useCallback((productId: string, productName: string) => {
-    setSelectedProduct({ id: productId, name: productName });
+    setSelectedProduct((prev) => {
+      if (!prev || prev.id !== productId) {
+        // Different product (or first selection) — reset draft state.
+        setPanelCampaign(null);
+        setDraftMessage('');
+        setSelectedCampaignRecipientId(null);
+      }
+      return { id: productId, name: productName };
+    });
     setProductSearch('');
-    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: clear any prior draft so the
-    // panel starts clean while the auto-fired chat re-populates it.
-    // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: also clear recipient
-    // selection — auto-select happens in handlePanelCampaign.
-    setPanelCampaign(null);
-    setDraftMessage('');
-    setSelectedCampaignRecipientId(null);
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
   }, [fireChat, t]);

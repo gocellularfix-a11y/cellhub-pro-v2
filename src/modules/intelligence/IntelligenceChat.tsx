@@ -251,11 +251,22 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       matchedIntentId = match.id;
     }
     perfLog('intel.chat.fireQuery.total', _fireT0);
+    const now = Date.now();
+    // R-OPERATOR-PROMOTE-EXECUTION-FIX-V1: forward panelCampaign BEFORE the
+    // dedup early-return. Previously the dedup at "skip identical assistant
+    // push within 500ms" returned ahead of this block, so a re-clicked
+    // Promote button (or StrictMode double-effect) would leave the module's
+    // panelCampaign stuck at null after handleOpenPromote cleared it.
+    // panelCampaign forwarding is idempotent (React state updates dedupe
+    // when the value is reference-equal, and same-content re-applies are
+    // harmless), so safe to run before dedup.
+    if (response.panelCampaign && onPanelCampaign) {
+      onPanelCampaign(response.panelCampaign);
+    }
     // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: skip identical assistant push
     // within 500ms of the last identical response (prevents double-render
     // from StrictMode/race re-fire). Always refresh the timestamp so a
     // legitimate repeat query later still pushes.
-    const now = Date.now();
     if (response.text === lastResponseRef.current.text && now - lastResponseRef.current.ts < 500) {
       lastResponseRef.current.ts = now;
       return;
@@ -279,11 +290,6 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       if (queueable.length > 0) {
         addAutomationItems(queueable.map(createQueueItemFromChatAction));
       }
-    }
-    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: forward panelCampaign so the
-    // module can render the editable widget. No-op when prop unwired.
-    if (response.panelCampaign && onPanelCampaign) {
-      onPanelCampaign(response.panelCampaign);
     }
     setMessages(prev => [
       ...prev,
@@ -440,8 +446,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       matchedIntentId = match.id;
     }
 
-    // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: same dedup guard as fireQuery.
     const now = Date.now();
+    // R-OPERATOR-PROMOTE-EXECUTION-FIX-V1: forward panelCampaign BEFORE the
+    // dedup early-return — same fix as fireQuery. Idempotent.
+    if (response.panelCampaign && onPanelCampaign) {
+      onPanelCampaign(response.panelCampaign);
+    }
+    // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: same dedup guard as fireQuery.
     if (response.text === lastResponseRef.current.text && now - lastResponseRef.current.ts < 500) {
       lastResponseRef.current.ts = now;
       setInput('');
@@ -465,10 +476,6 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       if (queueable.length > 0) {
         addAutomationItems(queueable.map(createQueueItemFromChatAction));
       }
-    }
-    // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: forward panelCampaign here too.
-    if (response.panelCampaign && onPanelCampaign) {
-      onPanelCampaign(response.panelCampaign);
     }
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
