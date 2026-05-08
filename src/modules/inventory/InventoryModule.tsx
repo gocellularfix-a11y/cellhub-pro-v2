@@ -1456,7 +1456,12 @@ function InventoryFormModal({
       .price { font-size: 20pt; font-weight: 800; text-align: center; margin-bottom: 1px; line-height: 1; }
       .name { font-size: 8pt; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 2in; margin-bottom: 1px; line-height: 1.1; }
       svg { display: block; margin: 1px auto 0; max-width: 1.8in; }
-      .code { font-size: 7pt; text-align: center; margin-top: 1px; }
+      /* R-BARCODE-TEXT-READABILITY-V1: thermal/label printers were
+         rendering the prior 7pt monospace too thin to read at arm's
+         length. Bumped to 9pt + bold + Courier New (printer-safe
+         monospace) with extra letter-spacing and a touch more margin
+         from the barcode bars. Stays within the 1.25in label height. */
+      .code { font-size: 9pt; font-weight: 700; font-family: 'Courier New', monospace; letter-spacing: 0.05em; text-align: center; margin-top: 2px; color: #000; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
       <div class="price">${price}</div>

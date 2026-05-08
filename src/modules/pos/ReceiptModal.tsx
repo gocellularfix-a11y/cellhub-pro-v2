@@ -647,9 +647,20 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     const discountAnnotation = totalDiscount > 0
       ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(totalDiscount)}</span>`
       : '';
+    // R-RECEIPT-ID-V1: surface the most-specific identifier per line
+    // with priority IMEI > SKU. Replaces the prior IMEI-only line so
+    // accessories/parts (SKU but no IMEI) also show their identifier.
+    // Single "ID:" label keeps it generic — the cashier/customer can
+    // tell from context which kind it is. SaleItem doesn't carry a
+    // separate barcode field (per types.ts:645), so the chain stops at
+    // sku; if neither is present nothing is rendered.
+    const itemIdValue = item.imei || item.sku || '';
+    const idLine = itemIdValue
+      ? `<br><small style="color:#555;font-family:'Courier New',monospace;font-weight:700;font-size:10px;letter-spacing:0.04em">ID: ${escHtml(itemIdValue)}</small>`
+      : '';
     return `
     <tr>
-      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${item.imei ? `<br><small style="color:#666;font-family:monospace">IMEI: ${escHtml(item.imei)}</small>` : ''}</td>
+      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${idLine}</td>
       <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(orig)}${discountAnnotation}</td>
     </tr>`;
   }).join('');
@@ -680,7 +691,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     </div>
     <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;overflow:hidden">
       ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:7px;font-family:monospace;letter-spacing:0.03em;text-align:center;margin-top:1px">${escHtml(sale.invoiceNumber)}</div>
+      <div style="font-size:10px;font-family:'Courier New',monospace;font-weight:700;letter-spacing:0.06em;text-align:center;margin-top:3px;color:#000">${escHtml(sale.invoiceNumber)}</div>
     </div>
   </div>
 

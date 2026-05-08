@@ -64,6 +64,19 @@ export default function PrintPreviewModal({
 
   const [printing, setPrinting] = useState(false);
   const [printResult, setPrintResult] = useState<string | null>(null);
+  // R-PRINT-INPUT-FIX-V1: shadow string states for the percent + copies
+  // number inputs. The previous pattern parsed-and-clamped on every
+  // keystroke, so typing "75" went "7" → clamp(7, [25,200]) = 25, and
+  // the field snapped to 25 before the user could finish typing. With
+  // the shadow string we accept whatever the user types, commit the
+  // numeric state live only when the typed value is in range, and
+  // apply the hard clamp on blur. Slider drags / external resets keep
+  // working because the useEffects below mirror scaleFactor → scaleInput
+  // and copies → copiesInput whenever the numeric state changes.
+  const [scaleInput, setScaleInput] = useState<string>(String(scaleFactor));
+  const [copiesInput, setCopiesInput] = useState<string>(String(copies));
+  useEffect(() => { setScaleInput(String(scaleFactor)); }, [scaleFactor]);
+  useEffect(() => { setCopiesInput(String(copies)); }, [copies]);
   // R-PRINT-PAGE-RANGES-V1: page-range UI. 'all' is the default; 'custom'
   // exposes a free-text input where the owner enters "1", "2", "1-2",
   // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
@@ -256,10 +269,29 @@ export default function PrintPreviewModal({
                 min={25}
                 max={200}
                 step={1}
-                value={shrinkToFit ? effectiveScale : scaleFactor}
+                value={shrinkToFit ? String(effectiveScale) : scaleInput}
                 disabled={shrinkToFit}
                 title={shrinkToFit ? 'Auto adjusts to fit page width' : ''}
-                onChange={(e) => setScaleFactor(Math.min(200, Math.max(25, parseFloat(e.target.value) || 100)))}
+                onChange={(e) => {
+                  // R-PRINT-INPUT-FIX-V1: keep raw text for the user
+                  // and only commit live to scaleFactor while it's a
+                  // valid in-range number, so mid-typing "75" / "100"
+                  // doesn't snap to the min bound.
+                  const raw = e.target.value;
+                  setScaleInput(raw);
+                  const n = parseFloat(raw);
+                  if (Number.isFinite(n) && n >= 25 && n <= 200) {
+                    setScaleFactor(n);
+                  }
+                }}
+                onBlur={() => {
+                  // R-PRINT-INPUT-FIX-V1: hard clamp on blur. Empty /
+                  // NaN falls back to 100 (the natural default).
+                  const n = parseFloat(scaleInput);
+                  const clamped = Number.isFinite(n) ? Math.min(200, Math.max(25, n)) : 100;
+                  setScaleFactor(clamped);
+                  setScaleInput(String(clamped));
+                }}
                 style={{ ...inputStyle, width: '60px', textAlign: 'right', cursor: shrinkToFit ? 'not-allowed' : 'text' }}
               />
               <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>%</span>
@@ -297,9 +329,34 @@ export default function PrintPreviewModal({
 
           {/* Copies */}
           <Field label="Copies">
-            <input type="number" min={1} max={99} value={copies}
-              onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
-              style={inputStyle} />
+            <input
+              type="number"
+              min={1}
+              max={99}
+              step={1}
+              value={copiesInput}
+              onChange={(e) => {
+                // R-PRINT-INPUT-FIX-V1: same shadow-string pattern as
+                // scale — keep raw text, commit live only when valid in
+                // [1, 99]. The prior pattern (a) snapped empty input to
+                // 1 mid-typing, (b) had no upper clamp, so the user
+                // could enter "100" despite max=99 and the modal would
+                // happily forward 100 copies to the printer.
+                const raw = e.target.value;
+                setCopiesInput(raw);
+                const n = parseInt(raw, 10);
+                if (Number.isFinite(n) && n >= 1 && n <= 99) {
+                  setCopies(n);
+                }
+              }}
+              onBlur={() => {
+                const n = parseInt(copiesInput, 10);
+                const clamped = Number.isFinite(n) ? Math.min(99, Math.max(1, n)) : 1;
+                setCopies(clamped);
+                setCopiesInput(String(clamped));
+              }}
+              style={inputStyle}
+            />
           </Field>
 
           {/* R-PRINT-PAGE-RANGES-V1: page-range picker. "All" = print every
