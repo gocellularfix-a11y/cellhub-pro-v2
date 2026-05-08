@@ -1191,12 +1191,85 @@ function InventoryFormModal({
         }
       }
     }
-    // Only flag — DO NOT auto-overwrite form fields. The banner tells
-    // the user what's about to happen on save; they can change the
-    // value if they meant a different item.
     setDuplicateItem(match);
     setDuplicateMatchField(field);
   }, [allInventory, isEdit]);
+
+  // R-INVENTORY-AUTOFILL-V1: when a scan/typed identifier resolves to
+  // an existing item, pull its fields into the form so the cashier can
+  // see what was found. Driven by `duplicateItem` changing identity
+  // (not by every keystroke) and gated by a ref so manual edits made
+  // *after* autofill are preserved — re-autofill only fires when the
+  // matched item changes (different identifier scanned) or when the
+  // user clears the input and scans the same one again.
+  //
+  // form.sku is intentionally NOT overwritten — the user's typed value
+  // stays in the unified input, so they don't lose what they scanned.
+  // form.qty is preserved (it represents "qty to add" for the SKU
+  // qty-merge path, not the existing stock count which the banner
+  // already shows).
+  const lastAutofilledIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isEdit) return;
+    if (!duplicateItem) {
+      lastAutofilledIdRef.current = null;
+      return;
+    }
+    if (lastAutofilledIdRef.current === duplicateItem.id) return;
+    lastAutofilledIdRef.current = duplicateItem.id;
+    const matched = duplicateItem;
+    setForm((prev) => ({
+      ...prev,
+      name:              matched.name || '',
+      description:       matched.description || '',
+      category:          matched.category || prev.category,
+      condition:         matched.condition || prev.condition,
+      cost:              matched.cost || 0,
+      price:             matched.price || 0,
+      supplier:          matched.supplier || '',
+      brand:             matched.brand || '',
+      taxable:           matched.taxable ?? prev.taxable,
+      cbeEligible:       matched.cbeEligible ?? prev.cbeEligible,
+      screenFeeEligible: matched.screenFeeEligible ?? prev.screenFeeEligible,
+      image:             matched.image || '',
+      barcode:           matched.barcode || '',
+      imei:              matched.imei || '',
+      customFields:      { ...((matched.customFields as Record<string, string | number>) || {}) },
+    }));
+    // R-INVENTORY-FOCUS-RESTORE-V1: re-assert focus on the SKU/IMEI
+    // input after autofill, in case the setForm-driven rerender briefly
+    // shifted focus elsewhere. Cheap rAF, no-op when focus is already
+    // there.
+    requestAnimationFrame(() => skuInputRef.current?.focus());
+  }, [duplicateItem, isEdit]);
+
+  // R-INVENTORY-FOCUS-RESTORE-V1: shared post-add / manual-clear reset
+  // helper. Wipes the form and all dedup/autofill bookkeeping, then
+  // re-focuses the unified SKU/IMEI input via a double-rAF so focus
+  // survives any re-render triggered by the duplicate-state clears
+  // (banner removal) or the autofill effect's ref reset. The cashier
+  // workflow is scan → enter → save → next scan, with no mouse touch.
+  const resetFormAndFocus = useCallback(() => {
+    setForm({
+      sku: '', imei: '', barcode: '', name: '', description: '',
+      category: 'accessory', condition: 'New',
+      cost: 0, price: 0, qty: 1,
+      supplier: '', brand: '',
+      taxable: true, cbeEligible: false, screenFeeEligible: false,
+      image: '',
+      customFields: {},
+    });
+    setDuplicateItem(null);
+    setDuplicateMatchField(null);
+    lastAutofilledIdRef.current = null;
+    // Two ticks: first lands after the current commit; second re-asserts
+    // focus after any follow-up render triggered by the state clears
+    // above (autofill-effect ref reset, banner unmount, etc.).
+    requestAnimationFrame(() => {
+      skuInputRef.current?.focus();
+      requestAnimationFrame(() => skuInputRef.current?.focus());
+    });
+  }, []);
 
   // ── Autocomplete suggestions (name, supplier, brand) ───
   const autocompletePool = useMemo(() => ({
@@ -1469,25 +1542,13 @@ function InventoryFormModal({
       if (!isEdit) handleLabel();
     }
     if (!isEdit) {
-      // BUG-11 (R-INV-FORM-UX): full reset post-save instead of partial. The
-      // prior partial reset preserved category/condition/cost/price/supplier/
-      // brand for batch-entry of similar items, but Jorge's flow is the
-      // opposite — distinct items per save, so leftover fields confused the
-      // next entry. Mirror the manual "🗑️ Clear" button (line ~1512).
-      setForm({
-        sku: '', imei: '', barcode: '', name: '', description: '',
-        category: 'accessory', condition: 'New',
-        cost: 0, price: 0, qty: 1,
-        supplier: '', brand: '',
-        taxable: true, cbeEligible: false, screenFeeEligible: false,
-        image: '',
-        customFields: {},
-      });
-      // R-INVENTORY-SKUIMEI-V1: return focus to the SKU/IMEI input so the
-      // cashier can immediately scan/type the next item without a click.
-      // requestAnimationFrame defers until after the post-setForm re-render,
-      // so the focus call lands on the freshly mounted/updated input.
-      requestAnimationFrame(() => skuInputRef.current?.focus());
+      // BUG-11 (R-INV-FORM-UX): full reset post-save instead of partial.
+      // R-INVENTORY-FOCUS-RESTORE-V1: routed through the shared
+      // resetFormAndFocus helper so dup/autofill bookkeeping is cleared
+      // alongside the form, and focus is double-rAF'd onto the
+      // SKU/IMEI input. Covers single-add, batch-add, and SKU
+      // qty-merge paths (handleSave returns synchronously in all three).
+      resetFormAndFocus();
     }
   };
 
@@ -2179,9 +2240,11 @@ function InventoryFormModal({
           {t('inventory.form.cancel')}
         </button>
 
-        {/* Clear */}
+        {/* Clear — R-INVENTORY-FOCUS-RESTORE-V1: shared helper so the
+            manual clear path also clears dedup/autofill state and lands
+            focus back on SKU/IMEI for the next scan. */}
         <button
-          onClick={() => setForm({ sku: '', imei: '', barcode: '', name: '', description: '', category: 'accessory', condition: 'New', cost: 0, price: 0, qty: 1, supplier: '', brand: '', taxable: true, cbeEligible: false, screenFeeEligible: false, image: '', customFields: {} })}
+          onClick={resetFormAndFocus}
           style={{
             padding: '0 0.875rem', borderRadius: '0.625rem',
             border: '1px solid rgba(255,255,255,0.15)',
