@@ -189,7 +189,15 @@ export default function InventoryModule() {
         if (filterCategory !== 'All' && normCat(item.category || '').toLowerCase() !== filterCategory.toLowerCase()) return false;
         if (filterCondition !== 'All' && (item.condition || '').toLowerCase() !== filterCondition.toLowerCase()) return false;
         if (showLowStockOnly && item.qty > (settings.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD)) return false;
-        return matchesSearch(deferredSearch, item.name, item.sku, item.barcode, item.imei, item.category);
+        // R-SEARCH-NORMALIZE-V1: broaden inventory list search to include
+        // brand, supplier, and description so e.g. "Apple" or "Mobistar"
+        // (supplier) surface their items. No phone fields here so plain
+        // matchesSearch is fine — phone-aware helper not needed.
+        return matchesSearch(
+          deferredSearch,
+          item.name, item.sku, item.barcode, item.imei, item.category,
+          item.brand, item.supplier, item.description,
+        );
       })
       .sort((a, b) => a.name.localeCompare(b.name, locale));
     // R-PERF-INVENTORY-LANG-SORT-REMOVE: dropped `lang` from deps for the same

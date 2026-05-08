@@ -14,7 +14,7 @@ import { formatCurrency } from '@/utils/currency';
 import { persist, remove } from '@/services/persist';
 import DepositModal from '@/components/DepositModal';
 import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import TicketListLayout from '@/components/shared/TicketListLayout';
@@ -183,7 +183,13 @@ export default function SpecialOrdersModule() {
   const filtered = useMemo(() => {
     return specialOrders
       .filter((o) => filterStatus === 'All' || normalizeStatus(o.status) === normalizeStatus(filterStatus))
-      .filter((o) => matchesSearch(search, o.customerName, o.customerPhone, o.itemDescription, o.supplier))
+      // R-SEARCH-NORMALIZE-V1: phone-aware match; add o.id for parity
+      // with the GlobalSearchBar SO lookup at line ~256.
+      .filter((o) => matchesSearchPhones(
+        search,
+        [o.customerPhone],
+        o.customerName, o.itemDescription, o.supplier, o.id,
+      ))
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [specialOrders, filterStatus, search]);
 

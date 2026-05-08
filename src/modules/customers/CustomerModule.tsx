@@ -12,7 +12,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { computeCustomerProfit } from '@/utils/customerProfit';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
@@ -90,21 +90,26 @@ export default function CustomerModule() {
             : new Date(c.createdAt as string).getTime();
           if ((Date.now() - last) <= DAYS_30) return false;
         }
-        // Base fuzzy match on common fields
-        if (matchesSearch(search, c.name, c.phone, c.email, c.customerNumber, (c as any).carrier, (c as any).plan, (c as any).address)) {
-          return true;
-        }
-        // Also search secondary phones[] if present
-        const phones = (c as any).phones;
-        if (search && Array.isArray(phones) && phones.length > 0) {
-          const sDigits = search.replace(/\D/g, '');
-          if (sDigits.length >= 3) {
-            for (const p of phones) {
-              if (p && String(p).replace(/\D/g, '').includes(sDigits)) return true;
-            }
-          }
-        }
-        return !search;
+        // R-SEARCH-NORMALIZE-V1: route the primary phone and any
+        // secondary phones[] through the shared phone-aware helper so
+        // queries like "(805) 555-1234" match storage like "8055551234"
+        // (and vice-versa), and so the secondary-phones fallback uses
+        // the same logic instead of the bespoke inline digit-strip.
+        const secondaryPhones = Array.isArray((c as any).phones)
+          ? ((c as any).phones as unknown[]).map((p) => String(p ?? ''))
+          : [];
+        const notes = String((c as any).notes ?? '');
+        return matchesSearchPhones(
+          search,
+          [c.phone, ...secondaryPhones],
+          c.name,
+          c.email,
+          c.customerNumber,
+          (c as any).carrier,
+          (c as any).plan,
+          (c as any).address,
+          notes,
+        );
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [customers, search, showLapsedOnly]);

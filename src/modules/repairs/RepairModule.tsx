@@ -10,7 +10,7 @@ import { useTranslation } from '@/i18n';
 import { STATUS_LABELS } from '@/i18n/statusMap';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { persist, persistSettings, remove } from '@/services/persist';
@@ -171,7 +171,13 @@ export default function RepairModule() {
         return normalizeRepairStatus(r.status) === normalizeRepairStatus(filterStatus);
       })
       .filter((r) =>
-        matchesSearch(search, r.customerName, r.customerPhone, r.device, r.issue, r.id),
+        // R-SEARCH-NORMALIZE-V1: phone-aware match; also include r.imei
+        // for parity with the GlobalSearchBar repair lookup at line ~235.
+        matchesSearchPhones(
+          search,
+          [r.customerPhone],
+          r.customerName, r.device, r.issue, r.id, (r as any).imei,
+        ),
       )
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [repairs, filterStatus, search]);

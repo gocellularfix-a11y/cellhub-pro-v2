@@ -27,6 +27,7 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import { normalizeCarrier } from '@/utils/normalize';
+import { matchesSearchPhones } from '@/utils/search';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
@@ -1490,10 +1491,19 @@ export default function ReportsModule() {
   const displayedTx = useMemo(() => {
     return allFilteredSales.filter((s) => {
       if (txSearch.trim()) {
-        const q = txSearch.toLowerCase();
-        const fields = [s.invoiceNumber, s.customerName, s.employeeName, s.customerPhone].filter(Boolean).join(' ').toLowerCase();
-        const itemMatch = (s.items || []).some((i) => (i.name || '').toLowerCase().includes(q));
-        if (!fields.includes(q) && !itemMatch) return false;
+        // R-SEARCH-NORMALIZE-V1: replace inline includes() with the
+        // shared phone-aware helper so "(805) 555-1234" matches a sale
+        // whose stored customerPhone is "8055551234". Item names are
+        // folded into the textFields list so item-text search still
+        // works. Financial math is NOT touched — this filter only
+        // gates which already-computed rows render.
+        const itemNames = (s.items || []).map((i) => i.name || '');
+        if (!matchesSearchPhones(
+          txSearch,
+          [s.customerPhone],
+          s.invoiceNumber, s.customerName, s.employeeName,
+          ...itemNames,
+        )) return false;
       }
       if (searchDateFrom) {
         const from = new Date(searchDateFrom + 'T00:00:00');

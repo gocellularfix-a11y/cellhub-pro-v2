@@ -9,7 +9,7 @@ import { Modal, SearchInput, AutocompleteInput, ConfirmDialog } from '@/componen
 import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 // R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
@@ -132,7 +132,13 @@ export default function UnlockModule() {
   const filtered = useMemo(() => {
     return unlocks
       .filter((u) => filterStatus === 'All' || normalizeStatus(u.status) === normalizeStatus(filterStatus))
-      .filter((u) => matchesSearch(search, u.customerName, u.customerPhone, u.device, u.imei, u.carrier))
+      // R-SEARCH-NORMALIZE-V1: phone-aware match; add u.id for parity
+      // with the GlobalSearchBar unlock lookup at line ~242.
+      .filter((u) => matchesSearchPhones(
+        search,
+        [u.customerPhone],
+        u.customerName, u.device, u.imei, u.carrier, u.id,
+      ))
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [unlocks, filterStatus, search]);
 

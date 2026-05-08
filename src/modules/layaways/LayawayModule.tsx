@@ -32,6 +32,7 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { persist, remove } from '@/services/persist';
@@ -239,9 +240,26 @@ export default function LayawayModule() {
       })
       .filter((l) => {
         const r = l as any;
-        return matchesSearch(search, l.customerName, l.customerPhone,
+        // R-SEARCH-NORMALIZE-V1: phone-aware match; also fold every line
+        // item's name/sku/imei/barcode into the searchable surface so
+        // typing an IMEI or SKU finds the layaway containing that item
+        // (matches the spec's layaway acceptance criteria).
+        const itemFields: string[] = [];
+        for (const it of (l.items || [])) {
+          if (it?.name) itemFields.push(it.name);
+          if ((it as any)?.sku) itemFields.push(String((it as any).sku));
+          if ((it as any)?.imei) itemFields.push(String((it as any).imei));
+          if ((it as any)?.barcode) itemFields.push(String((it as any).barcode));
+        }
+        return matchesSearchPhones(
+          search,
+          [l.customerPhone],
+          l.customerName,
           r.itemDescription || l.items?.[0]?.name || '',
-          r.ticketNumber || '');
+          r.ticketNumber || '',
+          l.id,
+          ...itemFields,
+        );
       })
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [layaways, statusFilter, search]);
