@@ -57,6 +57,14 @@ interface GlobalSearchBarProps {
   showTip?: boolean;
   /** Extra className for the wrapper. */
   className?: string;
+  /** R-INVENTORY-OVERLAY-FIX-V1: opt out of the floating cross-module
+   *  results dropdown. The input still works (SYNCED localValue/
+   *  onLocalChange fires normally so the host module's local filter
+   *  runs), but the absolutely-positioned popover that lists matches
+   *  across other collections is not rendered. Inventory uses this so
+   *  the cross-module "No results / Customers / Repairs / …" panel
+   *  doesn't sit on top of the inventory table. */
+  disableResultsDropdown?: boolean;
 }
 
 // ── Internal sub-components (moved from Dashboard.tsx) ────
@@ -131,6 +139,7 @@ export default function GlobalSearchBar({
   width = '100%',
   showTip = false,
   className = '',
+  disableResultsDropdown = false,
 }: GlobalSearchBarProps) {
   const {
     state: {
@@ -325,8 +334,11 @@ export default function GlobalSearchBar({
         </div>
       )}
 
-      {/* ── Dropdown ── */}
-      {q !== '' && showDropdown && (
+      {/* ── Dropdown ──
+          R-INVENTORY-OVERLAY-FIX-V1: also gated on !disableResultsDropdown
+          so hosts (e.g. Inventory) can keep the bar's input + sync hooks
+          while suppressing the floating cross-module results popover. */}
+      {q !== '' && showDropdown && !disableResultsDropdown && (
         <div style={{
           position: 'absolute', top: '100%', left: 0,
           width: '480px', marginTop: '0.25rem', zIndex: 50,

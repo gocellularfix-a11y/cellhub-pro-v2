@@ -703,12 +703,18 @@ export default function InventoryModule() {
             to local `search` state (which still drives the filtered list memo
             below) AND opens the global dropdown above other modules.
             excludeCollection='inventory' hides the redundant inventory
-            section in the dropdown since the local list already shows it. */}
+            section in the dropdown since the local list already shows it.
+            R-INVENTORY-OVERLAY-FIX-V1: disableResultsDropdown=true because
+            the floating cross-module popover was sitting on top of the
+            filtered inventory rows (forcing the user to click outside to
+            see the match they were looking for). The input keeps working;
+            only the dropdown is suppressed. */}
         <GlobalSearchBar
           localValue={search}
           onLocalChange={setSearch}
           excludeCollection="inventory"
           placeholder={t('inventory.searchPlaceholder')}
+          disableResultsDropdown
         />
 
         {/* Table */}
