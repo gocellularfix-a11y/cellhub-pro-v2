@@ -1049,6 +1049,14 @@ function isLikelyImei(raw: string): boolean {
   return s.length >= 14 && s.length <= 16;
 }
 
+// R-INVENTORY-SCAN-DEDUP-V1: strip spaces and dashes for IMEI/barcode
+// comparisons. Cashiers may type or scan formats with separators
+// (e.g. "350-776-860-691-071") that should still match the canonical
+// digit-only stored value.
+function normalizeIdentifier(v: string | undefined | null): string {
+  return String(v ?? '').replace(/[\s-]/g, '');
+}
+
 // ── Inventory Form Modal ──────────────────────────────────
 
 function InventoryFormModal({
@@ -1133,23 +1141,61 @@ function InventoryFormModal({
   // restore focus after a successful add — cashier-scan flow.
   const skuInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Duplicate SKU detection ────────────────────────────
+  // R-INVENTORY-SCAN-DEDUP-V1: auto-focus the unified SKU/IMEI input on
+  // Add Item modal open so the cashier can scan immediately. Edit-mode
+  // skipped because the user may want to land on a different field.
+  // requestAnimationFrame defers until after first paint so the focus
+  // call lands on the freshly mounted input.
+  useEffect(() => {
+    if (!isEdit) {
+      requestAnimationFrame(() => skuInputRef.current?.focus());
+    }
+    // Mount-only: depending on isEdit (immutable for a given modal
+    // instance) means this fires exactly once per modal open.
+  }, [isEdit]);
+
+  // ── Existing-item detection ────────────────────────────
+  // R-INVENTORY-SCAN-DEDUP-V1: matches across sku, imei, and barcode
+  // so a scan/typed value finds the existing record regardless of which
+  // identifier slot it lives in. Tracks WHICH field matched so the
+  // banner and the doSubmit guard can react appropriately (qty-merge
+  // path for SKU; hard-block for IMEI/barcode since those are unique
+  // per physical item).
   const [duplicateItem, setDuplicateItem] = useState<InventoryItem | null>(null);
+  const [duplicateMatchField, setDuplicateMatchField] =
+    useState<'sku' | 'imei' | 'barcode' | null>(null);
   const isDuplicate = !!duplicateItem;
 
-  const checkDuplicate = useCallback((sku: string) => {
-    if (!sku || isEdit) {
+  const checkDuplicate = useCallback((value: string) => {
+    if (!value.trim() || isEdit) {
       setDuplicateItem(null);
+      setDuplicateMatchField(null);
       return;
     }
-    const existing = allInventory.find(
-      (i) => i.sku && i.sku.toLowerCase() === sku.toLowerCase(),
-    );
-    // Only flag the duplicate — DO NOT auto-overwrite form fields.
-    // Auto-fill destroyed user input silently. The banner shown below tells the
-    // user what's about to happen on save (qty merge); they can change SKU if
-    // they actually meant a different item.
-    setDuplicateItem(existing || null);
+    const lower = value.trim().toLowerCase();
+    const norm = normalizeIdentifier(value);
+    let match: InventoryItem | null = null;
+    let field: 'sku' | 'imei' | 'barcode' | null = null;
+    for (const i of allInventory) {
+      if (i.sku && i.sku.trim().toLowerCase() === lower) {
+        match = i; field = 'sku'; break;
+      }
+      if (norm && i.imei && normalizeIdentifier(i.imei) === norm) {
+        match = i; field = 'imei'; break;
+      }
+      if (i.barcode) {
+        const bcLower = i.barcode.trim().toLowerCase();
+        const bcNorm = normalizeIdentifier(i.barcode);
+        if (bcLower === lower || (norm && bcNorm === norm)) {
+          match = i; field = 'barcode'; break;
+        }
+      }
+    }
+    // Only flag — DO NOT auto-overwrite form fields. The banner tells
+    // the user what's about to happen on save; they can change the
+    // value if they meant a different item.
+    setDuplicateItem(match);
+    setDuplicateMatchField(field);
   }, [allInventory, isEdit]);
 
   // ── Autocomplete suggestions (name, supplier, brand) ───
@@ -1355,6 +1401,29 @@ function InventoryFormModal({
   };
 
   const doSubmit = () => {
+    // R-INVENTORY-SCAN-DEDUP-V1: hard-block on IMEI/barcode duplicates
+    // for new items. SKU collisions intentionally fall through to the
+    // existing qty-merge path in handleSave (parent), but IMEI and
+    // barcode identify a unique physical item — silently creating a
+    // second record would corrupt inventory accounting. Edit-mode is
+    // skipped (the item itself is the "match"), and batch mode is
+    // skipped because users only batch SKU-prefixed runs (IMEI-mode
+    // batches don't make sense — each phone has its own IMEI).
+    if (
+      !isEdit &&
+      !batchMode &&
+      duplicateItem &&
+      (duplicateMatchField === 'imei' || duplicateMatchField === 'barcode')
+    ) {
+      toast(
+        duplicateMatchField === 'imei'
+          ? t('inventory.form.imeiExists')
+          : t('inventory.form.barcodeExists'),
+        'error',
+      );
+      return;
+    }
+
     // R-INVENTORY-SKUIMEI-V2: route the typed unified value to the
     // correct underlying column. IMEI-like input (digits, 14–16 chars
     // after normalization) lands in `imei` and clears `sku`; everything
@@ -1492,12 +1561,12 @@ function InventoryFormModal({
               onChange={(e) => {
                 const v = e.target.value;
                 setForm({ ...form, sku: v });
-                // R-INVENTORY-SKUIMEI-V2: SKU duplicate-merge logic does
-                // not apply to IMEI scans (IMEIs are unique per device,
-                // no quantity merging). Suppress the banner so an
-                // unrelated SKU=="123…" record can't false-positive
-                // against an IMEI being typed in.
-                checkDuplicate(isLikelyImei(v) ? '' : v);
+                // R-INVENTORY-SCAN-DEDUP-V1: pass the raw typed value;
+                // the broader checkDuplicate matches across sku, imei,
+                // and barcode (with space/dash normalization for IMEI
+                // and numeric barcodes). Distinguishes match type so
+                // the banner and the doSubmit guard react correctly.
+                checkDuplicate(v);
               }}
             />
             <button
@@ -1528,7 +1597,12 @@ function InventoryFormModal({
         </div>
         )}
 
-        {/* ── Duplicate SKU warning banner ── */}
+        {/* ── Existing-item warning banner ──
+            R-INVENTORY-SCAN-DEDUP-V1: title + description switch on the
+            matched identifier. SKU keeps the qty-merge wording (handleSave
+            still merges qty for SKU collisions). IMEI/barcode show the
+            hard-block wording — those identifiers are unique per item, so
+            saving is rejected. */}
         {isDuplicate && duplicateItem && (
           <div style={{
             background: 'rgba(251,191,36,0.08)',
@@ -1539,8 +1613,14 @@ function InventoryFormModal({
             color: '#fde68a',
             lineHeight: 1.4,
           }}>
-            ⚠️ <strong>{t('inventory.form.skuExists')}</strong> —{' '}
-            {t('inventory.form.skuExistsDesc', duplicateItem.name, duplicateItem.qty)}
+            ⚠️ <strong>
+              {duplicateMatchField === 'imei' && t('inventory.form.imeiExists')}
+              {duplicateMatchField === 'barcode' && t('inventory.form.barcodeExists')}
+              {(duplicateMatchField === 'sku' || duplicateMatchField === null) && t('inventory.form.skuExists')}
+            </strong> —{' '}
+            {duplicateMatchField === 'sku'
+              ? t('inventory.form.skuExistsDesc', duplicateItem.name, duplicateItem.qty)
+              : t('inventory.form.itemExistsDesc', duplicateItem.name)}
           </div>
         )}
 

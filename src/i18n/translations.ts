@@ -2813,6 +2813,14 @@ export const translations: TranslationDictionary = {
     es: (name: string, qty: number) => `"${name}" (stock actual: ${qty}). Si guardas, SOLO la cantidad se sumará al existente. Los demás campos NO cambiarán. Cambia el SKU si es un artículo distinto.`,
     pt: (name: string, qty: number) => `"${name}" (estoque atual: ${qty}). Ao salvar, APENAS a quantidade será adicionada ao existente. Nome/preço/custo NÃO mudarão. Mude o SKU se for um item diferente.`,
   },
+  // R-INVENTORY-SCAN-DEDUP-V1: dedup messages for IMEI/barcode collisions.
+  'inventory.form.imeiExists':    { en: 'IMEI already in inventory', es: 'IMEI ya en inventario',     pt: 'IMEI já no estoque' },
+  'inventory.form.barcodeExists': { en: 'Barcode already in inventory', es: 'Código de barras ya en inventario', pt: 'Código de barras já no estoque' },
+  'inventory.form.itemExistsDesc': {
+    en: (name: string) => `"${name}" already exists with this identifier. Saving would create a duplicate; change the value or close the modal.`,
+    es: (name: string) => `"${name}" ya existe con este identificador. Si guardas crearías un duplicado; cambia el valor o cierra el modal.`,
+    pt: (name: string) => `"${name}" já existe com este identificador. Salvar criaria uma duplicata; mude o valor ou feche o modal.`,
+  },
   'inventory.form.itemName':     { en: 'Item Name',              es: 'Nombre del Artículo',           pt: 'Nome do Item' },
   'inventory.form.itemNameRequired': { en: 'Item name is required', es: 'Falta el nombre del artículo', pt: 'Nome do item é obrigatório' },
   'inventory.form.itemNamePlaceholder': { en: 'Example: iPhone 13 Pro Max 128GB', es: 'Ej: iPhone 13 Pro Max 128GB', pt: 'Ex: iPhone 13 Pro Max 128GB' },
