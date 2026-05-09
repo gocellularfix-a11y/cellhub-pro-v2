@@ -19,6 +19,7 @@ import { usePrint } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
+import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 
 export default function BarcodeActionModal() {
   const { state, dispatch } = useApp();
@@ -88,7 +89,10 @@ export default function BarcodeActionModal() {
 
   const reprint = () => {
     if (!sale) return;
-    const bsvg = renderBarcodeSvg(sale.invoiceNumber);
+    // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: reprint encodes the
+    // structured payload so the new copy is scan-equivalent to a fresh
+    // print. Old reprints encoded only invoiceNumber.
+    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
     const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
     close();

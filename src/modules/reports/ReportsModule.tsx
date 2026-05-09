@@ -26,6 +26,7 @@ import { persist } from '@/services/persist';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 import { normalizeCarrier } from '@/utils/normalize';
 import { matchesSearchPhones } from '@/utils/search';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem } from '@/store/types';
@@ -2888,7 +2889,10 @@ tr:last-child td { border-bottom: none; }
                 // Round 17: real reprint via generateReceiptHtml (hardened in round 12)
                 // + usePrint hook (Electron thermal silent / browser window fallback).
                 // Previously this called window.print() which printed the entire Reports page.
-                const bsvg = renderBarcodeSvg(reprintSale.invoiceNumber);
+                // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: reprint now encodes the
+                // structured CHP|SALE|... payload (with optional |CUST|customerId)
+                // so reprinted copies scan equivalent to a fresh print.
+                const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale));
                 const html = generateReceiptHtml(reprintSale, settings, locale, undefined, bsvg);
                 printHtml(html, {
                   silent: false,
@@ -3202,7 +3206,9 @@ tr:last-child td { border-bottom: none; }
                   const sale = reprintAfterEdit;
                   if (!sale) return;
                   try {
-                    const bsvg = renderBarcodeSvg(sale.invoiceNumber);
+                    // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: post-edit reprint
+                    // also uses the structured payload for scan parity.
+                    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
                     const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
                     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
                   } catch (err) {

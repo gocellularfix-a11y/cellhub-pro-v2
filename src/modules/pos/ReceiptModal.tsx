@@ -22,6 +22,7 @@ import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
 import { escHtml } from '@/utils/escHtml';
 import type { Sale, StoreSettings, Customer } from '@/store/types';
+import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 
 // r-batch-a (3a): JsBarcode and qrcode are now bundled via npm instead of
 // loaded from cdn.jsdelivr.net at runtime. The old ensureJsBarcode() and
@@ -226,8 +227,14 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
     generateQrSvg(settings.googleReviewUrl).then(setQrSvg);
   }, [sale?.id, settings.showReviewQr, settings.googleReviewUrl]);
 
-  // Barcode SVG — sync, same helper the print path uses
-  const barcodeSvg = useMemo(() => renderBarcodeSvg(sale?.invoiceNumber || ''), [sale?.invoiceNumber]);
+  // Barcode SVG — sync, same helper the print path uses.
+  // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: encodes the structured
+  // CHP|SALE|{invoiceNumber}[|CUST|{customerId}] payload so a scan can
+  // recover both the sale reference and (when present) the customer
+  // reference. The visible text under the barcode stays as the
+  // human-readable invoiceNumber — only the bars change.
+  const barcodePayload = useMemo(() => buildReceiptBarcodePayload(sale), [sale?.invoiceNumber, sale?.id, sale?.customerId]);
+  const barcodeSvg = useMemo(() => renderBarcodeSvg(barcodePayload), [barcodePayload]);
 
   // ── Deps extraction: primitive fields that generateReceiptHtml reads ──
   const storeName = settings.storeName;
@@ -691,7 +698,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     </div>
     <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;overflow:hidden">
       ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:10px;font-family:'Courier New',monospace;font-weight:700;letter-spacing:0.06em;text-align:center;margin-top:3px;color:#000">${escHtml(sale.invoiceNumber)}</div>
+      <div style="font-size:13px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.09em;text-align:center;margin-top:4px;color:#000">${escHtml(sale.invoiceNumber)}</div>
     </div>
   </div>
 
