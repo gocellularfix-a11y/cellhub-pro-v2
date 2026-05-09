@@ -3505,6 +3505,26 @@ export const translations: TranslationDictionary = {
   'employees.section.legal':        { en: 'Legal',                  es: 'Legal',                      pt: 'Legal' },
   'employees.section.skills':       { en: 'Skills',                 es: 'Habilidades',                pt: 'Habilidades' },
   'employees.section.notes':        { en: 'Notes',                  es: 'Notas',                      pt: 'Notas' },
+  'employees.section.permissions':  { en: 'Permissions',            es: 'Permisos',                   pt: 'Permissões' },
+
+  // R-APPROVAL-PIN-V1 — Permissions tab
+  'employees.permissions.title':            { en: 'Approval settings',                          es: 'Ajustes de aprobación',                     pt: 'Configurações de aprovação' },
+  'employees.permissions.intro':            { en: 'Configure which actions require manager approval and whether this employee can authorize them.', es: 'Configura qué acciones requieren aprobación de gerente y si este empleado puede autorizarlas.', pt: 'Configure quais ações exigem aprovação do gerente e se este funcionário pode autorizá-las.' },
+  'employees.permissions.approvalPin':      { en: 'Approval PIN (6 digits)',                    es: 'PIN de aprobación (6 dígitos)',              pt: 'PIN de aprovação (6 dígitos)' },
+  'employees.permissions.approvalPinBlank': { en: '(blank to keep existing)',                   es: '(en blanco para mantener)',                  pt: '(em branco para manter)' },
+  'employees.permissions.approvalPinPlaceholderNew':  { en: '000000',                           es: '000000',                                     pt: '000000' },
+  'employees.permissions.approvalPinPlaceholderEdit': { en: '••••••',                           es: '••••••',                                     pt: '••••••' },
+  'employees.permissions.canApprove':       { en: 'Can approve restricted actions',             es: 'Puede aprobar acciones restringidas',        pt: 'Pode aprovar ações restritas' },
+  'employees.permissions.canApproveHint':   { en: "When checked, this employee's approval PIN can authorize others' restricted actions.", es: 'Si está activo, el PIN de este empleado puede autorizar acciones restringidas de otros.', pt: 'Quando marcado, o PIN deste funcionário pode autorizar ações restritas de outros.' },
+  'employees.permissions.requireSection':   { en: 'Actions that require manager approval',      es: 'Acciones que requieren aprobación de gerente', pt: 'Ações que exigem aprovação do gerente' },
+  'employees.permissions.requirePrice':     { en: 'Price overrides',                            es: 'Cambios de precio',                          pt: 'Alterações de preço' },
+  'employees.permissions.requireDiscount':  { en: 'Manual discounts',                           es: 'Descuentos manuales',                        pt: 'Descontos manuais' },
+  'employees.permissions.requireLayawayCancel':      { en: 'Cancel layaway',                    es: 'Cancelar apartado',                          pt: 'Cancelar layaway' },
+  'employees.permissions.requireRepairCancel':       { en: 'Cancel repair',                     es: 'Cancelar reparación',                        pt: 'Cancelar reparo' },
+  'employees.permissions.requireUnlockCancel':       { en: 'Cancel unlock',                     es: 'Cancelar unlock',                            pt: 'Cancelar desbloqueio' },
+  'employees.permissions.requireSpecialOrderCancel': { en: 'Cancel special order',              es: 'Cancelar pedido especial',                   pt: 'Cancelar pedido especial' },
+  'employees.permissions.requireRefund':    { en: 'Process refund',                             es: 'Procesar reembolso',                         pt: 'Processar reembolso' },
+  'employees.permissions.disabledHint':     { en: 'Approvals are globally disabled. Enable them in Settings → Employees.', es: 'Las aprobaciones están desactivadas globalmente. Actívalas en Ajustes → Empleados.', pt: 'As aprovações estão desativadas globalmente. Ative-as em Configurações → Funcionários.' },
 
   'employees.form.name':            { en: 'Name',                   es: 'Nombre',                     pt: 'Nome' },
   'employees.form.displayName':     { en: '(display name)',         es: '(nombre mostrado)',          pt: '(nome exibido)' },
@@ -3554,6 +3574,21 @@ export const translations: TranslationDictionary = {
   'employees.validation.nameRequired': { en: 'Name is required',    es: 'Nombre requerido',           pt: 'Nome é obrigatório' },
   'employees.validation.pinRequired': { en: '4-digit PIN required', es: 'PIN de 4 dígitos requerido', pt: 'PIN de 4 dígitos obrigatório' },
   'employees.validation.pinMin':    { en: 'New PIN must be at least 4 digits', es: 'El nuevo PIN debe tener al menos 4 dígitos', pt: 'O novo PIN deve ter pelo menos 4 dígitos' },
+  'employees.validation.approvalPinSix': { en: 'Approval PIN must be exactly 6 digits', es: 'El PIN de aprobación debe tener exactamente 6 dígitos', pt: 'O PIN de aprovação deve ter exatamente 6 dígitos' },
+
+  // R-APPROVAL-PIN-V1 — Settings master toggle (Employees section)
+  'settings.approvals.title':       { en: 'Action approvals',                           es: 'Aprobaciones de acciones',                   pt: 'Aprovações de ações' },
+  'settings.approvals.enabled':     { en: 'Require approval for sensitive actions',     es: 'Requerir aprobación para acciones sensibles', pt: 'Exigir aprovação para ações sensíveis' },
+  'settings.approvals.enabledHint': { en: "When enabled, restricted actions per role will request a manager's 6-digit approval PIN before proceeding.", es: 'Cuando está activo, las acciones restringidas por rol pedirán el PIN de aprobación de 6 dígitos antes de continuar.', pt: 'Quando ativado, ações restritas por função solicitarão o PIN de aprovação de 6 dígitos antes de continuar.' },
+
+  // R-APPROVAL-PIN-V1 — Action labels (used by ApprovalPinModal subtitle)
+  'approval.action.PRICE_OVERRIDE':       { en: 'Price override',          es: 'Cambio de precio',           pt: 'Alteração de preço' },
+  'approval.action.DISCOUNT_OVERRIDE':    { en: 'Manual discount',         es: 'Descuento manual',           pt: 'Desconto manual' },
+  'approval.action.CANCEL_LAYAWAY':       { en: 'Cancel layaway',          es: 'Cancelar apartado',          pt: 'Cancelar layaway' },
+  'approval.action.CANCEL_REPAIR':        { en: 'Cancel repair',           es: 'Cancelar reparación',        pt: 'Cancelar reparo' },
+  'approval.action.CANCEL_UNLOCK':        { en: 'Cancel unlock',           es: 'Cancelar unlock',            pt: 'Cancelar desbloqueio' },
+  'approval.action.CANCEL_SPECIAL_ORDER': { en: 'Cancel special order',    es: 'Cancelar pedido especial',   pt: 'Cancelar pedido especial' },
+  'approval.action.REFUND':               { en: 'Process refund',          es: 'Procesar reembolso',         pt: 'Processar reembolso' },
 
   'employees.role.owner':           { en: 'Owner',                  es: 'Dueño',                      pt: 'Proprietário' },
   'employees.role.manager':         { en: 'Manager',                es: 'Gerente',                    pt: 'Gerente' },

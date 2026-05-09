@@ -1538,7 +1538,41 @@ export default function SettingsModule() {
           )}
 
           {activeSection === 'employees' && (
-            <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
+            <>
+              {/* R-APPROVAL-PIN-V1 — global master switch for the approval-PIN feature.
+                  When off, no action ever prompts for a manager PIN; when on, each
+                  employee's permissions tab decides which actions gate. */}
+              <div style={{
+                marginBottom: '1rem',
+                padding: '0.875rem 1rem',
+                background: 'rgba(99,102,241,0.06)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                borderRadius: '0.625rem',
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  🔐 {t('settings.approvals.title')}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!(settings as any).approvalsEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setSettings({ approvalsEnabled: next } as any);
+                      persistSettings({ approvalsEnabled: next } as Record<string, unknown>);
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>
+                    {t('settings.approvals.enabled')}
+                  </span>
+                </label>
+                <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                  {t('settings.approvals.enabledHint')}
+                </p>
+              </div>
+              <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
+            </>
           )}
 
           {activeSection === 'backup' && (

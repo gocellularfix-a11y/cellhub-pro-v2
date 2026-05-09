@@ -94,6 +94,11 @@ export interface StoreSettings {
   adminPin: string;
   autoBackup: boolean;
 
+  // R-APPROVAL-PIN-V1: master switch for the approval-PIN feature.
+  // When false (default), no action ever prompts for manager PIN —
+  // the entire system stays dormant and existing flows are untouched.
+  approvalsEnabled?: boolean;
+
   // AI
   aiProvider: 'claude' | 'openai' | 'gemini' | 'custom';
   claudeApiKey: string;
@@ -1021,6 +1026,55 @@ export interface Employee {
   onboardingSigned: boolean;
   startDate: string;
   createdAt: Timestamp | Date | string;
+
+  // R-APPROVAL-PIN-V1 — independent 6-digit PIN used to AUTHORIZE
+  // restricted actions for other employees. Stored as bcrypt hash
+  // (same lifecycle as `pin`). Optional; only employees with
+  // permissions.canApprove typically have one set.
+  approvalPin?: string;
+  permissions?: EmployeePermissions;
+}
+
+// ── Approval / Permissions (R-APPROVAL-PIN-V1) ────────────
+// Per-employee permission flags. All fields optional — undefined
+// means "fall back to role default" (see services/security/permissions.ts).
+export interface EmployeePermissions {
+  requireApprovalForPriceChange?: boolean;
+  requireApprovalForDiscount?: boolean;
+  requireApprovalForLayawayCancel?: boolean;
+  requireApprovalForRepairCancel?: boolean;
+  requireApprovalForUnlockCancel?: boolean;
+  requireApprovalForSpecialOrderCancel?: boolean;
+  requireApprovalForRefund?: boolean;
+  canApprove?: boolean;
+}
+
+// Discriminator for restricted actions. Stored as a string in the log.
+export type ApprovalActionType =
+  | 'PRICE_OVERRIDE'
+  | 'DISCOUNT_OVERRIDE'
+  | 'CANCEL_LAYAWAY'
+  | 'CANCEL_REPAIR'
+  | 'CANCEL_UNLOCK'
+  | 'CANCEL_SPECIAL_ORDER'
+  | 'REFUND';
+
+export type ApprovalCategory = 'financial' | 'inventory' | 'service';
+export type ApprovalStatus = 'approved' | 'denied';
+
+// Append-only audit log entry. NEVER stores PINs (raw or hashed).
+// approvedByEmployeeId uses the prefix 'approver:admin' when the admin
+// PIN fallback was used (preserves per-action traceability without
+// pretending an employee row matched).
+export interface ApprovalEvent {
+  id: string;
+  requestedByEmployeeId: string;
+  approvedByEmployeeId: string;            // empId | 'approver:admin' | ''
+  actionType: ApprovalActionType;
+  category?: ApprovalCategory;
+  status?: ApprovalStatus;
+  entityId?: string;
+  createdAt: number;                       // ms epoch
 }
 
 // ── SMS Log ───────────────────────────────────────────────
