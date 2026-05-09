@@ -4825,6 +4825,64 @@ export const translations: TranslationDictionary = {
   'operator.bubble.openTooltip':  { en: 'Open Operator (Intelligence)',  es: 'Abrir Operador (Inteligencia)', pt: 'Abrir Operador (Inteligência)' },
   'operator.bubble.closeTooltip': { en: 'Close Operator',                es: 'Cerrar Operador',                pt: 'Fechar Operador' },
 
+  // R-OPERATOR-FLOATING-BUBBLE-AWARE-V1 / R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2
+  // Overlay copy. (Key prefix kept as `operator.menu.*` for stable history.)
+  'operator.menu.title':       { en: 'Operator',                es: 'Operador',                  pt: 'Operador' },
+  'operator.menu.hintsOn':     { en: 'Hints: ON',               es: 'Avisos: ON',                pt: 'Dicas: ON' },
+  'operator.menu.hintsOff':    { en: 'Hints: OFF',              es: 'Avisos: OFF',               pt: 'Dicas: OFF' },
+  'operator.menu.openIntel':   { en: 'Open Full Intelligence',  es: 'Abrir Inteligencia completa', pt: 'Abrir Inteligência completa' },
+  'operator.menu.dismiss':     { en: 'Dismiss hint',            es: 'Descartar aviso',           pt: 'Descartar dica' },
+  'operator.overlay.statusPrefix':  { en: 'Status',           es: 'Estado',                pt: 'Status' },
+  'operator.overlay.noHint':        { en: 'No hint right now. The Operator is watching for activity.', es: 'Sin avisos por ahora. El Operador observa actividad.', pt: 'Sem dicas no momento. O Operador está observando atividade.' },
+  'operator.overlay.resetPosition': { en: 'Reset position',   es: 'Restablecer posición',  pt: 'Redefinir posição' },
+  'operator.status.sleeping':  { en: 'Idle',              es: 'En reposo',         pt: 'Em repouso' },
+  'operator.status.watching':  { en: 'Watching activity', es: 'Observando',        pt: 'Observando' },
+  'operator.status.thinking':  { en: 'Thinking…',         es: 'Pensando…',         pt: 'Pensando…' },
+  'operator.status.ready':     { en: 'Hint ready',        es: 'Aviso listo',       pt: 'Dica pronta' },
+  'operator.status.alert':     { en: 'Attention',         es: 'Atención',          pt: 'Atenção' },
+
+  // Hint templates (function-form: deterministic placeholder fill)
+  'operator.hint.saleScanned': {
+    en: (invoice: string, total: string) => `Sale ${invoice} • $${total} on file.`,
+    es: (invoice: string, total: string) => `Venta ${invoice} • $${total} registrado.`,
+    pt: (invoice: string, total: string) => `Venda ${invoice} • $${total} registrado.`,
+  },
+  'operator.hint.phoneServices': {
+    en: (name: string, lines: number) => `${name} • ${lines} line${lines === 1 ? '' : 's'} on file.`,
+    es: (name: string, lines: number) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+    pt: (name: string, lines: number) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+  },
+  'operator.hint.posCustomerLastVisit': {
+    en: (name: string, days: number) => `${name} • Last visit ${days}d ago.`,
+    es: (name: string, days: number) => `${name} • Última visita hace ${days}d.`,
+    pt: (name: string, days: number) => `${name} • Última visita há ${days}d.`,
+  },
+  'operator.hint.posCustomerNew': {
+    en: (name: string) => `${name} • First visit on record.`,
+    es: (name: string) => `${name} • Primera visita registrada.`,
+    pt: (name: string) => `${name} • Primeira visita registrada.`,
+  },
+  'operator.hint.layawayOpen': {
+    en: (paid: string, remaining: string) => `Layaway • Paid $${paid} • Remaining $${remaining}.`,
+    es: (paid: string, remaining: string) => `Apartado • Pagado $${paid} • Restante $${remaining}.`,
+    pt: (paid: string, remaining: string) => `Layaway • Pago $${paid} • Restante $${remaining}.`,
+  },
+  'operator.hint.repairOpen': {
+    en: (ticket: string, status: string) => `Repair ${ticket} • Status: ${status}.`,
+    es: (ticket: string, status: string) => `Reparación ${ticket} • Estado: ${status}.`,
+    pt: (ticket: string, status: string) => `Reparo ${ticket} • Status: ${status}.`,
+  },
+  'operator.hint.customerLastVisit': {
+    en: (name: string, days: number) => `${name} • Last visit ${days}d ago. Good follow-up.`,
+    es: (name: string, days: number) => `${name} • Última visita hace ${days}d. Buen seguimiento.`,
+    pt: (name: string, days: number) => `${name} • Última visita há ${days}d. Bom acompanhamento.`,
+  },
+  'operator.hint.customerNew': {
+    en: (name: string) => `${name} • New customer in records.`,
+    es: (name: string) => `${name} • Cliente nuevo en registros.`,
+    pt: (name: string) => `${name} • Cliente novo nos registros.`,
+  },
+
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
   'employee.selectEmployee':    { en: 'Select an employee to clock in',   es: 'Seleccionar Empleado',                pt: 'Selecionar Funcionário' },
