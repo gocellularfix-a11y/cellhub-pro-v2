@@ -4821,6 +4821,10 @@ export const translations: TranslationDictionary = {
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
 
+  // R-OPERATOR-FLOATING-BUBBLE-V1 — global Intelligence shortcut bubble
+  'operator.bubble.openTooltip':  { en: 'Open Operator (Intelligence)',  es: 'Abrir Operador (Inteligencia)', pt: 'Abrir Operador (Inteligência)' },
+  'operator.bubble.closeTooltip': { en: 'Close Operator',                es: 'Cerrar Operador',                pt: 'Fechar Operador' },
+
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
   'employee.selectEmployee':    { en: 'Select an employee to clock in',   es: 'Seleccionar Empleado',                pt: 'Selecionar Funcionário' },

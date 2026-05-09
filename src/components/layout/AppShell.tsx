@@ -26,6 +26,8 @@ const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPa
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
+// R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
+const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -161,6 +163,14 @@ export default function AppShell() {
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />
+
+      {/* R-OPERATOR-FLOATING-BUBBLE-V1: draggable shortcut to Intelligence.
+          Click navigates to/from the Intelligence tab; engine spins up via
+          the existing IntelligenceModule when that tab activates, so we
+          avoid a second engine instance and any duplicate logic. */}
+      <Suspense fallback={null}>
+        <FloatingOperatorBubble />
+      </Suspense>
     </div>
   );
 }
