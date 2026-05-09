@@ -48,6 +48,10 @@ import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import {
+  calculateLayawayTotals,
+  normalizeLayawayPayments,
+} from '@/services/layaway/payments';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -1016,6 +1020,28 @@ export default function LayawayModule() {
       lines.push(`  ${t('layaway.print.preTaxBase')}:   ${fmtMoney(balSplit.baseCents)}`);
     }
     lines.push('─────────────────────────────');
+
+    // R-LAYAWAY-MULTIPAY-V1 — payment summary (format A: latest + cumulative
+    // + remaining + count). Lazy-normalized so legacy single-deposit layaways
+    // still print a coherent block. Skipped silently when there are no
+    // recorded payments (brand-new layaway just created with $0 down).
+    const lpTotals = calculateLayawayTotals(l);
+    if (lpTotals.paymentCount > 0) {
+      const history = normalizeLayawayPayments(l);
+      // newest-first; the LATEST payment is the most recent date
+      const latest = [...history].sort((a, b) => {
+        const da = new Date(a.date).getTime() || 0;
+        const db = new Date(b.date).getTime() || 0;
+        return db - da;
+      })[0];
+      if (latest) {
+        const latestDate = (() => { try { return new Date(latest.date).toLocaleDateString(); } catch { return latest.date; } })();
+        lines.push(`${t('layaway.print.lastPayment')}: ${fmtMoney(latest.amount)}  ${latestDate}  ${latest.method || ''}`.trimEnd());
+      }
+      lines.push(`${t('layaway.print.totalPaid')}: ${fmtMoney(lpTotals.totalPaidCents)}  (${lpTotals.paymentCount} ${t('layaway.print.paymentCount').toLowerCase()})`);
+      lines.push(`${t('layaway.print.balanceDue')}: ${fmtMoney(lpTotals.remainingBalanceCents)}`);
+      lines.push('─────────────────────────────');
+    }
     if (l.notes) { lines.push(`${t('layaway.print.notes')}: ${safe(l.notes)}`); lines.push('----------------------------------------'); }
     lines.push(t('layaway.print.conditionsHeader'));
     lines.push(t('layaway.print.cond1'));
@@ -1149,6 +1175,45 @@ export default function LayawayModule() {
                       <div style={{ fontSize: '1rem', fontWeight: 800, color: balDollars > 0 ? '#f59e0b' : '#10b981' }}>Balance: ${balDollars.toFixed(2)}</div>
                     </div>
                   </div>
+                  {/* R-LAYAWAY-MULTIPAY-V1: payment history (newest-first).
+                      Lazy-normalized so legacy single-deposit layaways
+                      surface as payments[0] without any data migration. */}
+                  {(() => {
+                    const totals = calculateLayawayTotals(l);
+                    if (totals.paymentCount === 0) return null;
+                    const history = [...normalizeLayawayPayments(l)].sort((a, b) => {
+                      const da = new Date(a.date).getTime() || 0;
+                      const db = new Date(b.date).getTime() || 0;
+                      return db - da;
+                    });
+                    const fmtDate = (iso: string) => {
+                      try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+                    };
+                    return (
+                      <div style={{ marginTop: '0.65rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '0.5rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>💳 {t('layaway.payments.historyTitle')} ({totals.paymentCount})</span>
+                          <span style={{ color: '#10b981', fontWeight: 600 }}>
+                            ${(totals.totalPaidCents / 100).toFixed(2)}
+                            <span style={{ color: '#64748b', fontWeight: 500 }}> / </span>
+                            <span style={{ color: totals.remainingBalanceCents > 0 ? '#f59e0b' : '#10b981' }}>
+                              ${(totals.remainingBalanceCents / 100).toFixed(2)} {t('layaway.payments.remaining')}
+                            </span>
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.78rem' }}>
+                          {history.map((p) => (
+                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', padding: '0.15rem 0', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                              <span style={{ color: '#94a3b8', minWidth: '5.5rem' }}>{fmtDate(p.date)}</span>
+                              <span style={{ color: '#e2e8f0', fontWeight: 600, fontFamily: 'monospace', minWidth: '5rem', textAlign: 'right' }}>${(p.amount / 100).toFixed(2)}</span>
+                              <span style={{ color: '#a78bfa', minWidth: '4.5rem' }}>{p.method || '—'}</span>
+                              <span style={{ color: '#64748b', flex: 1, fontStyle: 'italic', textAlign: 'right' }}>{p.note || ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                     {isActive && (

@@ -3019,6 +3019,13 @@ export const translations: TranslationDictionary = {
   'layaway.totalPrice':           { en: 'Total Price',               es: 'Precio Total',        pt: 'Preço Total' },
   'layaway.depositField':         { en: 'Deposit',                   es: 'Depósito',            pt: 'Entrada' },
   'layaway.depositLocked':        { en: 'Total paid. Use "Collect Balance" to record payments.', es: 'Total pagado. Usa "Cobrar Balance" para registrar pagos.', pt: 'Total pago. Use "Cobrar Saldo" para registrar pagamentos.' },
+
+  // R-LAYAWAY-MULTIPAY-V1
+  'layaway.payments.historyTitle':  { en: 'Payment history',     es: 'Historial de pagos',   pt: 'Histórico de pagamentos' },
+  'layaway.payments.remaining':     { en: 'remaining',           es: 'restante',             pt: 'restante' },
+  'layaway.print.lastPayment':      { en: 'Last payment',        es: 'Último pago',          pt: 'Último pagamento' },
+  'layaway.print.totalPaid':        { en: 'Total paid',          es: 'Total pagado',         pt: 'Total pago' },
+  'layaway.print.paymentCount':     { en: 'Payments',            es: 'Pagos',                pt: 'Pagamentos' },
   'layaway.taxable': {
     en: (rate: string) => `Taxable (${rate}%)`,
     es: (rate: string) => `Con Impuesto (${rate}%)`,

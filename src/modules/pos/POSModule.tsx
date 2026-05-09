@@ -34,6 +34,7 @@ import type { Customer, Sale, InventoryItem, CartItem } from '@/store/types';
 
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
+import { addLayawayPayment } from '@/services/layaway/payments';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 
@@ -717,16 +718,47 @@ export default function POSModule() {
           toast(t('pos.layawayCancelledSale'), 'error');
           return;
         }
-        const newPaid = (layaway.paidAmount || 0) + paidCents;
-        const newBalance = Math.max(0, (layaway.balance || 0) - paidCents);
         // Round 15b M4: write depositMethod on the FIRST payment only. Refund
         // policy is refund-to-original-method, so we must lock the method in
         // at first deposit and never overwrite on subsequent partials.
         const depositMethodUpdate = layaway.depositMethod
           ? {}
           : { depositMethod: sale.paymentMethod };
+        // R-LAYAWAY-MULTIPAY-V1 (audit-integrity blocker fix):
+        // 1) addLayawayPayment clamps the appended record to remaining
+        //    balance, so payments[] can never sum to more than totalPrice.
+        // 2) Aggregate paidAmount is DERIVED from payments[] sum, not from
+        //    the additive `paidAmount + paidCents` legacy formula. This
+        //    guarantees sum(payments[]) === paidAmount on every commit and
+        //    eliminates the silent drift the auditor flagged.
+        // 3) try/catch is now a corruption-only fallback: helper throws
+        //    only on non-positive / non-finite amount. On the rare throw
+        //    we drop back to the legacy additive math (loud via warn) so
+        //    the layaway aggregate still moves and POS doesn't lock up.
+        // 4) Existing overpay tolerance is preserved: balance still ends
+        //    at 0 when paidCents > remaining; the overpay portion lives
+        //    only in the Sale record (cash drawer) and is intentionally
+        //    NOT mirrored into the layaway log.
+        let withPaymentLog: typeof layaway = layaway;
+        let helperSucceeded = false;
+        try {
+          withPaymentLog = addLayawayPayment(layaway, {
+            amountCents: paidCents,
+            method: sale.paymentMethod,
+            employeeId: sale.employeeId,
+            date: new Date().toISOString(),
+          });
+          helperSucceeded = true;
+        } catch (err) {
+          console.warn('[POS §4d] addLayawayPayment threw, falling back to legacy aggregate update:', err);
+        }
+        const reconciledPaid = helperSucceeded && Array.isArray(withPaymentLog.payments)
+          ? withPaymentLog.payments.reduce((s, p) => s + (p.amount || 0), 0)
+          : (layaway.paidAmount || 0) + paidCents;
+        const newPaid = reconciledPaid;
+        const newBalance = Math.max(0, (layaway.totalPrice || 0) - newPaid);
         updatedLayaways[li] = {
-          ...layaway,
+          ...withPaymentLog,
           ...depositMethodUpdate,
           paidAmount: newPaid,
           balance: newBalance,

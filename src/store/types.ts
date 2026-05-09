@@ -965,6 +965,9 @@ export interface LayawayPayment {
   method: PaymentMethod;
   date: string;
   employeeId?: string;
+  // R-LAYAWAY-MULTIPAY-V1: optional cashier-entered note for partial
+  // payments. Future-compatible: existing records without it stay valid.
+  note?: string;
 }
 
 export interface LayawayItem {
@@ -983,7 +986,13 @@ export interface Layaway {
   customerPhone: string;
   items: LayawayItem[];
   totalPrice: number;      // cents
-  payments: LayawayPayment[];
+  // R-LAYAWAY-MULTIPAY-V1: relaxed to optional. The original required
+  // shape was dead code — no writer ever populated it and no reader ever
+  // checked for it. Lazy normalization (services/layaway/payments.ts)
+  // synthesizes a single payments[0] from legacy paidAmount/depositMethod
+  // when the array is missing, so legacy data continues to render
+  // without any one-shot migration.
+  payments?: LayawayPayment[];
   paidAmount: number;      // cents
   balance: number;         // cents
   status: LayawayStatus;
