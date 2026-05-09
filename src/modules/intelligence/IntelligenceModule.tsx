@@ -56,6 +56,10 @@ export default function IntelligenceModule() {
     sales, customers, inventory, repairs,
     specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
     currentStoreId, consolidatedView,
+    // R-CUSTOMER-PROFIT-PARITY-V1: settings carry carrierCommissions +
+    // defaultCommissionRate. Engine uses them inside getCustomerHistory
+    // to translate phone_payment items into their real economic cost.
+    settings,
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
@@ -111,7 +115,7 @@ export default function IntelligenceModule() {
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
-      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments },
+      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, settings },
     );
     engineConfigSigRef.current = engineConfigSig;
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.create', _t);
@@ -121,7 +125,7 @@ export default function IntelligenceModule() {
   {
     const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engine.updateData(sales, customers, inventory, repairs, {
-      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
+      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, settings,
     });
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
   }

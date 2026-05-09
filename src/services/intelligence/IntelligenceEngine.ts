@@ -5,7 +5,7 @@ import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { diagnoseChurn } from './rootCause/churnCauses';
-import { computeCustomerProfit } from '@/utils/customerProfit';
+import { computeCustomerProfit, adjustSalesItemCosts, type ProfitAdjustmentSettings } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -80,6 +80,14 @@ export interface EngineExtras {
   // R-DATA-APPOINTMENT-ACCESS-V1: read-only pass-through. Filtering/counting
   // happens in cellhubDataAccess using estimatedDropOff (ISO date-time).
   appointments?: Appointment[];
+  // R-CUSTOMER-PROFIT-PARITY-V1: optional store settings used by
+  // getCustomerHistory to translate phone_payment / repair / special_order
+  // line items into their real economic cost (commission rate for
+  // phone payments, 35% fallback for repair items missing parts cost).
+  // Without this, customer-history profit double-counts the carrier
+  // pass-through portion of phone payments — the bug Jorge spotted
+  // where Juan's 4 Verizon payments showed 91% margin.
+  settings?: ProfitAdjustmentSettings;
 }
 
 export class IntelligenceEngine {
@@ -102,6 +110,9 @@ export class IntelligenceEngine {
   private employees: Employee[];
   // R-DATA-APPOINTMENT-ACCESS-V1
   private appointments: Appointment[];
+  // R-CUSTOMER-PROFIT-PARITY-V1: store settings for per-customer
+  // profit adjustment (phone payment commission, repair fallback).
+  private profitSettings: ProfitAdjustmentSettings;
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -184,6 +195,10 @@ export class IntelligenceEngine {
     this.expenses = extras.expenses ?? [];
     this.employees = extras.employees ?? [];
     this.appointments = extras.appointments ?? [];
+    // R-CUSTOMER-PROFIT-PARITY-V1: empty {} when omitted ⇒ adjustSalesItemCosts
+    // falls back to defaultRate=0 (no profit fabricated; just clears the
+    // 100% margin bug for items where the stamped commissionRate is missing).
+    this.profitSettings = extras.settings ?? {};
 
     // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
     // ref-equality skip. Stored AFTER extras defaults so the same defaults
@@ -600,6 +615,10 @@ export class IntelligenceEngine {
     const newExpenses = extras.expenses ?? this._rawExpenses;
     const newEmployees = extras.employees ?? this._rawEmployees;
     const newAppointments = extras.appointments ?? this._rawAppointments;
+    // R-CUSTOMER-PROFIT-PARITY-V1: keep settings live across re-renders.
+    // Caller passes the latest settings each updateData() so commission
+    // rate edits in Settings reflect immediately in customer history.
+    if (extras.settings) this.profitSettings = extras.settings;
 
     if (
       sales === this._rawSales
@@ -957,7 +976,15 @@ export class IntelligenceEngine {
       return r.originalSaleId ? saleIds.has(r.originalSaleId) : false;
     });
 
-    const stats = computeCustomerProfit(customerSales, returnsForCustomer);
+    // R-CUSTOMER-PROFIT-PARITY-V1: align customer-history profit math
+    // with TaxReportsModule. Without this, phone_payment items with
+    // cost=0 inflate "profit" to ~100% of revenue (Juan Martinez: 4
+    // Verizon payments × $60 reported as $240 profit / 91% margin).
+    // adjustSalesItemCosts rewrites cost in-memory using the carrier
+    // commission rate (and 35% fallback for repair items missing parts
+    // cost), matching the canonical Tax module math.
+    const adjustedSales = adjustSalesItemCosts(customerSales, this.profitSettings);
+    const stats = computeCustomerProfit(adjustedSales, returnsForCustomer);
 
     // First / last visit — min/max over non-voided sale timestamps.
     const times = customerSales

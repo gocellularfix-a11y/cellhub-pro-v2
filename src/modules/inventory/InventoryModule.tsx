@@ -480,7 +480,10 @@ export default function InventoryModule() {
         promoteEngineRef.current = new IntelligenceEngine(
           sales, customers, inventory, repairs,
           { lang: engineLang as 'en' | 'es' | 'pt', enableAlerts: false, enableScoring: true },
-          { specialOrders, unlocks, layaways, customerReturns },
+          // R-CUSTOMER-PROFIT-PARITY-V1: pass settings so any customer
+          // history / scoring path that consults getCustomerHistory
+          // gets the commission-aware profit math.
+          { specialOrders, unlocks, layaways, customerReturns, settings },
         );
         // analyze() populates cachedResult so getCustomerScores() returns data.
         promoteEngineRef.current.analyze();

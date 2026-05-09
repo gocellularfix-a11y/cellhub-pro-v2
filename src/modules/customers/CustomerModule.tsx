@@ -11,7 +11,7 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { computeCustomerProfit } from '@/utils/customerProfit';
+import { computeCustomerProfit, adjustSalesItemCosts } from '@/utils/customerProfit';
 import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
@@ -1136,48 +1136,15 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   settings: any;
 }) {
   const { t } = useTranslation();
-  // R-CUSTOMER-HISTORY-PHONE-PAYMENT-PROFIT-FIX: phone_payment profit must
-  // be carrier commission only — never (price - cost). Legacy items with
-  // cost=0 (literal zero) caused computeCustomerProfit to count the full
-  // payment as profit (94%+ margin). Items missing cost entirely (typeof
-  // !== 'number') were excluded. Both flavors are wrong for the customer
-  // history modal. Override the cost field on phone_payment items with a
-  // commission-derived value so lineProfit yields revenue × commRate.
-  // Mirrors the resolution chain used by Dashboard / Reports: stamped
-  // commissionRate → carrier exact key → carrier case-insensitive →
-  // defaultCommissionRate → 0 (no commission resolvable → zero profit, do
-  // not fabricate). Non-phone-payment items are untouched.
-  const adjustedSales = useMemo(() => {
-    const ccs: Record<string, number> = (settings?.carrierCommissions as Record<string, number>) || {};
-    const defaultRate = (typeof settings?.defaultCommissionRate === 'number' && settings.defaultCommissionRate > 0)
-      ? (settings.defaultCommissionRate as number)
-      : 0;
-    const resolveCommRate = (item: { carrier?: string; carrierName?: string; provider?: string; commissionRate?: number }): number => {
-      const stamped = item.commissionRate;
-      if (typeof stamped === 'number' && stamped > 0) return stamped;
-      const raw = String(item.carrier || item.carrierName || item.provider || '').trim();
-      if (raw) {
-        if (typeof ccs[raw] === 'number') return ccs[raw];
-        const lc = raw.toLowerCase();
-        const hit = Object.keys(ccs).find((k) => k.toLowerCase() === lc);
-        if (hit && typeof ccs[hit] === 'number') return ccs[hit];
-      }
-      return defaultRate;
-    };
-    return sales.map((sale) => {
-      let touched = false;
-      const items = (sale.items || []).map((item) => {
-        if (item.category !== 'phone_payment') return item;
-        const rate = resolveCommRate(item as { carrier?: string; carrierName?: string; provider?: string; commissionRate?: number });
-        const price = item.price || 0;
-        const corrected = Math.round(price * (1 - rate));
-        if (item.cost === corrected) return item;
-        touched = true;
-        return { ...item, cost: corrected };
-      });
-      return touched ? { ...sale, items } : sale;
-    });
-  }, [sales, settings]);
+  // R-CUSTOMER-PROFIT-PARITY-V1: shared helper now centralizes the
+  // phone_payment commission rewrite + repair 35% fallback. CustomerModule,
+  // IntelligenceEngine.getCustomerHistory, and (indirectly) the chat
+  // history sentence all go through the same math — no more divergence
+  // between the customer-history card and the chat answer.
+  const adjustedSales = useMemo(
+    () => adjustSalesItemCosts(sales, settings),
+    [sales, settings],
+  );
 
   // Profit analytics — delegates refund math + per-line (price-cost)*qty
   // aggregation to the pure helper. See src/utils/customerProfit.ts.
