@@ -5414,6 +5414,27 @@ export const translations: TranslationDictionary = {
   },
   'intelligence.console.campaignStrategyBroad': { en: 'Broad campaign — pick recipient in WhatsApp',               es: 'Campaña amplia — elige destinatario en WhatsApp',                      pt: 'Campanha ampla — escolha destinatário no WhatsApp' },
   'intelligence.console.campaignOpenWhatsAppLabel': { en: 'Open WhatsApp',                                          es: 'Abrir WhatsApp',                                                       pt: 'Abrir WhatsApp' },
+  // R-CAMPAIGN-QUEUE-V1: queue-mode strings (multi-select + progress UI).
+  'intelligence.console.campaignSelectAll':    { en: 'Select all',                                                  es: 'Seleccionar todos',                                                    pt: 'Selecionar todos' },
+  'intelligence.console.campaignDeselectAll':  { en: 'Deselect all',                                                es: 'Quitar todos',                                                         pt: 'Desmarcar todos' },
+  'intelligence.console.campaignStartLabel': {
+    en: (n: number) => `Start campaign (${n} ${n === 1 ? 'customer' : 'customers'})`,
+    es: (n: number) => `Iniciar campaña (${n} ${n === 1 ? 'cliente' : 'clientes'})`,
+    pt: (n: number) => `Iniciar campanha (${n} ${n === 1 ? 'cliente' : 'clientes'})`,
+  },
+  'intelligence.console.campaignProgressLabel': {
+    en: (done: number, total: number) => `Progress: ${done} / ${total}`,
+    es: (done: number, total: number) => `Progreso: ${done} / ${total}`,
+    pt: (done: number, total: number) => `Progresso: ${done} / ${total}`,
+  },
+  'intelligence.console.campaignOpenWithLabel': {
+    en: (name: string) => `Open WhatsApp with ${name}`,
+    es: (name: string) => `Abrir WhatsApp con ${name}`,
+    pt: (name: string) => `Abrir WhatsApp com ${name}`,
+  },
+  'intelligence.console.campaignSkipLabel':    { en: 'Skip',                                                        es: 'Saltar',                                                               pt: 'Pular' },
+  'intelligence.console.campaignEndLabel':     { en: 'End campaign',                                                es: 'Terminar campaña',                                                     pt: 'Encerrar campanha' },
+  'intelligence.console.campaignDoneLabel':    { en: 'Campaign done — close',                                       es: 'Campaña terminada — cerrar',                                           pt: 'Campanha concluída — fechar' },
   // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: confidence pill labels.
   'intelligence.console.confidenceHigh':       { en: 'HIGH',                                                        es: 'ALTA',                                                                 pt: 'ALTA' },
   'intelligence.console.confidenceMedium':     { en: 'MED',                                                         es: 'MED',                                                                  pt: 'MED' },

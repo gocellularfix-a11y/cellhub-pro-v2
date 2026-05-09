@@ -73,14 +73,25 @@ export default function IntelligenceModule() {
   // message text. Draft arrives from runProductPush via the chat callback
   // (auto-fired in handleOpenPromote). Cleared whenever the selected
   // product changes — avoids showing a stale draft for product B after
-  // the user re-selects product A. draftMessage starts equal to the
-  // template; user edits diverge, indicated visually via `edited` flag.
-  // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: selected recipient drives
-  // the single primary "Open WhatsApp" button. Auto-set to the first
-  // candidate when the campaign loads; cleared on product change.
+  // the user re-selects product A.
+  // R-CAMPAIGN-QUEUE-V1: per-recipient single-selection (radio) replaced
+  // by multi-select (`selectedRecipientIds`). On "Iniciar campaña" the
+  // selected set is frozen into `campaignQueue` (status per recipient)
+  // and the panel switches into queue-progress mode. Empty queue ⇒
+  // pre-campaign UI (checkboxes); non-empty ⇒ in-campaign UI (auto-
+  // advance through pending recipients, one wa.me at a time). Queue
+  // and draft are persisted to localStorage so a reload mid-campaign
+  // restores progress.
   const [panelCampaign, setPanelCampaign] = useState<PanelCampaignDraft | null>(null);
   const [draftMessage, setDraftMessage] = useState<string>('');
-  const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState<string | null>(null);
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set());
+  type CampaignQueueItem = {
+    customerId: string;
+    name: string;
+    phone: string;
+    status: 'pending' | 'sent' | 'skipped';
+  };
+  const [campaignQueue, setCampaignQueue] = useState<CampaignQueueItem[]>([]);
 
   // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — preserved verbatim.
   // R-OPERATOR-STABILIZATION-AUDIT-V1: refreshKey REMOVED from sig. Including
@@ -297,9 +308,12 @@ export default function IntelligenceModule() {
     setSelectedProduct((prev) => {
       if (!prev || prev.id !== productId) {
         // Different product (or first selection) — reset draft state.
+        // R-CAMPAIGN-QUEUE-V1: also reset multi-select + queue so any
+        // in-progress campaign for product A doesn't leak into product B.
         setPanelCampaign(null);
         setDraftMessage('');
-        setSelectedCampaignRecipientId(null);
+        setSelectedRecipientIds(new Set());
+        setCampaignQueue([]);
       }
       return { id: productId, name: productName };
     });
@@ -319,24 +333,20 @@ export default function IntelligenceModule() {
     if (selectedProduct && selectedProduct.id !== draft.productId) return;
     setPanelCampaign(draft);
     setDraftMessage(draft.templateMessage);
-    // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: auto-select the first
-    // candidate so the primary "Open WhatsApp" button is immediately
-    // actionable. Empty candidates → null (broadcast button shown).
-    setSelectedCampaignRecipientId(draft.candidates.length > 0 ? draft.candidates[0].customerId : null);
+    // R-CAMPAIGN-QUEUE-V1: default-select every candidate so the
+    // cashier can hit "Iniciar campaña" immediately. They can untick
+    // anyone they don't want before starting. Empty candidates ⇒ no
+    // selection (broadcast button shown instead, single-shot wa.me).
+    setSelectedRecipientIds(new Set(draft.candidates.map((c) => c.customerId)));
+    // Also clear any leftover queue from a prior product so we land
+    // in pre-campaign mode for the freshly drafted campaign.
+    setCampaignQueue([]);
   }, [selectedProduct]);
 
-  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: per-recipient send. Substitutes
-  // {customer} in the user-edited draft with the recipient's first name,
-  // routes through canonical buildWhatsAppUrl. No autonomous send — wa.me
-  // opens, owner presses Send manually inside WhatsApp.
-  const handlePanelSend = useCallback((customerName: string, phone: string) => {
-    const firstName = customerName.split(' ')[0] || customerName;
-    const finalText = draftMessage.replace(/\{customer\}/g, firstName);
-    const url = phone
-      ? buildWhatsAppUrl(phone, finalText)
-      : `https://wa.me/?text=${encodeURIComponent(finalText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [draftMessage]);
+  // R-CAMPAIGN-QUEUE-V1: per-recipient send is now handled by
+  // sendCurrentRecipient (queue-driven). The legacy handlePanelSend
+  // single-shot has been removed; broadcast (no-candidates path) still
+  // uses handlePanelBroadcast below.
 
   // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: broadcast send for the empty-
   // candidates case. Substitutes {customer} with empty string (the broad
@@ -352,6 +362,142 @@ export default function IntelligenceModule() {
     if (!selectedProduct) return;
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${selectedProduct.name}`);
   }, [selectedProduct, fireChat, t]);
+
+  // ── R-CAMPAIGN-QUEUE-V1: queue + persistence ──────────────
+  // The current pending recipient drives the single primary action
+  // button while the campaign is in flight. Derived from the queue —
+  // first item with status 'pending'. null when no queue or all done.
+  const currentRecipient = useMemo(
+    () => campaignQueue.find((q) => q.status === 'pending') || null,
+    [campaignQueue],
+  );
+  const queueProcessedCount = useMemo(
+    () => campaignQueue.filter((q) => q.status !== 'pending').length,
+    [campaignQueue],
+  );
+  const inCampaign = campaignQueue.length > 0;
+  const allDone = inCampaign && !currentRecipient;
+
+  // Toggle one recipient in the pre-campaign multi-select.
+  const toggleRecipient = useCallback((id: string) => {
+    setSelectedRecipientIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Bulk select / deselect all candidates.
+  const toggleAllRecipients = useCallback(() => {
+    if (!panelCampaign) return;
+    setSelectedRecipientIds((prev) => {
+      if (prev.size === panelCampaign.candidates.length) return new Set();
+      return new Set(panelCampaign.candidates.map((c) => c.customerId));
+    });
+  }, [panelCampaign]);
+
+  // Build the queue from selected recipients and switch into in-campaign UI.
+  const startCampaign = useCallback(() => {
+    if (!panelCampaign) return;
+    if (selectedRecipientIds.size === 0) return;
+    if (!draftMessage.trim()) return;
+    const items: CampaignQueueItem[] = panelCampaign.candidates
+      .filter((c) => selectedRecipientIds.has(c.customerId))
+      .map((c) => ({
+        customerId: c.customerId,
+        name: c.name,
+        phone: c.phone,
+        status: 'pending',
+      }));
+    setCampaignQueue(items);
+  }, [panelCampaign, selectedRecipientIds, draftMessage]);
+
+  // Open wa.me for the current recipient and mark them as 'sent'.
+  // The cashier still has to press Send inside WhatsApp — wa.me has no
+  // autonomous delivery. "Sent" here means "we opened the wa.me link
+  // for this contact"; the cashier can re-open from history if needed.
+  const sendCurrentRecipient = useCallback(() => {
+    if (!currentRecipient) return;
+    const firstName = currentRecipient.name.split(' ')[0] || currentRecipient.name;
+    const finalText = draftMessage.replace(/\{customer\}/g, firstName);
+    const url = currentRecipient.phone
+      ? buildWhatsAppUrl(currentRecipient.phone, finalText)
+      : `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setCampaignQueue((prev) =>
+      prev.map((q) => (q.customerId === currentRecipient.customerId ? { ...q, status: 'sent' } : q)),
+    );
+  }, [currentRecipient, draftMessage]);
+
+  // Skip current recipient without opening WhatsApp.
+  const skipCurrentRecipient = useCallback(() => {
+    if (!currentRecipient) return;
+    setCampaignQueue((prev) =>
+      prev.map((q) => (q.customerId === currentRecipient.customerId ? { ...q, status: 'skipped' } : q)),
+    );
+  }, [currentRecipient]);
+
+  // End the campaign and return to the pre-campaign UI. Clears the
+  // queue + selection so a fresh campaign starts from scratch (the
+  // panel still shows the same product/draft so the user can adjust
+  // selection and re-run if needed).
+  const endCampaign = useCallback(() => {
+    setCampaignQueue([]);
+    if (panelCampaign) {
+      setSelectedRecipientIds(new Set(panelCampaign.candidates.map((c) => c.customerId)));
+    }
+  }, [panelCampaign]);
+
+  // Persistence — only while a campaign is in flight. Pre-campaign
+  // selections are intentionally NOT persisted (low value, more state
+  // to invalidate). Storage key namespaced so it can't collide.
+  const CAMPAIGN_STORAGE_KEY = 'cellhub_pro_campaign_session_v1';
+  useEffect(() => {
+    if (!inCampaign || !selectedProduct || !panelCampaign) {
+      try { localStorage.removeItem(CAMPAIGN_STORAGE_KEY); } catch {}
+      return;
+    }
+    try {
+      localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify({
+        selectedProduct,
+        panelCampaign,
+        draftMessage,
+        queue: campaignQueue,
+      }));
+    } catch {}
+  }, [inCampaign, selectedProduct, panelCampaign, draftMessage, campaignQueue]);
+
+  // Restore on mount — guarded so this only fires once and only if the
+  // panel has no campaign in memory yet (first paint).
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(CAMPAIGN_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        selectedProduct?: { id: string; name: string };
+        panelCampaign?: PanelCampaignDraft;
+        draftMessage?: string;
+        queue?: CampaignQueueItem[];
+      };
+      if (
+        !saved.selectedProduct?.id ||
+        !saved.panelCampaign?.productId ||
+        !Array.isArray(saved.queue) ||
+        saved.queue.length === 0
+      ) return;
+      setSelectedProduct(saved.selectedProduct);
+      setPanelCampaign(saved.panelCampaign);
+      setDraftMessage(saved.draftMessage || saved.panelCampaign.templateMessage || '');
+      setCampaignQueue(saved.queue);
+    } catch {
+      // Corrupt storage — drop it.
+      try { localStorage.removeItem(CAMPAIGN_STORAGE_KEY); } catch {}
+    }
+  }, []);
 
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
@@ -553,7 +699,10 @@ export default function IntelligenceModule() {
                     setSelectedProduct(null);
                     setPanelCampaign(null);
                     setDraftMessage('');
-                    setSelectedCampaignRecipientId(null);
+                    // R-CAMPAIGN-QUEUE-V1: also clear queue + selection
+                    // so a fresh product start lands in pre-campaign mode.
+                    setSelectedRecipientIds(new Set());
+                    setCampaignQueue([]);
                   }}
                   className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600 shrink-0"
                 >
@@ -601,19 +750,30 @@ export default function IntelligenceModule() {
                     </p>
                   </div>
 
-                  {/* 3b. Recipients (selectable rows, no per-row buttons) */}
-                  {panelCampaign.candidates.length > 0 && (
+                  {/* 3b. Recipients — R-CAMPAIGN-QUEUE-V1: pre-campaign
+                      shows multi-select checkboxes with a "select-all"
+                      header; in-campaign shows the queue with per-item
+                      status icons. Switching modes is driven entirely
+                      by `inCampaign` (campaignQueue.length > 0). */}
+                  {panelCampaign.candidates.length > 0 && !inCampaign && (
                     <div className="space-y-1.5">
-                      <p className="text-[11px] text-slate-400">
-                        {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-slate-400">
+                          {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={toggleAllRecipients}
+                          className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-surface-600"
+                        >
+                          {selectedRecipientIds.size === panelCampaign.candidates.length
+                            ? t('intelligence.console.campaignDeselectAll')
+                            : t('intelligence.console.campaignSelectAll')}
+                        </button>
+                      </div>
                       <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden">
                         {panelCampaign.candidates.map((c) => {
-                          const isSelected = selectedCampaignRecipientId === c.customerId;
-                          // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: confidence
-                          // badge styling — emerald for high, amber for medium,
-                          // slate for low. Compact pill, 9px text, fits on the
-                          // same line as the reason without breaking layout.
+                          const isSelected = selectedRecipientIds.has(c.customerId);
                           const confidenceClass = c.confidence === 'high'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : c.confidence === 'medium'
@@ -628,26 +788,25 @@ export default function IntelligenceModule() {
                             <button
                               key={c.customerId}
                               type="button"
-                              onClick={() => setSelectedCampaignRecipientId(c.customerId)}
+                              onClick={() => toggleRecipient(c.customerId)}
                               className={`w-full text-left flex items-center gap-2 px-3 py-2 transition ${
                                 isSelected ? 'bg-purple-500/10' : 'hover:bg-surface-700'
                               }`}
                             >
-                              {/* Radio-style indicator */}
+                              {/* Checkbox-style indicator */}
                               <span
-                                className={`w-3 h-3 rounded-full border-2 shrink-0 mt-1 ${
-                                  isSelected ? 'border-purple-400 bg-purple-400' : 'border-slate-500'
+                                className={`w-4 h-4 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center text-[10px] leading-none ${
+                                  isSelected ? 'border-purple-400 bg-purple-500 text-white' : 'border-slate-500'
                                 }`}
                                 aria-hidden
-                              />
+                              >
+                                {isSelected ? '✓' : ''}
+                              </span>
                               <div className="min-w-0 flex-1">
                                 <div className={`text-sm truncate ${isSelected ? 'text-purple-200 font-medium' : 'text-slate-200'}`}>
                                   {c.name}
                                 </div>
                                 <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
-                                {/* R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1:
-                                    reason line + confidence pill. Renders only
-                                    if the producer supplied a reasonKey. */}
                                 {c.reasonKey && (
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     <span className="text-[11px] text-slate-400 truncate">
@@ -668,21 +827,51 @@ export default function IntelligenceModule() {
                     </div>
                   )}
 
-                  {/* 3c. ONE primary action button (bottom) */}
-                  {panelCampaign.candidates.length > 0 ? (
-                    <button
-                      onClick={() => {
-                        const sel = panelCampaign.candidates.find((c) => c.customerId === selectedCampaignRecipientId);
-                        if (!sel) return;
-                        handlePanelSend(sel.name, sel.phone);
-                      }}
-                      disabled={!draftMessage.trim() || !selectedCampaignRecipientId}
-                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={t('intelligence.console.campaignSendTooltip')}
-                    >
-                      📲 {t('intelligence.console.campaignOpenWhatsAppLabel')}
-                    </button>
-                  ) : (
+                  {/* 3b'. In-campaign queue view — progress + status list. */}
+                  {inCampaign && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-slate-400">
+                        {t('intelligence.console.campaignProgressLabel', queueProcessedCount, campaignQueue.length)}
+                      </p>
+                      <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden max-h-56 overflow-y-auto">
+                        {campaignQueue.map((q) => {
+                          const isCurrent = q.status === 'pending' && currentRecipient?.customerId === q.customerId;
+                          const icon = q.status === 'sent' ? '✅'
+                            : q.status === 'skipped' ? '⏭️'
+                            : isCurrent ? '👉'
+                            : '⏳';
+                          return (
+                            <div
+                              key={q.customerId}
+                              className={`flex items-center gap-2 px-3 py-2 ${
+                                isCurrent ? 'bg-emerald-500/10' : ''
+                              }`}
+                            >
+                              <span className="text-base shrink-0" aria-hidden>{icon}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-sm truncate ${
+                                  q.status === 'sent' ? 'text-emerald-300'
+                                  : q.status === 'skipped' ? 'text-slate-500 line-through'
+                                  : isCurrent ? 'text-emerald-200 font-medium'
+                                  : 'text-slate-300'
+                                }`}>
+                                  {q.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono truncate">{q.phone}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3c. Action buttons — R-CAMPAIGN-QUEUE-V1
+                      pre-campaign: "Iniciar campaña (N)"
+                      in-campaign:  "Abrir WhatsApp con {nombre}" + skip + end
+                      all-done:     "Cerrar campaña"
+                      no candidates (broadcast):  unchanged single-shot wa.me */}
+                  {panelCampaign.candidates.length === 0 ? (
                     <button
                       onClick={handlePanelBroadcast}
                       disabled={!draftMessage.trim()}
@@ -690,6 +879,45 @@ export default function IntelligenceModule() {
                     >
                       📲 {t('intelligence.console.campaignBroadcastLabel')}
                     </button>
+                  ) : !inCampaign ? (
+                    <button
+                      onClick={startCampaign}
+                      disabled={!draftMessage.trim() || selectedRecipientIds.size === 0}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={t('intelligence.console.campaignSendTooltip')}
+                    >
+                      🚀 {t('intelligence.console.campaignStartLabel', selectedRecipientIds.size)}
+                    </button>
+                  ) : allDone ? (
+                    <button
+                      onClick={endCampaign}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                    >
+                      ✅ {t('intelligence.console.campaignDoneLabel')}
+                    </button>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={sendCurrentRecipient}
+                        className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                      >
+                        📲 {t('intelligence.console.campaignOpenWithLabel', currentRecipient?.name || '')}
+                      </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={skipCurrentRecipient}
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition"
+                        >
+                          ⏭️ {t('intelligence.console.campaignSkipLabel')}
+                        </button>
+                        <button
+                          onClick={endCampaign}
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-medium bg-rose-700/70 hover:bg-rose-600/70 text-rose-100 transition"
+                        >
+                          ✋ {t('intelligence.console.campaignEndLabel')}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </>
               )}

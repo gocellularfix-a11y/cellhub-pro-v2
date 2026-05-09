@@ -560,9 +560,25 @@ const HEALTH_KEYWORDS = [
   'health', 'salud', 'store health', 'resumen', 'summary',
 ];
 
+// R-INTEL-FORECAST-KEYWORDS-V1: bank widened to catch verb forms,
+// plurals, and English variants. scoreKeywords does substring match,
+// so each token covers its own conjugations:
+//   - 'pronostic' matches: pronostico, pronosticada, pronosticadas,
+//     pronosticado, pronosticados, pronosticar, pronostican, …
+//   - 'pronóstic' covers the accented form (pronóstico, pronósticos)
+//   - 'proyecta' matches: proyecta, proyectada, proyectadas, proyectado,
+//     proyectados, proyectar, proyectan, proyectaba, …
+//   - 'ventas futuras' / 'venta futura' catch the noun-phrase form
+//   - English forecast/predict/projection/projected + "expected sales"
+// Avoids 'proyec' alone (would hit 'proyecto' = "project", unrelated).
 const FORECAST_KEYWORDS = [
-  'proyeccion', 'proyección', 'forecast', 'pronostico',
-  'pronóstico', 'predice', 'predict',
+  'proyeccion', 'proyección', 'proyecciones',
+  'proyecta', 'proyectada', 'proyectadas', 'proyectado', 'proyectados',
+  'pronostic', 'pronóstic',
+  'ventas futuras', 'venta futura',
+  'predice', 'predicción', 'prediccion',
+  'forecast', 'predict', 'projection', 'projected',
+  'expected sales',
 ];
 
 const ANOMALY_KEYWORDS = [
