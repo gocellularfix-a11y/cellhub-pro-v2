@@ -119,7 +119,10 @@ export default function ApprovalPinModal({
   const submit = useCallback(() => {
     if (pin.length !== PIN_LENGTH) return;
     onSubmit(pin);
-    // Parent decides whether to close (success) or keep open with error.
+    // Clear immediately so a retry (parent kept the modal open and set
+    // errorMessage) starts with a fresh empty input. We never let a typed
+    // PIN linger in component state after submission.
+    setPin('');
   }, [pin, onSubmit]);
 
   // Modal-level keyboard handlers — captures even when the input is unfocused.

@@ -16,6 +16,7 @@ import type {
   Employee,
 } from '@/store/types';
 import {
+  canCurrentEmployeeApproveSelf,
   categoryFor,
   requiresApproval,
 } from './permissions';
@@ -124,9 +125,12 @@ export async function requestApproval(
   // 1) Try employee approvers first.
   const matchedEmpId = verifyApprovalPin(pin, employees);
   if (matchedEmpId) {
-    const requester = (employees || []).find((e) => e && e.id === request.requestedByEmployeeId);
-    const isOwnerSelf = requester?.role === 'owner' && matchedEmpId === request.requestedByEmployeeId;
-    if (matchedEmpId === request.requestedByEmployeeId && !isOwnerSelf) {
+    const allowed = canCurrentEmployeeApproveSelf({
+      requestedByEmployeeId: request.requestedByEmployeeId,
+      matchedApproverId: matchedEmpId,
+      employees,
+    });
+    if (!allowed) {
       logger({
         requestedByEmployeeId: request.requestedByEmployeeId,
         approvedByEmployeeId: '',

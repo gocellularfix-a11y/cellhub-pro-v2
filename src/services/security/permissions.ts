@@ -121,6 +121,52 @@ export function requiresApproval(
   return !!perms[flag];
 }
 
+// ── Self-approval policy ──────────────────────────────────
+// Centralised so future hooks (owner bypass refinements, emergency
+// override flag, remote approver sessions, delegated approvals) live
+// in one place instead of being duplicated by each module.
+
+/**
+ * Approver identity prefix used for non-employee principals (e.g. admin PIN
+ * fallback emits 'approver:admin'; future remote/mobile sessions will emit
+ * 'approver:remote:<sessionId>'). Treated as a distinct principal — never
+ * counts as self-approval regardless of the requesting employee.
+ */
+export const SYSTEM_APPROVER_PREFIX = 'approver:';
+
+export interface SelfApprovalContext {
+  requestedByEmployeeId: string;
+  /** Approver identity returned by verifyApprovalPin / admin fallback. */
+  matchedApproverId: string;
+  employees: Pick<Employee, 'id' | 'role'>[];
+}
+
+/**
+ * Decide whether the matched approver is allowed to authorize their own
+ * pending action. Returns true when the match is NOT a self-approval
+ * (different employee, or system approver), or when policy permits the
+ * specific self-match (owner today; future delegations/emergencies later).
+ *
+ * Keep this function pure — no React, no I/O — so the guard, future
+ * remote-approval orchestrator, and tests all share the same rule.
+ */
+export function canCurrentEmployeeApproveSelf(ctx: SelfApprovalContext): boolean {
+  const { requestedByEmployeeId, matchedApproverId, employees } = ctx;
+
+  // System approvers (admin pin, future remote/delegated) are distinct
+  // principals — they cannot trigger a self-approval scenario.
+  if (matchedApproverId.startsWith(SYSTEM_APPROVER_PREFIX)) return true;
+
+  // Different employee → not self-approving. Allow.
+  if (matchedApproverId !== requestedByEmployeeId) return true;
+
+  // Self-match path. Today only owners may self-approve. Future hooks
+  // for emergency override / delegated approvals / remote sessions
+  // should land here so callers don't grow their own copy of this logic.
+  const emp = employees.find((e) => e && e.id === requestedByEmployeeId);
+  return emp?.role === 'owner';
+}
+
 /** Categorise an action for log/filter purposes. */
 export function categoryFor(actionType: ApprovalActionType): ApprovalCategory {
   switch (actionType) {

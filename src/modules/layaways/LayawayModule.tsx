@@ -47,6 +47,7 @@ import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -56,9 +57,18 @@ function generateTicket(): string {
 
 export default function LayawayModule() {
   const {
-    state: { layaways, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
+    state: { layaways, customers, inventory, settings, currentEmployee, employees, cart, sales, lang, globalSearchTerm, currentStoreId },
     setLayaways, setCustomers, setInventory, setCart, setSales, dispatch,
   } = useApp();
+
+  // R-APPROVAL-PIN-V1 F3A: gate cancellations behind manager approval
+  // when settings.approvalsEnabled and the current employee's role / per-
+  // employee permissions require it. The hook owns the modal lifecycle.
+  const approvalGate = useApprovalGate({
+    employees,
+    settings,
+    attemptedByName: currentEmployee?.name,
+  });
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord();
@@ -73,6 +83,11 @@ export default function LayawayModule() {
   const [showForm, setShowForm]           = useState(false);
   const [editLayaway, setEditLayaway]     = useState<Layaway | null>(null);
   const [cancelTarget, setCancelTarget]   = useState<Layaway | null>(null);
+  // R-APPROVAL-PIN-V1 F3A fix #1: parent-owned spinner for CancelLayawayModal
+  // so denial paths can reset the busy state without remounting the modal
+  // (which would wipe the cashier's selected disposition/note). True only
+  // while the approval flow is in flight.
+  const [cancelInFlight, setCancelInFlight] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Layaway | null>(null);
   const [depositTarget, setDepositTarget] = useState<Layaway | null>(null);
   const [isSaving, setIsSaving]           = useState(false);
@@ -598,7 +613,7 @@ export default function LayawayModule() {
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
   // from Gross/Cash/Profit. A voided REFUND-* audit sale is also created.
-  const handleCancel = useCallback((l: Layaway, choice: {
+  const handleCancel = useCallback(async (l: Layaway, choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
@@ -633,6 +648,32 @@ export default function LayawayModule() {
       setCancelTarget(null);
       return;
     }
+
+    // R-APPROVAL-PIN-V1 F3A: manager-approval gate. Runs AFTER status guards
+    // so we don't prompt for an approval that would be wasted on an already-
+    // terminal layaway. Returns approved=true (passthrough) when the feature
+    // is disabled or the requesting employee doesn't need approval — cero
+    // visible change for owners/managers when approvals are off.
+    //
+    // F3A fix #1 + #2: on denial we DO NOT close CancelLayawayModal. Spinner
+    // resets via cancelInFlight=false; cashier keeps disposition + note and
+    // can retry by clicking Confirm again. Toast policy: timeout only.
+    // invalid_pin / self_approval_blocked are inline-only inside the
+    // approval modal (handled by useApprovalGate); cancelled/ESC is silent.
+    setCancelInFlight(true);
+    const approval = await approvalGate.requestApproval({
+      actionType: 'CANCEL_LAYAWAY',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: l.id,
+    });
+    if (!approval.approved) {
+      setCancelInFlight(false);
+      if (approval.reason === 'timeout') {
+        toast(t('approval.toast.timeout'), 'warning');
+      }
+      return;
+    }
+
     const depositCents = l.paidAmount || 0;
     const now = new Date().toISOString();
 
@@ -808,8 +849,9 @@ export default function LayawayModule() {
       forfeit:      t('layaway.cancel.toastForfeit'),
     }[choice.method];
     toast(msg, 'success');
+    setCancelInFlight(false);
     setCancelTarget(null);
-  }, [t, setLayaways, setCustomers, setInventory, setSales, setCart, currentEmployee, toast]);
+  }, [t, setLayaways, setCustomers, setInventory, setSales, setCart, currentEmployee, toast, approvalGate]);
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -1431,10 +1473,15 @@ export default function LayawayModule() {
           layaway={cancelTarget}
           customerHasPhone={!!cancelTarget.customerPhone}
           customerName={cancelTarget.customerName}
-          onClose={() => setCancelTarget(null)}
-          onConfirm={(choice) => handleCancel(cancelTarget, choice)}
+          confirming={cancelInFlight}
+          onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
+          onConfirm={(choice) => { void handleCancel(cancelTarget, choice); }}
         />
       )}
+      {/* R-APPROVAL-PIN-V1 F3A: manager-approval modal. Stacks on top of
+          CancelLayawayModal during the confirm flow; closes itself on
+          approve / cancel / timeout. */}
+      {approvalGate.modal}
       <ConfirmDialog
         open={showImeiWarning}
         title={t('layaway.imeiWarning.title')}
