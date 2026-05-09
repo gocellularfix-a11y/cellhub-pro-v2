@@ -37,6 +37,9 @@ export type OperatorBubbleState =
 /** Categorical kind for the hint. UI uses it for icon/color tinting. */
 export type OperatorHintKind =
   | 'phone_services_customer'
+  | 'phone_payment_customer_selected'
+  | 'phone_payment_line_selected'
+  | 'phone_payment_number_no_match'
   | 'pos_cart_with_customer'
   | 'sale_scanned'
   | 'layaway_open'
@@ -70,11 +73,19 @@ export interface OperatorActivityEventDetail {
     | 'layaway.opened'
     | 'repair.opened'
     | 'customer.history_opened'
+    | 'phone.payment.customer_selected'
+    | 'phone.payment.known_line_selected'
+    | 'phone.payment.number_entered'
     | string; // forward-compat
   payload?: {
+    // Generic IDs / values reused across event types. Always minimal —
+    // no full customer record, no notes, no addresses, no emails.
+    customerId?: string;
     layawayId?: string;
     repairId?: string;
-    customerId?: string;
+    phone?: string;
+    lineCount?: number;
+    amountCents?: number;
   };
 }
 
@@ -141,6 +152,74 @@ function shortName(c: Customer | null): string {
   const ln = (c.lastName || '').trim();
   if (fn || ln) return `${fn} ${ln}`.trim();
   return (c.name || '').trim();
+}
+
+function normalizeDigits(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).replace(/\D/g, '');
+}
+
+function lineCountFor(c: Customer | null): number {
+  if (!c) return 0;
+  const phones = (c as { phones?: string[] }).phones;
+  if (Array.isArray(phones) && phones.length > 0) return phones.length;
+  return c.phone ? 1 : 0;
+}
+
+function findCustomerByPhone(customers: Customer[] | null | undefined, phone: string): Customer | null {
+  if (!phone || !Array.isArray(customers)) return null;
+  const wanted = normalizeDigits(phone);
+  if (wanted.length === 0) return null;
+  for (const c of customers) {
+    if (!c) continue;
+    if (normalizeDigits(c.phone || '') === wanted) return c;
+    const phones = (c as { phones?: string[] }).phones;
+    if (Array.isArray(phones) && phones.some((p) => normalizeDigits(p) === wanted)) return c;
+  }
+  return null;
+}
+
+/**
+ * Scan sales for the most recent phone_payment item matching `phone`.
+ * Returns the line item's price (cents) or null. O(N) over sales — not
+ * cheap on huge histories but bounded for typical retail volumes and
+ * called only on a discrete activity event, never on every render.
+ */
+function lastPhonePaymentCentsForNumber(
+  sales: Sale[] | null | undefined,
+  phone: string,
+): number | null {
+  if (!Array.isArray(sales)) return null;
+  const norm = normalizeDigits(phone);
+  if (!norm) return null;
+  let bestTs = -Infinity;
+  let bestCents: number | null = null;
+  for (const s of sales) {
+    if (!s || s.status === 'voided' || s.status === 'refunded') continue;
+    const items = (s as { items?: Array<{ category?: string; phoneNumber?: string; price?: number }> }).items;
+    if (!Array.isArray(items)) continue;
+    let ts = -Infinity;
+    let priceCents: number | null = null;
+    for (const it of items) {
+      if (!it) continue;
+      if (it.category !== 'phone_payment') continue;
+      if (normalizeDigits(it.phoneNumber || '') !== norm) continue;
+      if (typeof it.price === 'number') priceCents = it.price;
+    }
+    if (priceCents === null) continue;
+    const ca = (s as { createdAt?: unknown }).createdAt;
+    if (typeof ca === 'string') { const p = Date.parse(ca); if (Number.isFinite(p)) ts = p; }
+    else if (typeof ca === 'number') ts = ca;
+    else if (ca instanceof Date) ts = ca.getTime();
+    else if (ca && typeof (ca as { toDate?: () => Date }).toDate === 'function') {
+      try { ts = (ca as { toDate: () => Date }).toDate().getTime(); } catch { /* skip */ }
+    }
+    if (ts > bestTs) {
+      bestTs = ts;
+      bestCents = priceCents;
+    }
+  }
+  return bestCents;
 }
 
 // ── Public API ────────────────────────────────────────────
@@ -268,6 +347,91 @@ export function computeHintFromEvent(
         (repair as { ticketNumber?: string }).ticketNumber || repair.id.slice(-6).toUpperCase(),
         String(repair.status || ''),
       ],
+      severity: 'info',
+    };
+  }
+
+  // ── Phone-payment bridge events (R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix)
+  // Modal-local state (PhonePaymentModal) is not in AppState, so the
+  // module dispatches lightweight events when the cashier interacts
+  // with customer / known-line / phone-number inputs. Payload is IDs +
+  // phone digits + numeric values only — never names or notes.
+
+  if (detail.type === 'phone.payment.customer_selected') {
+    const cust = payload.customerId
+      ? findCustomer(inputs.customers, payload.customerId)
+      : (payload.phone ? findCustomerByPhone(inputs.customers, payload.phone) : null);
+    if (!cust) return null;
+    const lines = typeof payload.lineCount === 'number' && payload.lineCount > 0
+      ? payload.lineCount
+      : lineCountFor(cust);
+    const lastCents = payload.phone
+      ? lastPhonePaymentCentsForNumber(inputs.sales, payload.phone)
+      : null;
+    if (lastCents !== null && lastCents > 0) {
+      return {
+        kind: 'phone_payment_customer_selected',
+        i18nKey: 'operator.hint.phonePaymentCustomerWithHistory',
+        args: [shortName(cust), lines, (lastCents / 100).toFixed(2)],
+        severity: 'info',
+      };
+    }
+    return {
+      kind: 'phone_payment_customer_selected',
+      i18nKey: 'operator.hint.phonePaymentCustomerNoHistory',
+      args: [shortName(cust), lines],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'phone.payment.known_line_selected' && payload.phone) {
+    const lastCents = lastPhonePaymentCentsForNumber(inputs.sales, payload.phone);
+    if (lastCents !== null && lastCents > 0) {
+      return {
+        kind: 'phone_payment_line_selected',
+        i18nKey: 'operator.hint.phonePaymentLineSelectedWithHistory',
+        args: [payload.phone, (lastCents / 100).toFixed(2)],
+        severity: 'info',
+      };
+    }
+    return {
+      kind: 'phone_payment_line_selected',
+      i18nKey: 'operator.hint.phonePaymentLineSelected',
+      args: [payload.phone],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'phone.payment.number_entered' && payload.phone) {
+    // Prefer explicit customerId, otherwise scan customers by normalized phone.
+    const cust = payload.customerId
+      ? findCustomer(inputs.customers, payload.customerId)
+      : findCustomerByPhone(inputs.customers, payload.phone);
+    if (cust) {
+      const lastCents = lastPhonePaymentCentsForNumber(inputs.sales, payload.phone);
+      if (lastCents !== null && lastCents > 0) {
+        return {
+          kind: 'phone_payment_customer_selected',
+          i18nKey: 'operator.hint.phonePaymentCustomerWithHistory',
+          args: [shortName(cust), lineCountFor(cust), (lastCents / 100).toFixed(2)],
+          severity: 'info',
+        };
+      }
+      return {
+        kind: 'phone_payment_customer_selected',
+        i18nKey: 'operator.hint.phonePaymentCustomerNoHistory',
+        args: [shortName(cust), lineCountFor(cust)],
+        severity: 'info',
+      };
+    }
+    // No customer match — surface an ambient cue so the cashier knows
+    // the system already checked. Sales-only history match is a
+    // possibility too, but for V1 we keep this branch as the simple
+    // "no record on file" cue.
+    return {
+      kind: 'phone_payment_number_no_match',
+      i18nKey: 'operator.hint.phonePaymentNoHistory',
+      args: [payload.phone],
       severity: 'info',
     };
   }

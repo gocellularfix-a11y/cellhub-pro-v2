@@ -29,8 +29,8 @@ import {
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
 const ENABLED_KEY  = 'cellhub:operatorBubble:enabled:v1';
-const BUBBLE_SIZE  = 64;
-const OVERLAY_WIDTH = 280;
+const BUBBLE_SIZE  = 72;          // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: 64 → 72 px
+const OVERLAY_WIDTH = 296;
 const DRAG_THRESHOLD_PX = 5;
 const EDGE_PADDING = 16;
 const Z_INDEX = 880;
@@ -89,13 +89,16 @@ function ensureKeyframes() {
   style.id = KEYFRAMES_STYLE_ID;
   style.textContent = `
 @keyframes cellhubOperatorPulseRing {
-  0%   { transform: scale(0.95); opacity: 0.55; }
-  70%  { transform: scale(1.20); opacity: 0;    }
-  100% { transform: scale(1.20); opacity: 0;    }
+  0%   { transform: scale(0.92); opacity: 0.65; }
+  70%  { transform: scale(1.28); opacity: 0;    }
+  100% { transform: scale(1.28); opacity: 0;    }
 }
 @keyframes cellhubOperatorBreath {
-  0%, 100% { box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
-  50%      { box-shadow: 0 6px 18px rgba(0,0,0,0.45), 0 0 22px rgba(99,102,241,0.45); }
+  0%, 100% { box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 0 rgba(99,102,241,0); }
+  50%      { box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 28px rgba(139,92,246,0.45); }
+}
+@keyframes cellhubOperatorConicSpin {
+  to { transform: rotate(360deg); }
 }
 @keyframes cellhubOperatorOverlayIn {
   0%   { opacity: 0; transform: translateY(-4px) scale(0.97); }
@@ -370,9 +373,12 @@ export default function FloatingOperatorBubble() {
   const dotColor = stateColor(enabled ? bubbleState : 'sleeping');
   const statusLabel = t(`operator.status.${enabled ? bubbleState : 'sleeping'}`);
 
-  const bubbleBg = isOnIntelligence
-    ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-    : 'linear-gradient(135deg, #1e293b, #334155)';
+  // Premium gradient palette. Default state has subtle indigo undertone
+  // so the bubble reads as "alive but quiet"; intelligence-active and
+  // overlay-open promote to a brighter cosmic gradient.
+  const bubbleBg = (isOverlayOpen || isOnIntelligence)
+    ? 'radial-gradient(circle at 30% 30%, #818cf8 0%, #6366f1 40%, #4338ca 100%)'
+    : 'radial-gradient(circle at 30% 30%, #475569 0%, #1e293b 50%, #0f172a 100%)';
 
   // Overlay vertical anchor: prefer below the bubble, but flip above
   // when the bubble is near the bottom edge so the panel stays on-screen.
@@ -412,7 +418,7 @@ export default function FloatingOperatorBubble() {
             ? '0 0 24px rgba(139,92,246,0.4), 0 8px 16px rgba(0,0,0,0.45)'
             : '0 6px 18px rgba(0,0,0,0.45)',
           color: '#e2e8f0',
-          fontSize: '1.9rem',
+          fontSize: '2.2rem',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           touchAction: 'none',
@@ -428,12 +434,35 @@ export default function FloatingOperatorBubble() {
       >
         <span aria-hidden="true" style={{ pointerEvents: 'none', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}>🧠</span>
 
+        {/* Slow-rotating conic ring — premium "live assistant" sheen.
+            Only spins while the bubble is actively surfacing something
+            (ready/alert) so idle CPU stays at zero. CSS-only, GPU
+            transform — no rAF, no JS animation lib. */}
         {showRing && (
           <span
             aria-hidden="true"
             style={{
               position: 'absolute',
-              inset: -4,
+              inset: -3,
+              borderRadius: '50%',
+              padding: 2,
+              background: `conic-gradient(from 0deg, ${stateColor(bubbleState)}, rgba(167,139,250,0.85), ${stateColor(bubbleState)}, rgba(99,102,241,0.55), ${stateColor(bubbleState)})`,
+              WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+              WebkitMaskComposite: 'xor',
+              mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+              maskComposite: 'exclude',
+              animation: 'cellhubOperatorConicSpin 4s linear infinite',
+              pointerEvents: 'none',
+              opacity: 0.85,
+            }}
+          />
+        )}
+        {showRing && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: -6,
               borderRadius: '50%',
               border: `2px solid ${stateColor(bubbleState)}`,
               animation: 'cellhubOperatorPulseRing 1.6s ease-out infinite',
@@ -447,11 +476,14 @@ export default function FloatingOperatorBubble() {
           title={statusLabel}
           style={{
             position: 'absolute',
-            top: 4, right: 4,
-            width: 10, height: 10,
+            top: 5, right: 5,
+            width: 12, height: 12,
             borderRadius: '50%',
             background: dotColor,
-            border: '2px solid rgba(15,23,42,0.85)',
+            border: '2px solid rgba(15,23,42,0.9)',
+            boxShadow: enabled && (bubbleState === 'ready' || bubbleState === 'alert')
+              ? `0 0 8px ${dotColor}`
+              : 'none',
             pointerEvents: 'none',
           }}
         />

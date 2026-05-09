@@ -121,6 +121,24 @@ export default function PhonePaymentModal({
   const [simNameOverride, setSimNameOverride] = useState('');
   const [editingSimName, setEditingSimName] = useState(false);
 
+  // ── R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: activity emitter.
+  // The Operator bubble lives outside this module. We dispatch a
+  // CustomEvent on `window` so it can wake without coupling. Payload
+  // is IDs / phone digits / numeric values only — never names, notes,
+  // or anything beyond what the bubble can recompute from app state.
+  const emitOperatorActivity = useCallback((
+    type: 'phone.payment.customer_selected'
+        | 'phone.payment.known_line_selected'
+        | 'phone.payment.number_entered',
+    payload: { customerId?: string; phone?: string; lineCount?: number; amountCents?: number },
+  ) => {
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+        detail: { type, payload },
+      }));
+    } catch { /* environments without CustomEvent support — silent */ }
+  }, []);
+
   // ── Customer search ───────────────────────────────────────
   const [custSearch, setCustSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -324,13 +342,24 @@ export default function PhonePaymentModal({
     setFirstName(c.firstName || parts[0] || '');
     setLastName(c.lastName || parts.slice(1).join(' ') || '');
     // v2 Boundary 3: sanitize on customer selection.
-    setPhoneNumber(sanitizePhone(chosenPhone || c.phone || ''));
+    const cleanPhone = sanitizePhone(chosenPhone || c.phone || '');
+    setPhoneNumber(cleanPhone);
     const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
     if (primaryCarrier) setCarrier(primaryCarrier);
     const mp = (c as any).monthlyPayment;
     if (mp) setAmount(String(mp));
     setSelectedKnownLines({});
     setPaidKnownLines({});
+    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the Operator bubble.
+    const phonesArr = (c as { phones?: string[] }).phones;
+    const lineCount = Array.isArray(phonesArr) && phonesArr.length > 0
+      ? phonesArr.length
+      : (c.phone ? 1 : 0);
+    emitOperatorActivity('phone.payment.customer_selected', {
+      customerId: c.id,
+      phone: cleanPhone,
+      lineCount,
+    });
   };
 
   // ── R-PHONE-AUTOFILL: typed-phone auto-fill ──────────────────────────
@@ -482,9 +511,17 @@ export default function PhonePaymentModal({
       return;
     }
     if (phoneNumber.length !== 10) return;
-    const t = setTimeout(() => lookupByPhone(phoneNumber), 500);
+    const t = setTimeout(() => {
+      lookupByPhone(phoneNumber);
+      // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the bubble after the
+      // debounce settles. Helper resolves customer + history from app
+      // state without us reading lookupByPhone's setState side-effects.
+      emitOperatorActivity('phone.payment.number_entered', {
+        phone: phoneNumber,
+      });
+    }, 500);
     return () => clearTimeout(t);
-  }, [phoneNumber, lookupByPhone]);
+  }, [phoneNumber, lookupByPhone, emitOperatorActivity]);
 
   // R-PHONE-FAMILY-MULTICUST: add a customer's line to the multi-line rows
   // without replacing the previously selected customer. Fills the first
@@ -579,6 +616,8 @@ export default function PhonePaymentModal({
 
   // ── Toggle a known line on/off ────────────────────────────
   const toggleKnownLine = (norm: string) => {
+    let didAdd = false;
+    let amtStr = '';
     setSelectedKnownLines((prev) => {
       const next = { ...prev };
       if (next[norm] !== undefined) {
@@ -589,7 +628,9 @@ export default function PhonePaymentModal({
         // for this customer), else fall back to the main amount input.
         // Empty string means truly no configured default — never auto-
         // fill 0 when a real amount exists in history or main input.
-        next[norm] = lookupHistoricalAmount(norm) || amount || '';
+        amtStr = lookupHistoricalAmount(norm) || amount || '';
+        next[norm] = amtStr;
+        didAdd = true;
         // Auto-copy to clipboard when checking a line
         autoCopyPhone(norm);
       }
@@ -600,6 +641,15 @@ export default function PhonePaymentModal({
     // selected phone numbers and forcing the cashier into the empty manual
     // multi-line UI. Per-line amount inputs in the panel (below) now let
     // multi-select work in place — no mode switch required.
+    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: only emit on add path.
+    if (didAdd) {
+      const cents = Math.round((parseFloat(amtStr) || 0) * 100);
+      emitOperatorActivity('phone.payment.known_line_selected', {
+        customerId: selectedCustomer?.id,
+        phone: norm,
+        amountCents: cents > 0 ? cents : undefined,
+      });
+    }
   };
 
   const updateKnownLineAmount = (norm: string, val: string) => {

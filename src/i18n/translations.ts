@@ -4883,6 +4883,33 @@ export const translations: TranslationDictionary = {
     pt: (name: string) => `${name} • Cliente novo nos registros.`,
   },
 
+  // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix — phone payment hints
+  'operator.hint.phonePaymentCustomerWithHistory': {
+    en: (name: string, lines: number, last: string) => `${name} • ${lines} line${lines === 1 ? '' : 's'} • Last $${last}.`,
+    es: (name: string, lines: number, last: string) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} • Último $${last}.`,
+    pt: (name: string, lines: number, last: string) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} • Último $${last}.`,
+  },
+  'operator.hint.phonePaymentCustomerNoHistory': {
+    en: (name: string, lines: number) => `${name} • ${lines} line${lines === 1 ? '' : 's'} on file.`,
+    es: (name: string, lines: number) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+    pt: (name: string, lines: number) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+  },
+  'operator.hint.phonePaymentLineSelected': {
+    en: (phone: string) => `Line ${phone} selected.`,
+    es: (phone: string) => `Línea ${phone} seleccionada.`,
+    pt: (phone: string) => `Linha ${phone} selecionada.`,
+  },
+  'operator.hint.phonePaymentLineSelectedWithHistory': {
+    en: (phone: string, last: string) => `Line ${phone} • Last payment $${last}.`,
+    es: (phone: string, last: string) => `Línea ${phone} • Último pago $${last}.`,
+    pt: (phone: string, last: string) => `Linha ${phone} • Último pagamento $${last}.`,
+  },
+  'operator.hint.phonePaymentNoHistory': {
+    en: (phone: string) => `No customer history found for ${phone}.`,
+    es: (phone: string) => `Sin historial de cliente para ${phone}.`,
+    pt: (phone: string) => `Sem histórico de cliente para ${phone}.`,
+  },
+
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
   'employee.selectEmployee':    { en: 'Select an employee to clock in',   es: 'Seleccionar Empleado',                pt: 'Selecionar Funcionário' },
