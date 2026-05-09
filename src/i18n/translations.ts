@@ -1998,6 +1998,17 @@ export const translations: TranslationDictionary = {
   },
   'pos.selectEmployeeFirst': { en: 'Select an employee before completing the sale', es: 'Selecciona un empleado antes de completar la venta', pt: 'Selecione um funcionário antes de concluir a venda' },
   'pos.cartCleared': { en: 'Cart cleared', es: 'Carrito vacío', pt: 'Carrinho esvaziado' },
+  // R-POS-CUSTOMER-QUICKEDIT-V1: cart-row "edit customer plan" button +
+  // inline modal labels.
+  'pos.cart.editCustomerPlan':         { en: 'Edit plan',                     es: 'Editar plan',                     pt: 'Editar plano' },
+  'pos.cart.editCustomerPlanTooltip':  { en: 'Update this customer’s wireless info on file', es: 'Actualizar la info wireless de este cliente', pt: 'Atualizar info wireless deste cliente' },
+  'pos.customerEdit.title':            { en: 'Edit customer plan',            es: 'Editar plan del cliente',         pt: 'Editar plano do cliente' },
+  'pos.customerEdit.carrier':          { en: 'Carrier',                       es: 'Compañía',                        pt: 'Operadora' },
+  'pos.customerEdit.plan':             { en: 'Plan',                          es: 'Plan',                            pt: 'Plano' },
+  'pos.customerEdit.monthlyPayment':   { en: 'Monthly payment ($)',           es: 'Pago mensual ($)',                pt: 'Pagamento mensal ($)' },
+  'pos.customerEdit.save':             { en: 'Save changes',                  es: 'Guardar cambios',                 pt: 'Salvar alterações' },
+  'pos.customerEdit.cancel':           { en: 'Cancel',                        es: 'Cancelar',                        pt: 'Cancelar' },
+  'pos.customerEdit.saved':            { en: 'Customer plan updated',         es: 'Plan del cliente actualizado',    pt: 'Plano do cliente atualizado' },
   'pos.resultsCount': {
     en: (n: number) => n === 1 ? '1 item found' : `${n} items found`,
     es: (n: number) => `${n} resultado(s)`,

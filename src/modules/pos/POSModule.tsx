@@ -139,6 +139,17 @@ export default function POSModule() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  // R-POS-CUSTOMER-QUICKEDIT-V1: state for the inline "Edit customer plan"
+  // modal triggered from a phone_payment cart row. The form is pre-filled
+  // from the customer record (NOT the cart item) — the cart item reflects
+  // this sale, the customer record is the persistent source of truth that
+  // we're updating. Save is immediate (per Jorge's choice C1): the
+  // customer record updates as soon as the modal confirms, regardless of
+  // whether the sale completes or cancels.
+  const [quickEditCustomerId, setQuickEditCustomerId] = useState<string | null>(null);
+  const [quickEditForm, setQuickEditForm] = useState<{ carrier: string; plan: string; monthlyPayment: string }>({
+    carrier: '', plan: '', monthlyPayment: '',
+  });
   const [showCredentialMaker, setShowCredentialMaker] = useState(false);
   const [showNotepad, setShowNotepad] = useState(false);
   const [showEstimate, setShowEstimate] = useState(false);
@@ -852,6 +863,49 @@ export default function POSModule() {
     toast(t('pos.cartCleared'), 'info');
   }, [setCart, toast, lang]);
 
+  // ── R-POS-CUSTOMER-QUICKEDIT-V1: open + save handlers for the
+  //    customer wireless quick-edit modal. Open prefills the form from
+  //    the customer record; save patches the same customer with the
+  //    edited fields and persists. Mirrors the canonical pattern in
+  //    CustomerModule (setCustomers + persist.customer with full record
+  //    spread to satisfy the `localSaveRecord OVERWRITES` contract).
+  // ────────────────────────────────────────────────────────────
+
+  const handleEditCustomerPlan = useCallback((customerId: string) => {
+    const c = customers.find((x) => x.id === customerId);
+    if (!c) return;
+    setQuickEditCustomerId(customerId);
+    setQuickEditForm({
+      carrier: String((c as { carrier?: string }).carrier ?? ''),
+      plan: String((c as { plan?: string }).plan ?? ''),
+      monthlyPayment: String((c as { monthlyPayment?: string }).monthlyPayment ?? ''),
+    });
+  }, [customers]);
+
+  const handleSaveCustomerEdit = useCallback(() => {
+    if (!quickEditCustomerId) return;
+    const idx = customers.findIndex((x) => x.id === quickEditCustomerId);
+    if (idx < 0) return;
+    const original = customers[idx];
+    const updated = {
+      ...original,
+      carrier: quickEditForm.carrier.trim() || undefined,
+      plan: quickEditForm.plan.trim() || undefined,
+      monthlyPayment: quickEditForm.monthlyPayment.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    } as Customer;
+    const next = customers.map((c, i) => (i === idx ? updated : c));
+    setCustomers(next);
+    persist.customer(updated.id, updated as unknown as Record<string, unknown>);
+    // Sync selectedCustomer too if it matches — otherwise the cart row
+    // would still show the stale carrier/plan in the customer card.
+    if (selectedCustomer && selectedCustomer.id === updated.id) {
+      setSelectedCustomer(updated);
+    }
+    setQuickEditCustomerId(null);
+    toast(t('pos.customerEdit.saved'), 'success');
+  }, [quickEditCustomerId, quickEditForm, customers, setCustomers, selectedCustomer, toast, t]);
+
   // ── Search persistence ──────────────────────────────────
 
   const handleSearchChange = useCallback(
@@ -1092,6 +1146,7 @@ export default function POSModule() {
             onCheckout={handleCartCheckout}
             onClearCart={() => setShowClearConfirm(true)}
             onSelectCustomer={() => setShowCustomerSearch(true)}
+            onEditCustomerPlan={handleEditCustomerPlan}
             settings={settings}
             lang={lang}
             L={L}
@@ -1185,6 +1240,75 @@ export default function POSModule() {
         onConfirm={handleClearCart}
         onCancel={() => setShowClearConfirm(false)}
       />
+
+      {/* R-POS-CUSTOMER-QUICKEDIT-V1: inline customer wireless quick-edit modal.
+          Fired from a phone_payment cart row. Edits carrier / plan /
+          monthlyPayment on the customer record only — does NOT touch the
+          cart item's price (Jorge's choice C1). Cashier still does the
+          per-line price override separately for this sale; next sale
+          benefits from the corrected stamped plan. */}
+      {quickEditCustomerId && (
+        <Modal
+          open
+          onClose={() => setQuickEditCustomerId(null)}
+          title={`✏️ ${t('pos.customerEdit.title')}`}
+          size="max-w-sm"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.carrier')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.carrier}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, carrier: e.target.value }))}
+                placeholder="AT&T, Verizon, T-Mobile…"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.plan')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.plan}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, plan: e.target.value }))}
+                placeholder="Unlimited Elite, Magenta MAX…"
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.monthlyPayment')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.monthlyPayment}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, monthlyPayment: e.target.value }))}
+                placeholder="35, 45, 60…"
+                inputMode="decimal"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setQuickEditCustomerId(null)}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
+                {t('pos.customerEdit.cancel')}
+              </button>
+              <button
+                onClick={handleSaveCustomerEdit}
+                className="btn btn-primary"
+                style={{ flex: 2 }}
+              >
+                {t('pos.customerEdit.save')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Customer search modal */}
       {showCustomerSearch && (

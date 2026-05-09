@@ -42,6 +42,12 @@ interface CartProps {
   onCheckout: () => void;
   onClearCart: () => void;
   onSelectCustomer: () => void;
+  // R-POS-CUSTOMER-QUICKEDIT-V1: emit when the cashier wants to edit the
+  // customer's wireless info (carrier/plan/monthlyPayment) directly from
+  // the cart row. Optional — Cart only renders the button when both the
+  // item is a phone_payment AND a customer is selected. Parent
+  // (POSModule) owns the modal + persistence so Cart stays UI-only.
+  onEditCustomerPlan?: (customerId: string) => void;
   settings: StoreSettings;
   lang: string;
   L: Record<string, any>;
@@ -67,6 +73,7 @@ export default function Cart({
   onCheckout,
   onClearCart,
   onSelectCustomer,
+  onEditCustomerPlan,
   settings,
   lang,
   L,
@@ -291,6 +298,21 @@ export default function Cart({
                 <p className="text-sm text-white font-medium truncate">{item.name}</p>
                 {item.carrier && (
                   <p className="text-xs text-blue-400">{item.carrier}</p>
+                )}
+                {/* R-POS-CUSTOMER-QUICKEDIT-V1: quick-edit button for the
+                    wireless info on the customer record. Only shown when
+                    the line is a phone_payment AND a customer is selected
+                    AND the parent supplied a handler — gracefully hidden
+                    in legacy callers that don't pass onEditCustomerPlan. */}
+                {item.category === 'phone_payment' && selectedCustomer && onEditCustomerPlan && (
+                  <button
+                    type="button"
+                    onClick={() => onEditCustomerPlan(selectedCustomer.id)}
+                    title={t('pos.cart.editCustomerPlanTooltip')}
+                    className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 text-[10px] font-semibold transition"
+                  >
+                    ✏️ {t('pos.cart.editCustomerPlan')}
+                  </button>
                 )}
               </div>
               <button
