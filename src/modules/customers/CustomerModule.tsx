@@ -45,6 +45,23 @@ export default function CustomerModule() {
   const customersRef = useRef(customers);
   useEffect(() => { customersRef.current = customers; }, [customers]);
 
+  // R-OPERATOR-VIEW-HISTORY-DIRECT-V1: open the same history modal the
+  // row action button opens, in response to the Operator bubble's "View
+  // Customer History" quick action. Listener is scoped to this module's
+  // mount — operator bubble navigates to the Customers tab first, then
+  // dispatches with a small defer so this effect has attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ customerId?: string }>).detail;
+      const cid = detail?.customerId;
+      if (!cid) return;
+      const cust = customersRef.current.find((c) => c && c.id === cid);
+      if (cust) setViewHistory(cust);
+    };
+    window.addEventListener('cellhub:open-customer-history', handler);
+    return () => window.removeEventListener('cellhub:open-customer-history', handler);
+  }, []);
+
   const [search, setSearch] = useState(customerSearchTerm || '');
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);

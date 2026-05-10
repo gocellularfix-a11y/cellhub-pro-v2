@@ -394,19 +394,22 @@ export default function FloatingOperatorBubble() {
 
   const viewCustomerHistory = useCallback(() => {
     if (!activeContext?.customerId) return;
-    const cust = customers.find((c) => c && c.id === activeContext.customerId);
-    if (!cust) return;
-    // Mirrors the existing BarcodeActionModal pattern: prefer the
-    // unique customerNumber, fall back to name, fall back to phone.
-    // Cero CustomerModule refactor — reuses the global search filter.
-    const term = (cust as { customerNumber?: string }).customerNumber
-      || cust.name
-      || cust.phone
-      || '';
-    if (term) dispatch({ type: 'SET_GLOBAL_SEARCH', payload: term });
-    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
+    const customerId = activeContext.customerId;
     setIsOverlayOpen(false);
-  }, [activeContext, customers, dispatch]);
+    // R-OPERATOR-VIEW-HISTORY-DIRECT-V1: open the actual history modal
+    // instead of just filtering the customers list. Navigate to the
+    // Customers tab so CustomerModule mounts, then dispatch the open
+    // event with a small defer (same 80 ms timing BarcodeActionModal
+    // uses for goToReturns) so the listener has attached.
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
+    setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:open-customer-history', {
+          detail: { customerId },
+        }));
+      } catch { /* environments without CustomEvent — silent */ }
+    }, 80);
+  }, [activeContext, dispatch]);
 
   const clearContext = useCallback(() => {
     setActiveContext(null);

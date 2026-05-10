@@ -1,12 +1,20 @@
 // ============================================================
-// CellHub Pro — Receipt Barcode Payload (R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1)
-// Pure logic. Builds + parses the structured payload encoded into
-// the receipt barcode so a scan can recover both the sale reference
-// and (when present) the customer reference.
+// CellHub Pro — Receipt Barcode Payload
+// Lineage:
+//   R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1   — original CHP|SALE|... format
+//   R-RECEIPT-BARCODE-PAGEWIDTH-FIX (this)    — payload shortened to
+//     CHP|S|{invoiceNumber} so the printed CODE128 fits the 4×6 page
+//     header without forcing horizontal overflow. Customer link is
+//     resolved POST-scan via sale.customerId — no longer encoded.
 //
-// Format:
-//   CHP|SALE|{invoiceNumber}                    — walk-in sale
-//   CHP|SALE|{invoiceNumber}|CUST|{customerId}  — sale linked to a customer
+// Active emission format (this round):
+//   CHP|S|{invoiceNumber}                       — short, page-fits
+//
+// Parser still accepts (backward compatibility — old printed receipts):
+//   CHP|S|{invoiceNumber}                       — current short form
+//   CHP|SALE|{invoiceNumber}                    — V1 long form
+//   CHP|SALE|{invoiceNumber}|CUST|{customerId}  — V1 long with customer
+//   {invoiceNumber}                             — pre-V1 raw form
 //
 // Constraints:
 //   - Privacy: only IDs travel in the barcode. Names, phones, emails,
@@ -14,19 +22,24 @@
 //   - Stability: the sale reference is the human-readable invoiceNumber
 //     (e.g. "INV-20260509-1234"), matching the existing in-memory sale
 //     lookup so the scan path needs no new index.
-//   - Backward compat: parser accepts a bare legacy invoice number with
-//     no pipes — old printed receipts keep working.
 // ============================================================
 
 import type { Sale } from '@/store/types';
 
 const PREFIX = 'CHP';
-const KIND_SALE = 'SALE';
-const KIND_CUSTOMER = 'CUST';
+const KIND_SALE_SHORT = 'S';      // emitted form
+const KIND_SALE = 'SALE';         // legacy parser-accept
+const KIND_CUSTOMER = 'CUST';     // legacy parser-accept
 const SEP = '|';
 
 /**
  * Encode a sale into the canonical receipt barcode payload.
+ *
+ * Active emission is the SHORT form CHP|S|{invoiceNumber} so the
+ * printed CODE128 fits comfortably inside the 4×6 receipt header
+ * column. Customer linkage is recovered post-scan via the looked-up
+ * sale's customerId field — no need to encode it inside the barcode.
+ *
  * Falls back to the internal sale id if invoiceNumber is somehow
  * missing — the resulting payload still parses and looks up.
  */
@@ -34,10 +47,7 @@ export function buildReceiptBarcodePayload(sale: Pick<Sale, 'invoiceNumber' | 'i
   if (!sale) return '';
   const ref = (sale.invoiceNumber && sale.invoiceNumber.trim()) || sale.id || '';
   if (!ref) return '';
-  if (sale.customerId && sale.customerId.trim()) {
-    return [PREFIX, KIND_SALE, ref, KIND_CUSTOMER, sale.customerId.trim()].join(SEP);
-  }
-  return [PREFIX, KIND_SALE, ref].join(SEP);
+  return [PREFIX, KIND_SALE_SHORT, ref].join(SEP);
 }
 
 export interface ParsedReceiptBarcode {
@@ -52,39 +62,47 @@ export interface ParsedReceiptBarcode {
 }
 
 /**
- * Decode a scanned barcode value.
+ * Decode a scanned barcode value. Forward-compatible across all
+ * historical receipt formats so reprints from older receipts keep
+ * resolving to a sale:
+ *
+ *   CHP|S|{invoiceNumber}                       — current short form
+ *   CHP|SALE|{invoiceNumber}                    — V1 long form
+ *   CHP|SALE|{invoiceNumber}|CUST|{customerId}  — V1 with customer
+ *   {invoiceNumber}                             — pre-V1 raw form
  *
  * Returns:
- *   - parsed payload when the value is the structured CHP|SALE|... format
- *   - parsed payload with structured=false when the value is a bare legacy
- *     invoice number (no pipes) — saleRef is the raw value as scanned
+ *   - parsed payload with structured=true for any CHP|... format
+ *   - parsed payload with structured=false for bare invoice values
  *   - null when the value is empty or otherwise unparseable
- *
- * The parser is intentionally permissive on the legacy path so old
- * receipts printed before this round still resolve to a sale.
  */
 export function parseReceiptBarcodePayload(value: string | null | undefined): ParsedReceiptBarcode | null {
   if (!value) return null;
   const raw = String(value).trim();
   if (!raw) return null;
 
-  // Legacy (bare) format — the receipt barcode used to encode invoiceNumber
-  // directly. No pipes => treat the whole string as saleRef.
+  // Bare (pre-V1) format — no pipes, treat the whole string as saleRef.
   if (!raw.includes(SEP)) {
     return { saleRef: raw, raw, structured: false };
   }
 
   const parts = raw.split(SEP);
   if (parts.length < 3) return null;
-  if (parts[0] !== PREFIX || parts[1] !== KIND_SALE) return null;
+  if (parts[0] !== PREFIX) return null;
+
+  const kind = parts[1];
+  // Accept both the current short kind ('S') and the legacy long kind ('SALE').
+  if (kind !== KIND_SALE_SHORT && kind !== KIND_SALE) return null;
+
   const saleRef = (parts[2] || '').trim();
   if (!saleRef) return null;
 
   const out: ParsedReceiptBarcode = { saleRef, raw, structured: true };
 
-  // Optional CUST segment. Order is fixed (CHP|SALE|ref[|CUST|id]) so
-  // we look at parts[3]/[4] explicitly rather than scanning for the tag.
-  if (parts[3] === KIND_CUSTOMER && parts[4]) {
+  // Legacy CUST segment (V1 long with customer). Only meaningful when
+  // kind is 'SALE'; we ignore it on 'S' since the short form never
+  // emits it. Order is fixed: CHP|SALE|ref|CUST|id.
+  if (kind === KIND_SALE && parts[3] === KIND_CUSTOMER && parts[4]) {
     const cid = parts[4].trim();
     if (cid) out.customerId = cid;
   }
@@ -92,8 +110,13 @@ export function parseReceiptBarcodePayload(value: string | null | undefined): Pa
   return out;
 }
 
-/** Quick check used by the scanner router to short-circuit on the new format. */
+/** Quick check used by the scanner router to short-circuit on any
+ *  structured CHP|S|... or CHP|SALE|... format. */
 export function isStructuredReceiptBarcode(value: string | null | undefined): boolean {
   if (!value) return false;
-  return String(value).trim().startsWith(`${PREFIX}${SEP}${KIND_SALE}${SEP}`);
+  const trimmed = String(value).trim();
+  return (
+    trimmed.startsWith(`${PREFIX}${SEP}${KIND_SALE_SHORT}${SEP}`)
+    || trimmed.startsWith(`${PREFIX}${SEP}${KIND_SALE}${SEP}`)
+  );
 }

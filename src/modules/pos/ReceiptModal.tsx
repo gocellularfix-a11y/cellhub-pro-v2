@@ -693,16 +693,21 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head><body>
-  <!-- Header: store left, barcode right -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:5px">
-    <div>
-      <div style="font-size:18px;font-weight:900;line-height:1;letter-spacing:0.02em">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
-      <div style="font-size:10px;font-weight:500">${escHtml(settings.storeAddress || '')}</div>
-      <div style="font-size:10px;font-weight:500">${escHtml(settings.storePhone || '')}</div>
+  <!-- Header: store left, barcode right.
+       R-RECEIPT-BARCODE-PAGEWIDTH-FIX: every flex item has min-width:0
+       so an oversized child (long store name, dense barcode) cannot
+       force the parent past the 4 in page. Right column flex:0 1 1.9in
+       lets it shrink instead of pushing layout. overflow:hidden +
+       box-sizing:border-box clamp every level against the page. -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:5px;overflow:hidden">
+    <div style="flex:1 1 auto;min-width:0;overflow:hidden">
+      <div style="font-size:18px;font-weight:900;line-height:1;letter-spacing:0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeAddress || '')}</div>
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storePhone || '')}</div>
     </div>
-    <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;width:2.8in;overflow:hidden;display:block">
+    <div style="text-align:right;flex:0 1 1.9in;min-width:0;max-width:1.9in;overflow:hidden;display:block;box-sizing:border-box">
       ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="width:100%;max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:12px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.08em;text-align:center;margin-top:3px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
+      <div style="font-size:11px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.06em;text-align:center;margin-top:3px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
     </div>
   </div>
 
