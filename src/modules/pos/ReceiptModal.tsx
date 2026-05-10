@@ -60,8 +60,12 @@ export function renderBarcodeSvg(value: string): string {
   if (!value) return '';
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    // R-RECEIPT-BARCODE-WIDTH-FIX: width 1.0 → 0.8 so the structured
+    // CHP|SALE|...|CUST|... payload (~45 chars) fits inside the 4×6
+    // receipt's printable area without overflowing on screen preview
+    // OR thermal print. CODE128 still scans cleanly at 0.8 × 203 DPI.
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.0, height: 28,
+      format: 'CODE128', width: 0.8, height: 26,
       displayValue: false, margin: 1,
       background: '#ffffff', lineColor: '#000000',
     });
@@ -696,9 +700,9 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       <div style="font-size:10px;font-weight:500">${escHtml(settings.storeAddress || '')}</div>
       <div style="font-size:10px;font-weight:500">${escHtml(settings.storePhone || '')}</div>
     </div>
-    <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;overflow:hidden">
-      ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:13px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.09em;text-align:center;margin-top:4px;color:#000">${escHtml(sale.invoiceNumber)}</div>
+    <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;width:2.8in;overflow:hidden;display:block">
+      ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="width:100%;max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
+      <div style="font-size:12px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.08em;text-align:center;margin-top:3px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
     </div>
   </div>
 

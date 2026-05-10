@@ -72,6 +72,22 @@ export interface OperatorHint {
  */
 export const OPERATOR_ACTIVITY_EVENT = 'cellhub:operator-activity';
 
+// ── Active context (R-OPERATOR-ACTIVITY-CONTEXT-V1) ───────
+// The bubble keeps a longer-lived "what is the cashier working on
+// right now?" state that survives the hint's auto-dismiss timer.
+// Hints are short-lived nudges; activeContext is the persistent
+// reference the overlay reads when the user explicitly opens it.
+export interface OperatorActiveContext {
+  contextType: 'phone_payment' | 'customer' | 'sale' | 'layaway' | 'repair';
+  customerId?: string;
+  phone?: string;
+  lineCount?: number;
+  amountCents?: number;
+  lastPaymentCents?: number;
+  /** ms epoch — tells the bubble "I last touched this at T". */
+  updatedAt: number;
+}
+
 export interface OperatorActivityEventDetail {
   type:
     | 'layaway.opened'
@@ -512,6 +528,148 @@ export function computeHintFromEvent(
       args: [shortName(cust)],
       severity: 'info',
     };
+  }
+
+  return null;
+}
+
+// ── Active context derivation (R-OPERATOR-ACTIVITY-CONTEXT-V1) ──
+
+/**
+ * Translate a bridge event into a persistent context snapshot. Returns
+ * null when the event doesn't carry enough signal to be context-worthy
+ * (e.g. number_entered for a number with no customer match — caller
+ * should keep any prior context instead of clobbering it with a
+ * "watching unknown number" placeholder).
+ */
+export function computeOperatorContextFromEvent(
+  detail: OperatorActivityEventDetail | null | undefined,
+  inputs: OperatorActivityInputs,
+): OperatorActiveContext | null {
+  if (!detail || !detail.type) return null;
+  const payload = detail.payload || {};
+  const now = Date.now();
+
+  // Customer-anchored phone-payment events.
+  if (
+    detail.type === 'phone.payment.customer_selected'
+    || detail.type === 'phone.payment.customer_created'
+    || detail.type === 'phone.payment.customer_updated'
+  ) {
+    if (!payload.customerId) return null;
+    const cust = findCustomer(inputs.customers, payload.customerId);
+    if (!cust) return null;
+    const lines = typeof payload.lineCount === 'number' && payload.lineCount > 0
+      ? payload.lineCount : lineCountFor(cust);
+    const lastCents = payload.phone
+      ? lastPhonePaymentCentsForNumber(inputs.sales, payload.phone) : null;
+    return {
+      contextType: 'phone_payment',
+      customerId: cust.id,
+      phone: payload.phone,
+      lineCount: lines,
+      lastPaymentCents: lastCents !== null && lastCents > 0 ? lastCents : undefined,
+      updatedAt: now,
+    };
+  }
+
+  if (detail.type === 'phone.payment.known_line_selected' && payload.phone) {
+    const lastCents = lastPhonePaymentCentsForNumber(inputs.sales, payload.phone);
+    return {
+      contextType: 'phone_payment',
+      customerId: payload.customerId,
+      phone: payload.phone,
+      amountCents: payload.amountCents,
+      lastPaymentCents: lastCents !== null && lastCents > 0 ? lastCents : undefined,
+      updatedAt: now,
+    };
+  }
+
+  if (detail.type === 'phone.payment.number_entered' && payload.phone) {
+    const cust = payload.customerId
+      ? findCustomer(inputs.customers, payload.customerId)
+      : findCustomerByPhone(inputs.customers, payload.phone);
+    if (!cust) return null; // unknown number — preserve any prior context
+    const lastCents = lastPhonePaymentCentsForNumber(inputs.sales, payload.phone);
+    return {
+      contextType: 'phone_payment',
+      customerId: cust.id,
+      phone: payload.phone,
+      lineCount: lineCountFor(cust),
+      lastPaymentCents: lastCents !== null && lastCents > 0 ? lastCents : undefined,
+      updatedAt: now,
+    };
+  }
+
+  if (detail.type === 'phone.payment.payment_recorded' && payload.phone) {
+    return {
+      contextType: 'phone_payment',
+      customerId: payload.customerId,
+      phone: payload.phone,
+      amountCents: payload.amountCents,
+      updatedAt: now,
+    };
+  }
+
+  // Module-local entity contexts dispatched from future emitters.
+  if (detail.type === 'layaway.opened' && payload.layawayId) {
+    return { contextType: 'layaway', updatedAt: now };
+  }
+  if (detail.type === 'repair.opened' && payload.repairId) {
+    return { contextType: 'repair', updatedAt: now };
+  }
+  if (detail.type === 'customer.history_opened' && payload.customerId) {
+    return { contextType: 'customer', customerId: payload.customerId, updatedAt: now };
+  }
+
+  return null;
+}
+
+/**
+ * Derive context from already-loaded global state. Used to seed
+ * context when the cashier arrives at a tab via barcode-scan etc.
+ * Same priority chain as computeHintFromGlobalState — most specific
+ * signal wins.
+ */
+export function computeOperatorContextFromGlobalState(
+  inputs: OperatorActivityInputs,
+): OperatorActiveContext | null {
+  const now = Date.now();
+
+  if (inputs.pendingBarcodeInvoice) {
+    const sale = findSaleByInvoice(inputs.sales, inputs.pendingBarcodeInvoice);
+    if (sale) {
+      return {
+        contextType: 'sale',
+        customerId: sale.customerId,
+        amountCents: sale.total || 0,
+        updatedAt: now,
+      };
+    }
+  }
+
+  if (inputs.pendingPhonePaymentCustomerId) {
+    const cust = findCustomer(inputs.customers, inputs.pendingPhonePaymentCustomerId);
+    if (cust) {
+      return {
+        contextType: 'phone_payment',
+        customerId: cust.id,
+        phone: cust.phone,
+        lineCount: lineCountFor(cust),
+        updatedAt: now,
+      };
+    }
+  }
+
+  if (Array.isArray(inputs.cart) && inputs.cart.length > 0 && inputs.pendingPosCustomer) {
+    const cust = findCustomer(inputs.customers, inputs.pendingPosCustomer);
+    if (cust) {
+      return {
+        contextType: 'customer',
+        customerId: cust.id,
+        updatedAt: now,
+      };
+    }
   }
 
   return null;

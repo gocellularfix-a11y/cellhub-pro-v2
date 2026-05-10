@@ -19,7 +19,10 @@ import { useTranslation } from '@/i18n';
 import {
   computeHintFromEvent,
   computeHintFromGlobalState,
+  computeOperatorContextFromEvent,
+  computeOperatorContextFromGlobalState,
   OPERATOR_ACTIVITY_EVENT,
+  type OperatorActiveContext,
   type OperatorActivityEventDetail,
   type OperatorActivityInputs,
   type OperatorBubbleState,
@@ -148,6 +151,12 @@ export default function FloatingOperatorBubble() {
   const [enabled, setEnabled] = useState<boolean>(() => loadEnabled());
   const [bubbleState, setBubbleState] = useState<OperatorBubbleState>('sleeping');
   const [hint, setHint] = useState<OperatorHint | null>(null);
+  // R-OPERATOR-ACTIVITY-CONTEXT-V1: persistent context survives the
+  // hint's auto-dismiss timer so the overlay still has something useful
+  // to show when the cashier opens it minutes after the original ping.
+  const [activeContext, setActiveContext] = useState<OperatorActiveContext | null>(null);
+  // Brief "Copied!" flash after the Copy-Phone quick action.
+  const [copiedFlash, setCopiedFlash] = useState(false);
 
   // ── Overlay (V2) ───────────────────────────────────────
   // Replaces the V1-AWARE right-click menu. Toggled by left-click
@@ -252,6 +261,7 @@ export default function FloatingOperatorBubble() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (dismissRef.current)  clearTimeout(dismissRef.current);
       setHint(null);
+      setActiveContext(null);
       setBubbleState('sleeping');
     }
   }, [enabled]);
@@ -261,6 +271,13 @@ export default function FloatingOperatorBubble() {
     if (!enabled) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (dismissRef.current)  clearTimeout(dismissRef.current);
+
+    // Context derivation runs alongside the hint pipeline. Returns null
+    // when global state doesn't carry a context-worthy signal — in that
+    // case we keep the prior context (user may still be working on it
+    // even though no fresh ping is firing).
+    const ctx = computeOperatorContextFromGlobalState(inputs);
+    if (ctx) setActiveContext(ctx);
 
     const next = computeHintFromGlobalState(inputs);
     if (!next) {
@@ -290,6 +307,12 @@ export default function FloatingOperatorBubble() {
     if (!enabled) return;
     const onActivity = (e: Event) => {
       const detail = (e as CustomEvent<OperatorActivityEventDetail>).detail;
+      // Context first — independent of hint, longer-lived. Helper
+      // returns null when the event lacks context-worthy signal (e.g.
+      // unknown phone number) so prior context is preserved.
+      const ctx = computeOperatorContextFromEvent(detail || null, inputsRef.current);
+      if (ctx) setActiveContext(ctx);
+
       const next = computeHintFromEvent(detail || null, inputsRef.current);
       if (!next) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -356,6 +379,37 @@ export default function FloatingOperatorBubble() {
     setPosition(next);
     try { localStorage.removeItem(POSITION_KEY); } catch { /* ignore */ }
     setIsOverlayOpen(false);
+  }, []);
+
+  // R-OPERATOR-ACTIVITY-CONTEXT-V1 quick actions ────────────
+  const copyContextPhone = useCallback(() => {
+    const phone = activeContext?.phone || '';
+    if (!phone) return;
+    try {
+      void navigator.clipboard?.writeText(phone);
+      setCopiedFlash(true);
+      setTimeout(() => setCopiedFlash(false), 1500);
+    } catch { /* clipboard unavailable — silent */ }
+  }, [activeContext]);
+
+  const viewCustomerHistory = useCallback(() => {
+    if (!activeContext?.customerId) return;
+    const cust = customers.find((c) => c && c.id === activeContext.customerId);
+    if (!cust) return;
+    // Mirrors the existing BarcodeActionModal pattern: prefer the
+    // unique customerNumber, fall back to name, fall back to phone.
+    // Cero CustomerModule refactor — reuses the global search filter.
+    const term = (cust as { customerNumber?: string }).customerNumber
+      || cust.name
+      || cust.phone
+      || '';
+    if (term) dispatch({ type: 'SET_GLOBAL_SEARCH', payload: term });
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
+    setIsOverlayOpen(false);
+  }, [activeContext, customers, dispatch]);
+
+  const clearContext = useCallback(() => {
+    setActiveContext(null);
   }, []);
 
   // ── Render decisions ───────────────────────────────────
@@ -628,19 +682,120 @@ export default function FloatingOperatorBubble() {
             </span>
           </div>
 
-          {/* Hint body */}
-          <div style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: `1px solid ${hintText ? stateColor(bubbleState) + '55' : 'rgba(148,163,184,0.18)'}`,
-            borderRadius: '0.5rem',
-            padding: '0.55rem 0.65rem',
-            fontSize: '0.82rem',
-            lineHeight: 1.4,
-            color: hintText ? '#e2e8f0' : '#94a3b8',
-            minHeight: '2.6rem',
-          }}>
-            {hintText || (enabled ? t('operator.overlay.noHint') : t('operator.menu.hintsOff'))}
-          </div>
+          {/* Body — priority: context block > hint > placeholder */}
+          {activeContext ? (() => {
+            const ctxCust = activeContext.customerId
+              ? customers.find((c) => c && c.id === activeContext.customerId) || null
+              : null;
+            const ctxName = ctxCust
+              ? (`${ctxCust.firstName || ''} ${ctxCust.lastName || ''}`.trim() || ctxCust.name || '')
+              : '';
+            const titleKey = `operator.context.title.${activeContext.contextType}`;
+            const phoneFmt = activeContext.phone || '';
+            const lines = activeContext.lineCount;
+            const last = activeContext.lastPaymentCents;
+            const cur = activeContext.amountCents;
+            return (
+              <div style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: `1px solid ${stateColor(bubbleState)}55`,
+                borderRadius: '0.5rem',
+                padding: '0.6rem 0.7rem',
+                display: 'flex', flexDirection: 'column', gap: '0.25rem',
+              }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {t(titleKey)}
+                </div>
+                {ctxName && (
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>{ctxName}</div>
+                )}
+                {phoneFmt && (
+                  <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontFamily: 'Courier New, monospace' }}>
+                    📞 {phoneFmt}
+                  </div>
+                )}
+                {typeof lines === 'number' && lines > 0 && (
+                  <div style={{ fontSize: '0.78rem', color: '#a5b4fc' }}>
+                    {(t as (k: string, ...a: Array<string | number>) => string)('operator.context.linesOnFile', lines)}
+                  </div>
+                )}
+                {typeof last === 'number' && last > 0 && (
+                  <div style={{ fontSize: '0.78rem', color: '#34d399' }}>
+                    {(t as (k: string, ...a: Array<string | number>) => string)('operator.context.lastPayment', (last / 100).toFixed(2))}
+                  </div>
+                )}
+                {typeof cur === 'number' && cur > 0 && (
+                  <div style={{ fontSize: '0.78rem', color: '#fbbf24' }}>
+                    {(t as (k: string, ...a: Array<string | number>) => string)('operator.context.currentAmount', (cur / 100).toFixed(2))}
+                  </div>
+                )}
+                {hintText && (
+                  <div style={{ marginTop: '0.3rem', paddingTop: '0.3rem', borderTop: '1px dashed rgba(255,255,255,0.08)', fontSize: '0.78rem', color: '#cbd5e1', fontStyle: 'italic' }}>
+                    {hintText}
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: `1px solid ${hintText ? stateColor(bubbleState) + '55' : 'rgba(148,163,184,0.18)'}`,
+              borderRadius: '0.5rem',
+              padding: '0.55rem 0.65rem',
+              fontSize: '0.82rem',
+              lineHeight: 1.4,
+              color: hintText ? '#e2e8f0' : '#94a3b8',
+              minHeight: '2.6rem',
+            }}>
+              {hintText || (enabled ? t('operator.overlay.watching') : t('operator.menu.hintsOff'))}
+            </div>
+          )}
+
+          {/* Context-aware quick actions — only when context exists */}
+          {activeContext && (activeContext.phone || activeContext.customerId) && (
+            <div style={{ display: 'flex', gap: '0.35rem' }}>
+              {activeContext.phone && (
+                <button
+                  type="button"
+                  onClick={copyContextPhone}
+                  style={{
+                    flex: 1,
+                    textAlign: 'center',
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '0.45rem',
+                    background: copiedFlash ? 'rgba(34,197,94,0.18)' : 'rgba(56,189,248,0.10)',
+                    border: `1px solid ${copiedFlash ? 'rgba(34,197,94,0.4)' : 'rgba(56,189,248,0.3)'}`,
+                    color: copiedFlash ? '#86efac' : '#7dd3fc',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {copiedFlash ? `✓ ${t('operator.action.copyPhoneDone')}` : `📋 ${t('operator.action.copyPhone')}`}
+                </button>
+              )}
+              {activeContext.customerId && (
+                <button
+                  type="button"
+                  onClick={viewCustomerHistory}
+                  style={{
+                    flex: 1,
+                    textAlign: 'center',
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '0.45rem',
+                    background: 'rgba(167,139,250,0.10)',
+                    border: '1px solid rgba(167,139,250,0.3)',
+                    color: '#c4b5fd',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  📋 {t('operator.action.viewHistory')}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Action: open full Intelligence */}
           <button
@@ -700,6 +855,26 @@ export default function FloatingOperatorBubble() {
               }}
             >
               ✕ {t('operator.menu.dismiss')}
+            </button>
+          )}
+
+          {/* Action: clear persistent context (only when one is active) */}
+          {activeContext && (
+            <button
+              type="button"
+              onClick={clearContext}
+              style={{
+                textAlign: 'left',
+                padding: '0.45rem 0.65rem',
+                borderRadius: '0.5rem',
+                background: 'rgba(148,163,184,0.08)',
+                border: '1px solid rgba(148,163,184,0.2)',
+                color: '#cbd5e1',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              ⌫ {t('operator.action.clearContext')}
             </button>
           )}
 

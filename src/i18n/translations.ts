@@ -4835,6 +4835,33 @@ export const translations: TranslationDictionary = {
   'operator.overlay.statusPrefix':  { en: 'Status',           es: 'Estado',                pt: 'Status' },
   'operator.overlay.noHint':        { en: 'No hint right now. The Operator is watching for activity.', es: 'Sin avisos por ahora. El Operador observa actividad.', pt: 'Sem dicas no momento. O Operador está observando atividade.' },
   'operator.overlay.resetPosition': { en: 'Reset position',   es: 'Restablecer posición',  pt: 'Redefinir posição' },
+  'operator.overlay.watching':      { en: 'Watching this screen.', es: 'Observando esta pantalla.', pt: 'Observando esta tela.' },
+
+  // R-OPERATOR-ACTIVITY-CONTEXT-V1 — persistent context block
+  'operator.context.title.phonePayment': { en: 'Working on phone payment', es: 'Trabajando en pago de teléfono', pt: 'Trabalhando em pagamento de telefone' },
+  'operator.context.title.customer':     { en: 'Working with customer',    es: 'Trabajando con cliente',         pt: 'Trabalhando com cliente' },
+  'operator.context.title.sale':         { en: 'Reviewing sale',           es: 'Revisando venta',                pt: 'Revisando venda' },
+  'operator.context.title.layaway':      { en: 'Reviewing layaway',        es: 'Revisando apartado',             pt: 'Revisando layaway' },
+  'operator.context.title.repair':       { en: 'Reviewing repair',         es: 'Revisando reparación',           pt: 'Revisando reparo' },
+  'operator.context.linesOnFile': {
+    en: (n: number) => `${n} line${n === 1 ? '' : 's'} on file`,
+    es: (n: number) => `${n} línea${n === 1 ? '' : 's'} registrada${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} linha${n === 1 ? '' : 's'} registrada${n === 1 ? '' : 's'}`,
+  },
+  'operator.context.lastPayment': {
+    en: (a: string) => `Last payment $${a}`,
+    es: (a: string) => `Último pago $${a}`,
+    pt: (a: string) => `Último pagamento $${a}`,
+  },
+  'operator.context.currentAmount': {
+    en: (a: string) => `Selected amount $${a}`,
+    es: (a: string) => `Monto seleccionado $${a}`,
+    pt: (a: string) => `Valor selecionado $${a}`,
+  },
+  'operator.action.copyPhone':       { en: 'Copy phone',           es: 'Copiar teléfono',         pt: 'Copiar telefone' },
+  'operator.action.copyPhoneDone':   { en: 'Copied!',              es: '¡Copiado!',               pt: 'Copiado!' },
+  'operator.action.viewHistory':     { en: 'View customer history', es: 'Ver historial del cliente', pt: 'Ver histórico do cliente' },
+  'operator.action.clearContext':    { en: 'Clear context',        es: 'Limpiar contexto',        pt: 'Limpar contexto' },
   'operator.status.sleeping':  { en: 'Idle',              es: 'En reposo',         pt: 'Em repouso' },
   'operator.status.watching':  { en: 'Watching activity', es: 'Observando',        pt: 'Observando' },
   'operator.status.thinking':  { en: 'Thinking…',         es: 'Pensando…',         pt: 'Pensando…' },
