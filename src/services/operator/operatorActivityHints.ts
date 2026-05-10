@@ -40,6 +40,10 @@ export type OperatorHintKind =
   | 'phone_payment_customer_selected'
   | 'phone_payment_line_selected'
   | 'phone_payment_number_no_match'
+  | 'phone_payment_customer_created'
+  | 'phone_payment_customer_updated'
+  | 'phone_payment_recorded'
+  | 'phone_payment_number_linked'
   | 'pos_cart_with_customer'
   | 'sale_scanned'
   | 'layaway_open'
@@ -76,6 +80,13 @@ export interface OperatorActivityEventDetail {
     | 'phone.payment.customer_selected'
     | 'phone.payment.known_line_selected'
     | 'phone.payment.number_entered'
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1 — outcome events fired AFTER
+    // a successful save/persist. Consumed by computeHintFromEvent to
+    // surface short next-step confirmations.
+    | 'phone.payment.customer_created'
+    | 'phone.payment.customer_updated'
+    | 'phone.payment.payment_recorded'
+    | 'phone.payment.number_linked_to_customer'
     | string; // forward-compat
   payload?: {
     // Generic IDs / values reused across event types. Always minimal —
@@ -431,6 +442,52 @@ export function computeHintFromEvent(
     return {
       kind: 'phone_payment_number_no_match',
       i18nKey: 'operator.hint.phonePaymentNoHistory',
+      args: [payload.phone],
+      severity: 'info',
+    };
+  }
+
+  // ── Phone-payment outcome events (R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1)
+  // Fired by PhonePaymentModal after a successful save/persist. These
+  // win priority over typing/no-history hints by virtue of arriving
+  // later — the bubble's bridge listener clears any in-flight debounce
+  // / dismiss timers before processing the new event.
+
+  if (detail.type === 'phone.payment.customer_created' && payload.customerId) {
+    const cust = findCustomer(inputs.customers, payload.customerId);
+    if (!cust) return null;
+    return {
+      kind: 'phone_payment_customer_created',
+      i18nKey: 'operator.hint.phonePaymentCustomerCreated',
+      args: [shortName(cust)],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'phone.payment.customer_updated' && payload.customerId) {
+    const cust = findCustomer(inputs.customers, payload.customerId);
+    if (!cust) return null;
+    return {
+      kind: 'phone_payment_customer_updated',
+      i18nKey: 'operator.hint.phonePaymentCustomerUpdated',
+      args: [shortName(cust)],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'phone.payment.payment_recorded' && payload.phone) {
+    return {
+      kind: 'phone_payment_recorded',
+      i18nKey: 'operator.hint.phonePaymentRecorded',
+      args: [payload.phone],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'phone.payment.number_linked_to_customer' && payload.phone) {
+    return {
+      kind: 'phone_payment_number_linked',
+      i18nKey: 'operator.hint.phonePaymentNumberLinked',
       args: [payload.phone],
       severity: 'info',
     };

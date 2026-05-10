@@ -4910,6 +4910,28 @@ export const translations: TranslationDictionary = {
     pt: (phone: string) => `Sem histórico de cliente para ${phone}.`,
   },
 
+  // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1 — outcome confirmations
+  'operator.hint.phonePaymentCustomerCreated': {
+    en: (name: string) => `${name} saved. I'll recognize this number next time.`,
+    es: (name: string) => `${name} guardado. Reconoceré este número la próxima vez.`,
+    pt: (name: string) => `${name} salvo. Reconhecerei este número da próxima vez.`,
+  },
+  'operator.hint.phonePaymentCustomerUpdated': {
+    en: (name: string) => `${name} updated with this phone.`,
+    es: (name: string) => `${name} actualizado con este teléfono.`,
+    pt: (name: string) => `${name} atualizado com este telefone.`,
+  },
+  'operator.hint.phonePaymentRecorded': {
+    en: (phone: string) => `Payment recorded. ${phone} now has history.`,
+    es: (phone: string) => `Pago registrado. ${phone} ya tiene historial.`,
+    pt: (phone: string) => `Pagamento registrado. ${phone} agora tem histórico.`,
+  },
+  'operator.hint.phonePaymentNumberLinked': {
+    en: (phone: string) => `Number ${phone} linked to customer.`,
+    es: (phone: string) => `Número ${phone} vinculado al cliente.`,
+    pt: (phone: string) => `Número ${phone} vinculado ao cliente.`,
+  },
+
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
   'employee.selectEmployee':    { en: 'Select an employee to clock in',   es: 'Seleccionar Empleado',                pt: 'Selecionar Funcionário' },

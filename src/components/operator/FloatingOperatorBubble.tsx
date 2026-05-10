@@ -13,7 +13,7 @@
 // into Intelligence via the overlay's "Open Full Intelligence" button.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import {
@@ -126,6 +126,15 @@ export default function FloatingOperatorBubble() {
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
   } = state;
   const { t } = useTranslation();
+
+  // R-OPERATOR-BRAIN-SVG: SVG <defs> ids must be globally unique. useId()
+  // returns a stable per-instance string; we sanitise out non-id-safe
+  // characters (React 18 emits ':' which CSS url() references tolerate
+  // in evergreen browsers but not in older renderers). One ID derived
+  // here covers both gradients in the inline brain glyph below.
+  const reactInstanceId = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const brainFillId = `brainFill-${reactInstanceId}`;
+  const brainSheenId = `brainSheen-${reactInstanceId}`;
 
   // ── Position + drag ────────────────────────────────────
   const [position, setPosition] = useState<Position>(() =>
@@ -418,7 +427,6 @@ export default function FloatingOperatorBubble() {
             ? '0 0 24px rgba(139,92,246,0.4), 0 8px 16px rgba(0,0,0,0.45)'
             : '0 6px 18px rgba(0,0,0,0.45)',
           color: '#e2e8f0',
-          fontSize: '2.2rem',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           touchAction: 'none',
@@ -432,7 +440,69 @@ export default function FloatingOperatorBubble() {
           animation: showBreath ? 'cellhubOperatorBreath 4s ease-in-out infinite' : 'none',
         }}
       >
-        <span aria-hidden="true" style={{ pointerEvents: 'none', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}>🧠</span>
+        <svg
+          aria-hidden="true"
+          width="38"
+          height="38"
+          viewBox="0 0 38 38"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ pointerEvents: 'none', display: 'block', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
+        >
+          <defs>
+            <radialGradient id={brainFillId} cx="42%" cy="35%" r="62%">
+              <stop offset="0%" stopColor="#a78bfa" />
+              <stop offset="50%" stopColor="#7c3aed" />
+              <stop offset="100%" stopColor="#4c1d95" />
+            </radialGradient>
+            <radialGradient id={brainSheenId} cx="32%" cy="22%" r="45%">
+              <stop offset="0%" stopColor="#ede9fe" stopOpacity="0.55" />
+              <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Left hemisphere */}
+          <path
+            d="M17 9.5 C16 7 12.5 6.5 11.5 9 C10.5 6.5 7.5 7 7 9.5 C5.5 10 5 12.5 6.5 13.5 C5.5 14.5 5.5 17 7 17.5 C6.5 19.5 8 21.5 10 21 C10.5 22.5 12.5 23 14 21.5 C15 22.5 17 22 17.5 20.5 L17.5 9.5 Z"
+            fill={`url(#${brainFillId})`}
+          />
+          {/* Right hemisphere */}
+          <path
+            d="M21 9.5 C22 7 25.5 6.5 26.5 9 C27.5 6.5 30.5 7 31 9.5 C32.5 10 33 12.5 31.5 13.5 C32.5 14.5 32.5 17 31 17.5 C31.5 19.5 30 21.5 28 21 C27.5 22.5 25.5 23 24 21.5 C23 22.5 21 22 20.5 20.5 L20.5 9.5 Z"
+            fill={`url(#${brainFillId})`}
+          />
+          {/* Sheen overlay */}
+          <path
+            d="M17 9.5 C16 7 12.5 6.5 11.5 9 C10.5 6.5 7.5 7 7 9.5 C5.5 10 5 12.5 6.5 13.5 C5.5 14.5 5.5 17 7 17.5 C6.5 19.5 8 21.5 10 21 C10.5 22.5 12.5 23 14 21.5 C15 22.5 17 22 17.5 20.5 L17.5 9.5 Z"
+            fill={`url(#${brainSheenId})`}
+          />
+          <path
+            d="M21 9.5 C22 7 25.5 6.5 26.5 9 C27.5 6.5 30.5 7 31 9.5 C32.5 10 33 12.5 31.5 13.5 C32.5 14.5 32.5 17 31 17.5 C31.5 19.5 30 21.5 28 21 C27.5 22.5 25.5 23 24 21.5 C23 22.5 21 22 20.5 20.5 L20.5 9.5 Z"
+            fill={`url(#${brainSheenId})`}
+          />
+          {/* Center divide */}
+          <line x1="19" y1="9.5" x2="19" y2="21" stroke="#6d28d9" strokeWidth="0.8" strokeOpacity="0.6" />
+          {/* Left folds */}
+          <path d="M9 11 C8 12.5 9 14 10.5 13.5"     stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M7.5 15 C8 16.5 10 17 10.5 16"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M8.5 18.5 C9.5 20 11.5 20 12 18.5" stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M12.5 10.5 C13 12 12 13.5 10.5 13.5" stroke="#6d28d9" strokeWidth="0.6" strokeLinecap="round" fill="none" />
+          {/* Right folds */}
+          <path d="M29 11 C30 12.5 29 14 27.5 13.5"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M30.5 15 C30 16.5 28 17 27.5 16"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M29.5 18.5 C28.5 20 26.5 20 26 18.5" stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+          <path d="M25.5 10.5 C25 12 26 13.5 27.5 13.5" stroke="#6d28d9" strokeWidth="0.6" strokeLinecap="round" fill="none" />
+          {/* Bottom stem */}
+          <path
+            d="M17.5 21 L17.5 24 C17.5 25 19 26 19 26 C19 26 20.5 25 20.5 24 L20.5 21"
+            stroke="#7c3aed" strokeWidth="0.8" strokeLinecap="round" fill="none" strokeOpacity="0.7"
+          />
+          {/* Cyan accent dots — neural activity */}
+          <circle cx="11" cy="19" r="1"   fill="#00d4ff" opacity="0.7" />
+          <circle cx="27" cy="19" r="1"   fill="#00d4ff" opacity="0.7" />
+          <circle cx="14" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
+          <circle cx="24" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
+        </svg>
 
         {/* Slow-rotating conic ring — premium "live assistant" sheen.
             Only spins while the bubble is actively surfacing something

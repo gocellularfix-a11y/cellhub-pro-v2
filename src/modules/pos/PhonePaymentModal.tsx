@@ -121,22 +121,35 @@ export default function PhonePaymentModal({
   const [simNameOverride, setSimNameOverride] = useState('');
   const [editingSimName, setEditingSimName] = useState(false);
 
-  // ── R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: activity emitter.
+  // ── R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 + OUTCOME-AWARE-V1 emitter.
   // The Operator bubble lives outside this module. We dispatch a
   // CustomEvent on `window` so it can wake without coupling. Payload
   // is IDs / phone digits / numeric values only — never names, notes,
   // or anything beyond what the bubble can recompute from app state.
+  //
+  // setTimeout(0) defers the dispatch past the current React commit
+  // cycle so that any preceding setState() (customers / cart / sales)
+  // has flushed through the reducer AND the bubble's inputsRef.current
+  // sync effect before the bridge listener runs. Without this defer,
+  // outcome events that lookup just-saved entities (e.g. customer_created)
+  // race the listener and find stale state.
   const emitOperatorActivity = useCallback((
     type: 'phone.payment.customer_selected'
         | 'phone.payment.known_line_selected'
-        | 'phone.payment.number_entered',
+        | 'phone.payment.number_entered'
+        | 'phone.payment.customer_created'
+        | 'phone.payment.customer_updated'
+        | 'phone.payment.payment_recorded'
+        | 'phone.payment.number_linked_to_customer',
     payload: { customerId?: string; phone?: string; lineCount?: number; amountCents?: number },
   ) => {
-    try {
-      window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
-        detail: { type, payload },
-      }));
-    } catch { /* environments without CustomEvent support — silent */ }
+    setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: { type, payload },
+        }));
+      } catch { /* environments without CustomEvent support — silent */ }
+    }, 0);
   }, []);
 
   // ── Customer search ───────────────────────────────────────
@@ -990,6 +1003,16 @@ export default function PhonePaymentModal({
       if (data.phone) setPhoneNumber(sanitizePhone(data.phone));
       if (data.firstName !== undefined) setFirstName(data.firstName || '');
       if (data.lastName !== undefined) setLastName(data.lastName || '');
+      // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+      const updPhones = (updated as { phones?: string[] }).phones;
+      const updLineCount = Array.isArray(updPhones) && updPhones.length > 0
+        ? updPhones.length
+        : (updated.phone ? 1 : 0);
+      emitOperatorActivity('phone.payment.customer_updated', {
+        customerId: updated.id,
+        phone: sanitizePhone(data.phone || updated.phone || ''),
+        lineCount: updLineCount,
+      });
     } else {
       // Create new
       const newCust: Customer = {
@@ -1018,6 +1041,12 @@ export default function PhonePaymentModal({
       setPhoneNumber(sanitizePhone(newCust.phone));
       setFirstName(newCust.firstName || '');
       setLastName(newCust.lastName || '');
+      // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+      emitOperatorActivity('phone.payment.customer_created', {
+        customerId: newCust.id,
+        phone: sanitizePhone(newCust.phone),
+        lineCount: newCust.phone ? 1 : 0,
+      });
     }
 
     // ── Auto-select the line that just got linked + carry the amount over ──
@@ -1057,9 +1086,23 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1: emit BEFORE reset() so the
+    // payload still references valid in-state values; helper defers via
+    // setTimeout(0) anyway.
+    {
+      const firstPhone = newItems.find((it) => (it as { phoneNumber?: string }).phoneNumber)?.phoneNumber || '';
+      const totalCents = newItems.reduce((s, it) => s + ((it.price || 0) * (it.qty || 1)), 0);
+      if (firstPhone) {
+        emitOperatorActivity('phone.payment.payment_recorded', {
+          customerId: selectedCustomer?.id,
+          phone: firstPhone,
+          amountCents: totalCents,
+        });
+      }
+    }
     reset();
     onClose();
-  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
+  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // ── Add to cart ───────────────────────────────────────────
   const handleAddToCart = useCallback(() => {
@@ -1071,9 +1114,21 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+    {
+      const firstPhone = newItems.find((it) => (it as { phoneNumber?: string }).phoneNumber)?.phoneNumber || '';
+      const totalCents = newItems.reduce((s, it) => s + ((it.price || 0) * (it.qty || 1)), 0);
+      if (firstPhone) {
+        emitOperatorActivity('phone.payment.payment_recorded', {
+          customerId: selectedCustomer?.id,
+          phone: firstPhone,
+          amountCents: totalCents,
+        });
+      }
+    }
     reset();
     onClose();
-  }, [canAddToCart, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
+  }, [canAddToCart, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // R-PHONE-FAMILY-PERLINE: per-line portal handler — multi-line mode.
   // Processes ONE line at a time: validates, builds its cart item with
@@ -1139,6 +1194,12 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+    emitOperatorActivity('phone.payment.payment_recorded', {
+      customerId: selectedCustomer?.id,
+      phone,
+      amountCents: priceCents,
+    });
 
     // Remove the processed line; if it was the last, close the modal.
     setLines((prev) => {
@@ -1150,7 +1211,7 @@ export default function PhonePaymentModal({
       }
       return remaining;
     });
-  }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer]);
+  }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // ── Multi-line runner: mark current paid & advance to next ──
   // R-PHONE-PAYMENTS-MULTILINE-RUNNER: process selected known lines one at
