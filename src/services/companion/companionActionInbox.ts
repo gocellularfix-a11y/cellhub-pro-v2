@@ -128,6 +128,20 @@ export function clearInbox(): void {
   notify();
 }
 
+/**
+ * R-COMPANION-RUNTIME-TEST-PANEL-V1: drop only handled entries.
+ * Pending actions stay in the queue. Safer than clearInbox for the
+ * dev test panel where the owner may want to clean up handled noise
+ * without losing in-flight work.
+ */
+export function clearHandledActions(): void {
+  const before = inbox.length;
+  for (let i = inbox.length - 1; i >= 0; i--) {
+    if (inbox[i].status === 'handled') inbox.splice(i, 1);
+  }
+  if (inbox.length !== before) notify();
+}
+
 /** Full snapshot — drives any dev panel that subscribes. */
 export function getInboxSnapshot(): CompanionActionInboxSnapshot {
   return buildSnapshot();

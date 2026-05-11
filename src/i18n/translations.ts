@@ -4879,6 +4879,17 @@ export const translations: TranslationDictionary = {
   'companion.debug.noEvents':        { en: 'no events yet',           es: 'sin eventos aún',          pt: 'sem eventos ainda' },
   'companion.debug.yes':             { en: 'yes',                     es: 'sí',                       pt: 'sim' },
   'companion.debug.no':              { en: 'no',                      es: 'no',                       pt: 'não' },
+
+  // R-COMPANION-RUNTIME-TEST-PANEL-V1
+  'companion.inbox.title':           { en: 'Action Inbox (dev)',      es: 'Bandeja de Acciones (dev)', pt: 'Caixa de Ações (dev)' },
+  'companion.inbox.pending':         { en: 'Pending',                 es: 'Pendientes',                pt: 'Pendentes' },
+  'companion.inbox.handled':         { en: 'Handled',                 es: 'Procesadas',                pt: 'Processadas' },
+  'companion.inbox.submitApprove':   { en: '+ approve_request',       es: '+ approve_request',         pt: '+ approve_request' },
+  'companion.inbox.submitDeny':      { en: '+ deny_request',          es: '+ deny_request',            pt: '+ deny_request' },
+  'companion.inbox.submitMessage':   { en: '+ send_message',          es: '+ send_message',            pt: '+ send_message' },
+  'companion.inbox.submitAck':       { en: '+ ack_alert',             es: '+ ack_alert',               pt: '+ ack_alert' },
+  'companion.inbox.processPending':  { en: 'Process pending',         es: 'Procesar pendientes',       pt: 'Processar pendentes' },
+  'companion.inbox.clearHandled':    { en: 'Clear handled',           es: 'Limpiar procesadas',        pt: 'Limpar processadas' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },

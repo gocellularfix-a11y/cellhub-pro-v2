@@ -33,7 +33,20 @@ import {
   startPairingSession,
   subscribeConnectionSnapshot,
 } from '@/services/companion/companionBridgeConnection';
+// R-COMPANION-RUNTIME-TEST-PANEL-V1: dev panel that exercises the
+// inbox + receiver triplet end-to-end before any real producer exists.
+import {
+  clearHandledActions,
+  getInboxSnapshot,
+  getPendingActions,
+  submitAction,
+  subscribeActionInbox,
+} from '@/services/companion/companionActionInbox';
+import { processApprovalAction } from '@/services/companion/receivers/approvalActionReceiver';
+import { processMessagingAction } from '@/services/companion/receivers/messagingActionReceiver';
+import { processIntelligenceAck } from '@/services/companion/receivers/intelligenceAckReceiver';
 import type {
+  CompanionActionInboxSnapshot,
   CompanionBridgeSnapshot,
   CompanionDevicePlatform,
   CompanionEvent,
@@ -152,6 +165,10 @@ export default function CompanionCenter() {
   );
   const [companionQueue, setCompanionQueue] = useState<number>(() => getCompanionQueueSize());
 
+  // R-COMPANION-RUNTIME-TEST-PANEL-V1: inbox snapshot for the dev
+  // panel below. Cero touches to existing event-bus subscriptions.
+  const [inboxSnap, setInboxSnap] = useState<CompanionActionInboxSnapshot>(() => getInboxSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -167,7 +184,8 @@ export default function CompanionCenter() {
       setCompanionLastEvent(e);
       setCompanionQueue(getCompanionQueueSize());
     });
-    return () => { unsubSnap(); unsubEvents(); };
+    const unsubInbox = subscribeActionInbox((s) => setInboxSnap(s));
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -193,6 +211,67 @@ export default function CompanionCenter() {
       },
       createdAt: Date.now(),
     });
+  }, []);
+
+  // R-COMPANION-RUNTIME-TEST-PANEL-V1: dev-only inbox actions. Each
+  // submit injects a mock inbox entry mirroring what a real Companion
+  // mobile would dispatch. Process pending iterates every pending
+  // entry and routes it to the matching receiver — confirms the full
+  // loop (submit → inbox → receiver → mark handled) works locally.
+  const submitMockApprove = useCallback(() => {
+    submitAction({
+      type: 'approve_request',
+      payload: {
+        approvalId: `mock-approval-${Date.now().toString(36)}`,
+        approvedByEmployeeId: 'mock-manager',
+        reason: 'dev test',
+      },
+    });
+  }, []);
+  const submitMockDeny = useCallback(() => {
+    submitAction({
+      type: 'deny_request',
+      payload: {
+        approvalId: `mock-approval-${Date.now().toString(36)}`,
+        deniedByEmployeeId: 'mock-manager',
+        reason: 'dev test',
+      },
+    });
+  }, []);
+  const submitMockMessage = useCallback(() => {
+    submitAction({
+      type: 'send_message',
+      payload: {
+        messageId: `mock-msg-${Date.now().toString(36)}`,
+        fromEmployeeId: 'mock-manager',
+        channel: 'internal',
+        preview: 'dev test',
+      },
+    });
+  }, []);
+  const submitMockAck = useCallback(() => {
+    submitAction({
+      type: 'acknowledge_intelligence_alert',
+      payload: {
+        alertId: `mock-alert-${Date.now().toString(36)}`,
+        acknowledgedByEmployeeId: 'mock-manager',
+      },
+    });
+  }, []);
+  const processAllPending = useCallback(() => {
+    const pending = getPendingActions();
+    for (const action of pending) {
+      if (action.type === 'approve_request' || action.type === 'deny_request') {
+        processApprovalAction(action.actionId);
+      } else if (action.type === 'send_message') {
+        processMessagingAction(action.actionId);
+      } else if (action.type === 'acknowledge_intelligence_alert') {
+        processIntelligenceAck(action.actionId);
+      }
+    }
+  }, []);
+  const clearHandledNow = useCallback(() => {
+    clearHandledActions();
   }, []);
 
   // R-COMPANION-PAIRING-WIRED-V1: pairing controls now delegate to
@@ -523,6 +602,151 @@ export default function CompanionCenter() {
             }}
           >
             ⚡ {t('companion.debug.simulateEvent')}
+          </button>
+        </div>
+      </div>
+
+      {/* R-COMPANION-RUNTIME-TEST-PANEL-V1: dev-only action-inbox
+          runtime test panel. Lives below the event-bus dev panel.
+          Subscribes to subscribeActionInbox; buttons exercise the
+          full loop (submit -> inbox -> receiver -> mark handled).
+          Cero real approval / message / alert mutation. */}
+      <div style={{
+        padding: '0.75rem 0.9rem',
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px dashed rgba(148,163,184,0.2)',
+        borderRadius: '0.625rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        fontSize: '0.78rem',
+        color: '#94a3b8',
+      }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#64748b' }}>
+          {t('companion.inbox.title')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+          <div>
+            <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{t('companion.inbox.pending')}</div>
+            <div style={{ color: inboxSnap.pendingCount > 0 ? '#fbbf24' : '#e2e8f0', fontWeight: 600 }}>
+              {inboxSnap.pendingCount}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{t('companion.inbox.handled')}</div>
+            <div style={{ color: '#e2e8f0', fontWeight: 600 }}>
+              {inboxSnap.actions.length - inboxSnap.pendingCount}
+            </div>
+          </div>
+        </div>
+        {/* Submit buttons */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.35rem' }}>
+          <button
+            type="button"
+            onClick={submitMockApprove}
+            style={{
+              padding: '0.35rem 0.55rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(34,197,94,0.3)',
+              background: 'rgba(34,197,94,0.08)',
+              color: '#86efac',
+              cursor: 'pointer',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              fontFamily: 'Courier New, monospace',
+            }}
+          >
+            {t('companion.inbox.submitApprove')}
+          </button>
+          <button
+            type="button"
+            onClick={submitMockDeny}
+            style={{
+              padding: '0.35rem 0.55rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(239,68,68,0.08)',
+              color: '#fca5a5',
+              cursor: 'pointer',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              fontFamily: 'Courier New, monospace',
+            }}
+          >
+            {t('companion.inbox.submitDeny')}
+          </button>
+          <button
+            type="button"
+            onClick={submitMockMessage}
+            style={{
+              padding: '0.35rem 0.55rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(56,189,248,0.3)',
+              background: 'rgba(56,189,248,0.08)',
+              color: '#7dd3fc',
+              cursor: 'pointer',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              fontFamily: 'Courier New, monospace',
+            }}
+          >
+            {t('companion.inbox.submitMessage')}
+          </button>
+          <button
+            type="button"
+            onClick={submitMockAck}
+            style={{
+              padding: '0.35rem 0.55rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(167,139,250,0.3)',
+              background: 'rgba(167,139,250,0.08)',
+              color: '#c4b5fd',
+              cursor: 'pointer',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              fontFamily: 'Courier New, monospace',
+            }}
+          >
+            {t('companion.inbox.submitAck')}
+          </button>
+        </div>
+        {/* Process / clear */}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={processAllPending}
+            disabled={inboxSnap.pendingCount === 0}
+            style={{
+              padding: '0.35rem 0.65rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(99,102,241,0.30)',
+              background: 'rgba(99,102,241,0.08)',
+              color: '#a5b4fc',
+              cursor: inboxSnap.pendingCount === 0 ? 'not-allowed' : 'pointer',
+              opacity: inboxSnap.pendingCount === 0 ? 0.5 : 1,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            ▶ {t('companion.inbox.processPending')}
+          </button>
+          <button
+            type="button"
+            onClick={clearHandledNow}
+            disabled={inboxSnap.actions.length - inboxSnap.pendingCount === 0}
+            style={{
+              padding: '0.35rem 0.65rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(148,163,184,0.25)',
+              background: 'rgba(255,255,255,0.04)',
+              color: '#cbd5e1',
+              cursor: inboxSnap.actions.length - inboxSnap.pendingCount === 0 ? 'not-allowed' : 'pointer',
+              opacity: inboxSnap.actions.length - inboxSnap.pendingCount === 0 ? 0.5 : 1,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            ✕ {t('companion.inbox.clearHandled')}
           </button>
         </div>
       </div>
