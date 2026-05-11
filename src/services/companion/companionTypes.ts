@@ -151,3 +151,58 @@ export type CompanionEventListener = (event: CompanionEvent) => void;
 export type CompanionConnectionState = 'disconnected' | 'connecting' | 'connected';
 
 export type CompanionConnectionListener = (state: CompanionConnectionState) => void;
+
+// ── Bridge connection shell (R-COMPANION-BRIDGE-CONNECTION-V1) ──
+// Device-level state that the future mobile Companion will populate
+// when it actually pairs. Today the service is in-memory only and
+// driven by mock actions; future rounds wire a real transport behind
+// the same snapshot subscription surface.
+
+export type CompanionDevicePlatform = 'ios' | 'android' | 'web' | 'unknown';
+
+/**
+ * Pairing-session lifecycle. Distinct from CompanionConnectionState
+ * — pairing is the transient handshake phase; connectionState
+ * reports the steady-state link health.
+ */
+export type CompanionPairingPhase =
+  | 'idle'
+  | 'waiting'
+  | 'pending'
+  | 'connected'
+  | 'cancelled'
+  | 'timeout';
+
+/** Which transport this bridge is plugged into. */
+export type CompanionBridgeMode = 'mock' | 'local' | 'future';
+
+export interface CompanionPairedDevice {
+  deviceId: string;
+  deviceName: string;
+  platform: CompanionDevicePlatform;
+  /** ms epoch when the bridge accepted the device. */
+  connectedAt: number;
+  /** ms epoch of the most-recent heartbeat / activity. */
+  lastSeenAt: number;
+  status: 'connected' | 'disconnected';
+}
+
+export interface CompanionPairingSession {
+  sessionId: string;
+  /** Short numeric PIN shown to the user during pairing. */
+  pin: string;
+  /** ms epoch when the session opened. */
+  startedAt: number;
+  phase: CompanionPairingPhase;
+}
+
+/** Read-only snapshot the dev panel + future consumers consume. */
+export interface CompanionBridgeSnapshot {
+  mode: CompanionBridgeMode;
+  connectionState: CompanionConnectionState;
+  pairingSession: CompanionPairingSession | null;
+  pairedDevice: CompanionPairedDevice | null;
+  lastConnectedAt: number | null;
+}
+
+export type CompanionBridgeSnapshotListener = (snapshot: CompanionBridgeSnapshot) => void;
