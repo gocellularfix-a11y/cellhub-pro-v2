@@ -19,6 +19,7 @@ import { generateId } from '@/utils/dates';
 import {
   getConnectionState as getBridgeState,
   setConnectionState as setBridgeState,
+  subscribeConnectionState as subscribeBridgeState,
 } from './companionMockBridge';
 import type {
   CompanionBridgeMode,
@@ -166,3 +167,14 @@ export function setBridgeMode(next: CompanionBridgeMode): void {
   mode = next;
   notifySnapshot();
 }
+
+// ── Cross-layer wiring ────────────────────────────────────
+// Module-singleton subscription that re-broadcasts every low-level
+// CompanionConnectionState change as a snapshot update. Without this,
+// callers that flip the bridge state directly (e.g. the dev panel's
+// "Toggle connection" button in CompanionCenter) would update
+// subscribeConnectionState listeners but NOT the snapshot listeners,
+// leaving the bridge connection snapshot stale.
+subscribeBridgeState(() => {
+  notifySnapshot();
+});

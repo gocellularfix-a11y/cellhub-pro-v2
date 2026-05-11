@@ -20,13 +20,22 @@ import {
   subscribeAll as subscribeAllCompanionEvents,
 } from '@/services/companion/companionEventBus';
 import {
-  getConnectionState as getCompanionConnectionState,
   getQueueSize as getCompanionQueueSize,
   setConnectionState as setCompanionConnectionState,
-  subscribeConnectionState as subscribeCompanionConnectionState,
 } from '@/services/companion/companionMockBridge';
+// R-COMPANION-PAIRING-WIRED-V1: the pairing/device UI now reads from
+// the bridge connection shell instead of isolated local mock state.
+import {
+  cancelPairingSession,
+  getConnectionSnapshot,
+  mockConnectDevice,
+  mockDisconnectDevice,
+  startPairingSession,
+  subscribeConnectionSnapshot,
+} from '@/services/companion/companionBridgeConnection';
 import type {
-  CompanionConnectionState,
+  CompanionBridgeSnapshot,
+  CompanionDevicePlatform,
   CompanionEvent,
 } from '@/services/companion/companionTypes';
 
@@ -66,15 +75,13 @@ function statusPalette(s: CardStatus): { label: string; bg: string; border: stri
   }
 }
 
-// ── Mock device + pairing types ───────────────────────────
-type DevicePlatform = 'iphone' | 'android';
-interface MockDevice {
-  name: string;
-  platform: DevicePlatform;
-  connectedAtMs: number;
-  health: 'good';
-}
-
+// ── Pairing animation type ────────────────────────────────
+// R-COMPANION-PAIRING-WIRED-V1: device/session shapes now come from
+// the bridge connection shell (CompanionPairedDevice +
+// CompanionPairingSession in companionTypes). PairingPhase remains
+// local because it only drives the in-modal animation between
+// 'waiting' → 'pending' → 'connected' — the bridge service doesn't
+// model that sub-state and shouldn't (it's a UX detail).
 type PairingPhase = 'waiting' | 'pending' | 'connected';
 
 // Deterministic-from-PIN visual stand-in for a real QR code. 13×13
@@ -131,41 +138,50 @@ function MockQR({ pin }: { pin: string }) {
 export default function CompanionCenter() {
   const { t } = useTranslation();
 
-  const [isPairingOpen, setIsPairingOpen] = useState(false);
-  const [pairingPin, setPairingPin] = useState('');
-  const [pairingPhase, setPairingPhase] = useState<PairingPhase>('waiting');
-  const [pairedDevice, setPairedDevice] = useState<MockDevice | null>(null);
+  // R-COMPANION-PAIRING-WIRED-V1: snapshot subscription drives every
+  // pairing + paired-device decision. Local animation phase remains
+  // local because it's a UX-only sub-state of 'waiting'.
+  const [snapshot, setSnapshot] = useState<CompanionBridgeSnapshot>(() => getConnectionSnapshot());
+  const [localPhase, setLocalPhase] = useState<PairingPhase>('waiting');
 
   // R-COMPANION-EVENT-LAYER-V1: dev panel state mirrors the bus + bridge.
-  // Subscriptions are scoped to the module's mount so they tear down on
-  // unmount; cero global polling.
-  const [companionConnState, setCompanionConnState] = useState<CompanionConnectionState>(() =>
-    getCompanionConnectionState()
-  );
+  // companionConnState now comes from snapshot.connectionState — one
+  // subscription drives both surfaces.
   const [companionLastEvent, setCompanionLastEvent] = useState<CompanionEvent | null>(() =>
     getLastCompanionEvent()
   );
   const [companionQueue, setCompanionQueue] = useState<number>(() => getCompanionQueueSize());
 
   useEffect(() => {
-    const unsubState = subscribeCompanionConnectionState((next) => {
-      setCompanionConnState(next);
+    // Bridge snapshot subscription — fires for pairing-session start/
+    // cancel, mock-connect/disconnect, AND for any low-level bridge
+    // state change (the singleton bridge in companionBridgeConnection
+    // re-broadcasts those into the snapshot). One callback covers
+    // connectionState, pairingSession, pairedDevice. Queue size is
+    // refreshed here because 'connected' state drains the queue.
+    const unsubSnap = subscribeConnectionSnapshot((snap) => {
+      setSnapshot(snap);
       setCompanionQueue(getCompanionQueueSize());
     });
     const unsubEvents = subscribeAllCompanionEvents((e) => {
       setCompanionLastEvent(e);
       setCompanionQueue(getCompanionQueueSize());
     });
-    return () => { unsubState(); unsubEvents(); };
+    return () => { unsubSnap(); unsubEvents(); };
   }, []);
+
+  // ── Derived flags from snapshot ───────────────────────
+  const isPairingOpen = !!snapshot.pairingSession;
+  const pairingPin = snapshot.pairingSession?.pin ?? '';
+  const pairedDevice = snapshot.pairedDevice;
+  const companionConnState = snapshot.connectionState;
 
   const toggleCompanionConnection = useCallback(() => {
     setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
   }, [companionConnState]);
 
   // Dev-only: emit a deterministic mock event so the panel can show
-  // the bus working without depending on real producers (which will
-  // be wired in future rounds).
+  // the bus working without depending on real producers.
   const simulateCompanionEvent = useCallback(() => {
     emitCompanionEvent({
       type: 'APPROVAL_CREATED',
@@ -179,46 +195,51 @@ export default function CompanionCenter() {
     });
   }, []);
 
-  // Open the pairing modal with a fresh 6-digit PIN. Random is fine
-  // here — UX mockup, not business logic, never persisted.
+  // R-COMPANION-PAIRING-WIRED-V1: pairing controls now delegate to
+  // the bridge service so the centralised snapshot stays the source
+  // of truth. UI state (modal open, PIN, paired device) is derived.
   const startPairing = useCallback(() => {
-    const pin = String(100000 + Math.floor(Math.random() * 900000));
-    setPairingPin(pin);
-    setPairingPhase('waiting');
-    setIsPairingOpen(true);
+    setLocalPhase('waiting');
+    startPairingSession();
   }, []);
 
   const cancelPairing = useCallback(() => {
-    setIsPairingOpen(false);
-    setPairingPhase('waiting');
+    cancelPairingSession();
+    setLocalPhase('waiting');
   }, []);
 
-  // Mock state progression: waiting → pending → connected → commit
-  // device + close. setTimeout chain is local to the modal-open
-  // lifecycle and always cleaned up on unmount / cancel.
+  /** Commit a mock paired device — randomised iPhone/Pixel for variety. */
+  const commitMockDevice = useCallback(() => {
+    const platform: CompanionDevicePlatform = Math.random() < 0.5 ? 'ios' : 'android';
+    mockConnectDevice({
+      deviceName: platform === 'ios' ? 'iPhone 15 Pro' : 'Pixel 9',
+      platform,
+    });
+    setLocalPhase('waiting'); // reset for next session
+  }, []);
+
+  // Phase animation: local sub-state of 'waiting' that progresses
+  // 'waiting' → 'pending' → 'connected' while the bridge session is
+  // open, then the auto-commit fires bridge.mockConnectDevice. Re-runs
+  // whenever a fresh sessionId opens. All timers cleaned up on cancel.
+  const sessionId = snapshot.pairingSession?.sessionId;
   useEffect(() => {
-    if (!isPairingOpen) return undefined;
+    if (!sessionId) {
+      setLocalPhase('waiting');
+      return undefined;
+    }
     const timers: Array<ReturnType<typeof setTimeout>> = [];
-    timers.push(setTimeout(() => setPairingPhase('pending'),   1500));
-    timers.push(setTimeout(() => setPairingPhase('connected'), 3500));
-    timers.push(setTimeout(() => {
-      // Alternate platform on each successful pair for visual variety.
-      const platform: DevicePlatform = Math.random() < 0.5 ? 'iphone' : 'android';
-      setPairedDevice({
-        name: platform === 'iphone' ? 'iPhone 15 Pro' : 'Pixel 9',
-        platform,
-        connectedAtMs: Date.now(),
-        health: 'good',
-      });
-      setIsPairingOpen(false);
-      setPairingPhase('waiting');
-    }, 4500));
+    timers.push(setTimeout(() => setLocalPhase('pending'),   1500));
+    timers.push(setTimeout(() => setLocalPhase('connected'), 3500));
+    timers.push(setTimeout(() => { commitMockDevice(); }, 4500));
     return () => timers.forEach((t) => clearTimeout(t));
-  }, [isPairingOpen]);
+  }, [sessionId, commitMockDevice]);
 
-  const disconnectDevice = useCallback(() => setPairedDevice(null), []);
+  const disconnectDevice = useCallback(() => {
+    mockDisconnectDevice();
+  }, []);
 
-  // Derived: top banner reflects real-time mock state.
+  // Derived: top banner reflects real-time bridge snapshot.
   const overallStatus: CardStatus = pairedDevice
     ? 'connected_soon'
     : isPairingOpen ? 'pairing' : 'not_connected';
@@ -235,8 +256,8 @@ export default function CompanionCenter() {
   }, [pairedDevice, isPairingOpen]);
 
   const phaseColor =
-    pairingPhase === 'connected' ? '#22c55e'
-    : pairingPhase === 'pending' ? '#fbbf24'
+    localPhase === 'connected' ? '#22c55e'
+    : localPhase === 'pending' ? '#fbbf24'
     : '#94a3b8';
 
   return (
@@ -297,14 +318,14 @@ export default function CompanionCenter() {
               flexShrink: 0,
               filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.35))',
             }}>
-              {pairedDevice.platform === 'iphone' ? '📱' : '🤖'}
+              {pairedDevice.platform === 'ios' ? '📱' : pairedDevice.platform === 'android' ? '🤖' : '📟'}
             </div>
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#86efac', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 {t('companion.device.sectionTitle')}
               </div>
               <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0' }}>
-                {pairedDevice.name}
+                {pairedDevice.deviceName}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#94a3b8' }}>
                 <span style={{
@@ -513,9 +534,14 @@ export default function CompanionCenter() {
         title={`📱 ${t('companion.pair.modalTitle')}`}
         size="max-w-md"
         footer={
-          <button className="btn btn-secondary" onClick={cancelPairing}>
-            {t('companion.pair.cancel')}
-          </button>
+          <>
+            <button className="btn btn-secondary" onClick={cancelPairing}>
+              {t('companion.pair.cancel')}
+            </button>
+            <button className="btn btn-primary" onClick={commitMockDevice}>
+              {t('companion.pair.mockConnect')}
+            </button>
+          </>
         }
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem' }}>
@@ -573,7 +599,7 @@ export default function CompanionCenter() {
               background: phaseColor,
               boxShadow: `0 0 6px ${phaseColor}88`,
             }} />
-            {t(`companion.pair.phase.${pairingPhase}`)}
+            {t(`companion.pair.phase.${localPhase}`)}
           </div>
         </div>
       </Modal>
