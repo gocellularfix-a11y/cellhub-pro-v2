@@ -52,8 +52,24 @@ export interface CompanionApprovalPayload {
 
 export interface CompanionMessagePayload {
   messageId: string;
+  /** R-COMPANION-MESSAGING-EMITTERS-V1: outbound = desktop sent it,
+   *  inbound = desktop received it. Mirrors the MESSAGE_SENT /
+   *  MESSAGE_RECEIVED event types but lives in the payload too so
+   *  consumers filtering by direction don't have to switch on type. */
+  direction?: 'outbound' | 'inbound';
+  /** R-COMPANION-MESSAGING-EMITTERS-V1: transport class —
+   *  'internal' for in-app companion chat, plus room for future
+   *  channels (e.g. 'whatsapp', 'sms') without a type rev. */
+  channel?: string;
+  /** R-COMPANION-MESSAGING-EMITTERS-V1: source module name
+   *  ('pos', 'repairs', 'layaways', 'companion', etc.) for filtering. */
+  source?: string;
   fromEmployeeId?: string;
   toEmployeeId?: string;
+  /** R-COMPANION-MESSAGING-EMITTERS-V1: sender's role at send time.
+   *  Lets the Companion app surface owner/manager messages distinctly
+   *  without an extra employee lookup. */
+  senderRole?: 'owner' | 'manager' | 'technician' | 'sales' | 'cashier';
   preview?: string;                // short, sanitised preview only
 }
 
