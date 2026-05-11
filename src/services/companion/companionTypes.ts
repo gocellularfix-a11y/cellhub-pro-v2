@@ -102,8 +102,32 @@ export interface CompanionStoreStatusPayload {
 
 export interface CompanionIntelligenceAlertPayload {
   alertId: string;
-  severity?: 'info' | 'warning' | 'critical';
-  kind?: string;                   // analyzer key, e.g. 'low_stock'
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: expanded with 'opportunity'
+   *  to match the AlertEngine's AlertSeverity union. Cero breaking —
+   *  existing callers passing 'info'/'warning'/'critical' still typecheck. */
+  severity?: 'info' | 'warning' | 'critical' | 'opportunity';
+  /** Specific analyzer/config key — e.g. 'alert-inventory-low-stock'. */
+  kind?: string;
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: higher-level grouping —
+   *  matches AlertCategory ('sales' | 'inventory' | 'repairs' |
+   *  'customers' | 'financial' | 'system'). Future analyzers can
+   *  add new values without a type rev. */
+  insightType?: string;
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: UX prominence hint that
+   *  defaults to mirror severity but can diverge later (e.g. a
+   *  'critical' alert with priority 'warning' during low-traffic). */
+  priority?: 'info' | 'warning' | 'critical' | 'opportunity';
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: origin module. Defaults to
+   *  'intelligence' in the shell emitter. */
+  source?: string;
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: optional entity context —
+   *  'customer' | 'inventory_item' | 'repair' | etc. Strings to allow
+   *  future entity types. Cero PII attached — only the ID below. */
+  relatedEntityType?: string;
+  /** R-COMPANION-INTELLIGENCE-EMITTERS-V1: optional entity id. Caller
+   *  is responsible for confirming it carries no PII (it shouldn't —
+   *  app entity ids are opaque). */
+  relatedEntityId?: string;
 }
 
 // ── Discriminated union of all events ─────────────────────
