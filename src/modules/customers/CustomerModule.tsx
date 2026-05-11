@@ -62,9 +62,28 @@ export default function CustomerModule() {
     return () => window.removeEventListener('cellhub:open-customer-history', handler);
   }, []);
 
+  // R-OPERATOR-AMBIENT-AWARENESS-V1: open the create-mode CustomerForm
+  // with an optional phone prefill. Triggered by the Operator bubble's
+  // Create Customer quick action on an unknown_phone context.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ phone?: string }>).detail;
+      setEditCustomer(null);                 // create mode
+      setPrefillPhone(detail?.phone || '');  // optional prefill
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:open-new-customer-form', handler);
+    return () => window.removeEventListener('cellhub:open-new-customer-form', handler);
+  }, []);
+
   const [search, setSearch] = useState(customerSearchTerm || '');
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  // R-OPERATOR-AMBIENT-AWARENESS-V1: phone prefill for the create-mode
+  // form when triggered externally (e.g. Operator bubble Create Customer
+  // for an unknown_phone context). Only consulted when editCustomer is
+  // null. Cleared on modal close.
+  const [prefillPhone, setPrefillPhone] = useState<string>('');
   const [viewHistory, setViewHistory] = useState<Customer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteWarningMsg, setDeleteWarningMsg] = useState<string | null>(null);
@@ -652,8 +671,9 @@ export default function CustomerModule() {
       {showModal && (
         <CustomerFormModal
           customer={editCustomer}
+          initialPhone={editCustomer ? '' : prefillPhone}
           onSave={handleSave}
-          onClose={() => { setShowModal(false); setEditCustomer(null); }}
+          onClose={() => { setShowModal(false); setEditCustomer(null); setPrefillPhone(''); }}
           toast={toast}
           confirmDialog={confirmDialog}
           setConfirmDialog={setConfirmDialog}
@@ -726,6 +746,13 @@ const DRAFT_KEY = 'customer_form_draft';
 
 interface CustomerFormModalProps {
   customer: Customer | null;
+  /**
+   * Optional phone prefill for create mode (customer == null).
+   * R-OPERATOR-AMBIENT-AWARENESS-V1 — used by the Operator bubble's
+   * Create Customer quick action so the cashier doesn't have to
+   * re-type a number they just entered in Phone Services.
+   */
+  initialPhone?: string;
   onSave: (d: Partial<Customer>) => void;
   onClose: () => void;
   toast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
@@ -747,13 +774,19 @@ interface CustomerFormModalProps {
   } | null>>;
 }
 
-function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
+function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
   const { t } = useTranslation();
 
   // Build initial form state (handles: edit mode, draft restore, fresh)
   const [form, setForm] = useState(() => {
+    // R-OPERATOR-AMBIENT-AWARENESS-V1: create-mode prefill from
+    // initialPhone. Ignored when in edit mode (the customer hydration
+    // branch below overrides). Has zero effect when initialPhone is '' .
+    const prefillPhone = (initialPhone || '').trim();
     const defaults = {
-      firstName: '', lastName: '', phone: '', phones: [''] as string[],
+      firstName: '', lastName: '',
+      phone: prefillPhone,
+      phones: [prefillPhone] as string[],
       carrier: '', carriers: [''] as string[],
       email: '', address: '', city: '', state: '', zip: '',
       plan: '', monthlyPayment: '',

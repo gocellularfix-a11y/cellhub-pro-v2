@@ -115,23 +115,38 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
     setAssignDone(false);
   }, [sale?.id]);
 
-  // Customer search results for assignment
-  const assignResults = assignSearch.trim().length >= 2
-    ? customers.filter((c) => matchesSearch(assignSearch, c.name, c.phone, c.customerNumber)).slice(0, 6)
-    : [];
+  // R-PRINT-PREVIEW-PERF-V1: memoise the customer-search filter so a
+  // keystroke in the assign-customer input doesn't full-scan the
+  // customers array on top of the existing React render work. Cero
+  // behaviour change — same filter + same 6-result slice cap.
+  const assignResults = useMemo(
+    () => (
+      assignSearch.trim().length >= 2
+        ? customers.filter((c) => matchesSearch(assignSearch, c.name, c.phone, c.customerNumber)).slice(0, 6)
+        : []
+    ),
+    [assignSearch, customers],
+  );
 
   // Is this a walk-in sale that hasn't been assigned yet?
   const isWalkIn = sale && !sale.customerId;
   const loyaltyEnabled = settings.loyaltyEnabled;
 
-  // Compute pts for this sale (same formula as POSModule)
-  const salePoints = sale
-    ? Math.trunc(
-        sale.items
-          .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
-          .reduce((s, i) => s + i.price * i.qty, 0) / 100
-      )
-    : 0;
+  // R-PRINT-PREVIEW-PERF-V1: memoise the loyalty-points reduce so
+  // unrelated re-renders (e.g. typing in assignSearch) don't re-walk
+  // the sale items every keystroke. Same formula as POSModule.
+  const salePoints = useMemo(
+    () => (
+      sale
+        ? Math.trunc(
+            sale.items
+              .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
+              .reduce((s, i) => s + i.price * i.qty, 0) / 100
+          )
+        : 0
+    ),
+    [sale?.id, sale?.items],
+  );
 
   // Core assign logic. Accepts an optional `baseCustomers` override so that
   // handleCreateAndAssign can pass the array that already includes the newly

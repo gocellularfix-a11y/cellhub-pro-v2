@@ -4862,6 +4862,40 @@ export const translations: TranslationDictionary = {
   'operator.action.copyPhoneDone':   { en: 'Copied!',              es: '¡Copiado!',               pt: 'Copiado!' },
   'operator.action.viewHistory':     { en: 'View customer history', es: 'Ver historial del cliente', pt: 'Ver histórico do cliente' },
   'operator.action.clearContext':    { en: 'Clear context',        es: 'Limpiar contexto',        pt: 'Limpar contexto' },
+  'operator.action.createCustomer':  { en: 'Create customer',      es: 'Crear cliente',           pt: 'Criar cliente' },
+
+  // R-OPERATOR-AMBIENT-AWARENESS-V1 — context title for unknown phone
+  'operator.context.title.unknown_phone': { en: 'New number detected', es: 'Número nuevo detectado', pt: 'Novo número detectado' },
+
+  // R-OPERATOR-AMBIENT-AWARENESS-V1 — operational insights
+  'operator.insights.title': { en: 'Operational insights', es: 'Insights operativos', pt: 'Insights operacionais' },
+  'operator.insight.firstTimeCustomer': { en: 'First-time customer detected.', es: 'Cliente nuevo detectado.', pt: 'Cliente novo detectado.' },
+  'operator.insight.createProfilePrompt': { en: 'Consider creating a customer profile.', es: 'Considera crear un perfil de cliente.', pt: 'Considere criar um perfil de cliente.' },
+  'operator.insight.vipCustomer': {
+    en: (spend: string) => `VIP customer — $${spend}+ lifetime.`,
+    es: (spend: string) => `Cliente VIP — $${spend}+ histórico.`,
+    pt: (spend: string) => `Cliente VIP — $${spend}+ histórico.`,
+  },
+  'operator.insight.repeatBuyer': {
+    en: (n: number) => `Repeat buyer — ${n} prior visits.`,
+    es: (n: number) => `Comprador recurrente — ${n} visitas previas.`,
+    pt: (n: number) => `Comprador recorrente — ${n} visitas anteriores.`,
+  },
+  'operator.insight.inactiveDays': {
+    en: (d: number) => `Inactive ${d}+ days — re-engage opportunity.`,
+    es: (d: number) => `Inactivo ${d}+ días — oportunidad de reenganche.`,
+    pt: (d: number) => `Inativo ${d}+ dias — oportunidade de reengajar.`,
+  },
+  'operator.insight.multiLineCustomer': {
+    en: (n: number) => `${n} lines on file — family/business account.`,
+    es: (n: number) => `${n} líneas registradas — cuenta familiar/negocio.`,
+    pt: (n: number) => `${n} linhas registradas — conta familiar/negócio.`,
+  },
+  'operator.insight.nearCompleteLayaway': {
+    en: (bal: string) => `Layaway almost done — $${bal} remaining.`,
+    es: (bal: string) => `Apartado casi listo — $${bal} restante.`,
+    pt: (bal: string) => `Layaway quase concluído — $${bal} restante.`,
+  },
   'operator.status.sleeping':  { en: 'Idle',              es: 'En reposo',         pt: 'Em repouso' },
   'operator.status.watching':  { en: 'Watching activity', es: 'Observando',        pt: 'Observando' },
   'operator.status.thinking':  { en: 'Thinking…',         es: 'Pensando…',         pt: 'Pensando…' },

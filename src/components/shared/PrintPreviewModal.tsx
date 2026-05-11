@@ -4,7 +4,7 @@
 // margins, zoom. No dependency on Chrome or Windows print dialog.
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 
 // ── Page size presets (width × height in microns) ───────────
@@ -169,10 +169,6 @@ export default function PrintPreviewModal({
     setMargins((prev) => ({ ...prev, [side]: Math.max(0, value) }));
   };
 
-  if (!open) return null;
-
-  const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
-
   // R-PRINT-SHRINK-FALLBACK-FIX: predictable page-size-based shrink.
   // Replaces the DOM-measurement helper, which couldn't see inside the
   // sandboxed iframe and effectively returned 100 on every flow.
@@ -181,13 +177,32 @@ export default function PrintPreviewModal({
   // 4-card summary + 4 sections + net banner on one letter page.
   // Owner can override with manual scale if a specific report needs
   // different sizing.
-  const effectiveScale = shrinkToFit
-    ? (pageSize === 'letter' ? 80 : 95)
-    : scaleFactor;
+  // R-PRINT-PREVIEW-PERF-V1: memoised so unrelated keystrokes (copies,
+  // margins, zoom, page ranges) don't recompute the effective scale.
+  // Hooks must run BEFORE the early-return below — Rules of Hooks.
+  const effectiveScale = useMemo(
+    () => (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor),
+    [shrinkToFit, pageSize, scaleFactor],
+  );
 
-  const scaledHtml = effectiveScale === 100
-    ? html
-    : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${effectiveScale / 100}); transform-origin: center center;">`);
+  // R-PRINT-PREVIEW-PERF-V1: previously this regex-replace ran on every
+  // render, so every keystroke (copies / page range / margin / zoom slider)
+  // generated a new string identity, React passed a new srcDoc, and the
+  // sandboxed iframe re-parsed the entire receipt HTML. Memoising on the
+  // only two inputs that actually affect the output makes unrelated
+  // sidebar interactions feel instant.
+  const scaledHtml = useMemo(
+    () => (
+      effectiveScale === 100
+        ? html
+        : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${effectiveScale / 100}); transform-origin: center center;">`)
+    ),
+    [html, effectiveScale],
+  );
+
+  if (!open) return null;
+
+  const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
 
   return (
     <div style={{

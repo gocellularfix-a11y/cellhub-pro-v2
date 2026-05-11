@@ -19,6 +19,7 @@ import { useTranslation } from '@/i18n';
 import {
   computeHintFromEvent,
   computeHintFromGlobalState,
+  computeInsightsForContext,
   computeOperatorContextFromEvent,
   computeOperatorContextFromGlobalState,
   OPERATOR_ACTIVITY_EVENT,
@@ -27,6 +28,8 @@ import {
   type OperatorActivityInputs,
   type OperatorBubbleState,
   type OperatorHint,
+  type OperatorInsight,
+  type OperatorInsightTone,
 } from '@/services/operator/operatorActivityHints';
 
 // ── Constants ─────────────────────────────────────────────
@@ -415,6 +418,43 @@ export default function FloatingOperatorBubble() {
     setActiveContext(null);
   }, []);
 
+  // R-OPERATOR-AMBIENT-AWARENESS-V1: Create Customer quick action for
+  // unknown_phone context. Navigates to Customers tab, dispatches the
+  // open-new-customer-form event (with the phone payload prefilled),
+  // and silently copies the phone to clipboard as belt-and-suspenders
+  // in case the cashier wants to paste it elsewhere.
+  const createCustomerFromContext = useCallback(() => {
+    const phone = activeContext?.phone || '';
+    if (!phone) return;
+    setIsOverlayOpen(false);
+    try { void navigator.clipboard?.writeText(phone); } catch { /* ignore */ }
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
+    setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:open-new-customer-form', {
+          detail: { phone },
+        }));
+      } catch { /* environments without CustomEvent — silent */ }
+    }, 80);
+  }, [activeContext, dispatch]);
+
+  // Memoise insights so the rules engine runs only when context or
+  // the input slices it reads from actually change. Empty list when
+  // no context — overlay simply omits the section.
+  const insights: OperatorInsight[] = useMemo(
+    () => enabled ? computeInsightsForContext(activeContext, inputs) : [],
+    [enabled, activeContext, inputs],
+  );
+
+  const insightToneColor = (tone: OperatorInsightTone): string => {
+    switch (tone) {
+      case 'positive': return '#22c55e';
+      case 'warning':  return '#f59e0b';
+      case 'info':
+      default:         return '#a5b4fc';
+    }
+  };
+
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen
     ? t('operator.bubble.closeTooltip')
@@ -497,6 +537,20 @@ export default function FloatingOperatorBubble() {
           animation: showBreath ? 'cellhubOperatorBreath 4s ease-in-out infinite' : 'none',
         }}
       >
+        {/* Inner highlight — subtle "lit from above" depth cue. Always
+            rendered; the radial gradient is brighter in the active
+            colour scheme so the bubble reads as glassy. */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle at 32% 26%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 38%)',
+            pointerEvents: 'none',
+          }}
+        />
+
         <svg
           aria-hidden="true"
           width="38"
@@ -504,7 +558,7 @@ export default function FloatingOperatorBubble() {
           viewBox="0 0 38 38"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          style={{ pointerEvents: 'none', display: 'block', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
+          style={{ pointerEvents: 'none', display: 'block', position: 'relative', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
         >
           <defs>
             <radialGradient id={brainFillId} cx="42%" cy="35%" r="62%">
@@ -560,6 +614,25 @@ export default function FloatingOperatorBubble() {
           <circle cx="14" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
           <circle cx="24" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
         </svg>
+
+        {/* Outer halo — soft static radial glow that pushes the bubble
+            visually "off the screen" and gives the premium-AI-node feel.
+            Static, no animation; opacity sized to look ambient. Only
+            rendered when the bubble is actually surfacing activity so
+            idle state stays visually quiet. */}
+        {showRing && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: -16,
+              borderRadius: '50%',
+              background: `radial-gradient(circle, ${stateColor(bubbleState)}55 0%, transparent 65%)`,
+              pointerEvents: 'none',
+              filter: 'blur(4px)',
+            }}
+          />
+        )}
 
         {/* Slow-rotating conic ring — premium "live assistant" sheen.
             Only spins while the bubble is actively surfacing something
@@ -754,15 +827,43 @@ export default function FloatingOperatorBubble() {
             </div>
           )}
 
+          {/* Operational insights — sectioned list of deterministic
+              observations about the current activeContext. Only
+              rendered when at least one rule fires. */}
+          {insights.length > 0 && (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(148,163,184,0.18)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.65rem',
+              display: 'flex', flexDirection: 'column', gap: '0.25rem',
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>
+                {t('operator.insights.title')}
+              </div>
+              {insights.map((ins) => {
+                const text = (t as (k: string, ...a: Array<string | number>) => string)(ins.i18nKey, ...ins.args);
+                const color = insightToneColor(ins.tone);
+                return (
+                  <div key={ins.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                    <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}88` }} />
+                    <span style={{ color: '#e2e8f0' }}>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Context-aware quick actions — only when context exists */}
           {activeContext && (activeContext.phone || activeContext.customerId) && (
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
               {activeContext.phone && (
                 <button
                   type="button"
                   onClick={copyContextPhone}
                   style={{
-                    flex: 1,
+                    flex: '1 1 calc(50% - 0.2rem)',
+                    minWidth: 0,
                     textAlign: 'center',
                     padding: '0.4rem 0.5rem',
                     borderRadius: '0.45rem',
@@ -782,7 +883,8 @@ export default function FloatingOperatorBubble() {
                   type="button"
                   onClick={viewCustomerHistory}
                   style={{
-                    flex: 1,
+                    flex: '1 1 calc(50% - 0.2rem)',
+                    minWidth: 0,
                     textAlign: 'center',
                     padding: '0.4rem 0.5rem',
                     borderRadius: '0.45rem',
@@ -795,6 +897,27 @@ export default function FloatingOperatorBubble() {
                   }}
                 >
                   📋 {t('operator.action.viewHistory')}
+                </button>
+              )}
+              {activeContext.contextType === 'unknown_phone' && activeContext.phone && (
+                <button
+                  type="button"
+                  onClick={createCustomerFromContext}
+                  style={{
+                    flex: '1 1 calc(50% - 0.2rem)',
+                    minWidth: 0,
+                    textAlign: 'center',
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '0.45rem',
+                    background: 'rgba(34,197,94,0.12)',
+                    border: '1px solid rgba(34,197,94,0.35)',
+                    color: '#86efac',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  ＋ {t('operator.action.createCustomer')}
                 </button>
               )}
             </div>

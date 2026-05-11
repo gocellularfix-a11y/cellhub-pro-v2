@@ -78,7 +78,7 @@ export const OPERATOR_ACTIVITY_EVENT = 'cellhub:operator-activity';
 // Hints are short-lived nudges; activeContext is the persistent
 // reference the overlay reads when the user explicitly opens it.
 export interface OperatorActiveContext {
-  contextType: 'phone_payment' | 'customer' | 'sale' | 'layaway' | 'repair';
+  contextType: 'phone_payment' | 'customer' | 'sale' | 'layaway' | 'repair' | 'unknown_phone';
   customerId?: string;
   phone?: string;
   lineCount?: number;
@@ -87,6 +87,28 @@ export interface OperatorActiveContext {
   /** ms epoch — tells the bubble "I last touched this at T". */
   updatedAt: number;
 }
+
+// ── Operational insights (R-OPERATOR-AMBIENT-AWARENESS-V1) ──
+// An insight is a short, deterministic observation about the current
+// activeContext. Multiple insights can apply to the same context; the
+// overlay renders them as a small list. Insights NEVER auto-display
+// as ambient pills — they're only visible when the cashier opens the
+// overlay, so they don't generate UI noise.
+export type OperatorInsightTone = 'info' | 'positive' | 'warning';
+
+export interface OperatorInsight {
+  id: string;               // stable string for React keys
+  i18nKey: string;
+  args: Array<string | number>;
+  tone: OperatorInsightTone;
+}
+
+// Tuning knobs. Conservative defaults — tunable in a future round.
+const VIP_THRESHOLD_CENTS  = 50_000;  // $500 lifetime sales = VIP
+const INACTIVE_DAYS        = 90;       // days since last sale = "inactive"
+const REPEAT_SALES_COUNT   = 3;        // ≥3 non-voided sales = "repeat"
+const MULTI_LINE_COUNT     = 3;        // ≥3 phones = "multi-line"
+const NEAR_COMPLETE_FRAC   = 0.2;      // remaining ≤ 20% of total = near-complete
 
 export interface OperatorActivityEventDetail {
   type:
@@ -589,7 +611,17 @@ export function computeOperatorContextFromEvent(
     const cust = payload.customerId
       ? findCustomer(inputs.customers, payload.customerId)
       : findCustomerByPhone(inputs.customers, payload.phone);
-    if (!cust) return null; // unknown number — preserve any prior context
+    if (!cust) {
+      // R-OPERATOR-AMBIENT-AWARENESS-V1 PART 2B: unknown phone now
+      // creates an actionable context (was null before — bubble felt
+      // dead after typing an unrecognised number). Insights surface
+      // "first-time customer" + Create Customer quick action.
+      return {
+        contextType: 'unknown_phone',
+        phone: payload.phone,
+        updatedAt: now,
+      };
+    }
     const lastCents = lastPhonePaymentCentsForNumber(inputs.sales, payload.phone);
     return {
       contextType: 'phone_payment',
@@ -673,4 +705,152 @@ export function computeOperatorContextFromGlobalState(
   }
 
   return null;
+}
+
+// ── Insights (R-OPERATOR-AMBIENT-AWARENESS-V1) ────────────
+
+function totalSpendCentsForCustomer(
+  sales: Sale[] | null | undefined,
+  customerId: string,
+): number {
+  if (!Array.isArray(sales) || !customerId) return 0;
+  let total = 0;
+  for (const s of sales) {
+    if (!s || s.customerId !== customerId) continue;
+    if (s.status === 'voided' || s.status === 'refunded') continue;
+    const t = typeof s.total === 'number' ? s.total : 0;
+    if (t > 0) total += t;
+  }
+  return total;
+}
+
+function countActiveSalesForCustomer(
+  sales: Sale[] | null | undefined,
+  customerId: string,
+): number {
+  if (!Array.isArray(sales) || !customerId) return 0;
+  let n = 0;
+  for (const s of sales) {
+    if (!s || s.customerId !== customerId) continue;
+    if (s.status === 'voided' || s.status === 'refunded') continue;
+    n += 1;
+  }
+  return n;
+}
+
+function findNearCompleteLayawayForCustomer(
+  layaways: { customerId?: string; status?: string; totalPrice?: number; balance?: number }[] | null | undefined,
+  customerId: string,
+): { totalPrice: number; balance: number } | null {
+  if (!Array.isArray(layaways) || !customerId) return null;
+  for (const l of layaways) {
+    if (!l) continue;
+    if ((l as { customerId?: string }).customerId !== customerId) continue;
+    const status = String((l as { status?: string }).status || '').toLowerCase();
+    if (status !== 'active') continue;
+    const total = (l.totalPrice || 0);
+    const bal = (l.balance || 0);
+    if (total > 0 && bal > 0 && bal / total <= NEAR_COMPLETE_FRAC) {
+      return { totalPrice: total, balance: bal };
+    }
+  }
+  return null;
+}
+
+/**
+ * Compute the deterministic insight list for the current activeContext.
+ * Returns up to ~3 short observations the overlay can render. The list
+ * is intentionally small + curated — too many insights becomes noise.
+ *
+ * Pure function: O(N) over already-loaded slices, no I/O, no fetches,
+ * no random, no AI text generation. Called only when the overlay opens
+ * OR when the context object changes — never on every render.
+ */
+export function computeInsightsForContext(
+  context: OperatorActiveContext | null,
+  inputs: OperatorActivityInputs,
+): OperatorInsight[] {
+  if (!context) return [];
+  const out: OperatorInsight[] = [];
+
+  // Unknown phone — the entire awareness pivots to "new customer" prompts.
+  if (context.contextType === 'unknown_phone') {
+    out.push({
+      id: 'first_time',
+      i18nKey: 'operator.insight.firstTimeCustomer',
+      args: [],
+      tone: 'positive',
+    });
+    out.push({
+      id: 'create_profile_prompt',
+      i18nKey: 'operator.insight.createProfilePrompt',
+      args: [],
+      tone: 'info',
+    });
+    return out;
+  }
+
+  // Customer-anchored contexts get the full rule sweep.
+  if (context.customerId) {
+    const cust = findCustomer(inputs.customers, context.customerId);
+    if (!cust) return out;
+
+    // 1. VIP: lifetime non-voided spend ≥ threshold.
+    const spend = totalSpendCentsForCustomer(inputs.sales, cust.id);
+    if (spend >= VIP_THRESHOLD_CENTS) {
+      out.push({
+        id: 'vip',
+        i18nKey: 'operator.insight.vipCustomer',
+        args: [(spend / 100).toFixed(0)],
+        tone: 'positive',
+      });
+    }
+
+    // 2. Repeat vs Inactive — mutually exclusive on the time axis.
+    const last = latestSaleForCustomer(inputs.sales, cust.id);
+    const lastDays = last ? daysAgo(last.createdAt) : null;
+    if (lastDays !== null && lastDays > INACTIVE_DAYS) {
+      out.push({
+        id: 'inactive',
+        i18nKey: 'operator.insight.inactiveDays',
+        args: [lastDays],
+        tone: 'warning',
+      });
+    } else {
+      const salesCount = countActiveSalesForCustomer(inputs.sales, cust.id);
+      if (salesCount >= REPEAT_SALES_COUNT) {
+        out.push({
+          id: 'repeat',
+          i18nKey: 'operator.insight.repeatBuyer',
+          args: [salesCount],
+          tone: 'positive',
+        });
+      }
+    }
+
+    // 3. Multi-line.
+    const lines = lineCountFor(cust);
+    if (lines >= MULTI_LINE_COUNT) {
+      out.push({
+        id: 'multi_line',
+        i18nKey: 'operator.insight.multiLineCustomer',
+        args: [lines],
+        tone: 'info',
+      });
+    }
+
+    // 4. Near-complete layaway — useful nudge in any context that
+    //    knows the customer.
+    const nearLay = findNearCompleteLayawayForCustomer(inputs.layaways, cust.id);
+    if (nearLay) {
+      out.push({
+        id: 'near_complete_layaway',
+        i18nKey: 'operator.insight.nearCompleteLayaway',
+        args: [(nearLay.balance / 100).toFixed(2)],
+        tone: 'info',
+      });
+    }
+  }
+
+  return out;
 }
