@@ -4864,6 +4864,17 @@ export const translations: TranslationDictionary = {
   'companion.device.justNow':        { en: 'just now',               es: 'hace un momento',         pt: 'agora mesmo' },
   'companion.device.health.good':    { en: 'Healthy',                es: 'Saludable',               pt: 'Saudável' },
   'companion.device.disconnect':     { en: 'Disconnect',             es: 'Desconectar',             pt: 'Desconectar' },
+
+  // R-COMPANION-EVENT-LAYER-V1 — dev debug panel
+  'companion.debug.title':           { en: 'Event bus (dev)',         es: 'Bus de eventos (dev)',     pt: 'Barramento de eventos (dev)' },
+  'companion.debug.connected':       { en: 'Companion connected',     es: 'Companion conectado',      pt: 'Companion conectado' },
+  'companion.debug.lastEvent':       { en: 'Last event',              es: 'Último evento',            pt: 'Último evento' },
+  'companion.debug.queueSize':       { en: 'Queue size',              es: 'Tamaño de cola',           pt: 'Tamanho da fila' },
+  'companion.debug.toggleConnection':{ en: 'Toggle connection',       es: 'Alternar conexión',        pt: 'Alternar conexão' },
+  'companion.debug.simulateEvent':   { en: 'Simulate event',          es: 'Simular evento',           pt: 'Simular evento' },
+  'companion.debug.noEvents':        { en: 'no events yet',           es: 'sin eventos aún',          pt: 'sem eventos ainda' },
+  'companion.debug.yes':             { en: 'yes',                     es: 'sí',                       pt: 'sim' },
+  'companion.debug.no':              { en: 'no',                      es: 'no',                       pt: 'não' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },

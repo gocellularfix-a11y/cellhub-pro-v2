@@ -14,6 +14,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/i18n';
 import Modal from '@/components/ui/Modal';
+import {
+  emit as emitCompanionEvent,
+  getLastEvent as getLastCompanionEvent,
+  subscribeAll as subscribeAllCompanionEvents,
+} from '@/services/companion/companionEventBus';
+import {
+  getConnectionState as getCompanionConnectionState,
+  getQueueSize as getCompanionQueueSize,
+  setConnectionState as setCompanionConnectionState,
+  subscribeConnectionState as subscribeCompanionConnectionState,
+} from '@/services/companion/companionMockBridge';
+import type {
+  CompanionConnectionState,
+  CompanionEvent,
+} from '@/services/companion/companionTypes';
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
 
@@ -120,6 +135,49 @@ export default function CompanionCenter() {
   const [pairingPin, setPairingPin] = useState('');
   const [pairingPhase, setPairingPhase] = useState<PairingPhase>('waiting');
   const [pairedDevice, setPairedDevice] = useState<MockDevice | null>(null);
+
+  // R-COMPANION-EVENT-LAYER-V1: dev panel state mirrors the bus + bridge.
+  // Subscriptions are scoped to the module's mount so they tear down on
+  // unmount; cero global polling.
+  const [companionConnState, setCompanionConnState] = useState<CompanionConnectionState>(() =>
+    getCompanionConnectionState()
+  );
+  const [companionLastEvent, setCompanionLastEvent] = useState<CompanionEvent | null>(() =>
+    getLastCompanionEvent()
+  );
+  const [companionQueue, setCompanionQueue] = useState<number>(() => getCompanionQueueSize());
+
+  useEffect(() => {
+    const unsubState = subscribeCompanionConnectionState((next) => {
+      setCompanionConnState(next);
+      setCompanionQueue(getCompanionQueueSize());
+    });
+    const unsubEvents = subscribeAllCompanionEvents((e) => {
+      setCompanionLastEvent(e);
+      setCompanionQueue(getCompanionQueueSize());
+    });
+    return () => { unsubState(); unsubEvents(); };
+  }, []);
+
+  const toggleCompanionConnection = useCallback(() => {
+    setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
+  }, [companionConnState]);
+
+  // Dev-only: emit a deterministic mock event so the panel can show
+  // the bus working without depending on real producers (which will
+  // be wired in future rounds).
+  const simulateCompanionEvent = useCallback(() => {
+    emitCompanionEvent({
+      type: 'APPROVAL_CREATED',
+      category: 'approvals',
+      payload: {
+        approvalId: `mock-${Date.now().toString(36)}`,
+        actionType: 'CANCEL_LAYAWAY',
+        status: 'pending',
+      },
+      createdAt: Date.now(),
+    });
+  }, []);
 
   // Open the pairing modal with a fresh 6-digit PIN. Random is fine
   // here — UX mockup, not business logic, never persisted.
@@ -368,6 +426,84 @@ export default function CompanionCenter() {
             </div>
           );
         })}
+      </div>
+
+      {/* R-COMPANION-EVENT-LAYER-V1: dev debug panel. Lightweight,
+          unstyled-by-design surface that proves the bus + bridge work
+          before any real producers are wired. Subscribes once on mount;
+          listeners are released on unmount via useEffect cleanup. */}
+      <div style={{
+        padding: '0.75rem 0.9rem',
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px dashed rgba(148,163,184,0.2)',
+        borderRadius: '0.625rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        fontSize: '0.78rem',
+        color: '#94a3b8',
+      }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#64748b' }}>
+          {t('companion.debug.title')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.5rem' }}>
+          <div>
+            <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{t('companion.debug.connected')}</div>
+            <div style={{
+              color: companionConnState === 'connected' ? '#86efac' : '#cbd5e1',
+              fontWeight: 600,
+            }}>
+              {companionConnState === 'connected' ? t('companion.debug.yes') : t('companion.debug.no')}
+              <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '0.35rem' }}>
+                ({companionConnState})
+              </span>
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{t('companion.debug.lastEvent')}</div>
+            <div style={{ fontFamily: 'Courier New, monospace', color: '#e2e8f0', fontWeight: 600 }}>
+              {companionLastEvent ? companionLastEvent.type : t('companion.debug.noEvents')}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{t('companion.debug.queueSize')}</div>
+            <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{companionQueue}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={toggleCompanionConnection}
+            style={{
+              padding: '0.35rem 0.65rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(148,163,184,0.25)',
+              background: 'rgba(255,255,255,0.04)',
+              color: '#cbd5e1',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            ⇋ {t('companion.debug.toggleConnection')}
+          </button>
+          <button
+            type="button"
+            onClick={simulateCompanionEvent}
+            style={{
+              padding: '0.35rem 0.65rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(99,102,241,0.30)',
+              background: 'rgba(99,102,241,0.08)',
+              color: '#a5b4fc',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            ⚡ {t('companion.debug.simulateEvent')}
+          </button>
+        </div>
       </div>
 
       {/* Pairing modal */}
