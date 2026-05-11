@@ -25,6 +25,8 @@ const EmployeesModule  = lazy(() => import('@/modules/employees/EmployeesModule'
 const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPanel'));
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
+// R-COMPANION-CENTER-V1: UI shell for the future mobile-companion app.
+const CompanionCenter = lazy(() => import('@/modules/companion/CompanionCenter'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
 // R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
 const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
@@ -111,7 +113,7 @@ export default function AppShell() {
   });
 
   // Admin-only tabs — show lock screen if not in admin mode
-  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence'];
+  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
   return (
@@ -138,6 +140,7 @@ export default function AppShell() {
 
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'companion'      && (isAdminMode ? <CompanionCenter />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'settings'       && (isAdminMode ? <SettingsModule />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'reports'        && (!isAdminMode
             ? <AdminLockScreen onUnlock={requireAdmin} lang={lang} />

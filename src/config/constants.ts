@@ -155,6 +155,8 @@ export const NAV_TABS: NavTab[] = [
   { id: 'customers',     labelKey: 'customers',     icon: '👤', allowedRoles: ['owner','manager','sales','cashier'] },
   { id: 'appointments',  labelKey: 'appointments',  icon: '📅', allowedRoles: ['owner','manager','sales','technician'] },
   { id: 'intelligence',  labelKey: 'intelligence',  icon: '🧠', adminOnly: true },
+  // R-COMPANION-CENTER-V1: UI shell only — no backend wired yet.
+  { id: 'companion',     labelKey: 'companion',     icon: '📱', adminOnly: true },
   { id: 'purchaseOrders', labelKey: 'purchaseOrders',  icon: '🛒', adminOnly: true },
   { id: 'reports',       labelKey: 'reports',        icon: '📈', adminOnly: true },
   { id: 'tax',           labelKey: 'caTaxReports',   icon: '🏛️', adminOnly: true },
@@ -181,8 +183,8 @@ export function canAccessTab(tabId: string, role: string | undefined, allowedMod
 
 /** Default modules for each role (used as presets when creating employees) */
 export const ROLE_DEFAULT_MODULES: Record<string, string[]> = {
-  owner: ['dashboard','pos','inventory','repairs','unlocks','specialOrders','layaways','returns','customers','appointments','intelligence','purchaseOrders','reports','tax','settings'],
-  manager: ['dashboard','pos','inventory','repairs','unlocks','specialOrders','layaways','returns','customers','appointments','intelligence','purchaseOrders','reports','tax','settings'],
+  owner: ['dashboard','pos','inventory','repairs','unlocks','specialOrders','layaways','returns','customers','appointments','intelligence','companion','purchaseOrders','reports','tax','settings'],
+  manager: ['dashboard','pos','inventory','repairs','unlocks','specialOrders','layaways','returns','customers','appointments','intelligence','companion','purchaseOrders','reports','tax','settings'],
   technician: ['dashboard','inventory','repairs','unlocks','appointments'],
   sales: ['dashboard','pos','inventory','unlocks','specialOrders','layaways','returns','customers','appointments'],
   cashier: ['dashboard','pos','layaways','customers'],
@@ -201,6 +203,7 @@ export const ASSIGNABLE_MODULES = [
   { id: 'customers',      label: 'Customers',        icon: '👤' },
   { id: 'appointments',   label: 'Appointments',     icon: '📅' },
   { id: 'intelligence',  label: 'Intelligence',    icon: '🧠' },
+  { id: 'companion',     label: 'Companion',        icon: '📱' },
   { id: 'purchaseOrders', label: 'Purchase Orders',  icon: '🛒' },
   { id: 'reports',        label: 'Reports',          icon: '📈' },
   { id: 'tax',            label: 'Taxes',            icon: '🏛️' },

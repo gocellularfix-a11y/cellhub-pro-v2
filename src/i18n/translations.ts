@@ -4816,7 +4816,54 @@ export const translations: TranslationDictionary = {
   'nav.customers':       { en: 'Customers',         es: 'Clientes',             pt: 'Clientes' },
   'nav.appointments':    { en: 'Appointments',      es: 'Citas',                pt: 'Agendamentos' },
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
+  'nav.companion':       { en: 'Companion',         es: 'Companion',            pt: 'Companion' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
+
+  // R-COMPANION-CENTER-V1 — UI shell strings (no backend yet)
+  'companion.title':                 { en: 'Companion Center',          es: 'Centro Companion',          pt: 'Central Companion' },
+  'companion.subtitle':              { en: 'Connect CellHub Pro with the Companion mobile app.', es: 'Conecta CellHub Pro con la app móvil Companion.', pt: 'Conecte o CellHub Pro com o app móvel Companion.' },
+  'companion.statusBanner.notConnected':   { en: 'Not connected',         es: 'No conectado',            pt: 'Não conectado' },
+  'companion.statusBanner.pairing':        { en: 'Pairing pending',       es: 'Emparejamiento pendiente',pt: 'Emparelhamento pendente' },
+  'companion.statusBanner.connected':      { en: 'Connected soon',        es: 'Conexión próxima',        pt: 'Conexão em breve' },
+  'companion.statusBanner.comingSoon':     { en: 'Coming soon',           es: 'Próximamente',            pt: 'Em breve' },
+
+  'companion.card.connect.title':      { en: 'Connect Companion App',     es: 'Conectar app Companion',  pt: 'Conectar app Companion' },
+  'companion.card.connect.body':       { en: 'Link this terminal to the mobile Companion so you can monitor and assist the store from anywhere.', es: 'Vincula esta terminal con el Companion móvil para monitorear y asistir la tienda desde cualquier lugar.', pt: 'Vincule este terminal ao Companion móvel para monitorar e assistir a loja de qualquer lugar.' },
+
+  'companion.card.pair.title':         { en: 'Pair Device via QR / PIN',  es: 'Emparejar Dispositivo (QR / PIN)', pt: 'Parear Dispositivo (QR / PIN)' },
+  'companion.card.pair.body':          { en: 'Scan a QR code from the mobile app, or enter a 6-digit pairing PIN.', es: 'Escanea un QR desde la app móvil, o ingresa un PIN de 6 dígitos.', pt: 'Escaneie um QR pelo app móvel ou insira um PIN de 6 dígitos.' },
+
+  'companion.card.approvals.title':    { en: 'Approval Requests',         es: 'Solicitudes de Aprobación',pt: 'Solicitações de Aprovação' },
+  'companion.card.approvals.body':     { en: 'Approve cashier-side actions (cancels, refunds, discounts) directly from your phone.', es: 'Aprueba acciones del cajero (cancelaciones, reembolsos, descuentos) desde el teléfono.', pt: 'Aprove ações do caixa (cancelamentos, reembolsos, descontos) direto do celular.' },
+
+  'companion.card.storeStatus.title':  { en: 'Store Status',              es: 'Estado de la Tienda',      pt: 'Status da Loja' },
+  'companion.card.storeStatus.body':   { en: 'See who is clocked in, live sales count and current cash drawer at a glance.', es: 'Ve quién está clockeado, ventas en vivo y caja actual de un vistazo.', pt: 'Veja quem está registrado, vendas ao vivo e caixa atual em um relance.' },
+
+  'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
+  'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
+
+  'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
+  'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },
+
+  // R-COMPANION-PAIRING-MOCK-V1
+  'companion.card.pair.startButton': { en: 'Start Pairing',          es: 'Iniciar Emparejamiento',  pt: 'Iniciar Pareamento' },
+  'companion.card.pair.repairButton':{ en: 'Pair another device',    es: 'Emparejar otro',          pt: 'Parear outro' },
+  'companion.pair.modalTitle':       { en: 'Pair Companion Device',  es: 'Emparejar Dispositivo Companion', pt: 'Parear Dispositivo Companion' },
+  'companion.pair.qrCaption':        { en: 'Scan with the Companion app', es: 'Escanea con la app Companion', pt: 'Escaneie com o app Companion' },
+  'companion.pair.pinLabel':         { en: 'Or enter this 6-digit code', es: 'O ingresa este código de 6 dígitos', pt: 'Ou insira este código de 6 dígitos' },
+  'companion.pair.instructions':     { en: 'Open the Companion app on your phone and tap Pair to scan the code above.', es: 'Abre la app Companion en tu teléfono y toca Emparejar para escanear el código.', pt: 'Abra o app Companion no celular e toque em Parear para escanear o código.' },
+  'companion.pair.phase.waiting':    { en: 'Waiting for device…',    es: 'Esperando dispositivo…',  pt: 'Aguardando dispositivo…' },
+  'companion.pair.phase.pending':    { en: 'Pairing pending…',       es: 'Emparejamiento pendiente…', pt: 'Pareamento pendente…' },
+  'companion.pair.phase.connected':  { en: 'Connected!',             es: '¡Conectado!',             pt: 'Conectado!' },
+  'companion.pair.cancel':           { en: 'Cancel',                 es: 'Cancelar',                pt: 'Cancelar' },
+
+  'companion.device.sectionTitle':   { en: 'Paired device',          es: 'Dispositivo emparejado',  pt: 'Dispositivo pareado' },
+  'companion.device.platform.iphone':{ en: 'iPhone',                 es: 'iPhone',                  pt: 'iPhone' },
+  'companion.device.platform.android':{ en: 'Android',               es: 'Android',                 pt: 'Android' },
+  'companion.device.lastConnected':  { en: 'Last connected',         es: 'Última conexión',         pt: 'Última conexão' },
+  'companion.device.justNow':        { en: 'just now',               es: 'hace un momento',         pt: 'agora mesmo' },
+  'companion.device.health.good':    { en: 'Healthy',                es: 'Saludable',               pt: 'Saudável' },
+  'companion.device.disconnect':     { en: 'Disconnect',             es: 'Desconectar',             pt: 'Desconectar' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
