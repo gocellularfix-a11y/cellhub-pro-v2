@@ -18,6 +18,8 @@ export type CompanionEventCategory =
 /** Specific event names. Append-only — new event types add here. */
 export type CompanionEventType =
   | 'APPROVAL_CREATED'
+  | 'APPROVAL_APPROVED'         // R-COMPANION-APPROVAL-EMITTERS-V1
+  | 'APPROVAL_DENIED'           // R-COMPANION-APPROVAL-EMITTERS-V1
   | 'APPROVAL_UPDATED'
   | 'MESSAGE_SENT'
   | 'MESSAGE_RECEIVED'
@@ -30,8 +32,21 @@ export type CompanionEventType =
 
 export interface CompanionApprovalPayload {
   approvalId: string;
-  actionType?: string;             // matches ApprovalActionType union
+  /** matches ApprovalActionType union — CANCEL_LAYAWAY etc. */
+  actionType?: string;
   requestedByEmployeeId?: string;
+  /** R-COMPANION-APPROVAL-EMITTERS-V1: id of the approver on success
+   *  (or 'approver:admin' for admin PIN fallback). */
+  approvedByEmployeeId?: string;
+  /** R-COMPANION-APPROVAL-EMITTERS-V1: terminal reason on DENIED
+   *  events — 'cancelled' | 'timeout' | 'invalid_pin' |
+   *  'self_approval_blocked'. Kept as a string union-of-strings so
+   *  future denial reasons don't require a type rev. */
+  reason?: string;
+  /** R-COMPANION-APPROVAL-EMITTERS-V1: source module name derived
+   *  from actionType ('layaways', 'repairs', 'unlocks',
+   *  'specialOrders', 'pos', 'returns'). Cero PII. */
+  source?: string;
   status?: 'pending' | 'approved' | 'denied';
 }
 
@@ -59,6 +74,8 @@ export interface CompanionIntelligenceAlertPayload {
 
 export type CompanionEvent =
   | { type: 'APPROVAL_CREATED';           category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
+  | { type: 'APPROVAL_APPROVED';          category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
+  | { type: 'APPROVAL_DENIED';            category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
   | { type: 'APPROVAL_UPDATED';           category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
   | { type: 'MESSAGE_SENT';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'MESSAGE_RECEIVED';           category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
