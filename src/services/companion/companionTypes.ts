@@ -206,3 +206,128 @@ export interface CompanionBridgeSnapshot {
 }
 
 export type CompanionBridgeSnapshotListener = (snapshot: CompanionBridgeSnapshot) => void;
+
+// ── Device registry (R-COMPANION-DEVICE-REGISTRY-V1) ──────
+// In-memory roster of every Companion device the desktop has seen.
+// The bridge connection layer holds the single "currently paired"
+// device; the registry holds the broader list (including remembered/
+// trusted devices that are not currently connected). Future rounds
+// wire persistence behind the same snapshot subscription surface.
+
+export type CompanionDeviceHealth = 'good' | 'stale' | 'offline';
+
+export interface CompanionRegisteredDevice {
+  deviceId: string;
+  deviceName: string;
+  platform: CompanionDevicePlatform;
+  status: 'connected' | 'disconnected';
+  /** ms epoch — first time this device id was registered. */
+  connectedAt: number;
+  /** ms epoch — most-recent heartbeat / activity for this device. */
+  lastSeenAt: number;
+  /** True when the owner has explicitly trusted/remembered this device.
+   *  Future UX: trusted devices reconnect without re-pairing. */
+  trusted: boolean;
+  health: CompanionDeviceHealth;
+}
+
+export interface CompanionDeviceRegistrySnapshot {
+  /** Stable order: most-recently-active first. Copy — mutating it
+   *  does not mutate registry state. */
+  devices: CompanionRegisteredDevice[];
+  /** Currently-active deviceId, or null when nothing is paired. */
+  activeDeviceId: string | null;
+}
+
+export type CompanionDeviceRegistryListener = (snapshot: CompanionDeviceRegistrySnapshot) => void;
+
+// ── Action inbox (R-COMPANION-ACTION-INBOX-V1) ────────────
+// Reverse path: actions coming FROM the future Companion mobile app
+// INTO the desktop. Shell only — no producer wires real mutations
+// yet; the service exists so a future bridge can route incoming
+// actions through one typed entry point.
+
+export type CompanionInboxActionType =
+  | 'approve_request'
+  | 'deny_request'
+  | 'send_message'
+  | 'acknowledge_intelligence_alert';
+
+export type CompanionInboxActionStatus = 'pending' | 'handled';
+
+// Per-type payload shapes. IDs + minimal metadata only — cero PII.
+
+export interface CompanionApproveRequestPayload {
+  approvalId: string;
+  approvedByEmployeeId?: string;
+  reason?: string;
+}
+
+export interface CompanionDenyRequestPayload {
+  approvalId: string;
+  deniedByEmployeeId?: string;
+  reason?: string;
+}
+
+export interface CompanionSendMessagePayload {
+  messageId: string;
+  fromEmployeeId?: string;
+  channel?: string;
+  /** Short non-sensitive preview only — never customer PII. */
+  preview?: string;
+}
+
+export interface CompanionAcknowledgeAlertPayload {
+  alertId: string;
+  acknowledgedByEmployeeId?: string;
+}
+
+/**
+ * Inbox-action envelope. Discriminated by `type` so consumers get
+ * compile-time payload safety. actionId is generated locally on
+ * submit; status starts 'pending' and flips to 'handled' once the
+ * desktop side has applied (or chosen to ignore) the action.
+ */
+export type CompanionInboxAction =
+  | {
+      type: 'approve_request';
+      actionId: string;
+      receivedAt: number;
+      status: CompanionInboxActionStatus;
+      handledAt?: number;
+      payload: CompanionApproveRequestPayload;
+    }
+  | {
+      type: 'deny_request';
+      actionId: string;
+      receivedAt: number;
+      status: CompanionInboxActionStatus;
+      handledAt?: number;
+      payload: CompanionDenyRequestPayload;
+    }
+  | {
+      type: 'send_message';
+      actionId: string;
+      receivedAt: number;
+      status: CompanionInboxActionStatus;
+      handledAt?: number;
+      payload: CompanionSendMessagePayload;
+    }
+  | {
+      type: 'acknowledge_intelligence_alert';
+      actionId: string;
+      receivedAt: number;
+      status: CompanionInboxActionStatus;
+      handledAt?: number;
+      payload: CompanionAcknowledgeAlertPayload;
+    };
+
+export interface CompanionActionInboxSnapshot {
+  /** All actions, most-recent first. Copy — mutating it does not
+   *  mutate inbox state. */
+  actions: CompanionInboxAction[];
+  /** Count of actions with status === 'pending'. */
+  pendingCount: number;
+}
+
+export type CompanionActionInboxListener = (snapshot: CompanionActionInboxSnapshot) => void;

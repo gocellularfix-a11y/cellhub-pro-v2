@@ -21,6 +21,13 @@ import {
   setConnectionState as setBridgeState,
   subscribeConnectionState as subscribeBridgeState,
 } from './companionMockBridge';
+// R-COMPANION-DEVICE-REGISTRY-V1: when the bridge accepts or releases
+// a device, mirror that into the registry so the device-roster
+// surface stays consistent with the "currently paired" pointer.
+import {
+  markDeviceDisconnected as registryMarkDisconnected,
+  registerDevice as registryRegisterDevice,
+} from './companionDeviceRegistry';
 import type {
   CompanionBridgeMode,
   CompanionBridgeSnapshot,
@@ -111,6 +118,10 @@ export interface MockConnectInput {
  * Mock-connect a device. Closes any open pairing session, replaces
  * the current paired device, advances the bridge connection state.
  * Returns the resulting CompanionPairedDevice snapshot.
+ *
+ * R-COMPANION-DEVICE-REGISTRY-V1: also registers (or updates) the
+ * device in the registry so the broader roster stays in sync with
+ * the bridge's "currently paired" pointer.
  */
 export function mockConnectDevice(input: MockConnectInput = {}): CompanionPairedDevice {
   const now = Date.now();
@@ -124,15 +135,31 @@ export function mockConnectDevice(input: MockConnectInput = {}): CompanionPaired
   };
   lastConnectedAt = now;
   pairingSession = null;
+  // Mirror into the registry BEFORE the bridge-state flip so a
+  // listener that reacts to 'connected' sees the registry entry
+  // already present.
+  registryRegisterDevice({
+    deviceId: pairedDevice.deviceId,
+    deviceName: pairedDevice.deviceName,
+    platform: pairedDevice.platform,
+  });
   setBridgeState('connected');
   notifySnapshot();
   return pairedDevice;
 }
 
-/** Mock-disconnect the currently paired device. No-op when none. */
+/**
+ * Mock-disconnect the currently paired device. No-op when none.
+ *
+ * R-COMPANION-DEVICE-REGISTRY-V1: also marks the device disconnected
+ * in the registry (it stays in the roster — removeDevice is a
+ * separate explicit action).
+ */
 export function mockDisconnectDevice(): void {
   if (!pairedDevice) return;
+  const goingId = pairedDevice.deviceId;
   pairedDevice = null;
+  registryMarkDisconnected(goingId);
   setBridgeState('disconnected');
   notifySnapshot();
 }
