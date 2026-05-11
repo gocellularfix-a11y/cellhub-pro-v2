@@ -23,6 +23,8 @@ export type CompanionEventType =
   | 'APPROVAL_UPDATED'
   | 'MESSAGE_SENT'
   | 'MESSAGE_RECEIVED'
+  | 'STORE_OPENED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
+  | 'STORE_CLOSED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
   | 'STORE_STATUS_UPDATED'
   | 'INTELLIGENCE_ALERT_CREATED';
 
@@ -74,10 +76,28 @@ export interface CompanionMessagePayload {
 }
 
 export interface CompanionStoreStatusPayload {
+  /** R-COMPANION-STORE-STATUS-EMITTERS-V1: stable id for this status
+   *  change. Consumers can dedupe / order events by it. */
+  statusId?: string;
+  /** R-COMPANION-STORE-STATUS-EMITTERS-V1: operational state — the
+   *  primary discriminator on the receiving Companion side. */
+  status?: 'open' | 'closed' | 'unknown';
+  /** R-COMPANION-STORE-STATUS-EMITTERS-V1: origin of the signal.
+   *  Defaults to 'desktop' in the shell helpers. */
+  source?: string;
+  /** R-COMPANION-STORE-STATUS-EMITTERS-V1: ms epoch of the status
+   *  change. Redundant with envelope createdAt but explicit per spec
+   *  so consumers don't reach into the envelope. */
+  updatedAt?: number;
+  /** R-COMPANION-STORE-STATUS-EMITTERS-V1: short optional reason
+   *  string for diagnostics (e.g. 'manual_toggle', 'after_hours').
+   *  Never customer / employee PII. */
+  reason?: string;
   storeId?: string;
+  /** Optional operational counter — count only, no PII / no money. */
   cashiersOnShift?: number;
+  /** Optional operational counter — count only, no PII / no money. */
   ringingPosCount?: number;
-  cashDrawerCents?: number;
 }
 
 export interface CompanionIntelligenceAlertPayload {
@@ -95,6 +115,8 @@ export type CompanionEvent =
   | { type: 'APPROVAL_UPDATED';           category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
   | { type: 'MESSAGE_SENT';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'MESSAGE_RECEIVED';           category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
+  | { type: 'STORE_OPENED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
+  | { type: 'STORE_CLOSED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'STORE_STATUS_UPDATED';       category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'INTELLIGENCE_ALERT_CREATED'; category: 'intelligence_alerts'; payload: CompanionIntelligenceAlertPayload; createdAt: number };
 
