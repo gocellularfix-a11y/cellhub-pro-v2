@@ -4846,6 +4846,23 @@ export const translations: TranslationDictionary = {
 
   'companion.card.storeStatus.title':  { en: 'Store Status',              es: 'Estado de la Tienda',      pt: 'Status da Loja' },
   'companion.card.storeStatus.body':   { en: 'See who is clocked in, live sales count and current cash drawer at a glance.', es: 'Ve quién está clockeado, ventas en vivo y caja actual de un vistazo.', pt: 'Veja quem está registrado, vendas ao vivo e caixa atual em um relance.' },
+  // R-COMPANION-STORE-STATUS-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.storeStatus.statusOpen':    { en: 'Open',    es: 'Abierta',     pt: 'Aberta' },
+  'companion.card.storeStatus.statusClosed':  { en: 'Closed',  es: 'Cerrada',     pt: 'Fechada' },
+  'companion.card.storeStatus.statusUnknown': { en: 'Unknown', es: 'Desconocido', pt: 'Desconhecido' },
+  'companion.card.storeStatus.shiftLine': {
+    en: (n: number) => `${n} cashier${n === 1 ? '' : 's'} on shift`,
+    es: (n: number) => `${n} cajero${n === 1 ? '' : 's'} en turno`,
+    pt: (n: number) => `${n} caixa${n === 1 ? '' : 's'} em turno`,
+  },
+  'companion.card.storeStatus.ringingLine': {
+    en: (n: number) => `${n} POS ringing`,
+    es: (n: number) => `${n} POS activa${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} POS ativa${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.storeStatus.alert.warning':  { en: 'Warning',  es: 'Advertencia', pt: 'Aviso' },
+  'companion.card.storeStatus.alert.critical': { en: 'Critical', es: 'Crítico',     pt: 'Crítico' },
+  'companion.card.storeStatus.latestEvent':    { en: 'Latest event', es: 'Último evento', pt: 'Último evento' },
 
   'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
   'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },

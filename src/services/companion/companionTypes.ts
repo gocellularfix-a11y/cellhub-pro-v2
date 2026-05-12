@@ -428,3 +428,48 @@ export interface CompanionMessagingRuntimeSnapshot {
 }
 
 export type CompanionMessagingRuntimeListener = (snapshot: CompanionMessagingRuntimeSnapshot) => void;
+
+// ── Store status runtime store (R-COMPANION-STORE-STATUS-RUNTIME-V1) ──
+// Aggregated view of the most-recent store-status emit on the
+// Companion Event Bus, sourced from STORE_OPENED / STORE_CLOSED /
+// STORE_STATUS_UPDATED events. Lets the Companion Center surface
+// open/closed state + on-shift counts + the latest alert level
+// without re-walking the bus log. Cero networking, cero persistence
+// — in-memory only.
+
+export type CompanionStoreOperatingMode = 'open' | 'closed' | 'unknown';
+
+export type CompanionStoreAlertLevel = 'normal' | 'warning' | 'critical';
+
+export interface CompanionStoreRuntimeEmployee {
+  employeeId: string;
+  role?: 'owner' | 'manager' | 'technician' | 'sales' | 'cashier';
+  /** ms epoch — most-recent activity timestamp for this employee. */
+  lastSeenAt: number;
+}
+
+export interface CompanionStoreStatusRuntimeSnapshot {
+  /** Current operating mode derived from the most-recent emit. */
+  status: CompanionStoreOperatingMode;
+  /** Most-recent statusId from a status emit, or null when none yet. */
+  statusId: string | null;
+  /** Origin of the latest signal (e.g. 'desktop'). */
+  source?: string;
+  /** Latest emit's short diagnostic reason (e.g. 'manual_toggle'). */
+  reason?: string;
+  /** ms epoch of the most-recent status update, or null when empty. */
+  lastUpdatedAt: number | null;
+  /** Latest emit's cashiersOnShift count (0 when unknown). */
+  cashiersOnShift: number;
+  /** Latest emit's ringingPosCount (0 when unknown). */
+  ringingPosCount: number;
+  /** Roster slot for future emitter expansion — empty today since
+   *  desktop emits only carry counts, not employee ids. */
+  activeEmployees: CompanionStoreRuntimeEmployee[];
+  /** Event type that produced the current state, or null when empty. */
+  lastEventType: 'STORE_OPENED' | 'STORE_CLOSED' | 'STORE_STATUS_UPDATED' | null;
+  /** Derived UX prominence — see derivation rules in the runtime. */
+  alertLevel: CompanionStoreAlertLevel;
+}
+
+export type CompanionStoreStatusRuntimeListener = (snapshot: CompanionStoreStatusRuntimeSnapshot) => void;

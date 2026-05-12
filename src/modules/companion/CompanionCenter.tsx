@@ -55,6 +55,11 @@ import {
   getMessagingRuntimeSnapshot,
   subscribeMessagingRuntime,
 } from '@/services/companion/companionMessagingRuntime';
+// R-COMPANION-STORE-STATUS-RUNTIME-V1: read model over store-status events.
+import {
+  getStoreStatusRuntimeSnapshot,
+  subscribeStoreStatusRuntime,
+} from '@/services/companion/companionStoreStatusRuntime';
 import type {
   CompanionActionInboxSnapshot,
   CompanionApprovalRuntimeSnapshot,
@@ -62,6 +67,7 @@ import type {
   CompanionDevicePlatform,
   CompanionEvent,
   CompanionMessagingRuntimeSnapshot,
+  CompanionStoreStatusRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
@@ -191,6 +197,11 @@ export default function CompanionCenter() {
   // the Messaging card body.
   const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
 
+  // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model snapshot driven
+  // by STORE_OPENED / STORE_CLOSED / STORE_STATUS_UPDATED events.
+  // Used by the Store Status card body.
+  const [storeStatusRuntime, setStoreStatusRuntime] = useState<CompanionStoreStatusRuntimeSnapshot>(() => getStoreStatusRuntimeSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -209,7 +220,8 @@ export default function CompanionCenter() {
     const unsubInbox = subscribeActionInbox((s) => setInboxSnap(s));
     const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
     const unsubMessaging = subscribeMessagingRuntime((s) => setMessagingRuntime(s));
-    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); };
+    const unsubStoreStatus = subscribeStoreStatusRuntime((s) => setStoreStatusRuntime(s));
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -553,6 +565,64 @@ export default function CompanionCenter() {
                       ✕ {t('companion.card.approvals.latestDenied')}
                     </div>
                   )}
+                </div>
+              )}
+              {/* R-COMPANION-STORE-STATUS-RUNTIME-V1: live runtime
+                  line inside the Store Status card. Renders only
+                  once an event has populated the runtime. Status
+                  pill stays 'coming_soon' per existing feel. */}
+              {card.id === 'storeStatus' && storeStatusRuntime.lastEventType && (
+                <div style={{
+                  marginTop: '0.25rem',
+                  padding: '0.4rem 0.55rem',
+                  background:
+                    storeStatusRuntime.alertLevel === 'critical' ? 'rgba(239,68,68,0.08)'
+                    : storeStatusRuntime.alertLevel === 'warning' ? 'rgba(251,191,36,0.08)'
+                    : 'rgba(34,197,94,0.06)',
+                  border:
+                    storeStatusRuntime.alertLevel === 'critical' ? '1px solid rgba(239,68,68,0.25)'
+                    : storeStatusRuntime.alertLevel === 'warning' ? '1px solid rgba(251,191,36,0.25)'
+                    : '1px solid rgba(34,197,94,0.20)',
+                  borderRadius: '0.45rem',
+                  fontSize: '0.74rem',
+                  color: '#cbd5e1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.2rem',
+                }}>
+                  <div style={{
+                    color:
+                      storeStatusRuntime.status === 'open' ? '#86efac'
+                      : storeStatusRuntime.status === 'closed' ? '#fca5a5'
+                      : '#cbd5e1',
+                    fontWeight: 700,
+                  }}>
+                    {storeStatusRuntime.status === 'open' ? `🟢 ${t('companion.card.storeStatus.statusOpen')}`
+                      : storeStatusRuntime.status === 'closed' ? `🔴 ${t('companion.card.storeStatus.statusClosed')}`
+                      : `⚪ ${t('companion.card.storeStatus.statusUnknown')}`}
+                  </div>
+                  {(storeStatusRuntime.cashiersOnShift > 0 || storeStatusRuntime.ringingPosCount > 0) && (
+                    <div style={{ color: '#94a3b8' }}>
+                      {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.storeStatus.shiftLine', storeStatusRuntime.cashiersOnShift)}
+                      {storeStatusRuntime.ringingPosCount > 0 && (
+                        <>
+                          {' · '}
+                          {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.storeStatus.ringingLine', storeStatusRuntime.ringingPosCount)}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {storeStatusRuntime.alertLevel !== 'normal' && (
+                    <div style={{
+                      color: storeStatusRuntime.alertLevel === 'critical' ? '#fca5a5' : '#fbbf24',
+                      fontWeight: 600,
+                    }}>
+                      ⚠ {t(`companion.card.storeStatus.alert.${storeStatusRuntime.alertLevel}`)}
+                    </div>
+                  )}
+                  <div style={{ color: '#64748b', fontSize: '0.7rem', fontFamily: 'Courier New, monospace' }}>
+                    {t('companion.card.storeStatus.latestEvent')}: {storeStatusRuntime.lastEventType}
+                  </div>
                 </div>
               )}
               {/* R-COMPANION-MESSAGING-RUNTIME-V1: live runtime line
