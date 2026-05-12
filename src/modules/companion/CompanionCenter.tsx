@@ -485,216 +485,181 @@ export default function CompanionCenter() {
         </div>
       )}
 
-      {/* Card grid */}
+      {/* R-COMPANION-CENTER-UX-REDESIGN: simplified card surface.
+          Bigger touch targets (min-height 100px), one icon + label +
+          subtitle, status pill kept but smaller. Approvals carries an
+          inline pending badge instead of a runtime metric block. Cards
+          tagged 'coming_soon' render dimmed + non-interactive but
+          remain visible so users see the roadmap. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-        gap: '0.875rem',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+        gap: '1.1rem',
       }}>
         {CARDS.map((card) => {
           const status = cardStatus(card.id, card.defaultStatus);
           const p = statusPalette(status);
           const isPairCard = card.id === 'pair';
+          const isComingSoon = status === 'coming_soon';
+          const isApprovals = card.id === 'approvals';
+          const approvalBadge = isApprovals ? approvalRuntime.pendingCount : 0;
           return (
-            <div key={card.id} style={{
-              padding: '1rem',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '0.75rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.55rem',
-              minHeight: '160px',
-              transition: 'border-color 0.2s, background 0.2s',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+            <div
+              key={card.id}
+              style={{
+                padding: '1.25rem 1.35rem',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '0.95rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                minHeight: '100px',
+                transition: 'border-color 0.2s, background 0.2s, opacity 0.2s',
+                opacity: isComingSoon ? 0.55 : 1,
+                pointerEvents: isComingSoon ? 'none' : 'auto',
+              }}
+            >
+              {/* Icon block — tinted tile that anchors the card visually. */}
+              <div
+                aria-hidden="true"
+                style={{
+                  flexShrink: 0,
+                  width: '3.25rem',
+                  height: '3.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.75rem',
+                  background: 'rgba(99,102,241,0.12)',
+                  border: '1px solid rgba(99,102,241,0.20)',
+                  borderRadius: '0.75rem',
+                }}
+              >
+                {card.icon}
+              </div>
+
+              {/* Title + subtitle block. */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-                  <span aria-hidden="true" style={{ fontSize: '1.25rem', flexShrink: 0 }}>{card.icon}</span>
-                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '1.05rem',
+                    fontWeight: 700,
+                    color: '#e2e8f0',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
                     {t(card.titleKey)}
                   </h3>
+                  {isApprovals && approvalBadge > 0 && (
+                    <span
+                      aria-label={(t as (k: string, ...a: Array<string | number>) => string)('companion.card.approvals.pendingLine', approvalBadge)}
+                      style={{
+                        flexShrink: 0,
+                        minWidth: '1.4rem',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: '999px',
+                        background: '#fbbf24',
+                        color: '#0f1117',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        textAlign: 'center',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {approvalBadge}
+                    </span>
+                  )}
                 </div>
+                <p style={{
+                  margin: 0,
+                  fontSize: '0.85rem',
+                  color: '#94a3b8',
+                  lineHeight: 1.4,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}>
+                  {t(card.bodyKey)}
+                </p>
+              </div>
+
+              {/* Right column: status pill + (optional) pair button. */}
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
                 <span style={{
-                  flexShrink: 0,
-                  fontSize: '0.68rem',
+                  fontSize: '0.66rem',
                   fontWeight: 700,
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
-                  padding: '0.2rem 0.5rem',
+                  padding: '0.2rem 0.55rem',
                   borderRadius: '999px',
                   background: p.bg,
                   border: `1px solid ${p.border}`,
                   color: p.color,
-                  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+                  whiteSpace: 'nowrap',
                 }}>
                   {t(p.label)}
                 </span>
+                {isPairCard && !isComingSoon && (
+                  <button
+                    type="button"
+                    onClick={startPairing}
+                    disabled={isPairingOpen}
+                    style={{
+                      padding: '0.55rem 0.95rem',
+                      borderRadius: '0.6rem',
+                      border: '1px solid rgba(99,102,241,0.45)',
+                      background: isPairingOpen
+                        ? 'rgba(99,102,241,0.08)'
+                        : 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(139,92,246,0.18))',
+                      color: '#c4b5fd',
+                      cursor: isPairingOpen ? 'wait' : 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      opacity: isPairingOpen ? 0.6 : 1,
+                      transition: 'background 0.2s, opacity 0.2s',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {pairedDevice
+                      ? `↻ ${t('companion.card.pair.repairButton')}`
+                      : `🔗 ${t('companion.card.pair.startButton')}`}
+                  </button>
+                )}
               </div>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.45, flex: 1 }}>
-                {t(card.bodyKey)}
-              </p>
-              {/* R-COMPANION-APPROVAL-RUNTIME-V1: live runtime line
-                  inside the Approval Requests card. Keeps the
-                  'coming_soon' status pill intact — only adds a small
-                  data row when the runtime has produced something. */}
-              {card.id === 'approvals' && (approvalRuntime.pendingCount > 0 || approvalRuntime.latest) && (
-                <div style={{
-                  marginTop: '0.25rem',
-                  padding: '0.4rem 0.55rem',
-                  background: 'rgba(99,102,241,0.06)',
-                  border: '1px solid rgba(99,102,241,0.18)',
-                  borderRadius: '0.45rem',
-                  fontSize: '0.74rem',
-                  color: '#cbd5e1',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.2rem',
-                }}>
-                  {approvalRuntime.pendingCount > 0 && (
-                    <div style={{ color: '#fbbf24', fontWeight: 600 }}>
-                      ⏳ {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.approvals.pendingLine', approvalRuntime.pendingCount)}
-                    </div>
-                  )}
-                  {approvalRuntime.latest && approvalRuntime.latest.status === 'approved' && (
-                    <div style={{ color: '#86efac' }}>
-                      ✓ {t('companion.card.approvals.latestApproved')}
-                    </div>
-                  )}
-                  {approvalRuntime.latest && approvalRuntime.latest.status === 'denied' && (
-                    <div style={{ color: '#fca5a5' }}>
-                      ✕ {t('companion.card.approvals.latestDenied')}
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* R-COMPANION-STORE-STATUS-RUNTIME-V1: live runtime
-                  line inside the Store Status card. Renders only
-                  once an event has populated the runtime. Status
-                  pill stays 'coming_soon' per existing feel. */}
-              {card.id === 'storeStatus' && storeStatusRuntime.lastEventType && (
-                <div style={{
-                  marginTop: '0.25rem',
-                  padding: '0.4rem 0.55rem',
-                  background:
-                    storeStatusRuntime.alertLevel === 'critical' ? 'rgba(239,68,68,0.08)'
-                    : storeStatusRuntime.alertLevel === 'warning' ? 'rgba(251,191,36,0.08)'
-                    : 'rgba(34,197,94,0.06)',
-                  border:
-                    storeStatusRuntime.alertLevel === 'critical' ? '1px solid rgba(239,68,68,0.25)'
-                    : storeStatusRuntime.alertLevel === 'warning' ? '1px solid rgba(251,191,36,0.25)'
-                    : '1px solid rgba(34,197,94,0.20)',
-                  borderRadius: '0.45rem',
-                  fontSize: '0.74rem',
-                  color: '#cbd5e1',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.2rem',
-                }}>
-                  <div style={{
-                    color:
-                      storeStatusRuntime.status === 'open' ? '#86efac'
-                      : storeStatusRuntime.status === 'closed' ? '#fca5a5'
-                      : '#cbd5e1',
-                    fontWeight: 700,
-                  }}>
-                    {storeStatusRuntime.status === 'open' ? `🟢 ${t('companion.card.storeStatus.statusOpen')}`
-                      : storeStatusRuntime.status === 'closed' ? `🔴 ${t('companion.card.storeStatus.statusClosed')}`
-                      : `⚪ ${t('companion.card.storeStatus.statusUnknown')}`}
-                  </div>
-                  {(storeStatusRuntime.cashiersOnShift > 0 || storeStatusRuntime.ringingPosCount > 0) && (
-                    <div style={{ color: '#94a3b8' }}>
-                      {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.storeStatus.shiftLine', storeStatusRuntime.cashiersOnShift)}
-                      {storeStatusRuntime.ringingPosCount > 0 && (
-                        <>
-                          {' · '}
-                          {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.storeStatus.ringingLine', storeStatusRuntime.ringingPosCount)}
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {storeStatusRuntime.alertLevel !== 'normal' && (
-                    <div style={{
-                      color: storeStatusRuntime.alertLevel === 'critical' ? '#fca5a5' : '#fbbf24',
-                      fontWeight: 600,
-                    }}>
-                      ⚠ {t(`companion.card.storeStatus.alert.${storeStatusRuntime.alertLevel}`)}
-                    </div>
-                  )}
-                  <div style={{ color: '#64748b', fontSize: '0.7rem', fontFamily: 'Courier New, monospace' }}>
-                    {t('companion.card.storeStatus.latestEvent')}: {storeStatusRuntime.lastEventType}
-                  </div>
-                </div>
-              )}
-              {/* R-COMPANION-MESSAGING-RUNTIME-V1: live runtime line
-                  inside the Messaging card. Renders only once the
-                  runtime has produced something. Status pill stays
-                  'coming_soon' per existing beta/coming-soon feel. */}
-              {card.id === 'messaging' && (messagingRuntime.totalUnread > 0 || messagingRuntime.latestMessage) && (
-                <div style={{
-                  marginTop: '0.25rem',
-                  padding: '0.4rem 0.55rem',
-                  background: 'rgba(56,189,248,0.06)',
-                  border: '1px solid rgba(56,189,248,0.18)',
-                  borderRadius: '0.45rem',
-                  fontSize: '0.74rem',
-                  color: '#cbd5e1',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.2rem',
-                }}>
-                  {messagingRuntime.totalUnread > 0 && (
-                    <div style={{ color: '#fbbf24', fontWeight: 600 }}>
-                      ✉ {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.messaging.unreadLine', messagingRuntime.totalUnread)}
-                    </div>
-                  )}
-                  {messagingRuntime.latestMessage && messagingRuntime.latestMessage.direction === 'outbound' && (
-                    <div style={{ color: '#7dd3fc' }}>
-                      ↗ {t('companion.card.messaging.latestSent')}
-                    </div>
-                  )}
-                  {messagingRuntime.latestMessage && messagingRuntime.latestMessage.direction === 'inbound' && (
-                    <div style={{ color: '#86efac' }}>
-                      ↘ {t('companion.card.messaging.latestReceived')}
-                    </div>
-                  )}
-                  {messagingRuntime.threads.length > 0 && (
-                    <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                      {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.messaging.threadsLine', messagingRuntime.threads.length)}
-                    </div>
-                  )}
-                </div>
-              )}
-              {isPairCard && (
-                <button
-                  type="button"
-                  onClick={startPairing}
-                  disabled={isPairingOpen}
-                  style={{
-                    marginTop: '0.25rem',
-                    padding: '0.55rem 0.85rem',
-                    borderRadius: '0.55rem',
-                    border: '1px solid rgba(99,102,241,0.45)',
-                    background: isPairingOpen
-                      ? 'rgba(99,102,241,0.08)'
-                      : 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(139,92,246,0.18))',
-                    color: '#c4b5fd',
-                    cursor: isPairingOpen ? 'wait' : 'pointer',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    opacity: isPairingOpen ? 0.6 : 1,
-                    transition: 'background 0.2s, opacity 0.2s',
-                  }}
-                >
-                  {pairedDevice
-                    ? `↻ ${t('companion.card.pair.repairButton')}`
-                    : `🔗 ${t('companion.card.pair.startButton')}`}
-                </button>
-              )}
             </div>
           );
         })}
       </div>
 
+      {/* R-COMPANION-CENTER-UX-REDESIGN: developer diagnostics hidden
+          inside a collapsed <details> so the main surface stays clean.
+          No PIN, no remote toggle — just hidden by default and one
+          click away when debugging is needed. */}
+      <details style={{
+        marginTop: '0.75rem',
+        background: 'rgba(255,255,255,0.015)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: '0.75rem',
+        padding: '0.5rem 0.85rem',
+      }}>
+        <summary style={{
+          cursor: 'pointer',
+          fontSize: '0.78rem',
+          fontWeight: 700,
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.07em',
+          listStyle: 'none',
+          padding: '0.25rem 0',
+          userSelect: 'none',
+        }}>
+          {t('companion.diagnostics.title')}
+        </summary>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
       {/* R-COMPANION-EVENT-LAYER-V1: dev debug panel. Lightweight,
           unstyled-by-design surface that proves the bus + bridge work
           before any real producers are wired. Subscribes once on mount;
@@ -917,6 +882,8 @@ export default function CompanionCenter() {
           </button>
         </div>
       </div>
+        </div>
+      </details>
 
       {/* Pairing modal */}
       <Modal

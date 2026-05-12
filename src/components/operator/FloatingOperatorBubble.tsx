@@ -110,6 +110,20 @@ function ensureKeyframes() {
   0%   { opacity: 0; transform: translateY(-4px) scale(0.97); }
   100% { opacity: 1; transform: translateY(0)    scale(1);    }
 }
+/* R-COMPANION-CENTER-UX-REDESIGN: subtle idle float — pure CSS, GPU
+   transform only. Suspended during drag via inline animation: 'none'. */
+@keyframes cellhubOperatorIdleFloat {
+  0%, 100% { transform: translateY(0px);  }
+  50%      { transform: translateY(-3px); }
+}
+/* R-COMPANION-CENTER-UX-REDESIGN: hover lift via attribute selector
+   so inline style stays the source of truth for everything else. */
+button[data-cellhub-operator-bubble="true"]:hover:not(:active) {
+  transform: scale(1.05);
+}
+button[data-cellhub-operator-bubble="true"][data-cellhub-bubble-hint-ready="true"]:hover:not(:active) {
+  box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 36px rgba(34,197,94,0.55) !important;
+}
 `;
   document.head.appendChild(style);
 }
@@ -506,6 +520,7 @@ export default function FloatingOperatorBubble() {
       <button
         type="button"
         data-cellhub-operator-bubble="true"
+        data-cellhub-bubble-hint-ready={bubbleState === 'ready' || bubbleState === 'alert' ? 'true' : 'false'}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
         title={tooltip}
@@ -528,13 +543,26 @@ export default function FloatingOperatorBubble() {
           userSelect: 'none',
           touchAction: 'none',
           zIndex: Z_INDEX,
-          transition: isDragging ? 'none' : 'background 0.2s, box-shadow 0.2s, border-color 0.2s',
+          // R-COMPANION-CENTER-UX-REDESIGN: 200ms transition covers
+          // the new hover scale + glow alongside the existing colour
+          // shifts. Drag mode strips transitions so live drag stays
+          // 1:1 with cursor.
+          transition: isDragging
+            ? 'none'
+            : 'background 0.2s, box-shadow 0.2s, border-color 0.2s, transform 0.2s',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: 0,
           outline: 'none',
-          animation: showBreath ? 'cellhubOperatorBreath 4s ease-in-out infinite' : 'none',
+          // R-COMPANION-CENTER-UX-REDESIGN: compose breath (box-shadow)
+          // with the new idle float (transform). Drag suspends both
+          // animations so the cursor stays aligned with the bubble.
+          animation: isDragging
+            ? 'none'
+            : showBreath
+              ? 'cellhubOperatorBreath 4s ease-in-out infinite, cellhubOperatorIdleFloat 4s ease-in-out infinite alternate'
+              : 'cellhubOperatorIdleFloat 4s ease-in-out infinite alternate',
         }}
       >
         {/* Inner highlight — subtle "lit from above" depth cue. Always

@@ -4909,6 +4909,8 @@ export const translations: TranslationDictionary = {
 
   // R-COMPANION-EVENT-LAYER-V1 — dev debug panel
   'companion.debug.title':           { en: 'Event bus (dev)',         es: 'Bus de eventos (dev)',     pt: 'Barramento de eventos (dev)' },
+  // R-COMPANION-CENTER-UX-REDESIGN — top-level collapsible diagnostics
+  'companion.diagnostics.title':     { en: 'Developer diagnostics',   es: 'Diagnóstico de desarrollador', pt: 'Diagnóstico de desenvolvedor' },
   'companion.debug.connected':       { en: 'Companion connected',     es: 'Companion conectado',      pt: 'Companion conectado' },
   'companion.debug.lastEvent':       { en: 'Last event',              es: 'Último evento',            pt: 'Último evento' },
   'companion.debug.queueSize':       { en: 'Queue size',              es: 'Tamaño de cola',           pt: 'Tamanho da fila' },
