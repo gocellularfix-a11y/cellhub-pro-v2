@@ -266,6 +266,16 @@ export class IntelligenceEngine {
     );
   }
 
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — tiny passthrough so external
+  // callers (Companion intelligence ack receiver) can mark an alert
+  // acknowledged without reaching into the private alertEngine field. Pure
+  // delegation; cero scoring touches, cero engine state beyond what
+  // AlertEngine.acknowledge already mutates. Safe no-op when the engine
+  // hasn't fired this alertId yet (AlertEngine.acknowledge does a find()).
+  acknowledgeAlert(alertId: string, userId: string): void {
+    this.alertEngine.acknowledge(alertId, userId);
+  }
+
   analyze(window?: AnalysisWindow): EngineResult {
     // R-PERF-INTELLIGENCE-CACHE: 60-second result cache so back-to-back
     // analyze() calls (chat handlers each call engine.refresh() → analyze()

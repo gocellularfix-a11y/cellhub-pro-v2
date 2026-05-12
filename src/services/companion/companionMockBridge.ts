@@ -14,6 +14,11 @@ import type {
   CompanionConnectionState,
   CompanionEvent,
 } from './companionTypes';
+// R-COMPANION-BRIDGE-WIRE-V1: on 'connected', drain queued events through
+// the outbound bridge adapter so events emitted while disconnected aren't
+// silently dropped. Adapter handleEvent is a no-op when its own client is
+// not yet connected, so this is safe to call unconditionally.
+import { _drainCompanionEvent } from './companionBridgeAdapter';
 
 const QUEUE_CAP = 200;
 
@@ -43,7 +48,19 @@ export function setConnectionState(next: CompanionConnectionState): void {
   connectionState = next;
   notifyStateListeners(next);
   if (next === 'connected') {
-    // Mock drain. Real transport replaces this with batch upload.
+    // R-COMPANION-BRIDGE-WIRE-V1: drain queued events through the
+    // outbound bridge adapter BEFORE clearing the queue. Adapter is a
+    // no-op when its own client is not yet 'connected' (its handleEvent
+    // guards on client.getStatus()), so events that can't be forwarded
+    // just disappear here as before — never worse than the original
+    // mock-drain behavior.
+    if (queue.length > 0) {
+      for (const event of queue) {
+        try { _drainCompanionEvent(event); } catch (err) {
+          console.warn('[companion-bridge] drain failed', err);
+        }
+      }
+    }
     queue.length = 0;
   }
 }

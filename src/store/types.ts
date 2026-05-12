@@ -29,6 +29,21 @@ export interface StoreSettings {
   // (or undefined), app runs localStorage-only.
   cloudSyncEnabled?: boolean;
 
+  // R-COMPANION-BRIDGE-WIRE-V1: Companion bridge outbound mirror opt-in.
+  // Default false. When true, CompanionCenter's Connect button starts the
+  // outbound bridge adapter so the Companion mobile app can observe
+  // approvals and intelligence alerts. Mobile cannot mutate desktop state
+  // either way — local PIN modal remains the authority.
+  companionBridgeEnabled?: boolean;
+  companionBridgeUrl?: string;     // default 'http://localhost:3001'
+
+  // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch plumbing
+  // only. Default false. Phase 1 keeps approvalGuard / useApprovalGate
+  // untouched; mobile responses still cannot resolve any pending gate
+  // regardless of this flag. Phase 2 will wire a hybrid prompter gated
+  // on this setting. See docs/companion-remote-approval-authority.md §3.1.
+  companionRemoteApprovalEnabled?: boolean;
+
   // Store info
   storeName: string;
   storeAddress: string;

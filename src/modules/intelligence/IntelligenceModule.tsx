@@ -20,6 +20,10 @@ import {
   type EngineResult,
   type CustomerHistorySummary,
   summarizeCustomerHistory,
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — register the live engine
+  // so the Companion intelligence ack receiver can mark alerts
+  // acknowledged via AlertEngine.acknowledge while this module is mounted.
+  setActiveIntelligenceEngine,
 } from '@/services/intelligence';
 import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
 // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: canonical wa.me builder reused for
@@ -129,6 +133,16 @@ export default function IntelligenceModule() {
     });
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
   }
+
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — register/deregister the
+  // currently-live engine with the intelligence active-engine slot. The
+  // Companion intelligence ack receiver dispatches AlertEngine.acknowledge
+  // through this slot. Cero side effects when no Companion ack is in
+  // flight; cleanup unregisters on unmount or engine rebuild.
+  useEffect(() => {
+    setActiveIntelligenceEngine(engine);
+    return () => { setActiveIntelligenceEngine(null); };
+  }, [engine]);
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
   // collections updateData() propagates (added expenses/employees/appointments)

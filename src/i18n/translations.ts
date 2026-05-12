@@ -4930,6 +4930,28 @@ export const translations: TranslationDictionary = {
   'companion.inbox.submitAck':       { en: '+ ack_alert',             es: '+ ack_alert',               pt: '+ ack_alert' },
   'companion.inbox.processPending':  { en: 'Process pending',         es: 'Procesar pendientes',       pt: 'Processar pendentes' },
   'companion.inbox.clearHandled':    { en: 'Clear handled',           es: 'Limpiar procesadas',        pt: 'Limpar processadas' },
+
+  // R-COMPANION-BRIDGE-WIRE-V1 — outbound bridge transport copy
+  'companion.bridge.disabled':       { en: 'Bridge transport disabled — enable in Settings', es: 'Transporte de Bridge deshabilitado — habilítalo en Ajustes', pt: 'Transporte do Bridge desativado — ative em Configurações' },
+  'companion.bridge.connecting':     { en: 'Connecting to Companion bridge…',                 es: 'Conectando al bridge Companion…',                              pt: 'Conectando ao bridge Companion…' },
+  'companion.bridge.connected':      { en: 'Companion bridge live',                            es: 'Bridge Companion en línea',                                    pt: 'Bridge Companion ativo' },
+  'companion.bridge.rejected':       { en: 'Bridge rejected this device — check auth',         es: 'El bridge rechazó este dispositivo — revisa la autenticación', pt: 'Bridge rejeitou este dispositivo — verifique a autenticação' },
+
+  // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 — Settings toggle copy.
+  // Plumbing only; setting is read by future Phase 2 wiring.
+  'settings.approvals.remote.label':       { en: 'Remote approvals from Companion',                                                  es: 'Aprobaciones remotas desde Companion',                                                              pt: 'Aprovações remotas pelo Companion' },
+  'settings.approvals.remote.desc':        { en: 'Allow paired Companion devices to approve or deny restricted actions remotely.', es: 'Permite que los dispositivos Companion emparejados aprueben o denieguen acciones restringidas de forma remota.', pt: 'Permite que dispositivos Companion pareados aprovem ou neguem ações restritas remotamente.' },
+  'settings.approvals.remote.warning':     { en: 'Local PIN remains available. Only enable this for trusted paired devices.',       es: 'El PIN local sigue disponible. Actívalo solo para dispositivos emparejados de confianza.',            pt: 'O PIN local continua disponível. Ative apenas para dispositivos pareados de confiança.' },
+
+  // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — short pill labels per adapter state
+  'companion.bridge.status.label':         { en: 'Bridge',         es: 'Bridge',         pt: 'Bridge' },
+  'companion.bridge.status.disabled':      { en: 'Disabled',       es: 'Deshabilitado',  pt: 'Desativado' },
+  'companion.bridge.status.idle':          { en: 'Idle',           es: 'Inactivo',       pt: 'Inativo' },
+  'companion.bridge.status.connecting':    { en: 'Connecting…',    es: 'Conectando…',    pt: 'Conectando…' },
+  'companion.bridge.status.connected':     { en: 'Connected',      es: 'Conectado',      pt: 'Conectado' },
+  'companion.bridge.status.reconnecting':  { en: 'Reconnecting…',  es: 'Reconectando…',  pt: 'Reconectando…' },
+  'companion.bridge.status.disconnected':  { en: 'Disconnected',   es: 'Desconectado',   pt: 'Desconectado' },
+  'companion.bridge.status.rejected':      { en: 'Rejected',       es: 'Rechazado',      pt: 'Rejeitado' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },

@@ -45,6 +45,18 @@ import {
 import { processApprovalAction } from '@/services/companion/receivers/approvalActionReceiver';
 import { processMessagingAction } from '@/services/companion/receivers/messagingActionReceiver';
 import { processIntelligenceAck } from '@/services/companion/receivers/intelligenceAckReceiver';
+// R-COMPANION-BRIDGE-WIRE-V1: outbound bridge adapter lifecycle. Adapter
+// itself owns singleton guards — start/stop are idempotent so this
+// useEffect can re-run safely under remount + setting changes.
+// R-COMPANION-BRIDGE-STATUS-BADGE-V1: also pull the snapshot getter so a
+// small status pill can mirror PosBridgeClient state in the UI.
+import {
+  startCompanionBridgeAdapter,
+  stopCompanionBridgeAdapter,
+  getBridgeAdapterStatus,
+} from '@/services/companion/companionBridgeAdapter';
+import type { PosBridgeStatus } from '@/services/companion/sdk/posBridgeClient';
+import { useApp } from '@/store/AppProvider';
 // R-COMPANION-APPROVAL-RUNTIME-V1: read model over approval events.
 import {
   getApprovalRuntimeSnapshot,
@@ -205,6 +217,24 @@ function MockQR({ pin }: { pin: string }) {
 export default function CompanionCenter() {
   const { t } = useTranslation();
 
+  // R-COMPANION-BRIDGE-WIRE-V1: pull settings + employees for the adapter.
+  // Cero store mutations from this component — read-only access.
+  const { state: { settings, employees, currentStoreId } } = useApp();
+  const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
+  const bridgeUrl     = ((settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl) || 'http://localhost:3001';
+
+  // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — mirror the adapter's PosBridgeStatus
+  // into local state. Polling uses the existing getBridgeAdapterStatus() with
+  // a small interval so 'connecting' / 'reconnecting' transitions are visible
+  // without missing them. Cero bridge logic changes — read-only snapshot.
+  const [bridgeStatus, setBridgeStatus] = useState<PosBridgeStatus>(() => getBridgeAdapterStatus());
+  useEffect(() => {
+    const sync = () => setBridgeStatus(getBridgeAdapterStatus());
+    sync();
+    const handle = setInterval(sync, 1000);
+    return () => clearInterval(handle);
+  }, []);
+
   // R-COMPANION-PAIRING-WIRED-V1: snapshot subscription drives every
   // pairing + paired-device decision. Local animation phase remains
   // local because it's a UX-only sub-state of 'waiting'.
@@ -268,6 +298,33 @@ export default function CompanionCenter() {
   const pairingPin = snapshot.pairingSession?.pin ?? '';
   const pairedDevice = snapshot.pairedDevice;
   const companionConnState = snapshot.connectionState;
+
+  // R-COMPANION-BRIDGE-WIRE-V1: adapter lifecycle. Starts only when both
+  // (a) the local mock bridge state is 'connected' AND
+  // (b) settings.companionBridgeEnabled is true.
+  // Adapter is idempotent so re-runs from remounts / setting flips are
+  // safe — singleton guard inside the adapter prevents duplicate listeners.
+  useEffect(() => {
+    if (companionConnState === 'connected' && bridgeEnabled) {
+      const deviceId = pairedDevice?.deviceId || `cellhub-pos-${currentStoreId || 'default'}`;
+      const storeId  = currentStoreId || (settings.storeName || 'default');
+      startCompanionBridgeAdapter({
+        bridgeUrl,
+        storeId,
+        deviceId,
+        // R-COMPANION-DESKTOP-DEV-TOKEN-PATCH-V1 — bridge auth now enforces
+        // verifiable tokens (R-BRIDGE-AUTH-HARDENING-V1). DEV-prefix form is
+        // the temporary observe-only stand-in until a real signed-token
+        // mint path exists. Strict-format HMAC tokens land in a later round.
+        authToken: `dev.${storeId}.${deviceId}.pos`,
+        getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
+        getStoreLocation: () => settings.storeAddress || '',
+      });
+    } else {
+      stopCompanionBridgeAdapter();
+    }
+    return () => { stopCompanionBridgeAdapter(); };
+  }, [companionConnState, bridgeEnabled, bridgeUrl, currentStoreId, pairedDevice?.deviceId, settings.storeName, settings.storeAddress, employees]);
 
   const toggleCompanionConnection = useCallback(() => {
     setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
@@ -452,6 +509,69 @@ export default function CompanionCenter() {
         }} />
         {t(banner.label)}
       </div>
+
+      {/* R-COMPANION-BRIDGE-WIRE-V1 + R-COMPANION-BRIDGE-STATUS-BADGE-V1:
+          single status row. When the feature is off, render the long
+          enable-in-Settings hint (preserves the prior round's UX). When
+          on, render a compact pill mirroring the PosBridgeClient status
+          via getBridgeAdapterStatus(). UI-only; no behavior changes. */}
+      {!bridgeEnabled ? (
+        <div style={{
+          padding: '0.5rem 0.75rem',
+          background: 'rgba(148,163,184,0.08)',
+          border: '1px solid rgba(148,163,184,0.25)',
+          borderRadius: '0.5rem',
+          fontSize: '0.78rem',
+          color: '#94a3b8',
+          alignSelf: 'flex-start',
+          maxWidth: '560px',
+          lineHeight: 1.4,
+        }}>
+          {t('companion.bridge.disabled')}
+        </div>
+      ) : (() => {
+        // Inline pill: prefix label + colored dot + state text. Strings
+        // come from companion.bridge.status.* keys (EN/ES/PT).
+        const palette: Record<PosBridgeStatus, { fg: string; bg: string; border: string; labelKey: string }> = {
+          idle:         { fg: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.30)', labelKey: 'companion.bridge.status.idle' },
+          connecting:   { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.30)',  labelKey: 'companion.bridge.status.connecting' },
+          reconnecting: { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.30)',  labelKey: 'companion.bridge.status.reconnecting' },
+          connected:    { fg: '#22c55e', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.30)',   labelKey: 'companion.bridge.status.connected' },
+          disconnected: { fg: '#f97316', bg: 'rgba(249,115,22,0.10)',  border: 'rgba(249,115,22,0.30)',  labelKey: 'companion.bridge.status.disconnected' },
+          rejected:     { fg: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)',   labelKey: 'companion.bridge.status.rejected' },
+        };
+        const sty = palette[bridgeStatus] ?? palette.idle;
+        return (
+          <div
+            data-testid="companion-bridge-status-pill"
+            style={{
+              padding: '0.375rem 0.75rem',
+              background: sty.bg,
+              border: `1px solid ${sty.border}`,
+              borderRadius: '999px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: sty.fg,
+              alignSelf: 'flex-start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              lineHeight: 1.2,
+            }}
+          >
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: sty.fg,
+              boxShadow: `0 0 6px ${sty.fg}88`,
+            }} />
+            <span style={{ color: '#94a3b8', fontWeight: 700, letterSpacing: '0.02em' }}>
+              {t('companion.bridge.status.label')}
+            </span>
+            <span aria-hidden="true" style={{ color: '#475569' }}>·</span>
+            <span>{t(sty.labelKey)}</span>
+          </div>
+        );
+      })()}
 
       {/* Paired-device card — only renders when a device is paired */}
       {pairedDevice && (

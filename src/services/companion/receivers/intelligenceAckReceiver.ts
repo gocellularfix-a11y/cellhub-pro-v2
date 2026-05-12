@@ -20,6 +20,11 @@ import type {
   CompanionAcknowledgeAlertPayload,
   CompanionInboxAction,
 } from '../companionTypes';
+// R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — dispatch the ack to the
+// currently-active IntelligenceEngine (registered by IntelligenceModule
+// while mounted). Local-first authority: when no engine is registered,
+// the call is a logged no-op and the action stays marked handled.
+import { acknowledgeIntelligenceAlertOnActiveEngine } from '@/services/intelligence';
 
 /**
  * Normalised view of a pending acknowledge_intelligence_alert
@@ -70,12 +75,14 @@ export function readPendingIntelligenceAcks(): IntelligenceAckReceiverResult[] {
  *   - the action is not an acknowledge_intelligence_alert action
  *   - the action fails validation (missing alertId)
  *
- * IMPORTANT: "process" here means "translate + mark handled". It
- * does NOT call AlertEngine.acknowledge(), does NOT mutate any
- * Alert.status, does NOT touch intelligence scoring or AlertEngine
- * state. That work stays in services/intelligence and is
- * intentionally not invoked from this shell — the real consumer
- * will opt in when its policy is approved.
+ * R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1: "process" now also dispatches
+ * the ack to the currently-active IntelligenceEngine via
+ * acknowledgeIntelligenceAlertOnActiveEngine. Cero scoring touches,
+ * cero AlertEngine behavior changes — only AlertEngine.acknowledge is
+ * invoked (existing method). When no engine is registered (e.g., user
+ * is not on the Intelligence module), the dispatch is a logged no-op
+ * and the action stays marked handled. The receiver does NOT mutate
+ * Alert.status directly; it relies on AlertEngine to own that state.
  */
 export function processIntelligenceAck(inboxActionId: string): IntelligenceAckReceiverResult | null {
   const pending = getPendingActions();
@@ -84,6 +91,16 @@ export function processIntelligenceAck(inboxActionId: string): IntelligenceAckRe
   const result = normalize(action);
   if (!result) return null;
   markActionHandled(inboxActionId);
+  // Dispatch acknowledge to the active engine (if any). Failure is logged
+  // and isolated — never affects caller flow.
+  try {
+    acknowledgeIntelligenceAlertOnActiveEngine(
+      result.alertId,
+      result.acknowledgedByEmployeeId || 'companion-mobile',
+    );
+  } catch (err) {
+    console.warn('[companion-intelligence-ack-receiver] dispatch failed', err);
+  }
   return result;
 }
 

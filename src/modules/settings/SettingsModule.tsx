@@ -1570,6 +1570,47 @@ export default function SettingsModule() {
                 <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
                   {t('settings.approvals.enabledHint')}
                 </p>
+
+                {/* R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch
+                    plumbing only. Setting toggles flip false → true on disk
+                    but no behavior changes until Phase 2 wires the hybrid
+                    prompter in approvalGuard. Local PIN remains authority. */}
+                <div style={{
+                  marginTop: '0.75rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid rgba(99,102,241,0.15)',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!(settings as any).companionRemoteApprovalEnabled}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setSettings({ companionRemoteApprovalEnabled: next } as any);
+                        persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>
+                      {t('settings.approvals.remote.label')}
+                    </span>
+                  </label>
+                  <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                    {t('settings.approvals.remote.desc')}
+                  </p>
+                  <p style={{
+                    fontSize: '0.7rem',
+                    color: '#fbbf24',
+                    marginTop: '0.35rem',
+                    lineHeight: 1.45,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.4rem',
+                  }}>
+                    <span aria-hidden="true">⚠️</span>
+                    <span>{t('settings.approvals.remote.warning')}</span>
+                  </p>
+                </div>
               </div>
               <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
             </>
