@@ -276,6 +276,54 @@ export default function Sidebar() {
                     </button>
                   );
                 })}
+                {/* R-SIDEBAR-AI-ASSISTANT-CARD: AI Assistant rendered as
+                    the trailing tile so the grid stays visually
+                    balanced. Spans both columns when the preceding
+                    module count is even (so the total is odd) — keeps
+                    the bottom row from leaving a half-empty slot. */}
+                {features.aiAssistant && (
+                  <button
+                    type="button"
+                    data-cellhub-sidebar-module="true"
+                    onClick={() => dispatch({ type: 'SET_SHOW_AI_ASSISTANT', payload: true })}
+                    style={{
+                      position: 'relative',
+                      borderRadius: 10,
+                      padding: '14px 8px',
+                      minHeight: 64,
+                      background: 'linear-gradient(145deg, #1a0a30, #100620)',
+                      border: '1px solid #3a1060',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                      transition: 'all 150ms ease',
+                      textAlign: 'center',
+                      width: '100%',
+                      gridColumn: gridTabs.length % 2 === 0 ? 'span 2' : 'auto',
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
+                      🤖
+                    </span>
+                    <span style={{
+                      minWidth: 0,
+                      maxWidth: '100%',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.3px',
+                      color: '#c084fc',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {t('sidebar.aiAssistant')}
+                    </span>
+                  </button>
+                )}
               </div>
             </>
           );
@@ -284,23 +332,9 @@ export default function Sidebar() {
 
       {/* Bottom section — matches original */}
       <div style={{ borderTop: '1px solid var(--border-default)', padding: '1rem 1.5rem', paddingBottom: '2rem' }}>
-        {/* AI Assistant — Pro tier only */}
-        {features.aiAssistant && (
-          <button
-            onClick={() => dispatch({ type: 'SET_SHOW_AI_ASSISTANT', payload: true })}
-            style={{
-              width: '100%', padding: '0.6rem 0.75rem', background: 'transparent', border: 'none',
-              color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.75rem',
-              cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, textAlign: 'left',
-              borderRadius: '8px', transition: 'all 0.2s', marginBottom: '0.5rem',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          >
-            <span style={{ fontSize: '1.1rem' }}>🤖</span>
-            <span>{t('sidebar.aiAssistant')}</span>
-          </button>
-        )}
+        {/* R-SIDEBAR-AI-ASSISTANT-CARD: AI Assistant moved into the
+            module grid above so the bottom section now owns only
+            language/theme/version/clock controls. */}
 
         {/* Language toggle — EN / ES buttons like original */}
         <div style={{ marginBottom: '0.75rem' }}>
