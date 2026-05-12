@@ -533,8 +533,9 @@ export default function CompanionCenter() {
           rest. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(6, 1fr)',
         gap: '14px',
+        width: '100%',
       }}>
         {CARDS.map((card) => {
           const status = cardStatus(card.id, card.defaultStatus);
@@ -555,7 +556,7 @@ export default function CompanionCenter() {
                 background: palette.bg,
                 border: palette.border,
                 borderRadius: '18px',
-                minHeight: '200px',
+                minHeight: '240px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',

@@ -222,7 +222,7 @@ export default function Sidebar() {
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr',
-                gap: 5,
+                gap: 7,
                 padding: '0 8px',
                 marginTop: 8,
               }}>
@@ -239,26 +239,29 @@ export default function Sidebar() {
                       style={{
                         position: 'relative',
                         borderRadius: 10,
-                        padding: '9px 8px',
+                        padding: '14px 8px',
+                        minHeight: 64,
                         background: palette.bg,
                         border: `1px solid ${palette.border}`,
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        gap: 8,
+                        justifyContent: 'center',
+                        gap: 4,
                         cursor: 'pointer',
                         transition: 'all 150ms ease',
-                        textAlign: 'left',
+                        textAlign: 'center',
                         outline: isActive ? `2px solid ${palette.label}` : 'none',
                         outlineOffset: isActive ? '-2px' : 0,
                         boxShadow: isActive ? `0 0 14px ${palette.label}33` : 'none',
                       }}
                     >
-                      <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>
+                      <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
                         {tab.icon}
                       </span>
                       <span style={{
-                        flex: 1,
                         minWidth: 0,
+                        maxWidth: '100%',
                         fontSize: 10,
                         fontWeight: 700,
                         letterSpacing: '0.3px',
