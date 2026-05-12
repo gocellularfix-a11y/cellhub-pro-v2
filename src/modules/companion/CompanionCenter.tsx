@@ -50,12 +50,18 @@ import {
   getApprovalRuntimeSnapshot,
   subscribeApprovalRuntime,
 } from '@/services/companion/companionApprovalRuntime';
+// R-COMPANION-MESSAGING-RUNTIME-V1: read model over messaging events.
+import {
+  getMessagingRuntimeSnapshot,
+  subscribeMessagingRuntime,
+} from '@/services/companion/companionMessagingRuntime';
 import type {
   CompanionActionInboxSnapshot,
   CompanionApprovalRuntimeSnapshot,
   CompanionBridgeSnapshot,
   CompanionDevicePlatform,
   CompanionEvent,
+  CompanionMessagingRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
@@ -180,6 +186,11 @@ export default function CompanionCenter() {
   // Approval Requests card body.
   const [approvalRuntime, setApprovalRuntime] = useState<CompanionApprovalRuntimeSnapshot>(() => getApprovalRuntimeSnapshot());
 
+  // R-COMPANION-MESSAGING-RUNTIME-V1: read model snapshot driven by
+  // MESSAGE_SENT / MESSAGE_RECEIVED / MESSAGE_READ events. Used by
+  // the Messaging card body.
+  const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -197,7 +208,8 @@ export default function CompanionCenter() {
     });
     const unsubInbox = subscribeActionInbox((s) => setInboxSnap(s));
     const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
-    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); };
+    const unsubMessaging = subscribeMessagingRuntime((s) => setMessagingRuntime(s));
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -539,6 +551,45 @@ export default function CompanionCenter() {
                   {approvalRuntime.latest && approvalRuntime.latest.status === 'denied' && (
                     <div style={{ color: '#fca5a5' }}>
                       ✕ {t('companion.card.approvals.latestDenied')}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* R-COMPANION-MESSAGING-RUNTIME-V1: live runtime line
+                  inside the Messaging card. Renders only once the
+                  runtime has produced something. Status pill stays
+                  'coming_soon' per existing beta/coming-soon feel. */}
+              {card.id === 'messaging' && (messagingRuntime.totalUnread > 0 || messagingRuntime.latestMessage) && (
+                <div style={{
+                  marginTop: '0.25rem',
+                  padding: '0.4rem 0.55rem',
+                  background: 'rgba(56,189,248,0.06)',
+                  border: '1px solid rgba(56,189,248,0.18)',
+                  borderRadius: '0.45rem',
+                  fontSize: '0.74rem',
+                  color: '#cbd5e1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.2rem',
+                }}>
+                  {messagingRuntime.totalUnread > 0 && (
+                    <div style={{ color: '#fbbf24', fontWeight: 600 }}>
+                      ✉ {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.messaging.unreadLine', messagingRuntime.totalUnread)}
+                    </div>
+                  )}
+                  {messagingRuntime.latestMessage && messagingRuntime.latestMessage.direction === 'outbound' && (
+                    <div style={{ color: '#7dd3fc' }}>
+                      ↗ {t('companion.card.messaging.latestSent')}
+                    </div>
+                  )}
+                  {messagingRuntime.latestMessage && messagingRuntime.latestMessage.direction === 'inbound' && (
+                    <div style={{ color: '#86efac' }}>
+                      ↘ {t('companion.card.messaging.latestReceived')}
+                    </div>
+                  )}
+                  {messagingRuntime.threads.length > 0 && (
+                    <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                      {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.messaging.threadsLine', messagingRuntime.threads.length)}
                     </div>
                   )}
                 </div>

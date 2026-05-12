@@ -4849,6 +4849,19 @@ export const translations: TranslationDictionary = {
 
   'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
   'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
+  // R-COMPANION-MESSAGING-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.messaging.unreadLine': {
+    en: (n: number) => `${n} unread message${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} mensaje${n === 1 ? '' : 's'} sin leer`,
+    pt: (n: number) => `${n} mensage${n === 1 ? 'm' : 'ns'} não lida${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.messaging.latestSent':     { en: 'Latest: sent',     es: 'Último: enviado',  pt: 'Último: enviado' },
+  'companion.card.messaging.latestReceived': { en: 'Latest: received', es: 'Último: recibido', pt: 'Último: recebido' },
+  'companion.card.messaging.threadsLine': {
+    en: (n: number) => `${n} active thread${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} conversación${n === 1 ? '' : 'es'} activa${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
+  },
 
   'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
   'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },

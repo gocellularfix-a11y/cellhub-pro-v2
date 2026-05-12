@@ -23,6 +23,7 @@ export type CompanionEventType =
   | 'APPROVAL_UPDATED'
   | 'MESSAGE_SENT'
   | 'MESSAGE_RECEIVED'
+  | 'MESSAGE_READ'              // R-COMPANION-MESSAGING-RUNTIME-V1
   | 'STORE_OPENED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
   | 'STORE_CLOSED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
   | 'STORE_STATUS_UPDATED'
@@ -139,6 +140,7 @@ export type CompanionEvent =
   | { type: 'APPROVAL_UPDATED';           category: 'approvals';           payload: CompanionApprovalPayload;          createdAt: number }
   | { type: 'MESSAGE_SENT';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'MESSAGE_RECEIVED';           category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
+  | { type: 'MESSAGE_READ';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'STORE_OPENED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'STORE_CLOSED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'STORE_STATUS_UPDATED';       category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
@@ -365,3 +367,64 @@ export interface CompanionApprovalRuntimeSnapshot {
 }
 
 export type CompanionApprovalRuntimeListener = (snapshot: CompanionApprovalRuntimeSnapshot) => void;
+
+// ── Messaging runtime store (R-COMPANION-MESSAGING-RUNTIME-V1) ──
+// Aggregated view of every Companion message the desktop has seen,
+// sourced from the MESSAGE_SENT / MESSAGE_RECEIVED / MESSAGE_READ
+// events on the Companion Event Bus. Lets the Companion Center
+// surface unread counts + latest thread activity without re-walking
+// the bus log. Cero networking, cero persistence — in-memory only.
+
+export type CompanionMessageDirection = 'outbound' | 'inbound';
+
+export interface CompanionMessageRuntimeItem {
+  messageId: string;
+  /** Derived synthetic key — see companionMessagingRuntime for
+   *  derivation rules. Used to group messages into threads when the
+   *  emitter doesn't supply an explicit thread id. */
+  threadKey: string;
+  direction: CompanionMessageDirection;
+  channel?: string;
+  source?: string;
+  fromEmployeeId?: string;
+  toEmployeeId?: string;
+  senderRole?: 'owner' | 'manager' | 'technician' | 'sales' | 'cashier';
+  /** Short non-sensitive preview only — mirrors the bus payload. */
+  preview?: string;
+  /** Inbound messages start unread; outbound start read. MESSAGE_READ
+   *  flips the inbound flag. */
+  isRead: boolean;
+  /** ms epoch when the runtime first saw this message. */
+  createdAt: number;
+  /** ms epoch of the most-recent state change (read flag flip etc.). */
+  updatedAt: number;
+}
+
+export interface CompanionMessageThread {
+  threadKey: string;
+  /** Most-recent message id in the thread. */
+  lastMessageId: string;
+  lastDirection: CompanionMessageDirection;
+  lastPreview?: string;
+  lastChannel?: string;
+  /** ms epoch of the thread's most-recent activity. */
+  lastActivityAt: number;
+  /** Total messages in this thread. */
+  messageCount: number;
+  /** Inbound, unread messages in this thread. */
+  unreadCount: number;
+}
+
+export interface CompanionMessagingRuntimeSnapshot {
+  /** Most-recently-active first. Shallow copies — mutating them
+   *  does not mutate runtime state. */
+  threads: CompanionMessageThread[];
+  /** Sum of every thread.unreadCount. */
+  totalUnread: number;
+  /** Most-recent message across every thread, or null when empty. */
+  latestMessage: CompanionMessageRuntimeItem | null;
+  /** ms epoch of the most-recent activity across every thread, or null. */
+  lastActivityAt: number | null;
+}
+
+export type CompanionMessagingRuntimeListener = (snapshot: CompanionMessagingRuntimeSnapshot) => void;
