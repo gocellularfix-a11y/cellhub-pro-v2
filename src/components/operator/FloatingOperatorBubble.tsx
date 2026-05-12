@@ -35,7 +35,7 @@ import {
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
 const ENABLED_KEY  = 'cellhub:operatorBubble:enabled:v1';
-const BUBBLE_SIZE  = 72;          // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: 64 → 72 px
+const BUBBLE_SIZE  = 110;         // R-COMPANION-BUBBLE-REDESIGN: 72 → 110 px (iridescent orb)
 const OVERLAY_WIDTH = 296;
 const DRAG_THRESHOLD_PX = 5;
 const EDGE_PADDING = 16;
@@ -94,35 +94,45 @@ function ensureKeyframes() {
   const style = document.createElement('style');
   style.id = KEYFRAMES_STYLE_ID;
   style.textContent = `
+/* R-COMPANION-BUBBLE-REDESIGN: iridescent orb keyframes. The float
+   amplitude bumped 3px → 8px to give the bubble a clear "alive" lift.
+   Hue-rotate filters drive the iridescent shimmer per state — the
+   linearGradient stops stay constant, the filter swivels them. */
+@keyframes cellhubOperatorBubbleFloat {
+  0%, 100% { transform: translateY(0px);  }
+  50%      { transform: translateY(-8px); }
+}
+@keyframes cellhubOperatorIdleHue {
+  0%, 100% { filter: hue-rotate(0deg)  brightness(1);    }
+  50%      { filter: hue-rotate(25deg) brightness(1.05); }
+}
+@keyframes cellhubOperatorThinkHue {
+  from { filter: hue-rotate(0deg);   }
+  to   { filter: hue-rotate(360deg); }
+}
+@keyframes cellhubOperatorHintHue {
+  0%, 100% { filter: hue-rotate(0deg);  }
+  50%      { filter: hue-rotate(15deg); }
+}
+@keyframes cellhubOperatorStatusDotPulse {
+  0%, 100% { transform: scale(1);   }
+  50%      { transform: scale(1.4); }
+}
 @keyframes cellhubOperatorPulseRing {
   0%   { transform: scale(0.92); opacity: 0.65; }
   70%  { transform: scale(1.28); opacity: 0;    }
   100% { transform: scale(1.28); opacity: 0;    }
 }
-@keyframes cellhubOperatorBreath {
-  0%, 100% { box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 0 rgba(99,102,241,0); }
-  50%      { box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 28px rgba(139,92,246,0.45); }
-}
-@keyframes cellhubOperatorConicSpin {
-  to { transform: rotate(360deg); }
-}
 @keyframes cellhubOperatorOverlayIn {
   0%   { opacity: 0; transform: translateY(-4px) scale(0.97); }
   100% { opacity: 1; transform: translateY(0)    scale(1);    }
 }
-/* R-COMPANION-CENTER-UX-REDESIGN: subtle idle float — pure CSS, GPU
-   transform only. Suspended during drag via inline animation: 'none'. */
-@keyframes cellhubOperatorIdleFloat {
-  0%, 100% { transform: translateY(0px);  }
-  50%      { transform: translateY(-3px); }
-}
-/* R-COMPANION-CENTER-UX-REDESIGN: hover lift via attribute selector
-   so inline style stays the source of truth for everything else. */
+/* R-COMPANION-BUBBLE-REDESIGN: hover lift via attribute selector
+   so inline style keeps owning the float animation. The selector
+   excludes the active state so press-and-drag doesn't double the
+   transform with the drag offset. */
 button[data-cellhub-operator-bubble="true"]:hover:not(:active) {
-  transform: scale(1.05);
-}
-button[data-cellhub-operator-bubble="true"][data-cellhub-bubble-hint-ready="true"]:hover:not(:active) {
-  box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 36px rgba(34,197,94,0.55) !important;
+  transform: scale(1.06);
 }
 `;
   document.head.appendChild(style);
@@ -147,14 +157,13 @@ export default function FloatingOperatorBubble() {
   } = state;
   const { t } = useTranslation();
 
-  // R-OPERATOR-BRAIN-SVG: SVG <defs> ids must be globally unique. useId()
-  // returns a stable per-instance string; we sanitise out non-id-safe
-  // characters (React 18 emits ':' which CSS url() references tolerate
-  // in evergreen browsers but not in older renderers). One ID derived
-  // here covers both gradients in the inline brain glyph below.
+  // SVG <defs> ids must be globally unique. useId() returns a stable
+  // per-instance string; we sanitise out non-id-safe characters (React
+  // 18 emits ':' which CSS url() references tolerate in evergreen
+  // browsers but not in older renderers). R-COMPANION-BUBBLE-REDESIGN
+  // reuses this id for the bubble's three gradient defs (fill, rim,
+  // specular).
   const reactInstanceId = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const brainFillId = `brainFill-${reactInstanceId}`;
-  const brainSheenId = `brainSheen-${reactInstanceId}`;
 
   // ── Position + drag ────────────────────────────────────
   const [position, setPosition] = useState<Position>(() =>
@@ -488,17 +497,82 @@ export default function FloatingOperatorBubble() {
   // is open (overlay shows the same hint inside its body).
   const showPill = enabled && bubbleState === 'ready' && !!hintText && !isDragging && !isOverlayOpen;
   const showRing = enabled && (bubbleState === 'ready' || bubbleState === 'alert');
-  const showBreath = enabled && !isDragging && bubbleState === 'sleeping' && !isOverlayOpen;
 
-  const dotColor = stateColor(enabled ? bubbleState : 'sleeping');
   const statusLabel = t(`operator.status.${enabled ? bubbleState : 'sleeping'}`);
 
-  // Premium gradient palette. Default state has subtle indigo undertone
-  // so the bubble reads as "alive but quiet"; intelligence-active and
-  // overlay-open promote to a brighter cosmic gradient.
-  const bubbleBg = (isOverlayOpen || isOnIntelligence)
-    ? 'radial-gradient(circle at 30% 30%, #818cf8 0%, #6366f1 40%, #4338ca 100%)'
-    : 'radial-gradient(circle at 30% 30%, #475569 0%, #1e293b 50%, #0f172a 100%)';
+  // R-COMPANION-BUBBLE-REDESIGN: collapse the existing 5-state bubble
+  // into the 3 visual modes the new iridescent orb supports.
+  //   sleeping / watching → 'idle'      (soft blue/purple/pink rim)
+  //   thinking            → 'thinking'  (saturated rim + full hue spin)
+  //   ready / alert       → 'hint'      (green rim + hint ring)
+  // Bubble state stays the canonical state — this is only a render
+  // discriminator so the SVG can stay declarative.
+  const visualMode: 'idle' | 'thinking' | 'hint' =
+    !enabled                                           ? 'idle'
+    : bubbleState === 'thinking'                       ? 'thinking'
+    : (bubbleState === 'ready' || bubbleState === 'alert') ? 'hint'
+    : 'idle';
+
+  // Status-dot palette — distinct from the iridescent rim so the dot
+  // reads cleanly against any state. Idle = blue, thinking = purple,
+  // hint = green.
+  const dotPalette =
+    visualMode === 'thinking' ? { bg: '#a78bfa', shadow: '0 0 10px #a78bfa' }
+    : visualMode === 'hint'   ? { bg: '#34d399', shadow: '0 0 12px #34d399' }
+    :                            { bg: '#93c5fd', shadow: '0 0 8px #93c5fd'  };
+  const dotAnim =
+    visualMode === 'thinking' ? 'cellhubOperatorStatusDotPulse 1s ease-in-out infinite'
+    : visualMode === 'hint'   ? 'cellhubOperatorStatusDotPulse 1.8s ease-in-out infinite'
+    : 'none';
+
+  // R-COMPANION-BUBBLE-REDESIGN: the button itself is now transparent.
+  // The iridescent orb SVG below owns 100% of the visual; the old
+  // radial-gradient backgrounds (overlay-open / intelligence-active /
+  // default) are gone.
+
+  // R-COMPANION-BUBBLE-REDESIGN: per-state filter animation. Composed
+  // with the always-on float so the bubble shimmers and lifts at the
+  // same time. Drag suspends both (handled inline).
+  const filterAnim =
+    visualMode === 'thinking' ? 'cellhubOperatorThinkHue 1.8s linear infinite'
+    : visualMode === 'hint'   ? 'cellhubOperatorHintHue 3s ease-in-out infinite'
+    : 'cellhubOperatorIdleHue 5s ease-in-out infinite';
+
+  // Linear-gradient rim stops vary per visual mode.
+  const rimStops =
+    visualMode === 'thinking' ? [
+      { o: '0%',   c: '#80b0ff', a: 0.65 },
+      { o: '30%',  c: '#c080ff', a: 0.75 },
+      { o: '60%',  c: '#ff90c0', a: 0.60 },
+      { o: '85%',  c: '#80e0ff', a: 0.65 },
+      { o: '100%', c: '#9080ff', a: 0.65 },
+    ]
+    : visualMode === 'hint' ? [
+      { o: '0%',   c: '#60e8b0', a: 0.70 },
+      { o: '30%',  c: '#80d0ff', a: 0.65 },
+      { o: '60%',  c: '#a0ffe0', a: 0.60 },
+      { o: '85%',  c: '#40d8a0', a: 0.75 },
+      { o: '100%', c: '#60e8b0', a: 0.70 },
+    ]
+    : [
+      { o: '0%',   c: '#a0c8ff', a: 0.55 },
+      { o: '25%',  c: '#d4a0ff', a: 0.65 },
+      { o: '50%',  c: '#ffb8d4', a: 0.50 },
+      { o: '75%',  c: '#a0e8ff', a: 0.60 },
+      { o: '100%', c: '#c0a8ff', a: 0.55 },
+    ];
+
+  // Specular tint per mode — mirrors the rim's dominant hue.
+  const specularTint =
+    visualMode === 'thinking' ? '#c080ff'
+    : visualMode === 'hint'   ? '#80d0ff'
+    :                            '#d4a0ff';
+
+  // Interior fill colour (very low opacity) per mode.
+  const fillTint =
+    visualMode === 'thinking' ? '#9080ff'
+    : visualMode === 'hint'   ? '#60e8b0'
+    :                            '#a0c8ff';
 
   // Overlay vertical anchor: prefer below the bubble, but flip above
   // when the bubble is near the bottom edge so the panel stays on-screen.
@@ -520,7 +594,7 @@ export default function FloatingOperatorBubble() {
       <button
         type="button"
         data-cellhub-operator-bubble="true"
-        data-cellhub-bubble-hint-ready={bubbleState === 'ready' || bubbleState === 'alert' ? 'true' : 'false'}
+        data-cellhub-bubble-visual-mode={visualMode}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
         title={tooltip}
@@ -533,158 +607,106 @@ export default function FloatingOperatorBubble() {
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
           borderRadius: '50%',
-          background: bubbleBg,
-          border: `1px solid ${isOverlayOpen ? 'rgba(167,139,250,0.55)' : 'rgba(255,255,255,0.12)'}`,
-          boxShadow: isOverlayOpen
-            ? '0 0 24px rgba(139,92,246,0.4), 0 8px 16px rgba(0,0,0,0.45)'
-            : '0 6px 18px rgba(0,0,0,0.45)',
+          // R-COMPANION-BUBBLE-REDESIGN: the orb SVG owns 100% of the
+          // visual — the button stays transparent so the iridescent
+          // rim shows cleanly against the page.
+          background: 'transparent',
+          border: 'none',
+          boxShadow: 'none',
+          padding: 0,
           color: '#e2e8f0',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           touchAction: 'none',
           zIndex: Z_INDEX,
-          // R-COMPANION-CENTER-UX-REDESIGN: 200ms transition covers
-          // the new hover scale + glow alongside the existing colour
-          // shifts. Drag mode strips transitions so live drag stays
-          // 1:1 with cursor.
-          transition: isDragging
-            ? 'none'
-            : 'background 0.2s, box-shadow 0.2s, border-color 0.2s, transform 0.2s',
+          // Hover scale is applied via CSS :hover selector. The inline
+          // transform is reserved for the float keyframe.
+          transition: isDragging ? 'none' : 'transform 0.2s ease',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 0,
           outline: 'none',
-          // R-COMPANION-CENTER-UX-REDESIGN: compose breath (box-shadow)
-          // with the new idle float (transform). Drag suspends both
-          // animations so the cursor stays aligned with the bubble.
+          // R-COMPANION-BUBBLE-REDESIGN: float is the canonical
+          // motion. Drag suspends it so the cursor stays 1:1 with
+          // the bubble during a drag.
           animation: isDragging
             ? 'none'
-            : showBreath
-              ? 'cellhubOperatorBreath 4s ease-in-out infinite, cellhubOperatorIdleFloat 4s ease-in-out infinite alternate'
-              : 'cellhubOperatorIdleFloat 4s ease-in-out infinite alternate',
+            : 'cellhubOperatorBubbleFloat 4s ease-in-out infinite',
         }}
       >
-        {/* Inner highlight — subtle "lit from above" depth cue. Always
-            rendered; the radial gradient is brighter in the active
-            colour scheme so the bubble reads as glassy. */}
+        {/* ─── R-COMPANION-BUBBLE-REDESIGN: iridescent soap-bubble orb ───
+            Six SVG layers replace the old brain/halo/conic/pulse-ring
+            stack:
+              1. interior fill (very low opacity, mode-tinted)
+              2. iridescent rim (linear gradient, 5-stop, mode-tinted)
+              3. inner rim (subtle white inner contour)
+              4. specular fill overlay (radial, top-left)
+              5. specular highlight ellipses (top-left)
+              6. hint ring (only on visualMode === 'hint')
+            The per-mode hue-rotate filter on the wrapper shimmers the
+            rim without re-rendering React; cero rAF, cero canvas. */}
         <span
           aria-hidden="true"
           style={{
             position: 'absolute',
             inset: 0,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle at 32% 26%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 38%)',
             pointerEvents: 'none',
+            animation: isDragging ? 'none' : filterAnim,
           }}
-        />
-
-        <svg
-          aria-hidden="true"
-          width="38"
-          height="38"
-          viewBox="0 0 38 38"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ pointerEvents: 'none', display: 'block', position: 'relative', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
         >
-          <defs>
-            <radialGradient id={brainFillId} cx="42%" cy="35%" r="62%">
-              <stop offset="0%" stopColor="#a78bfa" />
-              <stop offset="50%" stopColor="#7c3aed" />
-              <stop offset="100%" stopColor="#4c1d95" />
-            </radialGradient>
-            <radialGradient id={brainSheenId} cx="32%" cy="22%" r="45%">
-              <stop offset="0%" stopColor="#ede9fe" stopOpacity="0.55" />
-              <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
-            </radialGradient>
-          </defs>
+          <svg
+            width={BUBBLE_SIZE}
+            height={BUBBLE_SIZE}
+            viewBox="0 0 110 110"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ display: 'block', overflow: 'visible' }}
+          >
+            <defs>
+              <radialGradient id={`bubbleFill-${reactInstanceId}`} cx="50%" cy="35%" r="55%">
+                <stop offset="0%"   stopColor={fillTint} stopOpacity="0.09" />
+                <stop offset="100%" stopColor={fillTint} stopOpacity="0" />
+              </radialGradient>
+              <linearGradient id={`bubbleRim-${reactInstanceId}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                {rimStops.map((s) => (
+                  <stop key={s.o} offset={s.o} stopColor={s.c} stopOpacity={s.a} />
+                ))}
+              </linearGradient>
+              <radialGradient id={`bubbleSpec-${reactInstanceId}`} cx="38%" cy="30%" r="28%">
+                <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.90" />
+                <stop offset="55%"  stopColor={specularTint} stopOpacity="0.30" />
+                <stop offset="100%" stopColor={specularTint} stopOpacity="0" />
+              </radialGradient>
+            </defs>
 
-          {/* Left hemisphere */}
-          <path
-            d="M17 9.5 C16 7 12.5 6.5 11.5 9 C10.5 6.5 7.5 7 7 9.5 C5.5 10 5 12.5 6.5 13.5 C5.5 14.5 5.5 17 7 17.5 C6.5 19.5 8 21.5 10 21 C10.5 22.5 12.5 23 14 21.5 C15 22.5 17 22 17.5 20.5 L17.5 9.5 Z"
-            fill={`url(#${brainFillId})`}
-          />
-          {/* Right hemisphere */}
-          <path
-            d="M21 9.5 C22 7 25.5 6.5 26.5 9 C27.5 6.5 30.5 7 31 9.5 C32.5 10 33 12.5 31.5 13.5 C32.5 14.5 32.5 17 31 17.5 C31.5 19.5 30 21.5 28 21 C27.5 22.5 25.5 23 24 21.5 C23 22.5 21 22 20.5 20.5 L20.5 9.5 Z"
-            fill={`url(#${brainFillId})`}
-          />
-          {/* Sheen overlay */}
-          <path
-            d="M17 9.5 C16 7 12.5 6.5 11.5 9 C10.5 6.5 7.5 7 7 9.5 C5.5 10 5 12.5 6.5 13.5 C5.5 14.5 5.5 17 7 17.5 C6.5 19.5 8 21.5 10 21 C10.5 22.5 12.5 23 14 21.5 C15 22.5 17 22 17.5 20.5 L17.5 9.5 Z"
-            fill={`url(#${brainSheenId})`}
-          />
-          <path
-            d="M21 9.5 C22 7 25.5 6.5 26.5 9 C27.5 6.5 30.5 7 31 9.5 C32.5 10 33 12.5 31.5 13.5 C32.5 14.5 32.5 17 31 17.5 C31.5 19.5 30 21.5 28 21 C27.5 22.5 25.5 23 24 21.5 C23 22.5 21 22 20.5 20.5 L20.5 9.5 Z"
-            fill={`url(#${brainSheenId})`}
-          />
-          {/* Center divide */}
-          <line x1="19" y1="9.5" x2="19" y2="21" stroke="#6d28d9" strokeWidth="0.8" strokeOpacity="0.6" />
-          {/* Left folds */}
-          <path d="M9 11 C8 12.5 9 14 10.5 13.5"     stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M7.5 15 C8 16.5 10 17 10.5 16"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M8.5 18.5 C9.5 20 11.5 20 12 18.5" stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M12.5 10.5 C13 12 12 13.5 10.5 13.5" stroke="#6d28d9" strokeWidth="0.6" strokeLinecap="round" fill="none" />
-          {/* Right folds */}
-          <path d="M29 11 C30 12.5 29 14 27.5 13.5"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M30.5 15 C30 16.5 28 17 27.5 16"    stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M29.5 18.5 C28.5 20 26.5 20 26 18.5" stroke="#6d28d9" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-          <path d="M25.5 10.5 C25 12 26 13.5 27.5 13.5" stroke="#6d28d9" strokeWidth="0.6" strokeLinecap="round" fill="none" />
-          {/* Bottom stem */}
-          <path
-            d="M17.5 21 L17.5 24 C17.5 25 19 26 19 26 C19 26 20.5 25 20.5 24 L20.5 21"
-            stroke="#7c3aed" strokeWidth="0.8" strokeLinecap="round" fill="none" strokeOpacity="0.7"
-          />
-          {/* Cyan accent dots — neural activity */}
-          <circle cx="11" cy="19" r="1"   fill="#00d4ff" opacity="0.7" />
-          <circle cx="27" cy="19" r="1"   fill="#00d4ff" opacity="0.7" />
-          <circle cx="14" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
-          <circle cx="24" cy="15" r="0.7" fill="#00d4ff" opacity="0.5" />
-        </svg>
+            {/* CAPA 6 — hint ring (outer soft green halo). Only ready/alert. */}
+            {visualMode === 'hint' && (
+              <circle cx="55" cy="55" r="51" fill="none" stroke="rgba(52,211,153,0.10)" strokeWidth="8" />
+            )}
 
-        {/* Outer halo — soft static radial glow that pushes the bubble
-            visually "off the screen" and gives the premium-AI-node feel.
-            Static, no animation; opacity sized to look ambient. Only
-            rendered when the bubble is actually surfacing activity so
-            idle state stays visually quiet. */}
-        {showRing && (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: -16,
-              borderRadius: '50%',
-              background: `radial-gradient(circle, ${stateColor(bubbleState)}55 0%, transparent 65%)`,
-              pointerEvents: 'none',
-              filter: 'blur(4px)',
-            }}
-          />
-        )}
+            {/* CAPA 1 — interior fill */}
+            <circle cx="55" cy="55" r="45" fill={`url(#bubbleFill-${reactInstanceId})`} />
 
-        {/* Slow-rotating conic ring — premium "live assistant" sheen.
-            Only spins while the bubble is actively surfacing something
-            (ready/alert) so idle CPU stays at zero. CSS-only, GPU
-            transform — no rAF, no JS animation lib. */}
-        {showRing && (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: -3,
-              borderRadius: '50%',
-              padding: 2,
-              background: `conic-gradient(from 0deg, ${stateColor(bubbleState)}, rgba(167,139,250,0.85), ${stateColor(bubbleState)}, rgba(99,102,241,0.55), ${stateColor(bubbleState)})`,
-              WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-              WebkitMaskComposite: 'xor',
-              mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-              maskComposite: 'exclude',
-              animation: 'cellhubOperatorConicSpin 4s linear infinite',
-              pointerEvents: 'none',
-              opacity: 0.85,
-            }}
-          />
-        )}
+            {/* CAPA 2 — iridescent rim (the headliner) */}
+            <circle cx="55" cy="55" r="45" fill="none" stroke={`url(#bubbleRim-${reactInstanceId})`} strokeWidth="4" />
+
+            {/* CAPA 3 — inner soft rim */}
+            <circle cx="55" cy="55" r="43" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+
+            {/* CAPA 4 — specular fill overlay */}
+            <circle cx="55" cy="55" r="45" fill={`url(#bubbleSpec-${reactInstanceId})`} />
+
+            {/* CAPA 5 — specular highlight ellipses */}
+            <g transform="translate(37 32) rotate(-22)">
+              <ellipse cx="0" cy="0" rx="13" ry="8" fill="white" fillOpacity="0.50" />
+              <ellipse cx="-3" cy="-3" rx="5"  ry="3" fill="white" fillOpacity="0.75" />
+            </g>
+          </svg>
+        </span>
+
+        {/* Optional outer pulse ring — keeps the existing
+            cellhubOperatorPulseRing behaviour for ready/alert so the
+            hint ring inside the SVG is reinforced with a slow outward
+            pulse. CSS-only, pointer-events none. */}
         {showRing && (
           <span
             aria-hidden="true"
@@ -692,27 +714,29 @@ export default function FloatingOperatorBubble() {
               position: 'absolute',
               inset: -6,
               borderRadius: '50%',
-              border: `2px solid ${stateColor(bubbleState)}`,
+              border: '2px solid rgba(52,211,153,0.55)',
               animation: 'cellhubOperatorPulseRing 1.6s ease-out infinite',
               pointerEvents: 'none',
             }}
           />
         )}
 
+        {/* Status dot — bigger (16×16), pulses when thinking/hint.
+            Border colour matches the page background tone so it reads
+            as cleanly "stuck on" the orb. */}
         <span
           aria-hidden="true"
           title={statusLabel}
           style={{
             position: 'absolute',
-            top: 5, right: 5,
-            width: 12, height: 12,
+            top: 4, right: 4,
+            width: 16, height: 16,
             borderRadius: '50%',
-            background: dotColor,
-            border: '2px solid rgba(15,23,42,0.9)',
-            boxShadow: enabled && (bubbleState === 'ready' || bubbleState === 'alert')
-              ? `0 0 8px ${dotColor}`
-              : 'none',
+            background: dotPalette.bg,
+            border: '3px solid rgba(15,23,42,0.95)',
+            boxShadow: dotPalette.shadow,
             pointerEvents: 'none',
+            animation: isDragging ? 'none' : dotAnim,
           }}
         />
       </button>
@@ -781,7 +805,7 @@ export default function FloatingOperatorBubble() {
               </span>
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: '#94a3b8' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor }} />
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotPalette.bg }} />
               {statusLabel}
             </span>
           </div>

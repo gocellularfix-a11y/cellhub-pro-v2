@@ -84,13 +84,49 @@ interface CardSpec {
 // Mock catalogue — all six cards live in this list so the shell stays
 // flat and additions/removals are one-line.
 const CARDS: CardSpec[] = [
-  { id: 'connect',     titleKey: 'companion.card.connect.title',     bodyKey: 'companion.card.connect.body',     icon: '🔗', defaultStatus: 'not_connected' },
-  { id: 'pair',        titleKey: 'companion.card.pair.title',        bodyKey: 'companion.card.pair.body',        icon: '📷', defaultStatus: 'not_connected' },
+  { id: 'connect',     titleKey: 'companion.card.connect.title',     bodyKey: 'companion.card.connect.body',     icon: '🔗',  defaultStatus: 'not_connected' },
+  { id: 'pair',        titleKey: 'companion.card.pair.title',        bodyKey: 'companion.card.pair.body',        icon: '📲', defaultStatus: 'not_connected' },
   { id: 'approvals',   titleKey: 'companion.card.approvals.title',   bodyKey: 'companion.card.approvals.body',   icon: '✅', defaultStatus: 'coming_soon' },
   { id: 'storeStatus', titleKey: 'companion.card.storeStatus.title', bodyKey: 'companion.card.storeStatus.body', icon: '🏪', defaultStatus: 'coming_soon' },
   { id: 'messaging',   titleKey: 'companion.card.messaging.title',   bodyKey: 'companion.card.messaging.body',   icon: '💬', defaultStatus: 'coming_soon' },
   { id: 'health',      titleKey: 'companion.card.health.title',      bodyKey: 'companion.card.health.body',      icon: '📡', defaultStatus: 'coming_soon' },
 ];
+
+// R-COMPANION-CENTER-UX-REDESIGN-V2: Quick-Actions-style tile palette.
+// Each card gets its own gradient + rim + label colour so the grid
+// reads as six distinct surfaces instead of one repeating template.
+const CARD_PALETTE: Record<string, { bg: string; border: string; label: string }> = {
+  connect:     { bg: 'linear-gradient(160deg, #1a1460 0%, #0f0c3a 100%)', border: '1.5px solid #2d2580', label: '#818cf8' },
+  pair:        { bg: 'linear-gradient(160deg, #0e2150 0%, #081530 100%)', border: '1.5px solid #1a3a80', label: '#60a5fa' },
+  approvals:   { bg: 'linear-gradient(160deg, #2a0f0f 0%, #1e0a0a 100%)', border: '1.5px solid #4a1515', label: '#f87171' },
+  storeStatus: { bg: 'linear-gradient(160deg, #0a2e2a 0%, #061e1a 100%)', border: '1.5px solid #0f4a40', label: '#2dd4bf' },
+  messaging:   { bg: 'linear-gradient(160deg, #200d50 0%, #140830 100%)', border: '1.5px solid #3a1880', label: '#c084fc' },
+  health:      { bg: 'linear-gradient(160deg, #082030 0%, #041318 100%)', border: '1.5px solid #0a3850', label: '#22d3ee' },
+};
+const CARD_PALETTE_FALLBACK = CARD_PALETTE.connect;
+
+// R-COMPANION-CENTER-UX-REDESIGN-V2: dynamic styles (hover + keyframe)
+// live in a single injected stylesheet so inline style stays the
+// source of truth for everything else. Idempotent via id check —
+// mounts once for the lifetime of the page.
+const CARD_STYLE_ID = 'cellhub-companion-card-styles-v2';
+function ensureCompanionCardStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(CARD_STYLE_ID)) return;
+  const el = document.createElement('style');
+  el.id = CARD_STYLE_ID;
+  el.textContent = `
+@keyframes cellhubCompanionApprovalBadgePulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(251,191,36,0.0); }
+  50%      { box-shadow: 0 0 14px rgba(251,191,36,0.65); }
+}
+div[data-cellhub-companion-card="true"]:hover:not([data-coming-soon="true"]) {
+  transform: scale(1.03);
+  filter: brightness(1.12);
+}
+`;
+  document.head.appendChild(el);
+}
 
 function statusPalette(s: CardStatus): { label: string; bg: string; border: string; color: string } {
   switch (s) {
@@ -221,6 +257,9 @@ export default function CompanionCenter() {
     const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
     const unsubMessaging = subscribeMessagingRuntime((s) => setMessagingRuntime(s));
     const unsubStoreStatus = subscribeStoreStatusRuntime((s) => setStoreStatusRuntime(s));
+    // R-COMPANION-CENTER-UX-REDESIGN-V2: inject card hover + badge
+    // pulse keyframes once. Idempotent.
+    ensureCompanionCardStyles();
     return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); };
   }, []);
 
@@ -485,16 +524,17 @@ export default function CompanionCenter() {
         </div>
       )}
 
-      {/* R-COMPANION-CENTER-UX-REDESIGN: simplified card surface.
-          Bigger touch targets (min-height 100px), one icon + label +
-          subtitle, status pill kept but smaller. Approvals carries an
-          inline pending badge instead of a runtime metric block. Cards
-          tagged 'coming_soon' render dimmed + non-interactive but
-          remain visible so users see the roadmap. */}
+      {/* R-COMPANION-CENTER-UX-REDESIGN-V2: vertical tile cards
+          matching the Quick Actions visual language. Bigger emoji,
+          uppercase bold label, per-card gradient. Status pill stays
+          top-right; the approval pending badge moves to top-left as
+          a pulsing amber chip. Hover scale + brightness comes from
+          the injected attribute selector — inline style owns the
+          rest. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-        gap: '1.1rem',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gap: '14px',
       }}>
         {CARDS.map((card) => {
           const status = cardStatus(card.id, card.defaultStatus);
@@ -503,133 +543,144 @@ export default function CompanionCenter() {
           const isComingSoon = status === 'coming_soon';
           const isApprovals = card.id === 'approvals';
           const approvalBadge = isApprovals ? approvalRuntime.pendingCount : 0;
+          const palette = CARD_PALETTE[card.id] ?? CARD_PALETTE_FALLBACK;
           return (
             <div
               key={card.id}
+              data-cellhub-companion-card="true"
+              data-coming-soon={isComingSoon ? 'true' : 'false'}
               style={{
-                padding: '1.25rem 1.35rem',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '0.95rem',
+                position: 'relative',
+                padding: '28px 20px 22px',
+                background: palette.bg,
+                border: palette.border,
+                borderRadius: '18px',
+                minHeight: '200px',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '1rem',
-                minHeight: '100px',
-                transition: 'border-color 0.2s, background 0.2s, opacity 0.2s',
-                opacity: isComingSoon ? 0.55 : 1,
+                justifyContent: 'flex-end',
+                textAlign: 'center',
+                cursor: isComingSoon ? 'default' : 'pointer',
+                transition: 'transform 180ms ease, filter 180ms ease, opacity 200ms ease',
+                opacity: isComingSoon ? 0.45 : 1,
                 pointerEvents: isComingSoon ? 'none' : 'auto',
+                overflow: 'hidden',
               }}
             >
-              {/* Icon block — tinted tile that anchors the card visually. */}
-              <div
+              {/* Approval pending badge — pulsing amber chip top-left. */}
+              {isApprovals && approvalBadge > 0 && (
+                <span
+                  aria-label={(t as (k: string, ...a: Array<string | number>) => string)('companion.card.approvals.pendingLine', approvalBadge)}
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    left: 14,
+                    background: '#fbbf24',
+                    color: '#0f1117',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '3px 9px',
+                    borderRadius: 6,
+                    letterSpacing: '0.3px',
+                    animation: 'cellhubCompanionApprovalBadgePulse 2s ease-in-out infinite',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {approvalBadge}
+                </span>
+              )}
+
+              {/* Status pill — top-right, same logic as V1. */}
+              <span style={{
+                position: 'absolute',
+                top: 14,
+                right: 14,
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '3px 9px',
+                borderRadius: 6,
+                background: p.bg,
+                border: `1px solid ${p.border}`,
+                color: p.color,
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+              }}>
+                {t(p.label)}
+              </span>
+
+              {/* Icon block — large centered emoji. */}
+              <span
                 aria-hidden="true"
                 style={{
-                  flexShrink: 0,
-                  width: '3.25rem',
-                  height: '3.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.75rem',
-                  background: 'rgba(99,102,241,0.12)',
-                  border: '1px solid rgba(99,102,241,0.20)',
-                  borderRadius: '0.75rem',
+                  display: 'block',
+                  fontSize: 52,
+                  marginBottom: 14,
+                  filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
+                  lineHeight: 1,
                 }}
               >
                 {card.icon}
-              </div>
+              </span>
 
-              {/* Title + subtitle block. */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '1.05rem',
+              {/* Label — bold uppercase. */}
+              <h3 style={{
+                margin: 0,
+                fontSize: 14,
+                fontWeight: 800,
+                letterSpacing: '0.5px',
+                textTransform: 'uppercase',
+                lineHeight: 1.2,
+                marginBottom: 6,
+                color: palette.label,
+              }}>
+                {t(card.titleKey)}
+              </h3>
+
+              {/* Subtitle — quiet, two-line clamp so longer copy still fits. */}
+              <p style={{
+                margin: 0,
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.45)',
+                lineHeight: 1.4,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}>
+                {t(card.bodyKey)}
+              </p>
+
+              {/* Pair card action button — full-width inside the tile body. */}
+              {isPairCard && !isComingSoon && (
+                <button
+                  type="button"
+                  onClick={startPairing}
+                  disabled={isPairingOpen}
+                  style={{
+                    marginTop: 14,
+                    width: '100%',
+                    padding: 8,
+                    background: isPairingOpen
+                      ? 'rgba(99,102,241,0.10)'
+                      : 'rgba(99,102,241,0.22)',
+                    border: '1px solid rgba(99,102,241,0.45)',
+                    color: '#c4b5fd',
+                    borderRadius: 9,
+                    fontSize: 12,
                     fontWeight: 700,
-                    color: '#e2e8f0',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {t(card.titleKey)}
-                  </h3>
-                  {isApprovals && approvalBadge > 0 && (
-                    <span
-                      aria-label={(t as (k: string, ...a: Array<string | number>) => string)('companion.card.approvals.pendingLine', approvalBadge)}
-                      style={{
-                        flexShrink: 0,
-                        minWidth: '1.4rem',
-                        padding: '0.1rem 0.45rem',
-                        borderRadius: '999px',
-                        background: '#fbbf24',
-                        color: '#0f1117',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        textAlign: 'center',
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {approvalBadge}
-                    </span>
-                  )}
-                </div>
-                <p style={{
-                  margin: 0,
-                  fontSize: '0.85rem',
-                  color: '#94a3b8',
-                  lineHeight: 1.4,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                }}>
-                  {t(card.bodyKey)}
-                </p>
-              </div>
-
-              {/* Right column: status pill + (optional) pair button. */}
-              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                <span style={{
-                  fontSize: '0.66rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '999px',
-                  background: p.bg,
-                  border: `1px solid ${p.border}`,
-                  color: p.color,
-                  whiteSpace: 'nowrap',
-                }}>
-                  {t(p.label)}
-                </span>
-                {isPairCard && !isComingSoon && (
-                  <button
-                    type="button"
-                    onClick={startPairing}
-                    disabled={isPairingOpen}
-                    style={{
-                      padding: '0.55rem 0.95rem',
-                      borderRadius: '0.6rem',
-                      border: '1px solid rgba(99,102,241,0.45)',
-                      background: isPairingOpen
-                        ? 'rgba(99,102,241,0.08)'
-                        : 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(139,92,246,0.18))',
-                      color: '#c4b5fd',
-                      cursor: isPairingOpen ? 'wait' : 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: 700,
-                      opacity: isPairingOpen ? 0.6 : 1,
-                      transition: 'background 0.2s, opacity 0.2s',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {pairedDevice
-                      ? `↻ ${t('companion.card.pair.repairButton')}`
-                      : `🔗 ${t('companion.card.pair.startButton')}`}
-                  </button>
-                )}
-              </div>
+                    cursor: isPairingOpen ? 'wait' : 'pointer',
+                    opacity: isPairingOpen ? 0.6 : 1,
+                    transition: 'background 0.2s, opacity 0.2s',
+                  }}
+                >
+                  {pairedDevice
+                    ? `↻ ${t('companion.card.pair.repairButton')}`
+                    : `🔗 ${t('companion.card.pair.startButton')}`}
+                </button>
+              )}
             </div>
           );
         })}
