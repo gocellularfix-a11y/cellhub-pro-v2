@@ -331,3 +331,37 @@ export interface CompanionActionInboxSnapshot {
 }
 
 export type CompanionActionInboxListener = (snapshot: CompanionActionInboxSnapshot) => void;
+
+// ── Approval runtime store (R-COMPANION-APPROVAL-RUNTIME-V1) ──
+// Aggregated view of every approval the desktop has produced, sourced
+// from the APPROVAL_CREATED / APPROVAL_APPROVED / APPROVAL_DENIED
+// events on the Companion Event Bus. Lets the Companion Center
+// surface pending counts + latest decision without re-walking the
+// event log.
+
+export type CompanionApprovalRuntimeStatus = 'pending' | 'approved' | 'denied';
+
+export interface CompanionApprovalRuntimeItem {
+  approvalId: string;
+  actionType?: string;
+  source?: string;
+  status: CompanionApprovalRuntimeStatus;
+  requestedByEmployeeId?: string;
+  approvedByEmployeeId?: string;
+  reason?: string;
+  /** ms epoch when the runtime first saw this approval. */
+  createdAt: number;
+  /** ms epoch of the most-recent status change. */
+  updatedAt: number;
+}
+
+export interface CompanionApprovalRuntimeSnapshot {
+  /** Most-recently-updated first. Shallow copies — mutating them
+   *  does not mutate runtime state. */
+  items: CompanionApprovalRuntimeItem[];
+  pendingCount: number;
+  /** Most-recently-updated item, or null when empty. */
+  latest: CompanionApprovalRuntimeItem | null;
+}
+
+export type CompanionApprovalRuntimeListener = (snapshot: CompanionApprovalRuntimeSnapshot) => void;

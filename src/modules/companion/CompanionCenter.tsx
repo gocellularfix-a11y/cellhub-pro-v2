@@ -45,8 +45,14 @@ import {
 import { processApprovalAction } from '@/services/companion/receivers/approvalActionReceiver';
 import { processMessagingAction } from '@/services/companion/receivers/messagingActionReceiver';
 import { processIntelligenceAck } from '@/services/companion/receivers/intelligenceAckReceiver';
+// R-COMPANION-APPROVAL-RUNTIME-V1: read model over approval events.
+import {
+  getApprovalRuntimeSnapshot,
+  subscribeApprovalRuntime,
+} from '@/services/companion/companionApprovalRuntime';
 import type {
   CompanionActionInboxSnapshot,
+  CompanionApprovalRuntimeSnapshot,
   CompanionBridgeSnapshot,
   CompanionDevicePlatform,
   CompanionEvent,
@@ -169,6 +175,11 @@ export default function CompanionCenter() {
   // panel below. Cero touches to existing event-bus subscriptions.
   const [inboxSnap, setInboxSnap] = useState<CompanionActionInboxSnapshot>(() => getInboxSnapshot());
 
+  // R-COMPANION-APPROVAL-RUNTIME-V1: read model snapshot driven by
+  // APPROVAL_CREATED / APPROVED / DENIED events. Used by the
+  // Approval Requests card body.
+  const [approvalRuntime, setApprovalRuntime] = useState<CompanionApprovalRuntimeSnapshot>(() => getApprovalRuntimeSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -185,7 +196,8 @@ export default function CompanionCenter() {
       setCompanionQueue(getCompanionQueueSize());
     });
     const unsubInbox = subscribeActionInbox((s) => setInboxSnap(s));
-    return () => { unsubSnap(); unsubEvents(); unsubInbox(); };
+    const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -497,6 +509,40 @@ export default function CompanionCenter() {
               <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.45, flex: 1 }}>
                 {t(card.bodyKey)}
               </p>
+              {/* R-COMPANION-APPROVAL-RUNTIME-V1: live runtime line
+                  inside the Approval Requests card. Keeps the
+                  'coming_soon' status pill intact — only adds a small
+                  data row when the runtime has produced something. */}
+              {card.id === 'approvals' && (approvalRuntime.pendingCount > 0 || approvalRuntime.latest) && (
+                <div style={{
+                  marginTop: '0.25rem',
+                  padding: '0.4rem 0.55rem',
+                  background: 'rgba(99,102,241,0.06)',
+                  border: '1px solid rgba(99,102,241,0.18)',
+                  borderRadius: '0.45rem',
+                  fontSize: '0.74rem',
+                  color: '#cbd5e1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.2rem',
+                }}>
+                  {approvalRuntime.pendingCount > 0 && (
+                    <div style={{ color: '#fbbf24', fontWeight: 600 }}>
+                      ⏳ {(t as (k: string, ...a: Array<string | number>) => string)('companion.card.approvals.pendingLine', approvalRuntime.pendingCount)}
+                    </div>
+                  )}
+                  {approvalRuntime.latest && approvalRuntime.latest.status === 'approved' && (
+                    <div style={{ color: '#86efac' }}>
+                      ✓ {t('companion.card.approvals.latestApproved')}
+                    </div>
+                  )}
+                  {approvalRuntime.latest && approvalRuntime.latest.status === 'denied' && (
+                    <div style={{ color: '#fca5a5' }}>
+                      ✕ {t('companion.card.approvals.latestDenied')}
+                    </div>
+                  )}
+                </div>
+              )}
               {isPairCard && (
                 <button
                   type="button"

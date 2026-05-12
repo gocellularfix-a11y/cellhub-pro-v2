@@ -4835,6 +4835,14 @@ export const translations: TranslationDictionary = {
 
   'companion.card.approvals.title':    { en: 'Approval Requests',         es: 'Solicitudes de Aprobación',pt: 'Solicitações de Aprovação' },
   'companion.card.approvals.body':     { en: 'Approve cashier-side actions (cancels, refunds, discounts) directly from your phone.', es: 'Aprueba acciones del cajero (cancelaciones, reembolsos, descuentos) desde el teléfono.', pt: 'Aprove ações do caixa (cancelamentos, reembolsos, descontos) direto do celular.' },
+  // R-COMPANION-APPROVAL-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.approvals.pendingLine': {
+    en: (n: number) => `${n} pending request${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} solicitud${n === 1 ? '' : 'es'} pendiente${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} solicitação${n === 1 ? '' : 'ões'} pendente${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.approvals.latestApproved': { en: 'Latest: approved', es: 'Última: aprobada', pt: 'Última: aprovada' },
+  'companion.card.approvals.latestDenied':   { en: 'Latest: denied',   es: 'Última: denegada', pt: 'Última: negada' },
 
   'companion.card.storeStatus.title':  { en: 'Store Status',              es: 'Estado de la Tienda',      pt: 'Status da Loja' },
   'companion.card.storeStatus.body':   { en: 'See who is clocked in, live sales count and current cash drawer at a glance.', es: 'Ve quién está clockeado, ventas en vivo y caja actual de un vistazo.', pt: 'Veja quem está registrado, vendas ao vivo e caixa atual em um relance.' },
