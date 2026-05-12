@@ -1,9 +1,53 @@
+import { useEffect } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useMultiStore } from '@/store/MultiStoreProvider';
 import { useLicense } from '@/contexts/LicenseContext';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
 import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
+
+// R-SIDEBAR-QUICKACTIONS-STYLE: per-module gradient palette. Keyed by
+// the NAV_TABS id. Unmapped ids fall back to the slate tone below so
+// the grid never breaks if a new module is added to constants.ts.
+const MODULE_PALETTE: Record<string, { bg: string; border: string; label: string }> = {
+  inventory:      { bg: 'linear-gradient(145deg, #2a1e06, #1a1204)', border: '#5a3a0a', label: '#fbbf24' },
+  repairs:        { bg: 'linear-gradient(145deg, #0a2e2a, #061e1a)', border: '#0f4840', label: '#2dd4bf' },
+  unlocks:        { bg: 'linear-gradient(145deg, #200d50, #140830)', border: '#3a1880', label: '#c084fc' },
+  specialOrders:  { bg: 'linear-gradient(145deg, #082030, #041318)', border: '#0a3850', label: '#22d3ee' },
+  layaways:       { bg: 'linear-gradient(145deg, #0a2010, #061408)', border: '#0f4020', label: '#4ade80' },
+  returns:        { bg: 'linear-gradient(145deg, #300a28, #1e0618)', border: '#501040', label: '#f0abfc' },
+  customers:      { bg: 'linear-gradient(145deg, #181460, #0f0c38)', border: '#2d2580', label: '#818cf8' },
+  appointments:   { bg: 'linear-gradient(145deg, #142008, #0c1604)', border: '#203a10', label: '#a3e635' },
+  intelligence:   { bg: 'linear-gradient(145deg, #081830, #04101e)', border: '#0a2a50', label: '#38bdf8' },
+  reports:        { bg: 'linear-gradient(145deg, #301408, #1e0c04)', border: '#603010', label: '#fb923c' },
+  purchaseOrders: { bg: 'linear-gradient(145deg, #0e2050, #081530)', border: '#1a3880', label: '#60a5fa' },
+  companion:      { bg: 'linear-gradient(145deg, #141c28, #0c1218)', border: '#202c3e', label: '#94a3b8' },
+  employees:      { bg: 'linear-gradient(145deg, #2a0a18, #180610)', border: '#501030', label: '#fb7185' },
+  settings:       { bg: 'linear-gradient(145deg, #2a0a0a, #180606)', border: '#501010', label: '#f87171' },
+};
+const MODULE_PALETTE_FALLBACK = { bg: 'linear-gradient(145deg, #141c28, #0c1218)', border: '#202c3e', label: '#94a3b8' };
+
+// R-SIDEBAR-QUICKACTIONS-STYLE: hover styles live in a single injected
+// stylesheet (same idempotent pattern as FloatingOperatorBubble +
+// CompanionCenter). Inline style stays the source of truth for the
+// per-module gradient + active outline; CSS only owns hover.
+const SIDEBAR_STYLE_ID = 'cellhub-sidebar-module-styles';
+function ensureSidebarModuleStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(SIDEBAR_STYLE_ID)) return;
+  const el = document.createElement('style');
+  el.id = SIDEBAR_STYLE_ID;
+  el.textContent = `
+button[data-cellhub-sidebar-module="true"]:hover {
+  transform: scale(1.02);
+  filter: brightness(1.15);
+}
+button[data-cellhub-sidebar-pos="true"]:hover {
+  filter: brightness(1.12);
+}
+`;
+  document.head.appendChild(el);
+}
 
 export default function Sidebar() {
   const {
@@ -19,6 +63,10 @@ export default function Sidebar() {
   const { features } = useLicense();
   const { theme, setTheme } = useTheme();
   const { t, locale } = useTranslation();
+
+  // R-SIDEBAR-QUICKACTIONS-STYLE: inject hover keyframes once on mount.
+  // Idempotent — re-mounts skip the create call.
+  useEffect(() => { ensureSidebarModuleStyles(); }, []);
 
   const handleClockOut = () => {
     setCurrentEmployee(null);
@@ -103,33 +151,132 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — R-SIDEBAR-QUICKACTIONS-STYLE.
+          POS lives as a hero card above the grid; everything else
+          renders as a 2-col Quick-Actions-style tile grid with per-
+          module gradients. Filtering rules (adminOnly + role +
+          allowed-modules) and click handlers stay identical to the
+          previous nav-item rendering. */}
       <nav className="flex-1 py-2">
-        {NAV_TABS.map((tab) => {
-          // Hide admin-only tabs when not in admin mode
-          if (tab.adminOnly && !isAdminMode) return null;
-          // Hide tabs the current employee's role cannot access
-          if (!canAccessTab(tab.id, currentEmployee?.role, (currentEmployee as any)?.allowedModules)) return null;
-
+        {(() => {
+          const isVisible = (tab: typeof NAV_TABS[number]) => {
+            if (tab.adminOnly && !isAdminMode) return false;
+            if (!canAccessTab(tab.id, currentEmployee?.role, (currentEmployee as any)?.allowedModules)) return false;
+            return true;
+          };
+          const posTab = NAV_TABS.find((tt) => tt.id === 'pos');
+          const showPos = !!posTab && isVisible(posTab);
+          const gridTabs = NAV_TABS.filter((tt) => tt.id !== 'pos' && isVisible(tt));
           return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                // If already on POS, reset to Quick Action Grid
-                if (tab.id === 'pos' && activeTab === 'pos') {
-                  window.dispatchEvent(new CustomEvent('cellhub_pos_reset'));
-                }
-              }}
-              className={`nav-item w-full text-left ${
-                activeTab === tab.id ? 'active' : ''
-              }`}
-            >
-              <span className="text-xl">{tab.icon}</span>
-              <span>{t('nav.' + tab.labelKey)}</span>
-            </button>
+            <>
+              {showPos && posTab && (
+                <div style={{ margin: '8px 10px 4px' }}>
+                  <button
+                    type="button"
+                    data-cellhub-sidebar-pos="true"
+                    onClick={() => {
+                      setActiveTab(posTab.id);
+                      if (activeTab === 'pos') {
+                        window.dispatchEvent(new CustomEvent('cellhub_pos_reset'));
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      background: 'linear-gradient(135deg, #3730a3 0%, #6d28d9 100%)',
+                      border: activeTab === 'pos'
+                        ? '1px solid #a78bfa'
+                        : '1px solid #4f46e5',
+                      borderRadius: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      color: 'white',
+                      transition: 'all 150ms ease',
+                      boxShadow: activeTab === 'pos' ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none',
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: 24, lineHeight: 1, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
+                      {posTab.icon}
+                    </span>
+                    <span style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 15,
+                      fontWeight: 800,
+                      color: 'white',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {t('nav.' + posTab.labelKey)}
+                    </span>
+                    <span aria-hidden="true" style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', flexShrink: 0 }}>→</span>
+                  </button>
+                </div>
+              )}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 5,
+                padding: '0 8px',
+                marginTop: 8,
+              }}>
+                {gridTabs.map((tab) => {
+                  const palette = MODULE_PALETTE[tab.id] ?? MODULE_PALETTE_FALLBACK;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      data-cellhub-sidebar-module="true"
+                      data-active={isActive ? 'true' : 'false'}
+                      onClick={() => setActiveTab(tab.id)}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 10,
+                        padding: '9px 8px',
+                        background: palette.bg,
+                        border: `1px solid ${palette.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        cursor: 'pointer',
+                        transition: 'all 150ms ease',
+                        textAlign: 'left',
+                        outline: isActive ? `2px solid ${palette.label}` : 'none',
+                        outlineOffset: isActive ? '-2px' : 0,
+                        boxShadow: isActive ? `0 0 14px ${palette.label}33` : 'none',
+                      }}
+                    >
+                      <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>
+                        {tab.icon}
+                      </span>
+                      <span style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: '0.3px',
+                        color: palette.label,
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {t('nav.' + tab.labelKey)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           );
-        })}
+        })()}
       </nav>
 
       {/* Bottom section — matches original */}
