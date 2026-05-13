@@ -142,6 +142,12 @@ export default function AutocompleteInput({
             <button
               key={opt.value + i}
               type="button"
+              // R-REPAIRS-AUTOCOMPLETE-TAB-FLOW-FIX: remove dropdown items
+              // from the tab order so Tab from the input advances to the
+              // next form field (Last Name, etc.) instead of focusing the
+              // first suggestion. Mouse + ArrowDown + Enter selection are
+              // unaffected.
+              tabIndex={-1}
               onMouseDown={(e) => {
                 e.preventDefault(); // prevent input blur before click
                 selectOption(opt);

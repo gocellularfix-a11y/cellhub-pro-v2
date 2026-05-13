@@ -170,9 +170,11 @@
     @apply glass-card p-5;
   }
 
-  /* Stat cards on dashboard */
+  /* Stat cards on dashboard
+     R-UX-INSTANT-FEEL-V1 #3: narrowed transition-all → transition-colors
+     so layout-affecting properties don't animate on hover. */
   .stat-card {
-    @apply glass-card p-5 transition-all duration-200 hover:bg-white/10;
+    @apply glass-card p-5 transition-colors duration-150 hover:bg-white/10;
     position: relative;
   }
 
@@ -206,10 +208,13 @@
     font-weight: 800;
   }
 
-  /* Buttons */
+  /* Buttons
+     R-UX-INSTANT-FEEL-V1 #3: narrowed transition-all → transition-colors
+     so background/color changes still animate but layout-affecting
+     properties (border, padding) don't trigger paint. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-           rounded-lg text-sm font-medium transition-all duration-200
+           rounded-lg text-sm font-medium transition-colors duration-150
            cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
@@ -250,13 +255,14 @@
     @apply px-6 py-3 text-base;
   }
 
-  /* Form inputs */
+  /* Form inputs
+     R-UX-INSTANT-FEEL-V1 #3: narrowed transition-all → transition-colors. */
   .input {
     @apply w-full px-4 py-2.5 rounded-lg text-sm
            border border-white/10 text-white
            placeholder-slate-500
            focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
-           transition-all duration-200;
+           transition-colors duration-150;
     background-color: var(--bg-input);
     border: 1px solid var(--border-default);
     color: var(--text-primary);
@@ -265,11 +271,12 @@
     @apply px-3 py-1.5 text-xs;
   }
 
-  /* Select */
+  /* Select
+     R-UX-INSTANT-FEEL-V1 #3: narrowed transition-all → transition-colors. */
   .select {
     @apply appearance-none cursor-pointer w-full px-4 py-2.5 rounded-lg text-sm border border-white/10
            focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
-           transition-all duration-200;
+           transition-colors duration-150;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
@@ -350,13 +357,18 @@
     background: var(--bg-input);
   }
 
-  /* Modal overlay */
+  /* Modal overlay
+     R-UX-INSTANT-FEEL-V1 #1+#2: dropped backdrop-blur-sm + animate-fade-in
+     (GPU-heavy on Windows; visible "thick" feel on every modal open) and
+     animate-scale-in (200ms puff before modal settles). Slightly darker
+     bg-black/70 compensates for the removed blur. Modal now appears
+     instantly — critical for cashier/payment flow. */
   .modal-overlay {
     @apply fixed inset-0 z-50 flex items-center justify-center
-           bg-black/60 backdrop-blur-sm animate-fade-in;
+           bg-black/70;
   }
   .modal-content {
-    @apply relative rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto animate-scale-in;
+    @apply relative rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto;
     background: var(--bg-secondary);
     border: 1px solid var(--border-default);
   }

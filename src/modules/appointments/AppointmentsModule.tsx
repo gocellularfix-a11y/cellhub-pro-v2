@@ -15,7 +15,7 @@ import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
 // R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import type { Customer, Appointment, AppointmentStatus } from '@/store/types';
 import { usePrint } from '@/hooks/usePrint';
 import { escHtml } from '@/utils/escHtml';
@@ -89,7 +89,12 @@ export default function AppointmentsModule() {
   const filtered = useMemo(() => {
     return appointments
       .filter((a) => filter === 'all' || a.status === filter)
-      .filter((a) => !search.trim() || matchesSearch(search, a.customerName, a.customerPhone, a.device, a.issue, (a as any).ticketNumber))
+      // R-SEARCH-NORMALIZE-V1: phone-aware match (formatted vs raw).
+      .filter((a) => matchesSearchPhones(
+        search,
+        [a.customerPhone],
+        a.customerName, a.device, a.issue, (a as any).ticketNumber,
+      ))
       .sort((a, b) => new Date(a.estimatedDropOff).getTime() - new Date(b.estimatedDropOff).getTime());
   }, [appointments, filter]);
 

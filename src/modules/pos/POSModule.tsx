@@ -2,10 +2,11 @@
 // CellHub Pro — POS Module (Main Orchestrator)
 // ============================================================
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog, SearchInput, Modal } from '@/components/ui';
+import CustomerPicker from '@/components/shared/CustomerPicker';
 import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
@@ -33,6 +34,7 @@ import type { Customer, Sale, InventoryItem, CartItem } from '@/store/types';
 
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
+import { addLayawayPayment } from '@/services/layaway/payments';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 
@@ -54,7 +56,7 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
-      pendingPosCustomer, currentStoreId,
+      pendingPosCustomer,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
@@ -92,6 +94,13 @@ export default function POSModule() {
   // ── Local State ─────────────────────────────────────────
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // R-POS-POSTSALE-FOCUS-RETURN-FLOW-V1: bumped each time the receipt
+  // modal closes after a completed sale. Used as `key` on ProductGrid
+  // so the category view remounts with a fresh internal search='' and
+  // re-runs the autoFocus effect — cashier returns to the same
+  // Accessories/Phones view they started in, with the cursor in search
+  // ready for the next purchase.
+  const [productGridKey, setProductGridKey] = useState(0);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState(() => loadLocal('global_search', ''));
 
@@ -131,6 +140,17 @@ export default function POSModule() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  // R-POS-CUSTOMER-QUICKEDIT-V1: state for the inline "Edit customer plan"
+  // modal triggered from a phone_payment cart row. The form is pre-filled
+  // from the customer record (NOT the cart item) — the cart item reflects
+  // this sale, the customer record is the persistent source of truth that
+  // we're updating. Save is immediate (per Jorge's choice C1): the
+  // customer record updates as soon as the modal confirms, regardless of
+  // whether the sale completes or cancels.
+  const [quickEditCustomerId, setQuickEditCustomerId] = useState<string | null>(null);
+  const [quickEditForm, setQuickEditForm] = useState<{ carrier: string; plan: string; monthlyPayment: string }>({
+    carrier: '', plan: '', monthlyPayment: '',
+  });
   const [showCredentialMaker, setShowCredentialMaker] = useState(false);
   const [showNotepad, setShowNotepad] = useState(false);
   const [showEstimate, setShowEstimate] = useState(false);
@@ -138,7 +158,6 @@ export default function POSModule() {
   const [showLabelPrinter, setShowLabelPrinter] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [customerSearchQ, setCustomerSearchQ] = useState('');
 
   // ── Auto-open PhonePaymentModal when customer credential is scanned ──
   // AppShell scanner handler sets pendingPhonePaymentCustomerId when a GC-xxxx
@@ -179,15 +198,21 @@ export default function POSModule() {
   );
 
   // Search across inventory
+  // R-PERF-HARDENING-V1 #3: useDeferredValue lets React skip re-running the
+  // O(N) inventory filter on intermediate keystrokes when typing fast. The
+  // input stays responsive (commits immediately to searchTerm); the heavy
+  // filter follows when the renderer has bandwidth.
   const isSearchActive = searchTerm.trim().length > 0;
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const searchResults = useMemo(() => {
     if (!isSearchActive) return [];
-    const q = searchTerm.trim();
+    const q = deferredSearchTerm.trim();
+    if (!q) return [];
     return inventory.filter((item) =>
       matchesSearch(q, item.name, item.sku, item.barcode, item.imei, item.category),
     );
-  }, [searchTerm, inventory, isSearchActive]);
+  }, [deferredSearchTerm, inventory, isSearchActive]);
 
   // Items filtered by active category
   const categoryItems = useMemo(() => {
@@ -216,13 +241,16 @@ export default function POSModule() {
     return filter ? inventory.filter(filter) : [];
   }, [activeCategory, inventory, customCategories]);
 
-  // Customer search results
-  const customerResults = useMemo(() => {
-    if (!customerSearchQ.trim()) return customers.slice(0, 10);
-    return customers.filter((c) =>
-      matchesSearch(customerSearchQ, c.name, c.phone, c.email, c.customerNumber),
-    );
-  }, [customerSearchQ, customers]);
+  // R-POS-CUSTOMERPICKER-MIGRATION: inline customer add via picker.
+  // Mirrors TopUpModal/CredentialMaker pattern — append to customers state and persist.
+  const handleCreateNewCustomer = useCallback((c: Customer) => {
+    try {
+      const next = [...customersRef.current, c];
+      customersRef.current = next;
+      setCustomers(next);
+      persist.customer(c.id, c as unknown as Record<string, unknown>);
+    } catch (_) { /* defensive */ }
+  }, [setCustomers]);
 
   // ── Helpers ─────────────────────────────────────────────
 
@@ -298,17 +326,21 @@ export default function POSModule() {
         cartRef.current = next;
         setCart(next);
 
-        // Bundle suggestion — when a phone is added, suggest accessories
-        if (isPhoneCategory(item)) {
-          const suggestions = inventory.filter(
-            (i) =>
-              isAccessoryCategory(i) &&
-              i.qty > 0 &&
-              !currentCart.some((c) => c.inventoryId === i.id) &&
-              i.id !== item.id,
-          ).slice(0, 4);
-          if (suggestions.length > 0) setBundleSuggestion(suggestions);
-        }
+        // BUG-9 (R-CART-FEES) DISABLED: the auto-pop "Add accessories?" panel
+        // interrupted the fast-sale flow. State + render are preserved (so a
+        // future feature flag can re-enable easily) but the trigger is muted.
+        // To re-enable, uncomment the block below.
+        //
+        // if (isPhoneCategory(item)) {
+        //   const suggestions = inventory.filter(
+        //     (i) =>
+        //       isAccessoryCategory(i) &&
+        //       i.qty > 0 &&
+        //       !currentCart.some((c) => c.inventoryId === i.id) &&
+        //       i.id !== item.id,
+        //   ).slice(0, 4);
+        //   if (suggestions.length > 0) setBundleSuggestion(suggestions);
+        // }
       }
 
       toast(t('pos.itemAdded', item.name), 'success');
@@ -336,6 +368,18 @@ export default function POSModule() {
         if (!saleItem.inventoryId) continue;
         const idx = updatedInventory.findIndex((i) => i.id === saleItem.inventoryId);
         if (idx >= 0 && updatedInventory[idx].category !== 'service') {
+          // R-SIM-INTAKE: surface a warning if the item we're "decrementing"
+          // already shows qty=0. The Math.max(0, ...) clamps to zero (no
+          // negative qty), but the physical sale still happened — log so it
+          // can be reconciled (typical cause: same SIM scanned twice in
+          // back-to-back transactions before the first persist landed).
+          if ((updatedInventory[idx].qty || 0) <= 0 && (saleItem.qty || 0) > 0) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              '[POS] Sale item with inventoryId but inventory qty already 0:',
+              { name: saleItem.name, id: saleItem.inventoryId, soldQty: saleItem.qty },
+            );
+          }
           updatedInventory[idx] = {
             ...updatedInventory[idx],
             qty: Math.max(0, updatedInventory[idx].qty - saleItem.qty),
@@ -554,12 +598,17 @@ export default function POSModule() {
 
         const newDeposit = (repair.depositAmount || 0) + paidCents;
         const newBalance = Math.max(0, (repair.balance || 0) - paidCents);
+        // R-COMPLETEDAT-FIELD: stamp completedAt only on the transition to
+        // picked_up; preserve existing value if already set; leave untouched
+        // when balance > 0 (still active).
+        const nowIso = new Date().toISOString();
         updatedRepairs[ri] = {
           ...repair,
           depositAmount: newDeposit,
           balance: newBalance,
           status: newBalance === 0 ? 'picked_up' as const : repair.status,
-          updatedAt: new Date().toISOString(),
+          updatedAt: nowIso,
+          completedAt: newBalance === 0 ? (repair.completedAt ?? nowIso) : repair.completedAt,
         };
         repairOps.push({
           collection: 'repairTickets',
@@ -669,16 +718,47 @@ export default function POSModule() {
           toast(t('pos.layawayCancelledSale'), 'error');
           return;
         }
-        const newPaid = (layaway.paidAmount || 0) + paidCents;
-        const newBalance = Math.max(0, (layaway.balance || 0) - paidCents);
         // Round 15b M4: write depositMethod on the FIRST payment only. Refund
         // policy is refund-to-original-method, so we must lock the method in
         // at first deposit and never overwrite on subsequent partials.
         const depositMethodUpdate = layaway.depositMethod
           ? {}
           : { depositMethod: sale.paymentMethod };
+        // R-LAYAWAY-MULTIPAY-V1 (audit-integrity blocker fix):
+        // 1) addLayawayPayment clamps the appended record to remaining
+        //    balance, so payments[] can never sum to more than totalPrice.
+        // 2) Aggregate paidAmount is DERIVED from payments[] sum, not from
+        //    the additive `paidAmount + paidCents` legacy formula. This
+        //    guarantees sum(payments[]) === paidAmount on every commit and
+        //    eliminates the silent drift the auditor flagged.
+        // 3) try/catch is now a corruption-only fallback: helper throws
+        //    only on non-positive / non-finite amount. On the rare throw
+        //    we drop back to the legacy additive math (loud via warn) so
+        //    the layaway aggregate still moves and POS doesn't lock up.
+        // 4) Existing overpay tolerance is preserved: balance still ends
+        //    at 0 when paidCents > remaining; the overpay portion lives
+        //    only in the Sale record (cash drawer) and is intentionally
+        //    NOT mirrored into the layaway log.
+        let withPaymentLog: typeof layaway = layaway;
+        let helperSucceeded = false;
+        try {
+          withPaymentLog = addLayawayPayment(layaway, {
+            amountCents: paidCents,
+            method: sale.paymentMethod,
+            employeeId: sale.employeeId,
+            date: new Date().toISOString(),
+          });
+          helperSucceeded = true;
+        } catch (err) {
+          console.warn('[POS §4d] addLayawayPayment threw, falling back to legacy aggregate update:', err);
+        }
+        const reconciledPaid = helperSucceeded && Array.isArray(withPaymentLog.payments)
+          ? withPaymentLog.payments.reduce((s, p) => s + (p.amount || 0), 0)
+          : (layaway.paidAmount || 0) + paidCents;
+        const newPaid = reconciledPaid;
+        const newBalance = Math.max(0, (layaway.totalPrice || 0) - newPaid);
         updatedLayaways[li] = {
-          ...layaway,
+          ...withPaymentLog,
           ...depositMethodUpdate,
           paidAmount: newPaid,
           balance: newBalance,
@@ -768,12 +848,20 @@ export default function POSModule() {
       selectedCustomer?.storeCredit ?? 0,
       totals.total,
     );
-    if (paidCents < totals.total) {
+    // R-POS-CARD-PAYMENT-FUNDS-BUG: pure Card payments delegate authorization
+    // to the terminal — the cardAmount input is informational only and may be
+    // stale (auto-prefill drift after cart/CC-fee changes). Skip the funds
+    // guard for Card. Cash, Split (cash portion + record-keeping), and Store
+    // Credit (known balance) still validate.
+    if (paymentMethod !== 'Card' && paidCents < totals.total) {
       const shortBy = totals.total - paidCents;
       toast(t('paymentModal.insufficientPayment', formatCurrency(shortBy)), 'error');
       return;
     }
 
+    // [I3, I7] Mismo BuildSaleInput shape que phone path. storeId se
+    // omite — currentStoreId no está en scope de POSModule (F0 Q3
+    // conservative; pre-existing behavior preserved).
     const sale = buildSale({
       cart,
       totals,
@@ -783,7 +871,6 @@ export default function POSModule() {
       selectedCustomer,
       currentEmployee,
       settings,
-      storeId: currentStoreId,
     });
 
     // [I1] Única capa post-sale — misma función que consume onComplete
@@ -807,6 +894,49 @@ export default function POSModule() {
     setShowClearConfirm(false);
     toast(t('pos.cartCleared'), 'info');
   }, [setCart, toast, lang]);
+
+  // ── R-POS-CUSTOMER-QUICKEDIT-V1: open + save handlers for the
+  //    customer wireless quick-edit modal. Open prefills the form from
+  //    the customer record; save patches the same customer with the
+  //    edited fields and persists. Mirrors the canonical pattern in
+  //    CustomerModule (setCustomers + persist.customer with full record
+  //    spread to satisfy the `localSaveRecord OVERWRITES` contract).
+  // ────────────────────────────────────────────────────────────
+
+  const handleEditCustomerPlan = useCallback((customerId: string) => {
+    const c = customers.find((x) => x.id === customerId);
+    if (!c) return;
+    setQuickEditCustomerId(customerId);
+    setQuickEditForm({
+      carrier: String((c as { carrier?: string }).carrier ?? ''),
+      plan: String((c as { plan?: string }).plan ?? ''),
+      monthlyPayment: String((c as { monthlyPayment?: string }).monthlyPayment ?? ''),
+    });
+  }, [customers]);
+
+  const handleSaveCustomerEdit = useCallback(() => {
+    if (!quickEditCustomerId) return;
+    const idx = customers.findIndex((x) => x.id === quickEditCustomerId);
+    if (idx < 0) return;
+    const original = customers[idx];
+    const updated = {
+      ...original,
+      carrier: quickEditForm.carrier.trim() || undefined,
+      plan: quickEditForm.plan.trim() || undefined,
+      monthlyPayment: quickEditForm.monthlyPayment.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    } as Customer;
+    const next = customers.map((c, i) => (i === idx ? updated : c));
+    setCustomers(next);
+    persist.customer(updated.id, updated as unknown as Record<string, unknown>);
+    // Sync selectedCustomer too if it matches — otherwise the cart row
+    // would still show the stale carrier/plan in the customer card.
+    if (selectedCustomer && selectedCustomer.id === updated.id) {
+      setSelectedCustomer(updated);
+    }
+    setQuickEditCustomerId(null);
+    toast(t('pos.customerEdit.saved'), 'success');
+  }, [quickEditCustomerId, quickEditForm, customers, setCustomers, selectedCustomer, toast, t]);
 
   // ── Search persistence ──────────────────────────────────
 
@@ -925,6 +1055,7 @@ export default function POSModule() {
       const { title, subtitle } = getCategoryTitle();
       return (
         <ProductGrid
+          key={productGridKey}
           title={title}
           subtitle={subtitle}
           items={categoryItems}
@@ -1047,6 +1178,7 @@ export default function POSModule() {
             onCheckout={handleCartCheckout}
             onClearCart={() => setShowClearConfirm(true)}
             onSelectCustomer={() => setShowCustomerSearch(true)}
+            onEditCustomerPlan={handleEditCustomerPlan}
             settings={settings}
             lang={lang}
             L={L}
@@ -1056,47 +1188,57 @@ export default function POSModule() {
 
       {/* ── Modals ─────────────────────────────────────── */}
 
-      <PhonePaymentModal
-        open={showPhonePayment}
-        onClose={() => setShowPhonePayment(false)}
-        settings={settings}
-        cart={cart}
-        setCart={setCart}
-        customers={customers}
-        setCustomers={setCustomers}
-        sales={sales}
-        lang={lang}
-        L={L}
-        // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: mirror TopUpModal r28b-fix
-        setSelectedCustomer={(c) => {
-          if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
-            setSelectedCustomer(c);
-          }
-        }}
-      />
+      {showPhonePayment && (
+        <PhonePaymentModal
+          open={showPhonePayment}
+          onClose={() => setShowPhonePayment(false)}
+          settings={settings}
+          cart={cart}
+          setCart={setCart}
+          customers={customers}
+          setCustomers={setCustomers}
+          sales={sales}
+          lang={lang}
+          L={L}
+          // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION: mirror TopUpModal r28b-fix
+          setSelectedCustomer={(c) => {
+            if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
+              setSelectedCustomer(c);
+            }
+          }}
+        />
+      )}
 
-      <PaymentModal
-        open={showPayment}
-        onClose={() => setShowPayment(false)}
-        cart={cart}
-        totals={totals}
-        paymentMethod={paymentMethod}
-        cashAmount={cashAmount}
-        cardAmount={cardAmount}
-        selectedCustomer={selectedCustomer}
-        currentEmployee={currentEmployee}
-        settings={settings}
-        onComplete={handleCompleteSale}
-        lang={lang}
-        L={L}
-        storeId={currentStoreId}
-      />
+      {showPayment && (
+        <PaymentModal
+          open={showPayment}
+          onClose={() => setShowPayment(false)}
+          cart={cart}
+          totals={totals}
+          paymentMethod={paymentMethod}
+          cashAmount={cashAmount}
+          cardAmount={cardAmount}
+          selectedCustomer={selectedCustomer}
+          currentEmployee={currentEmployee}
+          settings={settings}
+          onComplete={handleCompleteSale}
+          lang={lang}
+          L={L}
+        />
+      )}
 
       <ReceiptModal
         open={showReceipt}
         sale={lastSale}
         settings={settings}
-        onClose={() => setShowReceipt(false)}
+        onClose={() => {
+          setShowReceipt(false);
+          // R-POS-POSTSALE-FOCUS-RETURN-FLOW-V1: bump the key so the
+          // active ProductGrid remounts (clears internal search, re-
+          // focuses input) AFTER the receipt modal closes. No effect
+          // when no category is active (key is unread).
+          setProductGridKey((k) => k + 1);
+        }}
         customers={customers}
         setCustomers={setCustomers}
         setSales={setSales}
@@ -1131,6 +1273,75 @@ export default function POSModule() {
         onCancel={() => setShowClearConfirm(false)}
       />
 
+      {/* R-POS-CUSTOMER-QUICKEDIT-V1: inline customer wireless quick-edit modal.
+          Fired from a phone_payment cart row. Edits carrier / plan /
+          monthlyPayment on the customer record only — does NOT touch the
+          cart item's price (Jorge's choice C1). Cashier still does the
+          per-line price override separately for this sale; next sale
+          benefits from the corrected stamped plan. */}
+      {quickEditCustomerId && (
+        <Modal
+          open
+          onClose={() => setQuickEditCustomerId(null)}
+          title={`✏️ ${t('pos.customerEdit.title')}`}
+          size="max-w-sm"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.carrier')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.carrier}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, carrier: e.target.value }))}
+                placeholder="AT&T, Verizon, T-Mobile…"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.plan')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.plan}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, plan: e.target.value }))}
+                placeholder="Unlimited Elite, Magenta MAX…"
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                {t('pos.customerEdit.monthlyPayment')}
+              </label>
+              <input
+                className="input"
+                value={quickEditForm.monthlyPayment}
+                onChange={(e) => setQuickEditForm((f) => ({ ...f, monthlyPayment: e.target.value }))}
+                placeholder="35, 45, 60…"
+                inputMode="decimal"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setQuickEditCustomerId(null)}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
+                {t('pos.customerEdit.cancel')}
+              </button>
+              <button
+                onClick={handleSaveCustomerEdit}
+                className="btn btn-primary"
+                style={{ flex: 2 }}
+              >
+                {t('pos.customerEdit.save')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Customer search modal */}
       {showCustomerSearch && (
         <div className="modal-overlay">
@@ -1150,108 +1361,94 @@ export default function POSModule() {
             </div>
 
             <div className="p-4">
-              <SearchInput
-                value={customerSearchQ}
-                onChange={setCustomerSearchQ}
+              {/* R-POS-CUSTOMERPICKER-MIGRATION: explicit Walk-in button preserves
+                  the affordance the inline list used to provide; picker handles the
+                  search/select/inline-create UX. */}
+              <button
+                onClick={() => {
+                  setSelectedCustomer(null);
+                  setShowCustomerSearch(false);
+                }}
+                className="w-full text-left px-3 py-2 mb-3 rounded-lg hover:bg-white/10 text-sm text-slate-400 border border-white/10"
+              >
+                🚶 {t('pos.walkInOption')}
+              </button>
+
+              <CustomerPicker
+                customers={customers}
+                selectedCustomer={selectedCustomer}
+                onSelect={(c) => {
+                  if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
+                    setSelectedCustomer(c);
+                  }
+                  setShowCustomerSearch(false);
+                }}
+                lang={lang}
                 placeholder={t('typeCustomer')}
-                autoFocus
-                className="mb-3"
+                onCreateCustomer={handleCreateNewCustomer}
               />
-
-              <div className="max-h-64 overflow-y-auto space-y-1">
-                {/* Walk-in option */}
-                <button
-                  onClick={() => {
-                    setSelectedCustomer(null);
-                    setShowCustomerSearch(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-slate-400"
-                >
-                  🚶 {t('pos.walkInOption')}
-                </button>
-
-                {customerResults.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setSelectedCustomer(c);
-                      setShowCustomerSearch(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 flex items-center gap-3"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 text-sm font-bold">
-                      {c.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm text-white">{c.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {c.phone}
-                        {c.storeCredit > 0 && (
-                          <span className="text-emerald-400 ml-2">
-                            {t('pos.creditPrefix')} {formatCurrency(c.storeCredit)}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-
-                {customerResults.length === 0 && customerSearchQ.trim() && (
-                  <p className="text-center text-slate-500 text-sm py-4">
-                    {t('noMatches')}
-                  </p>
-                )}
-              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Credential Maker */}
-      <CredentialMakerModal
-        open={showCredentialMaker}
-        onClose={() => setShowCredentialMaker(false)}
-      />
+      {showCredentialMaker && (
+        <CredentialMakerModal
+          open={showCredentialMaker}
+          onClose={() => setShowCredentialMaker(false)}
+        />
+      )}
 
       {/* Notepad */}
-      <NotepadModal
-        open={showNotepad}
-        onClose={() => setShowNotepad(false)}
-      />
+      {showNotepad && (
+        <NotepadModal
+          open={showNotepad}
+          onClose={() => setShowNotepad(false)}
+        />
+      )}
 
       {/* Estimate */}
-      <EstimateModal
-        open={showEstimate}
-        onClose={() => setShowEstimate(false)}
-      />
+      {showEstimate && (
+        <EstimateModal
+          open={showEstimate}
+          onClose={() => setShowEstimate(false)}
+        />
+      )}
 
       {/* RMA Label */}
-      <RMALabelModal
-        open={showRMALabel}
-        onClose={() => setShowRMALabel(false)}
-      />
+      {showRMALabel && (
+        <RMALabelModal
+          open={showRMALabel}
+          onClose={() => setShowRMALabel(false)}
+        />
+      )}
 
       {/* Label Printer */}
-      <LabelPrinterModal
-        open={showLabelPrinter}
-        onClose={() => setShowLabelPrinter(false)}
-      />
+      {showLabelPrinter && (
+        <LabelPrinterModal
+          open={showLabelPrinter}
+          onClose={() => setShowLabelPrinter(false)}
+        />
+      )}
 
       {/* International Top-Up */}
-      <TopUpModal
-        open={showTopUp}
-        onClose={() => setShowTopUp(false)}
-        onAddToCart={(items, customer) => {
-          // r28b-fix: propagate customer selected inside TopUpModal to POS state
-          // so sale.customerId is set at checkout and recordTopUpsToCustomer runs.
-          if (customer && (!selectedCustomer || selectedCustomer.id !== customer.id)) {
-            setSelectedCustomer(customer);
-          }
-          setCart([...cart, ...items]);
-          setShowTopUp(false);
-          toast(t('pos.topUpsAdded', items.length), 'success');
-        }}
-      />
+      {showTopUp && (
+        <TopUpModal
+          open={showTopUp}
+          onClose={() => setShowTopUp(false)}
+          onAddToCart={(items, customer) => {
+            // r28b-fix: propagate customer selected inside TopUpModal to POS state
+            // so sale.customerId is set at checkout and recordTopUpsToCustomer runs.
+            if (customer && (!selectedCustomer || selectedCustomer.id !== customer.id)) {
+              setSelectedCustomer(customer);
+            }
+            setCart([...cart, ...items]);
+            setShowTopUp(false);
+            toast(t('pos.topUpsAdded', items.length), 'success');
+          }}
+        />
+      )}
     </>
   );
 }

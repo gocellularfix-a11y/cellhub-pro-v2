@@ -7,7 +7,8 @@
 //        Cloud Sync (optional) → Done
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
 import { persistSettings, saveRecord, setFirestoreInstance } from '@/services/persist';
 import { saveFirebaseConfig, initFirebase } from '@/config/firebase';
 import { generateId } from '@/utils/dates';
@@ -15,6 +16,20 @@ import { COLLECTIONS } from '@/config/constants';
 import { hashPin, isWeakPin } from '@/utils/pinHash';
 import { DEFAULT_PAYMENT_PORTALS } from '@/config/paymentPortals';
 import type { Employee, FirebaseConfig } from '@/store/types';
+
+// R-MULTIPC-WIZARD: Read Vite-baked Firebase credentials at module scope so
+// every render sees the same value (these are static after build). If all six
+// fields are populated, the wizard treats this as a "pre-configured installer"
+// and offers a streamlined Step 4 (auto-connect, secondary-device detection).
+const ENV_FIREBASE_CONFIG: FirebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+};
+const ENV_READY = (Object.values(ENV_FIREBASE_CONFIG) as string[]).every((v) => v.length > 0);
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -52,13 +67,49 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [emp, setEmp] = useState({ name: '', pin: '' });
 
   // Step 4 — Cloud Sync (Firebase, optional)
-  const [fb, setFb] = useState<FirebaseConfig>({
-    apiKey: '', authDomain: '', projectId: '',
-    storageBucket: '', messagingSenderId: '', appId: '',
-  });
+  // R-MULTIPC-WIZARD: pre-fill from VITE_ env if available so the user
+  // doesn't paste config they already have baked into the .exe.
+  const [fb, setFb] = useState<FirebaseConfig>(ENV_FIREBASE_CONFIG);
   const [testingFb, setTestingFb] = useState(false);
   const [fbConnected, setFbConnected] = useState(false);
   const [skipCloud, setSkipCloud] = useState(false);
+  // R-MULTIPC-WIZARD: detected on mount when ENV_READY — if customers
+  // collection has documents, this PC is joining an existing store.
+  const [isSecondaryDevice, setIsSecondaryDevice] = useState(false);
+  const [detectingSecondary, setDetectingSecondary] = useState(false);
+
+  // R-MULTIPC-WIZARD: auto-connect on mount when ENV_READY. Mirrors the sync
+  // pattern of handleTestFirebase (initFirebase is sync, returns Firestore|null
+  // — NOT a Promise). Mount-trigger (vs step===4 trigger) is intentional so
+  // isSecondaryDevice is known by the time the user clicks Continue on Step 0,
+  // letting handleNext skip Steps 1/2/3.
+  useEffect(() => {
+    if (!ENV_READY) return;
+    let cancelled = false;
+    saveFirebaseConfig(ENV_FIREBASE_CONFIG);
+    const db = initFirebase();
+    if (!db) return;
+    setFirestoreInstance(db);
+    setFbConnected(true);
+    setDetectingSecondary(true);
+    getDocs(collection(db, 'customers'))
+      .then((snap) => {
+        if (cancelled) return;
+        if (snap.size > 0) {
+          setIsSecondaryDevice(true);
+          localStorage.setItem('cellhub_device_role', 'secondary');
+        }
+      })
+      .catch((err) => {
+        // Network/permission failure — fall through to manual config UI.
+        // eslint-disable-next-line no-console
+        console.warn('[SetupWizard] secondary detection failed:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setDetectingSecondary(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const next = () => { setError(''); setStep((s) => s + 1); };
   const back = () => { setError(''); setStep((s) => s - 1); };
@@ -123,6 +174,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     setSaving(true);
     setError('');
     try {
+      // R-MULTIPC-WIZARD: secondary device path. Settings, employees, and
+      // inventory hydrate from the cloud via SYNC_MANIFEST listeners as soon
+      // as the wizard exits — DO NOT overwrite that truth with empty wizard
+      // form values (storeName, adminPin, emp would all be ''). Just mark
+      // setup complete and close.
+      if (isSecondaryDevice) {
+        // R-MULTIPC-WIZARD-FIX: persist the boot trigger so App.tsx's boot
+        // effect re-initializes Firebase on every subsequent launch. Without
+        // this, _db is set in-memory by the wizard's auto-connect but lost
+        // on restart, and getFirestoreInstance() returns null next session.
+        await persistSettings({ cloudSyncEnabled: true });
+        localStorage.setItem('cellhub_setup_complete', '1');
+        onComplete();
+        return;
+      }
       // r27 B4: hash both PINs before any persist call. The wizard never
       // writes plaintext credentials to Firestore or localStorage.
       const hashedAdminPin = await hashPin(adminPin);
@@ -168,19 +234,47 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
       await persistSettings(settingsData);
 
-      const firstEmp: Employee = {
-        id: generateId(),
-        name: emp.name.trim(),
-        role: 'owner',
-        pin: hashedEmpPin,
-        commissionRate: 0,
-        active: true,
-        clockLog: [],
-        onboardingSigned: false,
-        startDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-      };
-      await saveRecord(COLLECTIONS.employees, firstEmp.id, firstEmp as unknown as Record<string, unknown>);
+      // r-employee-dedupe: defense in depth. If the wizard re-runs (e.g. user
+      // cleared only the cellhub_setup_complete flag), skip employee creation
+      // when an active owner already exists in localStorage. Without this guard
+      // the wizard could create a second owner alongside the legacy one.
+      let existingOwner: { id?: string; name?: string } | null = null;
+      try {
+        const raw = localStorage.getItem('employees');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            existingOwner = parsed.find(
+              (e: any) => e && e.role === 'owner' && e.active,
+            ) || null;
+          }
+        }
+      } catch {
+        // localStorage corrupted or unavailable — proceed with normal creation
+        existingOwner = null;
+      }
+
+      if (existingOwner) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[SetupWizard] Active owner already exists, skipping creation:',
+          existingOwner.id,
+        );
+      } else {
+        const firstEmp: Employee = {
+          id: generateId(),
+          name: emp.name.trim(),
+          role: 'owner',
+          pin: hashedEmpPin,
+          commissionRate: 0,
+          active: true,
+          clockLog: [],
+          onboardingSigned: false,
+          startDate: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        await saveRecord(COLLECTIONS.employees, firstEmp.id, firstEmp as unknown as Record<string, unknown>);
+      }
 
       localStorage.setItem('cellhub_setup_complete', '1');
       onComplete();
@@ -193,6 +287,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
   const handleNext = async () => {
     setError('');
+    // R-MULTIPC-WIZARD: secondary device skips Steps 1/2/3 (store info, admin
+    // PIN, owner) — those values already live in Firebase and will sync down
+    // once the wizard exits. Jump straight to the Cloud Sync confirmation.
+    if (step === 0 && isSecondaryDevice) {
+      setStep(4);
+      return;
+    }
     if (step === 1 && !validateStoreInfo()) return;
     if (step === 2 && !validatePin()) return;
     if (step === 3) {
@@ -237,12 +338,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         {step === 2 && <StepAdminPin pin={adminPin} setPin={setAdminPin} confirm={adminPinConfirm} setConfirm={setAdminPinConfirm} />}
         {step === 3 && <StepFirstEmployee emp={emp} setEmp={setEmp} />}
         {step === 4 && (
-          <StepCloudSync
-            fb={fb} setFb={setFb}
-            testing={testingFb} connected={fbConnected}
-            onTest={handleTestFirebase}
-            skip={skipCloud} setSkip={setSkipCloud}
-          />
+          ENV_READY ? (
+            <StepCloudSyncEnvReady
+              projectId={fb.projectId}
+              connected={fbConnected}
+              detecting={detectingSecondary}
+              isSecondary={isSecondaryDevice}
+            />
+          ) : (
+            <StepCloudSync
+              fb={fb} setFb={setFb}
+              testing={testingFb} connected={fbConnected}
+              onTest={handleTestFirebase}
+              skip={skipCloud} setSkip={setSkipCloud}
+            />
+          )
         )}
         {step === 5 && <StepDone storeName={store.storeName} empName={emp.name} cloudEnabled={fbConnected} />}
 
@@ -410,6 +520,103 @@ function StepCloudSync({ fb, setFb, testing, connected, onTest, skip, setSkip }:
             {testing ? '⏳ Testing connection…' : connected ? '✅ Connected to Firebase!' : '🔗 Test Connection'}
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+// R-MULTIPC-WIZARD: shown in place of StepCloudSync when ENV_READY is true.
+// No paste-form — auto-connect already ran in the parent's mount useEffect.
+function StepCloudSyncEnvReady({ projectId, connected, detecting, isSecondary }: {
+  projectId: string;
+  connected: boolean;
+  detecting: boolean;
+  isSecondary: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+      <h2 style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.1rem' }}>
+        ☁️ Cloud Sync <span style={{ fontSize: '0.72rem', color: '#22c55e', fontWeight: 600, marginLeft: '0.5rem' }}>Pre-configured</span>
+      </h2>
+      <div style={{
+        padding: '0.875rem',
+        background: 'rgba(34,197,94,0.08)',
+        border: '1px solid rgba(34,197,94,0.3)',
+        borderRadius: '0.625rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.4rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#34d399', fontSize: '0.9rem', fontWeight: 600 }}>
+          <span>✅</span>
+          <span>Firebase pre-configured by installer</span>
+        </div>
+        <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+          Project: {projectId || '(connecting…)'}
+        </div>
+      </div>
+
+      {detecting && (
+        <div style={{
+          padding: '0.75rem',
+          background: 'rgba(102,126,234,0.08)',
+          border: '1px solid rgba(102,126,234,0.25)',
+          borderRadius: '0.5rem',
+          fontSize: '0.82rem',
+          color: '#a5b4fc',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}>
+          <span>📡</span>
+          <span>Detecting existing store data…</span>
+        </div>
+      )}
+
+      {!detecting && connected && isSecondary && (
+        <div style={{
+          padding: '0.875rem',
+          background: 'rgba(102,126,234,0.1)',
+          border: '1px solid rgba(102,126,234,0.35)',
+          borderRadius: '0.625rem',
+        }}>
+          <div style={{ fontSize: '0.9rem', color: '#a5b4fc', fontWeight: 600, marginBottom: '0.25rem' }}>
+            📡 Existing store detected
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            This computer will join as a secondary device. Store info, employees,
+            and inventory will sync from the cloud — no setup needed.
+          </div>
+        </div>
+      )}
+
+      {!detecting && connected && !isSecondary && (
+        <div style={{
+          padding: '0.875rem',
+          background: 'rgba(34,197,94,0.06)',
+          border: '1px solid rgba(34,197,94,0.2)',
+          borderRadius: '0.625rem',
+          fontSize: '0.82rem',
+          color: '#94a3b8',
+          lineHeight: 1.5,
+        }}>
+          ✨ First device for this Firebase project. Click Continue to finish
+          setup — your data will start syncing to the cloud immediately.
+        </div>
+      )}
+
+      {!detecting && !connected && (
+        <div style={{
+          padding: '0.75rem',
+          background: 'rgba(245,158,11,0.08)',
+          border: '1px solid rgba(245,158,11,0.3)',
+          borderRadius: '0.5rem',
+          fontSize: '0.82rem',
+          color: '#fbbf24',
+        }}>
+          ⚠ Could not connect to Firebase. Check your network and try again,
+          or proceed offline.
+        </div>
       )}
     </div>
   );

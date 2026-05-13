@@ -32,6 +32,7 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { persist, remove } from '@/services/persist';
@@ -39,12 +40,18 @@ import { usePrint } from '@/hooks/usePrint';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import DepositModal from '@/components/DepositModal';
 import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
-import { ConfirmDialog } from '@/components/ui';
+import { AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
-import CustomerPicker from '@/components/shared/CustomerPicker';
+import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
+import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
+import {
+  calculateLayawayTotals,
+  normalizeLayawayPayments,
+} from '@/services/layaway/payments';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -54,9 +61,18 @@ function generateTicket(): string {
 
 export default function LayawayModule() {
   const {
-    state: { layaways, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
+    state: { layaways, customers, inventory, settings, currentEmployee, employees, cart, sales, lang, globalSearchTerm, currentStoreId },
     setLayaways, setCustomers, setInventory, setCart, setSales, dispatch,
   } = useApp();
+
+  // R-APPROVAL-PIN-V1 F3A: gate cancellations behind manager approval
+  // when settings.approvalsEnabled and the current employee's role / per-
+  // employee permissions require it. The hook owns the modal lifecycle.
+  const approvalGate = useApprovalGate({
+    employees,
+    settings,
+    attemptedByName: currentEmployee?.name,
+  });
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord();
@@ -71,6 +87,11 @@ export default function LayawayModule() {
   const [showForm, setShowForm]           = useState(false);
   const [editLayaway, setEditLayaway]     = useState<Layaway | null>(null);
   const [cancelTarget, setCancelTarget]   = useState<Layaway | null>(null);
+  // R-APPROVAL-PIN-V1 F3A fix #1: parent-owned spinner for CancelLayawayModal
+  // so denial paths can reset the busy state without remounting the modal
+  // (which would wipe the cashier's selected disposition/note). True only
+  // while the approval flow is in flight.
+  const [cancelInFlight, setCancelInFlight] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Layaway | null>(null);
   const [depositTarget, setDepositTarget] = useState<Layaway | null>(null);
   const [isSaving, setIsSaving]           = useState(false);
@@ -111,13 +132,40 @@ export default function LayawayModule() {
   });
 
   const [form, setForm]                         = useState(emptyForm());
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // ── Autocomplete options ───────────────────────────────
   const customerNameOptions = useMemo(() =>
     customers.map((c) => ({ value: c.name, label: c.name, sublabel: c.phone, data: c })),
     [customers],
   );
+  const firstNameOptions = useMemo(() =>
+    customers.map((c) => {
+      const p = c.name.trim().split(' ');
+      return { value: p[0] || '', label: p[0] || '', sublabel: c.phone, data: c };
+    }).filter((o) => o.value.length > 0),
+    [customers],
+  );
+  const lastNameOptions = useMemo(() =>
+    customers
+      .filter((c) => !form.firstName || c.name.toLowerCase().startsWith(form.firstName.toLowerCase()))
+      .map((c) => {
+        const p = c.name.trim().split(' ');
+        const last = p.slice(1).join(' ');
+        return { value: last, label: last, sublabel: c.phone, data: c };
+      })
+      .filter((o, i, arr) => o.value.length > 0 && arr.findIndex((x) => x.label === o.label) === i),
+    [customers, form.firstName],
+  );
+  const phoneOptions = useMemo(() =>
+    customers.map((c) => ({ value: c.phone || '', label: c.phone || '', sublabel: c.name, data: c }))
+      .filter((o) => o.value.length > 0),
+    [customers],
+  );
+  const phoneMatch = useMemo(() => {
+    const digits = normalizePhone(form.customerPhone || '');
+    if (digits.length < 7) return null;
+    return customers.find((c) => normalizePhone(c.phone) === digits) || null;
+  }, [form.customerPhone, customers]);
 
   const [itemSearch, setItemSearch]             = useState('');
   const [itemResults, setItemResults]           = useState<InventoryItem[]>([]);
@@ -211,9 +259,26 @@ export default function LayawayModule() {
       })
       .filter((l) => {
         const r = l as any;
-        return matchesSearch(search, l.customerName, l.customerPhone,
+        // R-SEARCH-NORMALIZE-V1: phone-aware match; also fold every line
+        // item's name/sku/imei/barcode into the searchable surface so
+        // typing an IMEI or SKU finds the layaway containing that item
+        // (matches the spec's layaway acceptance criteria).
+        const itemFields: string[] = [];
+        for (const it of (l.items || [])) {
+          if (it?.name) itemFields.push(it.name);
+          if ((it as any)?.sku) itemFields.push(String((it as any).sku));
+          if ((it as any)?.imei) itemFields.push(String((it as any).imei));
+          if ((it as any)?.barcode) itemFields.push(String((it as any).barcode));
+        }
+        return matchesSearchPhones(
+          search,
+          [l.customerPhone],
+          l.customerName,
           r.itemDescription || l.items?.[0]?.name || '',
-          r.ticketNumber || '');
+          r.ticketNumber || '',
+          l.id,
+          ...itemFields,
+        );
       })
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [layaways, statusFilter, search]);
@@ -229,7 +294,6 @@ export default function LayawayModule() {
 
   const openNew = () => {
     setEditLayaway(null);
-    setSelectedCustomer(null);
     setForm(emptyForm());
     setItemSearch('');
     setShowForm(true);
@@ -238,7 +302,12 @@ export default function LayawayModule() {
   const openEdit = (l: Layaway) => {
     const r = l as any;
     setEditLayaway(l);
-    setSelectedCustomer(customers.find(c => c.id === r.customerId) ?? null);
+    // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a layaway was opened
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+        detail: { type: 'layaway.opened', payload: { layawayId: l.id } },
+      }));
+    } catch { /* env without CustomEvent — silent */ }
     setForm({
       firstName:       r.firstName    || l.customerName?.split(' ')[0] || '',
       lastName:        r.lastName     || l.customerName?.split(' ').slice(1).join(' ') || '',
@@ -352,9 +421,12 @@ export default function LayawayModule() {
           toast(t('layaway.existingCustomer', existing.name), 'info');
         }
       } else if (customerName) {
+        // R-PHONE-SANITIZE-SWEEP: normalize at write boundary so customer.phone
+        // and the phones[] array are 10-digit / empty (never raw "(805)…").
+        const normPhone = normalizePhone(form.customerPhone || '');
         const newCust: Customer = {
-          id: generateId(), firstName: fName, lastName: lName, name: customerName, phone: form.customerPhone,
-          phones: [form.customerPhone], email: '', loyaltyPoints: 0, storeCredit: 0,
+          id: generateId(), firstName: fName, lastName: lName, name: customerName, phone: normPhone,
+          phones: normPhone ? [normPhone] : [], email: '', loyaltyPoints: 0, storeCredit: 0,
           customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
           notes: '', communicationConsent: false, createdAt: new Date().toISOString(),
         };
@@ -386,8 +458,9 @@ export default function LayawayModule() {
 
       const updated: any = {
         ...editLayaway,
-        firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
-        customerId: selectedCustomer?.id ?? finalCustomerId ?? (editLayaway as any).customerId,
+        // R-PHONE-SANITIZE-SWEEP: 10-digit form on the layaway record itself.
+        firstName: fName, lastName: lName, customerName, customerPhone: normalizePhone(form.customerPhone || ''),
+        customerId: finalCustomerId || (editLayaway as any).customerId,
         inventoryId: form.inventoryId || undefined,
         itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
         itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -426,7 +499,7 @@ export default function LayawayModule() {
 
       toast(t('layaway.updated'), 'success');
       setIsSaving(false);
-      setShowForm(false); setEditLayaway(null); setSelectedCustomer(null); return;
+      setShowForm(false); setEditLayaway(null); return;
     }
 
     // CREATE
@@ -436,8 +509,9 @@ export default function LayawayModule() {
       // Round 16 H-v4b: multi-store — stamp storeId at creation so belongs(storeId)
       // filters + R15b H2 fresh re-read guards don't orphan records across stores.
       storeId: currentStoreId,
-      firstName: fName, lastName: lName, customerName, customerPhone: form.customerPhone,
-      customerId: selectedCustomer?.id ?? finalCustomerId ?? undefined,
+      // R-PHONE-SANITIZE-SWEEP: same normalization on the create path.
+      firstName: fName, lastName: lName, customerName, customerPhone: normalizePhone(form.customerPhone || ''),
+      customerId: finalCustomerId || undefined,
       inventoryId: form.inventoryId || undefined,
       itemDescription: form.itemDescription, itemSku: form.itemSku, imei: form.imei,
       itemCategory: form.itemCategory, manualEntry: form.manualEntry,
@@ -549,7 +623,7 @@ export default function LayawayModule() {
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
   // from Gross/Cash/Profit. A voided REFUND-* audit sale is also created.
-  const handleCancel = useCallback((l: Layaway, choice: {
+  const handleCancel = useCallback(async (l: Layaway, choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
@@ -584,6 +658,32 @@ export default function LayawayModule() {
       setCancelTarget(null);
       return;
     }
+
+    // R-APPROVAL-PIN-V1 F3A: manager-approval gate. Runs AFTER status guards
+    // so we don't prompt for an approval that would be wasted on an already-
+    // terminal layaway. Returns approved=true (passthrough) when the feature
+    // is disabled or the requesting employee doesn't need approval — cero
+    // visible change for owners/managers when approvals are off.
+    //
+    // F3A fix #1 + #2: on denial we DO NOT close CancelLayawayModal. Spinner
+    // resets via cancelInFlight=false; cashier keeps disposition + note and
+    // can retry by clicking Confirm again. Toast policy: timeout only.
+    // invalid_pin / self_approval_blocked are inline-only inside the
+    // approval modal (handled by useApprovalGate); cancelled/ESC is silent.
+    setCancelInFlight(true);
+    const approval = await approvalGate.requestApproval({
+      actionType: 'CANCEL_LAYAWAY',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: l.id,
+    });
+    if (!approval.approved) {
+      setCancelInFlight(false);
+      if (approval.reason === 'timeout') {
+        toast(t('approval.toast.timeout'), 'warning');
+      }
+      return;
+    }
+
     const depositCents = l.paidAmount || 0;
     const now = new Date().toISOString();
 
@@ -759,8 +859,9 @@ export default function LayawayModule() {
       forfeit:      t('layaway.cancel.toastForfeit'),
     }[choice.method];
     toast(msg, 'success');
+    setCancelInFlight(false);
     setCancelTarget(null);
-  }, [t, setLayaways, setCustomers, setInventory, setSales, setCart, currentEmployee, toast]);
+  }, [t, setLayaways, setCustomers, setInventory, setSales, setCart, currentEmployee, toast, approvalGate]);
 
   const handleDeleteConfirmed = useCallback(() => {
     if (!deleteConfirm) return;
@@ -925,6 +1026,28 @@ export default function LayawayModule() {
       lines.push(`  ${t('layaway.print.preTaxBase')}:   ${fmtMoney(balSplit.baseCents)}`);
     }
     lines.push('─────────────────────────────');
+
+    // R-LAYAWAY-MULTIPAY-V1 — payment summary (format A: latest + cumulative
+    // + remaining + count). Lazy-normalized so legacy single-deposit layaways
+    // still print a coherent block. Skipped silently when there are no
+    // recorded payments (brand-new layaway just created with $0 down).
+    const lpTotals = calculateLayawayTotals(l);
+    if (lpTotals.paymentCount > 0) {
+      const history = normalizeLayawayPayments(l);
+      // newest-first; the LATEST payment is the most recent date
+      const latest = [...history].sort((a, b) => {
+        const da = new Date(a.date).getTime() || 0;
+        const db = new Date(b.date).getTime() || 0;
+        return db - da;
+      })[0];
+      if (latest) {
+        const latestDate = (() => { try { return new Date(latest.date).toLocaleDateString(); } catch { return latest.date; } })();
+        lines.push(`${t('layaway.print.lastPayment')}: ${fmtMoney(latest.amount)}  ${latestDate}  ${latest.method || ''}`.trimEnd());
+      }
+      lines.push(`${t('layaway.print.totalPaid')}: ${fmtMoney(lpTotals.totalPaidCents)}  (${lpTotals.paymentCount} ${t('layaway.print.paymentCount').toLowerCase()})`);
+      lines.push(`${t('layaway.print.balanceDue')}: ${fmtMoney(lpTotals.remainingBalanceCents)}`);
+      lines.push('─────────────────────────────');
+    }
     if (l.notes) { lines.push(`${t('layaway.print.notes')}: ${safe(l.notes)}`); lines.push('----------------------------------------'); }
     lines.push(t('layaway.print.conditionsHeader'));
     lines.push(t('layaway.print.cond1'));
@@ -1058,6 +1181,45 @@ export default function LayawayModule() {
                       <div style={{ fontSize: '1rem', fontWeight: 800, color: balDollars > 0 ? '#f59e0b' : '#10b981' }}>Balance: ${balDollars.toFixed(2)}</div>
                     </div>
                   </div>
+                  {/* R-LAYAWAY-MULTIPAY-V1: payment history (newest-first).
+                      Lazy-normalized so legacy single-deposit layaways
+                      surface as payments[0] without any data migration. */}
+                  {(() => {
+                    const totals = calculateLayawayTotals(l);
+                    if (totals.paymentCount === 0) return null;
+                    const history = [...normalizeLayawayPayments(l)].sort((a, b) => {
+                      const da = new Date(a.date).getTime() || 0;
+                      const db = new Date(b.date).getTime() || 0;
+                      return db - da;
+                    });
+                    const fmtDate = (iso: string) => {
+                      try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+                    };
+                    return (
+                      <div style={{ marginTop: '0.65rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '0.5rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>💳 {t('layaway.payments.historyTitle')} ({totals.paymentCount})</span>
+                          <span style={{ color: '#10b981', fontWeight: 600 }}>
+                            ${(totals.totalPaidCents / 100).toFixed(2)}
+                            <span style={{ color: '#64748b', fontWeight: 500 }}> / </span>
+                            <span style={{ color: totals.remainingBalanceCents > 0 ? '#f59e0b' : '#10b981' }}>
+                              ${(totals.remainingBalanceCents / 100).toFixed(2)} {t('layaway.payments.remaining')}
+                            </span>
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.78rem' }}>
+                          {history.map((p) => (
+                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', padding: '0.15rem 0', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                              <span style={{ color: '#94a3b8', minWidth: '5.5rem' }}>{fmtDate(p.date)}</span>
+                              <span style={{ color: '#e2e8f0', fontWeight: 600, fontFamily: 'monospace', minWidth: '5rem', textAlign: 'right' }}>${(p.amount / 100).toFixed(2)}</span>
+                              <span style={{ color: '#a78bfa', minWidth: '4.5rem' }}>{p.method || '—'}</span>
+                              <span style={{ color: '#64748b', flex: 1, fontStyle: 'italic', textAlign: 'right' }}>{p.note || ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                     {isActive && (
@@ -1128,43 +1290,80 @@ export default function LayawayModule() {
           <div className="modal-content" style={{ maxWidth: '580px', maxHeight: '92vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontWeight: 700 }}>🏷️ {editLayaway ? t('layaway.editTitle') : t('layaway.newTitle')}</h3>
-              <button onClick={() => { setShowForm(false); setEditLayaway(null); setSelectedCustomer(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
 
-              {/* Name / Customer */}
-              <CustomerPicker
+              {/* Name */}
+              {/* r-customer-picker-sweep: wrap customer inputs in shared
+                  CustomerSearchHeader for explicit "Select Customer" button. */}
+              <CustomerSearchHeader
                 customers={customers}
-                selectedCustomer={selectedCustomer}
-                lang={locale === 'es' ? 'es' : locale === 'pt' ? 'pt' : 'en'}
-                allowClear
+                lang={locale === 'es' ? 'es' : 'en'}
                 onSelect={(c) => {
-                  setSelectedCustomer(c);
-                  if (c) {
-                    const parts = c.name.trim().split(/\s+/);
-                    setForm(prev => ({
-                      ...prev,
-                      firstName: prev.firstName || parts[0] || '',
-                      lastName: prev.lastName || parts.slice(1).join(' ') || '',
-                      customerPhone: prev.customerPhone || c.phone || '',
-                    }));
-                  }
+                  const parts = c.name.trim().split(/\s+/);
+                  setForm({
+                    ...form,
+                    firstName: parts[0] || '',
+                    lastName: parts.slice(1).join(' ') || '',
+                    customerPhone: c.phone || '',
+                  });
                 }}
-              />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label className="label">👤 {t('layaway.firstName')} *</label>
-                  <input className="input" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder={t('layaway.firstNamePlaceholder')} />
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label className="label">👤 {t('layaway.firstName')} *</label>
+                    <AutocompleteInput
+                      value={form.firstName}
+                      onChange={(val) => setForm({ ...form, firstName: val })}
+                      onSelect={(opt) => {
+                        const c = opt.data as Customer;
+                        const parts = c.name.trim().split(' ');
+                        setForm({ ...form, firstName: parts[0] || opt.value, lastName: parts.slice(1).join(' ') || form.lastName, customerPhone: c.phone || form.customerPhone });
+                      }}
+                      options={firstNameOptions}
+                      placeholder={t('layaway.firstNamePlaceholder')}
+                      maxResults={6}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">👤 {t('layaway.lastName')}</label>
+                    <AutocompleteInput
+                      value={form.lastName}
+                      onChange={(val) => setForm({ ...form, lastName: val })}
+                      onSelect={(opt) => {
+                        const c = opt.data as Customer;
+                        const parts = c.name.trim().split(' ');
+                        setForm({ ...form, lastName: parts.slice(1).join(' ') || opt.value, firstName: parts[0] || form.firstName, customerPhone: c.phone || form.customerPhone });
+                      }}
+                      options={lastNameOptions}
+                      placeholder={t('layaway.lastNamePlaceholder')}
+                      maxResults={6}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="label">👤 {t('layaway.lastName')}</label>
-                  <input className="input" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder={t('layaway.lastNamePlaceholder')} />
+
+                {/* Phone */}
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label className="label">📞 {t('layaway.phone')}</label>
+                  <AutocompleteInput
+                    type="tel"
+                    value={form.customerPhone}
+                    onChange={(val) => setForm({ ...form, customerPhone: val })}
+                    onSelect={(opt) => {
+                      const c = opt.data as Customer;
+                      const parts = c.name.trim().split(' ');
+                      setForm({ ...form, customerPhone: opt.value, firstName: parts[0] || form.firstName, lastName: parts.slice(1).join(' ') || form.lastName });
+                    }}
+                    options={phoneOptions}
+                    placeholder="(805) 000-0000"
+                    maxResults={6}
+                    matchHint={phoneMatch ? (
+                      <span style={{ fontSize: '0.72rem', color: '#34d399' }}>&#10003; {phoneMatch.name} &middot; {phoneMatch.loyaltyPoints || 0} pts</span>
+                    ) : undefined}
+                  />
                 </div>
-              </div>
-              <div>
-                <label className="label">📞 {t('layaway.phone')}</label>
-                <input type="tel" className="input" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} placeholder="(805) 000-0000" />
-              </div>
+              </CustomerSearchHeader>
 
               {/* Item search / manual */}
               <div style={{ position: 'relative' }}>
@@ -1345,10 +1544,15 @@ export default function LayawayModule() {
           layaway={cancelTarget}
           customerHasPhone={!!cancelTarget.customerPhone}
           customerName={cancelTarget.customerName}
-          onClose={() => setCancelTarget(null)}
-          onConfirm={(choice) => handleCancel(cancelTarget, choice)}
+          confirming={cancelInFlight}
+          onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
+          onConfirm={(choice) => { void handleCancel(cancelTarget, choice); }}
         />
       )}
+      {/* R-APPROVAL-PIN-V1 F3A: manager-approval modal. Stacks on top of
+          CancelLayawayModal during the confirm flow; closes itself on
+          approve / cancel / timeout. */}
+      {approvalGate.modal}
       <ConfirmDialog
         open={showImeiWarning}
         title={t('layaway.imeiWarning.title')}

@@ -31,6 +31,21 @@ export interface StoreSettings {
   // (or undefined), app runs localStorage-only.
   cloudSyncEnabled?: boolean;
 
+  // R-COMPANION-BRIDGE-WIRE-V1: Companion bridge outbound mirror opt-in.
+  // Default false. When true, CompanionCenter's Connect button starts the
+  // outbound bridge adapter so the Companion mobile app can observe
+  // approvals and intelligence alerts. Mobile cannot mutate desktop state
+  // either way — local PIN modal remains the authority.
+  companionBridgeEnabled?: boolean;
+  companionBridgeUrl?: string;     // default 'https://cellhub-companion-production.up.railway.app' (Railway cloud bridge); override for on-prem / dogfood
+
+  // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch plumbing
+  // only. Default false. Phase 1 keeps approvalGuard / useApprovalGate
+  // untouched; mobile responses still cannot resolve any pending gate
+  // regardless of this flag. Phase 2 will wire a hybrid prompter gated
+  // on this setting. See docs/companion-remote-approval-authority.md §3.1.
+  companionRemoteApprovalEnabled?: boolean;
+
   // Store info
   storeName: string;
   storeAddress: string;
@@ -95,6 +110,11 @@ export interface StoreSettings {
   // Admin
   adminPin: string;
   autoBackup: boolean;
+
+  // R-APPROVAL-PIN-V1: master switch for the approval-PIN feature.
+  // When false (default), no action ever prompts for manager PIN —
+  // the entire system stays dormant and existing flows are untouched.
+  approvalsEnabled?: boolean;
 
   // AI
   aiProvider: 'claude' | 'openai' | 'gemini' | 'custom';
@@ -638,6 +658,15 @@ export interface CartItem {
   specialOrderId?: string;
   unlockId?: string;
   layawayId?: string;
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: optional audit fields stamped
+  // when the cashier applies a per-line override / discount via the new
+  // line-discount modal. The effective per-unit price stays in `price`
+  // (existing field) so all downstream math (totals, tax, receipts,
+  // reports) keeps working without changes. `originalPrice` already
+  // existed and is stamped at addToCart — we just preserve it across
+  // line-discount edits.
+  lineDiscountReason?: string;
+  lineDiscountApprovedBy?: string; // future-ready; not yet enforced
 }
 
 // ── Sale ──────────────────────────────────────────────────
@@ -671,6 +700,11 @@ export interface SaleItem {
   specialOrderId?: string;
   unlockId?: string;
   layawayId?: string;
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: audit fields preserved from
+  // CartItem at checkout. Pure record metadata — totals/tax already
+  // reflect the post-line-discount `price` value above.
+  lineDiscountReason?: string;
+  lineDiscountApprovedBy?: string;
 }
 
 export interface Sale {
@@ -700,6 +734,12 @@ export interface Sale {
   employeeName?: string;
   notes?: string;
   voidReason?: string;
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: audit fields populated by
+  // the manager-PIN-gated void flow in Reports. Voided sales remain in
+  // the sales array (no hard delete); existing isCountableSale / status
+  // filters already exclude them from active totals/profit/KPIs.
+  voidedAt?: string;        // ISO timestamp
+  voidedBy?: string;        // employee name at void time
   refundReason?: string;
   // Return tracking (written by ReturnsModule.processReturn)
   hasReturn?: boolean;
@@ -707,6 +747,12 @@ export interface Sale {
   // R9-1 linked cancellation cross-ref (written to refund sales when Returns cancels
   // a linked repair/unlock/SO/layaway entity as part of processing a return).
   linkedRefunds?: { type: string; id: string; depositCents: number }[];
+  // R-REPORTS-EDIT-SALE-ITEM-V1: post-completion line-item price/qty edits.
+  // Mirrors the audit shape used by repair/unlock/SO modules. originalSnapshot
+  // is captured ONCE on the first edit (never overwritten); editHistory is
+  // append-only with a 100-entry cap.
+  originalSnapshot?: EditAuditSnapshot;
+  editHistory?: EditAuditEntry[];
   createdAt: Timestamp | Date | string;
 }
 
@@ -945,6 +991,9 @@ export interface LayawayPayment {
   method: PaymentMethod;
   date: string;
   employeeId?: string;
+  // R-LAYAWAY-MULTIPAY-V1: optional cashier-entered note for partial
+  // payments. Future-compatible: existing records without it stay valid.
+  note?: string;
 }
 
 export interface LayawayItem {
@@ -963,7 +1012,13 @@ export interface Layaway {
   customerPhone: string;
   items: LayawayItem[];
   totalPrice: number;      // cents
-  payments: LayawayPayment[];
+  // R-LAYAWAY-MULTIPAY-V1: relaxed to optional. The original required
+  // shape was dead code — no writer ever populated it and no reader ever
+  // checked for it. Lazy normalization (services/layaway/payments.ts)
+  // synthesizes a single payments[0] from legacy paidAmount/depositMethod
+  // when the array is missing, so legacy data continues to render
+  // without any one-shot migration.
+  payments?: LayawayPayment[];
   paidAmount: number;      // cents
   balance: number;         // cents
   status: LayawayStatus;
@@ -1006,6 +1061,55 @@ export interface Employee {
   onboardingSigned: boolean;
   startDate: string;
   createdAt: Timestamp | Date | string;
+
+  // R-APPROVAL-PIN-V1 — independent 6-digit PIN used to AUTHORIZE
+  // restricted actions for other employees. Stored as bcrypt hash
+  // (same lifecycle as `pin`). Optional; only employees with
+  // permissions.canApprove typically have one set.
+  approvalPin?: string;
+  permissions?: EmployeePermissions;
+}
+
+// ── Approval / Permissions (R-APPROVAL-PIN-V1) ────────────
+// Per-employee permission flags. All fields optional — undefined
+// means "fall back to role default" (see services/security/permissions.ts).
+export interface EmployeePermissions {
+  requireApprovalForPriceChange?: boolean;
+  requireApprovalForDiscount?: boolean;
+  requireApprovalForLayawayCancel?: boolean;
+  requireApprovalForRepairCancel?: boolean;
+  requireApprovalForUnlockCancel?: boolean;
+  requireApprovalForSpecialOrderCancel?: boolean;
+  requireApprovalForRefund?: boolean;
+  canApprove?: boolean;
+}
+
+// Discriminator for restricted actions. Stored as a string in the log.
+export type ApprovalActionType =
+  | 'PRICE_OVERRIDE'
+  | 'DISCOUNT_OVERRIDE'
+  | 'CANCEL_LAYAWAY'
+  | 'CANCEL_REPAIR'
+  | 'CANCEL_UNLOCK'
+  | 'CANCEL_SPECIAL_ORDER'
+  | 'REFUND';
+
+export type ApprovalCategory = 'financial' | 'inventory' | 'service';
+export type ApprovalStatus = 'approved' | 'denied';
+
+// Append-only audit log entry. NEVER stores PINs (raw or hashed).
+// approvedByEmployeeId uses the prefix 'approver:admin' when the admin
+// PIN fallback was used (preserves per-action traceability without
+// pretending an employee row matched).
+export interface ApprovalEvent {
+  id: string;
+  requestedByEmployeeId: string;
+  approvedByEmployeeId: string;            // empId | 'approver:admin' | ''
+  actionType: ApprovalActionType;
+  category?: ApprovalCategory;
+  status?: ApprovalStatus;
+  entityId?: string;
+  createdAt: number;                       // ms epoch
 }
 
 // ── SMS Log ───────────────────────────────────────────────
@@ -1076,6 +1180,36 @@ export interface Expense {
   updatedAt?: string;
 }
 
+// ── Inventory Loss / Shrinkage ────────────────────────────
+// R-LOSSES-SHRINKAGE-V1: business loss recorded when stock leaves the
+// store as defective / damaged / unsellable. NOT a sale, NOT a refund,
+// NOT a void — separate audit shape. Inventory qty is decremented at
+// time of record creation; the InventoryLoss record itself is the
+// audit trail (never edited or hard-deleted in V1).
+
+export type LossReason =
+  | 'defective'
+  | 'damaged'
+  | 'unsellable_return'
+  | 'vendor_non_returnable'
+  | 'opened_package'
+  | 'other';
+
+export interface InventoryLoss {
+  id: string;
+  storeId?: string;
+  itemId: string;
+  sku?: string;
+  itemName: string;
+  qty: number;
+  unitCost: number;     // cents
+  totalLoss: number;    // cents (qty * unitCost)
+  reason: LossReason;
+  notes?: string;
+  createdAt: string;    // ISO
+  approvedBy?: string;
+}
+
 // ── Purchase Order ────────────────────────────────────────
 
 export type POStatus = 'draft' | 'ordered' | 'partial' | 'received' | 'cancelled';
@@ -1132,6 +1266,7 @@ export interface AppState {
   employees: Employee[];
   purchaseOrders: PurchaseOrder[];
   expenses: Expense[];
+  inventoryLosses: InventoryLoss[];
   appointments: Appointment[];
   customerReturns: CustomerReturn[];
   vendorReturns: VendorReturn[];
@@ -1204,6 +1339,7 @@ export type AppAction =
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
   | { type: 'SET_PURCHASE_ORDERS'; payload: PurchaseOrder[] }
   | { type: 'SET_EXPENSES'; payload: Expense[] }
+  | { type: 'SET_INVENTORY_LOSSES'; payload: InventoryLoss[] }
   | { type: 'SET_APPOINTMENTS'; payload: Appointment[] }
   | { type: 'SET_CUSTOMER_RETURNS'; payload: CustomerReturn[] }
   | { type: 'SET_VENDOR_RETURNS'; payload: VendorReturn[] }

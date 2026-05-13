@@ -24,6 +24,7 @@ import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 import { SearchInput } from '@/components/ui';
 
@@ -56,6 +57,14 @@ interface GlobalSearchBarProps {
   showTip?: boolean;
   /** Extra className for the wrapper. */
   className?: string;
+  /** R-INVENTORY-OVERLAY-FIX-V1: opt out of the floating cross-module
+   *  results dropdown. The input still works (SYNCED localValue/
+   *  onLocalChange fires normally so the host module's local filter
+   *  runs), but the absolutely-positioned popover that lists matches
+   *  across other collections is not rendered. Inventory uses this so
+   *  the cross-module "No results / Customers / Repairs / …" panel
+   *  doesn't sit on top of the inventory table. */
+  disableResultsDropdown?: boolean;
 }
 
 // ── Internal sub-components (moved from Dashboard.tsx) ────
@@ -130,6 +139,7 @@ export default function GlobalSearchBar({
   width = '100%',
   showTip = false,
   className = '',
+  disableResultsDropdown = false,
 }: GlobalSearchBarProps) {
   const {
     state: {
@@ -215,50 +225,59 @@ export default function GlobalSearchBar({
 
   const customerMatches = useMemo(() => {
     if (!q || excludeCollection === 'customers') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware so "(805) 555-1234" matches
+    // a customer stored as "8055551234" and vice-versa.
     return customers.filter((c) =>
-      matchesSearch(q, c.name, c.phone, c.email, c.customerNumber),
+      matchesSearchPhones(q, [c.phone], c.name, c.email, c.customerNumber),
     ).slice(0, 5);
   }, [q, customers, excludeCollection]);
 
   const inventoryMatches = useMemo(() => {
     if (!q || excludeCollection === 'inventory') return [];
     return inventory.filter((i) =>
-      matchesSearch(q, i.name, i.sku, i.barcode, i.imei),
+      // BUG-1: include i.category to match the scope of InventoryModule local
+      // search (line 110) and GlobalSearch Cmd+K palette (line 123).
+      matchesSearch(q, i.name, i.sku, i.barcode, i.imei, i.category),
     ).slice(0, 5);
   }, [q, inventory, excludeCollection]);
 
   const repairMatches = useMemo(() => {
     if (!q || excludeCollection === 'repairs') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware match.
     return repairs.filter((r) =>
-      matchesSearch(q, r.customerName, r.customerPhone, r.device, r.imei, r.id, r.issue),
+      matchesSearchPhones(q, [r.customerPhone], r.customerName, r.device, r.imei, r.id, r.issue),
     ).slice(0, 5);
   }, [q, repairs, excludeCollection]);
 
   const unlockMatches = useMemo(() => {
     if (!q || excludeCollection === 'unlocks') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware match.
     return unlocks.filter((u) =>
-      matchesSearch(q, u.customerName, u.customerPhone, u.device, u.imei, u.carrier, u.id),
+      matchesSearchPhones(q, [u.customerPhone], u.customerName, u.device, u.imei, u.carrier, u.id),
     ).slice(0, 5);
   }, [q, unlocks, excludeCollection]);
 
   const saleMatches = useMemo(() => {
     if (!q || excludeCollection === 'sales') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware match (sale.customerPhone).
     return sales.filter((s) =>
-      matchesSearch(q, s.invoiceNumber, s.customerName, s.employeeName),
+      matchesSearchPhones(q, [s.customerPhone], s.invoiceNumber, s.customerName, s.employeeName),
     ).slice(0, 5);
   }, [q, sales, excludeCollection]);
 
   const specialOrderMatches = useMemo(() => {
     if (!q || excludeCollection === 'specialOrders') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware match.
     return specialOrders.filter((so) =>
-      matchesSearch(q, so.customerName, so.customerPhone, so.itemDescription, so.id),
+      matchesSearchPhones(q, [so.customerPhone], so.customerName, so.itemDescription, so.id),
     ).slice(0, 5);
   }, [q, specialOrders, excludeCollection]);
 
   const layawayMatches = useMemo(() => {
     if (!q || excludeCollection === 'layaways') return [];
+    // R-SEARCH-NORMALIZE-V1: phone-aware match.
     return layaways.filter((l) =>
-      matchesSearch(q, l.customerName, l.customerPhone, l.id,
+      matchesSearchPhones(q, [l.customerPhone], l.customerName, l.id,
         ...(l.items?.map((li) => li.name) || [])),
     ).slice(0, 5);
   }, [q, layaways, excludeCollection]);
@@ -315,8 +334,11 @@ export default function GlobalSearchBar({
         </div>
       )}
 
-      {/* ── Dropdown ── */}
-      {q !== '' && showDropdown && (
+      {/* ── Dropdown ──
+          R-INVENTORY-OVERLAY-FIX-V1: also gated on !disableResultsDropdown
+          so hosts (e.g. Inventory) can keep the bar's input + sync hooks
+          while suppressing the floating cross-module results popover. */}
+      {q !== '' && showDropdown && !disableResultsDropdown && (
         <div style={{
           position: 'absolute', top: '100%', left: 0,
           width: '480px', marginTop: '0.25rem', zIndex: 50,

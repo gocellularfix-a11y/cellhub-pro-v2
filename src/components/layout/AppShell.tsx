@@ -5,6 +5,8 @@ import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
+import UpgradePrompt from '@/components/shared/UpgradePrompt';
+import { useLicense } from '@/contexts/LicenseContext';
 
 // ── Lazy-load all modules ─────────────────────────────────
 const Dashboard        = lazy(() => import('@/modules/dashboard/Dashboard'));
@@ -23,7 +25,11 @@ const EmployeesModule  = lazy(() => import('@/modules/employees/EmployeesModule'
 const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPanel'));
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
+// R-COMPANION-CENTER-V1: UI shell for the future mobile-companion app.
+const CompanionCenter = lazy(() => import('@/modules/companion/CompanionCenter'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
+// R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
+const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -58,6 +64,7 @@ function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: strin
 export default function AppShell() {
   const { state, dispatch } = useApp();
   const { activeTab, isAdminMode, lang, settings, customers } = state;
+  const { features } = useLicense();
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {
@@ -106,7 +113,7 @@ export default function AppShell() {
   });
 
   // Admin-only tabs — show lock screen if not in admin mode
-  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence'];
+  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
   return (
@@ -133,8 +140,13 @@ export default function AppShell() {
 
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'companion'      && (isAdminMode ? <CompanionCenter />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'settings'       && (isAdminMode ? <SettingsModule />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
-          {activeTab === 'reports'        && (isAdminMode ? <ReportsModule />          : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'reports'        && (!isAdminMode
+            ? <AdminLockScreen onUnlock={requireAdmin} lang={lang} />
+            : (features.reports
+              ? <ReportsModule />
+              : <UpgradePrompt feature="reports" requiredTier="basic" />))}
           {activeTab === 'tax'            && (isAdminMode ? <TaxReportsModule />       : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'employees'      && (isAdminMode ? <EmployeesModule />        : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'purchaseOrders' && (isAdminMode ? <PurchaseOrdersModule />   : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
@@ -142,16 +154,26 @@ export default function AppShell() {
         </Suspense>
       </main>
 
-      {/* AI Assistant — rendered globally */}
-      <Suspense fallback={null}>
-        <AIAssistantPanel />
-      </Suspense>
+      {/* AI Assistant — rendered globally (Pro tier only) */}
+      {features.aiAssistant && (
+        <Suspense fallback={null}>
+          <AIAssistantPanel />
+        </Suspense>
+      )}
 
       {/* Global Search (Cmd+K / Ctrl+K) */}
       <GlobalSearch />
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />
+
+      {/* R-OPERATOR-FLOATING-BUBBLE-V1: draggable shortcut to Intelligence.
+          Click navigates to/from the Intelligence tab; engine spins up via
+          the existing IntelligenceModule when that tab activates, so we
+          avoid a second engine instance and any duplicate logic. */}
+      <Suspense fallback={null}>
+        <FloatingOperatorBubble />
+      </Suspense>
     </div>
   );
 }

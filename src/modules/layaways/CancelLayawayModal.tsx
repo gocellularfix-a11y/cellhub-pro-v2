@@ -13,6 +13,12 @@ interface CancelLayawayModalProps {
     note: string;
   }) => void;
   onClose: () => void;
+  // R-APPROVAL-PIN-V1 F3A fix #1: optional parent-owned busy flag. When
+  // provided, the parent fully controls the spinner so the modal can stay
+  // mounted (preserving disposition/note) across an out-of-tree approval
+  // flow that may resolve as denied. Backwards-compat: when undefined the
+  // modal falls back to the original internal state, behaviour unchanged.
+  confirming?: boolean;
 }
 
 export default function CancelLayawayModal({
@@ -21,6 +27,7 @@ export default function CancelLayawayModal({
   customerName,
   onConfirm,
   onClose,
+  confirming,
 }: CancelLayawayModalProps) {
   const { t } = useTranslation();
   const depositCents = layaway.paidAmount || 0;
@@ -31,12 +38,16 @@ export default function CancelLayawayModal({
   const [method, setMethod] = useState<'store_credit' | 'cash' | 'forfeit'>('store_credit');
   const [note, setNote] = useState('');
   // Round 14: busy-state guard to prevent double-confirm.
-  const [isConfirming, setIsConfirming] = useState(false);
+  // R-APPROVAL-PIN-V1 F3A fix #1: when `confirming` prop is provided, the
+  // parent owns this lifecycle so the spinner can be reset on approval
+  // denial without remounting the modal.
+  const [internalConfirming, setInternalConfirming] = useState(false);
+  const isConfirming = confirming ?? internalConfirming;
 
   const handleConfirm = () => {
     if (isConfirming) return;
     if (method === 'forfeit' && note.trim().length < 10) return;
-    setIsConfirming(true);
+    if (confirming === undefined) setInternalConfirming(true);
     onConfirm({ method, note: note.trim() });
   };
 

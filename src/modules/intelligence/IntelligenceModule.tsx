@@ -1,25 +1,47 @@
-// CellHub Intelligence — Decision-First Dashboard
-// R-INTEL-2-DASHBOARD
+// CellHub Intelligence — Operator Console
+// R-INTELLIGENCE-UI-OPERATOR-REDESIGN + R-INTELLIGENCE-QUEUE-UI-FIX
 //
-// Layout: Chat → Today Summary → Smart Actions → Top Insight → Key Numbers → Alerts → Customer Lookup
+// Action-first Windows desktop layout:
+//   1. Top Operator Summary (compact, action-oriented)
+//   2. Make Money tiles
+//   3. Ask Your Shop chat (owns its own queue UI + handlers)
+//   4. WhatsApp Actions
+//   5. Promote Inventory
+//   6. Customer Lookup (preserved)
+//
+// Queue rendering and execution are owned by IntelligenceChat — this
+// module does not duplicate that logic, does not touch localStorage,
+// and does not execute action payloads.
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
   type EngineResult,
   type CustomerHistorySummary,
-  summarizeDashboard,
   summarizeCustomerHistory,
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — register the live engine
+  // so the Companion intelligence ack receiver can mark alerts
+  // acknowledged via AlertEngine.acknowledge while this module is mounted.
+  setActiveIntelligenceEngine,
 } from '@/services/intelligence';
+import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+// R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: canonical wa.me builder reused for
+// the per-recipient buttons inside the new panel widget. No new send path.
+import { buildWhatsAppUrl } from '@/services/whatsapp';
+// R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
+// R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: import the flag so the
+// `performance.now()` calls in render-prep can be skipped entirely
+// when perfDebug is off (which is always, in production).
+import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/perfDebug';
 import IntelligenceChat from './IntelligenceChat';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { useTranslation } from '@/i18n';
 
-const CARD_BG   = '#111827';
+const CARD_BG     = '#111827';
 const CARD_BORDER = '#1F2937';
-const PAGE_BG   = '#0B1220';
+const PAGE_BG     = '#0B1220';
 
 // Day name localization map for the top-insight sentence.
 const DAY_LOCAL: Record<string, Record<string, string>> = {
@@ -28,11 +50,20 @@ const DAY_LOCAL: Record<string, Record<string, string>> = {
 };
 
 export default function IntelligenceModule() {
+  // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: time the full render-prep block.
+  // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: only allocate when the flag is on
+  // (off in production by default). Previously this ran on every render even
+  // though the matching perfLog at the bottom would skip emission.
+  const _renderT0 = INTEL_PERF_ENABLED ? performance.now() : 0;
   const { state } = useApp();
   const {
     sales, customers, inventory, repairs,
-    specialOrders, unlocks, layaways, customerReturns,
+    specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments,
     currentStoreId, consolidatedView,
+    // R-CUSTOMER-PROFIT-PARITY-V1: settings carry carrierCommissions +
+    // defaultCommissionRate. Engine uses them inside getCustomerHistory
+    // to translate phone_payment items into their real economic cost.
+    settings,
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
@@ -43,39 +74,142 @@ export default function IntelligenceModule() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [externalQuery, setExternalQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
 
-  const engine = useMemo(() => {
-    return new IntelligenceEngine(
+  // Promote Inventory state
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: campaign draft + locally-edited
+  // message text. Draft arrives from runProductPush via the chat callback
+  // (auto-fired in handleOpenPromote). Cleared whenever the selected
+  // product changes — avoids showing a stale draft for product B after
+  // the user re-selects product A.
+  // R-CAMPAIGN-QUEUE-V1: per-recipient single-selection (radio) replaced
+  // by multi-select (`selectedRecipientIds`). On "Iniciar campaña" the
+  // selected set is frozen into `campaignQueue` (status per recipient)
+  // and the panel switches into queue-progress mode. Empty queue ⇒
+  // pre-campaign UI (checkboxes); non-empty ⇒ in-campaign UI (auto-
+  // advance through pending recipients, one wa.me at a time). Queue
+  // and draft are persisted to localStorage so a reload mid-campaign
+  // restores progress.
+  const [panelCampaign, setPanelCampaign] = useState<PanelCampaignDraft | null>(null);
+  const [draftMessage, setDraftMessage] = useState<string>('');
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set());
+  type CampaignQueueItem = {
+    customerId: string;
+    name: string;
+    phone: string;
+    status: 'pending' | 'sent' | 'skipped';
+  };
+  const [campaignQueue, setCampaignQueue] = useState<CampaignQueueItem[]>([]);
+
+  // R-PERF-INTELLIGENCE-CACHE: useRef-stable engine — preserved verbatim.
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: refreshKey REMOVED from sig. Including
+  // it forced a brand-new engine instance (5 analyzers + 3 scorers + 4 adapter
+  // passes) on every Refresh click — defeating the whole point of the
+  // useRef-stable engine + updateData() pattern. Refresh now invalidates the
+  // 60s analyze() cache via engine.invalidateCache() and bumps refreshKey only
+  // for the result useMemo deps (forcing analyze() to re-run against fresh
+  // data without rebuilding analyzers/scorers).
+  const engineRef = useRef<IntelligenceEngine | null>(null);
+  const engineConfigSigRef = useRef<string>('');
+  const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}`;
+
+  if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
+    // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: gate timestamp allocations.
+    const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
+    engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
-      { specialOrders, unlocks, layaways, customerReturns },
+      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, settings },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, currentStoreId, consolidatedView, refreshKey]);
+    engineConfigSigRef.current = engineConfigSig;
+    if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.create', _t);
+  }
+  const engine = engineRef.current;
 
-  const result: EngineResult = useMemo(() => engine.analyze(), [engine]);
+  {
+    const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
+    engine.updateData(sales, customers, inventory, repairs, {
+      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, settings,
+    });
+    if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
+  }
 
-  const nlgSummary = useMemo(() => summarizeDashboard(result, locale as 'en' | 'es' | 'pt'), [result, locale]);
-  void nlgSummary; // available for future use
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — register/deregister the
+  // currently-live engine with the intelligence active-engine slot. The
+  // Companion intelligence ack receiver dispatches AlertEngine.acknowledge
+  // through this slot. Cero side effects when no Companion ack is in
+  // flight; cleanup unregisters on unmount or engine rebuild.
+  useEffect(() => {
+    setActiveIntelligenceEngine(engine);
+    return () => { setActiveIntelligenceEngine(null); };
+  }, [engine]);
 
-  // ── New engine data (decision layer) ──────────────────────
-  const reorderRecs  = useMemo(() => engine.getReorderRecommendations(), [engine]);
-  const contactPreds = useMemo(() => engine.getNextVisitPredictions(5), [engine]);
-  const missedRev    = useMemo(() => engine.getMissedRevenue(), [engine]);
-  const productOpps  = useMemo(() => engine.getProductOpportunities(3), [engine]);
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
+  // collections updateData() propagates (added expenses/employees/appointments)
+  // plus refreshKey. refreshKey is the explicit "force re-analyze" signal from
+  // the Refresh button — combined with engine.invalidateCache() in the handler,
+  // this re-runs analyze() against fresh data without rebuilding the engine.
+  const result: EngineResult = useMemo(
+    () => perfTime('intel.module.engine.analyze', () => engine.analyze()),
+    [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, refreshKey],
+  );
 
-  // Today's sales (current calendar day).
+  // ── Engine-derived data ──────────────────────────────────
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: include `result` in deps so these
+  // getters invalidate when analyze() reruns (engine internals refreshed).
+  // Without this, after Bug #1 fix the engine ref is stable across refresh,
+  // so [engine] alone would never re-trigger the getters.
+  const reorderRecs  = useMemo(() => perfTime('intel.module.getReorderRecommendations', () => engine.getReorderRecommendations()), [engine, result]);
+  const productOpps  = useMemo(() => perfTime('intel.module.getProductOpportunities',   () => engine.getProductOpportunities(3)), [engine, result]);
+  const missedRev    = useMemo(() => perfTime('intel.module.getMissedRevenue',          () => engine.getMissedRevenue()), [engine, result]);
+
   const todaySales = useMemo(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     return sales.filter(s => new Date((s as any).createdAt).getTime() >= todayStart.getTime() && (s as any).status !== 'voided');
   }, [sales]);
-  const todayRevenue  = useMemo(() => todaySales.reduce((sum, s) => sum + ((s as any).total || 0), 0), [todaySales]);
+  const todayRevenue = useMemo(() => todaySales.reduce((sum, s) => sum + ((s as any).total || 0), 0), [todaySales]);
 
-  // Biggest single profit-leak signal.
   const biggestLeak = useMemo(() =>
     Math.max(missedRev.slowDayLossCents, missedRev.slowHourLossCents, missedRev.deadStockLockedCents),
   [missedRev]);
 
-  // Top insight — single sentence.
+  // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: lightweight derived stats for
+  // the 6 operator cards. Pure useMemo over already-in-scope state — no
+  // new effects, no polling, no background. Same threshold logic the
+  // chat handlers use (handleProactiveOpportunities, today_money_map).
+  const staleRepairStats = useMemo(() => perfTime('intel.module.cards.staleRepairStats', () => {
+    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let count = 0;
+    let recoverable = 0;
+    for (const r of repairs) {
+      const status = String((r as { status?: string }).status || '').toLowerCase();
+      if (status !== 'ready') continue;
+      const ca = (r as { completedAt?: unknown }).completedAt;
+      if (!ca) continue;
+      let ts = 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        ts = new Date(d as string | Date).getTime();
+      } catch { continue; }
+      if (!Number.isFinite(ts) || ts === 0) continue;
+      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
+      count++;
+      recoverable += (r as { balance?: number }).balance || 0;
+    }
+    return { count, recoverable };
+  }), [repairs]);
+
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: include `result` so refresh invalidates
+  // this — buildOutreachQueueItems reads cachedResult.customerScores populated
+  // by analyze().
+  const outreachCount = useMemo(() => perfTime('intel.module.cards.outreachCount', () => {
+    try { return engine.buildOutreachQueueItems().length; }
+    catch { return 0; }
+  }), [engine, result]);
+
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
     if (missedRev.slowDayLossCents > 0)
@@ -86,21 +220,19 @@ export default function IntelligenceModule() {
     return t('intelligence.dash.insightAllGood');
   }, [missedRev, reorderRecs, locale, t]);
 
-  // Alerts list.
-  const alertItems = useMemo(() => {
-    const a: Array<{ label: string; color: string }> = [];
-    const low   = result.kpiDashboard.inventory.lowStockCount;
-    const dead  = result.kpiDashboard.inventory.deadStockCount;
-    const over  = result.kpiDashboard.repairs.overdue;
-    if (low  > 0) a.push({ label: t('intelligence.dash.alertLowStock', low),   color: '#F59E0B' });
-    if (dead > 0) a.push({ label: t('intelligence.dash.alertDeadStock', dead), color: '#EF4444' });
-    if (over > 0) a.push({ label: t('intelligence.dash.alertRepairs', over),   color: '#F97316' });
-    return a;
-  }, [result, t]);
-
-  // Customer lookup.
-  const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
-
+  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX +
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: wrap refresh work in useTransition so
+  // the heavy memo cascade happens off the urgent render path. Button is
+  // disabled while pending so the owner can't stack work. Refresh now
+  // invalidates the engine's analyze() cache (cheap — two assignments)
+  // instead of rebuilding the engine instance; the refreshKey bump only
+  // exists to invalidate the result memo dep.
+  const [isRefreshing, startRefreshTransition] = useTransition();
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    engineRef.current?.invalidateCache();
+    startRefreshTransition(() => setRefreshKey((k) => k + 1));
+  }, [isRefreshing]);
   const matches = useMemo(() => {
     const q = lookupQuery.trim();
     if (q.length < 2) return [];
@@ -114,131 +246,709 @@ export default function IntelligenceModule() {
     return engine.getCustomerHistory(selectedCustomerId);
   }, [engine, selectedCustomerId]);
 
-  // Quick-action chip fires a query into the chat.
-  const fireChip = useCallback((queryKey: string) => {
-    setExternalQuery({ text: t(queryKey), seq: Date.now() });
-  }, [t]);
+  // Product matches for Promote Inventory
+  const productMatches = useMemo(() => {
+    const q = productSearch.trim();
+    if (q.length < 2) return [];
+    return inventory
+      .filter(i =>
+        matchesSearch(q, i.name, i.sku, (i as { brand?: string }).brand)
+        && (i as { qty?: number }).qty !== 0,
+      )
+      .slice(0, 8);
+  }, [productSearch, inventory]);
+
+  // Fire a chat query (uses externalQuery seq pattern already wired in chat).
+  const fireChat = useCallback((text: string) => {
+    setExternalQuery({ text, seq: Date.now() });
+  }, []);
+
+  const fireChipKey = useCallback((queryKey: string) => {
+    fireChat(t(queryKey));
+  }, [t, fireChat]);
+
+  // R-DAILY-BRIEF-AUTO-V1: fire the daily brief once per store per day.
+  // Read-only — handler does not enqueue. Storage key scoped by storeId so
+  // multi-store operators see the brief once per shop. Failures (incognito,
+  // quota) silently skip; brief stays manually accessible via the chat.
+  // R-INTELLIGENCE-AUTOMATION-QUEUE-FAIL-FREEZE-FIX: deferred via
+  // setTimeout(0) so the heavy synchronous chain (fireChat → externalQuery
+  // → classifyIntent → handleIntent → engine analyze) runs AFTER the tab's
+  // first paint instead of blocking the mount.
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const sid = currentStoreId || 'default';
+    const key = `dailyBriefLastSeen:${sid}:${today}`;
+    try {
+      if (localStorage.getItem(key)) return;
+    } catch {
+      return;
+    }
+    const tid = window.setTimeout(() => {
+      try {
+        fireChat('daily brief');
+        localStorage.setItem(key, '1');
+      } catch {
+        /* localStorage unavailable — skip silently. */
+      }
+    }, 0);
+    return () => window.clearTimeout(tid);
+  }, [currentStoreId, fireChat]);
+
+  // Refs to scroll-target panels
+  const promoteRef = useRef<HTMLDivElement>(null);
+  const focusPromote = useCallback(() => {
+    promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: hand-off callback for chat-action
+  // "Promote {name}" clicks. Auto-selects the exact product (productId is
+  // the real inventory id from ProductOpportunity.inventoryId, not a
+  // string-matched reconstruction), clears the search field so the
+  // confirmation card renders immediately, and scrolls the panel into
+  // view. No chat-replay, no manual product search step.
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: also auto-fires the campaign chat
+  // query so the user doesn't have to click "Generate Campaign" — the
+  // draft (per-customer WhatsApp messages with action buttons, OR the
+  // broad-campaign fallback text) appears immediately in the chat
+  // sidebar. The chat handler is the same one used when the user types
+  // "promote {name}" manually, so behavior is unified. The 500ms chat
+  // dedup guard already prevents accidental double-fire on rapid clicks.
+  // R-OPERATOR-PROMOTE-EXECUTION-FIX-V1: only reset panel-side draft state
+  // when the user is switching to a DIFFERENT product. Previously we cleared
+  // panelCampaign/draftMessage/recipient unconditionally — combined with the
+  // chat dedup early-return (now fixed), a re-clicked Promote on the same
+  // product wiped panel state and never repopulated it. With this guard,
+  // re-clicking the same Promote button is a safe no-op for panel state
+  // (the chat re-fire will still run, but the existing draft survives if
+  // the dispatch is dedup'd).
+  const handleOpenPromote = useCallback((productId: string, productName: string) => {
+    setSelectedProduct((prev) => {
+      if (!prev || prev.id !== productId) {
+        // Different product (or first selection) — reset draft state.
+        // R-CAMPAIGN-QUEUE-V1: also reset multi-select + queue so any
+        // in-progress campaign for product A doesn't leak into product B.
+        setPanelCampaign(null);
+        setDraftMessage('');
+        setSelectedRecipientIds(new Set());
+        setCampaignQueue([]);
+      }
+      return { id: productId, name: productName };
+    });
+    setProductSearch('');
+    promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
+  }, [fireChat, t]);
+
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: callback invoked by IntelligenceChat
+  // when a chat response carries panelCampaign. Stash the draft + seed the
+  // local textarea content. If the panel currently shows a different
+  // product than the draft references, ignore — draft belongs to a
+  // different selection (defensive — in practice the auto-fire flow keeps
+  // them aligned, but a manual chat query for a different product
+  // shouldn't override the user's panel selection).
+  const handlePanelCampaign = useCallback((draft: PanelCampaignDraft) => {
+    if (selectedProduct && selectedProduct.id !== draft.productId) return;
+    setPanelCampaign(draft);
+    setDraftMessage(draft.templateMessage);
+    // R-CAMPAIGN-QUEUE-V1: default-select every candidate so the
+    // cashier can hit "Iniciar campaña" immediately. They can untick
+    // anyone they don't want before starting. Empty candidates ⇒ no
+    // selection (broadcast button shown instead, single-shot wa.me).
+    setSelectedRecipientIds(new Set(draft.candidates.map((c) => c.customerId)));
+    // Also clear any leftover queue from a prior product so we land
+    // in pre-campaign mode for the freshly drafted campaign.
+    setCampaignQueue([]);
+  }, [selectedProduct]);
+
+  // R-CAMPAIGN-QUEUE-V1: per-recipient send is now handled by
+  // sendCurrentRecipient (queue-driven). The legacy handlePanelSend
+  // single-shot has been removed; broadcast (no-candidates path) still
+  // uses handlePanelBroadcast below.
+
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: broadcast send for the empty-
+  // candidates case. Substitutes {customer} with empty string (the broad
+  // template typically reads naturally with or without a name) and opens
+  // the wa.me recipient picker.
+  const handlePanelBroadcast = useCallback(() => {
+    const finalText = draftMessage.replace(/\{customer\}/g, '').replace(/\s+/g, ' ').trim();
+    const url = `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [draftMessage]);
+
+  const handleGenerateCampaign = useCallback(() => {
+    if (!selectedProduct) return;
+    fireChat(`${t('intelligence.console.queryPromoteThis')} ${selectedProduct.name}`);
+  }, [selectedProduct, fireChat, t]);
+
+  // ── R-CAMPAIGN-QUEUE-V1: queue + persistence ──────────────
+  // The current pending recipient drives the single primary action
+  // button while the campaign is in flight. Derived from the queue —
+  // first item with status 'pending'. null when no queue or all done.
+  const currentRecipient = useMemo(
+    () => campaignQueue.find((q) => q.status === 'pending') || null,
+    [campaignQueue],
+  );
+  const queueProcessedCount = useMemo(
+    () => campaignQueue.filter((q) => q.status !== 'pending').length,
+    [campaignQueue],
+  );
+  const inCampaign = campaignQueue.length > 0;
+  const allDone = inCampaign && !currentRecipient;
+
+  // Toggle one recipient in the pre-campaign multi-select.
+  const toggleRecipient = useCallback((id: string) => {
+    setSelectedRecipientIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Bulk select / deselect all candidates.
+  const toggleAllRecipients = useCallback(() => {
+    if (!panelCampaign) return;
+    setSelectedRecipientIds((prev) => {
+      if (prev.size === panelCampaign.candidates.length) return new Set();
+      return new Set(panelCampaign.candidates.map((c) => c.customerId));
+    });
+  }, [panelCampaign]);
+
+  // Build the queue from selected recipients and switch into in-campaign UI.
+  const startCampaign = useCallback(() => {
+    if (!panelCampaign) return;
+    if (selectedRecipientIds.size === 0) return;
+    if (!draftMessage.trim()) return;
+    const items: CampaignQueueItem[] = panelCampaign.candidates
+      .filter((c) => selectedRecipientIds.has(c.customerId))
+      .map((c) => ({
+        customerId: c.customerId,
+        name: c.name,
+        phone: c.phone,
+        status: 'pending',
+      }));
+    setCampaignQueue(items);
+  }, [panelCampaign, selectedRecipientIds, draftMessage]);
+
+  // Open wa.me for the current recipient and mark them as 'sent'.
+  // The cashier still has to press Send inside WhatsApp — wa.me has no
+  // autonomous delivery. "Sent" here means "we opened the wa.me link
+  // for this contact"; the cashier can re-open from history if needed.
+  const sendCurrentRecipient = useCallback(() => {
+    if (!currentRecipient) return;
+    const firstName = currentRecipient.name.split(' ')[0] || currentRecipient.name;
+    const finalText = draftMessage.replace(/\{customer\}/g, firstName);
+    const url = currentRecipient.phone
+      ? buildWhatsAppUrl(currentRecipient.phone, finalText)
+      : `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setCampaignQueue((prev) =>
+      prev.map((q) => (q.customerId === currentRecipient.customerId ? { ...q, status: 'sent' } : q)),
+    );
+  }, [currentRecipient, draftMessage]);
+
+  // Skip current recipient without opening WhatsApp.
+  const skipCurrentRecipient = useCallback(() => {
+    if (!currentRecipient) return;
+    setCampaignQueue((prev) =>
+      prev.map((q) => (q.customerId === currentRecipient.customerId ? { ...q, status: 'skipped' } : q)),
+    );
+  }, [currentRecipient]);
+
+  // End the campaign and return to the pre-campaign UI. Clears the
+  // queue + selection so a fresh campaign starts from scratch (the
+  // panel still shows the same product/draft so the user can adjust
+  // selection and re-run if needed).
+  const endCampaign = useCallback(() => {
+    setCampaignQueue([]);
+    if (panelCampaign) {
+      setSelectedRecipientIds(new Set(panelCampaign.candidates.map((c) => c.customerId)));
+    }
+  }, [panelCampaign]);
+
+  // Persistence — only while a campaign is in flight. Pre-campaign
+  // selections are intentionally NOT persisted (low value, more state
+  // to invalidate). Storage key namespaced so it can't collide.
+  const CAMPAIGN_STORAGE_KEY = 'cellhub_pro_campaign_session_v1';
+  useEffect(() => {
+    if (!inCampaign || !selectedProduct || !panelCampaign) {
+      try { localStorage.removeItem(CAMPAIGN_STORAGE_KEY); } catch {}
+      return;
+    }
+    try {
+      localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify({
+        selectedProduct,
+        panelCampaign,
+        draftMessage,
+        queue: campaignQueue,
+      }));
+    } catch {}
+  }, [inCampaign, selectedProduct, panelCampaign, draftMessage, campaignQueue]);
+
+  // Restore on mount — guarded so this only fires once and only if the
+  // panel has no campaign in memory yet (first paint).
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(CAMPAIGN_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        selectedProduct?: { id: string; name: string };
+        panelCampaign?: PanelCampaignDraft;
+        draftMessage?: string;
+        queue?: CampaignQueueItem[];
+      };
+      if (
+        !saved.selectedProduct?.id ||
+        !saved.panelCampaign?.productId ||
+        !Array.isArray(saved.queue) ||
+        saved.queue.length === 0
+      ) return;
+      setSelectedProduct(saved.selectedProduct);
+      setPanelCampaign(saved.panelCampaign);
+      setDraftMessage(saved.draftMessage || saved.panelCampaign.templateMessage || '');
+      setCampaignQueue(saved.queue);
+    } catch {
+      // Corrupt storage — drop it.
+      try { localStorage.removeItem(CAMPAIGN_STORAGE_KEY); } catch {}
+    }
+  }, []);
 
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
 
+  // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: total render-prep cost for the
+  // module. JSX construction itself is React-internal and not measured
+  // here — only the synchronous work above (engine + memos + cards).
+  if (INTEL_PERF_ENABLED) perfLog('intel.module.render.total', _renderT0);
+
   return (
     <div className="space-y-3 p-3 pb-8" style={{ background: PAGE_BG, minHeight: '100%' }}>
 
-      {/* ── 1. CHAT ─────────────────────────────────────────── */}
-      <div>
-        <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} />
-
-        {/* Quick-action chips */}
-        <div className="flex flex-wrap gap-2 mt-2 px-1">
-          <QuickChip label={t('intelligence.dash.buyTitle')}     color="#10B981" onClick={() => fireChip('intelligence.dash.quickBuy')} />
-          <QuickChip label={t('intelligence.dash.contactTitle')} color="#3B82F6" onClick={() => fireChip('intelligence.dash.quickContact')} />
-          <QuickChip label={t('intelligence.dash.profitTitle')}  color="#EF4444" onClick={() => fireChip('intelligence.dash.quickProfit')} />
-          <QuickChip label={t('intelligence.dash.sellTitle')}    color="#8B5CF6" onClick={() => fireChip('intelligence.dash.quickSell')} />
+      {/* ── 1. TOP OPERATOR SUMMARY ─────────────────────────── */}
+      <div
+        className="rounded-lg border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 justify-between"
+        style={{ background: CARD_BG, borderColor: CARD_BORDER }}
+      >
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="text-[10px] font-semibold text-slate-500 tracking-widest">
+            {t('intelligence.console.todayLabel')}
+          </span>
+          <span className="text-base font-bold text-emerald-400">
+            {formatCurrency(todayRevenue)} <span className="text-xs font-normal text-slate-500">{t('intelligence.console.salesAbbr')}</span>
+          </span>
+          <span className="text-sm text-slate-300">
+            {todaySales.length} <span className="text-xs text-slate-500">{t('intelligence.console.ordersAbbr')}</span>
+          </span>
+          <span className={`text-sm ${totalAlerts > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+            {totalAlerts} <span className="text-xs text-slate-500">{t('intelligence.console.alertsAbbr')}</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">{t('intelligence.console.biggestOpportunity')}</span>
+          <span className="text-xs font-medium text-purple-300">
+            {productOpps.length > 0
+              ? t(
+                  'intelligence.console.opportunitiesFound',
+                  productOpps.length,
+                  formatCurrency(productOpps.reduce((s, o) => s + o.impactCents, 0)),
+                )
+              : (biggestLeak > 0 ? topInsight : t('intelligence.dash.noneYet'))
+            }
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <ConsoleBtn label={t('intelligence.console.collectPayments')} accent="#10B981"
+            onClick={() => fireChipKey('intelligence.console.queryContactToday')} />
+          <ConsoleBtn label={t('intelligence.console.promoteProduct')} accent="#8B5CF6"
+            onClick={focusPromote} />
+          <ConsoleBtn label={t('intelligence.console.contactCustomers')} accent="#3B82F6"
+            onClick={() => fireChipKey('intelligence.console.queryContactToday')} />
         </div>
       </div>
 
-      {/* ── 2. TODAY SUMMARY ────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <SummaryCard label={t('intelligence.dash.todaySales')}     value={formatCurrency(todayRevenue)}            accent="#10B981" />
-        <SummaryCard label={t('intelligence.dash.todayOrders')}    value={String(todaySales.length)}               accent="#3B82F6" />
-        <SummaryCard label={t('intelligence.dash.todayAlerts')}    value={String(totalAlerts)}                     accent="#F59E0B" />
-        <SummaryCard label={t('intelligence.dash.todayCustomers')} value={String(kpi.customers.total)}             accent="#8B5CF6" />
-      </div>
+      {/* ── 2. OPERATIONAL CARDS (LEFT) + CHAT PANEL (RIGHT) ──
+          R-INTELLIGENCE-OPERATOR-UX-V1: redesigned to a Quick-Actions-
+          inspired command-center hierarchy. 6 large action cards
+          dominate the left; chat lives in a narrower right sidebar so
+          it supports operations instead of dominating the viewport.
+          All firing actions reuse the existing fireChat / focusPromote
+          callbacks — no intelligence logic changed. */}
+      <div className="grid grid-cols-12 gap-3">
 
-      {/* ── 3. SMART ACTIONS ────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {/* What to Buy */}
-        <SmartCard
-          title={t('intelligence.dash.buyTitle')}
-          value={reorderRecs.length > 0 ? String(reorderRecs.length) : '—'}
-          sub={reorderRecs.length > 0 ? t('intelligence.dash.buySub', reorderRecs.length) : t('intelligence.dash.noneYet')}
-          detail={reorderRecs.length > 0 && reorderRecs.reduce((s, r) => s + r.lostRevenueRiskCents, 0) > 0
-            ? `${formatCurrency(reorderRecs.reduce((s, r) => s + r.lostRevenueRiskCents, 0))} ${t('intelligence.dash.buyRisk')}`
-            : undefined}
-          accent="#10B981"
-          btnLabel={t('intelligence.dash.viewBtn')}
-          onBtn={() => fireChip('intelligence.dash.quickBuy')}
-        />
+        {/* LEFT: Operational cards grid */}
+        <div className="col-span-12 lg:col-span-8">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+            {t('intelligence.console.makeMoneyTitle')}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <OpCard
+              icon="💰"
+              title={t('intelligence.console.collectMoneyTitle')}
+              description={t('intelligence.console.collectMoneySub')}
+              stat={
+                staleRepairStats.recoverable >= 2000
+                  ? formatCurrency(staleRepairStats.recoverable)
+                  : missedRev.deadStockLockedCents > 0
+                    ? formatCurrency(missedRev.deadStockLockedCents)
+                    : undefined
+              }
+              accent="#10B981"
+              onClick={() => fireChat('where is money stuck')}
+            />
+            <OpCard
+              icon="🤝"
+              title={t('intelligence.console.closeDealsTitle')}
+              description={t('intelligence.console.closeDealsSub')}
+              accent="#22C55E"
+              onClick={() => fireChat('help me close sales today')}
+            />
+            <OpCard
+              icon="🚀"
+              title={t('intelligence.console.promoteProduct')}
+              description={t('intelligence.console.promoteSub')}
+              stat={productOpps.length > 0 ? String(productOpps.length) : undefined}
+              accent="#8B5CF6"
+              onClick={focusPromote}
+            />
+            <OpCard
+              icon="📞"
+              title={t('intelligence.console.contactCustomers')}
+              description={t('intelligence.console.contactSub')}
+              stat={outreachCount >= 2 ? String(outreachCount) : undefined}
+              accent="#3B82F6"
+              onClick={() => fireChipKey('intelligence.console.queryContactToday')}
+            />
+            <OpCard
+              icon="🔧"
+              title={t('intelligence.console.repairsReadyTitle')}
+              description={t('intelligence.console.repairsReadySub')}
+              stat={
+                kpi.repairs.pending > 0
+                  ? (staleRepairStats.count > 0
+                      ? `${kpi.repairs.pending} · ${staleRepairStats.count} ${t('intelligence.console.staleLabel')}`
+                      : String(kpi.repairs.pending))
+                  : undefined
+              }
+              accent="#F59E0B"
+              onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')}
+            />
+            <OpCard
+              icon="💸"
+              title={t('intelligence.console.fixProfitTitle')}
+              description={t('intelligence.console.fixProfitSub')}
+              stat={biggestLeak > 0 ? formatCurrency(biggestLeak) : undefined}
+              accent="#EF4444"
+              onClick={() => fireChipKey('intelligence.dash.quickProfit')}
+            />
+          </div>
+        </div>
 
-        {/* Who to Contact */}
-        <SmartCard
-          title={t('intelligence.dash.contactTitle')}
-          value={contactPreds.length > 0 ? String(contactPreds.length) : '—'}
-          sub={contactPreds.length > 0 ? t('intelligence.dash.contactSub', contactPreds.length) : t('intelligence.dash.noneYet')}
-          accent="#3B82F6"
-          btnLabel={t('intelligence.dash.viewBtn')}
-          onBtn={() => fireChip('intelligence.dash.quickContact')}
-        />
-
-        {/* Profit Leaks */}
-        <SmartCard
-          title={t('intelligence.dash.profitTitle')}
-          value={biggestLeak > 0 ? formatCurrency(biggestLeak) : '—'}
-          sub={biggestLeak > 0 ? t('intelligence.dash.profitSub') : t('intelligence.dash.noneYet')}
-          accent="#EF4444"
-          btnLabel={t('intelligence.dash.viewBtn')}
-          onBtn={() => fireChip('intelligence.dash.quickProfit')}
-        />
-
-        {/* What to Sell */}
-        <SmartCard
-          title={t('intelligence.dash.sellTitle')}
-          value={productOpps.length > 0 ? String(productOpps.length) : '—'}
-          sub={productOpps.length > 0 ? t('intelligence.dash.sellSub', productOpps.length) : t('intelligence.dash.noneYet')}
-          detail={productOpps.length > 0 && productOpps.reduce((s, o) => s + o.impactCents, 0) > 0
-            ? formatCurrency(productOpps.reduce((s, o) => s + o.impactCents, 0))
-            : undefined}
-          accent="#8B5CF6"
-          btnLabel={t('intelligence.dash.viewBtn')}
-          onBtn={() => fireChip('intelligence.dash.quickSell')}
-        />
-      </div>
-
-      {/* ── 4. TOP INSIGHT ──────────────────────────────────── */}
-      <div className="rounded-lg px-4 py-3 border text-sm font-medium text-slate-200"
-        style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-        {topInsight}
-      </div>
-
-      {/* ── 5. KEY NUMBERS ──────────────────────────────────── */}
-      <div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 px-1">
-          {t('intelligence.dash.keyTitle')}
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MiniCard label={t('intelligence.dash.keyRevenue')}      value={formatCurrency(kpi.revenue.current)} />
-          <MiniCard label={t('intelligence.dash.keyTransactions')} value={String(kpi.transactions.count)} />
-          <MiniCard label={t('intelligence.dash.keyAvgTicket')}    value={formatCurrency(kpi.transactions.avgSize)} />
-          <MiniCard label={t('intelligence.dash.keyDeadStock')}    value={String(kpi.inventory.deadStockCount)} accent={kpi.inventory.deadStockCount > 0 ? '#EF4444' : undefined} />
+        {/* RIGHT: Chat sidebar — narrower assistant panel */}
+        <div className="col-span-12 lg:col-span-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+            {t('intelligence.console.askTitle')}
+          </p>
+          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} onOpenPromote={handleOpenPromote} onPanelCampaign={handlePanelCampaign} />
         </div>
       </div>
 
-      {/* ── 6. ALERTS ───────────────────────────────────────── */}
-      <div className="rounded-lg border p-4" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-          {t('intelligence.dash.alertsTitle')}
-        </p>
-        {alertItems.length === 0
-          ? <p className="text-sm text-slate-400">{t('intelligence.dash.noAlerts')}</p>
-          : (
-            <div className="space-y-2">
-              {alertItems.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: a.color }} />
-                  <span className="text-slate-200">{a.label}</span>
+      {/* ── 3. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      <div className="grid grid-cols-12 gap-3">
+
+        {/* Promote Inventory */}
+        <div ref={promoteRef} className="col-span-12 lg:col-span-6 rounded-lg border p-3"
+          style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
+          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+            {t('intelligence.console.promoteInvTitle')}
+          </p>
+          {!selectedProduct ? (
+            <div>
+              <input
+                type="text"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                placeholder={t('intelligence.console.searchProduct')}
+                className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-sm border border-surface-600 focus:outline-none focus:border-purple-500"
+              />
+              {productMatches.length > 0 ? (
+                <div className="mt-2 rounded border border-surface-700 divide-y divide-surface-700 max-h-44 overflow-y-auto">
+                  {productMatches.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setSelectedProduct({ id: p.id, name: p.name }); setProductSearch(''); }}
+                      className="w-full text-left px-3 py-2 hover:bg-surface-700 transition"
+                    >
+                      <div className="text-sm text-slate-200 font-medium truncate">{p.name}</div>
+                      <div className="text-[11px] text-slate-500 flex gap-3">
+                        <span>SKU {p.sku}</span>
+                        {(p as { qty?: number }).qty !== undefined && <span>Qty {(p as { qty?: number }).qty}</span>}
+                        {(p as { price?: number }).price !== undefined && <span>{formatCurrency((p as { price?: number }).price ?? 0)}</span>}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              ) : productSearch.trim().length < 2 ? (
+                <p className="text-[11px] text-slate-500 italic mt-2">{t('intelligence.console.promoteInvEmpty')}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* ── 1. PRODUCT / STRATEGY SUMMARY (top) ────────────────── */}
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded border border-purple-500/30 bg-purple-500/5">
+                <div className="min-w-0">
+                  <div className="text-sm text-slate-100 font-medium truncate">{selectedProduct.name}</div>
+                  {/* R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: strategy line
+                      derived from candidates — targeted vs broad. Pure read,
+                      no scan. */}
+                  {panelCampaign && panelCampaign.productId === selectedProduct.id && (
+                    <div className="text-[11px] text-purple-300 mt-0.5">
+                      {panelCampaign.candidates.length > 0
+                        ? t('intelligence.console.campaignStrategyTargeted', panelCampaign.candidates.length)
+                        : t('intelligence.console.campaignStrategyBroad')}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    setPanelCampaign(null);
+                    setDraftMessage('');
+                    // R-CAMPAIGN-QUEUE-V1: also clear queue + selection
+                    // so a fresh product start lands in pre-campaign mode.
+                    setSelectedRecipientIds(new Set());
+                    setCampaignQueue([]);
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600 shrink-0"
+                >
+                  {t('intelligence.console.changeProduct')}
+                </button>
+              </div>
+
+              {/* ── 2. NO-CAMPAIGN STATE: manual generate fallback ─────── */}
+              {(!panelCampaign || panelCampaign.productId !== selectedProduct.id) && (
+                <button
+                  onClick={handleGenerateCampaign}
+                  className="w-full px-3 py-2 rounded text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition"
+                >
+                  🚀 {t('intelligence.console.generateCampaign')}
+                </button>
+              )}
+
+              {/* ── 3. CAMPAIGN WORKSPACE ──────────────────────────────
+                  R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: selectable rows
+                  (no per-row buttons), single primary action at the bottom.
+                  Layout order matches spec: textarea → recipients → action. */}
+              {panelCampaign && panelCampaign.productId === selectedProduct.id && (
+                <>
+                  {/* 3a. Campaign draft textarea (center) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                        {t('intelligence.console.campaignDraftTitle')}
+                      </span>
+                      {draftMessage !== panelCampaign.templateMessage && (
+                        <span className="text-[10px] text-amber-400">
+                          {t('intelligence.console.campaignEditedHint')}
+                        </span>
+                      )}
+                    </div>
+                    <textarea
+                      value={draftMessage}
+                      onChange={(e) => setDraftMessage(e.target.value)}
+                      rows={4}
+                      className="w-full bg-surface-700 text-slate-200 rounded px-3 py-2 text-xs border border-surface-600 focus:outline-none focus:border-purple-500 font-mono leading-relaxed"
+                      placeholder={t('intelligence.console.campaignDraftPlaceholder')}
+                    />
+                    <p className="text-[10px] text-slate-500 italic">
+                      {t('intelligence.console.campaignSubstitutionHint')}
+                    </p>
+                  </div>
+
+                  {/* 3b. Recipients — R-CAMPAIGN-QUEUE-V1: pre-campaign
+                      shows multi-select checkboxes with a "select-all"
+                      header; in-campaign shows the queue with per-item
+                      status icons. Switching modes is driven entirely
+                      by `inCampaign` (campaignQueue.length > 0). */}
+                  {panelCampaign.candidates.length > 0 && !inCampaign && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-slate-400">
+                          {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={toggleAllRecipients}
+                          className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-surface-600"
+                        >
+                          {selectedRecipientIds.size === panelCampaign.candidates.length
+                            ? t('intelligence.console.campaignDeselectAll')
+                            : t('intelligence.console.campaignSelectAll')}
+                        </button>
+                      </div>
+                      <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden">
+                        {panelCampaign.candidates.map((c) => {
+                          const isSelected = selectedRecipientIds.has(c.customerId);
+                          const confidenceClass = c.confidence === 'high'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : c.confidence === 'medium'
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : 'bg-slate-500/20 text-slate-400';
+                          const confidenceLabel = c.confidence === 'high'
+                            ? t('intelligence.console.confidenceHigh')
+                            : c.confidence === 'medium'
+                              ? t('intelligence.console.confidenceMedium')
+                              : t('intelligence.console.confidenceLow');
+                          return (
+                            <button
+                              key={c.customerId}
+                              type="button"
+                              onClick={() => toggleRecipient(c.customerId)}
+                              className={`w-full text-left flex items-center gap-2 px-3 py-2 transition ${
+                                isSelected ? 'bg-purple-500/10' : 'hover:bg-surface-700'
+                              }`}
+                            >
+                              {/* Checkbox-style indicator */}
+                              <span
+                                className={`w-4 h-4 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center text-[10px] leading-none ${
+                                  isSelected ? 'border-purple-400 bg-purple-500 text-white' : 'border-slate-500'
+                                }`}
+                                aria-hidden
+                              >
+                                {isSelected ? '✓' : ''}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-sm truncate ${isSelected ? 'text-purple-200 font-medium' : 'text-slate-200'}`}>
+                                  {c.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono truncate">{c.phone}</div>
+                                {c.reasonKey && (
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[11px] text-slate-400 truncate">
+                                      💡 {t(c.reasonKey, c.reasonArg)}
+                                    </span>
+                                    {c.confidence && (
+                                      <span className={`px-1.5 py-0 text-[9px] font-bold rounded shrink-0 ${confidenceClass}`}>
+                                        {confidenceLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3b'. In-campaign queue view — progress + status list. */}
+                  {inCampaign && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-slate-400">
+                        {t('intelligence.console.campaignProgressLabel', queueProcessedCount, campaignQueue.length)}
+                      </p>
+                      <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden max-h-56 overflow-y-auto">
+                        {campaignQueue.map((q) => {
+                          const isCurrent = q.status === 'pending' && currentRecipient?.customerId === q.customerId;
+                          const icon = q.status === 'sent' ? '✅'
+                            : q.status === 'skipped' ? '⏭️'
+                            : isCurrent ? '👉'
+                            : '⏳';
+                          return (
+                            <div
+                              key={q.customerId}
+                              className={`flex items-center gap-2 px-3 py-2 ${
+                                isCurrent ? 'bg-emerald-500/10' : ''
+                              }`}
+                            >
+                              <span className="text-base shrink-0" aria-hidden>{icon}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-sm truncate ${
+                                  q.status === 'sent' ? 'text-emerald-300'
+                                  : q.status === 'skipped' ? 'text-slate-500 line-through'
+                                  : isCurrent ? 'text-emerald-200 font-medium'
+                                  : 'text-slate-300'
+                                }`}>
+                                  {q.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono truncate">{q.phone}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3c. Action buttons — R-CAMPAIGN-QUEUE-V1
+                      pre-campaign: "Iniciar campaña (N)"
+                      in-campaign:  "Abrir WhatsApp con {nombre}" + skip + end
+                      all-done:     "Cerrar campaña"
+                      no candidates (broadcast):  unchanged single-shot wa.me */}
+                  {panelCampaign.candidates.length === 0 ? (
+                    <button
+                      onClick={handlePanelBroadcast}
+                      disabled={!draftMessage.trim()}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      📲 {t('intelligence.console.campaignBroadcastLabel')}
+                    </button>
+                  ) : !inCampaign ? (
+                    <button
+                      onClick={startCampaign}
+                      disabled={!draftMessage.trim() || selectedRecipientIds.size === 0}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={t('intelligence.console.campaignSendTooltip')}
+                    >
+                      🚀 {t('intelligence.console.campaignStartLabel', selectedRecipientIds.size)}
+                    </button>
+                  ) : allDone ? (
+                    <button
+                      onClick={endCampaign}
+                      className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                    >
+                      ✅ {t('intelligence.console.campaignDoneLabel')}
+                    </button>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={sendCurrentRecipient}
+                        className="w-full px-3 py-2.5 rounded text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                      >
+                        📲 {t('intelligence.console.campaignOpenWithLabel', currentRecipient?.name || '')}
+                      </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={skipCurrentRecipient}
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition"
+                        >
+                          ⏭️ {t('intelligence.console.campaignSkipLabel')}
+                        </button>
+                        <button
+                          onClick={endCampaign}
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-medium bg-rose-700/70 hover:bg-rose-600/70 text-rose-100 transition"
+                        >
+                          ✋ {t('intelligence.console.campaignEndLabel')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
-      </div>
+        </div>
 
-      {/* ── Customer Lookup ──────────────────────────────────── */}
-      <div className="rounded-lg p-4 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-200">🔍 {t('intelligence.customerHistory')}</h3>
-            <p className="text-xs text-slate-400">{t('intelligence.searchPlaceholder')}</p>
+        {/* Customer Lookup — sibling to Promote Inventory (same grid row) */}
+        <div className="col-span-12 lg:col-span-6 rounded-lg p-4 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-200">🔍 {t('intelligence.customerHistory')}</h3>
+              <p className="text-xs text-slate-400">{t('intelligence.searchPlaceholder')}</p>
           </div>
           {selectedCustomerId && (
             <button
@@ -281,14 +991,16 @@ export default function IntelligenceModule() {
           </div>
         )}
 
-        {history && <CustomerHistoryCard history={history} />}
+          {history && <CustomerHistoryCard history={history} />}
+        </div>
       </div>
 
       {/* Refresh button (bottom) */}
       <div className="flex justify-end">
         <button
           onClick={handleRefresh}
-          className="text-xs px-3 py-1.5 rounded border border-surface-700 hover:border-surface-500 text-slate-400 hover:text-slate-300 transition"
+          disabled={isRefreshing}
+          className="text-xs px-3 py-1.5 rounded border border-surface-700 hover:border-surface-500 text-slate-400 hover:text-slate-300 transition disabled:opacity-50 disabled:cursor-wait"
         >
           🔄 {t('intelligence.refresh')}
         </button>
@@ -299,11 +1011,74 @@ export default function IntelligenceModule() {
 
 // ── Presentational sub-components ─────────────────────────────
 
-function QuickChip({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+// R-INTELLIGENCE-OPERATOR-UX-V1: large operational action card —
+// Quick-Actions inspired. Action-first, optional stat, clear CTA.
+// No animations, no shadows, no blur — lightweight transitions only.
+function OpCard({
+  icon, title, description, stat, accent, onClick,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  stat?: string;
+  accent: string;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      className="px-3 py-1 rounded-full text-xs font-medium transition hover:opacity-80 active:scale-95"
+      className="text-left rounded-lg border p-4 hover:border-slate-500 transition-colors duration-150 active:scale-[0.99] w-full"
+      style={{
+        background: CARD_BG,
+        borderColor: CARD_BORDER,
+        borderLeftWidth: 3,
+        borderLeftColor: accent,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span className="text-2xl shrink-0">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-slate-100 leading-snug">{title}</div>
+          {stat && (
+            <div className="text-lg font-bold mt-1" style={{ color: accent }}>{stat}</div>
+          )}
+          <div className="text-xs text-slate-400 mt-1 leading-snug">{description}</div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ConsoleBtn({ label, accent, onClick }: { label: string; accent: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 rounded text-xs font-semibold transition hover:opacity-90 active:scale-95"
+      style={{ background: accent, color: '#0B1220' }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MoneyTile({ title, sub, accent, onClick }: { title: string; sub: string; accent: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left rounded-lg border p-3 hover:opacity-90 active:scale-[0.98] transition"
+      style={{ background: CARD_BG, borderColor: accent + '55' }}
+    >
+      <p className="text-sm font-semibold" style={{ color: accent }}>{title}</p>
+      <p className="text-[11px] text-slate-400 mt-1 leading-snug">{sub}</p>
+    </button>
+  );
+}
+
+function Chip({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2.5 py-0.5 rounded-full text-[11px] font-medium transition hover:opacity-80 active:scale-95"
       style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}
     >
       {label}
@@ -311,45 +1086,15 @@ function QuickChip({ label, color, onClick }: { label: string; color: string; on
   );
 }
 
-function SummaryCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+function WaBtn({ label, accent, onClick }: { label: string; accent: string; onClick: () => void }) {
   return (
-    <div className="rounded-lg p-4 border flex flex-col gap-1" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-      <span className="text-xs text-slate-400 uppercase tracking-wide">{label}</span>
-      <span className="text-2xl font-bold" style={{ color: accent }}>{value}</span>
-    </div>
-  );
-}
-
-function SmartCard({
-  title, value, sub, detail, accent, btnLabel, onBtn,
-}: {
-  title: string; value: string; sub: string; detail?: string;
-  accent: string; btnLabel: string; onBtn: () => void;
-}) {
-  return (
-    <div className="rounded-lg p-4 border flex flex-col gap-2"
-      style={{ background: CARD_BG, borderColor: accent + '44' }}>
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{title}</p>
-      <p className="text-3xl font-bold" style={{ color: accent }}>{value}</p>
-      <p className="text-xs text-slate-400">{sub}</p>
-      {detail && <p className="text-xs font-medium" style={{ color: accent }}>{detail}</p>}
-      <button
-        onClick={onBtn}
-        className="mt-auto self-start text-xs px-3 py-1.5 rounded font-medium transition hover:opacity-80"
-        style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}44` }}
-      >
-        {btnLabel}
-      </button>
-    </div>
-  );
-}
-
-function MiniCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div className="rounded-lg p-3 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-      <p className="text-[0.68rem] text-slate-400 uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-bold mt-0.5" style={{ color: accent ?? '#E2E8F0' }}>{value}</p>
-    </div>
+    <button
+      onClick={onClick}
+      className="px-3 py-2 rounded text-xs font-medium transition hover:opacity-90 active:scale-95 text-left"
+      style={{ background: `${accent}1F`, color: accent, border: `1px solid ${accent}55` }}
+    >
+      {label}
+    </button>
   );
 }
 

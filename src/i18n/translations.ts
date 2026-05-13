@@ -100,7 +100,7 @@ export const translations: TranslationDictionary = {
   'caSalesTax': { en: 'CA Sales Tax', es: 'Impuesto de Venta CA', pt: 'Imposto sobre Vendas CA' },
   'caSurchargeLabel': { en: 'CA Mobile Telephony Surcharge ($)', es: 'Recargo CA Mobile Telephony ($)', pt: 'Taxa de Telefonia Móvel CA ($)' },
   'caSurchargeShort': { en: 'CA Mobility Fee', es: 'Recargo Móvil CA', pt: 'Taxa de Mobilidade CA' },
-  'caTaxReports': { en: 'Taxes', es: 'Impuestos', pt: 'Impostos' },
+  'caTaxReports': { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'californiaCdtfaFormSummary': { en: '📋 California CDTFA Form Summary', es: '📋 Resumen del Formulario CDTFA de California', pt: '📋 Resumo do Formulário CDTFA da Califórnia' },
   'californiaSalesTax': { en: 'California Sales Tax - Quarterly', es: 'Impuesto de Venta de California - Trimestral', pt: 'Imposto sobre Vendas da Califórnia - Trimestral' },
   'callUs': { en: 'Call Us', es: 'Llámanos', pt: 'Ligue para Nós' },
@@ -144,8 +144,298 @@ export const translations: TranslationDictionary = {
   'chat.contact.dayPlural': { en: (n: number) => `${n} days`, es: (n: number) => `${n} días`, pt: (n: number) => `${n} dias` },
   'chat.contact.empty': { en: 'No customers with an expected visit are overdue. All caught up!', es: 'Ningún cliente con visita esperada está atrasado. ¡Todos al día!', pt: 'Nenhum cliente com visita esperada está atrasado. Tudo em dia!' },
   'chat.contact.header': { en: (n: number) => `${n} customers you should reach out to today:`, es: (n: number) => `${n} clientes que deberías contactar hoy:`, pt: (n: number) => `${n} clientes que você deve contatar hoje:` },
+  // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: summary line when more candidates exist beyond the visible top 3.
+  'chat.contact.remaining': {
+    en: (n: number) => `${n} more on the list.`,
+    es: (n: number) => `${n} más en la lista.`,
+    pt: (n: number) => `${n} mais na lista.`,
+  },
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: per-customer WhatsApp button label.
+  'chat.contact.waActionLabel': {
+    en: (firstName: string) => `WhatsApp ${firstName}`,
+    es: (firstName: string) => `WhatsApp ${firstName}`,
+    pt: (firstName: string) => `WhatsApp ${firstName}`,
+  },
   'chat.contact.message': { en: (name: string, days: number) => `💬 "Hi ${name}, it's been ${days} days since your last visit. Stop by when you can!"`, es: (name: string, days: number) => `💬 "Hola ${name}, han pasado ${days} días desde tu última visita. ¡Pásate cuando puedas!"`, pt: (name: string, days: number) => `💬 "Oi ${name}, faz ${days} dias desde sua última visita. Passe por aqui quando puder!"` },
   'chat.contact.overdue': { en: 'overdue', es: 'atrasado', pt: 'atrasado' },
+  // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today_summary intent strings.
+  'chat.today.header': { en: '📊 Today', es: '📊 Hoy', pt: '📊 Hoje' },
+  'chat.today.empty': {
+    en: 'No sales today yet — let\'s get the first one.',
+    es: 'Aún no hay ventas hoy — vamos por la primera.',
+    pt: 'Ainda não há vendas hoje — vamos pela primeira.',
+  },
+  'chat.today.revenueLabel': { en: 'Revenue', es: 'Ventas', pt: 'Vendas' },
+  'chat.today.transactionsLabel': { en: 'Transactions', es: 'Transacciones', pt: 'Transações' },
+  'chat.today.avgTicketLabel': { en: 'Avg ticket', es: 'Ticket promedio', pt: 'Ticket médio' },
+  'chat.today.topSellerLabel': { en: 'Top seller', es: 'Más vendido', pt: 'Mais vendido' },
+  'chat.today.actionLabel': { en: 'Action', es: 'Acción', pt: 'Ação' },
+  'chat.today.actionWithTopSeller': {
+    en: (name: string) => `keep pushing ${name} or collect pending phone payments to close more today`,
+    es: (name: string) => `sigue empujando ${name} o revisa pagos pendientes para cerrar más hoy`,
+    pt: (name: string) => `continue empurrando ${name} ou cobre pagamentos pendentes para fechar mais hoje`,
+  },
+  'chat.today.actionGeneric': {
+    en: 'collect pending phone payments and follow up with recent customers to close more today',
+    es: 'revisa pagos pendientes y contacta clientes recientes para cerrar más hoy',
+    pt: 'cobre pagamentos pendentes e contate clientes recentes para fechar mais hoje',
+  },
+  'chat.today.followup': {
+    en: (revenue: string, tx: number, avgTicket: string) => `No major change since your last check: ${revenue} today, ${tx} transaction${tx === 1 ? '' : 's'}, avg ticket ${avgTicket}.`,
+    es: (revenue: string, tx: number, avgTicket: string) => `Sin cambios importantes desde la última consulta: ${revenue} hoy, ${tx} transaccion${tx === 1 ? '' : 'es'}, ticket promedio ${avgTicket}.`,
+    pt: (revenue: string, tx: number, avgTicket: string) => `Sem mudanças importantes desde a última consulta: ${revenue} hoje, ${tx} transaç${tx === 1 ? 'ão' : 'ões'}, ticket médio ${avgTicket}.`,
+  },
+  // R-INTEL-WHO-TO-CONTACT-TODAY: deterministic top-3 outreach intent.
+  'chat.whoToContact.header': { en: 'Contact these customers today:', es: 'Contacta a estos clientes hoy:', pt: 'Contate estes clientes hoje:' },
+  'chat.whoToContact.empty': { en: 'No customers qualify for outreach right now.', es: 'Ningún cliente califica para contactar ahora.', pt: 'Nenhum cliente qualifica para contato agora.' },
+  'chat.whoToContact.reasonHighValueInactive': {
+    en: (name: string, days: number, spent: string) => `${name} has spent ${spent} but hasn't visited in ${days} days`,
+    es: (name: string, days: number, spent: string) => `${name} ha gastado ${spent} pero no visita hace ${days} días`,
+    pt: (name: string, days: number, spent: string) => `${name} gastou ${spent} mas não visita há ${days} dias`,
+  },
+  'chat.whoToContact.reasonFrequentInactive': {
+    en: (name: string, visits: number, days: number) => `${name} has ${visits} visits but hasn't been in for ${days} days`,
+    es: (name: string, visits: number, days: number) => `${name} tiene ${visits} visitas pero no viene hace ${days} días`,
+    pt: (name: string, visits: number, days: number) => `${name} tem ${visits} visitas mas não vem há ${days} dias`,
+  },
+  'chat.whoToContact.reasonRecentBuyer': {
+    en: (name: string, days: number) => `${name} bought ${days} day(s) ago — fresh in mind`,
+    es: (name: string, days: number) => `${name} compró hace ${days} día(s) — fresco en la mente`,
+    pt: (name: string, days: number) => `${name} comprou há ${days} dia(s) — recente`,
+  },
+  'chat.whoToContact.actionComeback': { en: '→ Send a comeback offer (10% off, free check-up)', es: '→ Envía oferta de regreso (10% descuento, revisión gratis)', pt: '→ Envie oferta de retorno (10% desconto, checagem grátis)' },
+  'chat.whoToContact.actionRefill': { en: '→ Ask if they need a refill or accessory', es: '→ Pregunta si necesitan recarga o accesorio', pt: '→ Pergunte se precisam de recarga ou acessório' },
+  'chat.whoToContact.actionAccessory': { en: '→ Offer a matching accessory or add-on', es: '→ Ofrece un accesorio o complemento', pt: '→ Ofereça um acessório ou complemento' },
+  'chat.whoToContact.actionFollowUp': { en: '→ Follow up on the repair: satisfaction + protector/case upsell', es: '→ Sigue con la reparación: satisfacción + funda/protector', pt: '→ Acompanhe o reparo: satisfação + capa/protetor' },
+  // R-INTEL-MARKETING-ENGINE-V1: deterministic 3-campaign marketing intent.
+  'chat.marketing.header': { en: '📣 Recommended marketing campaigns:', es: '📣 Campañas de marketing recomendadas:', pt: '📣 Campanhas de marketing recomendadas:' },
+  'chat.marketing.empty': { en: 'Not enough customer or inventory signals for a campaign yet.', es: 'Aún no hay suficientes señales de clientes o inventario para una campaña.', pt: 'Ainda não há sinais suficientes de clientes ou estoque para uma campanha.' },
+  'chat.marketing.priorityHigh': { en: 'HIGH', es: 'ALTA', pt: 'ALTA' },
+  'chat.marketing.priorityMedium': { en: 'MEDIUM', es: 'MEDIA', pt: 'MÉDIA' },
+  'chat.marketing.priorityLow': { en: 'LOW', es: 'BAJA', pt: 'BAIXA' },
+  'chat.marketing.targetLabel': { en: 'Target', es: 'Audiencia', pt: 'Público' },
+  'chat.marketing.whyLabel': { en: 'Why', es: 'Por qué', pt: 'Por quê' },
+  'chat.marketing.messageLabel': { en: 'Suggested message', es: 'Mensaje sugerido', pt: 'Mensagem sugerida' },
+  'chat.marketing.campaignComeback.name': { en: 'Comeback Campaign', es: 'Campaña de Regreso', pt: 'Campanha de Retorno' },
+  'chat.marketing.campaignComeback.target': {
+    en: (count: number) => `${count} customers — inactive 14+ days, high value or frequent`,
+    es: (count: number) => `${count} clientes — inactivos 14+ días, alto valor o frecuentes`,
+    pt: (count: number) => `${count} clientes — inativos 14+ dias, alto valor ou frequentes`,
+  },
+  'chat.marketing.campaignComeback.why': {
+    en: (count: number) => `${count} customers haven't visited in 14+ days; bring them back before they churn`,
+    es: (count: number) => `${count} clientes no visitan hace 14+ días; tráelos antes de perderlos`,
+    pt: (count: number) => `${count} clientes não visitam há 14+ dias; traga-os de volta antes de perdê-los`,
+  },
+  'chat.marketing.campaignComeback.message': {
+    en: (name: string) => `Hi ${name}, we miss you — here's 10% off your next visit or a free check-up.`,
+    es: (name: string) => `Hola ${name}, te extrañamos — 10% de descuento en tu próxima visita o revisión gratis.`,
+    pt: (name: string) => `Oi ${name}, sentimos sua falta — 10% de desconto na próxima visita ou checagem grátis.`,
+  },
+  'chat.marketing.campaignAccessory.name': { en: 'Accessory Upsell', es: 'Venta de Accesorios', pt: 'Upsell de Acessórios' },
+  'chat.marketing.campaignAccessory.target': {
+    en: (count: number) => `${count} customers — recent buyers or repair pickups`,
+    es: (count: number) => `${count} clientes — compras recientes o reparaciones recogidas`,
+    pt: (count: number) => `${count} clientes — compras recentes ou reparos retirados`,
+  },
+  'chat.marketing.campaignAccessory.why': {
+    en: (count: number) => `${count} recent customers are fresh in mind for an accessory or add-on`,
+    es: (count: number) => `${count} clientes recientes están frescos en mente para un accesorio`,
+    pt: (count: number) => `${count} clientes recentes estão na mente para um acessório ou complemento`,
+  },
+  'chat.marketing.campaignAccessory.message': {
+    en: (name: string) => `Hi ${name}, want to add a screen protector, case, or charger to that?`,
+    es: (name: string) => `Hola ${name}, ¿quieres agregar un protector, funda o cargador?`,
+    pt: (name: string) => `Oi ${name}, quer adicionar um protetor, capa ou carregador?`,
+  },
+  'chat.marketing.campaignDeadStock.name': { en: 'Dead Stock Push', es: 'Liquidación de Stock', pt: 'Liquidação de Estoque' },
+  'chat.marketing.campaignDeadStock.target': {
+    en: (count: number, items: string) => `general — ${count} dead-stock items: ${items}`,
+    es: (count: number, items: string) => `general — ${count} artículos sin movimiento: ${items}`,
+    pt: (count: number, items: string) => `geral — ${count} itens parados: ${items}`,
+  },
+  'chat.marketing.campaignDeadStock.why': {
+    en: (items: string) => `Items not moving — promote or discount: ${items}`,
+    es: (items: string) => `Artículos sin movimiento — promociona o descuenta: ${items}`,
+    pt: (items: string) => `Itens parados — promova ou desconto: ${items}`,
+  },
+  'chat.marketing.campaignDeadStock.message': {
+    en: (items: string) => `Clearance week — take a look at our deals on ${items}.`,
+    es: (items: string) => `Semana de liquidación — mira nuestras ofertas en ${items}.`,
+    pt: (items: string) => `Semana de liquidação — confira nossas ofertas em ${items}.`,
+  },
+  // R-INTEL-PRODUCT-PUSH-ENGINE: single-product targeted outreach intent.
+  'chat.productPush.header': {
+    en: (product: string, count: number) => `🎯 Push "${product}" — top ${count} customers most likely to want it:`,
+    es: (product: string, count: number) => `🎯 Promover "${product}" — top ${count} clientes con más interés probable:`,
+    pt: (product: string, count: number) => `🎯 Promover "${product}" — top ${count} clientes com mais interesse provável:`,
+  },
+  'chat.productPush.empty': {
+    en: (product: string) => `No eligible customers to push "${product}" to right now.`,
+    es: (product: string) => `Sin clientes elegibles para promover "${product}" en este momento.`,
+    pt: (product: string) => `Sem clientes elegíveis para promover "${product}" no momento.`,
+  },
+  // R-INTELLIGENCE-COORDINATED-RESPONSES-V1: operator-style fallback when
+  // direct customer targeting isn't possible. Points the owner at the
+  // broader WhatsApp campaign path (Promote Inventory panel → Generate
+  // Campaign button) that's already on screen.
+  // R-OPERATOR-PROMOTE-AUTO-PREPARE-V1: decisive strategy language replacing
+  // the prior dead-end phrasing. Operator should sound operational, not
+  // apologetic — when targeted outreach isn't available, recommend the
+  // broad campaign as the right move, not as a fallback.
+  'chat.productPush.noDirectMatches': {
+    en: (product: string) => `Best strategy for "${product}": broad WhatsApp/Status campaign.`,
+    es: (product: string) => `Mejor estrategia para "${product}": campaña amplia de WhatsApp/Estado.`,
+    pt: (product: string) => `Melhor estratégia para "${product}": campanha ampla de WhatsApp/Status.`,
+  },
+  'chat.productPush.broaderCampaignSuggestion': {
+    en: 'Use this campaign to move stale inventory.',
+    es: 'Usa esta campaña para mover inventario lento.',
+    pt: 'Use esta campanha para movimentar estoque parado.',
+  },
+  'chat.productPush.fallbackPromotionAction': {
+    en: 'Click Promote to open the campaign panel — the draft will be ready.',
+    es: 'Haz clic en Promover para abrir el panel de campaña — el borrador estará listo.',
+    pt: 'Clique em Promover para abrir o painel da campanha — o rascunho estará pronto.',
+  },
+  'chat.productPush.noProduct': {
+    en: 'Tell me which product to push, e.g. "promote this product Galaxy S24".',
+    es: 'Dime qué producto promover, ej. "promocionar producto Galaxy S24".',
+    pt: 'Diga qual produto promover, ex. "promover produto Galaxy S24".',
+  },
+  'chat.productPush.message': {
+    en: (name: string, product: string) => `Hi ${name}, we just got ${product}. Thought you might like it — come check it out today.`,
+    es: (name: string, product: string) => `Hola ${name}, ya tenemos ${product}. Pensé que te podría gustar — pásate hoy a verlo.`,
+    pt: (name: string, product: string) => `Oi ${name}, acabamos de receber ${product}. Achei que você poderia gostar — passe hoje para ver.`,
+  },
+  'chat.productPush.reason': {
+    en: (product: string) => `Product push: ${product}`,
+    es: (product: string) => `Promoción de producto: ${product}`,
+    pt: (product: string) => `Promoção de produto: ${product}`,
+  },
+  'chat.productPush.messagePreviewLabel': { en: 'Suggested message', es: 'Mensaje sugerido', pt: 'Mensagem sugerida' },
+  // R-INVENTORY-PRODUCT-PHOTOS-V1: appended to the WA message when the
+  // matching inventory item has a local photo. The owner can then attach
+  // it manually inside WhatsApp — the app does NOT auto-attach.
+  'chat.productPush.photoMention':        { en: 'I can send you a real photo of the item.', es: 'Puedo enviarte una foto real del producto.', pt: 'Posso te enviar uma foto real do produto.' },
+  // R-INTELLIGENCE-MANUAL-WHATSAPP-PRODUCT-PROMOTION-V1: inline WhatsApp
+  // buttons + summary line when more candidates exist beyond the visible top.
+  'chat.productPush.waActionLabel': {
+    en: (firstName: string) => `Promote to ${firstName}`,
+    es: (firstName: string) => `Promover a ${firstName}`,
+    pt: (firstName: string) => `Promover a ${firstName}`,
+  },
+  'chat.productPush.remaining': {
+    en: (n: number) => `${n} more candidate${n === 1 ? '' : 's'} also queued.`,
+    es: (n: number) => `${n} candidato${n === 1 ? '' : 's'} más en cola.`,
+    pt: (n: number) => `${n} candidato${n === 1 ? '' : 's'} também na fila.`,
+  },
+  // R-INTEL-INVENTORY-PROMOTE-BUTTON: Inventory row Promote button + toast.
+  'inventory.promoteBtn': { en: 'Promote', es: 'Promover', pt: 'Promover' },
+  'inventory.promoteTooltip': { en: 'Promote this product to top customers', es: 'Promocionar este producto a clientes top', pt: 'Promover este produto para clientes top' },
+  'inventory.promoteSuccess': {
+    en: (count: number, name: string) => `${count} customer${count === 1 ? '' : 's'} queued for "${name}" — review in Intelligence queue.`,
+    es: (count: number, name: string) => `${count} cliente${count === 1 ? '' : 's'} en cola para "${name}" — revisa en Intelligence.`,
+    pt: (count: number, name: string) => `${count} cliente${count === 1 ? '' : 's'} na fila para "${name}" — revise em Intelligence.`,
+  },
+  // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal data_query intent strings.
+  'chat.dataQuery.noData': {
+    en: 'No data found for that question — try a more specific query.',
+    es: 'Sin datos para esa pregunta — prueba una consulta más específica.',
+    pt: 'Sem dados para essa pergunta — tente uma consulta mais específica.',
+  },
+  'chat.dataQuery.action': { en: 'Action', es: 'Acción', pt: 'Ação' },
+  'chat.dataQuery.salesHeader': { en: '💰 Sales', es: '💰 Ventas', pt: '💰 Vendas' },
+  'chat.dataQuery.inventoryHeader': { en: '📦 Inventory', es: '📦 Inventario', pt: '📦 Estoque' },
+  'chat.dataQuery.repairsHeader': { en: '🔧 Repairs', es: '🔧 Reparaciones', pt: '🔧 Reparos' },
+  'chat.dataQuery.customersHeader': { en: '👥 Customers', es: '👥 Clientes', pt: '👥 Clientes' },
+  'chat.dataQuery.layawaysHeader': { en: '🏷️ Layaways', es: '🏷️ Apartados', pt: '🏷️ Reservas' },
+  'chat.dataQuery.unlocksHeader': { en: '🔓 Unlocks', es: '🔓 Desbloqueos', pt: '🔓 Desbloqueios' },
+  'chat.dataQuery.phonePaymentsHeader': { en: '📱 Phone payments', es: '📱 Pagos de teléfono', pt: '📱 Pagamentos de telefone' },
+  // R-DATA-EXPENSE-ACCESS-V1
+  'chat.dataQuery.expensesHeader': { en: '💸 Expenses', es: '💸 Gastos', pt: '💸 Despesas' },
+  'chat.dataQuery.expensesTotal': {
+    en: (amt: string) => `Total: ${amt}`,
+    es: (amt: string) => `Total: ${amt}`,
+    pt: (amt: string) => `Total: ${amt}`,
+  },
+  'chat.dataQuery.expensesCount': {
+    en: (n: number) => `${n} expense${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} gasto${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} despesa${n === 1 ? '' : 's'}`,
+  },
+  'chat.dataQuery.expensesTopCategory': {
+    en: (cat: string, amt: string) => `Top category: ${cat} (${amt})`,
+    es: (cat: string, amt: string) => `Categoría principal: ${cat} (${amt})`,
+    pt: (cat: string, amt: string) => `Categoria principal: ${cat} (${amt})`,
+  },
+  // R-DATA-EMPLOYEE-ACCESS-V1
+  'chat.dataQuery.employeesHeader': { en: '👥 Top employees', es: '👥 Mejores empleados', pt: '👥 Melhores funcionários' },
+  'chat.dataQuery.employeesRow': {
+    en: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} sale${tx === 1 ? '' : 's'}`,
+    es: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} venta${tx === 1 ? '' : 's'}`,
+    pt: (name: string, rev: string, tx: number) => `${name}: ${rev} · ${tx} venda${tx === 1 ? '' : 's'}`,
+  },
+  'chat.dataQuery.employeesEmpty': { en: 'No sales attributed to employees in this range.', es: 'No hay ventas atribuidas a empleados en este rango.', pt: 'Nenhuma venda atribuída a funcionários neste período.' },
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  'chat.dataQuery.appointmentsHeader': { en: '📅 Appointments', es: '📅 Citas', pt: '📅 Agendamentos' },
+  'chat.dataQuery.appointmentsToday': {
+    en: (n: number) => `Today: ${n}`,
+    es: (n: number) => `Hoy: ${n}`,
+    pt: (n: number) => `Hoje: ${n}`,
+  },
+  'chat.dataQuery.appointmentsTomorrow': {
+    en: (n: number) => `Tomorrow: ${n}`,
+    es: (n: number) => `Mañana: ${n}`,
+    pt: (n: number) => `Amanhã: ${n}`,
+  },
+  'chat.dataQuery.appointmentsUpcoming': {
+    en: (n: number) => `Upcoming (next 7 days): ${n}`,
+    es: (n: number) => `Próximas (7 días): ${n}`,
+    pt: (n: number) => `Próximos (7 dias): ${n}`,
+  },
+  'chat.dataQuery.appointmentsNoShows': {
+    en: (n: number) => `No-shows on record: ${n}`,
+    es: (n: number) => `No se presentaron: ${n}`,
+    pt: (n: number) => `Não compareceram: ${n}`,
+  },
+  'chat.dataQuery.appointmentsEmpty': { en: 'No appointments on record.', es: 'No hay citas registradas.', pt: 'Nenhum agendamento registrado.' },
+  // R-DATA-LIABILITY-V1: store credit + loyalty liability (points stay unitless).
+  'chat.dataQuery.liabilityHeader': { en: '💳 Outstanding liability', es: '💳 Pasivo pendiente', pt: '💳 Passivo pendente' },
+  'chat.dataQuery.liabilityCreditTotal': {
+    en: (amt: string) => `Store credit total: ${amt}`,
+    es: (amt: string) => `Crédito total: ${amt}`,
+    pt: (amt: string) => `Crédito total: ${amt}`,
+  },
+  'chat.dataQuery.liabilityCreditCount': {
+    en: (n: number) => `${n} customer${n === 1 ? '' : 's'} with credit`,
+    es: (n: number) => `${n} cliente${n === 1 ? '' : 's'} con crédito`,
+    pt: (n: number) => `${n} cliente${n === 1 ? '' : 's'} com crédito`,
+  },
+  'chat.dataQuery.liabilityPointsTotal': {
+    en: (n: number) => `Loyalty points total: ${n} points`,
+    es: (n: number) => `Puntos de lealtad totales: ${n} puntos`,
+    pt: (n: number) => `Pontos de fidelidade totais: ${n} pontos`,
+  },
+  'chat.dataQuery.liabilityPointsCount': {
+    en: (n: number) => `${n} customer${n === 1 ? '' : 's'} with points`,
+    es: (n: number) => `${n} cliente${n === 1 ? '' : 's'} con puntos`,
+    pt: (n: number) => `${n} cliente${n === 1 ? '' : 's'} com pontos`,
+  },
+  'chat.dataQuery.liabilityTopRow': {
+    en: (name: string, value: string) => `${name}: ${value}`,
+    es: (name: string, value: string) => `${name}: ${value}`,
+    pt: (name: string, value: string) => `${name}: ${value}`,
+  },
+  'chat.dataQuery.liabilityEmpty': { en: 'No outstanding liability — no customers carry store credit or loyalty points.', es: 'Sin pasivo pendiente — ningún cliente tiene crédito ni puntos.', pt: 'Sem passivo pendente — nenhum cliente possui crédito ou pontos.' },
+  'chat.dataQuery.topItems': { en: 'Top items', es: 'Top artículos', pt: 'Top itens' },
+  'chat.dataQuery.pendingItems': { en: 'Pending', es: 'Pendientes', pt: 'Pendentes' },
+  'chat.dataQuery.readyItems': { en: 'Ready', es: 'Listas', pt: 'Prontos' },
+  'inventory.promoteNoTargets': {
+    en: (name: string) => `No eligible customers to promote "${name}" right now.`,
+    es: (name: string) => `Sin clientes elegibles para promover "${name}" en este momento.`,
+    pt: (name: string) => `Sem clientes elegíveis para promover "${name}" no momento.`,
+  },
   'chat.deadStock.action.bundle_item':    { en: 'Bundle with complementary products',       es: 'Agrupa con productos complementarios',        pt: 'Agrupar com produtos complementares' },
   'chat.deadStock.action.discount_item':  { en: 'Apply a clearance discount',               es: 'Aplica un descuento de liquidación',           pt: 'Aplicar desconto de liquidação' },
   'chat.deadStock.action.move_display':   { en: 'Move to a higher-visibility display spot', es: 'Mueve a un lugar más visible en la tienda',   pt: 'Mover para local de maior visibilidade' },
@@ -173,6 +463,10 @@ export const translations: TranslationDictionary = {
   'chat.product.action.promote': { en: 'PROMOTE', es: 'PROMOVER', pt: 'PROMOVER' },
   'chat.product.action.review': { en: 'REVIEW', es: 'REVISAR', pt: 'REVISAR' },
   'chat.product.empty': { en: 'No product opportunities detected right now.', es: 'No se detectaron oportunidades de producto por ahora.', pt: 'Nenhuma oportunidade de produto detectada agora.' },
+  // R-INTELLIGENCE-SIGNAL-QUALITY-V1: stable response when all candidates
+  // fail the impact / type / margin quality gate. Operator-style — points
+  // at next-best-action instead of dumping a weak list.
+  'chat.product.weak': { en: 'No strong product opportunity right now. Keep checkout moving and follow up with customers.', es: 'Sin oportunidad de producto fuerte ahora. Mantén el flujo de venta y haz seguimiento con clientes.', pt: 'Sem oportunidade de produto forte agora. Mantenha o fluxo de venda e faça acompanhamento com clientes.' },
   'chat.product.header': { en: (n: number) => `${n} product opportunit${n === 1 ? 'y' : 'ies'} found:`, es: (n: number) => `${n} oportunidad${n === 1 ? '' : 'es'} de producto detectada${n === 1 ? '' : 's'}:`, pt: (n: number) => `${n} oportunidade${n === 1 ? '' : 's'} de produto encontrada${n === 1 ? '' : 's'}:` },
   'chat.product.impact': { en: 'est. impact', es: 'impacto est.', pt: 'impacto est.' },
   'chat.product.margin': { en: 'margin', es: 'margen', pt: 'margem' },
@@ -180,6 +474,62 @@ export const translations: TranslationDictionary = {
   'chat.product.type.highMargin': { en: 'High margin', es: 'Alto margen', pt: 'Alta margem' },
   'chat.product.type.highReturn': { en: 'High return rate', es: 'Alta devolución', pt: 'Alta devolução' },
   'chat.product.type.lowMargin': { en: 'Low margin', es: 'Bajo margen', pt: 'Baixa margem' },
+
+  // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: operator-briefing keys for product
+  // opportunities. Replace the 8-bullet dump with: best-prominent + secondary
+  // names + remaining count. Concise, decision-oriented, no analytics tone.
+  'chat.productOps.bestHeader':         { en: 'Best opportunity:', es: 'Mejor oportunidad:', pt: 'Melhor oportunidade:' },
+  'chat.productOps.whyLabel':           { en: 'Why:', es: 'Por qué:', pt: 'Por quê:' },
+  'chat.productOps.upsideLabel':        { en: 'Estimated upside:', es: 'Impacto estimado:', pt: 'Impacto estimado:' },
+  'chat.productOps.actionLabel':        { en: 'Recommended action:', es: 'Acción recomendada:', pt: 'Ação recomendada:' },
+  'chat.productOps.alsoWatching':       { en: 'Also worth watching:', es: 'También vigila:', pt: 'Também vale a pena:' },
+  'chat.productOps.remaining': {
+    en: (n: number) => `${n} more lower-priority opportunit${n === 1 ? 'y' : 'ies'} available.`,
+    es: (n: number) => `${n} oportunidad${n === 1 ? '' : 'es'} adicional${n === 1 ? '' : 'es'} de menor prioridad disponible${n === 1 ? '' : 's'}.`,
+    pt: (n: number) => `${n} oportunidade${n === 1 ? '' : 's'} adicional${n === 1 ? '' : 'is'} de menor prioridade disponíve${n === 1 ? 'l' : 'is'}.`,
+  },
+  'chat.productOps.reason.highMargin':  { en: 'High margin + strong demand signal.', es: 'Alto margen + señal de demanda fuerte.', pt: 'Alta margem + sinal de demanda forte.' },
+  'chat.productOps.reason.deadStock':   { en: 'Sitting in inventory — clearance can free capital.', es: 'Sin movimiento — una liquidación puede liberar capital.', pt: 'Parado em estoque — liquidação pode liberar capital.' },
+  'chat.productOps.reason.highReturn':  { en: 'Returns are eating margin — review quality or pricing.', es: 'Las devoluciones afectan el margen — revisa calidad o precio.', pt: 'Devoluções estão prejudicando a margem — revise qualidade ou preço.' },
+  'chat.productOps.reason.lowMargin':   { en: 'Margin is thin — price up or replace SKU.', es: 'Margen estrecho — sube el precio o reemplaza el SKU.', pt: 'Margem apertada — aumente o preço ou substitua o SKU.' },
+  'chat.productOps.reason.generic':     { en: 'Worth a focused push.', es: 'Vale la pena un esfuerzo dirigido.', pt: 'Vale a pena um esforço direcionado.' },
+  'chat.productOps.action.promote':     { en: 'Promote to recent buyers.', es: 'Promueve a compradores recientes.', pt: 'Promova para compradores recentes.' },
+  'chat.productOps.action.discount':    { en: 'Run a clearance discount.', es: 'Aplica un descuento de liquidación.', pt: 'Faça um desconto de liquidação.' },
+  'chat.productOps.action.bundle':      { en: 'Bundle with high-velocity items.', es: 'Combina con artículos de alta rotación.', pt: 'Combine com itens de alta rotatividade.' },
+  'chat.productOps.action.review':      { en: 'Review supplier or pricing.', es: 'Revisa proveedor o precio.', pt: 'Revise fornecedor ou preço.' },
+  // R-INTELLIGENCE-ACTION-BUTTONS-V1: "Promote {name}" chat-replay button.
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: same label, but the click now opens
+  // the Promote Inventory panel directly with the product preselected.
+  'chat.productOps.promoteAction': {
+    en: (name: string) => `Promote ${name}`,
+    es: (name: string) => `Promover ${name}`,
+    pt: (name: string) => `Promover ${name}`,
+  },
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: strategy fallback when no eligible
+  // direct-outreach audience exists. Communicates the WHY (no audience)
+  // and the alternate strategy (in-store, clearance, Status, Marketplace).
+  'chat.productOps.audienceFallbackHeader': {
+    en: 'Strategy:',
+    es: 'Estrategia:',
+    pt: 'Estratégia:',
+  },
+  'chat.productOps.audienceFallbackBody': {
+    en: 'No strong direct-outreach audience for this product. Suggest public push: in-store display, clearance pricing, WhatsApp Status, or Marketplace.',
+    es: 'Sin audiencia fuerte para contacto directo. Sugerencia: empuje público: exhibición en tienda, precio de liquidación, Estado de WhatsApp o Marketplace.',
+    pt: 'Sem audiência forte para contato direto. Sugestão: divulgação pública: exposição na loja, preço de liquidação, Status do WhatsApp ou Marketplace.',
+  },
+  // R-OPERATOR-EXECUTABLE-ACTIONS-V1: action-button feedback shown when
+  // the chat clicks open_promote_panel (success / no-callback fallback).
+  'chat.promote.opening': {
+    en: (name: string) => `Opening promotion panel for ${name}…`,
+    es: (name: string) => `Abriendo panel de promoción para ${name}…`,
+    pt: (name: string) => `Abrindo painel de promoção para ${name}…`,
+  },
+  'chat.promote.unavailable': {
+    en: 'Promotion panel unavailable here.',
+    es: 'Panel de promoción no disponible aquí.',
+    pt: 'Painel de promoção indisponível aqui.',
+  },
   'chat.reorder.days': { en: (n: number) => `${n} day${n === 1 ? '' : 's'}`, es: (n: number) => `${n} día${n === 1 ? '' : 's'}`, pt: (n: number) => `${n} dia${n === 1 ? '' : 's'}` },
   'chat.reorder.daysLessThanOne': { en: '<1 day', es: '<1 día', pt: '<1 dia' },
   'chat.reorder.empty': { en: 'Nothing on reorder alert. Stock looks healthy.', es: 'Nada en alerta de reorden. Stock saludable.', pt: 'Nada em alerta de reposição. Estoque saudável.' },
@@ -522,6 +872,10 @@ export const translations: TranslationDictionary = {
   'leaveEmptyAll': { en: 'Leave empty for all', es: 'Dejar vacío para todos', pt: 'Deixe vazio para todos' },
   'leaveEmptyIncludeAll': { en: 'Leave empty to include all customers regardless of last visit', es: 'Dejar vacío para incluir todos los clientes sin importar última visita', pt: 'Deixe vazio para incluir todos os clientes independente da última visita' },
   'letterSize': { en: 'Letter (8.5x11")', es: 'Carta (8.5x11")', pt: 'Carta (8.5x11")' },
+  'license.contactSupport':     { en: 'Contact support to upgrade', es: 'Contacta soporte para actualizar', pt: 'Entre em contato com o suporte para atualizar' },
+  'license.featureRequires':    { en: (tier: string) => `This feature requires ${tier} plan`, es: (tier: string) => `Esta función requiere el plan ${tier}`, pt: (tier: string) => `Este recurso requer o plano ${tier}` },
+  'license.maxProductsReached': { en: 'Product limit reached — upgrade to add more', es: 'Límite de productos alcanzado — actualiza para agregar más', pt: 'Limite de produtos atingido — atualize para adicionar mais' },
+  'license.upgradeRequired':    { en: '🔒 Upgrade Required', es: '🔒 Actualización Requerida', pt: '🔒 Atualização Necessária' },
   'line1': { en: 'Line 1', es: 'Línea 1', pt: 'Linha 1' },
   'line1TotalSalesTax': { en: 'Line 1 - Total Sales Subject to Tax:', es: 'Línea 1 - Total de Ventas Sujetas a Impuesto:', pt: 'Linha 1 - Total de Vendas Sujeitas a Imposto:' },
   'line2': { en: 'Line 2', es: 'Línea 2', pt: 'Linha 2' },
@@ -1385,6 +1739,15 @@ export const translations: TranslationDictionary = {
   'topUpModal.recipients': { en: 'Recipients', es: 'Destinatarios', pt: 'Destinatários' },
   'topUpModal.addLine': { en: 'Add Line', es: 'Agregar Línea', pt: 'Adicionar Linha' },
   'topUpModal.recipientPlaceholder': { en: 'Recipient number', es: 'Número del destinatario', pt: 'Número do destinatário' },
+  // R-TOPUP-AUTOCOPY-SENDER-RECIPIENT
+  'topUpModal.recipientLabel': { en: 'Recipient', es: 'Destinatario', pt: 'Destinatário' },
+  'topUpModal.copy': { en: 'Copy', es: 'Copiar', pt: 'Copiar' },
+  'topUpModal.copied': {
+    en: (label: string) => `${label} copied`,
+    es: (label: string) => `${label} copiado`,
+    pt: (label: string) => `${label} copiado`,
+  },
+  'topUpModal.nothingToCopy': { en: 'Nothing to copy', es: 'Nada que copiar', pt: 'Nada para copiar' },
   'topUpModal.amountPlaceholder': { en: 'Amount', es: 'Monto', pt: 'Valor' },
   'topUpModal.frequentLabel': { en: '📱 Frequent:', es: '📱 Frecuentes:', pt: '📱 Frequentes:' },
   'topUpModal.totalToCharge': { en: 'Total to Charge', es: 'Total a Cobrar', pt: 'Total a Cobrar' },
@@ -1414,6 +1777,11 @@ export const translations: TranslationDictionary = {
   'cart.surcharge': { en: 'Surcharge', es: 'Recargo Móvil', pt: 'Sobretaxa Móvel' },
   'cart.cbeFee': { en: 'CBE Fee', es: 'Cuota CBE', pt: 'Taxa CBE' },
   'cart.screenFee': { en: 'Screen Fee', es: 'Cuota Pantalla', pt: 'Taxa de Tela' },
+  // R-CART-FEES BUG-6: per-item toggle labels in the cart panel.
+  'cart.batteryFeeToggle': { en: 'Battery Fee', es: 'Tarifa de Batería', pt: 'Taxa de Bateria' },
+  'cart.screenFeeToggle': { en: 'Screen Fee', es: 'Tarifa de Pantalla', pt: 'Taxa de Tela' },
+  // R-CART-FEES BUG-6: receipt HTML — Screen Fee line, paralelo al CBE Fee existente.
+  'receipt.screenFee': { en: 'Screen Fee:', es: 'Cuota Pantalla:', pt: 'Taxa de Tela:' },
   'cart.ccFee': { en: 'CC Fee', es: 'Cargo Tarjeta', pt: 'Taxa de Cartão' },
   'cart.split': { en: 'Split', es: 'Dividir', pt: 'Dividir' },
   'cart.cashReceived': { en: 'Cash Received', es: 'Efectivo Recibido', pt: 'Dinheiro Recebido' },
@@ -1451,6 +1819,68 @@ export const translations: TranslationDictionary = {
     es: (amount: string) => `Cargo de tarjeta: ${amount}`,
     pt: (amount: string) => `Taxa de cartão: ${amount}`,
   },
+  // R-LOSSES-SHRINKAGE-V1: inventory shrinkage / business-loss audit.
+  'inventory.loss.button':            { en: 'Mark as Loss',                      es: 'Marcar como Pérdida',                 pt: 'Marcar como Perda' },
+  'inventory.loss.title':             { en: 'Mark as Loss / Shrinkage',          es: 'Marcar como Pérdida / Merma',         pt: 'Marcar como Perda / Quebra' },
+  'inventory.loss.continue':          { en: 'Continue (PIN)',                    es: 'Continuar (PIN)',                     pt: 'Continuar (PIN)' },
+  'inventory.loss.itemLabel':         { en: 'Item',                              es: 'Artículo',                            pt: 'Item' },
+  'inventory.loss.onHandLabel':       { en: 'On hand',                           es: 'En stock',                            pt: 'Em estoque' },
+  'inventory.loss.unitCostLabel':     { en: 'Unit cost',                         es: 'Costo unitario',                      pt: 'Custo unitário' },
+  'inventory.loss.qtyLabel':          { en: 'Quantity to write off',             es: 'Cantidad a dar de baja',              pt: 'Quantidade a dar baixa' },
+  'inventory.loss.invalidQtyHint':    { en: 'Must be > 0 and ≤ on-hand quantity', es: 'Debe ser > 0 y ≤ cantidad en stock', pt: 'Deve ser > 0 e ≤ quantidade em estoque' },
+  'inventory.loss.reasonLabel':       { en: 'Reason',                            es: 'Razón',                               pt: 'Motivo' },
+  'inventory.loss.reasonPick':        { en: 'Select a reason…',                  es: 'Selecciona una razón…',               pt: 'Selecione um motivo…' },
+  'inventory.loss.reason.defective':           { en: 'Defective',              es: 'Defectuoso',                  pt: 'Defeituoso' },
+  'inventory.loss.reason.damaged':             { en: 'Damaged',                es: 'Dañado',                      pt: 'Danificado' },
+  'inventory.loss.reason.unsellable_return':   { en: 'Unsellable return',      es: 'Devolución no vendible',      pt: 'Devolução não vendável' },
+  'inventory.loss.reason.vendor_non_returnable': { en: 'Vendor non-returnable', es: 'Proveedor no acepta devolución', pt: 'Fornecedor não aceita devolução' },
+  'inventory.loss.reason.opened_package':      { en: 'Opened package',         es: 'Empaque abierto',             pt: 'Embalagem aberta' },
+  'inventory.loss.reason.other':               { en: 'Other',                  es: 'Otro',                        pt: 'Outro' },
+  'inventory.loss.notesLabel':        { en: 'Notes (optional)',                  es: 'Notas (opcional)',                    pt: 'Notas (opcional)' },
+  'inventory.loss.notesPlaceholder':  { en: 'e.g. cracked screen on arrival',    es: 'Ej. pantalla rota al recibir',        pt: 'Ex. tela rachada ao receber' },
+  'inventory.loss.totalLossLabel':    { en: 'Total loss',                        es: 'Pérdida total',                       pt: 'Perda total' },
+  'inventory.loss.warning':           { en: 'This decreases inventory and creates a permanent audit record. Cannot be edited or deleted in V1.', es: 'Esto reduce el inventario y crea un registro de auditoría permanente. No se puede editar ni eliminar en V1.', pt: 'Isto reduz o inventário e cria um registro de auditoria permanente. Não pode ser editado ou excluído na V1.' },
+  'inventory.loss.outOfStock':        { en: 'No stock to write off.',            es: 'Sin stock para dar de baja.',         pt: 'Sem estoque para dar baixa.' },
+  'inventory.loss.costMissing':       { en: 'Item has no valid unit cost. Set a cost before recording a loss.', es: 'El artículo no tiene un costo unitario válido. Establece un costo antes de registrar la pérdida.', pt: 'O item não tem custo unitário válido. Defina um custo antes de registrar a perda.' },
+  'inventory.loss.invalidQty':        { en: 'Invalid quantity.',                 es: 'Cantidad inválida.',                  pt: 'Quantidade inválida.' },
+  'inventory.loss.reasonRequired':    { en: 'Reason required.',                  es: 'Razón requerida.',                    pt: 'Motivo obrigatório.' },
+  'inventory.loss.exceedsStock':      { en: 'Quantity exceeds on-hand stock.',   es: 'La cantidad excede el stock disponible.', pt: 'A quantidade excede o estoque disponível.' },
+  'inventory.loss.notFound':          { en: 'Item not found in inventory.',      es: 'Artículo no encontrado en inventario.', pt: 'Item não encontrado no inventário.' },
+  'inventory.loss.recorded':          {
+    en: (name: string) => `Loss recorded: ${name}`,
+    es: (name: string) => `Pérdida registrada: ${name}`,
+    pt: (name: string) => `Perda registrada: ${name}`,
+  },
+  'inventory.loss.failed':            { en: 'Failed to record loss.',            es: 'No se pudo registrar la pérdida.',    pt: 'Falha ao registrar perda.' },
+  'reports.losses.title':             { en: 'Losses / Shrinkage',                es: 'Pérdidas / Merma',                    pt: 'Perdas / Quebras' },
+  'reports.losses.totalUnits':        { en: 'Units',                             es: 'Unidades',                            pt: 'Unidades' },
+  'reports.losses.totalLoss':         { en: 'Total loss',                        es: 'Pérdida total',                       pt: 'Perda total' },
+  'reports.losses.empty':             { en: 'No losses recorded in this period.', es: 'Sin pérdidas registradas en este periodo.', pt: 'Sem perdas registradas neste período.' },
+  'reports.losses.col.date':          { en: 'Date',                              es: 'Fecha',                               pt: 'Data' },
+  'reports.losses.col.item':          { en: 'Item',                              es: 'Artículo',                            pt: 'Item' },
+  'reports.losses.col.sku':           { en: 'SKU',                               es: 'SKU',                                 pt: 'SKU' },
+  'reports.losses.col.qty':           { en: 'Qty',                               es: 'Cant.',                               pt: 'Qtd.' },
+  'reports.losses.col.reason':        { en: 'Reason',                            es: 'Razón',                               pt: 'Motivo' },
+  'reports.losses.col.unitCost':      { en: 'Unit cost',                         es: 'Costo unit.',                         pt: 'Custo unit.' },
+  'reports.losses.col.totalLoss':     { en: 'Total loss',                        es: 'Pérdida total',                       pt: 'Perda total' },
+  'reports.losses.col.approvedBy':    { en: 'Approved by',                       es: 'Autorizado por',                      pt: 'Autorizado por' },
+  // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1
+  'cart.lineDiscount.title': { en: 'Line Discount / Price Override', es: 'Descuento / Precio Manual', pt: 'Desconto / Preço Manual' },
+  'cart.lineDiscount.edit': { en: 'Edit price / discount', es: 'Editar precio / descuento', pt: 'Editar preço / desconto' },
+  'cart.lineDiscount.originalLabel': { en: 'Original', es: 'Original', pt: 'Original' },
+  'cart.lineDiscount.mode.amount': { en: 'Amount off ($)', es: 'Descuento ($)', pt: 'Desconto ($)' },
+  'cart.lineDiscount.mode.percent': { en: 'Percent off (%)', es: 'Descuento (%)', pt: 'Desconto (%)' },
+  'cart.lineDiscount.mode.override': { en: 'Override price ($)', es: 'Precio manual ($)', pt: 'Preço manual ($)' },
+  'cart.lineDiscount.valueDollarsLabel': { en: 'Amount in dollars', es: 'Monto en dólares', pt: 'Valor em dólares' },
+  'cart.lineDiscount.valuePercentLabel': { en: 'Percent (0-100)', es: 'Porcentaje (0-100)', pt: 'Percentual (0-100)' },
+  'cart.lineDiscount.reasonLabel': { en: 'Reason (optional)', es: 'Razón (opcional)', pt: 'Motivo (opcional)' },
+  'cart.lineDiscount.reasonPlaceholder': { en: 'e.g. price match, loyalty, employee', es: 'Ej. ajuste de precio, lealtad, empleado', pt: 'Ex. ajuste de preço, fidelidade, funcionário' },
+  'cart.lineDiscount.apply': { en: 'Apply', es: 'Aplicar', pt: 'Aplicar' },
+  'cart.lineDiscount.reset': { en: 'Reset to original', es: 'Restaurar original', pt: 'Restaurar original' },
+  'cart.lineDiscount.invalid': { en: 'Invalid value', es: 'Valor inválido', pt: 'Valor inválido' },
+  'cart.lineDiscount.badgeFree': { en: 'FREE', es: 'GRATIS', pt: 'GRÁTIS' },
+  'cart.lineDiscount.badgeDiscounted': { en: 'DISCOUNTED', es: 'DESCUENTO', pt: 'DESCONTO' },
+  'cart.lineDiscount.badgeOverride': { en: 'OVERRIDE', es: 'MANUAL', pt: 'MANUAL' },
   'quickServicePanel.back': { en: 'Back', es: 'Atrás', pt: 'Voltar' },
   'quickServicePanel.title': { en: 'Quick Service Charge', es: 'Cobro Rápido de Servicios', pt: 'Cobrança Rápida de Serviços' },
   'quickServicePanel.subtitle': { en: 'Select service type', es: 'Selecciona el tipo de servicio', pt: 'Selecione o tipo de serviço' },
@@ -1522,6 +1952,19 @@ export const translations: TranslationDictionary = {
   'receiptModal.systemDefault': { en: '(system default)', es: '(predeterminada)', pt: '(padrão do sistema)' },
   'receiptModal.copies': { en: 'Copies', es: 'Copias', pt: 'Cópias' },
   'receiptModal.printReceipt': { en: 'Print Receipt (4×6)', es: 'Imprimir Recibo (4×6)', pt: 'Imprimir Recibo (4×6)' },
+  // R-RECEIPT-WHATSAPP-SEND-V1: manual receipt-to-WhatsApp via wa.me deep link.
+  // Owner clicks → WhatsApp opens with prefilled text → owner manually sends.
+  // No WhatsApp API, no auto-send, no PDF/image attachment.
+  'receiptWa.buttonLabel':   { en: 'Send via WhatsApp', es: 'Enviar por WhatsApp', pt: 'Enviar por WhatsApp' },
+  'receiptWa.missingPhone':  { en: 'Customer phone required to send receipt by WhatsApp.', es: 'Se requiere el teléfono del cliente para enviar el recibo por WhatsApp.', pt: 'Telefone do cliente necessário para enviar o recibo pelo WhatsApp.' },
+  'receiptWa.message': {
+    en: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Receipt #${invoice}\nDate: ${date}\nTotal: ${total}${payment ? `\nPayment: ${payment}` : ''}\n\nThank you for your purchase!\nReply here if you have any questions.`,
+    es: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Recibo #${invoice}\nFecha: ${date}\nTotal: ${total}${payment ? `\nPago: ${payment}` : ''}\n\n¡Gracias por su compra!\nResponde aquí si tienes alguna duda.`,
+    pt: (storeName: string, invoice: string, date: string, total: string, payment: string) =>
+      `${storeName} — Recibo #${invoice}\nData: ${date}\nTotal: ${total}${payment ? `\nPagamento: ${payment}` : ''}\n\nObrigado pela sua compra!\nResponda aqui se tiver dúvidas.`,
+  },
   'receiptModal.customerFallback': { en: 'Customer', es: 'Cliente', pt: 'Cliente' },
   'receiptModal.assignSalePrompt': {
     en: (n: number) => `Assign this sale to a customer? +${n} pts`,
@@ -1543,6 +1986,9 @@ export const translations: TranslationDictionary = {
     es: (name: string) => `${name} agregado`,
     pt: (name: string) => `${name} adicionado`,
   },
+  // R-MULTILINE-PICKER-FIX: per-line inline amount input in the known-lines picker.
+  'pos.amountPlaceholder': { en: '$0.00', es: '$0.00', pt: 'R$0,00' },
+  'pos.knownLineAmountAria': { en: 'Amount for selected phone line', es: 'Monto para la línea seleccionada', pt: 'Valor para a linha selecionada' },
   'pos.repairCancelledPayment': { en: 'Repair was cancelled. Payment was not processed.', es: 'La reparación fue cancelada. El pago no se procesó.', pt: 'O reparo foi cancelado. Pagamento não processado.' },
   'pos.layawayCancelledSale': { en: 'This layaway was cancelled. Cannot complete sale.', es: 'Este apartado fue cancelado. No se puede completar la venta.', pt: 'Esta reserva foi cancelada. Não é possível completar a venda.' },
   'pos.saleCompleted': {
@@ -1552,6 +1998,17 @@ export const translations: TranslationDictionary = {
   },
   'pos.selectEmployeeFirst': { en: 'Select an employee before completing the sale', es: 'Selecciona un empleado antes de completar la venta', pt: 'Selecione um funcionário antes de concluir a venda' },
   'pos.cartCleared': { en: 'Cart cleared', es: 'Carrito vacío', pt: 'Carrinho esvaziado' },
+  // R-POS-CUSTOMER-QUICKEDIT-V1: cart-row "edit customer plan" button +
+  // inline modal labels.
+  'pos.cart.editCustomerPlan':         { en: 'Edit plan',                     es: 'Editar plan',                     pt: 'Editar plano' },
+  'pos.cart.editCustomerPlanTooltip':  { en: 'Update this customer’s wireless info on file', es: 'Actualizar la info wireless de este cliente', pt: 'Atualizar info wireless deste cliente' },
+  'pos.customerEdit.title':            { en: 'Edit customer plan',            es: 'Editar plan del cliente',         pt: 'Editar plano do cliente' },
+  'pos.customerEdit.carrier':          { en: 'Carrier',                       es: 'Compañía',                        pt: 'Operadora' },
+  'pos.customerEdit.plan':             { en: 'Plan',                          es: 'Plan',                            pt: 'Plano' },
+  'pos.customerEdit.monthlyPayment':   { en: 'Monthly payment ($)',           es: 'Pago mensual ($)',                pt: 'Pagamento mensal ($)' },
+  'pos.customerEdit.save':             { en: 'Save changes',                  es: 'Guardar cambios',                 pt: 'Salvar alterações' },
+  'pos.customerEdit.cancel':           { en: 'Cancel',                        es: 'Cancelar',                        pt: 'Cancelar' },
+  'pos.customerEdit.saved':            { en: 'Customer plan updated',         es: 'Plan del cliente actualizado',    pt: 'Plano do cliente atualizado' },
   'pos.resultsCount': {
     en: (n: number) => n === 1 ? '1 item found' : `${n} items found`,
     es: (n: number) => `${n} resultado(s)`,
@@ -1603,6 +2060,13 @@ export const translations: TranslationDictionary = {
   'phonePay.planPrice': { en: 'Plan price ($)', es: 'Costo del plan ($)', pt: 'Preço do plano ($)' },
   'phonePay.firstMonthHint': { en: 'First month of plan', es: 'Primer mes del plan', pt: 'Primeiro mês do plano' },
   'phonePay.activationFeeLabel': { en: 'Activation fee ($) *', es: 'Cargo de activación ($) *', pt: 'Taxa de ativação ($) *' },
+  // R-PHONE-ACTIVATION-ESIM-HINT-V1: subtle helper under the activation
+  // fee input — purely informational, no logic.
+  'phonePay.activationFeeEsimHint': {
+    en: 'Commonly used for eSIM setup',
+    es: 'Comúnmente usado para configuración eSIM',
+    pt: 'Comumente usado para configuração eSIM',
+  },
   'phonePay.internalNotes': { en: 'Internal notes', es: 'Notas internas', pt: 'Notas internas' },
   'phonePay.internalNotesPlaceholder': { en: 'IMEI, activation notes...', es: 'IMEI, notas de activación...', pt: 'IMEI, notas de ativação...' },
   'phonePay.changeCustomer': { en: '× Change customer', es: '× Cambiar cliente', pt: '× Trocar cliente' },
@@ -1623,6 +2087,9 @@ export const translations: TranslationDictionary = {
   'phonePay.addLine': { en: 'Add Line', es: 'Agregar Línea', pt: 'Adicionar Linha' },
   'phonePay.phoneNumberLabel': { en: 'Phone Number', es: 'Número de Teléfono', pt: 'Número de Telefone' },
   'phonePay.copiedShort': { en: 'Copied', es: 'Copiado', pt: 'Copiado' },
+  // R-PHONE-AUTOFILL: shown next to the phone input after auto-fill from
+  // CustomerDB or sales history fires (debounced 500ms after 10 digits).
+  'phonePay.autoFilled': { en: 'Auto-filled', es: 'Auto-llenado', pt: 'Preenchido' },
   'phonePay.addNewNumber': { en: 'Add a new number', es: 'Agregar número nuevo', pt: 'Adicionar novo número' },
   'phonePay.newNumberPlaceholder': { en: 'New number', es: 'Número nuevo', pt: 'Novo número' },
   'phonePay.paymentPortalHeader': { en: 'PAYMENT PORTAL', es: 'PORTAL DE PAGO', pt: 'PORTAL DE PAGAMENTO' },
@@ -1648,6 +2115,12 @@ export const translations: TranslationDictionary = {
   'phonePay.errInvalidAmount': { en: 'Invalid amount', es: 'Monto inválido', pt: 'Valor inválido' },
   'phonePay.itemPlanName': { en: 'Plan', es: 'Plan', pt: 'Plano' },
   'phonePay.itemActivationFeeName': { en: 'Activation Fee', es: 'Cargo de Activación', pt: 'Taxa de Ativação' },
+  'phonePay.itemSimName': { en: 'SIM Card', es: 'Tarjeta SIM', pt: 'Cartão SIM' },
+  'phonePay.simCardLabel': { en: 'SIM Card (optional)', es: 'Tarjeta SIM (opcional)', pt: 'Cartão SIM (opcional)' },
+  'phonePay.simCardSearchPlaceholder': { en: 'Search SIM cards in stock…', es: 'Buscar tarjetas SIM en stock…', pt: 'Buscar cartões SIM em estoque…' },
+  'phonePay.noSimsInStock': { en: 'No SIM cards in stock — activation can still proceed', es: 'No hay tarjetas SIM en stock — la activación puede continuar', pt: 'Sem cartões SIM em estoque — a ativação pode prosseguir' },
+  'phonePay.spiffToggleLabel': { en: 'Spiff (manual)', es: 'Spiff (manual)', pt: 'Spiff (manual)' },
+  'phonePay.spiffToggleHint': { en: 'Internal — does not affect customer total', es: 'Interno — no afecta total del cliente', pt: 'Interno — não afeta total do cliente' },
   'phonePay.knownLineCount': {
     en: (n: number) => n === 1 ? 'known line' : 'known lines',
     es: (n: number) => `línea(s) conocida(s)`,
@@ -2309,7 +2782,7 @@ export const translations: TranslationDictionary = {
   },
   'inventory.allConditions':     { en: 'All Conditions',         es: 'Todas las Condiciones',         pt: 'Todas as Condições' },
   'inventory.searchPlaceholder': { en: 'Search customers, phones, accessories, SKU, barcode…', es: 'Buscar clientes, teléfonos, accesorios, SKU, código de barras…', pt: 'Buscar clientes, celulares, acessórios, SKU, código de barras…' },
-  'inventory.skuImei':           { en: 'SKU/IMEI',               es: 'SKU/IMEI',                      pt: 'SKU/IMEI' },
+  'inventory.skuImei':           { en: 'SKU / IMEI',             es: 'SKU / IMEI',                    pt: 'SKU / IMEI' },
   'inventory.customizeTitle':    { en: 'Customize form fields',  es: 'Personalizar campos del formulario', pt: 'Personalizar campos do formulário' },
   'inventory.fieldsBtn':         { en: 'Fields',                 es: 'Campos',                        pt: 'Campos' },
   'inventory.skuDiffImei':       { en: 'SKU exists but IMEI differs — creating new item', es: 'SKU existe pero IMEI diferente — creando item nuevo', pt: 'SKU existe mas IMEI diferente — criando novo item' },
@@ -2351,6 +2824,14 @@ export const translations: TranslationDictionary = {
     es: (name: string, qty: number) => `"${name}" (stock actual: ${qty}). Si guardas, SOLO la cantidad se sumará al existente. Los demás campos NO cambiarán. Cambia el SKU si es un artículo distinto.`,
     pt: (name: string, qty: number) => `"${name}" (estoque atual: ${qty}). Ao salvar, APENAS a quantidade será adicionada ao existente. Nome/preço/custo NÃO mudarão. Mude o SKU se for um item diferente.`,
   },
+  // R-INVENTORY-SCAN-DEDUP-V1: dedup messages for IMEI/barcode collisions.
+  'inventory.form.imeiExists':    { en: 'IMEI already in inventory', es: 'IMEI ya en inventario',     pt: 'IMEI já no estoque' },
+  'inventory.form.barcodeExists': { en: 'Barcode already in inventory', es: 'Código de barras ya en inventario', pt: 'Código de barras já no estoque' },
+  'inventory.form.itemExistsDesc': {
+    en: (name: string) => `"${name}" already exists with this identifier. Saving would create a duplicate; change the value or close the modal.`,
+    es: (name: string) => `"${name}" ya existe con este identificador. Si guardas crearías un duplicado; cambia el valor o cierra el modal.`,
+    pt: (name: string) => `"${name}" já existe com este identificador. Salvar criaria uma duplicata; mude o valor ou feche o modal.`,
+  },
   'inventory.form.itemName':     { en: 'Item Name',              es: 'Nombre del Artículo',           pt: 'Nome do Item' },
   'inventory.form.itemNameRequired': { en: 'Item name is required', es: 'Falta el nombre del artículo', pt: 'Nome do item é obrigatório' },
   'inventory.form.itemNamePlaceholder': { en: 'Example: iPhone 13 Pro Max 128GB', es: 'Ej: iPhone 13 Pro Max 128GB', pt: 'Ex: iPhone 13 Pro Max 128GB' },
@@ -2379,6 +2860,12 @@ export const translations: TranslationDictionary = {
   'inventory.form.potentialProfit': { en: 'Potential profit',    es: 'Ganancia potencial',            pt: 'Lucro potencial' },
   'inventory.form.notes':        { en: 'Notes',                  es: 'Notas',                         pt: 'Notas' },
   'inventory.form.notesPlaceholder': { en: 'Any notes (optional)', es: 'Notas opcionales...', pt: 'Notas (opcional)' },
+  // R-INVENTORY-PRODUCT-PHOTOS-V1: local product-photo upload UI.
+  'inventory.form.photoLabel':       { en: 'Product photo (local, optional)', es: 'Foto del producto (local, opcional)', pt: 'Foto do produto (local, opcional)' },
+  'inventory.form.photoLoaded':      { en: 'Photo loaded',     es: 'Foto cargada',     pt: 'Foto carregada' },
+  'inventory.form.photoRemove':      { en: 'Remove photo',     es: 'Quitar foto',      pt: 'Remover foto' },
+  'inventory.form.photoTooLarge':    { en: 'Image too large (>2MB). Pick a smaller file.', es: 'Imagen muy grande (>2MB). Elige un archivo más pequeño.', pt: 'Imagem muito grande (>2MB). Escolha um arquivo menor.' },
+  'inventory.form.photoReadError':   { en: "Couldn't read the image file.", es: 'No se pudo leer el archivo de imagen.', pt: 'Não foi possível ler o arquivo de imagem.' },
   'inventory.form.customFields': { en: '✨ Custom Fields',        es: '✨ Campos Personalizados',       pt: '✨ Campos Personalizados' },
   'inventory.form.customSelect': { en: '-- Select --',           es: '-- Selecciona --',              pt: '-- Selecione --' },
   'inventory.form.generate':     { en: 'Generate',               es: 'Generar',                       pt: 'Gerar' },
@@ -2390,6 +2877,18 @@ export const translations: TranslationDictionary = {
   'inventory.form.cancel':       { en: 'Cancel',                 es: 'Cancelar',                      pt: 'Cancelar' },
   'inventory.form.clear':        { en: 'Clear',                  es: 'Limpiar',                       pt: 'Limpar' },
   'inventory.form.save':         { en: '💾 Save',                es: '💾 Guardar',                     pt: '💾 Salvar' },
+  // R-SIM-MANAGER-UI: dedicated SIM Card manager modal launched from
+  // the Inventory toolbar. Carrier-aware quick-add for cashier intake.
+  'inventory.simManagerBtn':         { en: 'SIM Cards',              es: 'SIM Cards',                    pt: 'SIM Cards' },
+  'inventory.simManager.title':      { en: '🪪 SIM Card Manager',    es: '🪪 Administrador de SIMs',     pt: '🪪 Gerenciador de SIMs' },
+  'inventory.simManager.addSim':     { en: '+ Add SIM',              es: '+ Agregar SIM',                pt: '+ Adicionar SIM' },
+  'inventory.simManager.allCarriers':{ en: 'All',                    es: 'Todos',                        pt: 'Todos' },
+  'inventory.simManager.carrier':    { en: 'Carrier',                es: 'Carrier',                      pt: 'Operadora' },
+  'inventory.simManager.iccid':      { en: 'ICCID / SIM Number',     es: 'ICCID / Número de SIM',        pt: 'ICCID / Número do SIM' },
+  'inventory.simManager.available':  { en: '✅ Available',           es: '✅ Disponible',                pt: '✅ Disponível' },
+  'inventory.simManager.sold':       { en: '❌ Sold',                es: '❌ Vendida',                   pt: '❌ Vendida' },
+  'inventory.simManager.saveBtn':    { en: '✓ Add SIM',              es: '✓ Agregar SIM',                pt: '✓ Adicionar SIM' },
+  'inventory.simManager.nameRequired': { en: 'SIM name is required', es: 'El nombre de la SIM es requerido', pt: 'O nome do SIM é obrigatório' },
   'inventory.form.addNew':       { en: '+ Add new...',           es: '+ Agregar nueva...',            pt: '+ Adicionar nova...' },
   'inventory.form.catNamePlaceholder': { en: 'Category name',    es: 'Nombre de categoría',           pt: 'Nome da categoria' },
   'inventory.form.vendor':       { en: 'Vendor',                 es: 'Proveedor',                     pt: 'Fornecedor' },
@@ -2399,6 +2898,7 @@ export const translations: TranslationDictionary = {
   'inventory.form.cat.accessories': { en: 'Accessories',         es: 'Accesorios',                    pt: 'Acessórios' },
   'inventory.form.cat.parts':    { en: 'Parts',                  es: 'Partes',                        pt: 'Peças' },
   'inventory.form.cat.services': { en: 'Services',               es: 'Servicios',                     pt: 'Serviços' },
+  'inventory.form.cat.sim':      { en: 'SIM Card',               es: 'Tarjeta SIM',                   pt: 'Cartão SIM' },
   'inventory.form.cat.other':    { en: 'Other',                  es: 'Otro',                          pt: 'Outro' },
   // Field Customizer
   'inventory.fields.title':      { en: 'Customize Fields',       es: 'Personalizar Campos',           pt: 'Personalizar Campos' },
@@ -2519,6 +3019,13 @@ export const translations: TranslationDictionary = {
   'layaway.totalPrice':           { en: 'Total Price',               es: 'Precio Total',        pt: 'Preço Total' },
   'layaway.depositField':         { en: 'Deposit',                   es: 'Depósito',            pt: 'Entrada' },
   'layaway.depositLocked':        { en: 'Total paid. Use "Collect Balance" to record payments.', es: 'Total pagado. Usa "Cobrar Balance" para registrar pagos.', pt: 'Total pago. Use "Cobrar Saldo" para registrar pagamentos.' },
+
+  // R-LAYAWAY-MULTIPAY-V1
+  'layaway.payments.historyTitle':  { en: 'Payment history',     es: 'Historial de pagos',   pt: 'Histórico de pagamentos' },
+  'layaway.payments.remaining':     { en: 'remaining',           es: 'restante',             pt: 'restante' },
+  'layaway.print.lastPayment':      { en: 'Last payment',        es: 'Último pago',          pt: 'Último pagamento' },
+  'layaway.print.totalPaid':        { en: 'Total paid',          es: 'Total pagado',         pt: 'Total pago' },
+  'layaway.print.paymentCount':     { en: 'Payments',            es: 'Pagos',                pt: 'Pagamentos' },
   'layaway.taxable': {
     en: (rate: string) => `Taxable (${rate}%)`,
     es: (rate: string) => `Con Impuesto (${rate}%)`,
@@ -2979,6 +3486,8 @@ export const translations: TranslationDictionary = {
   'employees.cantDeleteLastOwner':  { en: 'At least one owner must remain in the system', es: 'Debe quedar al menos un dueño en el sistema', pt: 'Pelo menos um proprietário deve permanecer no sistema' },
   'employees.cantDeactivateSelf':   { en: "You can't deactivate yourself", es: 'No puedes desactivarte a ti mismo', pt: 'Você não pode se desativar' },
   'employees.cantDeactivateLastOwner': { en: 'At least one active owner must remain', es: 'Debe quedar al menos un dueño activo', pt: 'Pelo menos um proprietário ativo deve permanecer' },
+  'employees.cantCreateDuplicateOwner': { en: 'An active owner already exists', es: 'Ya existe un dueño activo', pt: 'Já existe um proprietário ativo' },
+  'employees.cantPromoteDuplicateOwner': { en: 'Another active owner already exists. Demote them first', es: 'Ya existe otro dueño activo. Cambia su rol primero', pt: 'Outro proprietário ativo já existe. Altere o cargo primeiro' },
   'employees.printError':           { en: 'Print failed',           es: 'Error al imprimir',          pt: 'Falha na impressão' },
   'employees.empty':                { en: 'No employees yet. Add your first employee.', es: 'No hay empleados aún. Agrega tu primer empleado.', pt: 'Nenhum funcionário ainda. Adicione seu primeiro funcionário.' },
 
@@ -3003,6 +3512,26 @@ export const translations: TranslationDictionary = {
   'employees.section.legal':        { en: 'Legal',                  es: 'Legal',                      pt: 'Legal' },
   'employees.section.skills':       { en: 'Skills',                 es: 'Habilidades',                pt: 'Habilidades' },
   'employees.section.notes':        { en: 'Notes',                  es: 'Notas',                      pt: 'Notas' },
+  'employees.section.permissions':  { en: 'Permissions',            es: 'Permisos',                   pt: 'Permissões' },
+
+  // R-APPROVAL-PIN-V1 — Permissions tab
+  'employees.permissions.title':            { en: 'Approval settings',                          es: 'Ajustes de aprobación',                     pt: 'Configurações de aprovação' },
+  'employees.permissions.intro':            { en: 'Configure which actions require manager approval and whether this employee can authorize them.', es: 'Configura qué acciones requieren aprobación de gerente y si este empleado puede autorizarlas.', pt: 'Configure quais ações exigem aprovação do gerente e se este funcionário pode autorizá-las.' },
+  'employees.permissions.approvalPin':      { en: 'Approval PIN (6 digits)',                    es: 'PIN de aprobación (6 dígitos)',              pt: 'PIN de aprovação (6 dígitos)' },
+  'employees.permissions.approvalPinBlank': { en: '(blank to keep existing)',                   es: '(en blanco para mantener)',                  pt: '(em branco para manter)' },
+  'employees.permissions.approvalPinPlaceholderNew':  { en: '000000',                           es: '000000',                                     pt: '000000' },
+  'employees.permissions.approvalPinPlaceholderEdit': { en: '••••••',                           es: '••••••',                                     pt: '••••••' },
+  'employees.permissions.canApprove':       { en: 'Can approve restricted actions',             es: 'Puede aprobar acciones restringidas',        pt: 'Pode aprovar ações restritas' },
+  'employees.permissions.canApproveHint':   { en: "When checked, this employee's approval PIN can authorize others' restricted actions.", es: 'Si está activo, el PIN de este empleado puede autorizar acciones restringidas de otros.', pt: 'Quando marcado, o PIN deste funcionário pode autorizar ações restritas de outros.' },
+  'employees.permissions.requireSection':   { en: 'Actions that require manager approval',      es: 'Acciones que requieren aprobación de gerente', pt: 'Ações que exigem aprovação do gerente' },
+  'employees.permissions.requirePrice':     { en: 'Price overrides',                            es: 'Cambios de precio',                          pt: 'Alterações de preço' },
+  'employees.permissions.requireDiscount':  { en: 'Manual discounts',                           es: 'Descuentos manuales',                        pt: 'Descontos manuais' },
+  'employees.permissions.requireLayawayCancel':      { en: 'Cancel layaway',                    es: 'Cancelar apartado',                          pt: 'Cancelar layaway' },
+  'employees.permissions.requireRepairCancel':       { en: 'Cancel repair',                     es: 'Cancelar reparación',                        pt: 'Cancelar reparo' },
+  'employees.permissions.requireUnlockCancel':       { en: 'Cancel unlock',                     es: 'Cancelar unlock',                            pt: 'Cancelar desbloqueio' },
+  'employees.permissions.requireSpecialOrderCancel': { en: 'Cancel special order',              es: 'Cancelar pedido especial',                   pt: 'Cancelar pedido especial' },
+  'employees.permissions.requireRefund':    { en: 'Process refund',                             es: 'Procesar reembolso',                         pt: 'Processar reembolso' },
+  'employees.permissions.disabledHint':     { en: 'Approvals are globally disabled. Enable them in Settings → Employees.', es: 'Las aprobaciones están desactivadas globalmente. Actívalas en Ajustes → Empleados.', pt: 'As aprovações estão desativadas globalmente. Ative-as em Configurações → Funcionários.' },
 
   'employees.form.name':            { en: 'Name',                   es: 'Nombre',                     pt: 'Nome' },
   'employees.form.displayName':     { en: '(display name)',         es: '(nombre mostrado)',          pt: '(nome exibido)' },
@@ -3052,6 +3581,27 @@ export const translations: TranslationDictionary = {
   'employees.validation.nameRequired': { en: 'Name is required',    es: 'Nombre requerido',           pt: 'Nome é obrigatório' },
   'employees.validation.pinRequired': { en: '4-digit PIN required', es: 'PIN de 4 dígitos requerido', pt: 'PIN de 4 dígitos obrigatório' },
   'employees.validation.pinMin':    { en: 'New PIN must be at least 4 digits', es: 'El nuevo PIN debe tener al menos 4 dígitos', pt: 'O novo PIN deve ter pelo menos 4 dígitos' },
+  'employees.validation.approvalPinSix': { en: 'Approval PIN must be exactly 6 digits', es: 'El PIN de aprobación debe tener exactamente 6 dígitos', pt: 'O PIN de aprovação deve ter exatamente 6 dígitos' },
+
+  // R-APPROVAL-PIN-V1 — Settings master toggle (Employees section)
+  'settings.approvals.title':       { en: 'Action approvals',                           es: 'Aprobaciones de acciones',                   pt: 'Aprovações de ações' },
+  'settings.approvals.enabled':     { en: 'Require approval for sensitive actions',     es: 'Requerir aprobación para acciones sensibles', pt: 'Exigir aprovação para ações sensíveis' },
+  'settings.approvals.enabledHint': { en: "When enabled, restricted actions per role will request a manager's 6-digit approval PIN before proceeding.", es: 'Cuando está activo, las acciones restringidas por rol pedirán el PIN de aprobación de 6 dígitos antes de continuar.', pt: 'Quando ativado, ações restritas por função solicitarão o PIN de aprovação de 6 dígitos antes de continuar.' },
+
+  // R-APPROVAL-PIN-V1 — Approval result feedback (modal inline + toast)
+  'approval.error.invalid':         { en: 'Invalid PIN. Try again.',                        es: 'PIN inválido. Intenta de nuevo.',                       pt: 'PIN inválido. Tente novamente.' },
+  'approval.error.selfBlocked':     { en: 'You cannot approve your own action. Ask another manager.', es: 'No puedes aprobar tu propia acción. Pide a otro gerente.', pt: 'Você não pode aprovar sua própria ação. Peça a outro gerente.' },
+  'approval.toast.cancelled':       { en: 'Action cancelled — manager approval not provided.', es: 'Acción cancelada — no se obtuvo aprobación de gerente.', pt: 'Ação cancelada — aprovação do gerente não fornecida.' },
+  'approval.toast.timeout':         { en: 'Approval timed out — try again.',                  es: 'Aprobación expiró — intenta de nuevo.',                 pt: 'Aprovação expirou — tente novamente.' },
+
+  // R-APPROVAL-PIN-V1 — Action labels (used by ApprovalPinModal subtitle)
+  'approval.action.PRICE_OVERRIDE':       { en: 'Price override',          es: 'Cambio de precio',           pt: 'Alteração de preço' },
+  'approval.action.DISCOUNT_OVERRIDE':    { en: 'Manual discount',         es: 'Descuento manual',           pt: 'Desconto manual' },
+  'approval.action.CANCEL_LAYAWAY':       { en: 'Cancel layaway',          es: 'Cancelar apartado',          pt: 'Cancelar layaway' },
+  'approval.action.CANCEL_REPAIR':        { en: 'Cancel repair',           es: 'Cancelar reparación',        pt: 'Cancelar reparo' },
+  'approval.action.CANCEL_UNLOCK':        { en: 'Cancel unlock',           es: 'Cancelar unlock',            pt: 'Cancelar desbloqueio' },
+  'approval.action.CANCEL_SPECIAL_ORDER': { en: 'Cancel special order',    es: 'Cancelar pedido especial',   pt: 'Cancelar pedido especial' },
+  'approval.action.REFUND':               { en: 'Process refund',          es: 'Procesar reembolso',         pt: 'Processar reembolso' },
 
   'employees.role.owner':           { en: 'Owner',                  es: 'Dueño',                      pt: 'Proprietário' },
   'employees.role.manager':         { en: 'Manager',                es: 'Gerente',                    pt: 'Gerente' },
@@ -3203,6 +3753,7 @@ export const translations: TranslationDictionary = {
   'settings.nav.hardware':                 { en: 'Hardware',                    es: 'Hardware',                      pt: 'Hardware' },
   'settings.nav.whatsapp':                 { en: 'WhatsApp',                    es: 'WhatsApp',                      pt: 'WhatsApp' },
   'settings.nav.ai':                       { en: 'AI Assistant',                es: 'Asistente IA',                  pt: 'Assistente IA' },
+  'settings.nav.companion':                { en: 'Companion',                   es: 'Companion',                     pt: 'Companion' },
   'settings.nav.employees':               { en: 'Employees',                   es: 'Empleados',                     pt: 'Funcionários' },
   'settings.nav.backup':                   { en: 'Backup & Restore',            es: 'Respaldo y Restauración',       pt: 'Backup e Restauração' },
 
@@ -3308,6 +3859,35 @@ export const translations: TranslationDictionary = {
   'settings.hardware.scanFailed':          { en: 'Failed to scan printers',     es: 'Error al escanear impresoras',  pt: 'Falha ao escanear impressoras' },
   'settings.hardware.printerSelected':     { en: (name: string) => `Selected printer: ${name}`, es: (name: string) => `Impresora seleccionada: ${name}`, pt: (name: string) => `Impressora selecionada: ${name}` },
 
+  // R-IMPORTER-V1: CSV importer (Customers / Inventory) inside Backup tab
+  'import.title':                  { en: 'Import from CSV',           es: 'Importar desde CSV',         pt: 'Importar de CSV' },
+  'import.subtitle':               { en: 'Bring customers or inventory in from any CSV (RepairDesk, Square, Excel, etc.).', es: 'Importa clientes o inventario desde cualquier CSV (RepairDesk, Square, Excel, etc.).', pt: 'Importe clientes ou estoque de qualquer CSV (RepairDesk, Square, Excel, etc.).' },
+  'import.selectType':             { en: 'What are you importing?',   es: '¿Qué estás importando?',     pt: 'O que está importando?' },
+  'import.typeCustomers':          { en: '👤 Customers',              es: '👤 Clientes',                pt: '👤 Clientes' },
+  'import.typeInventory':          { en: '📦 Inventory',              es: '📦 Inventario',              pt: '📦 Estoque' },
+  'import.selectFile':             { en: 'Choose CSV file…',          es: 'Elegir archivo CSV…',        pt: 'Escolher arquivo CSV…' },
+  'import.fileSelected':           { en: (n: string) => `Selected: ${n}`, es: (n: string) => `Seleccionado: ${n}`, pt: (n: string) => `Selecionado: ${n}` },
+  'import.parseError':             { en: 'Could not parse the CSV file. Check that it is comma-separated.', es: 'No se pudo leer el archivo CSV. Verifica que sea separado por comas.', pt: 'Não foi possível ler o arquivo CSV. Verifique se é separado por vírgulas.' },
+  'import.noRows':                 { en: 'CSV has no data rows.',     es: 'El CSV no tiene filas de datos.', pt: 'O CSV não tem linhas de dados.' },
+  'import.mappingTitle':           { en: 'Column mapping',            es: 'Mapeo de columnas',          pt: 'Mapeamento de colunas' },
+  'import.mappingHint':            { en: 'Auto-detected fields are pre-selected. Adjust as needed; pick "Skip" to ignore a column.', es: 'Los campos auto-detectados están pre-seleccionados. Ajusta lo necesario; elige "Saltar" para ignorar una columna.', pt: 'Campos auto-detectados são pré-selecionados. Ajuste conforme necessário; escolha "Pular" para ignorar uma coluna.' },
+  'import.csvColumn':              { en: 'CSV column',                es: 'Columna del CSV',            pt: 'Coluna do CSV' },
+  'import.cellhubField':           { en: 'CellHub field',             es: 'Campo de CellHub',           pt: 'Campo do CellHub' },
+  'import.skip':                   { en: '— Skip —',                  es: '— Saltar —',                 pt: '— Pular —' },
+  'import.previewTitle':           { en: 'Preview (first 5 rows)',    es: 'Vista previa (primeras 5 filas)', pt: 'Pré-visualização (primeiras 5 linhas)' },
+  'import.previewHint':            { en: 'Rows highlighted in red are missing required fields and will be counted as errors.', es: 'Las filas en rojo no tienen los campos requeridos y se contarán como errores.', pt: 'Linhas em vermelho não têm os campos obrigatórios e serão contadas como erros.' },
+  'import.requiredMissing':        { en: 'missing required field',    es: 'falta campo requerido',      pt: 'falta campo obrigatório' },
+  'import.readyCount':             { en: (ok: number, err: number) => `${ok} ready · ${err} with errors`, es: (ok: number, err: number) => `${ok} listas · ${err} con errores`, pt: (ok: number, err: number) => `${ok} prontas · ${err} com erros` },
+  'import.doImport':               { en: (n: number) => `Import ${n}`, es: (n: number) => `Importar ${n}`, pt: (n: number) => `Importar ${n}` },
+  'import.back':                   { en: '← Back',                    es: '← Atrás',                    pt: '← Voltar' },
+  'import.cancel':                 { en: 'Cancel',                    es: 'Cancelar',                   pt: 'Cancelar' },
+  'import.next':                   { en: 'Continue →',                es: 'Continuar →',                pt: 'Continuar →' },
+  'import.resultTitle':            { en: 'Import complete',           es: 'Importación completa',       pt: 'Importação concluída' },
+  'import.imported':               { en: (n: number) => `${n} imported`, es: (n: number) => `${n} importados`, pt: (n: number) => `${n} importados` },
+  'import.skippedCount':           { en: (n: number) => `${n} skipped (already exist)`, es: (n: number) => `${n} omitidos (ya existían)`, pt: (n: number) => `${n} ignorados (já existiam)` },
+  'import.errorsCount':            { en: (n: number) => `${n} errors`, es: (n: number) => `${n} errores`, pt: (n: number) => `${n} erros` },
+  'import.resetButton':            { en: 'Import another file',       es: 'Importar otro archivo',      pt: 'Importar outro arquivo' },
+
   // WhatsApp section
   'settings.whatsapp.desc':                { en: 'wa.me buttons that open WhatsApp with pre-filled messages. Free, no API needed.', es: 'Botones wa.me que abren WhatsApp con mensajes pre-escritos. Sin costo, sin API.', pt: 'Botões wa.me que abrem o WhatsApp com mensagens pré-escritas. Grátis, sem API.' },
   'settings.whatsapp.showButton':          { en: 'Show WhatsApp button on tickets', es: 'Mostrar botón WhatsApp en tickets', pt: 'Mostrar botão WhatsApp nos tickets' },
@@ -3330,6 +3910,20 @@ export const translations: TranslationDictionary = {
   'settings.backup.cloudSync.active':      { en: '✓ Active — changes back up to the cloud', es: '✓ Activo — cambios se respaldan en la nube', pt: '✓ Ativo — alterações são salvas na nuvem' },
   'settings.backup.cloudSync.disabled':    { en: 'Disabled — data stored locally only', es: 'Desactivado — datos solo guardados localmente', pt: 'Desativado — dados armazenados apenas localmente' },
   'settings.backup.cloudSync.changeConfig': { en: 'Change Firebase config',     es: 'Cambiar configuración de Firebase', pt: 'Alterar configuração do Firebase' },
+  // R-FIREBASE-MULTIPC-SYNC: Push / Pull bulk-sync buttons + confirm modals + toasts.
+  'settings.backup.cloudSync.pushBtn':       { en: '☁️ Push all to cloud',        es: '☁️ Subir todo a la nube',         pt: '☁️ Enviar tudo para a nuvem' },
+  'settings.backup.cloudSync.pullBtn':       { en: '⬇ Pull from cloud',          es: '⬇ Bajar de la nube',              pt: '⬇ Baixar da nuvem' },
+  'settings.backup.cloudSync.pushTitle':     { en: 'Push all to cloud',           es: 'Subir todo a la nube',             pt: 'Enviar tudo para a nuvem' },
+  'settings.backup.cloudSync.pushBody':      { en: 'This will upload all local data to Firebase. Continue?', es: 'Esto subirá todos los datos locales a Firebase. ¿Continuar?', pt: 'Isso enviará todos os dados locais para o Firebase. Continuar?' },
+  'settings.backup.cloudSync.pushBodyLarge': { en: (n: number) => `Large dataset (~${n} records) — this will use a significant portion of your daily Firestore quota.`, es: (n: number) => `Conjunto grande (~${n} registros) — esto usará una porción significativa de tu cuota diaria de Firestore.`, pt: (n: number) => `Conjunto grande (~${n} registros) — isso usará uma parte significativa da sua cota diária do Firestore.` },
+  'settings.backup.cloudSync.pullTitle':     { en: 'Pull from cloud',             es: 'Bajar de la nube',                 pt: 'Baixar da nuvem' },
+  'settings.backup.cloudSync.pullBody':      { en: 'This will REPLACE ALL local data with Firebase data. Local changes not yet synced will be lost. Continue?', es: 'Esto REEMPLAZARÁ TODOS los datos locales con los de Firebase. Cambios locales no sincronizados se perderán. ¿Continuar?', pt: 'Isso SUBSTITUIRÁ TODOS os dados locais pelos do Firebase. Alterações locais não sincronizadas serão perdidas. Continuar?' },
+  'settings.backup.cloudSync.pushing':       { en: 'Pushing…',                    es: 'Subiendo…',                        pt: 'Enviando…' },
+  'settings.backup.cloudSync.pulling':       { en: 'Pulling…',                    es: 'Bajando…',                         pt: 'Baixando…' },
+  'settings.backup.cloudSync.pushDone':      { en: (n: number) => `✅ Pushed ${n} records to cloud`, es: (n: number) => `✅ ${n} registros subidos a la nube`, pt: (n: number) => `✅ ${n} registros enviados para a nuvem` },
+  'settings.backup.cloudSync.pullDone':      { en: (n: number) => `✅ Pulled ${n} records from cloud`, es: (n: number) => `✅ ${n} registros bajados de la nube`, pt: (n: number) => `✅ ${n} registros baixados da nuvem` },
+  'settings.backup.cloudSync.bulkFailed':    { en: (msg: string) => `❌ Operation failed: ${msg}`, es: (msg: string) => `❌ Operación fallida: ${msg}`, pt: (msg: string) => `❌ Operação falhou: ${msg}` },
+  'settings.backup.cloudSync.notReady':      { en: 'Firebase not initialized. Configure cloud sync first.', es: 'Firebase no inicializado. Configura la sincronización primero.', pt: 'Firebase não inicializado. Configure a sincronização primeiro.' },
   'settings.backup.storage.title':         { en: '💾 Local Storage Usage', es: '💾 Almacenamiento Local', pt: '💾 Uso de Armazenamento Local' },
   'settings.backup.storage.high':          { en: 'Storage getting high. Export a backup and archive old sales data.', es: 'Almacenamiento alto. Exporta un backup y limpia ventas antiguas.', pt: 'Armazenamento alto. Exporte um backup e archive dados antigos.' },
   'settings.backup.storage.healthy':       { en: 'Storage is healthy. Firebase also backs up your data in the cloud.', es: 'Almacenamiento en buen estado. Firebase respalda tus datos en la nube.', pt: 'Armazenamento saudável. O Firebase também faz backup na nuvem.' },
@@ -4181,6 +4775,28 @@ export const translations: TranslationDictionary = {
   'reports.employeePerf':      { en: 'Employee Performance',                            es: 'Rendimiento de Empleados',                         pt: 'Desempenho dos Funcionários' },
   'reports.topItems':          { en: 'Top Selling Items',                               es: 'Artículos Más Vendidos',                           pt: 'Itens Mais Vendidos' },
   'reports.transactions':      { en: 'Transactions',                                    es: 'Transacciones',                                    pt: 'Transações' },
+  // R-REPORT-FEES-BREAKDOWN: Transaction Breakdown table keys
+  'reports.breakdown.title':            { en: '🧾 Transaction Breakdown',           es: '🧾 Desglose de Transacciones',           pt: '🧾 Detalhamento de Transações' },
+  'reports.breakdown.type':             { en: 'Transaction Type',                   es: 'Tipo de Transacción',                    pt: 'Tipo de Transação' },
+  'reports.breakdown.count':            { en: 'Count',                              es: 'Cantidad',                               pt: 'Quantidade' },
+  'reports.breakdown.revenue':          { en: 'Revenue',                            es: 'Ingresos',                               pt: 'Receita' },
+  'reports.breakdown.taxesFees':        { en: 'Taxes & Fees',                       es: 'Impuestos y Cargos',                     pt: 'Impostos e Taxas' },
+  'reports.breakdown.productSales':     { en: 'Product Sales',                      es: 'Ventas de Productos',                    pt: 'Vendas de Produtos' },
+  'reports.breakdown.productSub':       { en: 'Phones, accessories, cases, etc.',   es: 'Teléfonos, accesorios, etc.',            pt: 'Telefones, acessórios, etc.' },
+  'reports.breakdown.phoneBill':        { en: 'Phone Bill Payments',                es: 'Pagos de Telefonía',                     pt: 'Pagamentos de Telefonia' },
+  'reports.breakdown.phoneSub':         { en: 'AT&T, T-Mobile, Verizon, etc.',      es: 'AT&T, T-Mobile, Verizon, etc.',          pt: 'AT&T, T-Mobile, Verizon, etc.' },
+  'reports.breakdown.repairServices':   { en: 'Repair Services',                    es: 'Servicios de Reparación',                pt: 'Serviços de Reparo' },
+  'reports.breakdown.repairSub':        { en: 'Completed repairs',                  es: 'Reparaciones completadas',               pt: 'Reparos concluídos' },
+  'reports.breakdown.unlockServices':   { en: 'Unlock Services',                    es: 'Servicios de Desbloqueo',                pt: 'Serviços de Desbloqueio' },
+  'reports.breakdown.unlockSub':        { en: 'Completed unlocks',                  es: 'Desbloqueos completados',                pt: 'Desbloqueios concluídos' },
+  'reports.breakdown.noTax':            { en: 'No tax (Service)',                   es: 'Sin impuesto (Servicio)',                pt: 'Sem imposto (Serviço)' },
+  'reports.breakdown.salesTax':         { en: 'Sales Tax',                          es: 'Impuesto de Venta',                      pt: 'Imposto sobre Vendas' },
+  'reports.breakdown.utilityTax':       { en: 'Utility Tax',                        es: 'Impuesto de Utilidad',                   pt: 'Taxa de Utilidade' },
+  'reports.breakdown.mobilityFee':      { en: 'CA Mobility Fee',                    es: 'Cargo de Movilidad CA',                  pt: 'Taxa de Mobilidade CA' },
+  'reports.breakdown.cbeFee':           { en: 'CBE Fee',                            es: 'Cargo CBE',                              pt: 'Taxa CBE' },
+  'reports.breakdown.screenFee':        { en: 'Screen Fee',                         es: 'Cargo de Pantalla',                      pt: 'Taxa de Tela' },
+  'reports.breakdown.totalFees':        { en: 'Total Taxes & Fees',                 es: 'Total Impuestos y Cargos',               pt: 'Total Impostos e Taxas' },
+  'reports.breakdown.total':            { en: 'TOTAL',                              es: 'TOTAL',                                  pt: 'TOTAL' },
   'reports.reprintReceipt':    { en: 'Reprint Receipt',                                 es: 'Reimprimir Recibo',                                pt: 'Reimprimir Recibo' },
   'reports.typeSpecialOrder':  { en: 'Special Order',                                   es: 'Pedido Especial',                                  pt: 'Pedido Especial' },
   'reports.typeRepair':        { en: 'Repair',                                          es: 'Reparación',                                       pt: 'Reparação' },
@@ -4188,6 +4804,12 @@ export const translations: TranslationDictionary = {
   'reports.noName':            { en: 'No name',                                         es: 'Sin nombre',                                       pt: 'Sem nome' },
   'reports.unknownEmployee':   { en: 'Unknown',                                         es: 'Sin nombre',                                       pt: 'Desconhecido' },
   'reports.noProvider':        { en: '(No provider)',                                   es: '(Sin proveedor)',                                  pt: '(Sem provedor)' },
+  // R-ACTIVATIONS-BY-CARRIER-V1
+  'reports.noCarrier':              { en: '(No carrier)',                                  es: '(Sin compañía)',                                   pt: '(Sem operadora)' },
+  'reports.activationsByCarrier':   { en: 'Activations by Carrier',                        es: 'Activaciones por Compañía',                        pt: 'Ativações por Operadora' },
+  'reports.activationsByCarrierSub':{ en: 'Phone activations grouped by carrier company',  es: 'Activaciones agrupadas por compañía telefónica',   pt: 'Ativações agrupadas por operadora' },
+  'reports.activations':            { en: 'activations',                                   es: 'activaciones',                                     pt: 'ativações' },
+  'reports.lines':                  { en: 'lines',                                         es: 'líneas',                                           pt: 'linhas' },
 
   // ── Nav tab labels ────────────────────────────────────────
   'nav.dashboard':       { en: 'Dashboard',        es: 'Tablero',              pt: 'Painel' },
@@ -4201,10 +4823,348 @@ export const translations: TranslationDictionary = {
   'nav.customers':       { en: 'Customers',         es: 'Clientes',             pt: 'Clientes' },
   'nav.appointments':    { en: 'Appointments',      es: 'Citas',                pt: 'Agendamentos' },
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
+  'nav.companion':       { en: 'Companion',         es: 'Companion',            pt: 'Companion' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
+
+  // R-COMPANION-CENTER-V1 — UI shell strings (no backend yet)
+  'companion.title':                 { en: 'Companion Center',          es: 'Centro Companion',          pt: 'Central Companion' },
+  'companion.subtitle':              { en: 'Connect CellHub Pro with the Companion mobile app.', es: 'Conecta CellHub Pro con la app móvil Companion.', pt: 'Conecte o CellHub Pro com o app móvel Companion.' },
+  'companion.statusBanner.notConnected':   { en: 'Not connected',         es: 'No conectado',            pt: 'Não conectado' },
+  'companion.statusBanner.pairing':        { en: 'Pairing pending',       es: 'Emparejamiento pendiente',pt: 'Emparelhamento pendente' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: replace misleading
+  // "Connected soon" / "Coming soon" with honest labels.
+  'companion.statusBanner.connected':      { en: 'Connected',             es: 'Conectado',               pt: 'Conectado' },
+  'companion.statusBanner.comingSoon':     { en: 'Not enabled',           es: 'No habilitado',           pt: 'Não habilitado' },
+
+  'companion.card.connect.title':      { en: 'Connect Companion App',     es: 'Conectar app Companion',  pt: 'Conectar app Companion' },
+  'companion.card.connect.body':       { en: 'Link this terminal to the mobile Companion so you can monitor and assist the store from anywhere.', es: 'Vincula esta terminal con el Companion móvil para monitorear y asistir la tienda desde cualquier lugar.', pt: 'Vincule este terminal ao Companion móvel para monitorar e assistir a loja de qualquer lugar.' },
+
+  'companion.card.pair.title':         { en: 'Pair Device via QR / PIN',  es: 'Emparejar Dispositivo (QR / PIN)', pt: 'Parear Dispositivo (QR / PIN)' },
+  'companion.card.pair.body':          { en: 'Scan a QR code from the mobile app, or enter a 6-digit pairing PIN.', es: 'Escanea un QR desde la app móvil, o ingresa un PIN de 6 dígitos.', pt: 'Escaneie um QR pelo app móvel ou insira um PIN de 6 dígitos.' },
+
+  'companion.card.approvals.title':    { en: 'Approval Requests',         es: 'Solicitudes de Aprobación',pt: 'Solicitações de Aprovação' },
+  'companion.card.approvals.body':     { en: 'Approve cashier-side actions (cancels, refunds, discounts) directly from your phone.', es: 'Aprueba acciones del cajero (cancelaciones, reembolsos, descuentos) desde el teléfono.', pt: 'Aprove ações do caixa (cancelamentos, reembolsos, descontos) direto do celular.' },
+  // R-COMPANION-APPROVAL-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.approvals.pendingLine': {
+    en: (n: number) => `${n} pending request${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} solicitud${n === 1 ? '' : 'es'} pendiente${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} solicitação${n === 1 ? '' : 'ões'} pendente${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.approvals.latestApproved': { en: 'Latest: approved', es: 'Última: aprobada', pt: 'Última: aprovada' },
+  'companion.card.approvals.latestDenied':   { en: 'Latest: denied',   es: 'Última: denegada', pt: 'Última: negada' },
+
+  'companion.card.storeStatus.title':  { en: 'Store Status',              es: 'Estado de la Tienda',      pt: 'Status da Loja' },
+  'companion.card.storeStatus.body':   { en: 'See who is clocked in, live sales count and current cash drawer at a glance.', es: 'Ve quién está clockeado, ventas en vivo y caja actual de un vistazo.', pt: 'Veja quem está registrado, vendas ao vivo e caixa atual em um relance.' },
+  // R-COMPANION-STORE-STATUS-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.storeStatus.statusOpen':    { en: 'Open',    es: 'Abierta',     pt: 'Aberta' },
+  'companion.card.storeStatus.statusClosed':  { en: 'Closed',  es: 'Cerrada',     pt: 'Fechada' },
+  'companion.card.storeStatus.statusUnknown': { en: 'Unknown', es: 'Desconocido', pt: 'Desconhecido' },
+  'companion.card.storeStatus.shiftLine': {
+    en: (n: number) => `${n} cashier${n === 1 ? '' : 's'} on shift`,
+    es: (n: number) => `${n} cajero${n === 1 ? '' : 's'} en turno`,
+    pt: (n: number) => `${n} caixa${n === 1 ? '' : 's'} em turno`,
+  },
+  'companion.card.storeStatus.ringingLine': {
+    en: (n: number) => `${n} POS ringing`,
+    es: (n: number) => `${n} POS activa${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} POS ativa${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.storeStatus.alert.warning':  { en: 'Warning',  es: 'Advertencia', pt: 'Aviso' },
+  'companion.card.storeStatus.alert.critical': { en: 'Critical', es: 'Crítico',     pt: 'Crítico' },
+  'companion.card.storeStatus.latestEvent':    { en: 'Latest event', es: 'Último evento', pt: 'Último evento' },
+
+  'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
+  'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
+  // R-COMPANION-MESSAGING-RUNTIME-V1 — runtime metric lines inside the card
+  'companion.card.messaging.unreadLine': {
+    en: (n: number) => `${n} unread message${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} mensaje${n === 1 ? '' : 's'} sin leer`,
+    pt: (n: number) => `${n} mensage${n === 1 ? 'm' : 'ns'} não lida${n === 1 ? '' : 's'}`,
+  },
+  'companion.card.messaging.latestSent':     { en: 'Latest: sent',     es: 'Último: enviado',  pt: 'Último: enviado' },
+  'companion.card.messaging.latestReceived': { en: 'Latest: received', es: 'Último: recibido', pt: 'Último: recebido' },
+  'companion.card.messaging.threadsLine': {
+    en: (n: number) => `${n} active thread${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} conversación${n === 1 ? '' : 'es'} activa${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
+  },
+
+  'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
+  'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },
+
+  // R-COMPANION-PAIRING-MOCK-V1
+  'companion.card.pair.startButton': { en: 'Start Pairing',          es: 'Iniciar Emparejamiento',  pt: 'Iniciar Pareamento' },
+  'companion.card.pair.repairButton':{ en: 'Pair another device',    es: 'Emparejar otro',          pt: 'Parear outro' },
+  'companion.pair.modalTitle':       { en: 'Pair Companion Device',  es: 'Emparejar Dispositivo Companion', pt: 'Parear Dispositivo Companion' },
+  'companion.pair.qrCaption':        { en: 'Scan with the Companion app', es: 'Escanea con la app Companion', pt: 'Escaneie com o app Companion' },
+  'companion.pair.expiresIn':        { en: 'Expires in',              es: 'Expira en',                pt: 'Expira em' },
+  'companion.pair.pinLabel':         { en: 'Or enter this 6-digit code', es: 'O ingresa este código de 6 dígitos', pt: 'Ou insira este código de 6 dígitos' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: honest QR-scan instruction.
+  'companion.pair.instructions':     { en: 'Open CellHub Companion on your phone and scan this QR code.', es: 'Abre CellHub Companion en tu teléfono y escanea este código QR.', pt: 'Abra o CellHub Companion no celular e escaneie este QR code.' },
+  // Real pairing-status labels surfaced inside the modal.
+  'companion.pair.status.waiting':           { en: 'Waiting for phone',           es: 'Esperando teléfono',          pt: 'Aguardando telefone' },
+  'companion.pair.status.received':          { en: 'Pairing request received',    es: 'Solicitud de emparejamiento recibida', pt: 'Solicitação de pareamento recebida' },
+  'companion.pair.status.connected':         { en: 'Connected',                   es: 'Conectado',                   pt: 'Conectado' },
+  'companion.pair.status.expired':           { en: 'Pairing code expired',        es: 'Código de emparejamiento expirado', pt: 'Código de pareamento expirado' },
+  'companion.pair.status.bridgeUnavailable': { en: 'Bridge unavailable — check Settings', es: 'Bridge no disponible — revisa Ajustes', pt: 'Bridge indisponível — verifique as Configurações' },
+  'companion.pair.status.offerFailed':       { en: 'Bridge rejected the pairing offer', es: 'El bridge rechazó la oferta de emparejamiento', pt: 'O bridge rejeitou a oferta de pareamento' },
+  'companion.pair.bridge.offerFailedHint':   { en: 'The bridge server returned an error. Close this modal, verify Bridge URL and Settings, and try again.', es: 'El servidor del bridge devolvió un error. Cierra este modal, verifica la URL del Bridge y los Ajustes, e inténtalo de nuevo.', pt: 'O servidor do bridge retornou um erro. Feche este modal, verifique a URL do Bridge e as Configurações, e tente novamente.' },
+  'companion.pair.phase.waiting':    { en: 'Waiting for device…',    es: 'Esperando dispositivo…',  pt: 'Aguardando dispositivo…' },
+  'companion.pair.phase.pending':    { en: 'Pairing pending…',       es: 'Emparejamiento pendiente…', pt: 'Pareamento pendente…' },
+  'companion.pair.phase.connected':  { en: 'Connected!',             es: '¡Conectado!',             pt: 'Conectado!' },
+  'companion.pair.cancel':           { en: 'Cancel',                 es: 'Cancelar',                pt: 'Cancelar' },
+  'companion.pair.mockConnect':      { en: 'Mock connect (dev)',     es: 'Conectar mock (dev)',     pt: 'Conectar mock (dev)' },
+
+  'companion.device.sectionTitle':   { en: 'Paired device',          es: 'Dispositivo emparejado',  pt: 'Dispositivo pareado' },
+  'companion.device.platform.iphone':{ en: 'iPhone',                 es: 'iPhone',                  pt: 'iPhone' },
+  'companion.device.platform.ios':   { en: 'iPhone',                 es: 'iPhone',                  pt: 'iPhone' },
+  'companion.device.platform.android':{ en: 'Android',               es: 'Android',                 pt: 'Android' },
+  'companion.device.platform.web':   { en: 'Web',                    es: 'Web',                     pt: 'Web' },
+  'companion.device.platform.unknown':{ en: 'Device',                es: 'Dispositivo',             pt: 'Dispositivo' },
+  'companion.device.lastConnected':  { en: 'Last connected',         es: 'Última conexión',         pt: 'Última conexão' },
+  'companion.device.justNow':        { en: 'just now',               es: 'hace un momento',         pt: 'agora mesmo' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: paired-device card labels.
+  'companion.device.lastSeen':       { en: 'Last seen',              es: 'Visto por última vez',    pt: 'Visto por último' },
+  'companion.device.seconds':        { en: 's ago',                  es: 's atrás',                 pt: 's atrás' },
+  'companion.device.minutes':        { en: 'm ago',                  es: 'min atrás',               pt: 'min atrás' },
+  'companion.device.hours':          { en: 'h ago',                  es: 'h atrás',                 pt: 'h atrás' },
+  'companion.device.status.connected':    { en: 'Connected',         es: 'Conectado',               pt: 'Conectado' },
+  'companion.device.status.disconnected': { en: 'Disconnected',      es: 'Desconectado',            pt: 'Desconectado' },
+  'companion.device.health.good':    { en: 'Healthy',                es: 'Saludable',               pt: 'Saudável' },
+  'companion.device.disconnect':     { en: 'Disconnect',             es: 'Desconectar',             pt: 'Desconectar' },
+
+  // R-COMPANION-EVENT-LAYER-V1 — dev debug panel
+  'companion.debug.title':           { en: 'Event bus (dev)',         es: 'Bus de eventos (dev)',     pt: 'Barramento de eventos (dev)' },
+  // R-COMPANION-CENTER-UX-REDESIGN — top-level collapsible diagnostics
+  'companion.diagnostics.title':     { en: 'Developer diagnostics',   es: 'Diagnóstico de desarrollador', pt: 'Diagnóstico de desenvolvedor' },
+  'companion.debug.connected':       { en: 'Companion connected',     es: 'Companion conectado',      pt: 'Companion conectado' },
+  'companion.debug.lastEvent':       { en: 'Last event',              es: 'Último evento',            pt: 'Último evento' },
+  'companion.debug.queueSize':       { en: 'Queue size',              es: 'Tamaño de cola',           pt: 'Tamanho da fila' },
+  'companion.debug.toggleConnection':{ en: 'Toggle connection',       es: 'Alternar conexión',        pt: 'Alternar conexão' },
+  'companion.debug.simulateEvent':   { en: 'Simulate event',          es: 'Simular evento',           pt: 'Simular evento' },
+  'companion.debug.mockPair':        { en: 'Simulate paired device (testing only)', es: 'Simular dispositivo emparejado (solo pruebas)', pt: 'Simular dispositivo pareado (apenas testes)' },
+  'companion.debug.mockPairHint':    { en: 'Bypasses the real bridge claim flow. For UI development only — does NOT pair a real phone.', es: 'Salta el flujo real de emparejamiento del bridge. Solo para desarrollo de UI — NO empareja un teléfono real.', pt: 'Pula o fluxo real de pareamento do bridge. Apenas para desenvolvimento de UI — NÃO pareia um telefone real.' },
+  'companion.debug.noEvents':        { en: 'no events yet',           es: 'sin eventos aún',          pt: 'sem eventos ainda' },
+  'companion.debug.yes':             { en: 'yes',                     es: 'sí',                       pt: 'sim' },
+  'companion.debug.no':              { en: 'no',                      es: 'no',                       pt: 'não' },
+
+  // R-COMPANION-RUNTIME-TEST-PANEL-V1
+  'companion.inbox.title':           { en: 'Action Inbox (dev)',      es: 'Bandeja de Acciones (dev)', pt: 'Caixa de Ações (dev)' },
+  'companion.inbox.pending':         { en: 'Pending',                 es: 'Pendientes',                pt: 'Pendentes' },
+  'companion.inbox.handled':         { en: 'Handled',                 es: 'Procesadas',                pt: 'Processadas' },
+  'companion.inbox.submitApprove':   { en: '+ approve_request',       es: '+ approve_request',         pt: '+ approve_request' },
+  'companion.inbox.submitDeny':      { en: '+ deny_request',          es: '+ deny_request',            pt: '+ deny_request' },
+  'companion.inbox.submitMessage':   { en: '+ send_message',          es: '+ send_message',            pt: '+ send_message' },
+  'companion.inbox.submitAck':       { en: '+ ack_alert',             es: '+ ack_alert',               pt: '+ ack_alert' },
+  'companion.inbox.processPending':  { en: 'Process pending',         es: 'Procesar pendientes',       pt: 'Processar pendentes' },
+  'companion.inbox.clearHandled':    { en: 'Clear handled',           es: 'Limpiar procesadas',        pt: 'Limpar processadas' },
+
+  // R-COMPANION-BRIDGE-SETTINGS-V1 — Settings → Companion section copy
+  'settings.companion.title':              { en: 'Companion',                                                                es: 'Companion',                                                                pt: 'Companion' },
+  'settings.companion.desc':               { en: 'Configure the Companion mobile bridge.',                                   es: 'Configura el puente móvil de Companion.',                                   pt: 'Configure a ponte móvel do Companion.' },
+  'settings.companion.bridge.title':       { en: 'Bridge Transport',                                                         es: 'Transporte del Bridge',                                                     pt: 'Transporte do Bridge' },
+  'settings.companion.bridge.enabledLabel':{ en: 'Enable Companion bridge transport',                                        es: 'Habilitar transporte del bridge Companion',                                 pt: 'Ativar transporte do bridge Companion' },
+  'settings.companion.bridge.enabledHint': { en: 'When enabled, this terminal connects to the Companion bridge so approvals, messaging, and store status flow to/from the mobile app.', es: 'Cuando está habilitado, esta terminal se conecta al bridge de Companion para enviar y recibir aprobaciones, mensajería y estado de la tienda con la app móvil.', pt: 'Quando ativado, este terminal se conecta ao bridge do Companion para sincronizar aprovações, mensagens e status da loja com o app móvel.' },
+  'settings.companion.bridge.urlLabel':    { en: 'Bridge URL (optional override)',                                           es: 'URL del Bridge (anulación opcional)',                                       pt: 'URL do Bridge (substituição opcional)' },
+  'settings.companion.bridge.urlHint':     { en: 'Leave blank to use the default bridge URL. Override only if pointing to a custom bridge server.', es: 'Déjalo vacío para usar la URL por defecto. Solo anula si apuntas a un servidor de bridge personalizado.', pt: 'Deixe em branco para usar a URL padrão. Substitua apenas se estiver apontando para um servidor de bridge personalizado.' },
+  'settings.companion.openCenterHint':     { en: 'Pairing, device status, and connection diagnostics live in Companion Center.', es: 'El emparejamiento, el estado del dispositivo y los diagnósticos de conexión están en Centro Companion.', pt: 'O pareamento, status do dispositivo e diagnósticos de conexão ficam em Central Companion.' },
+
+  // R-COMPANION-BRIDGE-WIRE-V1 — outbound bridge transport copy
+  'companion.bridge.disabled':       { en: 'Bridge transport disabled — enable in Settings', es: 'Transporte de Bridge deshabilitado — habilítalo en Ajustes', pt: 'Transporte do Bridge desativado — ative em Configurações' },
+  'companion.bridge.connecting':     { en: 'Connecting to Companion bridge…',                 es: 'Conectando al bridge Companion…',                              pt: 'Conectando ao bridge Companion…' },
+  'companion.bridge.connected':      { en: 'Companion bridge live',                            es: 'Bridge Companion en línea',                                    pt: 'Bridge Companion ativo' },
+  'companion.bridge.rejected':       { en: 'Bridge rejected this device — check auth',         es: 'El bridge rechazó este dispositivo — revisa la autenticación', pt: 'Bridge rejeitou este dispositivo — verifique a autenticação' },
+
+  // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 — Settings toggle copy.
+  // Plumbing only; setting is read by future Phase 2 wiring.
+  'settings.approvals.remote.label':       { en: 'Remote approvals from Companion',                                                  es: 'Aprobaciones remotas desde Companion',                                                              pt: 'Aprovações remotas pelo Companion' },
+  'settings.approvals.remote.desc':        { en: 'Allow paired Companion devices to approve or deny restricted actions remotely.', es: 'Permite que los dispositivos Companion emparejados aprueben o denieguen acciones restringidas de forma remota.', pt: 'Permite que dispositivos Companion pareados aprovem ou neguem ações restritas remotamente.' },
+  'settings.approvals.remote.warning':     { en: 'Local PIN remains available. Only enable this for trusted paired devices.',       es: 'El PIN local sigue disponible. Actívalo solo para dispositivos emparejados de confianza.',            pt: 'O PIN local continua disponível. Ative apenas para dispositivos pareados de confiança.' },
+
+  // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — short pill labels per adapter state
+  'companion.bridge.status.label':         { en: 'Bridge',         es: 'Bridge',         pt: 'Bridge' },
+  'companion.bridge.status.disabled':      { en: 'Disabled',       es: 'Deshabilitado',  pt: 'Desativado' },
+  'companion.bridge.status.idle':          { en: 'Idle',           es: 'Inactivo',       pt: 'Inativo' },
+  'companion.bridge.status.connecting':    { en: 'Connecting…',    es: 'Conectando…',    pt: 'Conectando…' },
+  'companion.bridge.status.connected':     { en: 'Connected',      es: 'Conectado',      pt: 'Conectado' },
+  'companion.bridge.status.reconnecting':  { en: 'Reconnecting…',  es: 'Reconectando…',  pt: 'Reconectando…' },
+  'companion.bridge.status.disconnected':  { en: 'Disconnected',   es: 'Desconectado',   pt: 'Desconectado' },
+  'companion.bridge.status.rejected':      { en: 'Rejected',       es: 'Rechazado',      pt: 'Rejeitado' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
-  'nav.caTaxReports':    { en: 'Taxes',             es: 'Impuestos',            pt: 'Impostos' },
+  'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
+
+  // R-OPERATOR-FLOATING-BUBBLE-V1 — global Intelligence shortcut bubble
+  'operator.bubble.openTooltip':  { en: 'Open Operator (Intelligence)',  es: 'Abrir Operador (Inteligencia)', pt: 'Abrir Operador (Inteligência)' },
+  'operator.bubble.closeTooltip': { en: 'Close Operator',                es: 'Cerrar Operador',                pt: 'Fechar Operador' },
+
+  // R-OPERATOR-FLOATING-BUBBLE-AWARE-V1 / R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2
+  // Overlay copy. (Key prefix kept as `operator.menu.*` for stable history.)
+  'operator.menu.title':       { en: 'Operator',                es: 'Operador',                  pt: 'Operador' },
+  'operator.menu.hintsOn':     { en: 'Hints: ON',               es: 'Avisos: ON',                pt: 'Dicas: ON' },
+  'operator.menu.hintsOff':    { en: 'Hints: OFF',              es: 'Avisos: OFF',               pt: 'Dicas: OFF' },
+  'operator.menu.openIntel':   { en: 'Open Full Intelligence',  es: 'Abrir Inteligencia completa', pt: 'Abrir Inteligência completa' },
+  'operator.menu.dismiss':     { en: 'Dismiss hint',            es: 'Descartar aviso',           pt: 'Descartar dica' },
+  'operator.overlay.statusPrefix':  { en: 'Status',           es: 'Estado',                pt: 'Status' },
+  'operator.overlay.noHint':        { en: 'No hint right now. The Operator is watching for activity.', es: 'Sin avisos por ahora. El Operador observa actividad.', pt: 'Sem dicas no momento. O Operador está observando atividade.' },
+  'operator.overlay.resetPosition': { en: 'Reset position',   es: 'Restablecer posición',  pt: 'Redefinir posição' },
+  'operator.overlay.watching':      { en: 'Watching this screen.', es: 'Observando esta pantalla.', pt: 'Observando esta tela.' },
+
+  // R-OPERATOR-ACTIVITY-CONTEXT-V1 — persistent context block
+  'operator.context.title.phone_payment': { en: 'Working on phone payment', es: 'Trabajando en pago de teléfono', pt: 'Trabalhando em pagamento de telefone' },
+  'operator.context.title.customer':     { en: 'Working with customer',    es: 'Trabajando con cliente',         pt: 'Trabalhando com cliente' },
+  'operator.context.title.sale':         { en: 'Reviewing sale',           es: 'Revisando venta',                pt: 'Revisando venda' },
+  'operator.context.title.layaway':      { en: 'Reviewing layaway',        es: 'Revisando apartado',             pt: 'Revisando layaway' },
+  'operator.context.title.repair':       { en: 'Reviewing repair',         es: 'Revisando reparación',           pt: 'Revisando reparo' },
+  'operator.context.linesOnFile': {
+    en: (n: number) => `${n} line${n === 1 ? '' : 's'} on file`,
+    es: (n: number) => `${n} línea${n === 1 ? '' : 's'} registrada${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} linha${n === 1 ? '' : 's'} registrada${n === 1 ? '' : 's'}`,
+  },
+  'operator.context.lastPayment': {
+    en: (a: string) => `Last payment $${a}`,
+    es: (a: string) => `Último pago $${a}`,
+    pt: (a: string) => `Último pagamento $${a}`,
+  },
+  'operator.context.currentAmount': {
+    en: (a: string) => `Selected amount $${a}`,
+    es: (a: string) => `Monto seleccionado $${a}`,
+    pt: (a: string) => `Valor selecionado $${a}`,
+  },
+  'operator.action.copyPhone':       { en: 'Copy phone',           es: 'Copiar teléfono',         pt: 'Copiar telefone' },
+  'operator.action.copyPhoneDone':   { en: 'Copied!',              es: '¡Copiado!',               pt: 'Copiado!' },
+  'operator.action.viewHistory':     { en: 'View customer history', es: 'Ver historial del cliente', pt: 'Ver histórico do cliente' },
+  'operator.action.clearContext':    { en: 'Clear context',        es: 'Limpiar contexto',        pt: 'Limpar contexto' },
+  'operator.action.createCustomer':  { en: 'Create customer',      es: 'Crear cliente',           pt: 'Criar cliente' },
+
+  // R-OPERATOR-AMBIENT-AWARENESS-V1 — context title for unknown phone
+  'operator.context.title.unknown_phone': { en: 'New number detected', es: 'Número nuevo detectado', pt: 'Novo número detectado' },
+
+  // R-OPERATOR-AMBIENT-AWARENESS-V1 — operational insights
+  'operator.insights.title': { en: 'Operational insights', es: 'Insights operativos', pt: 'Insights operacionais' },
+  'operator.insight.firstTimeCustomer': { en: 'First-time customer detected.', es: 'Cliente nuevo detectado.', pt: 'Cliente novo detectado.' },
+  'operator.insight.createProfilePrompt': { en: 'Consider creating a customer profile.', es: 'Considera crear un perfil de cliente.', pt: 'Considere criar um perfil de cliente.' },
+  'operator.insight.vipCustomer': {
+    en: (spend: string) => `VIP customer — $${spend}+ lifetime.`,
+    es: (spend: string) => `Cliente VIP — $${spend}+ histórico.`,
+    pt: (spend: string) => `Cliente VIP — $${spend}+ histórico.`,
+  },
+  'operator.insight.repeatBuyer': {
+    en: (n: number) => `Repeat buyer — ${n} prior visits.`,
+    es: (n: number) => `Comprador recurrente — ${n} visitas previas.`,
+    pt: (n: number) => `Comprador recorrente — ${n} visitas anteriores.`,
+  },
+  'operator.insight.inactiveDays': {
+    en: (d: number) => `Inactive ${d}+ days — re-engage opportunity.`,
+    es: (d: number) => `Inactivo ${d}+ días — oportunidad de reenganche.`,
+    pt: (d: number) => `Inativo ${d}+ dias — oportunidade de reengajar.`,
+  },
+  'operator.insight.multiLineCustomer': {
+    en: (n: number) => `${n} lines on file — family/business account.`,
+    es: (n: number) => `${n} líneas registradas — cuenta familiar/negocio.`,
+    pt: (n: number) => `${n} linhas registradas — conta familiar/negócio.`,
+  },
+  'operator.insight.nearCompleteLayaway': {
+    en: (bal: string) => `Layaway almost done — $${bal} remaining.`,
+    es: (bal: string) => `Apartado casi listo — $${bal} restante.`,
+    pt: (bal: string) => `Layaway quase concluído — $${bal} restante.`,
+  },
+  'operator.status.sleeping':  { en: 'Idle',              es: 'En reposo',         pt: 'Em repouso' },
+  'operator.status.watching':  { en: 'Watching activity', es: 'Observando',        pt: 'Observando' },
+  'operator.status.thinking':  { en: 'Thinking…',         es: 'Pensando…',         pt: 'Pensando…' },
+  'operator.status.ready':     { en: 'Hint ready',        es: 'Aviso listo',       pt: 'Dica pronta' },
+  'operator.status.alert':     { en: 'Attention',         es: 'Atención',          pt: 'Atenção' },
+
+  // Hint templates (function-form: deterministic placeholder fill)
+  'operator.hint.saleScanned': {
+    en: (invoice: string, total: string) => `Sale ${invoice} • $${total} on file.`,
+    es: (invoice: string, total: string) => `Venta ${invoice} • $${total} registrado.`,
+    pt: (invoice: string, total: string) => `Venda ${invoice} • $${total} registrado.`,
+  },
+  'operator.hint.phoneServices': {
+    en: (name: string, lines: number) => `${name} • ${lines} line${lines === 1 ? '' : 's'} on file.`,
+    es: (name: string, lines: number) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+    pt: (name: string, lines: number) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+  },
+  'operator.hint.posCustomerLastVisit': {
+    en: (name: string, days: number) => `${name} • Last visit ${days}d ago.`,
+    es: (name: string, days: number) => `${name} • Última visita hace ${days}d.`,
+    pt: (name: string, days: number) => `${name} • Última visita há ${days}d.`,
+  },
+  'operator.hint.posCustomerNew': {
+    en: (name: string) => `${name} • First visit on record.`,
+    es: (name: string) => `${name} • Primera visita registrada.`,
+    pt: (name: string) => `${name} • Primeira visita registrada.`,
+  },
+  'operator.hint.layawayOpen': {
+    en: (paid: string, remaining: string) => `Layaway • Paid $${paid} • Remaining $${remaining}.`,
+    es: (paid: string, remaining: string) => `Apartado • Pagado $${paid} • Restante $${remaining}.`,
+    pt: (paid: string, remaining: string) => `Layaway • Pago $${paid} • Restante $${remaining}.`,
+  },
+  'operator.hint.repairOpen': {
+    en: (ticket: string, status: string) => `Repair ${ticket} • Status: ${status}.`,
+    es: (ticket: string, status: string) => `Reparación ${ticket} • Estado: ${status}.`,
+    pt: (ticket: string, status: string) => `Reparo ${ticket} • Status: ${status}.`,
+  },
+  'operator.hint.customerLastVisit': {
+    en: (name: string, days: number) => `${name} • Last visit ${days}d ago. Good follow-up.`,
+    es: (name: string, days: number) => `${name} • Última visita hace ${days}d. Buen seguimiento.`,
+    pt: (name: string, days: number) => `${name} • Última visita há ${days}d. Bom acompanhamento.`,
+  },
+  'operator.hint.customerNew': {
+    en: (name: string) => `${name} • New customer in records.`,
+    es: (name: string) => `${name} • Cliente nuevo en registros.`,
+    pt: (name: string) => `${name} • Cliente novo nos registros.`,
+  },
+
+  // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix — phone payment hints
+  'operator.hint.phonePaymentCustomerWithHistory': {
+    en: (name: string, lines: number, last: string) => `${name} • ${lines} line${lines === 1 ? '' : 's'} • Last $${last}.`,
+    es: (name: string, lines: number, last: string) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} • Último $${last}.`,
+    pt: (name: string, lines: number, last: string) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} • Último $${last}.`,
+  },
+  'operator.hint.phonePaymentCustomerNoHistory': {
+    en: (name: string, lines: number) => `${name} • ${lines} line${lines === 1 ? '' : 's'} on file.`,
+    es: (name: string, lines: number) => `${name} • ${lines} línea${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+    pt: (name: string, lines: number) => `${name} • ${lines} linha${lines === 1 ? '' : 's'} registrada${lines === 1 ? '' : 's'}.`,
+  },
+  'operator.hint.phonePaymentLineSelected': {
+    en: (phone: string) => `Line ${phone} selected.`,
+    es: (phone: string) => `Línea ${phone} seleccionada.`,
+    pt: (phone: string) => `Linha ${phone} selecionada.`,
+  },
+  'operator.hint.phonePaymentLineSelectedWithHistory': {
+    en: (phone: string, last: string) => `Line ${phone} • Last payment $${last}.`,
+    es: (phone: string, last: string) => `Línea ${phone} • Último pago $${last}.`,
+    pt: (phone: string, last: string) => `Linha ${phone} • Último pagamento $${last}.`,
+  },
+  'operator.hint.phonePaymentNoHistory': {
+    en: (phone: string) => `No customer history found for ${phone}.`,
+    es: (phone: string) => `Sin historial de cliente para ${phone}.`,
+    pt: (phone: string) => `Sem histórico de cliente para ${phone}.`,
+  },
+
+  // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1 — outcome confirmations
+  'operator.hint.phonePaymentCustomerCreated': {
+    en: (name: string) => `${name} saved. I'll recognize this number next time.`,
+    es: (name: string) => `${name} guardado. Reconoceré este número la próxima vez.`,
+    pt: (name: string) => `${name} salvo. Reconhecerei este número da próxima vez.`,
+  },
+  'operator.hint.phonePaymentCustomerUpdated': {
+    en: (name: string) => `${name} updated with this phone.`,
+    es: (name: string) => `${name} actualizado con este teléfono.`,
+    pt: (name: string) => `${name} atualizado com este telefone.`,
+  },
+  'operator.hint.phonePaymentRecorded': {
+    en: (phone: string) => `Payment recorded. ${phone} now has history.`,
+    es: (phone: string) => `Pago registrado. ${phone} ya tiene historial.`,
+    pt: (phone: string) => `Pagamento registrado. ${phone} agora tem histórico.`,
+  },
+  'operator.hint.phonePaymentNumberLinked': {
+    en: (phone: string) => `Number ${phone} linked to customer.`,
+    es: (phone: string) => `Número ${phone} vinculado al cliente.`,
+    pt: (phone: string) => `Número ${phone} vinculado ao cliente.`,
+  },
 
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
@@ -4560,6 +5520,73 @@ export const translations: TranslationDictionary = {
   'reports.transLabel':          { en: 'trans.',              es: 'trans.',                             pt: 'trans.' },
   'reports.reprint':             { en: 'Reprint',             es: 'Reimprimir',                         pt: 'Reimprimir' },
 
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow strings.
+  'reports.voidSale':                  { en: 'Void Sale',          es: 'Anular Venta',           pt: 'Anular Venda' },
+  // R-REPORTS-EDIT-SALE-ITEM-V1: edit-sale-item flow keys (manager-PIN gated).
+  'reports.editSale.tooltip':          { en: 'Edit item price/qty', es: 'Editar precio/cantidad', pt: 'Editar preço/qtd.' },
+  'reports.editSale.title':            { en: 'Edit Sale Item',     es: 'Editar Artículo de Venta', pt: 'Editar Item da Venda' },
+  'reports.editSale.continue':         { en: 'Continue (PIN)',     es: 'Continuar (PIN)',        pt: 'Continuar (PIN)' },
+  'reports.editSale.invoiceLabel':     { en: 'Invoice',            es: 'Factura',                pt: 'Fatura' },
+  'reports.editSale.totalLabel':       { en: 'Current total',      es: 'Total actual',           pt: 'Total atual' },
+  'reports.editSale.pickItemLabel':    { en: 'Pick the item to edit:', es: 'Elige el artículo a editar:', pt: 'Escolha o item a editar:' },
+  'reports.editSale.priceLabel':       { en: 'New price ($)',      es: 'Nuevo precio ($)',       pt: 'Novo preço ($)' },
+  'reports.editSale.qtyLabel':         { en: 'New quantity',       es: 'Nueva cantidad',         pt: 'Nova quantidade' },
+  'reports.editSale.lineDeltaLabel':   { en: 'Line difference',    es: 'Diferencia de línea',    pt: 'Diferença da linha' },
+  'reports.editSale.refundOwedHint':   { en: 'Customer is owed this amount. Pick "Refund customer" to record it.', es: 'El cliente debe recibir este monto. Elige "Reembolsar al cliente" para registrarlo.', pt: 'Cliente deve receber este valor. Selecione "Reembolsar cliente" para registrar.' },
+  'reports.editSale.reasonLabel':      { en: 'Reason',             es: 'Razón',                  pt: 'Motivo' },
+  'reports.editSale.reasonPick':       { en: 'Select a reason…',   es: 'Selecciona una razón…',  pt: 'Selecione um motivo…' },
+  'reports.editSale.reason.refund':    { en: 'Refund customer (give difference back)', es: 'Reembolsar al cliente (devolver diferencia)', pt: 'Reembolsar cliente (devolver diferença)' },
+  'reports.editSale.reason.absorbed':  { en: 'Absorbed (owner takes the loss)', es: 'Absorbido (el dueño asume la pérdida)', pt: 'Absorvido (proprietário assume a perda)' },
+  'reports.editSale.reason.typoCorrection': { en: 'Typo correction (no money owed)', es: 'Corrección de error (sin dinero adeudado)', pt: 'Correção de erro (sem dinheiro devido)' },
+  'reports.editSale.notesLabel':       { en: 'Notes (optional)',   es: 'Notas (opcional)',       pt: 'Notas (opcional)' },
+  'reports.editSale.notesPlaceholder': { en: 'e.g. wrong price tag, customer flagged it', es: 'Ej. precio mal etiquetado, cliente lo notó', pt: 'Ex. preço errado, cliente notou' },
+  'reports.editSale.staleWarning':     { en: 'This sale is more than 24 hours old. Make sure your records still match.', es: 'Esta venta tiene más de 24 horas. Verifica que tus registros coincidan.', pt: 'Esta venda tem mais de 24 horas. Verifique se seus registros ainda coincidem.' },
+  'reports.editSale.returnedTag':      { en: 'returned',           es: 'devuelto',               pt: 'devolvido' },
+  'reports.editSale.blockTerminal':    { en: 'Voided/refunded sales cannot be edited.', es: 'Las ventas anuladas/reembolsadas no se pueden editar.', pt: 'Vendas anuladas/reembolsadas não podem ser editadas.' },
+  'reports.editSale.blockReturned':    { en: 'This item was already returned and cannot be edited.', es: 'Este artículo ya fue devuelto y no se puede editar.', pt: 'Este item já foi devolvido e não pode ser editado.' },
+  'reports.editSale.notFound':         { en: 'Sale not found.',    es: 'Venta no encontrada.',   pt: 'Venda não encontrada.' },
+  'reports.editSale.itemNotFound':     { en: 'Item not found in sale.', es: 'Artículo no encontrado en la venta.', pt: 'Item não encontrado na venda.' },
+  'reports.editSale.invalidPrice':     { en: 'Invalid price.',     es: 'Precio inválido.',       pt: 'Preço inválido.' },
+  'reports.editSale.invalidQty':       { en: 'Invalid quantity.',  es: 'Cantidad inválida.',     pt: 'Quantidade inválida.' },
+  'reports.editSale.reasonRequired':   { en: 'Reason required.',   es: 'Razón requerida.',       pt: 'Motivo obrigatório.' },
+  'reports.editSale.historyFull':      { en: 'Edit history full (100 entries). Cannot edit further.', es: 'Historial de ediciones lleno (100 entradas). No se puede editar más.', pt: 'Histórico de edições cheio (100 entradas). Não é possível editar mais.' },
+  'reports.editSale.failed':           { en: 'Failed to save edit.', es: 'No se pudo guardar la edición.', pt: 'Falha ao salvar edição.' },
+  'reports.editSale.savedToast':       {
+    en: (invoice: string) => `Sale ${invoice} updated.`,
+    es: (invoice: string) => `Venta ${invoice} actualizada.`,
+    pt: (invoice: string) => `Venda ${invoice} atualizada.`,
+  },
+  'reports.editSale.reprintTitle':     { en: 'Reprint corrected receipt?', es: '¿Reimprimir recibo corregido?', pt: 'Reimprimir recibo corrigido?' },
+  'reports.editSale.reprintLater':     { en: 'Skip',               es: 'Omitir',                 pt: 'Pular' },
+  'reports.editSale.reprintBody':      {
+    en: (invoice: string) => `Print a corrected receipt for invoice ${invoice}?`,
+    es: (invoice: string) => `¿Imprimir un recibo corregido para la factura ${invoice}?`,
+    pt: (invoice: string) => `Imprimir um recibo corrigido para a fatura ${invoice}?`,
+  },
+  'reports.voidContinue':              { en: 'Void with manager PIN', es: 'Anular con PIN de gerente', pt: 'Anular com PIN do gerente' },
+  'reports.voidInvoiceLabel':          { en: 'Invoice',            es: 'Factura',                pt: 'Fatura' },
+  'reports.voidTotalLabel':            { en: 'Total',              es: 'Total',                  pt: 'Total' },
+  'reports.voidReasonLabel':           { en: 'Reason',             es: 'Motivo',                 pt: 'Motivo' },
+  'reports.voidReasonPick':            { en: 'Pick a reason…',     es: 'Elige un motivo…',       pt: 'Escolha um motivo…' },
+  'reports.voidReasonRequired':        { en: 'Reason is required to void a sale.', es: 'El motivo es obligatorio para anular la venta.', pt: 'O motivo é obrigatório para anular a venda.' },
+  'reports.voidReason.duplicate':           { en: 'Duplicate transaction',          es: 'Transacción duplicada',           pt: 'Transação duplicada' },
+  'reports.voidReason.cashierError':        { en: 'Cashier error',                  es: 'Error del cajero',                pt: 'Erro do caixa' },
+  'reports.voidReason.customerChangedMind': { en: 'Customer changed mind',          es: 'El cliente cambió de opinión',    pt: 'Cliente mudou de ideia' },
+  'reports.voidReason.paymentFailed':       { en: 'Payment failed / declined',      es: 'Pago falló / rechazado',          pt: 'Pagamento falhou / recusado' },
+  'reports.voidReason.testTransaction':     { en: 'Test transaction',               es: 'Transacción de prueba',           pt: 'Transação de teste' },
+  'reports.voidReason.other':               { en: 'Other',                          es: 'Otro',                            pt: 'Outro' },
+  'reports.voidPaymentWarning':        { en: 'This only voids the sale record. Refund the payment separately if the customer was charged.', es: 'Esto solo anula el registro de la venta. Reembolsa el pago por separado si al cliente ya se le cobró.', pt: 'Isso apenas anula o registro da venda. Reembolse o pagamento separadamente se o cliente já foi cobrado.' },
+  'reports.voidInventoryNote':         { en: 'Inventory will be restored for stockable items only (skips phone payments, top-ups, services, fees).', es: 'El inventario se restaurará solo para artículos en stock (omite pagos de teléfono, top-ups, servicios, cuotas).', pt: 'O estoque será restaurado apenas para itens em estoque (ignora pagamentos de telefone, top-ups, serviços, taxas).' },
+  'reports.voidedToast': {
+    en: (invoice: string) => `Sale ${invoice} voided.`,
+    es: (invoice: string) => `Venta ${invoice} anulada.`,
+    pt: (invoice: string) => `Venda ${invoice} anulada.`,
+  },
+  'reports.voidPaymentReminder':       { en: 'Reminder: refund the payment separately if the customer was charged.', es: 'Recuerda: reembolsa el pago por separado si al cliente ya se le cobró.', pt: 'Lembre-se: reembolse o pagamento separadamente se o cliente já foi cobrado.' },
+  'reports.voidAlreadyVoided':         { en: 'This sale is already voided.',  es: 'Esta venta ya está anulada.',  pt: 'Esta venda já está anulada.' },
+  'reports.voidAlreadyRefunded':       { en: 'This sale is already refunded.', es: 'Esta venta ya está reembolsada.', pt: 'Esta venda já está reembolsada.' },
+  'reports.voidFailed':                { en: 'Could not void this sale. Try again.', es: 'No se pudo anular la venta. Inténtalo de nuevo.', pt: 'Não foi possível anular a venda. Tente novamente.' },
+
   // ── Tax Center i18n ───────────────────────────────────────
   'tax.taxCenter':                   { en: 'TAX CENTER',                       es: 'CENTRO FISCAL',                        pt: 'CENTRO FISCAL' },
   'tax.caSalesTaxQuarterly':         { en: 'California Sales Tax · Quarterly', es: 'Impuesto CA · Trimestral',             pt: 'Imposto CA · Trimestral' },
@@ -4711,6 +5738,147 @@ export const translations: TranslationDictionary = {
   'intelligence.dash.todaySales':      { en: 'Sales Today',                                                       es: 'Ventas Hoy',                                                               pt: 'Vendas Hoje' },
   'intelligence.dash.viewBtn':         { en: 'Ask →',                                                             es: 'Preguntar →',                                                              pt: 'Perguntar →' },
 
+  // ── R-INTELLIGENCE-UI-OPERATOR-REDESIGN: operator console strings ───────────────────────────────────────────
+  'intelligence.console.todayLabel':           { en: 'TODAY',                                                       es: 'HOY',                                                                  pt: 'HOJE' },
+  'intelligence.console.salesAbbr':            { en: 'sales',                                                       es: 'ventas',                                                               pt: 'vendas' },
+  'intelligence.console.ordersAbbr':           { en: 'orders',                                                      es: 'órdenes',                                                              pt: 'pedidos' },
+  'intelligence.console.alertsAbbr':           { en: 'alerts',                                                      es: 'alertas',                                                              pt: 'alertas' },
+  'intelligence.console.biggestOpportunity':   { en: 'Biggest opportunity:',                                        es: 'Mayor oportunidad:',                                                   pt: 'Maior oportunidade:' },
+  'intelligence.console.opportunitiesFound':   { en: (n: number, amt: string) => `${n} opportunit${n === 1 ? 'y' : 'ies'} / ${amt}`, es: (n: number, amt: string) => `${n} oportunidad${n === 1 ? '' : 'es'} / ${amt}`, pt: (n: number, amt: string) => `${n} oportunidade${n === 1 ? '' : 's'} / ${amt}` },
+  'intelligence.console.collectPayments':      { en: 'Collect Payments',                                            es: 'Cobrar Pagos',                                                         pt: 'Cobrar Pagamentos' },
+  'intelligence.console.promoteProduct':       { en: 'Promote Product',                                             es: 'Promocionar Producto',                                                 pt: 'Promover Produto' },
+  'intelligence.console.contactCustomers':     { en: 'Contact Customers',                                           es: 'Contactar Clientes',                                                   pt: 'Contatar Clientes' },
+
+  'intelligence.console.makeMoneyTitle':       { en: '💰 Make Money',                                               es: '💰 Hacer Dinero',                                                      pt: '💰 Fazer Dinheiro' },
+  'intelligence.console.collectMoneyTitle':    { en: 'Collect Money',                                               es: 'Cobrar Dinero',                                                        pt: 'Cobrar Dinheiro' },
+  'intelligence.console.collectMoneySub':      { en: 'Pending payments, layaways, ready repairs',                   es: 'Pagos pendientes, apartados, reparaciones listas',                     pt: 'Pagamentos pendentes, apartados, reparos prontos' },
+  'intelligence.console.promoteSub':           { en: 'Push inventory through WhatsApp',                             es: 'Empujar inventario por WhatsApp',                                      pt: 'Promover inventário pelo WhatsApp' },
+  'intelligence.console.contactSub':           { en: 'VIPs, inactive customers, follow-ups',                        es: 'VIPs, clientes inactivos, seguimientos',                               pt: 'VIPs, clientes inativos, follow-ups' },
+  'intelligence.console.fixProfitTitle':       { en: 'Fix Profit Leaks',                                            es: 'Tapar Fugas de Ganancia',                                              pt: 'Corrigir Perdas de Lucro' },
+  'intelligence.console.fixProfitSub':         { en: 'Losses, slow days, dead stock',                               es: 'Pérdidas, días lentos, stock muerto',                                  pt: 'Perdas, dias lentos, estoque parado' },
+  // R-INTELLIGENCE-OPERATOR-UX-V1: 2 new operational cards (Close Deals + Repairs Ready).
+  'intelligence.console.closeDealsTitle':      { en: 'Close Deals',                                                 es: 'Cerrar Ventas',                                                        pt: 'Fechar Vendas' },
+  'intelligence.console.closeDealsSub':        { en: 'Approved deals, fastest revenue, today commitments',          es: 'Ofertas aprobadas, ingreso más rápido, cierres de hoy',                pt: 'Ofertas aprovadas, receita mais rápida, fechamentos de hoje' },
+  'intelligence.console.repairsReadyTitle':    { en: 'Repairs Ready',                                               es: 'Reparaciones Listas',                                                  pt: 'Reparos Prontos' },
+  'intelligence.console.repairsReadySub':      { en: 'Recover pickup revenue, send reminders',                      es: 'Recupera ingresos de recogida, manda recordatorios',                   pt: 'Recupere receita de retirada, envie lembretes' },
+  // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: short label inline next to repair stat.
+  'intelligence.console.staleLabel':           { en: 'stale', es: 'atrasados', pt: 'atrasados' },
+
+  // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX: repairs_ready chat intent.
+  'chat.repairsReady.empty':  { en: '🔧 No repairs ready for pickup right now.', es: '🔧 No hay reparaciones listas para recoger ahora.', pt: '🔧 Nenhum reparo pronto para retirada agora.' },
+  'chat.repairsReady.header': {
+    en: (n: number) => `🔧 ${n} repair${n === 1 ? '' : 's'} ready for pickup.`,
+    es: (n: number) => `🔧 ${n} reparación${n === 1 ? '' : 'es'} lista${n === 1 ? '' : 's'} para recoger.`,
+    pt: (n: number) => `🔧 ${n} reparo${n === 1 ? '' : 's'} pronto${n === 1 ? '' : 's'} para retirada.`,
+  },
+  'chat.repairsReady.stale': {
+    en: (n: number) => `   ${n} have been waiting more than 3 days.`,
+    es: (n: number) => `   ${n} llevan más de 3 días esperando.`,
+    pt: (n: number) => `   ${n} estão aguardando há mais de 3 dias.`,
+  },
+  'chat.repairsReady.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
+
+  'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
+  'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },
+  'intelligence.console.queuePending':         { en: (n: number) => `${n} pending`,                                 es: (n: number) => `${n} pendiente${n === 1 ? '' : 's'}`,                  pt: (n: number) => `${n} pendente${n === 1 ? '' : 's'}` },
+  'intelligence.console.approve':              { en: 'Approve',                                                     es: 'Aprobar',                                                              pt: 'Aprovar' },
+  'intelligence.console.cancel':               { en: 'Cancel',                                                      es: 'Cancelar',                                                             pt: 'Cancelar' },
+  'intelligence.console.openWhatsApp':         { en: 'WhatsApp',                                                    es: 'WhatsApp',                                                             pt: 'WhatsApp' },
+  'intelligence.console.clearCompleted':       { en: 'Clear completed',                                             es: 'Limpiar completadas',                                                  pt: 'Limpar concluídas' },
+
+  'intelligence.console.whatsappTitle':        { en: '📱 WhatsApp Actions',                                          es: '📱 Acciones de WhatsApp',                                              pt: '📱 Ações de WhatsApp' },
+  'intelligence.console.waCollect':            { en: 'Collect Payment',                                             es: 'Cobrar Pago',                                                          pt: 'Cobrar Pagamento' },
+  'intelligence.console.waNotifyRepair':       { en: 'Notify Repair',                                               es: 'Notificar Reparación',                                                 pt: 'Notificar Reparo' },
+  'intelligence.console.waSendPromo':          { en: 'Send Promo',                                                  es: 'Enviar Promoción',                                                     pt: 'Enviar Promoção' },
+  'intelligence.console.waLayaway':            { en: 'Layaway Reminder',                                            es: 'Recordatorio Apartado',                                                pt: 'Lembrete Apartado' },
+
+  'intelligence.console.promoteInvTitle':      { en: '🚀 Promote Inventory',                                        es: '🚀 Promocionar Inventario',                                            pt: '🚀 Promover Inventário' },
+  'intelligence.console.promoteInvEmpty':      { en: 'Select a product to generate a WhatsApp campaign.',           es: 'Selecciona un producto para generar una campaña de WhatsApp.',         pt: 'Selecione um produto para gerar uma campanha de WhatsApp.' },
+  'intelligence.console.searchProduct':        { en: 'Search product…',                                              es: 'Buscar producto…',                                                     pt: 'Buscar produto…' },
+  'intelligence.console.generateCampaign':     { en: 'Generate WhatsApp Campaign',                                  es: 'Generar Campaña de WhatsApp',                                          pt: 'Gerar Campanha de WhatsApp' },
+  'intelligence.console.changeProduct':        { en: 'Change product',                                              es: 'Cambiar producto',                                                     pt: 'Trocar produto' },
+  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: editable campaign widget keys.
+  'intelligence.console.campaignDraftTitle':   { en: 'Campaign draft',                                              es: 'Borrador de campaña',                                                  pt: 'Rascunho da campanha' },
+  'intelligence.console.campaignEditedHint':   { en: '✎ edited',                                                    es: '✎ editado',                                                            pt: '✎ editado' },
+  'intelligence.console.campaignDraftPlaceholder': { en: 'Edit the message before sending…',                       es: 'Edita el mensaje antes de enviar…',                                    pt: 'Edite a mensagem antes de enviar…' },
+  'intelligence.console.campaignSubstitutionHint': { en: 'Use {customer} as placeholder for the recipient first name.', es: 'Usa {customer} como marcador para el nombre del destinatario.',     pt: 'Use {customer} como marcador para o primeiro nome do destinatário.' },
+  'intelligence.console.campaignRecipientsLabel': {
+    en: (n: number) => `Recipients (${n}):`,
+    es: (n: number) => `Destinatarios (${n}):`,
+    pt: (n: number) => `Destinatários (${n}):`,
+  },
+  'intelligence.console.campaignSendLabel':    { en: 'Open',                                                        es: 'Abrir',                                                                pt: 'Abrir' },
+  'intelligence.console.campaignSendTooltip':  { en: 'Open WhatsApp with this message — you press Send manually',   es: 'Abre WhatsApp con este mensaje — presiona Enviar manualmente',         pt: 'Abre o WhatsApp com esta mensagem — você pressiona Enviar manualmente' },
+  'intelligence.console.campaignBroadcastLabel': { en: '📲 Open WhatsApp draft (pick recipient)',                  es: '📲 Abrir borrador de WhatsApp (elegir destinatario)',                pt: '📲 Abrir rascunho do WhatsApp (escolher destinatário)' },
+  // R-OPERATOR-PROMOTE-WORKSPACE-HIERARCHY-V1: workspace hierarchy keys.
+  'intelligence.console.campaignStrategyTargeted': {
+    en: (n: number) => `Targeted: ${n} ${n === 1 ? 'customer' : 'customers'}`,
+    es: (n: number) => `Dirigido: ${n} ${n === 1 ? 'cliente' : 'clientes'}`,
+    pt: (n: number) => `Direcionado: ${n} ${n === 1 ? 'cliente' : 'clientes'}`,
+  },
+  'intelligence.console.campaignStrategyBroad': { en: 'Broad campaign — pick recipient in WhatsApp',               es: 'Campaña amplia — elige destinatario en WhatsApp',                      pt: 'Campanha ampla — escolha destinatário no WhatsApp' },
+  'intelligence.console.campaignOpenWhatsAppLabel': { en: 'Open WhatsApp',                                          es: 'Abrir WhatsApp',                                                       pt: 'Abrir WhatsApp' },
+  // R-CAMPAIGN-QUEUE-V1: queue-mode strings (multi-select + progress UI).
+  'intelligence.console.campaignSelectAll':    { en: 'Select all',                                                  es: 'Seleccionar todos',                                                    pt: 'Selecionar todos' },
+  'intelligence.console.campaignDeselectAll':  { en: 'Deselect all',                                                es: 'Quitar todos',                                                         pt: 'Desmarcar todos' },
+  'intelligence.console.campaignStartLabel': {
+    en: (n: number) => `Start campaign (${n} ${n === 1 ? 'customer' : 'customers'})`,
+    es: (n: number) => `Iniciar campaña (${n} ${n === 1 ? 'cliente' : 'clientes'})`,
+    pt: (n: number) => `Iniciar campanha (${n} ${n === 1 ? 'cliente' : 'clientes'})`,
+  },
+  'intelligence.console.campaignProgressLabel': {
+    en: (done: number, total: number) => `Progress: ${done} / ${total}`,
+    es: (done: number, total: number) => `Progreso: ${done} / ${total}`,
+    pt: (done: number, total: number) => `Progresso: ${done} / ${total}`,
+  },
+  'intelligence.console.campaignOpenWithLabel': {
+    en: (name: string) => `Open WhatsApp with ${name}`,
+    es: (name: string) => `Abrir WhatsApp con ${name}`,
+    pt: (name: string) => `Abrir WhatsApp com ${name}`,
+  },
+  'intelligence.console.campaignSkipLabel':    { en: 'Skip',                                                        es: 'Saltar',                                                               pt: 'Pular' },
+  'intelligence.console.campaignEndLabel':     { en: 'End campaign',                                                es: 'Terminar campaña',                                                     pt: 'Encerrar campanha' },
+  'intelligence.console.campaignDoneLabel':    { en: 'Campaign done — close',                                       es: 'Campaña terminada — cerrar',                                           pt: 'Campanha concluída — fechar' },
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: confidence pill labels.
+  'intelligence.console.confidenceHigh':       { en: 'HIGH',                                                        es: 'ALTA',                                                                 pt: 'ALTA' },
+  'intelligence.console.confidenceMedium':     { en: 'MED',                                                         es: 'MED',                                                                  pt: 'MED' },
+  'intelligence.console.confidenceLow':        { en: 'LOW',                                                         es: 'BAJA',                                                                 pt: 'BAIXA' },
+  // R-OPERATOR-PROMOTE-RECIPIENT-REASON-V1: deterministic reason strings.
+  // Order matches the priority chain in productPromotion.ts.
+  'chat.productPush.reason.boughtBefore':      { en: 'Bought this before',                                          es: 'Compró antes',                                                         pt: 'Comprou antes' },
+  'chat.productPush.reason.topSpenderRecent':  { en: 'Top spender, recently active',                                es: 'Cliente top, activo recientemente',                                    pt: 'Top cliente, ativo recentemente' },
+  'chat.productPush.reason.highValue':         { en: 'High purchase history',                                       es: 'Alto historial de compras',                                            pt: 'Alto histórico de compras' },
+  'chat.productPush.reason.frequentVisitor':   {
+    en: (visits: number) => `Frequent visitor (${visits} visits)`,
+    es: (visits: number) => `Visitante frecuente (${visits} visitas)`,
+    pt: (visits: number) => `Visitante frequente (${visits} visitas)`,
+  },
+  'chat.productPush.reason.recentCustomer':    {
+    en: (days: number) => days === 0 ? 'Recent customer (today)' : days === 1 ? 'Recent customer (yesterday)' : `Recent customer (${days} days ago)`,
+    es: (days: number) => days === 0 ? 'Cliente reciente (hoy)' : days === 1 ? 'Cliente reciente (ayer)' : `Cliente reciente (hace ${days} días)`,
+    pt: (days: number) => days === 0 ? 'Cliente recente (hoje)' : days === 1 ? 'Cliente recente (ontem)' : `Cliente recente (${days} dias atrás)`,
+  },
+  'chat.productPush.reason.activeCustomer':    { en: 'Active customer',                                             es: 'Cliente activo',                                                       pt: 'Cliente ativo' },
+  'chat.productPush.reason.returningCustomer': { en: 'Returning customer',                                          es: 'Cliente recurrente',                                                   pt: 'Cliente recorrente' },
+
+  'intelligence.console.askTitle':             { en: '💬 Ask Your Shop',                                            es: '💬 Pregúntale a tu Tienda',                                            pt: '💬 Pergunte à sua Loja' },
+  'intelligence.console.quickQuestions':       { en: 'Quick questions:',                                            es: 'Preguntas rápidas:',                                                   pt: 'Perguntas rápidas:' },
+  'intelligence.console.chipToday':            { en: 'Today',                                                       es: 'Hoy',                                                                  pt: 'Hoje' },
+  'intelligence.console.chipWhoContact':       { en: 'Who to contact',                                              es: 'A quién llamar',                                                       pt: 'Quem contatar' },
+  'intelligence.console.chipWhatSell':         { en: 'What to sell',                                                es: 'Qué vender',                                                           pt: 'O que vender' },
+  'intelligence.console.chipProfit':           { en: 'Profit leaks',                                                es: 'Pérdidas',                                                             pt: 'Perdas' },
+  'intelligence.console.chipPromote':          { en: 'Promote product',                                             es: 'Promocionar producto',                                                 pt: 'Promover produto' },
+  'intelligence.console.chipReady':            { en: 'Ready repairs',                                               es: 'Reparaciones listas',                                                  pt: 'Reparos prontos' },
+
+  // Chat-fired query strings (must match chat intent keywords)
+  'intelligence.console.queryToday':           { en: 'how are we today',                                            es: 'cómo estamos hoy',                                                     pt: 'como estamos hoje' },
+  'intelligence.console.queryContactToday':    { en: 'who should I contact today',                                  es: 'a quién debo contactar hoy',                                           pt: 'quem devo contatar hoje' },
+  'intelligence.console.queryReadyRepairs':    { en: 'repairs ready',                                               es: 'reparaciones listas',                                                  pt: 'reparos prontos' },
+  'intelligence.console.queryPendingPayments': { en: 'customers with pending phone payments',                        es: 'clientes con pagos de teléfono pendientes',                            pt: 'clientes com pagamentos de telefone pendentes' },
+  'intelligence.console.queryPromoteGeneric':  { en: 'promote product',                                             es: 'promocionar producto',                                                 pt: 'promover produto' },
+  'intelligence.console.queryPendingLayaways': { en: 'pending layaways',                                            es: 'apartados pendientes',                                                 pt: 'apartados pendentes' },
+  'intelligence.console.queryPromoteThis':     { en: 'promote this product',                                        es: 'promocionar producto',                                                 pt: 'promover produto' },
+
   // ── Phase 2D: Customer Churn Root Cause ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   'chat.churn.header':                        { en: '👥 Customer Churn Analysis (last 90 days):',                       es: '👥 Análisis de clientes perdidos (últimos 90 días):',                      pt: '👥 Análise de clientes perdidos (últimos 90 dias):' },
   'chat.churn.noChurn':                       { en: 'No churned customers detected in the last 90 days.',               es: 'No se detectaron clientes perdidos en los últimos 90 días.',                pt: 'Nenhum cliente perdido detectado nos últimos 90 dias.' },
@@ -4730,6 +5898,548 @@ export const translations: TranslationDictionary = {
   'chat.churn.action.first_return_incentive': { en: 'Send a "come back" incentive (discount or freebie)',               es: 'Envía incentivo para que regrese (descuento o regalo)',                    pt: 'Envie incentivo de retorno (desconto ou brinde)' },
   'chat.churn.action.educate_customer':       { en: 'Follow up to understand their experience',                         es: 'Haz seguimiento para entender su experiencia',                             pt: 'Faça acompanhamento para entender a experiência' },
   'chat.churn.action.review_history':         { en: 'Review their purchase history for patterns',                       es: 'Revisa su historial de compras para detectar patrones',                    pt: 'Revise o histórico de compras para padrões' },
+
+  // R-INTENT-LEAST-PROFITABLE: actionable margin-review answer (non-judgmental).
+  'chat.leastProfitable.header':         { en: 'Customers costing you margin:', es: 'Clientes que te cuestan margen:', pt: 'Clientes que custam margem:' },
+  'chat.leastProfitable.empty':          { en: 'Not enough data — need repeat customers with known costs.', es: 'Datos insuficientes — se necesitan clientes recurrentes con costos conocidos.', pt: 'Dados insuficientes — precisamos de clientes recorrentes com custos conhecidos.' },
+  'chat.leastProfitable.row':            {
+    en: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} over ${visits} visits (avg ${avg})`,
+    es: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} en ${visits} visitas (promedio ${avg})`,
+    pt: (name: string, profit: string, visits: number, avg: string) => `• ${name}: ${profit} em ${visits} visitas (média ${avg})`,
+  },
+  'chat.leastProfitable.approximate':    { en: '  (approximate — limited cost data)', es: '  (aproximado — datos de costo limitados)', pt: '  (aproximado — dados de custo limitados)' },
+  'chat.leastProfitable.refundWarning':  {
+    en: (pct: number) => `  Refund rate: ${pct}%`,
+    es: (pct: number) => `  Tasa de reembolso: ${pct}%`,
+    pt: (pct: number) => `  Taxa de reembolso: ${pct}%`,
+  },
+  'chat.leastProfitable.recommendation': { en: 'Review pricing and discounting on these accounts. Focus on margin, not volume.', es: 'Revisa precios y descuentos en estas cuentas. Enfócate en el margen, no en el volumen.', pt: 'Revise preços e descontos nestas contas. Foque na margem, não no volume.' },
+
+  // R-INTELLIGENCE-ROOT-CAUSE-CHAINS-V1: deterministic cause + evidence + action.
+  'chat.todaySalesCause.header':                            { en: '🔎 Root cause', es: '🔎 Causa raíz', pt: '🔎 Causa raiz' },
+  'chat.todaySalesCause.evidence':                          {
+    en: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidence — Today: ${todayRev} / ${todayTx} sales / avg ${todayAvg}. Last 7d avg: ${avg7Rev} / ${avg7Tx} sales / avg ${avg7Avg}.`,
+    es: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidencia — Hoy: ${todayRev} / ${todayTx} ventas / promedio ${todayAvg}. Promedio 7d: ${avg7Rev} / ${avg7Tx} ventas / promedio ${avg7Avg}.`,
+    pt: (todayRev: string, todayTx: number, todayAvg: string, avg7Rev: string, avg7Tx: number, avg7Avg: string) =>
+      `Evidência — Hoje: ${todayRev} / ${todayTx} vendas / média ${todayAvg}. Média 7d: ${avg7Rev} / ${avg7Tx} vendas / média ${avg7Avg}.`,
+  },
+  'chat.todaySalesCause.action':                            {
+    en: (txt: string) => `→ ${txt}`,
+    es: (txt: string) => `→ ${txt}`,
+    pt: (txt: string) => `→ ${txt}`,
+  },
+  'chat.todaySalesCause.notEnoughData':                     { en: "I don't have enough prior sales days to compare yet.",                                  es: 'No tengo suficientes días previos de ventas para comparar todavía.',                       pt: 'Ainda não tenho dias anteriores suficientes para comparar.' },
+  'chat.todaySalesCause.noSalesToday':                      { en: 'No sales recorded today yet.',                                                          es: 'Aún no hay ventas registradas hoy.',                                                       pt: 'Nenhuma venda registrada hoje ainda.' },
+  'chat.todaySalesCause.revenueAboveAverage':               { en: 'Today is above your recent average.',                                                   es: 'Hoy está por encima de tu promedio reciente.',                                             pt: 'Hoje está acima da sua média recente.' },
+  'chat.todaySalesCause.lowTransactions':                   { en: 'Traffic is the issue. You have fewer transactions than your recent daily average.',    es: 'El tráfico es el problema. Tienes menos transacciones que tu promedio diario reciente.',  pt: 'O tráfego é o problema. Você tem menos transações que sua média diária recente.' },
+  'chat.todaySalesCause.lowAvgTicket':                      { en: 'Ticket size is the issue. Customers are buying, but spending less.',                   es: 'El tamaño del ticket es el problema. Los clientes compran, pero gastan menos.',           pt: 'O tamanho do ticket é o problema. Os clientes compram, mas gastam menos.' },
+  'chat.todaySalesCause.bothLow':                           { en: 'Both traffic and ticket size are down.',                                                es: 'Tanto el tráfico como el tamaño del ticket están bajos.',                                  pt: 'Tanto o tráfego quanto o tamanho do ticket estão baixos.' },
+  'chat.todaySalesCause.normal':                            { en: 'Today is in line with your recent average.',                                            es: 'Hoy está en línea con tu promedio reciente.',                                              pt: 'Hoje está em linha com sua média recente.' },
+  'chat.todaySalesCause.action.notEnoughData':              { en: "Track a few more days, but use today's sales count and avg ticket as baseline.",        es: 'Registra unos días más, pero usa las ventas de hoy y el ticket promedio como base.',     pt: 'Registre mais alguns dias, mas use as vendas de hoje e o ticket médio como base.' },
+  'chat.todaySalesCause.action.noSalesToday':               { en: 'Start with recent customers, repairs ready for pickup, or phone payment reminders.',   es: 'Empieza con clientes recientes, reparaciones listas para recoger, o recordatorios de pago.', pt: 'Comece com clientes recentes, reparos prontos para retirada, ou lembretes de pagamento.' },
+  'chat.todaySalesCause.action.revenueAboveAverage':        { en: 'Protect momentum: keep pushing the top seller.',                                        es: 'Protege el impulso: sigue empujando el más vendido.',                                      pt: 'Proteja o impulso: continue promovendo o mais vendido.' },
+  'chat.todaySalesCause.action.lowTransactions':            { en: 'Contact recent customers or push a same-day offer.',                                    es: 'Contacta a clientes recientes o lanza una oferta del día.',                                pt: 'Contate clientes recentes ou lance uma oferta do dia.' },
+  'chat.todaySalesCause.action.lowAvgTicket':               { en: 'Offer accessories, bundles, or protection add-ons.',                                    es: 'Ofrece accesorios, paquetes o complementos de protección.',                                pt: 'Ofereça acessórios, pacotes ou complementos de proteção.' },
+  'chat.todaySalesCause.action.bothLow':                    { en: 'Run a direct outreach + bundle offer today.',                                           es: 'Lanza un contacto directo + oferta de paquete hoy.',                                       pt: 'Faça um contato direto + oferta de pacote hoje.' },
+  'chat.todaySalesCause.action.normal':                     { en: 'Keep your usual rhythm and watch for late-day momentum.',                                es: 'Mantén tu ritmo habitual y observa el impulso del final del día.',                         pt: 'Mantenha seu ritmo habitual e observe o impulso do final do dia.' },
+  // R-INTELLIGENCE-TODAY-SALES-ROOT-CAUSE-ACTIONS-V1: per-cause tip lines.
+  'chat.todaySalesCause.tipContact':                        { en: "💬 Tip: ask \"who should I contact today\" for a ranked outreach list (consent-filtered).", es: '💬 Tip: pregunta "a quién debo contactar hoy" para una lista priorizada (con filtro de consentimiento).', pt: '💬 Dica: pergunte "quem devo contatar hoje" para uma lista priorizada (com filtro de consentimento).' },
+  'chat.todaySalesCause.tipPromote':                        { en: '💬 Tip: ask "promote this product <name>" to push a specific item.',                       es: '💬 Tip: pregunta "promocionar este producto <nombre>" para empujar un artículo específico.',           pt: '💬 Dica: pergunte "promover este produto <nome>" para promover um item específico.' },
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V2-CONTACT: button label for WhatsApp deep-link.
+  'chat.action.contactCustomer':                            {
+    en: (name: string) => `WhatsApp ${name}`,
+    es: (name: string) => `WhatsApp ${name}`,
+    pt: (name: string) => `WhatsApp ${name}`,
+  },
+  // R-INTELLIGENCE-DAILY-AUTOMATION-V1: once-per-day proactive recommendation.
+  'chat.dailyAutomation.noSalesToday':              { en: '⚡ Daily Action: You have no sales yet today. Contact these customers now.',                  es: '⚡ Acción del día: Aún no tienes ventas hoy. Contacta a estos clientes.',                                pt: '⚡ Ação do dia: Ainda não há vendas hoje. Contate esses clientes.' },
+  'chat.dailyAutomation.lowTransactions':           { en: '⚡ Daily Action: Sales are slow today. Contact these customers to boost traffic.',           es: '⚡ Acción del día: Las ventas están lentas hoy. Contacta a estos clientes para impulsar el tráfico.',     pt: '⚡ Ação do dia: As vendas estão lentas hoje. Contate esses clientes para impulsionar o tráfego.' },
+  // R-INTELLIGENCE-PRIORITY-SCORING-V1: lower-priority always-on option.
+  'chat.dailyAutomation.contactCustomersAvailable': { en: '⚡ Daily Action: You have customers worth contacting today.',                                  es: '⚡ Acción del día: Tienes clientes que vale la pena contactar hoy.',                                       pt: '⚡ Ação do dia: Você tem clientes que vale a pena contatar hoje.' },
+
+  // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: 72h-window action conversion summary.
+  'chat.actionImpact.summary': {
+    en: (total: number, conv: number, rev: string) => `📈 You executed ${total} action${total === 1 ? '' : 's'}.\n${conv} converted within 72 hours.\nGenerated ${rev}.`,
+    es: (total: number, conv: number, rev: string) => `📈 Ejecutaste ${total} acción${total === 1 ? '' : 'es'}.\n${conv} convirtieron en 72 horas.\nGeneraron ${rev}.`,
+    pt: (total: number, conv: number, rev: string) => `📈 Você executou ${total} ação${total === 1 ? '' : 'ões'}.\n${conv} converteram em 72 horas.\nGerou ${rev}.`,
+  },
+  'chat.actionImpact.empty': { en: 'No actions executed yet — click a WhatsApp or follow-up button to start tracking impact.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a medir impacto.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a medir o impacto.' },
+
+  // R-INTELLIGENCE-LEARNING-LOOP-V1: deterministic recommendation buckets.
+  'chat.actionLearning.empty':            { en: 'No actions executed yet — click a WhatsApp or follow-up button to start learning what works.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a aprender qué funciona.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a aprender o que funciona.' },
+  'chat.actionLearning.summary':          {
+    en: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Learning — ${total} action${total === 1 ? '' : 's'} executed.\n${conv} converted (${ratePct}% rate).\nRevenue attributed: ${rev}.`,
+    es: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizaje — ${total} acción${total === 1 ? '' : 'es'} ejecutada${total === 1 ? '' : 's'}.\n${conv} convirtieron (${ratePct}% tasa).\nIngresos atribuidos: ${rev}.`,
+    pt: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizado — ${total} ação${total === 1 ? '' : 'ões'} executada${total === 1 ? '' : 's'}.\n${conv} converteram (${ratePct}% taxa).\nReceita atribuída: ${rev}.`,
+  },
+  'chat.actionLearning.notEnoughData':    { en: 'Not enough action history yet. Execute at least 3 actions to start learning.',                       es: 'Aún no hay suficiente historial. Ejecuta al menos 3 acciones para empezar a aprender.',                  pt: 'Histórico de ações insuficiente. Execute pelo menos 3 ações para começar a aprender.' },
+  'chat.actionLearning.needsMoreActions': { en: 'No conversions yet. Keep testing outreach and follow up with recent customers.',                      es: 'Aún sin conversiones. Sigue probando el contacto y haz seguimiento con clientes recientes.',             pt: 'Ainda sem conversões. Continue testando contato e faça acompanhamento com clientes recentes.' },
+  'chat.actionLearning.working':          { en: 'Your actions are working. Keep using customer outreach — it is producing revenue.',                   es: 'Tus acciones están funcionando. Sigue usando el contacto con clientes — está generando ingresos.',       pt: 'Suas ações estão funcionando. Continue usando o contato com clientes — está gerando receita.' },
+  'chat.actionLearning.keepContacting':   { en: 'Some actions are working. Keep contacting customers and watch conversion rate.',                      es: 'Algunas acciones están funcionando. Sigue contactando clientes y observa la tasa de conversión.',        pt: 'Algumas ações estão funcionando. Continue contatando clientes e observe a taxa de conversão.' },
+
+  // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated deal drafting. Approval
+  // opens WhatsApp with the offer text; owner sends manually.
+  'chat.proposeDeal.header':              { en: '💼 Pending deal draft', es: '💼 Borrador de oferta pendiente', pt: '💼 Rascunho de oferta pendente' },
+  'chat.proposeDeal.draft': {
+    en: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Customer: ${customer}\nProduct: ${product}\nOriginal: ${original} → Offer: ${proposed}\n\nMessage:\n"${offer}"`,
+    es: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Cliente: ${customer}\nProducto: ${product}\nOriginal: ${original} → Oferta: ${proposed}\n\nMensaje:\n"${offer}"`,
+    pt: (customer: string, product: string, original: string, proposed: string, offer: string) =>
+      `Cliente: ${customer}\nProduto: ${product}\nOriginal: ${original} → Oferta: ${proposed}\n\nMensagem:\n"${offer}"`,
+  },
+  'chat.proposeDeal.approveLabel': {
+    en: (customer: string) => `Send offer to ${customer}`,
+    es: (customer: string) => `Enviar oferta a ${customer}`,
+    pt: (customer: string) => `Enviar oferta para ${customer}`,
+  },
+  'chat.proposeDeal.belowCost': {
+    en: (cost: string) => `Proposed price is below cost (${cost}). Deal not created.`,
+    es: (cost: string) => `El precio propuesto está debajo del costo (${cost}). Oferta no creada.`,
+    pt: (cost: string) => `Preço proposto está abaixo do custo (${cost}). Oferta não criada.`,
+  },
+  'chat.proposeDeal.noInventory':         { en: 'Could not resolve customer or product. Deal not created.', es: 'No se pudo resolver cliente o producto. Oferta no creada.', pt: 'Não foi possível resolver cliente ou produto. Oferta não criada.' },
+  'chat.proposeDeal.missingPrice':        { en: 'Add a price to the offer (e.g., "make offer to John for case at 25").', es: 'Incluye un precio en la oferta (ej.: "hacer oferta a Juan por case a 25").', pt: 'Inclua um preço na oferta (ex.: "fazer oferta para João por case a 25").' },
+  'chat.proposeDeal.missingCustomer':     { en: 'Could not find a matching customer in your message.', es: 'No se encontró un cliente que coincida en tu mensaje.', pt: 'Nenhum cliente correspondente encontrado na sua mensagem.' },
+  'chat.proposeDeal.ambiguousCustomer': {
+    en: (names: string) => `Multiple customers match (${names}). Use a more specific name.`,
+    es: (names: string) => `Varios clientes coinciden (${names}). Usa un nombre más específico.`,
+    pt: (names: string) => `Vários clientes correspondem (${names}). Use um nome mais específico.`,
+  },
+  'chat.proposeDeal.missingProduct':      { en: 'Could not find a matching product in your message.', es: 'No se encontró un producto que coincida en tu mensaje.', pt: 'Nenhum produto correspondente encontrado na sua mensagem.' },
+  'chat.proposeDeal.ambiguousProduct': {
+    en: (names: string) => `Multiple products match (${names}). Use a more specific product name.`,
+    es: (names: string) => `Varios productos coinciden (${names}). Usa un nombre de producto más específico.`,
+    pt: (names: string) => `Vários produtos correspondem (${names}). Use um nome de produto mais específico.`,
+  },
+  // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: approved deal → POS cart line.
+  'chat.proposeDeal.addToCart':       { en: 'Add to POS Cart',                              es: 'Agregar al carrito POS',                              pt: 'Adicionar ao Carrinho POS' },
+  'chat.proposeDeal.addedToCart':     { en: 'Deal added to POS cart.',                      es: 'Oferta agregada al carrito POS.',                     pt: 'Oferta adicionada ao carrinho POS.' },
+  'chat.proposeDeal.outOfStock':      { en: 'Out of stock — cannot add deal to cart.',      es: 'Sin stock — no se puede agregar la oferta al carrito.', pt: 'Sem estoque — não é possível adicionar a oferta ao carrinho.' },
+  'chat.proposeDeal.invalidDeal':     { en: 'Deal is no longer valid (price or product changed). Cart not updated.', es: 'La oferta ya no es válida (precio o producto cambió). Carrito no actualizado.', pt: 'A oferta não é mais válida (preço ou produto mudou). Carrinho não atualizado.' },
+  // R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner-recorded outcome buttons.
+  'chat.proposeDeal.won':             { en: 'Won',         es: 'Ganada',     pt: 'Ganha' },
+  'chat.proposeDeal.lost':            { en: 'Lost',        es: 'Perdida',    pt: 'Perdida' },
+  'chat.proposeDeal.noResponse':      { en: 'No Response', es: 'Sin respuesta', pt: 'Sem resposta' },
+  'chat.proposeDeal.outcomeSaved':    { en: 'Deal outcome saved.', es: 'Resultado de la oferta guardado.', pt: 'Resultado da oferta salvo.' },
+
+  // R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1: aggregated deal-outcome insights.
+  'chat.dealPerformance.header':         { en: '💼 Deal Performance', es: '💼 Rendimiento de ofertas', pt: '💼 Desempenho das ofertas' },
+  'chat.dealPerformance.notEnoughData':  { en: 'Not enough deal history yet. Track at least 3 deal outcomes to see performance.', es: 'Aún no hay suficiente historial de ofertas. Registra al menos 3 resultados para ver el rendimiento.', pt: 'Histórico de ofertas insuficiente. Registre pelo menos 3 resultados para ver o desempenho.' },
+  'chat.dealPerformance.noWins':         { en: 'Deals are not converting yet. Try smaller discounts or different products.', es: 'Las ofertas aún no están convirtiendo. Prueba descuentos más pequeños o productos diferentes.', pt: 'As ofertas ainda não estão convertendo. Tente descontos menores ou produtos diferentes.' },
+  'chat.dealPerformance.summary': {
+    en: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} deal${total === 1 ? '' : 's'} tracked · ${won} won (${ratePct}% win rate) · avg discount ${avgDiscPct}%.`,
+    es: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} oferta${total === 1 ? '' : 's'} registrada${total === 1 ? '' : 's'} · ${won} ganada${won === 1 ? '' : 's'} (${ratePct}% tasa de éxito) · descuento promedio ${avgDiscPct}%.`,
+    pt: (total: number, won: number, ratePct: number, avgDiscPct: number) => `${total} oferta${total === 1 ? '' : 's'} registrada${total === 1 ? '' : 's'} · ${won} ganha${won === 1 ? '' : 's'} (${ratePct}% taxa de sucesso) · desconto médio ${avgDiscPct}%.`,
+  },
+  'chat.dealPerformance.bestCategory': {
+    en: (category: string, wins: number) => `Best category: ${category} (${wins} win${wins === 1 ? '' : 's'}).`,
+    es: (category: string, wins: number) => `Mejor categoría: ${category} (${wins} venta${wins === 1 ? '' : 's'}).`,
+    pt: (category: string, wins: number) => `Melhor categoria: ${category} (${wins} venda${wins === 1 ? '' : 's'}).`,
+  },
+  'chat.dealPerformance.bestDiscountRange': {
+    en: (range: string, ratePct: number, sample: number) => `Best discount range: ${range}% (${ratePct}% win rate over ${sample} deal${sample === 1 ? '' : 's'}).`,
+    es: (range: string, ratePct: number, sample: number) => `Mejor rango de descuento: ${range}% (${ratePct}% éxito en ${sample} oferta${sample === 1 ? '' : 's'}).`,
+    pt: (range: string, ratePct: number, sample: number) => `Melhor faixa de desconto: ${range}% (${ratePct}% sucesso em ${sample} oferta${sample === 1 ? '' : 's'}).`,
+  },
+  // R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: 1-3 ranked operator opportunities.
+  'chat.opportunities.header':              { en: '💡 Top opportunities right now', es: '💡 Mejores oportunidades ahora', pt: '💡 Melhores oportunidades agora' },
+  'chat.opportunities.empty':               { en: 'Shop is in good shape — no high-impact opportunities flagged right now.', es: 'La tienda está bien — sin oportunidades de alto impacto en este momento.', pt: 'A loja está bem — sem oportunidades de alto impacto no momento.' },
+  'chat.opportunities.deadStock.title':     { en: 'Move dead stock', es: 'Mover stock muerto', pt: 'Mover estoque parado' },
+  'chat.opportunities.deadStock.reason': {
+    en: (locked: string) => `Around ${locked} is locked in slow-moving inventory.`,
+    es: (locked: string) => `Aproximadamente ${locked} bloqueados en inventario sin movimiento.`,
+    pt: (locked: string) => `Cerca de ${locked} parados em estoque sem movimento.`,
+  },
+  'chat.opportunities.deadStock.action':    { en: 'Run a clearance promotion or bundle deal.', es: 'Lanza una promoción de liquidación o un combo.', pt: 'Faça uma promoção de liquidação ou combo.' },
+  'chat.opportunities.staleRepairs.title':  { en: 'Recover repair revenue', es: 'Recupera ingresos de reparaciones', pt: 'Recupere receita de reparos' },
+  'chat.opportunities.staleRepairs.reason': {
+    en: (count: number, recoverable: string) => `${count} repair${count === 1 ? '' : 's'} ready for pickup over 3 days. Recoverable: ~${recoverable}.`,
+    es: (count: number, recoverable: string) => `${count} reparación${count === 1 ? '' : 'es'} lista${count === 1 ? '' : 's'} hace más de 3 días. Recuperable: ~${recoverable}.`,
+    pt: (count: number, recoverable: string) => `${count} repar${count === 1 ? 'o' : 'os'} pronto${count === 1 ? '' : 's'} há mais de 3 dias. Recuperável: ~${recoverable}.`,
+  },
+  'chat.opportunities.staleRepairs.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
+  'chat.opportunities.outreach.title':      { en: 'Re-engage customers', es: 'Re-engancha a clientes', pt: 'Re-engaje clientes' },
+  'chat.opportunities.outreach.reason': {
+    en: (count: number) => `${count} high-value customer${count === 1 ? '' : 's'} ready for outreach.`,
+    es: (count: number) => `${count} cliente${count === 1 ? '' : 's'} valioso${count === 1 ? '' : 's'} listo${count === 1 ? '' : 's'} para contactar.`,
+    pt: (count: number) => `${count} cliente${count === 1 ? '' : 's'} valioso${count === 1 ? '' : 's'} pronto${count === 1 ? '' : 's'} para contato.`,
+  },
+  'chat.opportunities.outreach.action':     { en: 'Send WhatsApp follow-up offers.', es: 'Envía ofertas de seguimiento por WhatsApp.', pt: 'Envie ofertas de acompanhamento pelo WhatsApp.' },
+  'chat.opportunities.productPush.title':   { en: 'Push a high-margin product', es: 'Promueve un producto de alto margen', pt: 'Promova um produto de alta margem' },
+  'chat.opportunities.productPush.reason': {
+    en: (name: string, impact: string) => `${name} stands out — estimated impact ${impact}.`,
+    es: (name: string, impact: string) => `${name} destaca — impacto estimado ${impact}.`,
+    pt: (name: string, impact: string) => `${name} se destaca — impacto estimado ${impact}.`,
+  },
+  'chat.opportunities.productPush.action': {
+    en: (name: string) => `Promote ${name} to top customers.`,
+    es: (name: string) => `Promueve ${name} a tus clientes top.`,
+    pt: (name: string) => `Promova ${name} para seus clientes top.`,
+  },
+  'chat.opportunities.pendingDeals.title':  { en: 'Close pending deals', es: 'Cierra ofertas pendientes', pt: 'Feche ofertas pendentes' },
+  'chat.opportunities.pendingDeals.reason': {
+    en: (count: number) => `${count} approved deal${count === 1 ? '' : 's'} waiting in the chat queue.`,
+    es: (count: number) => `${count} oferta${count === 1 ? '' : 's'} aprobada${count === 1 ? '' : 's'} esperando en la cola.`,
+    pt: (count: number) => `${count} oferta${count === 1 ? '' : 's'} aprovada${count === 1 ? '' : 's'} esperando na fila.`,
+  },
+  'chat.opportunities.pendingDeals.action': { en: 'Add them to POS cart and close the sale.', es: 'Agrégalas al carrito POS y cierra la venta.', pt: 'Adicione ao carrinho POS e feche a venda.' },
+
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: action-first daily focus list.
+  // Per-priority Why/Action strings reuse the existing chat.opportunities.*
+  // keys to avoid translation duplication; these are namespace-only.
+  'chat.dailyBrief2.header':                  { en: '📋 Daily Operator Brief', es: '📋 Resumen Operativo Diario', pt: '📋 Resumo Operacional Diário' },
+  'chat.dailyBrief2.priorityLabel':           { en: 'Priority:', es: 'Prioridad:', pt: 'Prioridade:' },
+  'chat.dailyBrief2.whyLabel':                { en: 'Why:',      es: 'Por qué:',  pt: 'Por quê:' },
+  'chat.dailyBrief2.actionLabel':             { en: 'Action:',   es: 'Acción:',   pt: 'Ação:' },
+  'chat.dailyBrief2.empty':                   { en: 'Store looks stable today. Focus on fast checkout, clean follow-ups, and customer experience.', es: 'La tienda se ve estable hoy. Enfócate en checkout rápido, seguimientos limpios y experiencia del cliente.', pt: 'A loja parece estável hoje. Foque em checkout rápido, acompanhamentos limpos e experiência do cliente.' },
+  'chat.dailyBrief2.noSalesToday.title':      { en: 'Push the first sale of the day', es: 'Empuja la primera venta del día', pt: 'Empurre a primeira venda do dia' },
+  'chat.dailyBrief2.noSalesToday.why':        { en: 'No transactions yet today.', es: 'Aún no hay transacciones hoy.', pt: 'Ainda não há transações hoje.' },
+  'chat.dailyBrief2.noSalesToday.action':     { en: 'Ping recent customers, run a flash promo, or open with a tile demo.', es: 'Contacta clientes recientes, lanza una promo rápida o abre con una demo del catálogo.', pt: 'Contate clientes recentes, faça uma promo rápida ou abra com uma demo do catálogo.' },
+
+  // R-INTELLIGENCE-TODAY-MONEY-MAP-V1: tactical money-map briefing.
+  // Per-priority Money/Move strings reuse the existing chat.opportunities.*
+  // keys (already shipped EN/ES/PT) — only labels + framing are new here.
+  'chat.moneyMap.header':            { en: '💰 Today Money Map', es: '💰 Mapa de Dinero de Hoy', pt: '💰 Mapa de Dinheiro de Hoje' },
+  'chat.moneyMap.opportunityLabel':  { en: 'Revenue opportunity:', es: 'Oportunidad de ingresos:', pt: 'Oportunidade de receita:' },
+  'chat.moneyMap.moneyLabel':        { en: 'Money:',               es: 'Dinero:',                  pt: 'Dinheiro:' },
+  'chat.moneyMap.moveLabel':         { en: 'Fastest move:',        es: 'Movimiento más rápido:',   pt: 'Movimento mais rápido:' },
+  'chat.moneyMap.empty':             { en: 'No major blocked revenue detected today. Focus on live sales and customer experience.', es: 'No se detectó ingreso bloqueado importante hoy. Enfócate en ventas en vivo y experiencia del cliente.', pt: 'Nenhuma receita bloqueada importante detectada hoje. Foque em vendas ao vivo e experiência do cliente.' },
+
+  // R-INTELLIGENCE-OPERATOR-MODE-V1: coordinated 5-source operational plan.
+  // Per-priority Why/Move strings reuse the existing chat.opportunities.*
+  // keys (already shipped EN/ES/PT). Only labels + framing are new here.
+  'chat.operatorMode.header':       { en: '🎯 Operator Mode', es: '🎯 Modo Operador', pt: '🎯 Modo Operador' },
+  'chat.operatorMode.focusLabel':   { en: 'Focus:',     es: 'Enfoque:',         pt: 'Foco:' },
+  'chat.operatorMode.whyLabel':     { en: 'Why:',       es: 'Por qué:',         pt: 'Por quê:' },
+  'chat.operatorMode.moveLabel':    { en: 'Next move:', es: 'Próximo movimiento:', pt: 'Próximo movimento:' },
+  'chat.operatorMode.empty':        { en: 'Store is quiet. Stay close to the floor and protect customer experience.', es: 'La tienda está tranquila. Mantente cerca del piso y cuida la experiencia del cliente.', pt: 'A loja está tranquila. Fique perto do balcão e cuide da experiência do cliente.' },
+
+  // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: manual proposal-followup tracker.
+  'chat.followups.headerEmpty':       { en: '📥 Follow-ups', es: '📥 Seguimientos', pt: '📥 Acompanhamentos' },
+  'chat.followups.header': {
+    en: (n: number) => `📥 Follow-ups (${n} waiting)`,
+    es: (n: number) => `📥 Seguimientos (${n} en espera)`,
+    pt: (n: number) => `📥 Acompanhamentos (${n} aguardando)`,
+  },
+  'chat.followups.empty':             { en: 'No active follow-ups. Send a WhatsApp proposal first.', es: 'No hay seguimientos activos. Envía primero una propuesta por WhatsApp.', pt: 'Nenhum acompanhamento ativo. Envie primeiro uma proposta pelo WhatsApp.' },
+  'chat.followups.statusLabel':       { en: 'Status:',  es: 'Estado:',     pt: 'Status:' },
+  'chat.followups.suggestLabel':      { en: 'Suggest:', es: 'Sugerencia:', pt: 'Sugestão:' },
+  'chat.followups.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.followups.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  'chat.followups.timeMinutes': {
+    en: (n: number) => `${n}m ago`,
+    es: (n: number) => `hace ${n}m`,
+    pt: (n: number) => `${n}m atrás`,
+  },
+  'chat.followups.timeHours': {
+    en: (n: number) => `${n}h ago`,
+    es: (n: number) => `hace ${n}h`,
+    pt: (n: number) => `${n}h atrás`,
+  },
+  'chat.followups.timeDays': {
+    en: (n: number) => `${n}d ago`,
+    es: (n: number) => `hace ${n}d`,
+    pt: (n: number) => `${n}d atrás`,
+  },
+
+  // Status labels (open statuses listed by the inbox).
+  'chat.followups.status.sent':       { en: 'Sent — no reply yet',         es: 'Enviado — sin respuesta',        pt: 'Enviado — sem resposta' },
+  'chat.followups.status.replied':    { en: 'Replied — awaiting next move', es: 'Respondido — siguiente paso',    pt: 'Respondeu — próximo passo' },
+  'chat.followups.status.interested': { en: 'Interested — push to close',  es: 'Interesado — empuja al cierre',  pt: 'Interessado — avance para fechar' },
+
+  // Suggestions per status.
+  'chat.followups.suggest.sent':       { en: 'Send a check-in or wait a bit longer.',                    es: 'Envía un seguimiento o espera un poco más.',          pt: 'Envie um lembrete ou espere mais um pouco.' },
+  'chat.followups.suggest.replied':    { en: 'Paste their reply: "{name} replied: ...".',                es: 'Pega su respuesta: "{nombre} respondió: ...".',       pt: 'Cole a resposta: "{nome} respondeu: ...".' },
+  'chat.followups.suggest.interested': { en: 'Move toward commitment — confirm pickup or draft a deal.', es: 'Avanza al compromiso — confirma recogida o crea oferta.', pt: 'Avance para o compromisso — confirme retirada ou crie oferta.' },
+
+  // record_reply handler messages.
+  'chat.followups.replyHeader': {
+    en: (name: string) => `📨 Reply recorded for ${name}`,
+    es: (name: string) => `📨 Respuesta registrada de ${name}`,
+    pt: (name: string) => `📨 Resposta registrada de ${name}`,
+  },
+  'chat.followups.replyNoMatch':      { en: "Couldn't match this reply to an open follow-up. Include the customer name (e.g., \"Juan replied: ...\").", es: 'No pude vincular esta respuesta con un seguimiento abierto. Incluye el nombre del cliente (ej. "Juan respondió: ...").', pt: 'Não consegui vincular essa resposta a um acompanhamento aberto. Inclua o nome do cliente (ex.: "João respondeu: ...").' },
+  'chat.followups.replyHowTo':        { en: 'Paste the reply like: "Juan replied: what\'s the lowest?".', es: 'Pega la respuesta así: "Juan respondió: cuál es lo más bajo?".', pt: 'Cole a resposta assim: "João respondeu: qual o mais baixo?".' },
+
+  // R-INTELLIGENCE-DEAL-PIPELINE-V1: manual sales-pipeline tracking.
+  'chat.dealPipeline.headerEmpty':       { en: '🧭 Deal Pipeline', es: '🧭 Pipeline de Ventas', pt: '🧭 Pipeline de Vendas' },
+  'chat.dealPipeline.header': {
+    en: (n: number) => `🧭 Deal Pipeline (${n} active)`,
+    es: (n: number) => `🧭 Pipeline de Ventas (${n} activos)`,
+    pt: (n: number) => `🧭 Pipeline de Vendas (${n} ativos)`,
+  },
+  'chat.dealPipeline.empty':             { en: 'No active deals. Send a WhatsApp proposal to start a pipeline entry.', es: 'Sin tratos activos. Envía una propuesta por WhatsApp para iniciar un trato.', pt: 'Sem negócios ativos. Envie uma proposta pelo WhatsApp para iniciar um negócio.' },
+  'chat.dealPipeline.stageLabel':        { en: 'Stage:',  es: 'Etapa:',     pt: 'Etapa:' },
+  'chat.dealPipeline.replyLabel':        { en: 'Reply:',  es: 'Respuesta:', pt: 'Resposta:' },
+  'chat.dealPipeline.moveLabel':         { en: 'Next:',   es: 'Siguiente:', pt: 'Próximo:' },
+  'chat.dealPipeline.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.dealPipeline.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // Stage labels (8 total — won/lost included for the mark command response).
+  'chat.dealPipeline.stage.proposal_sent':    { en: 'Proposal sent',     es: 'Propuesta enviada',  pt: 'Proposta enviada' },
+  'chat.dealPipeline.stage.customer_replied': { en: 'Customer replied',  es: 'Cliente respondió',  pt: 'Cliente respondeu' },
+  'chat.dealPipeline.stage.interested':       { en: 'Interested',        es: 'Interesado',         pt: 'Interessado' },
+  'chat.dealPipeline.stage.negotiating':      { en: 'Negotiating price', es: 'Negociando precio',  pt: 'Negociando preço' },
+  'chat.dealPipeline.stage.pending_approval': { en: 'Pending approval',  es: 'Pendiente aprobación', pt: 'Aguardando aprovação' },
+  'chat.dealPipeline.stage.pending_pickup':   { en: 'Pending pickup',    es: 'Pendiente recogida', pt: 'Aguardando retirada' },
+  'chat.dealPipeline.stage.won':              { en: 'Won',               es: 'Ganado',             pt: 'Ganho' },
+  'chat.dealPipeline.stage.lost':             { en: 'Lost',              es: 'Perdido',            pt: 'Perdido' },
+
+  // Recommended next-move per stage.
+  'chat.dealPipeline.move.proposal_sent':    { en: 'Send a check-in or wait for the reply to come in.',     es: 'Envía un seguimiento o espera la respuesta.',                pt: 'Envie um lembrete ou aguarde a resposta.' },
+  'chat.dealPipeline.move.customer_replied': { en: 'Read their message; classify intent; reply quickly.',   es: 'Lee el mensaje, clasifica la intención y responde rápido.',  pt: 'Leia a mensagem, classifique a intenção e responda rápido.' },
+  'chat.dealPipeline.move.interested':       { en: 'Reduce friction. Offer a clear next step.',             es: 'Reduce fricción. Ofrece un próximo paso claro.',             pt: 'Reduza atrito. Ofereça um próximo passo claro.' },
+  'chat.dealPipeline.move.negotiating':      { en: 'Hold margin. Offer ONE small time-bound concession.',   es: 'Protege el margen. Ofrece UNA concesión pequeña con tiempo.', pt: 'Proteja a margem. Ofereça UMA concessão pequena com prazo.' },
+  'chat.dealPipeline.move.pending_approval': { en: 'Confirm details and approve via POS when ready.',       es: 'Confirma detalles y aprueba en POS cuando esté listo.',      pt: 'Confirme detalhes e aprove no POS quando estiver pronto.' },
+  'chat.dealPipeline.move.pending_pickup':   { en: 'Lock pickup window. Move to POS to close the sale.',    es: 'Cierra horario de recogida. Pasa al POS para cerrar la venta.', pt: 'Fixe o horário de retirada. Vá ao POS para fechar a venda.' },
+  'chat.dealPipeline.move.won':              { en: 'Closed — log outcome via POS sale.',                    es: 'Cerrado — registra el resultado con la venta en POS.',       pt: 'Fechado — registre o resultado na venda do POS.' },
+  'chat.dealPipeline.move.lost':             { en: 'Closed — keep contact for future opportunities.',       es: 'Cerrado — mantén el contacto para futuras oportunidades.',   pt: 'Fechado — mantenha contato para futuras oportunidades.' },
+
+  // mark_deal_stage handler messages.
+  'chat.dealPipeline.markedHeader': {
+    en: (customer: string, stageLabel: string) => `✅ ${customer} deal marked: ${stageLabel}.`,
+    es: (customer: string, stageLabel: string) => `✅ Trato de ${customer} marcado: ${stageLabel}.`,
+    pt: (customer: string, stageLabel: string) => `✅ Negócio de ${customer} marcado: ${stageLabel}.`,
+  },
+  'chat.dealPipeline.markNoMatch':       { en: "Couldn't match an open deal to that customer name.", es: 'No se pudo encontrar un trato abierto con ese nombre de cliente.', pt: 'Não foi possível encontrar um negócio aberto com esse nome de cliente.' },
+  'chat.dealPipeline.markHowTo':         { en: 'Try: "mark Juan deal won" or "mark Maria deal pending pickup".', es: 'Prueba: "marcar trato de Juan ganado" o "Maria trato pendiente de recogida".', pt: 'Tente: "marcar negócio do João ganho" ou "Maria negócio aguardando retirada".' },
+
+  // R-INTELLIGENCE-CLOSE-TODAY-V1: deterministic close-likelihood ranker.
+  // Read-only — Next-move strings reuse the existing
+  // chat.dealPipeline.move.{stage} keys (one source of truth).
+  'chat.closeToday.headerEmpty':       { en: '🔥 Close Today', es: '🔥 Cerrar Hoy', pt: '🔥 Fechar Hoje' },
+  'chat.closeToday.header':            { en: '🔥 Close Today', es: '🔥 Cerrar Hoy', pt: '🔥 Fechar Hoje' },
+  'chat.closeToday.empty':             { en: 'No active deals ready to close. Send a product proposal first.', es: 'Sin tratos activos listos para cerrar. Envía una propuesta primero.', pt: 'Sem negócios ativos prontos para fechar. Envie uma proposta primeiro.' },
+  'chat.closeToday.likelihoodLabel':   { en: 'Likelihood:', es: 'Probabilidad:', pt: 'Probabilidade:' },
+  'chat.closeToday.whyLabel':          { en: 'Why:',        es: 'Por qué:',     pt: 'Por quê:' },
+  'chat.closeToday.nextLabel':         { en: 'Next:',       es: 'Siguiente:',   pt: 'Próximo:' },
+  'chat.closeToday.unknownCustomer':   { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.closeToday.unknownProduct':    { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // Likelihood labels.
+  'chat.closeToday.label.high':        { en: 'High',   es: 'Alta',   pt: 'Alta' },
+  'chat.closeToday.label.medium':      { en: 'Medium', es: 'Media',  pt: 'Média' },
+  'chat.closeToday.label.low':         { en: 'Low',    es: 'Baja',   pt: 'Baixa' },
+
+  // WHY-it-can-close, one per active stage.
+  'chat.closeToday.why.pending_pickup':   { en: 'Customer agreed; pickup is the only remaining step.', es: 'El cliente aceptó; solo falta la recogida.',                pt: 'Cliente concordou; só falta a retirada.' },
+  'chat.closeToday.why.pending_approval': { en: 'Awaiting your approval before final close.',          es: 'Esperando tu aprobación antes del cierre final.',           pt: 'Aguardando sua aprovação antes do fechamento final.' },
+  'chat.closeToday.why.negotiating':      { en: 'Customer engaged on price — momentum still warm.',    es: 'El cliente está negociando precio — el interés sigue activo.', pt: 'Cliente engajado no preço — o interesse ainda está ativo.' },
+  'chat.closeToday.why.interested':       { en: 'Customer signaled interest and is reachable.',        es: 'El cliente mostró interés y es contactable.',               pt: 'Cliente demonstrou interesse e está acessível.' },
+  'chat.closeToday.why.customer_replied': { en: 'Customer replied — needs a quick read + reply.',      es: 'El cliente respondió — requiere lectura y respuesta rápida.', pt: 'Cliente respondeu — precisa de leitura e resposta rápida.' },
+  'chat.closeToday.why.proposal_sent':    { en: 'Proposal sent — owner can nudge for the first reply.', es: 'Propuesta enviada — puedes empujar la primera respuesta.', pt: 'Proposta enviada — você pode incentivar a primeira resposta.' },
+
+  // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks.
+  // Read-only — no mutation, no automation, no autosend.
+  'chat.missions.headerEmpty':         { en: '🎯 Revenue Missions', es: '🎯 Misiones de Ingresos', pt: '🎯 Missões de Receita' },
+  'chat.missions.header':              { en: '🎯 Revenue Missions', es: '🎯 Misiones de Ingresos', pt: '🎯 Missões de Receita' },
+  'chat.missions.empty':               { en: 'No urgent revenue missions right now.', es: 'Sin misiones urgentes de ingresos por ahora.', pt: 'Sem missões urgentes de receita no momento.' },
+  'chat.missions.whyLabel':            { en: 'Why:',  es: 'Por qué:', pt: 'Por quê:' },
+  'chat.missions.nextLabel':           { en: 'Next:', es: 'Siguiente:', pt: 'Próximo:' },
+  'chat.missions.unknownCustomer':     { en: 'Unknown customer', es: 'Cliente desconocido', pt: 'Cliente desconhecido' },
+  'chat.missions.unknownProduct':      { en: 'product/proposal', es: 'producto/propuesta',  pt: 'produto/proposta' },
+
+  // close_deal missions
+  'chat.missions.closeTitle': {
+    en: (customer: string, product: string) => `Close ${customer}'s ${product} deal`,
+    es: (customer: string, product: string) => `Cierra el trato de ${customer} por ${product}`,
+    pt: (customer: string, product: string) => `Feche o negócio de ${customer} pelo ${product}`,
+  },
+  'chat.missions.closeWhy.pending_pickup':   { en: 'Customer agreed; pickup is the only step left.',         es: 'El cliente aceptó; solo falta la recogida.',                pt: 'Cliente concordou; só falta a retirada.' },
+  'chat.missions.closeWhy.negotiating':      { en: 'Customer engaged on price — momentum still warm.',       es: 'Negociando precio — el interés sigue activo.',              pt: 'Engajado no preço — o interesse ainda está ativo.' },
+  'chat.missions.closeWhy.interested':       { en: 'Customer signaled interest and is reachable.',           es: 'Mostró interés y es contactable.',                          pt: 'Demonstrou interesse e está acessível.' },
+  'chat.missions.closeNext.pending_pickup':  { en: 'Confirm a final pickup window today.',                   es: 'Confirma una ventana final de recogida hoy.',               pt: 'Confirme uma janela final de retirada hoje.' },
+  'chat.missions.closeNext.negotiating':     { en: 'Offer one small time-bound concession; lock pickup.',    es: 'Ofrece una concesión pequeña con tiempo; cierra recogida.', pt: 'Ofereça uma concessão pequena com prazo; feche retirada.' },
+  'chat.missions.closeNext.interested':      { en: 'Send one nudge with a clear next step.',                 es: 'Envía un mensaje con un próximo paso claro.',               pt: 'Envie uma mensagem com um próximo passo claro.' },
+
+  // follow_up missions
+  'chat.missions.followupTitle': {
+    en: (customer: string) => `Follow up with ${customer}`,
+    es: (customer: string) => `Haz seguimiento con ${customer}`,
+    pt: (customer: string) => `Faça acompanhamento com ${customer}`,
+  },
+  'chat.missions.followupWhyReplied':  { en: 'Customer replied — needs a quick response.',           es: 'El cliente respondió — necesita respuesta rápida.',              pt: 'Cliente respondeu — precisa de resposta rápida.' },
+  'chat.missions.followupWhyStale':    { en: 'Proposal sent over 24h ago without a reply.',          es: 'Propuesta enviada hace más de 24h sin respuesta.',               pt: 'Proposta enviada há mais de 24h sem resposta.' },
+  'chat.missions.followupNextReplied': { en: 'Read their message and reply with a concrete offer.',  es: 'Lee su mensaje y responde con una oferta concreta.',             pt: 'Leia a mensagem e responda com uma oferta concreta.' },
+  'chat.missions.followupNextStale':   { en: 'Send one short reminder; offer a real product photo.', es: 'Envía un recordatorio breve; ofrece una foto real del producto.', pt: 'Envie um lembrete breve; ofereça uma foto real do produto.' },
+
+  // inventory_push (dead stock) mission
+  'chat.missions.deadStockTitle':      { en: 'Push aging inventory',                                 es: 'Empuja inventario sin movimiento',                                pt: 'Promova estoque parado' },
+  'chat.missions.deadStockWhy': {
+    en: (amount: string) => `Around ${amount} locked in slow-moving stock.`,
+    es: (amount: string) => `Aproximadamente ${amount} bloqueados en stock sin movimiento.`,
+    pt: (amount: string) => `Cerca de ${amount} parados em estoque sem movimento.`,
+  },
+  'chat.missions.deadStockNext':       { en: 'Run a clearance promo or bundle pricing today.',       es: 'Lanza una promoción de liquidación o precio combo hoy.',         pt: 'Faça uma promoção de liquidação ou combo hoje.' },
+
+  // customer_reactivation mission
+  'chat.missions.outreachTitle': {
+    en: (n: number) => `Reach ${n} high-value customers`,
+    es: (n: number) => `Contacta a ${n} clientes valiosos`,
+    pt: (n: number) => `Contate ${n} clientes valiosos`,
+  },
+  'chat.missions.outreachWhy':         { en: 'Several customers are due for outreach today.',         es: 'Varios clientes están listos para contactar hoy.',                pt: 'Vários clientes estão prontos para contato hoje.' },
+  'chat.missions.outreachNext':        { en: 'Send WhatsApp follow-up offers from the cards above.', es: 'Envía ofertas por WhatsApp desde las tarjetas de arriba.',        pt: 'Envie ofertas pelo WhatsApp pelos cards acima.' },
+
+  // R-INTELLIGENCE-CONVERSATION-RUNNER-V1: paste-customer-reply assistant.
+  // Operator-style guidance, deterministic — no AI, no auto-send.
+  'chat.conversation.header':       { en: '💬 Conversation runner', es: '💬 Asistente de conversación', pt: '💬 Assistente de conversa' },
+  'chat.conversation.empty':        { en: 'Paste the customer reply (e.g., "he said what\'s the lowest").', es: 'Pega la respuesta del cliente (ej. "respondió cuál es lo más bajo").', pt: 'Cole a resposta do cliente (ex. "ele respondeu qual o mais barato").' },
+  'chat.conversation.intentLabel':  { en: 'Customer intent:', es: 'Intención del cliente:', pt: 'Intenção do cliente:' },
+  'chat.conversation.moveLabel':    { en: 'Recommended move:', es: 'Movimiento recomendado:', pt: 'Movimento recomendado:' },
+  'chat.conversation.replyLabel':   { en: 'Suggested reply:', es: 'Respuesta sugerida:', pt: 'Resposta sugerida:' },
+  'chat.conversation.dealHint':     { en: 'To draft a deal, type: "make offer to <customer> for <product> at <price>".', es: 'Para crear una oferta, escribe: "hacer oferta a <cliente> por <producto> a <precio>".', pt: 'Para criar uma oferta, digite: "fazer oferta para <cliente> por <produto> a <preço>".' },
+
+  // Category labels.
+  'chat.conversation.category.PRICE_NEGOTIATION': { en: 'Price negotiation', es: 'Negociación de precio', pt: 'Negociação de preço' },
+  'chat.conversation.category.PRICE_TOO_HIGH':    { en: 'Price objection',    es: 'Objeción de precio',     pt: 'Objeção de preço' },
+  'chat.conversation.category.MAYBE_LATER':       { en: 'Deferred / not now', es: 'Aplazado / no ahora',    pt: 'Adiado / não agora' },
+  'chat.conversation.category.READY_TO_BUY':      { en: 'Ready to buy',       es: 'Listo para comprar',     pt: 'Pronto para comprar' },
+  'chat.conversation.category.INTERESTED':        { en: 'Interested',         es: 'Interesado',             pt: 'Interessado' },
+  'chat.conversation.category.ASKING_LOCATION':   { en: 'Asking for location',es: 'Pregunta por ubicación', pt: 'Pergunta sobre localização' },
+  'chat.conversation.category.ASKING_PHOTOS':     { en: 'Asking for photos',  es: 'Pide fotos',             pt: 'Pede fotos' },
+  'chat.conversation.category.HOLD_REQUEST':      { en: 'Hold request',       es: 'Pide apartar',           pt: 'Pede para reservar' },
+  'chat.conversation.category.UNKNOWN':           { en: 'Unclear — ask follow-up', es: 'No claro — pide aclaración', pt: 'Pouco claro — peça esclarecimento' },
+
+  // Recommended moves — concise operator guidance.
+  'chat.conversation.move.PRICE_NEGOTIATION': { en: 'Hold margin. Offer a small, time-bound concession.',                       es: 'Protege el margen. Ofrece una pequeña concesión con tiempo límite.',           pt: 'Proteja a margem. Ofereça uma pequena concessão com prazo.' },
+  'chat.conversation.move.PRICE_TOO_HIGH':    { en: 'Acknowledge, frame value, offer ONE small concession at most.',            es: 'Reconoce, enfatiza el valor, ofrece UNA concesión pequeña como máximo.',       pt: 'Reconheça, reforce o valor, ofereça UMA concessão pequena no máximo.' },
+  'chat.conversation.move.MAYBE_LATER':       { en: 'Soft close. Offer to follow up later — preserve relationship.',            es: 'Cierre suave. Ofrece seguimiento más tarde — preserva la relación.',          pt: 'Fechamento suave. Ofereça acompanhamento depois — preserve o relacionamento.' },
+  'chat.conversation.move.READY_TO_BUY':      { en: 'Lock the sale fast. Confirm pickup window.',                               es: 'Cierra la venta rápido. Confirma horario de recogida.',                       pt: 'Feche a venda rápido. Confirme horário de retirada.' },
+  'chat.conversation.move.INTERESTED':        { en: 'Move toward the close. Offer a clear next step.',                          es: 'Avanza hacia el cierre. Ofrece un próximo paso claro.',                       pt: 'Avance para o fechamento. Ofereça um próximo passo claro.' },
+  'chat.conversation.move.ASKING_LOCATION':   { en: 'Send address + hours. Offer to set it aside.',                             es: 'Envía dirección + horario. Ofrece apartarlo.',                                pt: 'Envie endereço + horário. Ofereça reservar.' },
+  'chat.conversation.move.ASKING_PHOTOS':     { en: 'Send photos quickly, then pivot to close.',                                es: 'Envía fotos rápido, luego pivota al cierre.',                                 pt: 'Envie fotos rápido, depois caminhe para o fechamento.' },
+  'chat.conversation.move.HOLD_REQUEST':      { en: 'Confirm a clear hold window. Build urgency.',                              es: 'Confirma un horario claro de reserva. Genera urgencia.',                      pt: 'Confirme um prazo claro de reserva. Crie urgência.' },
+  'chat.conversation.move.UNKNOWN':           { en: 'Ask a clarifying question to qualify the lead.',                           es: 'Haz una pregunta de aclaración para calificar al cliente.',                   pt: 'Faça uma pergunta para qualificar o cliente.' },
+
+  // Suggested replies — copy-paste templates with placeholders ($X, [address], etc.) for the owner to edit.
+  'chat.conversation.reply.PRICE_NEGOTIATION': { en: 'I can do $X today if you pick it up before 6 PM.',                  es: 'Puedo dejarlo en $X hoy si pasas a recogerlo antes de las 6 PM.',          pt: 'Posso fazer $X hoje se você buscar antes das 18h.' },
+  'chat.conversation.reply.PRICE_TOO_HIGH':    { en: "I hear you. The lowest I can go is $X today — that's our best price.", es: 'Te entiendo. Lo más bajo que puedo es $X hoy — es nuestro mejor precio.', pt: 'Entendo. O mais baixo que posso é $X hoje — é nosso melhor preço.' },
+  'chat.conversation.reply.MAYBE_LATER':       { en: "No problem. I'll keep you in mind if it goes on sale or another comes in.", es: 'Sin problema. Te aviso si baja de precio o llega otro.',              pt: 'Sem problema. Te aviso se baixar o preço ou chegar outro.' },
+  'chat.conversation.reply.READY_TO_BUY':      { en: "Awesome! I'll set it aside for you. Can you stop by today before 6 PM?", es: '¡Excelente! Te lo aparto. ¿Puedes pasar hoy antes de las 6 PM?',          pt: 'Ótimo! Vou separar para você. Pode passar hoje antes das 18h?' },
+  'chat.conversation.reply.INTERESTED':        { en: "Glad to hear it! Want me to set it aside for you to pick up today?",  es: '¡Qué bueno! ¿Quieres que te lo aparte para recogerlo hoy?',                pt: 'Que bom! Quer que eu separe para você buscar hoje?' },
+  'chat.conversation.reply.ASKING_LOCATION':   { en: "We're at [address], open until 6 PM today. Want me to set it aside?", es: 'Estamos en [dirección], abrimos hasta las 6 PM hoy. ¿Te lo aparto?',       pt: 'Estamos em [endereço], aberto até as 18h hoje. Quer que eu separe?' },
+  'chat.conversation.reply.ASKING_PHOTOS':     { en: "Sending photos now. It's in great condition — want to come check it out today?", es: 'Te mando fotos ahora. Está en excelentes condiciones — ¿pasas hoy a verlo?', pt: 'Enviando fotos agora. Está em ótimo estado — quer vir ver hoje?' },
+  'chat.conversation.reply.HOLD_REQUEST':      { en: 'Sure, I can hold it until 6 PM today. Can you confirm pickup time?', es: 'Claro, te lo aparto hasta las 6 PM hoy. ¿Me confirmas la hora de recogida?', pt: 'Claro, reservo até as 18h hoje. Pode confirmar o horário de retirada?' },
+  'chat.conversation.reply.UNKNOWN':           { en: 'Could you tell me a bit more about what you\'re looking for?',       es: '¿Me puedes contar un poco más sobre lo que buscas?',                       pt: 'Pode me contar um pouco mais sobre o que está procurando?' },
+
+  // R-INTELLIGENCE-DEAL-CLOSER-V1: closing strategy + optional upsell + structured deal-progression keys.
+  'chat.conversation.strategyLabel':    { en: 'Closing strategy:', es: 'Estrategia de cierre:', pt: 'Estratégia de fechamento:' },
+  'chat.conversation.upsellLabel':      { en: 'Optional upsell:',  es: 'Venta adicional (opcional):', pt: 'Venda adicional (opcional):' },
+  'chat.conversation.progressionLabel': { en: 'Optional deal progression:', es: 'Progresión de la oferta (opcional):', pt: 'Progressão da oferta (opcional):' },
+
+  // Closing strategy — only for active-sales categories.
+  'chat.conversation.strategy.PRICE_NEGOTIATION': { en: 'Trade urgency for the discount. Avoid open-ended negotiation.', es: 'Cambia el descuento por urgencia. Evita la negociación abierta.', pt: 'Troque o desconto por urgência. Evite negociação aberta.' },
+  'chat.conversation.strategy.READY_TO_BUY':      { en: 'Move toward commitment fast. Lock pickup time.',                es: 'Avanza al compromiso rápido. Cierra horario de recogida.',         pt: 'Avance para o compromisso rápido. Fixe horário de retirada.' },
+  'chat.conversation.strategy.INTERESTED':        { en: 'Reduce friction. Offer a clear next step.',                     es: 'Reduce fricción. Ofrece un próximo paso claro.',                   pt: 'Reduza atrito. Ofereça um próximo passo claro.' },
+  'chat.conversation.strategy.HOLD_REQUEST':      { en: 'Set a clear hold window. Suggest a deposit.',                   es: 'Define un horario claro de reserva. Sugiere un depósito.',         pt: 'Defina um prazo claro de reserva. Sugira um depósito.' },
+
+  // Optional upsell — keyed by detected product category.
+  'chat.conversation.upsell.phone':    { en: 'Suggest a case + screen protector bundle at checkout.',         es: 'Sugiere un combo de funda + protector de pantalla en el cierre.',  pt: 'Sugira um combo de capa + película protetora no fechamento.' },
+  'chat.conversation.upsell.repair':   { en: 'Offer a tempered glass screen protector at pickup.',            es: 'Ofrece un protector de vidrio templado al entregar.',              pt: 'Ofereça uma película de vidro temperado na retirada.' },
+  'chat.conversation.upsell.console':  { en: 'Suggest a second controller or popular game at pickup.',        es: 'Sugiere un segundo control o un juego popular al entregar.',       pt: 'Sugira um segundo controle ou jogo popular na retirada.' },
+
+  // Optional deal progression — reuses Pending Deal command guidance.
+  'chat.conversation.progression.READY_TO_BUY': { en: 'Confirm pickup window or draft a Pending Deal: "make offer to <customer> for <product> at <price>".', es: 'Confirma el horario de recogida o crea una oferta: "hacer oferta a <cliente> por <producto> a <precio>".', pt: 'Confirme o horário de retirada ou crie uma oferta: "fazer oferta para <cliente> por <produto> a <preço>".' },
+  'chat.conversation.progression.INTERESTED':   { en: 'Suggest a same-day visit or draft a Pending Deal to lock the price.',                                  es: 'Sugiere una visita el mismo día o crea una oferta para fijar el precio.',                                  pt: 'Sugira uma visita no mesmo dia ou crie uma oferta para fixar o preço.' },
+
+  // R-INTELLIGENCE-SALES-PLAYBOOKS-V1: deterministic retail-coaching layer.
+  // Operator coaching only — not automation, not auto-pricing, not auto-send.
+  'chat.conversation.playbookLabel': { en: 'Sales playbook:', es: 'Manual de ventas:', pt: 'Manual de vendas:' },
+  'chat.conversation.playbook.UPGRADE_CLOSE':        { en: 'Position the upgrade as a clear improvement over the current device. Frame value, not price.', es: 'Posiciona la actualización como una mejora clara sobre el dispositivo actual. Enfatiza el valor, no el precio.', pt: 'Posicione o upgrade como uma melhoria clara sobre o dispositivo atual. Destaque valor, não preço.' },
+  'chat.conversation.playbook.ACCESSORY_ATTACH':     { en: 'Attach case + screen protector during commitment phase, not at the beginning.',                  es: 'Adjunta funda + protector de pantalla durante la fase de compromiso, no al inicio.',                          pt: 'Anexe capa + película protetora na fase de compromisso, não no início.' },
+  'chat.conversation.playbook.SAME_DAY_URGENCY':     { en: 'Trade speed for discount. Keep the close tied to same-day pickup.',                              es: 'Cambia el descuento por velocidad. Ata el cierre a la recogida el mismo día.',                                pt: 'Troque o desconto por velocidade. Ligue o fechamento à retirada no mesmo dia.' },
+  'chat.conversation.playbook.REPAIR_RECOVERY':      { en: 'Push urgency around device downtime and convenience.',                                           es: 'Genera urgencia alrededor del tiempo sin dispositivo y la conveniencia.',                                     pt: 'Gere urgência em torno do tempo sem dispositivo e da conveniência.' },
+  'chat.conversation.playbook.FINANCING_PUSH':       { en: 'Reduce focus on total price. Shift toward monthly affordability.',                               es: 'Reduce el enfoque en el precio total. Cambia hacia el costo mensual accesible.',                              pt: 'Reduza o foco no preço total. Mude para a parcela mensal acessível.' },
+  'chat.conversation.playbook.TRADE_IN_POSITIONING': { en: 'Anchor the trade-in credit before the price discussion. Keep the upgrade narrative simple.',     es: 'Ancla el crédito de cambio antes de hablar de precio. Mantén la narrativa de actualización simple.',          pt: 'Ancore o crédito de troca antes de falar de preço. Mantenha a narrativa de upgrade simples.' },
+  'chat.conversation.playbook.DEPOSIT_COMMITMENT':   { en: 'Lock the hold with a small deposit. Set a clear pickup deadline.',                               es: 'Asegura la reserva con un pequeño depósito. Establece una fecha límite clara de recogida.',                   pt: 'Garanta a reserva com um pequeno depósito. Estabeleça um prazo claro de retirada.' },
+
+  'chat.dealPerformance.recommendation': {
+    en: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Your deals are converting well. Stay close to ${avgDiscPct}% discounts and keep sending offers.`
+      : `Win rate is ${winRatePct}%. Test smaller discount ranges to see what converts better.`,
+    es: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Tus ofertas están convirtiendo bien. Mantén descuentos cerca del ${avgDiscPct}% y sigue enviando.`
+      : `Tasa de éxito ${winRatePct}%. Prueba rangos de descuento más pequeños para ver qué convierte mejor.`,
+    pt: (winRatePct: number, avgDiscPct: number) => winRatePct >= 50
+      ? `Suas ofertas estão convertendo bem. Mantenha descontos próximos a ${avgDiscPct}% e continue enviando.`
+      : `Taxa de sucesso ${winRatePct}%. Teste faixas de desconto menores para ver o que converte melhor.`,
+  },
+
+  // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up that re-uses last intent.
+  'chat.followup.header':                { en: '💡 Follow-up', es: '💡 Seguimiento', pt: '💡 Acompanhamento' },
+  'chat.followup.because':               {
+    en: (txt: string) => `Because: ${txt}`,
+    es: (txt: string) => `Porque: ${txt}`,
+    pt: (txt: string) => `Porque: ${txt}`,
+  },
+  'chat.followup.action':                {
+    en: (txt: string) => `→ ${txt}`,
+    es: (txt: string) => `→ ${txt}`,
+    pt: (txt: string) => `→ ${txt}`,
+  },
+  'chat.followup.todaySales':            {
+    en: (rev: string, tx: number, avg: string) => `today's revenue is ${rev} from ${tx} sale${tx === 1 ? '' : 's'} (avg ticket ${avg}).`,
+    es: (rev: string, tx: number, avg: string) => `los ingresos de hoy son ${rev} en ${tx} venta${tx === 1 ? '' : 's'} (ticket promedio ${avg}).`,
+    pt: (rev: string, tx: number, avg: string) => `a receita de hoje é ${rev} em ${tx} venda${tx === 1 ? '' : 's'} (ticket médio ${avg}).`,
+  },
+  'chat.followup.actionTodaySales':      { en: 'Contact recent customers or push the top-selling accessory today.', es: 'Contacta a clientes recientes o promociona el accesorio más vendido hoy.', pt: 'Contate clientes recentes ou promova o acessório mais vendido hoje.' },
+  'chat.followup.productOpportunity':    { en: 'this product was selected based on inventory and revenue opportunity signals.', es: 'este producto fue seleccionado por señales de inventario y oportunidad de ingresos.', pt: 'este produto foi selecionado com base em sinais de estoque e oportunidade de receita.' },
+  'chat.followup.actionProduct':         { en: 'Promote the top item to recent buyers or walk-ins.', es: 'Promociona el producto a clientes recientes o walk-ins.', pt: 'Promova o produto a clientes recentes ou walk-ins.' },
+  'chat.followup.bestCustomer':          { en: 'this customer ranks high on spend and visit frequency.', es: 'este cliente destaca por gasto y frecuencia de visitas.', pt: 'este cliente se destaca por gasto e frequência de visitas.' },
+  'chat.followup.actionBestCustomer':    { en: 'Consider a loyalty reward or personal outreach.', es: 'Considera una recompensa de lealtad o contacto personal.', pt: 'Considere uma recompensa de fidelidade ou contato pessoal.' },
+  'chat.followup.contactToday':          { en: 'these customers were ranked by recent activity and outreach opportunity.', es: 'estos clientes se rankearon por actividad reciente y oportunidad de contacto.', pt: 'esses clientes foram classificados por atividade recente e oportunidade de contato.' },
+  'chat.followup.actionContact':         { en: 'Send a WhatsApp or call them today.', es: 'Manda un WhatsApp o llama hoy.', pt: 'Envie WhatsApp ou ligue hoje.' },
+  'chat.followup.fallback':              { en: 'I can explain this better when the previous answer is a sales, customer, product, or contact insight.', es: 'Puedo explicar mejor cuando la respuesta anterior es sobre ventas, clientes, productos o contactos.', pt: 'Posso explicar melhor quando a resposta anterior é sobre vendas, clientes, produtos ou contatos.' },
+
+  // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
+  'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },
+  'chat.todaySales.summary':          {
+    en: (amt: string) => `Revenue: ${amt}`,
+    es: (amt: string) => `Ingresos: ${amt}`,
+    pt: (amt: string) => `Receita: ${amt}`,
+  },
+  'chat.todaySales.transactions':     {
+    en: (n: number) => `${n} sale${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} venta${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} venda${n === 1 ? '' : 's'}`,
+  },
+  'chat.todaySales.avgTicket':        {
+    en: (amt: string) => `Avg ticket: ${amt}`,
+    es: (amt: string) => `Ticket promedio: ${amt}`,
+    pt: (amt: string) => `Ticket médio: ${amt}`,
+  },
+  'chat.todaySales.topItem':          {
+    en: (name: string, amt: string) => `Top seller: ${name} (${amt})`,
+    es: (name: string, amt: string) => `Más vendido: ${name} (${amt})`,
+    pt: (name: string, amt: string) => `Mais vendido: ${name} (${amt})`,
+  },
+  'chat.todaySales.paymentBreakdown': { en: 'By payment method:', es: 'Por método de pago:', pt: 'Por método de pagamento:' },
+  'chat.todaySales.empty':            { en: 'No sales recorded today yet.', es: 'Aún no hay ventas registradas hoy.', pt: 'Nenhuma venda registrada hoje ainda.' },
+
+  // R-DAILY-BRIEF-HANDLER-V1: action-first daily brief lines.
+  'chat.dailyBrief.header':       { en: '📋 Daily Brief', es: '📋 Resumen Diario', pt: '📋 Resumo Diário' },
+  'chat.dailyBrief.today':        {
+    en: (revenue: string, tx: number) => `• Today: ${revenue} · ${tx} sale${tx === 1 ? '' : 's'}`,
+    es: (revenue: string, tx: number) => `• Hoy: ${revenue} · ${tx} venta${tx === 1 ? '' : 's'}`,
+    pt: (revenue: string, tx: number) => `• Hoje: ${revenue} · ${tx} venda${tx === 1 ? '' : 's'}`,
+  },
+  'chat.dailyBrief.outreach':     {
+    en: (name: string) => `• Contact ${name} today`,
+    es: (name: string) => `• Contacta a ${name} hoy`,
+    pt: (name: string) => `• Contate ${name} hoje`,
+  },
+  'chat.dailyBrief.reorder':      {
+    en: (name: string) => `• Reorder ${name}`,
+    es: (name: string) => `• Reordena ${name}`,
+    pt: (name: string) => `• Reabasteça ${name}`,
+  },
+  'chat.dailyBrief.slowDay':      { en: '• Slow-day risk — push a promo',         es: '• Riesgo de día lento — empuja una promo',  pt: '• Risco de dia fraco — empurre uma promo' },
+  'chat.dailyBrief.deadStock':    { en: '• Dead stock locked up — review',         es: '• Stock muerto inmovilizado — revisa',      pt: '• Estoque parado retido — revise' },
 
   'chat.bestCustomer.header':         { en: 'Your best customer:', es: 'Tu mejor cliente:', pt: 'Seu melhor cliente:' },
   'chat.bestCustomer.empty':          { en: 'No customer data available yet.', es: 'Sin datos de clientes todavía.', pt: 'Sem dados de clientes ainda.' },

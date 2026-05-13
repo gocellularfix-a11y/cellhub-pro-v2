@@ -18,14 +18,26 @@ import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
-import { SearchInput } from '@/components/ui';
+import { SearchInput, Modal, useToast } from '@/components/ui';
+// R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow uses the
+// canonical admin-PIN gate + persist surface used elsewhere in the app.
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { persist } from '@/services/persist';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 import { normalizeCarrier } from '@/utils/normalize';
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem } from '@/store/types';
+import { matchesSearchPhones } from '@/utils/search';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem } from '@/store/types';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
+// R-REPORTS-EDIT-SALE-ITEM-V1: shared totals helper + audit trail helpers.
+// calculateCartTotals re-derives subtotal/salesTax/total from the modified
+// items so we don't reimplement tax math here. captureSnapshot/appendEditEntry
+// match the audit conventions used by repair/unlock/SO modules.
+import { calculateCartTotals } from '@/modules/pos/types';
+import { captureSnapshot, appendEditEntry } from '@/services/editAudit';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -92,7 +104,10 @@ const PSEUDO_ITEM_PREFIXES = [
   'so balance', 'so deposit',
   'unlock balance', 'unlock deposit',
 ];
-function isPseudoItem(item: SaleItem): boolean {
+// R-DASHBOARD-PROFIT-RECONCILE-V1: exported so Dashboard.tsx reuses the
+// SAME pseudo-item detection (single source of truth — no parallel
+// accounting). No behavior change.
+export function isPseudoItem(item: SaleItem): boolean {
   const n = String(item?.name || '').toLowerCase().trim();
   if (!n) return false;
   return PSEUDO_ITEM_PREFIXES.some((p) => n.startsWith(p));
@@ -107,7 +122,10 @@ function isPseudoItem(item: SaleItem): boolean {
  * exists. Any missing field returns 0 → caller preserves Round 10 behavior.
  * Integer cents in / integer cents out; single final Math.round.
  */
-function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[], paymentCents: number): number {
+// R-DASHBOARD-PROFIT-RECONCILE-V1: exported (with siblings below) so
+// Dashboard.tsx applies the same proportional-cost slice for layaway-
+// linked sale items. No behavior change.
+export function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const denominator = entity.totalPrice || 0;
   if (denominator <= 0) return 0;
@@ -122,7 +140,7 @@ function getLayawayProportionalCost(entity: Layaway, inventory: InventoryItem[],
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: InventoryItem[], paymentCents: number): number {
+export function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const totalCostCents = entity.cost || 0;
   const denominator = entity.price || 0;
@@ -130,7 +148,7 @@ function getSpecialOrderProportionalCost(entity: SpecialOrder, _inventory: Inven
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], paymentCents: number): number {
+export function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const partsCost = (entity.parts || []).reduce(
     (s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1),
@@ -143,7 +161,7 @@ function getRepairProportionalCost(entity: Repair, _inventory: InventoryItem[], 
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
-function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
+export function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const cost = entity.cost || 0;
   const denominator = entity.price || 0;
@@ -211,7 +229,16 @@ function classifyItem(item: SaleItem): ItemKind {
     // legacy services that are actually repairs
     const n = (item.name || '').toLowerCase();
     if (n.includes('repair') || n.includes('reparación')) return 'repair';
-    if (n.includes('unlock') || n.includes('desbloqueo')) return 'unlock';
+    // R-REPORTS-LAYAWAY-CATEGORY-FIX: "UNLOCKED" in a product name (e.g.
+    // "SAMSUNG GALAXY S24 ULTRA UNLOCKED — Layaway") is a product attribute,
+    // NOT a service-category signal. Skip name-based unlock detection when
+    // the item carries an explicit layawayId — those are layaway payments
+    // and must bucket under 'Layaway' (catName override below).
+    if (!item.layawayId && (n.includes('unlock') || n.includes('desbloqueo'))) {
+      // R-LAYAWAY-GUARD: prevent false unlock classification for layaway-related items
+      if (n.includes('layaway') || n.includes('apartado')) return 'service';
+      return 'unlock';
+    }
     return 'service';
   }
   return 'product';
@@ -276,7 +303,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns, inventoryLosses },
     dispatch,
   } = useApp();
 
@@ -308,6 +335,270 @@ export default function ReportsModule() {
   const [searchDateTo, setSearchDateTo] = useState('');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
   const [reprintSale, setReprintSale] = useState<Sale | null>(null);
+
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: void-sale flow state.
+  // The sale is voided as a STATUS CHANGE (status='voided' + voidedAt +
+  // voidedBy + voidReason). Existing isCountableSale / dashboard /
+  // intelligence filters already exclude voided sales from active
+  // totals/profit/KPIs. Inventory restored only for stockable line
+  // items (skips phone_payment / top_up / service / cc_fee / etc.).
+  // External payment refund is NOT triggered — owner handles payment-
+  // processor refund separately.
+  const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
+  const [voidReason, setVoidReason] = useState<string>('');
+  const [voidPinOpen, setVoidPinOpen] = useState(false);
+  const [voiding, setVoiding] = useState(false);
+  // R-REPORTS-EDIT-SALE-ITEM-V1: edit-sale-item flow state. Owner clicks ✏️
+  // on a sale row → modal lists items → click an item → edit price/qty +
+  // pick reason + add notes → PIN gate → recalc + persist + audit.
+  const [editTarget, setEditTarget] = useState<Sale | null>(null);
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState<string>('');
+  const [editQty, setEditQty] = useState<string>('1');
+  const [editReason, setEditReason] = useState<'refund' | 'absorbed' | 'typo_correction' | ''>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editPinOpen, setEditPinOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState(false);
+  const [reprintAfterEdit, setReprintAfterEdit] = useState<Sale | null>(null);
+  const { toast } = useToast();
+
+  // R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: stockable item filter.
+  // Mirrors POSModule's decrement: only items with an inventoryId AND
+  // a non-service category get inventory restored on void. Phone-
+  // payments, top-ups, services, CC fees, fees and pseudo deposits/
+  // balances are NOT in inventory, so we don't touch stock for them.
+  const isStockableForVoid = useCallback((item: SaleItem): boolean => {
+    if (!item.inventoryId) return false;
+    const cat = String(item.category || '').toLowerCase();
+    if (cat === 'phone_payment' || cat === 'top_up' || cat === 'topup') return false;
+    if (cat === 'service' || cat === 'services') return false;
+    if (cat === 'cc_fee' || cat === 'fee') return false;
+    return true;
+  }, []);
+
+  const handleVoidSale = useCallback((sale: Sale, reason: string) => {
+    if (voiding) return;
+    if (sale.status === 'voided') {
+      toast(t('reports.voidAlreadyVoided'), 'warning');
+      return;
+    }
+    if (sale.status === 'refunded') {
+      toast(t('reports.voidAlreadyRefunded'), 'warning');
+      return;
+    }
+    if (!reason || !reason.trim()) {
+      toast(t('reports.voidReasonRequired'), 'warning');
+      return;
+    }
+    setVoiding(true);
+    try {
+      const now = new Date().toISOString();
+      // Build the voided sale record — full spread per persist contract.
+      const voidedSale: Sale = {
+        ...sale,
+        status: 'voided',
+        voidedAt: now,
+        voidedBy: currentEmployee?.name || '—',
+        voidReason: reason.trim(),
+      };
+      // Restore inventory for stockable line items only.
+      const inventoryUpdates: { id: string; data: InventoryItem }[] = [];
+      const nextInventory = inventory.map((inv) => {
+        const restoreItems = (sale.items || []).filter(
+          (it) => isStockableForVoid(it) && it.inventoryId === inv.id,
+        );
+        if (restoreItems.length === 0) return inv;
+        const restoreQty = restoreItems.reduce(
+          (sum, it) => sum + (it.qty || (it as { quantity?: number }).quantity || 0),
+          0,
+        );
+        if (restoreQty <= 0) return inv;
+        const updated: InventoryItem = { ...inv, qty: (inv.qty || 0) + restoreQty };
+        inventoryUpdates.push({ id: inv.id, data: updated });
+        return updated;
+      });
+      // Persist sale + each touched inventory item via the existing
+      // persist surface. Full record spread per CLAUDE.md / persist
+      // contract — no partial writes.
+      const nextSales = sales.map((s) => (s.id === sale.id ? voidedSale : s));
+      dispatch({ type: 'SET_SALES', payload: nextSales });
+      persist.sale(voidedSale.id, voidedSale as unknown as Record<string, unknown>);
+      if (inventoryUpdates.length > 0) {
+        dispatch({ type: 'SET_INVENTORY', payload: nextInventory });
+        for (const upd of inventoryUpdates) {
+          persist.inventory(upd.id, upd.data as unknown as Record<string, unknown>);
+        }
+      }
+      toast(t('reports.voidedToast', sale.invoiceNumber), 'success');
+      // Show the manual-refund warning as a follow-up toast so the
+      // owner is reminded that no payment processor was contacted.
+      window.setTimeout(() => {
+        toast(t('reports.voidPaymentReminder'), 'info');
+      }, 600);
+      setVoidTarget(null);
+      setVoidReason('');
+      setVoidPinOpen(false);
+    } catch (err) {
+      console.error('[void-sale] failed', err);
+      toast(t('reports.voidFailed'), 'error');
+    } finally {
+      setVoiding(false);
+    }
+  }, [voiding, sales, inventory, currentEmployee, dispatch, isStockableForVoid, t, toast]);
+
+  // R-REPORTS-EDIT-SALE-ITEM-V1: edit a single sale item's price + qty after
+  // checkout. Owner-only via AdminPinGate. Mutates the sale's items array
+  // and recalculates subtotal/salesTax/total via calculateCartTotals (single
+  // source of truth, same code POS uses). Preserves the original cart-level
+  // discount as a flat dollar amount, all phone-payment fees (utility tax,
+  // mobility surcharge), CC fees, CBE fee, screen fee. Appends to
+  // editHistory; captures originalSnapshot on first edit. NO new sale
+  // record, NO inventory mutation, NO refund-record creation. The audit
+  // log is the single record of the edit; cash drawer reconciliation is
+  // owner-handled per the chosen reason.
+  const handleEditSaleItem = useCallback((
+    sale: Sale,
+    itemId: string,
+    newPriceCents: number,
+    newQty: number,
+    reason: 'refund' | 'absorbed' | 'typo_correction',
+    notes: string,
+  ) => {
+    if (editingSale) return;
+    if (sale.status === 'voided' || sale.status === 'refunded') {
+      toast(t('reports.editSale.blockTerminal'), 'warning');
+      return;
+    }
+    const fresh = sales.find((s) => s.id === sale.id);
+    if (!fresh) {
+      toast(t('reports.editSale.notFound'), 'error');
+      return;
+    }
+    const item = fresh.items.find((it) => it.id === itemId);
+    if (!item) {
+      toast(t('reports.editSale.itemNotFound'), 'error');
+      return;
+    }
+    if ((item.returnedQty || 0) > 0 || item.fullyReturned) {
+      toast(t('reports.editSale.blockReturned'), 'warning');
+      return;
+    }
+    if (!Number.isFinite(newPriceCents) || newPriceCents < 0) {
+      toast(t('reports.editSale.invalidPrice'), 'warning');
+      return;
+    }
+    if (!Number.isFinite(newQty) || newQty < 1) {
+      toast(t('reports.editSale.invalidQty'), 'warning');
+      return;
+    }
+    if (!reason) {
+      toast(t('reports.editSale.reasonRequired'), 'warning');
+      return;
+    }
+    const history = fresh.editHistory ?? [];
+    if (history.length >= 100) {
+      toast(t('reports.editSale.historyFull'), 'error');
+      return;
+    }
+
+    setEditingSale(true);
+    try {
+      const now = new Date().toISOString();
+      // Build modified items: replace target with new price + qty.
+      const oldItem = item;
+      const newItem: SaleItem = { ...oldItem, price: newPriceCents, qty: newQty };
+      const modifiedItems = fresh.items.map((it) => (it.id === itemId ? newItem : it));
+
+      // Preserve the original cart-level discount as a flat dollar amount so
+      // calculateCartTotals reproduces it on the new subtotal. type='dollar'
+      // amount in DOLLARS (the helper multiplies by 100 internally).
+      const originalDiscountCents = Math.max(
+        0,
+        (fresh.subtotal || 0) - (fresh.subtotalAfterDiscount ?? fresh.subtotal ?? 0),
+      );
+      const recalc = calculateCartTotals(
+        modifiedItems as unknown as CartItem[],
+        settings,
+        { type: 'dollar' as const, amount: originalDiscountCents / 100, reason: '' },
+        fresh.paymentMethod,
+        (fresh.creditCardFee ?? 0) > 0,
+        undefined,
+        fresh.creditCardFee ?? 0,
+      );
+
+      // Build edit-audit entry. fieldsChanged captures what changed; sideEffects
+      // carries the dollar delta + reason-specific fields.
+      const totalDelta = (fresh.total || 0) - (recalc.total || 0); // positive = customer owed back
+      const fieldsChanged: { field: string; oldValue: unknown; newValue: unknown }[] = [];
+      if (oldItem.price !== newItem.price) {
+        fieldsChanged.push({ field: `items[${itemId}].price`, oldValue: oldItem.price, newValue: newItem.price });
+      }
+      if (oldItem.qty !== newItem.qty) {
+        fieldsChanged.push({ field: `items[${itemId}].qty`, oldValue: oldItem.qty, newValue: newItem.qty });
+      }
+
+      const sideEffects: { refundOwedAmount?: number; absorbedAmount?: number } = {};
+      if (reason === 'refund' && totalDelta > 0) sideEffects.refundOwedAmount = totalDelta;
+      if (reason === 'absorbed' && totalDelta > 0) sideEffects.absorbedAmount = totalDelta;
+
+      const entry = {
+        editedAt: now,
+        editedBy: currentEmployee?.name || '—',
+        pinUsedBy: currentEmployee?.name || '—',
+        reason,
+        fieldsChanged,
+        note: notes.trim() || undefined,
+        sideEffects: Object.keys(sideEffects).length > 0 ? sideEffects : undefined,
+      };
+      const newHistory = appendEditEntry(history, entry);
+      if (newHistory === null) {
+        toast(t('reports.editSale.historyFull'), 'error');
+        setEditingSale(false);
+        return;
+      }
+
+      const editedSale: Sale = {
+        ...fresh,
+        items: modifiedItems,
+        subtotal: recalc.subtotal,
+        subtotalAfterDiscount: recalc.subtotalAfterDiscount,
+        salesTax: recalc.salesTax,
+        utilityTax: recalc.utilityTax,
+        mobileSurcharge: recalc.mobileSurcharge,
+        cbeTotal: recalc.cbeFee,
+        screenFeeTotal: recalc.screenFee,
+        // taxAmount kept as legacy aggregate.
+        taxAmount: (recalc.salesTax || 0) + (recalc.utilityTax || 0) + (recalc.mobileSurcharge || 0),
+        total: recalc.total,
+        editHistory: newHistory,
+        // Capture originalSnapshot ONCE on the first edit (never overwritten).
+        originalSnapshot: fresh.originalSnapshot ?? captureSnapshot(fresh as unknown as Record<string, unknown>),
+      };
+
+      const nextSales = sales.map((s) => (s.id === sale.id ? editedSale : s));
+      dispatch({ type: 'SET_SALES', payload: nextSales });
+      persist.sale(editedSale.id, editedSale as unknown as Record<string, unknown>);
+
+      toast(t('reports.editSale.savedToast', editedSale.invoiceNumber), 'success');
+      // Offer a corrected-receipt reprint for non-typo edits (typo doesn't
+      // change money — no need to reissue). Owner can decline.
+      if (reason !== 'typo_correction') {
+        setReprintAfterEdit(editedSale);
+      }
+      setEditTarget(null);
+      setEditItemId(null);
+      setEditPrice('');
+      setEditQty('1');
+      setEditReason('');
+      setEditNotes('');
+      setEditPinOpen(false);
+    } catch (err) {
+      console.error('[edit-sale-item] failed', err);
+      toast(t('reports.editSale.failed'), 'error');
+    } finally {
+      setEditingSale(false);
+    }
+  }, [editingSale, sales, settings, currentEmployee, dispatch, t, toast]);
 
   // ── Consume globalSearchTerm ──────────────────────────────
   useEffect(() => {
@@ -382,6 +673,36 @@ export default function ReportsModule() {
     safeVendorReturns.filter((v) => inRange((v as any).createdAt)),
     [safeVendorReturns, inRange]
   );
+
+  // R-LOSSES-SHRINKAGE-V1: filtered losses + summary for the Losses /
+  // Shrinkage section. Newest first. Losses are NOT sales / refunds /
+  // voids — they don't contribute to revenue, tax, or COGS in V1, just
+  // their own audit + total. Net-profit integration is documented as a
+  // follow-up so we don't hack a fake sale/refund pathway.
+  const filteredLosses = useMemo(() => {
+    const src = Array.isArray(inventoryLosses) ? inventoryLosses : [];
+    return src
+      .filter((l) => inRange(l.createdAt))
+      .sort((a, b) => {
+        const da = toDateSafe(a.createdAt)?.getTime() || 0;
+        const db = toDateSafe(b.createdAt)?.getTime() || 0;
+        return db - da;
+      });
+  }, [inventoryLosses, inRange]);
+
+  const lossesSummary = useMemo(() => {
+    let totalLossCents = 0;
+    let totalQty = 0;
+    for (const l of filteredLosses) {
+      totalLossCents += l.totalLoss || 0;
+      totalQty += l.qty || 0;
+    }
+    return {
+      count: filteredLosses.length,
+      totalLossCents,
+      totalQty,
+    };
+  }, [filteredLosses]);
 
   // ── Returns (live AppState — replaces legacy localStorage bridge) ──
   const allReturns = useMemo((): NormalizedReturn[] => {
@@ -566,6 +887,9 @@ export default function ReportsModule() {
     let salesSubtotalCents = 0;
     let salesDiscountCents = 0;
     let salesTaxCents = 0;
+    let productSalesTaxCents = 0;
+    let utilityTaxCents = 0;
+    let mobilitySurchargeCents = 0;
     let salesCbeCents = 0;
     let salesScreenFeeCents = 0;
     let totalCostCents = 0;
@@ -601,6 +925,17 @@ export default function ReportsModule() {
       profitCents: number;
       numbers: Set<string>;
     }> = {};
+    // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket grouped by carrier
+    // (AT&T, Verizon, T-Mobile, etc.) rather than by portal/provider. This
+    // is the "how many activations per phone company" metric independent
+    // of which top-up portal processed the payment. Pure additive — does
+    // not touch the by-provider math.
+    const activationsByCarrier: Record<string, {
+      count: number;
+      totalCents: number;
+      profitCents: number;
+      numbers: Set<string>;
+    }> = {};
     const activePortals = getActivePortals(settings);
     const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
 
@@ -616,6 +951,19 @@ export default function ReportsModule() {
       return categoryStats[key];
     };
 
+    // R-PERF-REPORTS-MAP-LOOKUP: replace per-item Array.find() lookups with
+    // O(1) Map.get() lookups. With ~1200 sales × ~3 items × 4 entity finds
+    // per item, the prior pattern was scanning safeRepairs/safeUnlocks/
+    // safeLayaways/safeSpecialOrders thousands of times per render. Behavior
+    // is identical: Map.get returns the same entity (or undefined) as
+    // Array.find on the id key. Maps built once at the top of this useMemo
+    // — they are recomputed only when the underlying arrays change (same
+    // dep churn that already triggers this useMemo).
+    const repairsById = new Map(safeRepairs.map((r) => [r.id, r]));
+    const unlocksById = new Map(safeUnlocks.map((u) => [u.id, u]));
+    const layawaysById = new Map(safeLayaways.map((l) => [l.id, l]));
+    const ordersById = new Map(safeSpecialOrders.map((o) => [o.id, o]));
+
     for (const sale of filteredSales) {
       const saleSubtotal = sale.subtotal || 0;
       const saleSubAfterDisc = sale.subtotalAfterDiscount ?? saleSubtotal;
@@ -625,6 +973,9 @@ export default function ReportsModule() {
       salesDiscountCents += Math.max(0, saleSubtotal - saleSubAfterDisc);
       // v2 writes salesTax + utilityTax + mobileSurcharge separately;
       // legacy v1 data uses the aggregate taxAmount field. Read both.
+      productSalesTaxCents += (sale as any).salesTax || 0;
+      utilityTaxCents += (sale as any).utilityTax || 0;
+      mobilitySurchargeCents += (sale as any).mobileSurcharge || 0;
       const saleTax = ((sale as any).salesTax || 0)
         + ((sale as any).utilityTax || 0)
         + ((sale as any).mobileSurcharge || 0);
@@ -670,10 +1021,23 @@ export default function ReportsModule() {
           // accounting standard). Recompute only if missing or invalid.
           let commRate = (item as any).commissionRate;
           if (commRate == null || commRate === 0) {
-            let rawCarrier = ((item as any).carrier || (item as any).carrierName || '').trim();
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || (item as any).provider || '').trim();
             if (!rawCarrier && (item as any).name) {
               const match = String((item as any).name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
               if (match) rawCarrier = match[1].trim();
+            }
+            // BUG-3 (R-INV-BUGS): broader fallback for legacy phone_payment
+            // sales whose carrier field is blank AND whose name doesn't fit
+            // the "Carrier - phone" / "Carrier Bill Payment" prefix shape
+            // (e.g. "H2O Wireless 25", "Verizon Refill"). Searches for any
+            // known-carrier substring inside the item name; normalizeCarrier
+            // below canonicalizes the match (h2o → 'H2O', etc.) so the
+            // settings.carrierCommissions lookup hits.
+            if (!rawCarrier && (item as any).name) {
+              const knownMatch = String((item as any).name).match(
+                /\b(h2o|t-?mobile|verizon|at&?t|cricket|tracfone|page\s*plus|simple\s*mobile|ultra(?:\s+mobile)?|telcel|boost|metro(?:\s*pcs)?|mint\s*mobile|visible)\b/i,
+              );
+              if (knownMatch) rawCarrier = knownMatch[1].trim();
             }
             const normalized = normalizeCarrier(rawCarrier);
             const carrierRate = normalized
@@ -706,6 +1070,18 @@ export default function ReportsModule() {
           phonePaymentsByProvider[provider].totalCents += revenueCents;
           phonePaymentsByProvider[provider].profitCents += profitCents;
           if (item.phoneNumber) phonePaymentsByProvider[provider].numbers.add(item.phoneNumber);
+
+          // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket keyed by CARRIER
+          // (not provider). Each phone_payment item = one activation event
+          // (multi-line activations correctly count once per phone line).
+          const carrierKey = normalizedCarrier || t('reports.noCarrier');
+          if (!activationsByCarrier[carrierKey]) {
+            activationsByCarrier[carrierKey] = { count: 0, totalCents: 0, profitCents: 0, numbers: new Set() };
+          }
+          activationsByCarrier[carrierKey].count += qty;
+          activationsByCarrier[carrierKey].totalCents += revenueCents;
+          activationsByCarrier[carrierKey].profitCents += profitCents;
+          if (item.phoneNumber) activationsByCarrier[carrierKey].numbers.add(item.phoneNumber);
         } else if (kind === 'topup') {
           catName = 'Top-Ups';
           costCents = Math.round(revenueCents * TOPUP_COST_RATE);
@@ -713,7 +1089,7 @@ export default function ReportsModule() {
         } else if (kind === 'repair') {
           catName = 'Repairs';
           if (item.repairId) {
-            const linkedRepair = safeRepairs.find((r) => r.id === item.repairId);
+            const linkedRepair = repairsById.get(item.repairId);
             if (linkedRepair) {
               const partsCost = (linkedRepair.parts || []).reduce((s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1), 0);
               const labor = linkedRepair.laborCost || 0;
@@ -730,7 +1106,7 @@ export default function ReportsModule() {
         } else if (kind === 'unlock') {
           catName = 'Unlocks';
           if (item.unlockId) {
-            const linked = safeUnlocks.find((u) => u.id === item.unlockId);
+            const linked = unlocksById.get(item.unlockId);
             costCents = linked?.cost || 0;
           }
           profitCents = revenueCents - costCents;
@@ -757,6 +1133,34 @@ export default function ReportsModule() {
           profitCents = revenueCents - costCents;
         }
 
+        // R-LAYAWAY-PROFIT-PROPORTIONAL-FIX: layaway-linked items represent
+        // fractional payments toward a larger inventory item. Without this,
+        // item.cost is rarely stamped on the cart line, so the kind branches
+        // above leave costCents=0 and the full payment counts as 100% profit.
+        // Use the linked layaway's parts cost scaled by payment/totalPrice
+        // (round-half-to-even via Math.round inside the helper). Pseudo-item
+        // path below already applies the same helper, so we only override
+        // here when the item is NOT a pseudo-item (those paths are mutually
+        // exclusive at the if/else below). No NaN risk: helper returns 0 for
+        // any missing/zero denominator or missing inventory cost, and we
+        // only override when proportional > 0 (otherwise existing math stands).
+        if (item.layawayId && !isPseudoItem(item)) {
+          const linked = layawaysById.get(item.layawayId);
+          if (linked) {
+            const proportional = getLayawayProportionalCost(linked, inventory, revenueCents);
+            if (proportional > 0) {
+              costCents = proportional;
+              profitCents = revenueCents - proportional;
+            }
+          }
+        }
+
+        // R-REPORTS-LAYAWAY-CATEGORY-FIX: layaway-linked items always bucket
+        // under 'Layaway' regardless of surface kind/category. Cost/profit math
+        // computed above is unchanged — only the bucket label shifts. The
+        // pseudo-item proportional-cost path below uses `cat` after this rebind
+        // so layaway pseudo-items also consolidate under 'Layaway'.
+        if (item.layawayId) catName = 'Layaway';
         const cat = ensureCat(catName);
         cat.quantity += qty;
         cat.revenueCents += revenueCents;
@@ -770,16 +1174,16 @@ export default function ReportsModule() {
         if (isPseudoItem(item)) {
           let realCost = 0;
           if (item.layawayId) {
-            const linked = safeLayaways.find((l) => l.id === item.layawayId);
+            const linked = layawaysById.get(item.layawayId);
             if (linked) realCost = getLayawayProportionalCost(linked, inventory, revenueCents);
           } else if (item.specialOrderId) {
-            const linked = safeSpecialOrders.find((o) => o.id === item.specialOrderId);
+            const linked = ordersById.get(item.specialOrderId);
             if (linked) realCost = getSpecialOrderProportionalCost(linked, inventory, revenueCents);
           } else if (item.repairId) {
-            const linked = safeRepairs.find((r) => r.id === item.repairId);
+            const linked = repairsById.get(item.repairId);
             if (linked) realCost = getRepairProportionalCost(linked, inventory, revenueCents);
           } else if (item.unlockId) {
-            const linked = safeUnlocks.find((u) => u.id === item.unlockId);
+            const linked = unlocksById.get(item.unlockId);
             if (linked) realCost = getUnlockProportionalCost(linked, inventory, revenueCents);
           }
           if (realCost > 0) {
@@ -934,6 +1338,9 @@ export default function ReportsModule() {
       subtotalBeforeTaxCents,
       profitMargin,
       taxCollectedCents: salesTaxCents,
+      productSalesTaxCents,
+      utilityTaxCents,
+      mobilitySurchargeCents,
       cbeCollectedCents: salesCbeCents,
       screenFeeCents: salesScreenFeeCents,
       cashCents,
@@ -951,8 +1358,10 @@ export default function ReportsModule() {
       topItems,
       topEmployees,
       phonePaymentsByProvider,
+      // R-ACTIVATIONS-BY-CARRIER-V1
+      activationsByCarrier,
     };
-  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, filteredVendorReturns, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale]);
+  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, filteredVendorReturns, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale, t]);
 
   // ── Round 10 fix 1: Cash tripartite (In / Out / Net) ──────
   // Gross "Cash" previously equalled "Cash In" only, hiding real cash drawer
@@ -1074,14 +1483,53 @@ export default function ReportsModule() {
     return rows;
   }, [allFilteredSales, locale]);
 
+  // ── R-REPORT-FEES-BREAKDOWN: per-category counts/revenue for the
+  // Transaction Breakdown table. A sale is counted in both Product and
+  // Phone columns when mixed (matches TaxReportsModule semantics).
+  const breakdownRows = useMemo(() => {
+    let productCount = 0, productRevenue = 0;
+    let phoneCount = 0, phoneRevenue = 0;
+    for (const sale of filteredSales) {
+      let saleProductRev = 0;
+      let salePhoneRev = 0;
+      for (const item of (sale.items || [])) {
+        const kind = classifyItem(item);
+        const rev = lineRevenueCents(item);
+        if (kind === 'phone_payment') salePhoneRev += rev;
+        else if (kind !== 'repair' && kind !== 'unlock') saleProductRev += rev;
+      }
+      if (saleProductRev > 0) { productCount++; productRevenue += saleProductRev; }
+      if (salePhoneRev > 0) { phoneCount++; phoneRevenue += salePhoneRev; }
+    }
+    const repairCat = stats.categoriesByRevenue.find((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey('Repairs'));
+    const unlockCat = stats.categoriesByRevenue.find((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey('Unlocks'));
+    return {
+      productCount, productRevenue,
+      phoneCount, phoneRevenue,
+      repairCount: stats.completedRepairCount,
+      repairRevenue: repairCat?.revenueCents || 0,
+      unlockCount: stats.unlockCount,
+      unlockRevenue: unlockCat?.revenueCents || 0,
+    };
+  }, [filteredSales, stats]);
+
   // ── Transactions display (search + secondary date filter) ──
   const displayedTx = useMemo(() => {
     return allFilteredSales.filter((s) => {
       if (txSearch.trim()) {
-        const q = txSearch.toLowerCase();
-        const fields = [s.invoiceNumber, s.customerName, s.employeeName, s.customerPhone].filter(Boolean).join(' ').toLowerCase();
-        const itemMatch = (s.items || []).some((i) => (i.name || '').toLowerCase().includes(q));
-        if (!fields.includes(q) && !itemMatch) return false;
+        // R-SEARCH-NORMALIZE-V1: replace inline includes() with the
+        // shared phone-aware helper so "(805) 555-1234" matches a sale
+        // whose stored customerPhone is "8055551234". Item names are
+        // folded into the textFields list so item-text search still
+        // works. Financial math is NOT touched — this filter only
+        // gates which already-computed rows render.
+        const itemNames = (s.items || []).map((i) => i.name || '');
+        if (!matchesSearchPhones(
+          txSearch,
+          [s.customerPhone],
+          s.invoiceNumber, s.customerName, s.employeeName,
+          ...itemNames,
+        )) return false;
       }
       if (searchDateFrom) {
         const from = new Date(searchDateFrom + 'T00:00:00');
@@ -1105,7 +1553,7 @@ export default function ReportsModule() {
     for (const sale of filteredSales) {
       for (const item of (sale.items || [])) {
         const kind = classifyItem(item);
-        const catGuess = kind === 'phone_payment' ? 'Phone Payments'
+        let catGuess = kind === 'phone_payment' ? 'Phone Payments'
           : kind === 'topup' ? 'Top-Ups'
           : kind === 'repair' ? 'Repairs'
           : kind === 'unlock' ? 'Unlocks'
@@ -1113,6 +1561,13 @@ export default function ReportsModule() {
           : kind === 'cc_fee' ? 'CC Fees'
           : kind === 'service' ? 'Services'
           : (item.category || 'Products');
+        // R-REPORTS-ANALYTICS-FINANCIAL-AUDIT-V1: mirror the aggregation
+        // rule at line ~828 — layaway-linked items always bucket under
+        // 'Layaway'. Without this, the breakdown shows "Layaway × 1" but
+        // clicking the row finds 0 items because the drilldown filter
+        // here was using item.category (e.g., 'cellphones') instead of
+        // the layaway override. Pure presentation alignment; no math.
+        if (item.layawayId) catGuess = 'Layaway';
         // Round 10 fix 4: compare on normalized key so case variants match.
         if (normalizeCategoryKey(catGuess) !== wantKey) continue;
         items.push({
@@ -1208,13 +1663,53 @@ export default function ReportsModule() {
       ? new Date(startDate + 'T12:00:00').toLocaleDateString()
       : `${new Date(startDate + 'T12:00:00').toLocaleDateString()} – ${new Date(endDate + 'T12:00:00').toLocaleDateString()}`;
 
+    // R-REPORT-PRINT-REDESIGN: trilingual labels hoisted out of the template
+    // literal so the HTML stays readable. Section headers carry emojis to
+    // mirror the on-screen module nav. EN / ES / PT preserved per spec.
+    const L = {
+      title:        locale === 'es' ? 'Reporte de Ventas'        : locale === 'pt' ? 'Relatório de Vendas'           : 'Sales Report',
+      generated:    locale === 'es' ? 'Generado'                  : locale === 'pt' ? 'Gerado'                         : 'Generated',
+      gross:        locale === 'es' ? 'Ingreso Bruto'             : locale === 'pt' ? 'Receita Bruta'                  : 'Gross Revenue',
+      returns:      locale === 'es' ? 'Devoluciones'              : locale === 'pt' ? 'Devoluções'                     : 'Returns',
+      net:          locale === 'es' ? 'Ingreso Neto'              : locale === 'pt' ? 'Receita Líquida'                : 'Net Revenue',
+      profit:       locale === 'es' ? 'Ganancia'                  : locale === 'pt' ? 'Lucro'                          : 'Profit',
+      sales:        locale === 'es' ? 'ventas'                    : locale === 'pt' ? 'vendas'                         : 'sales',
+      returnsCount: locale === 'es' ? 'devoluciones'              : locale === 'pt' ? 'devoluções'                     : 'returns',
+      retained:     locale === 'es' ? 'retenido'                  : locale === 'pt' ? 'retido'                         : 'retained',
+      marginLower:  locale === 'es' ? 'margen'                    : locale === 'pt' ? 'margem'                         : 'margin',
+      tax:          locale === 'es' ? 'Impuesto (CDTFA)'          : locale === 'pt' ? 'Imposto (CDTFA)'                : 'Tax (CDTFA)',
+      salesTax:     locale === 'es' ? 'Impuesto de Venta'         : locale === 'pt' ? 'Imposto sobre Vendas'           : 'Sales Tax',
+      utilityTax:   locale === 'es' ? 'Impuesto de Utilidad'      : locale === 'pt' ? 'Taxa de Utilidade'              : 'Utility Tax',
+      mobilityFee:  locale === 'es' ? 'Cargo de Movilidad CA'     : locale === 'pt' ? 'Taxa de Mobilidade CA'          : 'CA Mobility Fee',
+      cbeFee:       locale === 'es' ? 'Cargo CBE'                  : locale === 'pt' ? 'Taxa CBE'                        : 'CBE Fee',
+      screenFee:    locale === 'es' ? 'Cargo de Pantalla'         : locale === 'pt' ? 'Taxa de Tela'                    : 'Screen Fee',
+      totalFees:    locale === 'es' ? 'Total Impuestos y Cargos'  : locale === 'pt' ? 'Total Impostos e Taxas'         : 'Total Taxes & Fees',
+      cash:         locale === 'es' ? 'Efectivo'                  : locale === 'pt' ? 'Dinheiro'                       : 'Cash',
+      card:         locale === 'es' ? 'Tarjeta'                   : locale === 'pt' ? 'Cartão'                         : 'Card',
+      ppHeader:     locale === 'es' ? '📞 Pagos por Proveedor'   : locale === 'pt' ? '📞 Pagamentos por Provedor'    : '📞 Phone Payments by Provider',
+      catHeader:    locale === 'es' ? '📦 Ventas por Categoría'  : locale === 'pt' ? '📦 Vendas por Categoria'       : '📦 Sales by Category',
+      empHeader:    locale === 'es' ? '👥 Desempeño de Empleados': locale === 'pt' ? '👥 Desempenho de Funcionários' : '👥 Employee Performance',
+      itemHeader:   locale === 'es' ? '⭐ Artículos Más Vendidos' : locale === 'pt' ? '⭐ Itens Mais Vendidos'         : '⭐ Top Selling Items',
+      provider:     locale === 'es' ? 'Proveedor'                 : locale === 'pt' ? 'Provedor'                       : 'Provider',
+      count:        locale === 'es' ? 'Cant.'                     : locale === 'pt' ? 'Qtd.'                           : 'Count',
+      total:        'TOTAL',
+      category:     locale === 'es' ? 'Categoría'                 : locale === 'pt' ? 'Categoria'                      : 'Category',
+      qty:          'Qty',
+      revenue:      locale === 'es' ? 'Ingresos'                  : locale === 'pt' ? 'Receita'                        : 'Revenue',
+      marginCol:    locale === 'es' ? 'Margen'                    : locale === 'pt' ? 'Margem'                         : 'Margin',
+      employee:     locale === 'es' ? 'Empleado'                  : locale === 'pt' ? 'Funcionário'                    : 'Employee',
+      trans:        'Trans.',
+      item:         locale === 'es' ? 'Artículo'                  : locale === 'pt' ? 'Item'                           : 'Item',
+      netTotal:     locale === 'es' ? 'TOTAL NETO'                : locale === 'pt' ? 'TOTAL LÍQUIDO'                  : 'NET TOTAL',
+    };
+
     // All user-controlled strings below MUST go through escHtml (round 17 XSS fix).
     // formatCurrency output is safe (pure numeric), same for quantities and percentages.
     const ppRows = Object.entries(stats.phonePaymentsByProvider)
       .sort((a, b) => b[1].totalCents - a[1].totalCents)
       .map(([c, d]) => {
         const margin = d.totalCents > 0 ? (d.profitCents / d.totalCents) * 100 : 0;
-        return `<tr><td>${escHtml(c)}</td><td>${d.count}</td><td>${formatCurrency(d.totalCents)}</td><td>${formatCurrency(d.profitCents)}</td><td>${margin.toFixed(1)}%</td></tr>`;
+        return `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td><td class="text-right text-green">${formatCurrency(d.profitCents)}</td><td class="text-right">${margin.toFixed(1)}%</td></tr>`;
       })
       .join('');
     const ppTotal = {
@@ -1223,58 +1718,201 @@ export default function ReportsModule() {
       profit: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.profitCents, 0),
     };
     const ppMargin = ppTotal.revenue > 0 ? (ppTotal.profit / ppTotal.revenue) * 100 : 0;
-    const ppTotalRow = `<tr class="total"><td>TOTAL</td><td>${ppTotal.count}</td><td>${formatCurrency(ppTotal.revenue)}</td><td>${formatCurrency(ppTotal.profit)}</td><td>${ppMargin.toFixed(1)}%</td></tr>`;
+    const ppTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${ppTotal.count}</td><td class="text-right text-green">${formatCurrency(ppTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(ppTotal.profit)}</td><td class="text-right">${ppMargin.toFixed(1)}%</td></tr>`;
+
     const catRows = stats.categoriesByRevenue
-      .map((c) => `<tr><td>${escHtml(c.name)}</td><td>${c.quantity}</td><td>${formatCurrency(c.revenueCents)}</td><td>${formatCurrency(c.profitCents)}</td><td>${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
+      .map((c) => `<tr><td>${escHtml(c.name)}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td><td class="text-right text-green">${formatCurrency(c.profitCents)}</td><td class="text-right">${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
       .join('');
+    // R-REPORT-PRINT-REDESIGN: TOTAL row for Sales by Category. Margin uses
+    // revenue as denominator (consistent with phone payments TOTAL above);
+    // per-row margins still use their own pseudoRevenue-aware denominator
+    // from the data prep memo so they don't drift.
+    const catTotal = stats.categoriesByRevenue.reduce(
+      (acc, c) => ({
+        qty: acc.qty + c.quantity,
+        revenue: acc.revenue + c.revenueCents,
+        profit: acc.profit + c.profitCents,
+      }),
+      { qty: 0, revenue: 0, profit: 0 },
+    );
+    const catMargin = catTotal.revenue > 0 ? (catTotal.profit / catTotal.revenue) * 100 : 0;
+    const catTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${catTotal.qty}</td><td class="text-right text-green">${formatCurrency(catTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(catTotal.profit)}</td><td class="text-right">${catMargin.toFixed(1)}%</td></tr>`;
+
     const empRows = stats.topEmployees
-      .map((e) => `<tr><td>${escHtml(e.name)}</td><td>${e.transactions}</td><td>${formatCurrency(e.revenueCents)}</td></tr>`)
+      .map((e) => `<tr><td>${escHtml(e.name)}</td><td class="text-right">${e.transactions}</td><td class="text-right text-green">${formatCurrency(e.revenueCents)}</td></tr>`)
       .join('');
+    // R-REPORT-PRINT-REDESIGN: TOTAL row for Employees.
+    const empTotal = stats.topEmployees.reduce(
+      (acc, e) => ({ trans: acc.trans + e.transactions, revenue: acc.revenue + e.revenueCents }),
+      { trans: 0, revenue: 0 },
+    );
+    const empTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${empTotal.trans}</td><td class="text-right text-green">${formatCurrency(empTotal.revenue)}</td></tr>`;
+
     const itemRows = stats.topItems
-      .map((i) => `<tr><td>${escHtml(i.name)}</td><td>${i.quantity}</td><td>${formatCurrency(i.revenueCents)}</td></tr>`)
+      .map((i) => `<tr><td>${escHtml(i.name)}</td><td class="text-right">${i.quantity}</td><td class="text-right text-green">${formatCurrency(i.revenueCents)}</td></tr>`)
       .join('');
 
-    const html = `<!DOCTYPE html><html><head><title>Sales Report</title><style>
-@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.4}
-h1{font-size:14pt;margin-bottom:4px}h2{font-size:10pt;margin:10px 0 4px;border-bottom:1px solid #ccc;padding-bottom:2px}
-table{width:100%;border-collapse:collapse;margin-bottom:8px}
-th,td{padding:2px 5px;text-align:left;border-bottom:1px solid #eee;font-size:8.5pt}
-th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
-.summary-box{border:1px solid #ddd;padding:6px 8px;border-radius:4px}
-.summary-box .label{font-size:7.5pt;color:#666;text-transform:uppercase}
-.summary-box .value{font-size:12pt;font-weight:700;margin-top:2px}
-.grand{background:#1a1a2e;color:#fff;padding:8px 12px;font-size:12pt;font-weight:700;text-align:right;margin-top:12px;border-radius:4px}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    // Summary card sub-counters / percentages.
+    const retainedPct = stats.grossRevenueCents > 0
+      ? Math.round((stats.netRevenueCents / stats.grossRevenueCents) * 100)
+      : 0;
+    const marginPct = (stats.profitMargin || 0).toFixed(1);
+
+    const html = `<!DOCTYPE html><html><head><title>${escHtml(L.title)}</title><style>
+@page { size: letter; margin: 0.5in; }
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; font-size: 9pt; color: #1a1a2e; margin: 0; }
+
+.report-header { margin-bottom: 16px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px; }
+.report-title { font-size: 18pt; font-weight: 900; margin: 0; }
+.report-meta { font-size: 8pt; color: #666; margin-top: 2px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.summary-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+.summary-card .label { font-size: 7pt; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 2px; }
+.summary-card .value { font-size: 14pt; font-weight: 900; }
+.summary-card .sub { font-size: 7pt; color: #888; margin-top: 2px; }
+.value-green { color: #16a34a; }
+.value-red { color: #dc2626; }
+.value-blue { color: #2563eb; }
+
+.meta-row { display: flex; gap: 24px; margin-bottom: 16px; font-size: 8pt; color: #444; }
+.meta-row span { font-weight: 700; color: #1a1a2e; }
+
+.section { margin-bottom: 16px; }
+.section-header { background: #1a1a2e; color: #fff; padding: 6px 10px; border-radius: 4px 4px 0 0; font-size: 9pt; font-weight: 700; margin-bottom: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+th { background: #f1f5f9; padding: 5px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 7pt; color: #475569; border-bottom: 1px solid #e2e8f0; }
+td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+tr:last-child td { border-bottom: none; }
+.row-total td { font-weight: 900; background: #f8fafc; border-top: 2px solid #1a1a2e; }
+.text-right { text-align: right; }
+.text-green { color: #16a34a; font-weight: 700; }
+.text-red { color: #dc2626; font-weight: 700; }
+
+.net-banner { background: #1a1a2e; color: #fff; padding: 10px 16px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 12pt; font-weight: 900; }
+
+.report-footer { text-align: center; margin-top: 12px; font-size: 7pt; color: #aaa; }
+
+@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>
-<h1>Sales Report — ${escHtml(storeName)}</h1>
-<p style="color:#666;margin-bottom:12px">${escHtml(dateLabel)} | Generated: ${escHtml(new Date().toLocaleString())}</p>
-<div class="summary">
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Bruto' : locale === 'pt' ? 'Bruto' : 'Gross'}</div><div class="value">${formatCurrency(stats.grossRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Devoluciones' : locale === 'pt' ? 'Devoluções' : 'Returns'}</div><div class="value" style="color:#dc2626">-${formatCurrency(stats.totalReturnsCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Neto' : locale === 'pt' ? 'Líquido' : 'Net'}</div><div class="value">${formatCurrency(stats.netRevenueCents)}</div></div>
-  <div class="summary-box"><div class="label">${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</div><div class="value" style="color:#16a34a">${formatCurrency(stats.totalProfitCents)}</div></div>
+
+<!-- HEADER -->
+<div class="report-header">
+  <h1 class="report-title">📊 ${escHtml(L.title)} — ${escHtml(storeName)}</h1>
+  <div class="report-meta">${escHtml(dateLabel)} | ${escHtml(L.generated)}: ${escHtml(new Date().toLocaleString())}</div>
 </div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:8.5pt">
-  <div><span style="color:#666">${locale === 'es' ? 'Impuesto:' : locale === 'pt' ? 'Imposto:' : 'Tax:'}</span> <strong>${formatCurrency(stats.taxCollectedCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Efectivo:' : locale === 'pt' ? 'Dinheiro:' : 'Cash:'}</span> <strong>${formatCurrency(stats.cashCents)}</strong></div>
-  <div><span style="color:#666">${locale === 'es' ? 'Tarjeta:' : locale === 'pt' ? 'Cartão:' : 'Card:'}</span> <strong>${formatCurrency(stats.cardCents)}</strong></div>
+
+<!-- SUMMARY CARDS -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="label">$ ${escHtml(L.gross)}</div>
+    <div class="value">${formatCurrency(stats.grossRevenueCents)}</div>
+    <div class="sub">${stats.cleanSalesCount} ${L.sales}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">↓ ${escHtml(L.returns)}</div>
+    <div class="value value-red">-${formatCurrency(stats.totalReturnsCents)}</div>
+    <div class="sub">${stats.refundSalesCount} ${L.returnsCount}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">📊 ${escHtml(L.net)}</div>
+    <div class="value value-green">${formatCurrency(stats.netRevenueCents)}</div>
+    <div class="sub">${retainedPct}% ${L.retained}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">↗ ${escHtml(L.profit)}</div>
+    <div class="value value-green">${formatCurrency(stats.totalProfitCents)}</div>
+    <div class="sub">${marginPct}% ${L.marginLower}</div>
+  </div>
 </div>
-<h2>${locale === 'es' ? 'Pagos por Proveedor' : locale === 'pt' ? 'Pagamentos por Provedor' : 'Phone Payments by Provider'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Proveedor' : locale === 'pt' ? 'Provedor' : 'Provider'}</th><th>${locale === 'es' ? 'Cant.' : locale === 'pt' ? 'Qtd.' : 'Count'}</th><th>Total</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
-<tbody>${ppRows}${ppTotalRow}</tbody></table>
-<h2>${locale === 'es' ? 'Ventas por Categoría' : locale === 'pt' ? 'Vendas por Categoria' : 'Sales by Category'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Categoría' : locale === 'pt' ? 'Categoria' : 'Category'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th><th>${locale === 'es' ? 'Ganancia' : locale === 'pt' ? 'Lucro' : 'Profit'}</th><th>${locale === 'es' ? 'Margen' : locale === 'pt' ? 'Margem' : 'Margin'}</th></tr></thead>
-<tbody>${catRows}</tbody></table>
-<h2>${locale === 'es' ? 'Empleados' : locale === 'pt' ? 'Funcionários' : 'Employees'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Empleado' : locale === 'pt' ? 'Funcionário' : 'Employee'}</th><th>${locale === 'es' ? 'Trans.' : locale === 'pt' ? 'Trans.' : 'Trans.'}</th><th>${locale === 'es' ? 'Ventas' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
-<tbody>${empRows}</tbody></table>
-<h2>${locale === 'es' ? 'Más Vendidos' : locale === 'pt' ? 'Mais Vendidos' : 'Top Items'}</h2>
-<table><thead><tr><th>${locale === 'es' ? 'Artículo' : locale === 'pt' ? 'Item' : 'Item'}</th><th>Qty</th><th>${locale === 'es' ? 'Ingresos' : locale === 'pt' ? 'Receita' : 'Revenue'}</th></tr></thead>
-<tbody>${itemRows}</tbody></table>
-<div class="grand">${locale === 'es' ? 'TOTAL NETO' : locale === 'pt' ? 'TOTAL LÍQUIDO' : 'NET TOTAL'}: ${formatCurrency(stats.netRevenueCents)}</div>
-<p style="font-size:7.5pt;color:#999;margin-top:8px;text-align:center">${escHtml(storeName)} | CellHub Pro</p>
+
+<!-- META ROW -->
+<div class="meta-row">
+  ${stats.productSalesTaxCents > 0 ? `<div>${escHtml(L.salesTax)}: <span>${formatCurrency(stats.productSalesTaxCents)}</span></div>` : ''}
+  ${stats.utilityTaxCents > 0 ? `<div>${escHtml(L.utilityTax)}: <span>${formatCurrency(stats.utilityTaxCents)}</span></div>` : ''}
+  ${stats.mobilitySurchargeCents > 0 ? `<div>${escHtml(L.mobilityFee)}: <span>${formatCurrency(stats.mobilitySurchargeCents)}</span></div>` : ''}
+  ${stats.cbeCollectedCents > 0 ? `<div>${escHtml(L.cbeFee)}: <span>${formatCurrency(stats.cbeCollectedCents)}</span></div>` : ''}
+  ${stats.screenFeeCents > 0 ? `<div>${escHtml(L.screenFee)}: <span>${formatCurrency(stats.screenFeeCents)}</span></div>` : ''}
+  <div><strong>${escHtml(L.totalFees)}: <span>${formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents)}</span></strong></div>
+  <div>${escHtml(L.cash)}: <span>${formatCurrency(stats.cashCents)}</span></div>
+  <div>${escHtml(L.card)}: <span>${formatCurrency(stats.cardCents)}</span></div>
+</div>
+
+<!-- PHONE PAYMENTS -->
+<div class="section">
+  <div class="section-header">${escHtml(L.ppHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.provider)}</th>
+        <th class="text-right">${escHtml(L.count)}</th>
+        <th class="text-right">Total</th>
+        <th class="text-right">${escHtml(L.profit)}</th>
+        <th class="text-right">${escHtml(L.marginCol)}</th>
+      </tr>
+    </thead>
+    <tbody>${ppRows}${ppTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- SALES BY CATEGORY -->
+<div class="section">
+  <div class="section-header">${escHtml(L.catHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.category)}</th>
+        <th class="text-right">${L.qty}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+        <th class="text-right">${escHtml(L.profit)}</th>
+        <th class="text-right">${escHtml(L.marginCol)}</th>
+      </tr>
+    </thead>
+    <tbody>${catRows}${catTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- EMPLOYEES -->
+<div class="section">
+  <div class="section-header">${escHtml(L.empHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.employee)}</th>
+        <th class="text-right">${L.trans}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+      </tr>
+    </thead>
+    <tbody>${empRows}${empTotalRow}</tbody>
+  </table>
+</div>
+
+<!-- TOP ITEMS -->
+<div class="section">
+  <div class="section-header">${escHtml(L.itemHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.item)}</th>
+        <th class="text-right">${L.qty}</th>
+        <th class="text-right">${escHtml(L.revenue)}</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+</div>
+
+<!-- NET TOTAL BANNER -->
+<div class="net-banner">
+  <span>${escHtml(L.netTotal)}</span>
+  <span>${formatCurrency(stats.netRevenueCents)}</span>
+</div>
+
+<!-- FOOTER -->
+<div class="report-footer">${escHtml(storeName)} | CellHub Pro</div>
+
 </body></html>`;
     openPrintWindow(html);
   }, [stats, settings, startDate, endDate, locale]);
@@ -1292,7 +1930,12 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
         profit: formatCurrency(stats.totalProfitCents),
         profitMargin: `${stats.profitMargin.toFixed(2)}%`,
         tax: formatCurrency(stats.taxCollectedCents),
+        salesTax: formatCurrency(stats.productSalesTaxCents),
+        utilityTax: formatCurrency(stats.utilityTaxCents),
+        mobilityFee: formatCurrency(stats.mobilitySurchargeCents),
         cbe: formatCurrency(stats.cbeCollectedCents),
+        screenFee: formatCurrency(stats.screenFeeCents),
+        totalFees: formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents),
         cash: formatCurrency(stats.cashCents),
         card: formatCurrency(stats.cardCents),
         storeCredit: formatCurrency(stats.storeCreditCents),
@@ -1650,6 +2293,44 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             </div>
           )}
 
+          {/* ── R-ACTIVATIONS-BY-CARRIER-V1: activations grouped by phone company ── */}
+          {Object.keys(stats.activationsByCarrier).length > 0 && (
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden', marginBottom: '0.75rem' }}>
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                  📞 {t('reports.activationsByCarrier')}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
+                  {t('reports.activationsByCarrierSub')}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem' }}>
+                {Object.entries(stats.activationsByCarrier)
+                  .sort((a, b) => b[1].count - a[1].count)
+                  .map(([carrier, d]) => (
+                    <div key={carrier} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.35rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>{carrier}</span>
+                        {d.numbers.size > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            · {d.numbers.size} {t('reports.lines')}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#fbbf24', fontWeight: 700 }}>
+                          {d.count} {t('reports.activations')}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: '70px', textAlign: 'right' }}>
+                          {formatCurrency(d.totalCents)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Category Breakdown + Employee Performance ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
@@ -1912,6 +2593,135 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             </div>
           )}
 
+          {/* ── R-REPORT-FEES-BREAKDOWN: Transaction Breakdown ── */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                {t('reports.breakdown.title')}
+              </span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.type')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.count')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.revenue')}</th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{t('reports.breakdown.taxesFees')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* 🛒 Product Sales */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🛒</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.productSales')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.productSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.productCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.productRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', fontSize: '0.78rem' }}>
+                    {(stats.productSalesTaxCents > 0 || stats.cbeCollectedCents > 0 || stats.screenFeeCents > 0) ? (
+                      <>
+                        {stats.productSalesTaxCents > 0 && (
+                          <div style={{ color: '#f87171', fontWeight: 700 }}>
+                            {formatCurrency(stats.productSalesTaxCents)}
+                            <div style={{ fontSize: '0.68rem', fontWeight: 400, color: '#94a3b8' }}>{t('reports.breakdown.salesTax')}</div>
+                          </div>
+                        )}
+                        {stats.cbeCollectedCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                            {t('reports.breakdown.cbeFee')}: {formatCurrency(stats.cbeCollectedCents)}
+                          </div>
+                        )}
+                        {stats.screenFeeCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem' }}>
+                            {t('reports.breakdown.screenFee')}: {formatCurrency(stats.screenFeeCents)}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: '#475569' }}>—</span>}
+                  </td>
+                </tr>
+                {/* 📱 Phone Bill Payments */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>📱</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.phoneBill')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.phoneSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.phoneCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.phoneRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', fontSize: '0.78rem' }}>
+                    {(stats.utilityTaxCents > 0 || stats.mobilitySurchargeCents > 0) ? (
+                      <>
+                        {stats.utilityTaxCents > 0 && (
+                          <div style={{ color: '#f87171', fontWeight: 700 }}>
+                            {formatCurrency(stats.utilityTaxCents)}
+                            <div style={{ fontSize: '0.68rem', fontWeight: 400, color: '#94a3b8' }}>{t('reports.breakdown.utilityTax')}</div>
+                          </div>
+                        )}
+                        {stats.mobilitySurchargeCents > 0 && (
+                          <div style={{ color: '#f87171', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                            {t('reports.breakdown.mobilityFee')}: {formatCurrency(stats.mobilitySurchargeCents)}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: '#475569' }}>—</span>}
+                  </td>
+                </tr>
+                {/* 🔧 Repair Services */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🔧</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.repairServices')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.repairSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.repairCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.repairRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#475569', fontSize: '0.78rem' }}>
+                    {formatCurrency(0)} · {t('reports.breakdown.noTax')}
+                  </td>
+                </tr>
+                {/* 🔓 Unlock Services */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🔓</span>
+                      <div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{t('reports.breakdown.unlockServices')}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>{t('reports.breakdown.unlockSub')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#94a3b8' }}>{breakdownRows.unlockCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(breakdownRows.unlockRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#475569', fontSize: '0.78rem' }}>
+                    {formatCurrency(0)} · {t('reports.breakdown.noTax')}
+                  </td>
+                </tr>
+                {/* TOTAL */}
+                <tr style={{ background: 'rgba(255,255,255,0.04)', fontWeight: 700 }}>
+                  <td style={{ padding: '0.75rem', color: '#e2e8f0' }}>{t('reports.breakdown.total')}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{breakdownRows.productCount + breakdownRows.phoneCount + breakdownRows.repairCount + breakdownRows.unlockCount}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#e2e8f0' }}>{formatCurrency(breakdownRows.productRevenue + breakdownRows.phoneRevenue + breakdownRows.repairRevenue + breakdownRows.unlockRevenue)}</td>
+                  <td style={{ textAlign: 'right', padding: '0.75rem', color: '#f87171' }}>{formatCurrency(stats.taxCollectedCents + stats.cbeCollectedCents + stats.screenFeeCents)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           {/* ── Transactions list ── */}
           <div id="reports-transactions-section" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
             <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -1978,13 +2788,110 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                           </td>
                           <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(sale.createdAt)}</td>
                           <td style={{ padding: '0.5rem 0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setReprintSale(sale)}
-                              style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(102,126,234,0.3)', background: 'rgba(102,126,234,0.1)', color: '#a5b4fc', cursor: 'pointer', fontSize: '0.75rem' }}
-                              title={t('reports.reprint')}>🖨️</button>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              <button onClick={() => setReprintSale(sale)}
+                                style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(102,126,234,0.3)', background: 'rgba(102,126,234,0.1)', color: '#a5b4fc', cursor: 'pointer', fontSize: '0.75rem' }}
+                                title={t('reports.reprint')}>🖨️</button>
+                              {/* R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: only show Void
+                                  when the sale is still active. Already-voided/refunded
+                                  rows already render the VOID/REF badge; no second action. */}
+                              {!isVoided && !isRefunded && (
+                                <button onClick={() => { setVoidTarget(sale); setVoidReason(''); }}
+                                  style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  title={t('reports.voidSale')}>🚫</button>
+                              )}
+                              {/* R-REPORTS-EDIT-SALE-ITEM-V1: edit a line-item
+                                  price/qty post-checkout (manager-PIN gated).
+                                  Hidden on voided/refunded sales — those are
+                                  terminal and shouldn't be retroactively edited. */}
+                              {!isVoided && !isRefunded && (
+                                <button onClick={() => {
+                                  setEditTarget(sale);
+                                  setEditItemId(null);
+                                  setEditPrice('');
+                                  setEditQty('1');
+                                  setEditReason('');
+                                  setEditNotes('');
+                                }}
+                                  style={{ padding: '0.25rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.1)', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  title={t('reports.editSale.tooltip')}>✏️</button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* R-LOSSES-SHRINKAGE-V1: Losses / Shrinkage section.
+              Pure visibility — losses are NOT counted as sales,
+              refunds, or voids. Net-profit deduction integration is a
+              documented follow-up (see Phase E in the round spec). */}
+          <div id="reports-losses-section" style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                📉 {t('reports.losses.title')} ({lossesSummary.count})
+              </span>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                  {t('reports.losses.totalUnits')}: <strong style={{ color: '#e2e8f0' }}>{lossesSummary.totalQty}</strong>
+                </span>
+                <span style={{ fontSize: '0.78rem' }}>
+                  {t('reports.losses.totalLoss')}: <strong style={{ color: '#fb923c' }}>{formatCurrency(lossesSummary.totalLossCents)}</strong>
+                </span>
+              </div>
+            </div>
+            <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              {filteredLosses.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '0.85rem' }}>
+                  {t('reports.losses.empty')}
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      {[
+                        t('reports.losses.col.date'),
+                        t('reports.losses.col.item'),
+                        t('reports.losses.col.sku'),
+                        t('reports.losses.col.qty'),
+                        t('reports.losses.col.reason'),
+                        t('reports.losses.col.unitCost'),
+                        t('reports.losses.col.totalLoss'),
+                        t('reports.losses.col.approvedBy'),
+                      ].map((h, i) => (
+                        <th key={h + i} style={{
+                          textAlign: (h === t('reports.losses.col.qty') || h === t('reports.losses.col.unitCost') || h === t('reports.losses.col.totalLoss')) ? 'right' : 'left',
+                          padding: '0.5rem 0.75rem',
+                          color: '#64748b',
+                          fontSize: '0.68rem',
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLosses.map((l) => (
+                      <tr key={l.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontSize: '0.72rem' }}>{formatDateTime(l.createdAt)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#e2e8f0' }}>{l.itemName}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.72rem' }}>{l.sku || '—'}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#e2e8f0', fontWeight: 600 }}>{l.qty}</td>
+                        <td style={{ padding: '0.5rem 0.75rem' }}>
+                          <span style={{ padding: '0.1rem 0.5rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(234,88,12,0.15)', color: '#fb923c' }}>
+                            {t(`inventory.loss.reason.${l.reason}`)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#94a3b8' }}>{formatCurrency(l.unitCost)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 700, color: '#fb923c' }}>{formatCurrency(l.totalLoss)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.75rem' }}>{l.approvedBy || '—'}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
@@ -2045,7 +2952,10 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
                 // Round 17: real reprint via generateReceiptHtml (hardened in round 12)
                 // + usePrint hook (Electron thermal silent / browser window fallback).
                 // Previously this called window.print() which printed the entire Reports page.
-                const bsvg = renderBarcodeSvg(reprintSale.invoiceNumber);
+                // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: reprint now encodes the
+                // structured CHP|SALE|... payload (with optional |CUST|customerId)
+                // so reprinted copies scan equivalent to a fresh print.
+                const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale));
                 const html = generateReceiptHtml(reprintSale, settings, locale, undefined, bsvg);
                 printHtml(html, {
                   silent: false,
@@ -2059,6 +2969,326 @@ th{background:#f5f5f5;font-weight:700}.total{font-weight:700;background:#f0f0f0}
             </div>
           </div>
         </div>
+      )}
+
+      {/* R-OPERATIONS-VOID-SALE-AND-LOSSES-AUDIT-V1: Void Sale modal —
+          reason picker + manager-PIN guard. Sale is marked voided as a
+          STATUS CHANGE (no hard delete); inventory restored only for
+          stockable line items; existing isCountableSale filter excludes
+          voided sales from active totals/profit/KPIs everywhere. */}
+      {voidTarget && (
+        <Modal
+          open={!!voidTarget && !voidPinOpen}
+          onClose={() => { setVoidTarget(null); setVoidReason(''); }}
+          title={`🚫 ${t('reports.voidSale')}`}
+          size="max-w-md"
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => { setVoidTarget(null); setVoidReason(''); }}>
+                {t('cancel')}
+              </button>
+              <button
+                className="btn"
+                style={{ background: '#dc2626', color: '#fff', fontWeight: 700, border: 'none' }}
+                disabled={!voidReason.trim() || voiding}
+                onClick={() => setVoidPinOpen(true)}
+              >
+                {t('reports.voidContinue')}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="text-xs text-slate-400">
+              {t('reports.voidInvoiceLabel')}: <strong className="text-slate-200" style={{ fontFamily: 'monospace' }}>{voidTarget.invoiceNumber}</strong>
+              <br />
+              {t('reports.voidTotalLabel')}: <strong className="text-emerald-400">{formatCurrency(voidTarget.total)}</strong>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 font-semibold block mb-1">
+                {t('reports.voidReasonLabel')} <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                className="select"
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+              >
+                <option value="">{t('reports.voidReasonPick')}</option>
+                <option value="duplicate">{t('reports.voidReason.duplicate')}</option>
+                <option value="cashier_error">{t('reports.voidReason.cashierError')}</option>
+                <option value="customer_changed_mind">{t('reports.voidReason.customerChangedMind')}</option>
+                <option value="payment_failed">{t('reports.voidReason.paymentFailed')}</option>
+                <option value="test_transaction">{t('reports.voidReason.testTransaction')}</option>
+                <option value="other">{t('reports.voidReason.other')}</option>
+              </select>
+            </div>
+            <div className="rounded-md p-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+              <p className="text-xs" style={{ color: '#fca5a5', lineHeight: 1.5 }}>
+                ⚠️ {t('reports.voidPaymentWarning')}
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {t('reports.voidInventoryNote')}
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {/* PIN gate — opens only after the owner confirms reason */}
+      <AdminPinGate
+        open={voidPinOpen && !!voidTarget}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => {
+          if (voidTarget) handleVoidSale(voidTarget, voidReason);
+        }}
+        onCancel={() => setVoidPinOpen(false)}
+      />
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: edit-item modal — picks an item from
+          the sale, lets owner edit price + qty, requires reason + notes,
+          then opens the AdminPinGate. Same modal layout style as Void Sale. */}
+      {editTarget && (() => {
+        const sale = editTarget;
+        const item = sale.items.find((it) => it.id === editItemId);
+        const newPriceCents = Math.round((parseFloat(editPrice) || 0) * 100);
+        const newQty = parseInt(editQty, 10);
+        const validInputs = !!item && Number.isFinite(newPriceCents) && newPriceCents >= 0 && Number.isFinite(newQty) && newQty >= 1;
+        const validReason = editReason !== '';
+        const oldLineTotal = item ? (item.price * item.qty) : 0;
+        const newLineTotal = item ? (newPriceCents * newQty) : 0;
+        const lineDelta = oldLineTotal - newLineTotal;
+        // Stale-sale warning (>24h old).
+        const saleDate = (() => {
+          try { return new Date(sale.createdAt as string); } catch { return null; }
+        })();
+        const isStale = saleDate ? (Date.now() - saleDate.getTime() > 86400000) : false;
+        return (
+          <Modal
+            open={!!editTarget && !editPinOpen}
+            onClose={() => {
+              setEditTarget(null);
+              setEditItemId(null);
+              setEditPrice('');
+              setEditQty('1');
+              setEditReason('');
+              setEditNotes('');
+            }}
+            title={`✏️ ${t('reports.editSale.title')}`}
+            size="max-w-lg"
+            footer={
+              <>
+                <button className="btn btn-secondary" onClick={() => {
+                  setEditTarget(null);
+                  setEditItemId(null);
+                  setEditPrice('');
+                  setEditQty('1');
+                  setEditReason('');
+                  setEditNotes('');
+                }}>
+                  {t('cancel')}
+                </button>
+                <button
+                  className="btn"
+                  style={{ background: '#a855f7', color: '#fff', fontWeight: 700, border: 'none' }}
+                  disabled={!editItemId || !validInputs || !validReason || editingSale}
+                  onClick={() => setEditPinOpen(true)}
+                >
+                  {t('reports.editSale.continue')}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <div className="text-xs text-slate-400">
+                {t('reports.editSale.invoiceLabel')}: <strong className="text-slate-200" style={{ fontFamily: 'monospace' }}>{sale.invoiceNumber}</strong>
+                {' · '}
+                {t('reports.editSale.totalLabel')}: <strong className="text-emerald-400">{formatCurrency(sale.total)}</strong>
+              </div>
+              {isStale && (
+                <div className="rounded-md p-2.5" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                  <p className="text-[11px]" style={{ color: '#fcd34d', lineHeight: 1.5 }}>
+                    ⚠️ {t('reports.editSale.staleWarning')}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-slate-400 font-semibold block mb-1">
+                  {t('reports.editSale.pickItemLabel')}
+                </label>
+                <div className="rounded border border-surface-700 divide-y divide-surface-700 max-h-44 overflow-y-auto">
+                  {sale.items.map((it) => {
+                    const isSelected = editItemId === it.id;
+                    const isReturned = (it.returnedQty || 0) > 0 || it.fullyReturned;
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        disabled={isReturned}
+                        onClick={() => {
+                          if (isReturned) return;
+                          setEditItemId(it.id);
+                          setEditPrice(((it.price || 0) / 100).toFixed(2));
+                          setEditQty(String(it.qty || 1));
+                        }}
+                        className={`w-full text-left flex items-center gap-2 px-3 py-2 transition ${
+                          isSelected ? 'bg-purple-500/10' : 'hover:bg-surface-700'
+                        } ${isReturned ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                            isSelected ? 'border-purple-400 bg-purple-400' : 'border-slate-500'
+                          }`}
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-slate-200 truncate">{it.name}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {formatCurrency(it.price)} × {it.qty} = {formatCurrency(it.price * it.qty)}
+                            {isReturned ? ` · ${t('reports.editSale.returnedTag')}` : ''}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {item && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 font-semibold block mb-1">
+                        {t('reports.editSale.priceLabel')}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="input"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 font-semibold block mb-1">
+                        {t('reports.editSale.qtyLabel')}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className="input"
+                        value={editQty}
+                        onChange={(e) => setEditQty(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-md p-2.5" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                    <div className="flex justify-between text-xs">
+                      <span style={{ color: '#c4b5fd' }}>{t('reports.editSale.lineDeltaLabel')}</span>
+                      <strong style={{ color: lineDelta > 0 ? '#fb923c' : lineDelta < 0 ? '#fcd34d' : '#94a3b8' }}>
+                        {lineDelta > 0 ? '−' : lineDelta < 0 ? '+' : ''}{formatCurrency(Math.abs(lineDelta))}
+                      </strong>
+                    </div>
+                    {lineDelta > 0 && (
+                      <p className="text-[10px] mt-1" style={{ color: '#fdba74' }}>
+                        {t('reports.editSale.refundOwedHint')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold block mb-1">
+                      {t('reports.editSale.reasonLabel')} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select className="select" value={editReason} onChange={(e) => setEditReason(e.target.value as 'refund' | 'absorbed' | 'typo_correction' | '')}>
+                      <option value="">{t('reports.editSale.reasonPick')}</option>
+                      <option value="refund">{t('reports.editSale.reason.refund')}</option>
+                      <option value="absorbed">{t('reports.editSale.reason.absorbed')}</option>
+                      <option value="typo_correction">{t('reports.editSale.reason.typoCorrection')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold block mb-1">
+                      {t('reports.editSale.notesLabel')}
+                    </label>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder={t('reports.editSale.notesPlaceholder')}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: PIN gate — opens after owner confirms
+          item + price + qty + reason. Successful auth fires handleEditSaleItem. */}
+      <AdminPinGate
+        open={editPinOpen && !!editTarget && !!editItemId}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => {
+          if (editTarget && editItemId && editReason) {
+            handleEditSaleItem(
+              editTarget,
+              editItemId,
+              Math.round((parseFloat(editPrice) || 0) * 100),
+              parseInt(editQty, 10),
+              editReason,
+              editNotes,
+            );
+          }
+        }}
+        onCancel={() => setEditPinOpen(false)}
+      />
+
+      {/* R-REPORTS-EDIT-SALE-ITEM-V1: optional corrected-receipt reprint
+          after a money-impacting edit (refund / absorbed). Owner can decline. */}
+      {reprintAfterEdit && (
+        <Modal
+          open={!!reprintAfterEdit}
+          onClose={() => setReprintAfterEdit(null)}
+          title={t('reports.editSale.reprintTitle')}
+          size="max-w-sm"
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setReprintAfterEdit(null)}>
+                {t('reports.editSale.reprintLater')}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const sale = reprintAfterEdit;
+                  if (!sale) return;
+                  try {
+                    // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: post-edit reprint
+                    // also uses the structured payload for scan parity.
+                    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
+                    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
+                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+                  } catch (err) {
+                    console.error('[edit-sale-item] reprint failed', err);
+                  }
+                  setReprintAfterEdit(null);
+                }}
+              >
+                🖨️ {t('print')}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-300">
+            {t('reports.editSale.reprintBody', reprintAfterEdit.invoiceNumber)}
+          </p>
+        </Modal>
       )}
     </div>
   );

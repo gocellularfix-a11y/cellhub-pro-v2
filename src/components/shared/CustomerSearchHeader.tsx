@@ -28,7 +28,7 @@
 // intentionally out of scope.
 // ============================================================
 
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import type { Customer } from '@/store/types';
 
@@ -52,6 +52,9 @@ export default function CustomerSearchHeader({
   const es = lang === 'es';
   const [showSearch, setShowSearch] = useState(false);
   const [query, setQuery] = useState('');
+  // R-SEARCH-ARROW-NAV-FIX: arrow-key nav for the dropdown. Index is
+  // clamped on every results change so it never points off the end.
+  const [activeIdx, setActiveIdx] = useState(0);
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -60,10 +63,43 @@ export default function CustomerSearchHeader({
       .slice(0, 6);
   }, [query, customers]);
 
+  // Keep activeIdx in bounds as the result set shrinks/grows.
+  useEffect(() => {
+    if (results.length === 0) return;
+    if (activeIdx < 0 || activeIdx >= results.length) setActiveIdx(0);
+  }, [results.length, activeIdx]);
+
   const handleSelect = (c: Customer) => {
     onSelect(c);
     setShowSearch(false);
     setQuery('');
+    setActiveIdx(0);
+  };
+
+  // R-SEARCH-ARROW-NAV-FIX: ArrowDown/ArrowUp clamp; Enter selects the
+  // highlighted (or top) result; Escape closes the search panel. Cero
+  // preventDefault on Tab — focus advances naturally.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(Math.max(0, i) + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(0, Math.min(i, results.length - 1) - 1));
+    } else if (e.key === 'Enter') {
+      const safeIdx = activeIdx >= 0 && activeIdx < results.length ? activeIdx : 0;
+      const c = results[safeIdx];
+      if (c) {
+        e.preventDefault();
+        handleSelect(c);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowSearch(false);
+      setQuery('');
+      setActiveIdx(0);
+    }
   };
 
   return (
@@ -113,6 +149,7 @@ export default function CustomerSearchHeader({
             }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             autoFocus
           />
           {results.length > 0 && (
@@ -131,33 +168,28 @@ export default function CustomerSearchHeader({
                 boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
               }}
             >
-              {results.map((c) => (
+              {results.map((c, i) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c)}
+                  onMouseEnter={() => setActiveIdx(i)}
                   style={{
                     width: '100%',
                     textAlign: 'left',
                     padding: '0.5rem 0.875rem',
-                    background: 'transparent',
+                    background: i === activeIdx ? 'rgba(102,126,234,0.18)' : 'transparent',
                     border: 'none',
                     color: '#e2e8f0',
                     cursor: 'pointer',
                     fontSize: '0.875rem',
+                    fontWeight: i === activeIdx ? 600 : 400,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: '0.5rem',
+                    transition: 'background 0.1s',
                   }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      'rgba(102,126,234,0.15)')
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      'transparent')
-                  }
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.name}

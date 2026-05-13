@@ -37,3 +37,37 @@ export {
   summarizeCustomerHistory,
   type NlgSummary,
 } from './nlg';
+
+// R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — single-slot active engine
+// registry. IntelligenceModule registers its engineRef.current while
+// mounted so external pathways (Companion intelligence ack receiver)
+// can dispatch acknowledge without holding a React ref. Cero scoring
+// changes, cero analyzer changes, cero networking. Safe no-op when no
+// engine is registered — alert acks during navigation gaps are logged
+// and dropped without affecting other intelligence state.
+import type { IntelligenceEngine as _IE } from './IntelligenceEngine';
+let _activeEngine: _IE | null = null;
+export function setActiveIntelligenceEngine(engine: _IE | null): void {
+  _activeEngine = engine;
+}
+export function acknowledgeIntelligenceAlertOnActiveEngine(
+  alertId: string,
+  userId: string,
+): boolean {
+  if (!_activeEngine) {
+    console.info(
+      `[intelligence] no active engine — ack dropped (alertId=${alertId})`,
+    );
+    return false;
+  }
+  try {
+    _activeEngine.acknowledgeAlert(alertId, userId);
+    console.info(
+      `[intelligence] acknowledged alertId=${alertId} by=${userId || '<unknown>'}`,
+    );
+    return true;
+  } catch (err) {
+    console.warn('[intelligence] acknowledge failed', err);
+    return false;
+  }
+}

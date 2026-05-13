@@ -84,7 +84,12 @@ export default function App() {
       try {
         // Read cloudSyncEnabled directly from localStorage — the settings
         // slice in React state hasn't hydrated yet at boot time.
-        const persistedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+        // R-BOOT-SETTINGS-KEY: storage.ts adds 'cellhub_' prefix to every
+        // key in saveLocal/loadLocal. persistSettings writes via saveLocal
+        // ('settings', ...) which lands in 'cellhub_settings' on disk.
+        // Reading 'settings' directly always returned null → cloudSyncEnabled
+        // never tripped → Firebase boot init silently skipped post-restart.
+        const persistedSettings = JSON.parse(localStorage.getItem('cellhub_settings') || '{}');
         const cloudSyncEnabled = persistedSettings.cloudSyncEnabled === true;
 
         if (cloudSyncEnabled) {

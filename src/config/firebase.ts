@@ -64,6 +64,13 @@ export function initFirebase(): Firestore | null {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
+      // R-FIRESTORE-IGNORE-UNDEFINED: optional fields in StoreSettings/Sale/
+      // Repair/etc. (storeId, customerId, dueDate, ...) arrive as `undefined`
+      // when not set. Firestore's default is to throw "Unsupported field
+      // value: undefined" — this flag drops them before send instead, which
+      // matches our schema (the `?:` optionals already encode "absent" as
+      // semantically equivalent to "missing").
+      ignoreUndefinedProperties: true,
     });
     console.log('✅ Firestore offline persistence enabled (multi-tab)');
 

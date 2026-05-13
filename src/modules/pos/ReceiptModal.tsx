@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
-import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
+import { openWhatsApp } from '@/services/whatsapp';
 // R-COMMS-SMS-HARD-DISABLE: sendSms + buildReceiptSmsMessage imports removed
 // (post-sale SMS button retired; WhatsApp button is now the sole comm channel
 // from this modal). Service files deleted in next round.
@@ -22,6 +22,7 @@ import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
 import { escHtml } from '@/utils/escHtml';
 import type { Sale, StoreSettings, Customer } from '@/store/types';
+import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 
 // r-batch-a (3a): JsBarcode and qrcode are now bundled via npm instead of
 // loaded from cdn.jsdelivr.net at runtime. The old ensureJsBarcode() and
@@ -59,8 +60,12 @@ export function renderBarcodeSvg(value: string): string {
   if (!value) return '';
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    // R-RECEIPT-BARCODE-WIDTH-FIX: width 1.0 → 0.8 so the structured
+    // CHP|SALE|...|CUST|... payload (~45 chars) fits inside the 4×6
+    // receipt's printable area without overflowing on screen preview
+    // OR thermal print. CODE128 still scans cleanly at 0.8 × 203 DPI.
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.0, height: 28,
+      format: 'CODE128', width: 0.8, height: 26,
       displayValue: false, margin: 1,
       background: '#ffffff', lineColor: '#000000',
     });
@@ -110,23 +115,38 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
     setAssignDone(false);
   }, [sale?.id]);
 
-  // Customer search results for assignment
-  const assignResults = assignSearch.trim().length >= 2
-    ? customers.filter((c) => matchesSearch(assignSearch, c.name, c.phone, c.customerNumber)).slice(0, 6)
-    : [];
+  // R-PRINT-PREVIEW-PERF-V1: memoise the customer-search filter so a
+  // keystroke in the assign-customer input doesn't full-scan the
+  // customers array on top of the existing React render work. Cero
+  // behaviour change — same filter + same 6-result slice cap.
+  const assignResults = useMemo(
+    () => (
+      assignSearch.trim().length >= 2
+        ? customers.filter((c) => matchesSearch(assignSearch, c.name, c.phone, c.customerNumber)).slice(0, 6)
+        : []
+    ),
+    [assignSearch, customers],
+  );
 
   // Is this a walk-in sale that hasn't been assigned yet?
   const isWalkIn = sale && !sale.customerId;
   const loyaltyEnabled = settings.loyaltyEnabled;
 
-  // Compute pts for this sale (same formula as POSModule)
-  const salePoints = sale
-    ? Math.trunc(
-        sale.items
-          .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
-          .reduce((s, i) => s + i.price * i.qty, 0) / 100
-      )
-    : 0;
+  // R-PRINT-PREVIEW-PERF-V1: memoise the loyalty-points reduce so
+  // unrelated re-renders (e.g. typing in assignSearch) don't re-walk
+  // the sale items every keystroke. Same formula as POSModule.
+  const salePoints = useMemo(
+    () => (
+      sale
+        ? Math.trunc(
+            sale.items
+              .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
+              .reduce((s, i) => s + i.price * i.qty, 0) / 100
+          )
+        : 0
+    ),
+    [sale?.id, sale?.items],
+  );
 
   // Core assign logic. Accepts an optional `baseCustomers` override so that
   // handleCreateAndAssign can pass the array that already includes the newly
@@ -226,8 +246,14 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
     generateQrSvg(settings.googleReviewUrl).then(setQrSvg);
   }, [sale?.id, settings.showReviewQr, settings.googleReviewUrl]);
 
-  // Barcode SVG — sync, same helper the print path uses
-  const barcodeSvg = useMemo(() => renderBarcodeSvg(sale?.invoiceNumber || ''), [sale?.invoiceNumber]);
+  // Barcode SVG — sync, same helper the print path uses.
+  // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: encodes the structured
+  // CHP|SALE|{invoiceNumber}[|CUST|{customerId}] payload so a scan can
+  // recover both the sale reference and (when present) the customer
+  // reference. The visible text under the barcode stays as the
+  // human-readable invoiceNumber — only the bars change.
+  const barcodePayload = useMemo(() => buildReceiptBarcodePayload(sale), [sale?.invoiceNumber, sale?.id, sale?.customerId]);
+  const barcodeSvg = useMemo(() => renderBarcodeSvg(barcodePayload), [barcodePayload]);
 
   // ── Deps extraction: primitive fields that generateReceiptHtml reads ──
   const storeName = settings.storeName;
@@ -547,22 +573,34 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       {/* Actions */}
       <div className="flex gap-3 mt-4">
         <button onClick={onClose} className="btn btn-secondary flex-1">{t('close')}</button>
-        {settings.waEnabled !== false && (sale?.customerPhone || assignedCustomer?.phone) && (
+        {settings.waEnabled !== false && (
           <button
             onClick={() => {
+              // R-RECEIPT-WHATSAPP-SEND-V1: manual receipt send via wa.me.
+              // No WhatsApp API; no auto-send; no PDF/image attachment. The
+              // owner clicks → wa.me opens with prefilled receipt text →
+              // owner manually presses Send. Phone-missing path shows a
+              // localized toast instead of silently no-oping.
               const phone = sale?.customerPhone || assignedCustomer?.phone || '';
-              const name = sale?.customerName || assignedCustomer?.name || t('receiptModal.customerFallback');
-              const msg = buildWaMessage('thankYou', {
-                customerName: name,
-                storeName: settings.storeName || 'Go Cellular',
-                storePhone: settings.storePhone || '',
-              }, lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en', (settings as any).waTemplateThankYou || '');
+              if (!phone.trim()) {
+                toast(t('receiptWa.missingPhone'), 'warning');
+                return;
+              }
+              const fmtCents = (c: number) => `$${(c / 100).toFixed(2)}`;
+              const msg = t(
+                'receiptWa.message',
+                settings.storeName || 'Go Cellular',
+                sale.invoiceNumber,
+                formatDate(sale.createdAt),
+                fmtCents(sale.total),
+                sale.paymentMethod || '',
+              );
               openWhatsApp(phone, msg);
             }}
             className="btn flex-1"
             style={{ background: '#25D366', color: '#fff', fontWeight: 700, border: 'none' }}
           >
-            📲 WhatsApp
+            📲 {t('receiptWa.buttonLabel')}
           </button>
         )}
         {/* R-COMMS-SMS-HARD-DISABLE: post-sale SMS button removed.
@@ -582,12 +620,76 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: string, qrSvg?: string, barcodeSvg?: string): string {
   const es = lang === 'es';
   const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  // R-RECEIPT-DISCOUNT-LINE: derive discount locally without touching Sale.
+  // Sale.subtotal is pre-discount; subtotalAfterDiscount is the post value
+  // (optional). When no discount applied, subtotalAfterDiscount is undefined
+  // and the difference is 0 → row hidden.
+  const discountAmount = sale.subtotal - (sale.subtotalAfterDiscount ?? sale.subtotal);
 
-  const itemRows = sale.items.map((item) => `
+  // R-RECEIPT-LINE-DISCOUNT-DISPLAY-FIX: distribute the sale-wide discount
+  // proportionally across discountable line items so each printed line
+  // reflects the EFFECTIVE amount the customer paid before tax. Pure
+  // presentation — no totals/tax/cart math touched. Phone payments and
+  // top-ups are excluded from discount (matches calculateCartTotals).
+  // Rounding residue is absorbed by the last discountable item so the
+  // sum of effective lines exactly equals subtotalAfterDiscount.
+  const perItemDiscount: Record<string, number> = {};
+  if (discountAmount > 0) {
+    let discountableTotal = 0;
+    const discountableIds: string[] = [];
+    for (const item of sale.items) {
+      if (item.category === 'phone_payment' || item.category === 'top_up') continue;
+      discountableTotal += item.price * item.qty;
+      discountableIds.push(item.id);
+    }
+    if (discountableTotal > 0 && discountableIds.length > 0) {
+      let allocated = 0;
+      for (const item of sale.items) {
+        if (!discountableIds.includes(item.id)) continue;
+        const share = Math.round((item.price * item.qty / discountableTotal) * discountAmount);
+        perItemDiscount[item.id] = share;
+        allocated += share;
+      }
+      const residue = discountAmount - allocated;
+      if (residue !== 0) {
+        const lastId = discountableIds[discountableIds.length - 1];
+        perItemDiscount[lastId] = (perItemDiscount[lastId] || 0) + residue;
+      }
+    }
+  }
+
+  // R-RECEIPT-HYBRID-DISCOUNT-DISPLAY-V1 + R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1:
+  // the right column anchors on the ORIGINAL line amount (item.originalPrice * qty
+  // when set, else item.price * qty). The annotation combines BOTH per-line
+  // discount (originalPrice - effective price) AND the cart-distributed share
+  // from perItemDiscount — single "Discount Applied: -$X" line so the customer
+  // sees one consolidated savings number, not a double-counted set.
+  const itemRows = sale.items.map((item) => {
+    const orig = (item.originalPrice ?? item.price) * item.qty;     // anchor
+    const lineTotal = item.price * item.qty;                        // post-line-discount
+    const lineSavings = Math.max(0, orig - lineTotal);              // per-line discount baked into item.price
+    const cartShare = perItemDiscount[item.id] || 0;                // global cart-discount allocation
+    const totalDiscount = lineSavings + cartShare;
+    const discountAnnotation = totalDiscount > 0
+      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(totalDiscount)}</span>`
+      : '';
+    // R-RECEIPT-ID-V1: surface the most-specific identifier per line
+    // with priority IMEI > SKU. Replaces the prior IMEI-only line so
+    // accessories/parts (SKU but no IMEI) also show their identifier.
+    // Single "ID:" label keeps it generic — the cashier/customer can
+    // tell from context which kind it is. SaleItem doesn't carry a
+    // separate barcode field (per types.ts:645), so the chain stops at
+    // sku; if neither is present nothing is rendered.
+    const itemIdValue = item.imei || item.sku || '';
+    const idLine = itemIdValue
+      ? `<br><small style="color:#555;font-family:'Courier New',monospace;font-weight:700;font-size:10px;letter-spacing:0.04em">ID: ${escHtml(itemIdValue)}</small>`
+      : '';
+    return `
     <tr>
-      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${item.imei ? `<br><small style="color:#666;font-family:monospace">IMEI: ${escHtml(item.imei)}</small>` : ''}</td>
-      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600">${fmt(item.price * item.qty)}</td>
-    </tr>`).join('');
+      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${idLine}</td>
+      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(orig)}${discountAnnotation}</td>
+    </tr>`;
+  }).join('');
 
   // R-COMMS-SMS-HARD-DISABLE: TCPA disclaimer block removed from receipt
   // template. With SMS sending disabled, the printed opt-in checkboxes
@@ -606,16 +708,21 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head><body>
-  <!-- Header: store left, barcode right -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:5px">
-    <div>
-      <div style="font-size:18px;font-weight:900;line-height:1;letter-spacing:0.02em">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
-      <div style="font-size:10px;font-weight:500">${escHtml(settings.storeAddress || '')}</div>
-      <div style="font-size:10px;font-weight:500">${escHtml(settings.storePhone || '')}</div>
+  <!-- Header: store left, barcode right.
+       R-RECEIPT-BARCODE-PAGEWIDTH-FIX: every flex item has min-width:0
+       so an oversized child (long store name, dense barcode) cannot
+       force the parent past the 4 in page. Right column flex:0 1 1.9in
+       lets it shrink instead of pushing layout. overflow:hidden +
+       box-sizing:border-box clamp every level against the page. -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:5px;overflow:hidden">
+    <div style="flex:1 1 auto;min-width:0;overflow:hidden">
+      <div style="font-size:18px;font-weight:900;line-height:1;letter-spacing:0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeAddress || '')}</div>
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storePhone || '')}</div>
     </div>
-    <div style="text-align:right;flex-shrink:0;margin-left:8px;max-width:2.8in;overflow:hidden">
-      ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:7px;font-family:monospace;letter-spacing:0.03em;text-align:center;margin-top:1px">${escHtml(sale.invoiceNumber)}</div>
+    <div style="text-align:right;flex:0 1 1.9in;min-width:0;max-width:1.9in;overflow:hidden;display:block;box-sizing:border-box">
+      ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="width:100%;max-width:100%;height:auto;display:block"') : '<svg style="display:block"></svg>'}
+      <div style="font-size:11px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.06em;text-align:center;margin-top:3px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
     </div>
   </div>
 
@@ -636,13 +743,35 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
 
   <!-- Totals -->
   <table style="margin-bottom:5px">
-    <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotal)}</td></tr>
+    <!-- R-RECEIPT-LINE-DISCOUNT-DISPLAY-FIX: Subtotal now shows the post-
+         discount value because each item line above already reflects its
+         effective per-item price. Standalone Discount row removed to avoid
+         the double-subtraction look ($279 line + $4 discount = $275 paid).
+         When a discount is present, render an italic "Saved" annotation
+         under the subtotal so the customer still sees the savings call-out. -->
+    <tr><td>Subtotal:</td><td style="text-align:right">${fmt(sale.subtotalAfterDiscount ?? sale.subtotal)}</td></tr>
+    ${(() => {
+      // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: total savings = cart-level
+      // discount + sum of per-line discounts (originalPrice - effective price).
+      // Keeps the "Saved" callout aligned with the per-item annotations above.
+      let lineSavingsTotal = 0;
+      for (const it of sale.items) {
+        const o = (it.originalPrice ?? it.price) * it.qty;
+        const p = it.price * it.qty;
+        if (o > p) lineSavingsTotal += (o - p);
+      }
+      const totalSaved = discountAmount + lineSavingsTotal;
+      return totalSaved > 0
+        ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : 'Saved'}: ${fmt(totalSaved)}</td></tr>`
+        : '';
+    })()}
     ${(sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined) ? `
       ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
       ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}
       ${(sale.mobileSurcharge || 0) > 0 ? `<tr><td>${es ? 'Cargo de Movilidad CDTFA' : 'CDTFA Mobility Fee'}:</td><td style="text-align:right">${fmt(sale.mobileSurcharge!)}</td></tr>` : ''}
     ` : `${(sale.taxAmount || 0) > 0 ? `<tr><td>${es ? 'Impuesto' : 'Tax'}:</td><td style="text-align:right">${fmt(sale.taxAmount)}</td></tr>` : ''}`}
     ${(sale.cbeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota CBE:' : 'CBE Fee:'}</td><td style="text-align:right">${fmt(sale.cbeTotal!)}</td></tr>` : ''}
+    ${(sale.screenFeeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota Pantalla:' : 'Screen Fee:'}</td><td style="text-align:right">${fmt(sale.screenFeeTotal!)}</td></tr>` : ''}
     <tr style="border-top:1px solid #000">
       <td style="font-size:14px;font-weight:900;padding-top:4px">TOTAL:</td>
       <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px">${fmt(sale.total)}</td>

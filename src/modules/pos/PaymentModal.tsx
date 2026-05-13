@@ -148,7 +148,12 @@ export default function PaymentModal({
       selectedCustomer?.storeCredit ?? 0,
       totals.total,
     );
-    if (paidCents < totals.total) {
+    // R-POS-CARD-PAYMENT-FUNDS-BUG: pure Card payments delegate authorization
+    // to the terminal — the cardAmount input is informational only and may be
+    // stale (auto-prefill drift after cart/CC-fee changes). Skip the funds
+    // guard for Card. Cash, Split (cash portion + record-keeping), and Store
+    // Credit (known balance) still validate.
+    if (paymentMethod !== 'Card' && paidCents < totals.total) {
       const shortBy = totals.total - paidCents;
       toast(t('paymentModal.insufficientPayment', formatCurrency(shortBy)), 'error');
       return;

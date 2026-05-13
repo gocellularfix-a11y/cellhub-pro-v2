@@ -8,7 +8,8 @@ import { useToast } from '@/components/ui/Toast';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import { exportBackup, importBackup } from '@/services/storage';
-import { persistSettings } from '@/services/persist';
+import { persistSettings, getFirestoreInstance } from '@/services/persist';
+import { pushAllToCloud, pullAllFromCloud, countLocalRecords } from '@/hooks/useFirestore';
 import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
@@ -16,6 +17,7 @@ import { isElectron, getElectronAPI } from '@/utils/platform';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
+import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
 
@@ -206,6 +208,104 @@ function UrlField({ label, settingsKey, settings, update, placeholder = '' }: Ur
   );
 }
 
+// ── PortalRow — R-CARRIERS-INPUT-FIX ──────────────────────
+// Hoisted to module scope for stable identity across renders (same
+// reasoning as Field/Toggle above). Owns local text state for the
+// matchCarriers / matchUrlSnippets inputs so the user can type commas
+// and spaces without the value being shredded by split→trim→filter on
+// every keystroke. Commits to settings on blur.
+interface PortalRowProps {
+  portal: PaymentPortal;
+  onUpdate: (patch: Partial<PaymentPortal>) => void;
+  onRemove: () => void;
+}
+
+function PortalRow({ portal, onUpdate, onRemove }: PortalRowProps) {
+  const { t } = useTranslation();
+  const [matchCarriersText, setMatchCarriersText] = useState(
+    portal.matchCarriers.join(', '),
+  );
+  const [matchUrlSnippetsText, setMatchUrlSnippetsText] = useState(
+    portal.matchUrlSnippets.join(', '),
+  );
+
+  return (
+    <div className="p-3 rounded-lg bg-white/5 space-y-2" style={{ borderLeft: `3px solid ${portal.color}` }}>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={portal.emoji}
+          onChange={(e) => onUpdate({ emoji: e.target.value })}
+          className="input"
+          style={{ width: '50px', textAlign: 'center', fontSize: '1.1rem' }}
+          maxLength={2}
+          title="Emoji"
+        />
+        <input
+          type="text"
+          value={portal.label}
+          onChange={(e) => onUpdate({ label: e.target.value })}
+          className="input flex-1"
+          placeholder="Portal name"
+          style={{ fontWeight: 700 }}
+        />
+        <input
+          type="color"
+          value={portal.color}
+          onChange={(e) => onUpdate({ color: e.target.value })}
+          style={{ width: '38px', height: '34px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.4rem', cursor: 'pointer', background: 'transparent' }}
+          title="Color"
+        />
+        <button
+          onClick={onRemove}
+          className="btn btn-ghost btn-sm text-red-400"
+          title={t('settings.commissions.portals.removeTitle')}
+        >
+          🗑️
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-slate-500 block mb-0.5">
+            {t('settings.commissions.portals.matchCarriers')}
+          </label>
+          <input
+            type="text"
+            value={matchCarriersText}
+            onChange={(e) => setMatchCarriersText(e.target.value)}
+            onBlur={(e) => {
+              const list = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+              onUpdate({ matchCarriers: list });
+              setMatchCarriersText(list.join(', '));
+            }}
+            className="input"
+            placeholder="t-mobile, verizon"
+            style={{ fontSize: '0.78rem' }}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 block mb-0.5">
+            {t('settings.commissions.portals.matchUrls')}
+          </label>
+          <input
+            type="text"
+            value={matchUrlSnippetsText}
+            onChange={(e) => setMatchUrlSnippetsText(e.target.value)}
+            onBlur={(e) => {
+              const list = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+              onUpdate({ matchUrlSnippets: list });
+              setMatchUrlSnippetsText(list.join(', '));
+            }}
+            className="input"
+            placeholder="paymasterwebpos, epay"
+            style={{ fontSize: '0.78rem' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsModule() {
   const {
     // r-settings-1 B-08: sales added so Export Today reads live AppState
@@ -236,6 +336,10 @@ export default function SettingsModule() {
     // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
     { id: 'whatsapp',    icon: '💬',  label: t('settings.nav.whatsapp') },
     { id: 'ai',          icon: '🤖',  label: t('settings.nav.ai') },
+    // R-COMPANION-DESKTOP-SETTINGS-WIRING-V1: dedicated Companion section
+    // so the bridge enable toggle is discoverable from the "enable in
+    // Settings" hint in Companion Center.
+    { id: 'companion',   icon: '📱',  label: t('settings.nav.companion') },
     { id: 'employees',   icon: '👥',  label: t('settings.nav.employees') },
     { id: 'backup',      icon: '💾',  label: t('settings.nav.backup') },
   ];
@@ -337,6 +441,9 @@ export default function SettingsModule() {
   const [cloudToggleTarget, setCloudToggleTarget] = useState<'on' | 'off' | null>(null);
   const [showFirebaseSetup, setShowFirebaseSetup] = useState(false);
   const [showRestartPrompt, setShowRestartPrompt] = useState<'enabled' | 'disabled' | null>(null);
+  // R-FIREBASE-MULTIPC-SYNC: bulk push/pull state. `busy` disables both
+  // buttons during an operation so the cashier can't double-click.
+  const [bulkSyncBusy, setBulkSyncBusy] = useState<'push' | 'pull' | null>(null);
   // R-IMPORT-LEGACY-ADAPTER: post-import modal state. Populated only when a
   // legacy v1 backup was normalized AND produced warnings the user should
   // review before the reload fires (reload is deferred until modal close).
@@ -424,6 +531,62 @@ export default function SettingsModule() {
     toast('Backup exported!', 'success');
   }, [sales, customers, inventory, repairs, unlocks, specialOrders, employees,
       settings, layaways, purchaseOrders, appointments, expenses, customerReturns, vendorReturns, toast]);
+
+  // ── R-FIREBASE-MULTIPC-SYNC: bulk push / pull handlers ─────
+  const handlePushAllToCloud = useCallback(() => {
+    const db = getFirestoreInstance();
+    if (!db) {
+      toast(t('settings.backup.cloudSync.notReady'), 'error');
+      return;
+    }
+    const localCount = countLocalRecords();
+    const isLarge = localCount > 8000;
+    requireConfirm({
+      title: t('settings.backup.cloudSync.pushTitle'),
+      body: isLarge
+        ? `${t('settings.backup.cloudSync.pushBody')}\n\n${t('settings.backup.cloudSync.pushBodyLarge', localCount)}`
+        : t('settings.backup.cloudSync.pushBody'),
+      confirmWord: '',
+      onConfirm: async () => {
+        setBulkSyncBusy('push');
+        try {
+          const result = await pushAllToCloud(db);
+          toast(t('settings.backup.cloudSync.pushDone', result.records), 'success');
+        } catch (err) {
+          toast(t('settings.backup.cloudSync.bulkFailed', String((err as Error)?.message || err)), 'error');
+        } finally {
+          setBulkSyncBusy(null);
+        }
+      },
+    });
+  }, [t, toast]);
+
+  const handlePullFromCloud = useCallback(() => {
+    const db = getFirestoreInstance();
+    if (!db) {
+      toast(t('settings.backup.cloudSync.notReady'), 'error');
+      return;
+    }
+    requireConfirm({
+      title: t('settings.backup.cloudSync.pullTitle'),
+      body: t('settings.backup.cloudSync.pullBody'),
+      confirmWord: '',
+      onConfirm: async () => {
+        setBulkSyncBusy('pull');
+        try {
+          const result = await pullAllFromCloud(db);
+          toast(t('settings.backup.cloudSync.pullDone', result.records), 'success');
+          // Reload so React state re-hydrates from the freshly replaced
+          // localStorage. The live snapshot subscriber would otherwise race
+          // and overwrite our local data with an in-flight cloud snapshot.
+          setTimeout(() => window.location.reload(), 1200);
+        } catch (err) {
+          toast(t('settings.backup.cloudSync.bulkFailed', String((err as Error)?.message || err)), 'error');
+          setBulkSyncBusy(null);
+        }
+      },
+    });
+  }, [t, toast]);
 
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
@@ -761,7 +924,7 @@ export default function SettingsModule() {
                   {(settings.phoneCarriers || []).map((carrier, idx) => {
                     const url = settings.carrierPortalUrls?.[carrier] || '';
                     return (
-                      <div key={`${carrier}-${idx}`} className="p-3 rounded-lg bg-white/5 space-y-2">
+                      <div key={idx} className="p-3 rounded-lg bg-white/5 space-y-2">
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
@@ -932,69 +1095,12 @@ export default function SettingsModule() {
                       toast(t('settings.commissions.portals.removed'), 'info');
                     };
                     return (
-                      <div key={`${portal.id}-${idx}`} className="p-3 rounded-lg bg-white/5 space-y-2" style={{ borderLeft: `3px solid ${portal.color}` }}>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={portal.emoji}
-                            onChange={(e) => updatePortal({ emoji: e.target.value })}
-                            className="input"
-                            style={{ width: '50px', textAlign: 'center', fontSize: '1.1rem' }}
-                            maxLength={2}
-                            title="Emoji"
-                          />
-                          <input
-                            type="text"
-                            value={portal.label}
-                            onChange={(e) => updatePortal({ label: e.target.value })}
-                            className="input flex-1"
-                            placeholder="Portal name"
-                            style={{ fontWeight: 700 }}
-                          />
-                          <input
-                            type="color"
-                            value={portal.color}
-                            onChange={(e) => updatePortal({ color: e.target.value })}
-                            style={{ width: '38px', height: '34px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.4rem', cursor: 'pointer', background: 'transparent' }}
-                            title="Color"
-                          />
-                          <button
-                            onClick={removePortal}
-                            className="btn btn-ghost btn-sm text-red-400"
-                            title={t('settings.commissions.portals.removeTitle')}
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-slate-500 block mb-0.5">
-                              {t('settings.commissions.portals.matchCarriers')}
-                            </label>
-                            <input
-                              type="text"
-                              value={portal.matchCarriers.join(', ')}
-                              onChange={(e) => updatePortal({ matchCarriers: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                              className="input"
-                              placeholder="t-mobile, verizon"
-                              style={{ fontSize: '0.78rem' }}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-slate-500 block mb-0.5">
-                              {t('settings.commissions.portals.matchUrls')}
-                            </label>
-                            <input
-                              type="text"
-                              value={portal.matchUrlSnippets.join(', ')}
-                              onChange={(e) => updatePortal({ matchUrlSnippets: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                              className="input"
-                              placeholder="paymasterwebpos, epay"
-                              style={{ fontSize: '0.78rem' }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                      <PortalRow
+                        key={portal.id}
+                        portal={portal}
+                        onUpdate={updatePortal}
+                        onRemove={removePortal}
+                      />
                     );
                   })}
                   <button
@@ -1435,8 +1541,171 @@ export default function SettingsModule() {
             <StoreManagement lang={lang} />
           )}
 
+          {/* R-COMPANION-DESKTOP-SETTINGS-WIRING-V1 — Companion transport
+              controls. Houses the bridge enable toggle, bridge URL, and
+              a status indicator. Companion Center's "Bridge transport
+              disabled — enable in Settings" hint links the user here. */}
+          {activeSection === 'companion' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
+                {t('settings.companion.title')}
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '-0.4rem', maxWidth: 560, lineHeight: 1.5 }}>
+                {t('settings.companion.desc')}
+              </p>
+
+              <div style={{
+                padding: '1rem 1.1rem',
+                background: 'rgba(99,102,241,0.06)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: '0.75rem',
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📱 {t('settings.companion.bridge.title')}
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!(settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setSettings({ companionBridgeEnabled: next } as Partial<typeof settings>);
+                      persistSettings({ companionBridgeEnabled: next } as Record<string, unknown>);
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
+                    {t('settings.companion.bridge.enabledLabel')}
+                  </span>
+                </label>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                  {t('settings.companion.bridge.enabledHint')}
+                </p>
+
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.35rem' }}>
+                    {t('settings.companion.bridge.urlLabel')}
+                  </label>
+                  <input
+                    type="text"
+                    value={(settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl ?? ''}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setSettings({ companionBridgeUrl: next } as Partial<typeof settings>);
+                      persistSettings({ companionBridgeUrl: next } as Record<string, unknown>);
+                    }}
+                    placeholder="https://cellhub-companion-production.up.railway.app"
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(0,0,0,0.25)',
+                      border: '1px solid rgba(148,163,184,0.3)',
+                      borderRadius: '0.5rem',
+                      color: '#e2e8f0',
+                      fontSize: '0.85rem',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                    {t('settings.companion.bridge.urlHint')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Companion-Center cross-link */}
+              <div style={{
+                padding: '0.75rem 1rem',
+                background: 'rgba(148,163,184,0.06)',
+                border: '1px solid rgba(148,163,184,0.20)',
+                borderRadius: '0.5rem',
+                fontSize: '0.8rem',
+                color: '#94a3b8',
+                lineHeight: 1.5,
+              }}>
+                {t('settings.companion.openCenterHint')}
+              </div>
+            </div>
+          )}
+
           {activeSection === 'employees' && (
-            <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
+            <>
+              {/* R-APPROVAL-PIN-V1 — global master switch for the approval-PIN feature.
+                  When off, no action ever prompts for a manager PIN; when on, each
+                  employee's permissions tab decides which actions gate. */}
+              <div style={{
+                marginBottom: '1rem',
+                padding: '0.875rem 1rem',
+                background: 'rgba(99,102,241,0.06)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                borderRadius: '0.625rem',
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  🔐 {t('settings.approvals.title')}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!(settings as any).approvalsEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setSettings({ approvalsEnabled: next } as any);
+                      persistSettings({ approvalsEnabled: next } as Record<string, unknown>);
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>
+                    {t('settings.approvals.enabled')}
+                  </span>
+                </label>
+                <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                  {t('settings.approvals.enabledHint')}
+                </p>
+
+                {/* R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch
+                    plumbing only. Setting toggles flip false → true on disk
+                    but no behavior changes until Phase 2 wires the hybrid
+                    prompter in approvalGuard. Local PIN remains authority. */}
+                <div style={{
+                  marginTop: '0.75rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid rgba(99,102,241,0.15)',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!(settings as any).companionRemoteApprovalEnabled}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setSettings({ companionRemoteApprovalEnabled: next } as any);
+                        persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>
+                      {t('settings.approvals.remote.label')}
+                    </span>
+                  </label>
+                  <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                    {t('settings.approvals.remote.desc')}
+                  </p>
+                  <p style={{
+                    fontSize: '0.7rem',
+                    color: '#fbbf24',
+                    marginTop: '0.35rem',
+                    lineHeight: 1.45,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.4rem',
+                  }}>
+                    <span aria-hidden="true">⚠️</span>
+                    <span>{t('settings.approvals.remote.warning')}</span>
+                  </p>
+                </div>
+              </div>
+              <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
+            </>
           )}
 
           {activeSection === 'backup' && (
@@ -1497,12 +1766,46 @@ export default function SettingsModule() {
                 </label>
 
                 {(settings as any).cloudSyncEnabled && (
-                  <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <button
                       onClick={() => setShowFirebaseSetup(true)}
                       className="btn btn-secondary btn-sm"
                     >
                       {t('settings.backup.cloudSync.changeConfig')}
+                    </button>
+                    {/* R-FIREBASE-MULTIPC-SYNC: bulk push button. */}
+                    <button
+                      onClick={handlePushAllToCloud}
+                      disabled={bulkSyncBusy !== null}
+                      className="btn btn-sm"
+                      style={{
+                        background: bulkSyncBusy === 'push' ? 'rgba(102,126,234,0.25)' : 'rgba(102,126,234,0.15)',
+                        border: '1px solid rgba(102,126,234,0.4)',
+                        color: '#a5b4fc',
+                        cursor: bulkSyncBusy ? 'not-allowed' : 'pointer',
+                        opacity: bulkSyncBusy && bulkSyncBusy !== 'push' ? 0.5 : 1,
+                      }}
+                    >
+                      {bulkSyncBusy === 'push'
+                        ? `⏳ ${t('settings.backup.cloudSync.pushing')}`
+                        : t('settings.backup.cloudSync.pushBtn')}
+                    </button>
+                    {/* R-FIREBASE-MULTIPC-SYNC: bulk pull button. Reloads on success. */}
+                    <button
+                      onClick={handlePullFromCloud}
+                      disabled={bulkSyncBusy !== null}
+                      className="btn btn-sm"
+                      style={{
+                        background: bulkSyncBusy === 'pull' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        color: '#fbbf24',
+                        cursor: bulkSyncBusy ? 'not-allowed' : 'pointer',
+                        opacity: bulkSyncBusy && bulkSyncBusy !== 'pull' ? 0.5 : 1,
+                      }}
+                    >
+                      {bulkSyncBusy === 'pull'
+                        ? `⏳ ${t('settings.backup.cloudSync.pulling')}`
+                        : t('settings.backup.cloudSync.pullBtn')}
                     </button>
                   </div>
                 )}
@@ -1634,6 +1937,9 @@ export default function SettingsModule() {
                   {t('settings.backup.includesDesc')}
                 </div>
               </div>
+
+              {/* ── R-IMPORTER-V1: CSV importer (Customers / Inventory) ── */}
+              <ImportTab />
 
               {/* ── Clear Local Cache ── */}
               {/* FIX: renamed from "Firebase Data Manager" — these buttons only clear localStorage, NOT Firestore */}

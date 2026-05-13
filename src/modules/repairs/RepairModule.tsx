@@ -10,7 +10,7 @@ import { useTranslation } from '@/i18n';
 import { STATUS_LABELS } from '@/i18n/statusMap';
 import { formatCurrency } from '@/utils/currency';
 import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { persist, persistSettings, remove } from '@/services/persist';
@@ -171,7 +171,13 @@ export default function RepairModule() {
         return normalizeRepairStatus(r.status) === normalizeRepairStatus(filterStatus);
       })
       .filter((r) =>
-        matchesSearch(search, r.customerName, r.customerPhone, r.device, r.issue, r.id),
+        // R-SEARCH-NORMALIZE-V1: phone-aware match; also include r.imei
+        // for parity with the GlobalSearchBar repair lookup at line ~235.
+        matchesSearchPhones(
+          search,
+          [r.customerPhone],
+          r.customerName, r.device, r.issue, r.id, (r as any).imei,
+        ),
       )
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   }, [repairs, filterStatus, search]);
@@ -868,7 +874,9 @@ export default function RepairModule() {
     const deposit = (repair as any).depositAmount || (repair as any).deposit || 0;
     if (balance === 0 && deposit === 0) {
       // Round R2: canonical snake_case on complete path (picked_up).
-      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
+      // R-COMPLETEDAT-FIELD: stamp completedAt once; preserve if already set.
+      const nowIso = new Date().toISOString();
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: nowIso, completedAt: repair.completedAt ?? nowIso };
       const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
       repairsRef.current = next;
       setRepairs(next);
@@ -927,7 +935,9 @@ export default function RepairModule() {
     // mutation here.
     if ((repair.balance || 0) === 0) {
       // Round R2: canonical snake_case on complete path (picked_up).
-      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: new Date().toISOString() };
+      // R-COMPLETEDAT-FIELD: stamp completedAt once; preserve if already set.
+      const nowIso = new Date().toISOString();
+      const updated: Repair = { ...repair, status: REPAIR_STATUS.PICKED_UP, updatedAt: nowIso, completedAt: repair.completedAt ?? nowIso };
       const next = repairsRef.current.map((r) => r.id === repair.id ? updated : r);
       repairsRef.current = next;
       setRepairs(next);
@@ -1034,7 +1044,16 @@ export default function RepairModule() {
               pendingCents={pendingByRepairId.get(repair.id) || 0}
               createdAt={repair.createdAt as string}
               priority={repair.priority}
-              onClick={() => { setEditRepair(repair); setShowModal(true); }}
+              onClick={() => {
+                setEditRepair(repair);
+                setShowModal(true);
+                // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a repair was opened
+                try {
+                  window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+                    detail: { type: 'repair.opened', payload: { repairId: repair.id } },
+                  }));
+                } catch { /* env without CustomEvent — silent */ }
+              }}
               onCollectBalance={repair.balance > 0 ? () => setDepositModalRepair(repair) : undefined}
               onWhatsApp={settings.waEnabled !== false && repair.customerPhone ? () => {
                 // Round R2: canonical status checks for WA template selection.

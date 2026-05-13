@@ -3,7 +3,7 @@
 // Generic autocomplete with fuzzy matching + keyboard nav
 // ============================================================
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 
 export interface AutocompleteOption {
   value: string;
@@ -63,24 +63,58 @@ export function useAutocomplete(
   const open = useCallback(() => { setIsOpen(true); setActiveIndex(0); }, []);
   const close = useCallback(() => { setIsOpen(false); setActiveIndex(0); }, []);
 
+  // R-SEARCH-ARROW-NAV-FIX: keep activeIndex in bounds when the result
+  // set shrinks/expands as the user keeps typing. Prevents Enter from
+  // selecting a stale highlight that's no longer in the rendered list,
+  // and prevents the visual highlight from disappearing off the bottom.
+  useEffect(() => {
+    if (results.length === 0) return;
+    if (activeIndex < 0 || activeIndex >= results.length) {
+      setActiveIndex(0);
+    }
+  }, [results.length, activeIndex]);
+
   const selectOption = useCallback((option: AutocompleteOption) => {
     onSelect(option);
     close();
   }, [onSelect, close]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!isOpen || results.length === 0) return;
+    // R-SEARCH-ARROW-NAV-FIX: removed the stale (!isOpen) guard. Whenever
+    // results exist we accept Arrow / Enter regardless of whether the
+    // consumer's open() effect has already flushed — first arrow press
+    // after typing lands cleanly instead of being silently swallowed by
+    // a not-yet-updated isOpen=false.
+    if (results.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveIndex((i) => (i + 1) % results.length);
+      if (!isOpen) setIsOpen(true);
+      // Clamp instead of modulo wrap. Predictable edge UX: ArrowDown at
+      // the last item stays at the last item. Math.max guards against a
+      // negative starting index (defensive).
+      setActiveIndex((i) => Math.min(Math.max(0, i) + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveIndex((i) => (i - 1 + results.length) % results.length);
-    } else if (e.key === 'Enter' && results[activeIndex]) {
-      e.preventDefault();
-      selectOption(results[activeIndex]);
+      if (!isOpen) setIsOpen(true);
+      setActiveIndex((i) => Math.max(0, Math.min(i, results.length - 1) - 1));
+    } else if (e.key === 'Enter') {
+      // Bounds-safe fallback to index 0 so Enter picks the top
+      // suggestion when the user types and presses Enter without
+      // arrow nav (the most common path).
+      const safeIdx = activeIndex >= 0 && activeIndex < results.length ? activeIndex : 0;
+      const opt = results[safeIdx];
+      if (opt) {
+        e.preventDefault();
+        selectOption(opt);
+      }
     } else if (e.key === 'Escape') {
+      close();
+    } else if (e.key === 'Tab') {
+      // R-REPAIRS-AUTOCOMPLETE-TAB-FLOW-FIX: close the dropdown but do NOT
+      // preventDefault — Tab must follow normal browser form navigation
+      // and advance focus to the next field. Pairs with tabIndex={-1} on
+      // dropdown buttons (AutocompleteInput.tsx) so Tab skips them.
       close();
     }
   }, [isOpen, results, activeIndex, selectOption, close]);

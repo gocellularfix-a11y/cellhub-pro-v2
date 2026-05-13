@@ -1,11 +1,11 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport } from './types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment } from '@/store/types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult } from './types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { diagnoseChurn } from './rootCause/churnCauses';
-import { computeCustomerProfit } from '@/utils/customerProfit';
+import { computeCustomerProfit, adjustSalesItemCosts, type ProfitAdjustmentSettings } from '@/utils/customerProfit';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -28,6 +28,11 @@ import type { RepairScore } from './scoring/RepairScorer';
 import { getDaysAgo } from './utils/dateHelpers';
 import { adaptSale, adaptCustomer, adaptInventory, adaptRepair } from './adapters/schemaAdapter';
 import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations';
+// R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: refresh() is now side-effect-free.
+// buildOutreachQueueItems() stays as a pure helper — chat handlers (only
+// who_to_contact_today right now) call it explicitly and persist via
+// enqueueOutreachActions in actions.ts.
+import type { ActionQueueItem } from './types';
 
 export interface EngineConfig {
   storeId?: string;
@@ -66,6 +71,23 @@ export interface EngineExtras {
   unlocks?: Unlock[];
   layaways?: Layaway[];
   customerReturns?: CustomerReturn[];
+  // R-DATA-EXPENSE-ACCESS-V1: raw expenses list. Read-only — engine never
+  // computes net profit. Helpers in cellhubDataAccess summarize/filter.
+  expenses?: Expense[];
+  // R-DATA-EMPLOYEE-ACCESS-V1: roster pass-through. Engine reads only —
+  // performance aggregation happens in cellhubDataAccess via sale.employeeName.
+  employees?: Employee[];
+  // R-DATA-APPOINTMENT-ACCESS-V1: read-only pass-through. Filtering/counting
+  // happens in cellhubDataAccess using estimatedDropOff (ISO date-time).
+  appointments?: Appointment[];
+  // R-CUSTOMER-PROFIT-PARITY-V1: optional store settings used by
+  // getCustomerHistory to translate phone_payment / repair / special_order
+  // line items into their real economic cost (commission rate for
+  // phone payments, 35% fallback for repair items missing parts cost).
+  // Without this, customer-history profit double-counts the carrier
+  // pass-through portion of phone payments — the bug Jorge spotted
+  // where Juan's 4 Verizon payments showed 91% margin.
+  settings?: ProfitAdjustmentSettings;
 }
 
 export class IntelligenceEngine {
@@ -82,6 +104,15 @@ export class IntelligenceEngine {
   private unlocks: Unlock[];
   private layaways: Layaway[];
   private customerReturns: CustomerReturn[];
+  // R-DATA-EXPENSE-ACCESS-V1
+  private expenses: Expense[];
+  // R-DATA-EMPLOYEE-ACCESS-V1
+  private employees: Employee[];
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  private appointments: Appointment[];
+  // R-CUSTOMER-PROFIT-PARITY-V1: store settings for per-customer
+  // profit adjustment (phone payment commission, repair fallback).
+  private profitSettings: ProfitAdjustmentSettings;
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -96,6 +127,45 @@ export class IntelligenceEngine {
 
   private cachedResult?: EngineResult;
   private lastRun?: Date;
+
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: per-getter caches
+  // for the three engine methods that bypass the analyze() result cache.
+  // Both the IntelligenceModule (refresh memos) and chat handlers
+  // (handleQuickProfit, handleProductOpportunities, etc.) call these
+  // independently — without caching, the same scan ran multiple times per
+  // refresh + per chat query. Invalidated alongside cachedResult in
+  // updateData() and invalidateCache().
+  private cachedReorderRecs?: ReorderRecommendation[];
+  private cachedMissedRev?: MissedRevenueReport;
+  private cachedProductOpps?: Map<number, ProductOpportunity[]>;
+
+  // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
+  // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
+  // every scored customer, and `getCustomerHistory` itself scans 6 collections
+  // per call (sales, repairs, SOs, unlocks, layaways, customerReturns) — total
+  // O(C × Σ collections). Same pattern in `runProductPush`. The cache means
+  // each customer's rollup is computed at most once per data snapshot,
+  // collapsing cost to O(C + Σ) for the first pass and O(C) for re-asks.
+  // Invalidated alongside cachedResult in updateData() and invalidateCache().
+  private cachedCustomerHistory?: Map<string, CustomerHistorySummary | null>;
+
+  // R-PERF-INTELLIGENCE-CACHE: raw input references kept so updateData()
+  // can ref-equality-skip when nothing changed across React re-renders.
+  // Adapted versions live in this.sales/customers/inventory/repairs above.
+  private _rawSales: Sale[] = [];
+  private _rawCustomers: Customer[] = [];
+  private _rawInventory: InventoryItem[] = [];
+  private _rawRepairs: Repair[] = [];
+  private _rawSpecialOrders: SpecialOrder[] = [];
+  private _rawUnlocks: Unlock[] = [];
+  private _rawLayaways: Layaway[] = [];
+  private _rawCustomerReturns: CustomerReturn[] = [];
+  // R-DATA-EXPENSE-ACCESS-V1
+  private _rawExpenses: Expense[] = [];
+  // R-DATA-EMPLOYEE-ACCESS-V1
+  private _rawEmployees: Employee[] = [];
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  private _rawAppointments: Appointment[] = [];
 
   constructor(
     sales: Sale[],
@@ -122,6 +192,28 @@ export class IntelligenceEngine {
     this.unlocks = extras.unlocks ?? [];
     this.layaways = extras.layaways ?? [];
     this.customerReturns = extras.customerReturns ?? [];
+    this.expenses = extras.expenses ?? [];
+    this.employees = extras.employees ?? [];
+    this.appointments = extras.appointments ?? [];
+    // R-CUSTOMER-PROFIT-PARITY-V1: empty {} when omitted ⇒ adjustSalesItemCosts
+    // falls back to defaultRate=0 (no profit fabricated; just clears the
+    // 100% margin bug for items where the stamped commissionRate is missing).
+    this.profitSettings = extras.settings ?? {};
+
+    // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
+    // ref-equality skip. Stored AFTER extras defaults so the same defaults
+    // are reused if updateData omits one (extras?.specialOrders ?? this.x).
+    this._rawSales = sales;
+    this._rawCustomers = customers;
+    this._rawInventory = inventory;
+    this._rawRepairs = repairs;
+    this._rawSpecialOrders = this.specialOrders;
+    this._rawUnlocks = this.unlocks;
+    this._rawLayaways = this.layaways;
+    this._rawCustomerReturns = this.customerReturns;
+    this._rawExpenses = this.expenses;
+    this._rawEmployees = this.employees;
+    this._rawAppointments = this.appointments;
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -174,7 +266,31 @@ export class IntelligenceEngine {
     );
   }
 
+  // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — tiny passthrough so external
+  // callers (Companion intelligence ack receiver) can mark an alert
+  // acknowledged without reaching into the private alertEngine field. Pure
+  // delegation; cero scoring touches, cero engine state beyond what
+  // AlertEngine.acknowledge already mutates. Safe no-op when the engine
+  // hasn't fired this alertId yet (AlertEngine.acknowledge does a find()).
+  acknowledgeAlert(alertId: string, userId: string): void {
+    this.alertEngine.acknowledge(alertId, userId);
+  }
+
   analyze(window?: AnalysisWindow): EngineResult {
+    // R-PERF-INTELLIGENCE-CACHE: 60-second result cache so back-to-back
+    // analyze() calls (chat handlers each call engine.refresh() → analyze()
+    // → 9 chat queries per session) reuse the prior pass instead of redoing
+    // the full analyzers + scorers + alert engine work. Cache is invalidated
+    // by updateData() when input refs change; window-scoped queries skip
+    // the cache because the cached result is anchored to the default window.
+    if (
+      !window
+      && this.cachedResult
+      && this.lastRun
+      && (Date.now() - this.lastRun.getTime()) < 60_000
+    ) {
+      return this.cachedResult;
+    }
     const analysisWindow = window || {
       start: getDaysAgo(30),
       end: new Date(),
@@ -391,6 +507,320 @@ export class IntelligenceEngine {
     return this.analyze();
   }
 
+  // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: read-only getters so the chat
+  // data_query handler can route to cellhubDataAccess functions without
+  // accessing private fields. Returns the engine's adapted arrays
+  // (post-schemaAdapter normalization). Caller MUST treat as read-only.
+  getSales(): Sale[] { return this.sales; }
+  getInventory(): InventoryItem[] { return this.inventory; }
+  getCustomers(): Customer[] { return this.customers; }
+  getRepairs(): Repair[] { return this.repairs; }
+  getUnlocks(): Unlock[] { return this.unlocks; }
+  getLayaways(): Layaway[] { return this.layaways; }
+  getSpecialOrders(): SpecialOrder[] { return this.specialOrders; }
+  getReturns(): CustomerReturn[] { return this.customerReturns; }
+  // R-DATA-EXPENSE-ACCESS-V1
+  getExpenses(): Expense[] { return this.expenses; }
+  // R-DATA-EMPLOYEE-ACCESS-V1
+  getEmployees(): Employee[] { return this.employees; }
+  // R-DATA-APPOINTMENT-ACCESS-V1
+  getAppointments(): Appointment[] { return this.appointments; }
+
+  // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
+  // today_summary intent. Filters sales by createdAt >= midnight + status
+  // not voided/refunded. Returns revenue, transaction count, average ticket
+  // (round-half-to-even via Math.round), and top-seller-by-revenue. Pure
+  // compute; safe to call on every chat handler invocation (cheap iteration
+  // over already-adapted sales array).
+  getTodayMetrics(): {
+    revenueCents: number;
+    transactions: number;
+    avgTicketCents: number;
+    topSeller: { name: string; revenueCents: number } | null;
+  } {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
+
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as { createdAt?: unknown }).createdAt;
+      if (!ca) return 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        return new Date(d).getTime();
+      } catch { return 0; }
+    };
+
+    const todaySales = this.sales.filter((s) => {
+      const t = tsOf(s);
+      if (!t || t < todayMs) return false;
+      const status = String((s as { status?: string }).status || '').toLowerCase();
+      return status !== 'voided' && status !== 'refunded';
+    });
+
+    const transactions = todaySales.length;
+    const revenueCents = todaySales.reduce((sum, s) => sum + ((s as { total?: number }).total || 0), 0);
+    const avgTicketCents = transactions > 0 ? Math.round(revenueCents / transactions) : 0;
+
+    // Top seller by aggregated line revenue (price × qty).
+    const itemRev = new Map<string, number>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        const name = String((item as { name?: string }).name || '').trim();
+        if (!name) continue;
+        const qty = (item as { qty?: number; quantity?: number }).qty
+          ?? (item as { quantity?: number }).quantity
+          ?? 1;
+        const lineRev = ((item as { price?: number }).price || 0) * qty;
+        itemRev.set(name, (itemRev.get(name) || 0) + lineRev);
+      }
+    }
+    let topSeller: { name: string; revenueCents: number } | null = null;
+    for (const [name, rev] of itemRev) {
+      if (rev > 0 && (!topSeller || rev > topSeller.revenueCents)) {
+        topSeller = { name, revenueCents: rev };
+      }
+    }
+
+    return { revenueCents, transactions, avgTicketCents, topSeller };
+  }
+
+  // R-INTEL-MULTI-PHONE-CUSTOMERS: exact count of customers carrying more
+  // than one phone number. Uses the canonical phones[] array (Customer
+  // model field set by multi-line phone support); legacy customers with
+  // only a single string phone field count as 1. Pure compute — no cache,
+  // no engine.refresh() needed.
+  countMultiPhoneCustomers(): number {
+    let count = 0;
+    for (const c of this.customers) {
+      const phones = (c as { phones?: unknown }).phones;
+      if (Array.isArray(phones) && phones.filter((p) => typeof p === 'string' && p.trim().length > 0).length > 1) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // R-PERF-INTELLIGENCE-CACHE: hot-swap input data without rebuilding the
+  // engine instance. Module-side caller (IntelligenceModule.tsx) holds a
+  // useRef-stable engine and calls updateData() per render — when refs
+  // are unchanged this is a no-op (cheap), when changed it re-adapts the
+  // data, rebuilds the analyzers/scorers (which hold internal data refs),
+  // and invalidates the analyze() cache. Mirrors constructor data-setup
+  // logic; intentionally does not touch this.config (config-level changes
+  // still trigger a full engine rebuild on the module side).
+  updateData(
+    sales: Sale[],
+    customers: Customer[],
+    inventory: InventoryItem[],
+    repairs: Repair[],
+    extras: EngineExtras = {},
+  ): void {
+    const newSpecialOrders = extras.specialOrders ?? this._rawSpecialOrders;
+    const newUnlocks = extras.unlocks ?? this._rawUnlocks;
+    const newLayaways = extras.layaways ?? this._rawLayaways;
+    const newCustomerReturns = extras.customerReturns ?? this._rawCustomerReturns;
+    const newExpenses = extras.expenses ?? this._rawExpenses;
+    const newEmployees = extras.employees ?? this._rawEmployees;
+    const newAppointments = extras.appointments ?? this._rawAppointments;
+    // R-CUSTOMER-PROFIT-PARITY-V1: keep settings live across re-renders.
+    // Caller passes the latest settings each updateData() so commission
+    // rate edits in Settings reflect immediately in customer history.
+    if (extras.settings) this.profitSettings = extras.settings;
+
+    if (
+      sales === this._rawSales
+      && customers === this._rawCustomers
+      && inventory === this._rawInventory
+      && repairs === this._rawRepairs
+      && newSpecialOrders === this._rawSpecialOrders
+      && newUnlocks === this._rawUnlocks
+      && newLayaways === this._rawLayaways
+      && newCustomerReturns === this._rawCustomerReturns
+      && newExpenses === this._rawExpenses
+      && newEmployees === this._rawEmployees
+      && newAppointments === this._rawAppointments
+    ) {
+      return; // ref-equality: no work
+    }
+
+    this._rawSales = sales;
+    this._rawCustomers = customers;
+    this._rawInventory = inventory;
+    this._rawRepairs = repairs;
+    this._rawSpecialOrders = newSpecialOrders;
+    this._rawUnlocks = newUnlocks;
+    this._rawLayaways = newLayaways;
+    this._rawCustomerReturns = newCustomerReturns;
+    this._rawExpenses = newExpenses;
+    this._rawEmployees = newEmployees;
+    this._rawAppointments = newAppointments;
+
+    this.inventory = adaptInventory(inventory as unknown as unknown[]);
+    this.sales = adaptSale(sales as unknown as unknown[], this.inventory);
+    this.customers = adaptCustomer(customers as unknown as unknown[]);
+    this.repairs = adaptRepair(repairs as unknown as unknown[]);
+    this.specialOrders = newSpecialOrders;
+    this.unlocks = newUnlocks;
+    this.layaways = newLayaways;
+    this.customerReturns = newCustomerReturns;
+    this.expenses = newExpenses;
+    this.employees = newEmployees;
+    this.appointments = newAppointments;
+
+    // Analyzers / scorers hold internal references to the data arrays they
+    // were constructed with. Rebuild them so they see the fresh adapted
+    // arrays. Constructor signatures + arg order kept identical to the
+    // original constructor block above.
+    this.salesAnalyzer = new SalesAnalyzer(this.sales, this.customers, this.config.storeId, this.config.lang);
+    this.inventoryAnalyzer = new InventoryAnalyzer(this.inventory, this.sales, undefined, this.config.lang);
+    this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
+    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
+    this.customerScorer = new CustomerScorer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    this.inventoryScorer = new InventoryScorer(this.inventory, this.sales, this.config.storeId, this.config.lang);
+    this.repairScorer = new RepairScorer(this.repairs, this.config.storeId, this.config.lang);
+    // alertEngine does not hold data refs (only thresholds + lang) — keep.
+
+    // Invalidate analyze() cache so next call recomputes against fresh data.
+    // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: also clear the
+    // per-getter caches added this round.
+    // R-INTEL-CUSTOMER-INDEX-V1: also clear per-customer history cache.
+    this.cachedResult = undefined;
+    this.lastRun = undefined;
+    this.cachedReorderRecs = undefined;
+    this.cachedMissedRev = undefined;
+    this.cachedProductOpps = undefined;
+    this.cachedCustomerHistory = undefined;
+  }
+
+  // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
+  // the Refresh button. Previously, the module signaled "refresh" by adding
+  // refreshKey to engineConfigSig, which forced a brand-new IntelligenceEngine
+  // instance (5 analyzers + 3 scorers + adapter passes — wasted work since
+  // the data refs were unchanged). The correct semantic is "expire the
+  // 60-second analyze() cache and let the next memo recomputation run analyze()
+  // from scratch", which this method does in two assignments.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: now also clears
+  // per-getter caches.
+  // R-INTEL-CUSTOMER-INDEX-V1: now also clears per-customer history cache.
+  invalidateCache(): void {
+    this.cachedResult = undefined;
+    this.lastRun = undefined;
+    this.cachedReorderRecs = undefined;
+    this.cachedMissedRev = undefined;
+    this.cachedProductOpps = undefined;
+    this.cachedCustomerHistory = undefined;
+  }
+
+  // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
+  // mirrors the score/eligibility/decision-tree of handleWhoToContactToday
+  // but emits ActionQueueItem instead of chat strings. Pure compute — no
+  // localStorage access here (actions.ts handles persistence).
+  // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: now public — chat handler calls
+  // it directly so only the who_to_contact_today intent triggers queue
+  // persistence (engine.refresh() is side-effect-free).
+  buildOutreachQueueItems(): ActionQueueItem[] {
+    const scores = this.cachedResult?.customerScores ?? [];
+    if (scores.length === 0) return [];
+
+    type Cand = {
+      customerId: string;
+      name: string;
+      phone: string;
+      grossRevenue: number;
+      visitCount: number;
+      daysSinceLastVisit: number;
+      repairCount: number;
+      rank: number;
+    };
+
+    // R-INTENT-CONTACT-TODAY-CONSENT-GUARD-QUEUE: parity with handler — exclude
+    // opted-out customers from the persisted queue. Undefined = allowed.
+    const consentById = new Map(this.getCustomers().map((c) => [c.id, c.communicationConsent]));
+
+    const now = Date.now();
+    const cands: Cand[] = [];
+    for (const cs of scores) {
+      const h = this.getCustomerHistory(cs.customerId);
+      if (!h) continue;
+      const phone = h.customer.phone || '';
+      if (!phone) continue;
+      if (consentById.get(cs.customerId) === false) continue;
+      if (h.visitCount < 1) continue;
+      if (!h.lastVisit) continue;
+      const days = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
+      const rank = (h.grossRevenue / 100) + days * 2 + h.visitCount * 10;
+      cands.push({
+        customerId: cs.customerId,
+        name: h.customer.name,
+        phone,
+        grossRevenue: h.grossRevenue,
+        visitCount: h.visitCount,
+        daysSinceLastVisit: days,
+        repairCount: h.linkedEntities?.repairCount || 0,
+        rank,
+      });
+    }
+    if (cands.length === 0) return [];
+
+    const inactivePool = cands.filter((c) => c.daysSinceLastVisit >= 14);
+    const pool = inactivePool.length >= 3 ? inactivePool : cands;
+
+    const sortedSpend = cands.map((c) => c.grossRevenue).sort((a, b) => a - b);
+    const q3Index = Math.max(0, Math.floor(sortedSpend.length * 0.75));
+    const highSpenderThreshold = sortedSpend[q3Index] || 0;
+
+    const top = pool.slice().sort((a, b) => b.rank - a.rank).slice(0, 3);
+
+    const items: ActionQueueItem[] = [];
+    for (const c of top) {
+      const inactive = c.daysSinceLastVisit >= 14;
+      const recent = !inactive;
+      const highSpender = c.grossRevenue >= highSpenderThreshold && c.grossRevenue > 0;
+      const firstName = c.name.split(' ')[0] || c.name;
+
+      let reason: string;
+      if (recent) {
+        reason = `${c.name} bought ${c.daysSinceLastVisit} day(s) ago — fresh in mind`;
+      } else if (highSpender) {
+        reason = `${c.name} has spent $${(c.grossRevenue / 100).toFixed(2)} but hasn't visited in ${c.daysSinceLastVisit} days`;
+      } else {
+        reason = `${c.name} has ${c.visitCount} visits but hasn't been in for ${c.daysSinceLastVisit} days`;
+      }
+
+      let message: string;
+      if (c.repairCount > 0) {
+        message = `Hi ${firstName}, following up on your repair — how's everything working out?`;
+      } else if (recent) {
+        message = `Hi ${firstName}, thanks for stopping by! Interested in any accessories or add-ons?`;
+      } else if (highSpender) {
+        message = `Hi ${firstName}, we miss you — here's 10% off your next visit, or stop by for a free check-up.`;
+      } else {
+        message = `Hi ${firstName}, do you need a refill or any phone supplies? We've got you covered.`;
+      }
+
+      // Priority: rank baseline + boosts per spec (high-value, inactive 14+).
+      let priority = Math.round(c.rank);
+      if (highSpender) priority += 1000;
+      if (c.daysSinceLastVisit >= 14) priority += 500;
+
+      items.push({
+        id: `wac-${c.customerId}-${now}`,
+        type: 'whatsapp',
+        customerId: c.customerId,
+        phone: c.phone,
+        message,
+        priority,
+        reason,
+        createdAt: now,
+      });
+    }
+    return items;
+  }
+
   // R-INTEL-CROSS-F3: surface repair ↔ inventory gaps as insights.
   // Emits up to 3 opportunity insights for repair types where related
   // accessories are low-stocked → cross-sell opportunity.
@@ -440,8 +870,13 @@ export class IntelligenceEngine {
   // R-INTEL-2-REORDER: full reorder recommendations with suggested qty,
   // priority tier, and lost-revenue risk. Supersedes the binary
   // getReorderAlerts() insight for action-oriented consumers.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized — module
+  // memo + chat handlers no longer pay the inventory+sales scan twice.
   getReorderRecommendations(): ReorderRecommendation[] {
-    return this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
+    if (this.cachedReorderRecs) return this.cachedReorderRecs;
+    const result = this.inventoryAnalyzer.getReorderRecommendations(this.config.leadTimeDays ?? 3);
+    this.cachedReorderRecs = result;
+    return result;
   }
 
   // R-INTEL-2-CONTACT: overdue customers sorted by urgency.
@@ -452,17 +887,46 @@ export class IntelligenceEngine {
 
   // R-INTEL-2-MISSED: aggregate missed-revenue signals from sales and
   // inventory analyzers into a single report for the chat handler + future UI.
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized — three
+  // analyzer scans (sales×2 + inventory×1) collapse to a single cached read
+  // until updateData/invalidateCache fires.
   getMissedRevenue(): MissedRevenueReport {
+    if (this.cachedMissedRev) return this.cachedMissedRev;
     const { slowDayLossCents, slowestDayName } = this.salesAnalyzer.getMissedRevenueByDay();
     const { slowHourLossCents } = this.salesAnalyzer.getMissedRevenueByHour();
     const { deadStockLockedCents, opportunityCostCents } = this.inventoryAnalyzer.getDeadStockOpportunityCost();
-    return { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
+    const result: MissedRevenueReport = { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
+    this.cachedMissedRev = result;
+    return result;
   }
 
   // R-INTEL-2-PRODUCT: margin + velocity + return-rate opportunity classification.
   // Passes customerReturns so return rate can be approximated at sale level.
+  // R-DAILY-BRIEF-ENGINE-V1: aggregate existing signals into one structured
+  // payload. Pure compose — no recomputation, no queue writes, no string output.
+  // Slices match the operator-console "what to do now" priority: top-3 outreach,
+  // top-1 reorder, top-1 opportunity. All ingredient methods already cache.
+  getDailyBrief(): DailyBriefResult {
+    return {
+      today: this.getTodayMetrics(),
+      outreach: this.buildOutreachQueueItems().slice(0, 3),
+      reorder: this.getReorderRecommendations().slice(0, 1),
+      opportunities: this.getProductOpportunities(1),
+      missed: this.getMissedRevenue(),
+    };
+  }
+
+  // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: memoized by topN.
+  // Callers ask for varying slice sizes (1 from getDailyBrief, 3 from the
+  // module top card, 10 default from chat handlers) — keep a small per-N
+  // cache so each N is computed once until invalidated.
   getProductOpportunities(topN: number = 10): ProductOpportunity[] {
-    return this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
+    if (!this.cachedProductOpps) this.cachedProductOpps = new Map();
+    const cached = this.cachedProductOpps.get(topN);
+    if (cached) return cached;
+    const result = this.inventoryAnalyzer.getProductOpportunities(topN, this.customerReturns);
+    this.cachedProductOpps.set(topN, result);
+    return result;
   }
 
   // R-INTEL-PHASE2-RC: revenue decline root cause — compares last 7 days
@@ -498,8 +962,20 @@ export class IntelligenceEngine {
   // Returns null if the customer isn't found. Callers should handle the
   // null case (e.g. disambiguate via fuzzy search before calling).
   getCustomerHistory(customerId: string): CustomerHistorySummary | null {
+    // R-INTEL-CUSTOMER-INDEX-V1: cache check. Loop callers (buildOutreach,
+    // runProductPush) re-ask for the same customers across iterations — and
+    // even within a single chat query, multiple handlers may need the same
+    // rollup. Cache hit is O(1) Map lookup; miss falls through to the full
+    // computation below.
+    if (!this.cachedCustomerHistory) this.cachedCustomerHistory = new Map();
+    if (this.cachedCustomerHistory.has(customerId)) {
+      return this.cachedCustomerHistory.get(customerId) ?? null;
+    }
     const customer = this.customers.find(c => c.id === customerId);
-    if (!customer) return null;
+    if (!customer) {
+      this.cachedCustomerHistory.set(customerId, null);
+      return null;
+    }
 
     const customerSales = this.sales.filter(s => s.customerId === customerId);
 
@@ -510,7 +986,15 @@ export class IntelligenceEngine {
       return r.originalSaleId ? saleIds.has(r.originalSaleId) : false;
     });
 
-    const stats = computeCustomerProfit(customerSales, returnsForCustomer);
+    // R-CUSTOMER-PROFIT-PARITY-V1: align customer-history profit math
+    // with TaxReportsModule. Without this, phone_payment items with
+    // cost=0 inflate "profit" to ~100% of revenue (Juan Martinez: 4
+    // Verizon payments × $60 reported as $240 profit / 91% margin).
+    // adjustSalesItemCosts rewrites cost in-memory using the carrier
+    // commission rate (and 35% fallback for repair items missing parts
+    // cost), matching the canonical Tax module math.
+    const adjustedSales = adjustSalesItemCosts(customerSales, this.profitSettings);
+    const stats = computeCustomerProfit(adjustedSales, returnsForCustomer);
 
     // First / last visit — min/max over non-voided sale timestamps.
     const times = customerSales
@@ -565,7 +1049,7 @@ export class IntelligenceEngine {
       customerUnlocks.reduce((s, u) => s + (u.balance || 0), 0) +
       customerLayaways.reduce((s, l) => s + (l.balance || 0), 0);
 
-    return {
+    const summary: CustomerHistorySummary = {
       customer: {
         id: customer.id,
         name: customer.name,
@@ -599,5 +1083,9 @@ export class IntelligenceEngine {
         activeBalance,
       },
     };
+    // R-INTEL-CUSTOMER-INDEX-V1: stash the result so subsequent same-id
+    // calls within this data snapshot return O(1).
+    this.cachedCustomerHistory!.set(customerId, summary);
+    return summary;
   }
 }

@@ -23,18 +23,18 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui';
-import CustomerPicker from '@/components/shared/CustomerPicker';
 import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { formatCurrency } from '@/utils/currency';
 import { normalizeCarrier, normalizePhone, formatPhone } from '@/utils/normalize';
+import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
-import type { CartItem, StoreSettings, Customer, Sale } from '@/store/types';
+import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
 
 // Shared sanitization for phoneNumber — used in onChange, validation,
@@ -100,10 +100,62 @@ export default function PhonePaymentModal({
   const [actPlanPrice, setActPlanPrice] = useState('');  // first month plan charge to customer
   const [actAmount, setActAmount] = useState('');         // activation/SIM/setup fee
   const [actNotes, setActNotes] = useState('');
-  const [actSpiff, setActSpiff] = useState('0'); // pre-populated from settings.carrierSpiffs[carrier] when carrier selected
+  // R-SIM-INTAKE: spiff is now opt-in via the useSpiff toggle (default OFF).
+  // The auto-populate effect below was removed — carriers change spiff rates
+  // frequently, so the cashier enters the value manually each transaction.
+  const [actSpiff, setActSpiff] = useState('0');
+  const [useSpiff, setUseSpiff] = useState(false);
+  // R-SIM-INTAKE: SIM Card picker state — selected SIM gets stamped on a
+  // dedicated cart item with category='sim' and inventoryId so the existing
+  // POSModule decrement loop handles qty automatically at checkout.
+  const [selectedSim, setSelectedSim] = useState<InventoryItem | null>(null);
+  const [simSearch, setSimSearch] = useState('');
+  // R-SIM-ACTIVATION: carrier filter buttons above the search input. 'All'
+  // shows every SIM; otherwise narrow by carrier (matches `(i as any).carrier`
+  // OR `i.brand`, matching the SimManagerModal storage convention).
+  const [simCarrierFilter, setSimCarrierFilter] = useState<string>('All');
+  // R-SIM-ACTIVATION: editable SIM name in the selected pill. Initialized
+  // from `selectedSim.name` on pick; flushed to the cart-line item name on
+  // Add to Cart so the cashier can rename ad-hoc per transaction (e.g. note
+  // a custom plan in the receipt) without mutating the inventory record.
+  const [simNameOverride, setSimNameOverride] = useState('');
+  const [editingSimName, setEditingSimName] = useState(false);
+
+  // ── R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 + OUTCOME-AWARE-V1 emitter.
+  // The Operator bubble lives outside this module. We dispatch a
+  // CustomEvent on `window` so it can wake without coupling. Payload
+  // is IDs / phone digits / numeric values only — never names, notes,
+  // or anything beyond what the bubble can recompute from app state.
+  //
+  // setTimeout(0) defers the dispatch past the current React commit
+  // cycle so that any preceding setState() (customers / cart / sales)
+  // has flushed through the reducer AND the bubble's inputsRef.current
+  // sync effect before the bridge listener runs. Without this defer,
+  // outcome events that lookup just-saved entities (e.g. customer_created)
+  // race the listener and find stale state.
+  const emitOperatorActivity = useCallback((
+    type: 'phone.payment.customer_selected'
+        | 'phone.payment.known_line_selected'
+        | 'phone.payment.number_entered'
+        | 'phone.payment.customer_created'
+        | 'phone.payment.customer_updated'
+        | 'phone.payment.payment_recorded'
+        | 'phone.payment.number_linked_to_customer',
+    payload: { customerId?: string; phone?: string; lineCount?: number; amountCents?: number },
+  ) => {
+    setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: { type, payload },
+        }));
+      } catch { /* environments without CustomEvent support — silent */ }
+    }, 0);
+  }, []);
 
   // ── Customer search ───────────────────────────────────────
+  const [custSearch, setCustSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showCustDropdown, setShowCustDropdown] = useState(false);
 
   // ── Form fields ───────────────────────────────────────────
   const [carrier, setCarrier] = useState('');
@@ -133,6 +185,11 @@ export default function PhonePaymentModal({
   // from other modules (POS sale, loyalty, scanner edits) during the modal session.
   const customersRef = useRef(customers);
   const cartRef = useRef(cart);
+  // R-PHONE-AUTOFILL: ref-mirror of sales for the typed-phone lookup. Same
+  // pattern as customersRef/cartRef so the debounced callback always sees
+  // fresh sales (the prop array gets a new identity on every Firestore push).
+  const salesRef = useRef(sales);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { cartRef.current = cart; }, [cart]);
 
@@ -146,16 +203,13 @@ export default function PhonePaymentModal({
     if (defaultPortal) setPortal(defaultPortal);
   }, [carrier, PORTALS, settings.carrierPortalUrls]);
 
-  // Auto-populate spiff default from settings.carrierSpiffs when activation carrier changes
-  useEffect(() => {
-    if (!actCarrier || !settings.trackActivationSpiffs) {
-      setActSpiff('0');
-      return;
-    }
-    const normalized = normalizeCarrier(actCarrier);
-    const def = settings.carrierSpiffs?.[actCarrier] ?? settings.carrierSpiffs?.[normalized] ?? 0;
-    setActSpiff(String(def));
-  }, [actCarrier, settings.trackActivationSpiffs, settings.carrierSpiffs]);
+  // R-SIM-INTAKE: auto-populate of spiff was removed. Spiff is now opt-in via
+  // the useSpiff toggle (default OFF) and entered manually by the cashier.
+  // Reason: carriers change spiff rates often enough that an outdated default
+  // pulled from settings.carrierSpiffs caused incorrect spiff stamping. Manual
+  // entry keeps each transaction honest. The carrierSpiffs setting is no
+  // longer read here; legacy persistence to localStorage.activation_spiffs
+  // (Tax Reports source) still happens in handleAddActivation when useSpiff=true.
 
   // ── Multi-line rows ───────────────────────────────────────
   const [lines, setLines] = useState<PhonePaymentLine[]>([
@@ -180,7 +234,12 @@ export default function PhonePaymentModal({
   // which auto-opens this modal. We detect the pending ID here and
   // autofill everything from the customer record.
   const { state: appState, dispatch: appDispatch } = useApp();
-  const { pendingPhonePaymentCustomerId } = appState;
+  const { pendingPhonePaymentCustomerId, inventory } = appState;
+  // R-SIM-INTAKE: anti-stale-closure ref for inventory — back-to-back
+  // activations (same modal session) should see post-decrement qty so the
+  // SIM picker doesn't show items that were already sold this session.
+  const inventoryRef = useRef(inventory);
+  useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => {
     if (!open || !pendingPhonePaymentCustomerId) return;
     const match = customers.find((c) => c.id === pendingPhonePaymentCustomerId);
@@ -190,6 +249,9 @@ export default function PhonePaymentModal({
     }
     // Autofill from customer record
     setSelectedCustomer(match);
+    // R-PHONE-FAMILY-MULTICUST: searchbar stays clean so the cashier can
+    // immediately search the next customer (Family Plan multi-customer flow).
+    setCustSearch('');
     setFirstName(match.firstName || (match.name || '').split(' ')[0] || '');
     setLastName(match.lastName || (match.name || '').split(' ').slice(1).join(' ') || '');
     // Primary phone — v2 Boundary 3: sanitize on hydration (legacy customers
@@ -212,6 +274,13 @@ export default function PhonePaymentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pendingPhonePaymentCustomerId]);
 
+  // ── Customer search results ───────────────────────────────
+  const custResults = useMemo(() => {
+    if (!custSearch.trim()) return [];
+    return customers
+      .filter((c) => matchesSearch(custSearch, c.name, c.phone, c.customerNumber))
+      .slice(0, 6);
+  }, [custSearch, customers]);
 
   // ── Known phone lines for selected customer ───────────────
   // Derived from past phone_payment sales linked to this customer.
@@ -264,23 +333,208 @@ export default function PhonePaymentModal({
   // key: normalized phone, value: amount string
   const [selectedKnownLines, setSelectedKnownLines] = useState<Record<string, string>>({});
 
+  // R-PHONE-PAYMENTS-MULTILINE-RUNNER: per-line paid status for the runner.
+  // key: normalized phone, value: true once the cashier has confirmed the
+  // portal payment via "Mark Paid & Next". Drives the runner UI's progress
+  // counter and current/next derivation. Cleared on reset() and on customer
+  // change (applyCustomerSelection) — same lifecycle as selectedKnownLines.
+  const [paidKnownLines, setPaidKnownLines] = useState<Record<string, boolean>>({});
+
   // ── Phone selector (when customer has multiple phones[]) ──
   const [phoneSelectorCustomer, setPhoneSelectorCustomer] = useState<Customer | null>(null);
 
   // Core customer-selection logic (used after phone is chosen or if only one)
   const applyCustomerSelection = (c: Customer, chosenPhone: string) => {
     setSelectedCustomer(c);
+    // R-PHONE-FAMILY-MULTICUST: clear searchbar post-selection (the green ✓
+    // badge below is the visual confirmation). Lets the user immediately
+    // search for a different/next customer without manually deleting.
+    setCustSearch('');
+    setShowCustDropdown(false);
     const parts = c.name.trim().split(' ');
     setFirstName(c.firstName || parts[0] || '');
     setLastName(c.lastName || parts.slice(1).join(' ') || '');
     // v2 Boundary 3: sanitize on customer selection.
-    setPhoneNumber(sanitizePhone(chosenPhone || c.phone || ''));
+    const cleanPhone = sanitizePhone(chosenPhone || c.phone || '');
+    setPhoneNumber(cleanPhone);
     const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
     if (primaryCarrier) setCarrier(primaryCarrier);
     const mp = (c as any).monthlyPayment;
     if (mp) setAmount(String(mp));
     setSelectedKnownLines({});
+    setPaidKnownLines({});
+    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the Operator bubble.
+    const phonesArr = (c as { phones?: string[] }).phones;
+    const lineCount = Array.isArray(phonesArr) && phonesArr.length > 0
+      ? phonesArr.length
+      : (c.phone ? 1 : 0);
+    emitOperatorActivity('phone.payment.customer_selected', {
+      customerId: c.id,
+      phone: cleanPhone,
+      lineCount,
+    });
   };
+
+  // ── R-PHONE-AUTOFILL: typed-phone auto-fill ──────────────────────────
+  // V1 parity. When the cashier types a 10-digit phone in the Bill Payment
+  // tab's single-line input, look up the number in: (1) CustomerDB, then
+  // (2) sales history. Auto-fill firstName / lastName / carrier / amount.
+  // Manual edits are preserved via a snapshot pattern: a field is only
+  // overwritten if it is currently empty OR still equals the value set by
+  // the previous lookup. This lets the cashier change the carrier and have
+  // it stick, even if a later 10-digit retype would otherwise re-fill.
+  const [autoFilledSnap, setAutoFilledSnap] = useState<{
+    carrier: string; amount: string; firstName: string; lastName: string;
+  } | null>(null);
+
+  // Mirror current form state into a ref so lookupByPhone can stay a stable
+  // useCallback (empty deps). Without this, putting carrier/amount/etc. in
+  // the deps would recreate the callback every render → useEffect re-fires
+  // → infinite debounce loop.
+  const formStateRef = useRef({ carrier, amount, firstName, lastName, autoFilledSnap });
+  useEffect(() => {
+    formStateRef.current = { carrier, amount, firstName, lastName, autoFilledSnap };
+  }, [carrier, amount, firstName, lastName, autoFilledSnap]);
+
+  const lookupByPhone = useCallback((rawPhone: string) => {
+    const norm = normalizePhone(rawPhone);
+    if (!norm || norm.length !== 10) return;
+
+    // Timestamp extraction reused from the knownLines memo (line ~242).
+    // Handles Firestore Timestamp { toDate() } + Date + ISO string.
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as any).createdAt;
+      if (!ca) return 0;
+      try {
+        return new Date(typeof ca?.toDate === 'function' ? ca.toDate() : ca).getTime();
+      } catch { return 0; }
+    };
+
+    // Source 1: CustomerDB by normalized phone.
+    // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: also scan c.phones[] so
+    // multi-line customers resolve when the cashier types ANY of their
+    // saved numbers (was: primary phone only).
+    const customer = customersRef.current.find((c) => {
+      if (normalizePhone(c.phone || '') === norm) return true;
+      const phones = (c as { phones?: string[] }).phones;
+      if (Array.isArray(phones) && phones.some((p) => normalizePhone(p) === norm)) return true;
+      return false;
+    });
+
+    let freshFirst = '', freshLast = '', freshCarrier = '', freshAmount = '';
+
+    if (customer) {
+      freshFirst = customer.firstName || (customer.name || '').split(' ')[0] || '';
+      freshLast  = customer.lastName  || (customer.name || '').split(' ').slice(1).join(' ') || '';
+
+      // Find this customer's most recent phone_payment for this exact number.
+      const customerSales = salesRef.current
+        .filter((s) =>
+          s.customerId === customer.id ||
+          normalizePhone(s.customerPhone || '') === norm,
+        )
+        .sort((a, b) => tsOf(b) - tsOf(a));
+      for (const s of customerSales) {
+        const item = (s.items || []).find((i) =>
+          i.category === 'phone_payment'
+          && normalizePhone(i.phoneNumber || '') === norm,
+        );
+        if (item) {
+          if (item.carrier) freshCarrier = item.carrier;
+          if (item.price)   freshAmount  = (item.price / 100).toFixed(2);
+          break;
+        }
+      }
+      // Fallbacks to the customer profile when no sale was found.
+      if (!freshCarrier) {
+        const c = customer as any;
+        freshCarrier = (c.carriers?.[0] || c.carrier || '').trim();
+      }
+      if (!freshAmount) {
+        const mp = (customer as any).monthlyPayment;
+        if (mp) freshAmount = String(mp);
+      }
+
+      // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: load full customer
+      // context so the Known Lines panel surfaces automatically — same
+      // behavior as the Customers money-icon flow. Preselect the typed
+      // matching phone in the panel (only when no prior selection exists,
+      // to preserve the cashier's manual checks). setSelectedCustomer
+      // with the same reference is short-circuited by React, so repeated
+      // typed-digit fires within the debounce window are idempotent.
+      setSelectedCustomer(customer);
+      setSelectedKnownLines((prev) =>
+        Object.keys(prev).length === 0 ? { [norm]: freshAmount || '' } : prev,
+      );
+    } else {
+      // Source 2: sales history (no customer record) — find latest
+      // phone_payment for this number across all sales.
+      type Cand = { item: any; ts: number; sale: Sale };
+      const candidates: Cand[] = [];
+      for (const s of salesRef.current) {
+        for (const i of s.items || []) {
+          if (i.category === 'phone_payment'
+              && normalizePhone(i.phoneNumber || '') === norm) {
+            candidates.push({ item: i, ts: tsOf(s), sale: s });
+          }
+        }
+      }
+      candidates.sort((a, b) => b.ts - a.ts);
+      if (candidates.length > 0) {
+        const { item, sale } = candidates[0];
+        if (item.carrier) freshCarrier = item.carrier;
+        if (item.price)   freshAmount  = (item.price / 100).toFixed(2);
+        if (sale.customerName) {
+          const parts = sale.customerName.split(/\s+/);
+          freshFirst = parts[0] || '';
+          freshLast  = parts.slice(1).join(' ');
+        }
+      }
+    }
+
+    // Nothing found → no-op so we don't pollute the form.
+    if (!freshCarrier && !freshAmount && !freshFirst && !freshLast) return;
+
+    // Snapshot-based keep-or-replace. Preserves cashier edits AND lets the
+    // next 10-digit retype re-fill from a different number's history.
+    const snap = formStateRef.current.autoFilledSnap;
+    const kr = (cur: string, prev: string | undefined, fresh: string) =>
+      fresh && (cur === '' || (prev !== undefined && cur === prev)) ? fresh : cur;
+    const cur = formStateRef.current;
+    const nextCarrier   = kr(cur.carrier,   snap?.carrier,   freshCarrier);
+    const nextAmount    = kr(cur.amount,    snap?.amount,    freshAmount);
+    const nextFirstName = kr(cur.firstName, snap?.firstName, freshFirst);
+    const nextLastName  = kr(cur.lastName,  snap?.lastName,  freshLast);
+    if (nextCarrier   !== cur.carrier)   setCarrier(nextCarrier);
+    if (nextAmount    !== cur.amount)    setAmount(nextAmount);
+    if (nextFirstName !== cur.firstName) setFirstName(nextFirstName);
+    if (nextLastName  !== cur.lastName)  setLastName(nextLastName);
+    setAutoFilledSnap({
+      carrier: freshCarrier, amount: freshAmount,
+      firstName: freshFirst, lastName: freshLast,
+    });
+  }, []);
+
+  // Debounced trigger: 500ms after the cashier types the 10th digit.
+  // When the field is cleared, also clear the snapshot so a future retype
+  // can re-fill from scratch (D3 in the phase-1 report).
+  useEffect(() => {
+    if (phoneNumber.length === 0) {
+      setAutoFilledSnap(null);
+      return;
+    }
+    if (phoneNumber.length !== 10) return;
+    const t = setTimeout(() => {
+      lookupByPhone(phoneNumber);
+      // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the bubble after the
+      // debounce settles. Helper resolves customer + history from app
+      // state without us reading lookupByPhone's setState side-effects.
+      emitOperatorActivity('phone.payment.number_entered', {
+        phone: phoneNumber,
+      });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [phoneNumber, lookupByPhone, emitOperatorActivity]);
 
   // R-PHONE-FAMILY-MULTICUST: add a customer's line to the multi-line rows
   // without replacing the previously selected customer. Fills the first
@@ -316,6 +570,8 @@ export default function PhonePaymentModal({
     });
 
     autoCopyPhone(cleanPhone);
+    setCustSearch('');
+    setShowCustDropdown(false);
   };
 
   // ── Select a customer ─────────────────────────────────────
@@ -326,6 +582,7 @@ export default function PhonePaymentModal({
     const uniquePhones = Array.from(new Set(validPhones));
     if (uniquePhones.length > 1) {
       setPhoneSelectorCustomer(c);
+      setShowCustDropdown(false);
       return;
     }
     // R-PHONE-FAMILY-MULTICUST: in multi-line mode, append a new line for
@@ -339,21 +596,73 @@ export default function PhonePaymentModal({
     applyCustomerSelection(c, chosenPhone);
   };
 
+  // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: lookup the most recent
+  // phone_payment price for this exact normalized phone number from the
+  // selected customer's sales history. Mirrors the auto-fill logic in
+  // lookupByPhone (L375-391). Returns formatted dollar string ("19.99")
+  // or empty when no historical sale exists.
+  const lookupHistoricalAmount = (norm: string): string => {
+    if (!selectedCustomer) return '';
+    const tsOf = (sale: Sale): number => {
+      const ca = (sale as { createdAt?: unknown }).createdAt;
+      if (!ca) return 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        return new Date(d).getTime();
+      } catch { return 0; }
+    };
+    const sorted = sales
+      .filter((s) => s.customerId === selectedCustomer.id)
+      .slice()
+      .sort((a, b) => tsOf(b) - tsOf(a));
+    for (const s of sorted) {
+      const item = (s.items || []).find((i) =>
+        i.category === 'phone_payment'
+        && normalizePhone(i.phoneNumber || '') === norm,
+      );
+      if (item?.price) return (item.price / 100).toFixed(2);
+    }
+    return '';
+  };
+
   // ── Toggle a known line on/off ────────────────────────────
   const toggleKnownLine = (norm: string) => {
+    let didAdd = false;
+    let amtStr = '';
     setSelectedKnownLines((prev) => {
       const next = { ...prev };
       if (next[norm] !== undefined) {
         delete next[norm];
       } else {
-        next[norm] = '';
+        // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: prefer historical
+        // amount for this exact phone number (most-recent phone_payment
+        // for this customer), else fall back to the main amount input.
+        // Empty string means truly no configured default — never auto-
+        // fill 0 when a real amount exists in history or main input.
+        amtStr = lookupHistoricalAmount(norm) || amount || '';
+        next[norm] = amtStr;
+        didAdd = true;
         // Auto-copy to clipboard when checking a line
         autoCopyPhone(norm);
       }
       return next;
     });
-    // Auto-switch to multi-line mode if more than one line selected
-    setIsMultiLine(true);
+    // R-MULTILINE-PICKER-FIX: removed unconditional setIsMultiLine(true) here.
+    // It dismounted the known-lines panel on every checkbox click, hiding the
+    // selected phone numbers and forcing the cashier into the empty manual
+    // multi-line UI. Per-line amount inputs in the panel (below) now let
+    // multi-select work in place — no mode switch required.
+    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: only emit on add path.
+    if (didAdd) {
+      const cents = Math.round((parseFloat(amtStr) || 0) * 100);
+      emitOperatorActivity('phone.payment.known_line_selected', {
+        customerId: selectedCustomer?.id,
+        phone: norm,
+        amountCents: cents > 0 ? cents : undefined,
+      });
+    }
   };
 
   const updateKnownLineAmount = (norm: string, val: string) => {
@@ -385,13 +694,14 @@ export default function PhonePaymentModal({
 
   // ── Reset ─────────────────────────────────────────────────
   const reset = () => {
-    setSelectedCustomer(null);
+    setCustSearch(''); setSelectedCustomer(null);
     setCarrier(''); setIsMultiLine(false);
     setPhoneNumber(''); setCopiedPhone(null); setFirstName(''); setLastName('');
     setPortal(''); setAmount('');
     // CC fee removed — Cart.tsx handles it
     setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
     setSelectedKnownLines({});
+    setPaidKnownLines({});
     setNewLinePhone('');
     setNewLineAmount('');
   };
@@ -552,20 +862,26 @@ export default function PhonePaymentModal({
         const normalizedCarrier = normalizeCarrier(lineCarrierRaw);
         const phone = normalizePhone(line.number);
         const lineNote = line.customerName || customerNote;
+        const priceCents = Math.round(parseFloat(line.amount) * 100);
+        const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+          ?? settings.defaultCommissionRate
+          ?? 0.07);
         items.push({
           id: generateId(),
           name: `${normalizedCarrier} - ${formatPhone(phone)}`,
           category: 'phone_payment',
-          price: Math.round(parseFloat(line.amount) * 100),
+          price: priceCents,
+          // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time so consumers
+          // (Dashboard/Reports/Tax) read profit directly via (price - cost) × qty
+          // instead of re-deriving via commission lookup. Math mirrors Reports.
+          cost: Math.round(priceCents * (1 - commRate)),
           qty: 1, taxable: false, cbeEligible: false,
           carrier: normalizedCarrier, phoneNumber: phone,
           // R-PHONE-FAMILY-MULTILINE-TOTALS: persist per-line rate so historical
           // reports (sum of item.price × item.commissionRate) match the preview.
           // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (was `?? 0` —
           // silent zero corrupted reports when carrier missing from settings).
-          commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-            ?? settings.defaultCommissionRate
-            ?? 0.07),
+          commissionRate: commRate,
           notes: lineNote,
         });
       });
@@ -584,11 +900,17 @@ export default function PhonePaymentModal({
       }
       const digits = sanitizePhone(phoneNumber);
       if (parseFloat(amount) <= 0) return [];
+      const priceCents = Math.round(parseFloat(amount) * 100);
+      const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+        ?? settings.defaultCommissionRate
+        ?? 0.07);
       items.push({
         id: generateId(),
         name: `${normalizedCarrier} - ${formatPhone(digits)}`,
         category: 'phone_payment',
-        price: Math.round(parseFloat(amount) * 100),
+        price: priceCents,
+        // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time (parity w/ multi-line path).
+        cost: Math.round(priceCents * (1 - commRate)),
         qty: 1, taxable: false, cbeEligible: false,
         carrier: normalizedCarrier,
         // Re-sanitize at the persist boundary (defense in depth) — never
@@ -599,9 +921,7 @@ export default function PhonePaymentModal({
         // handlePortalForLine/activation — reports need this to attribute
         // commission on historical single-line sales.
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-          ?? settings.defaultCommissionRate
-          ?? 0.07),
+        commissionRate: commRate,
         notes: customerNote,
       });
     }
@@ -674,12 +994,25 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(updated.id, updated as unknown as Record<string, unknown>);
       setSelectedCustomer(updated);
+      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save (consistent
+      // with select-customer flow — ✓ badge is the confirmation).
+      setCustSearch('');
       // Sync form fields with updated customer
       // v2 Boundary 3: sanitize (defense in depth — even though Boundary 2
       // already blocked bad phones pre-persist, preserves the invariant).
       if (data.phone) setPhoneNumber(sanitizePhone(data.phone));
       if (data.firstName !== undefined) setFirstName(data.firstName || '');
       if (data.lastName !== undefined) setLastName(data.lastName || '');
+      // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+      const updPhones = (updated as { phones?: string[] }).phones;
+      const updLineCount = Array.isArray(updPhones) && updPhones.length > 0
+        ? updPhones.length
+        : (updated.phone ? 1 : 0);
+      emitOperatorActivity('phone.payment.customer_updated', {
+        customerId: updated.id,
+        phone: sanitizePhone(data.phone || updated.phone || ''),
+        lineCount: updLineCount,
+      });
     } else {
       // Create new
       const newCust: Customer = {
@@ -702,10 +1035,18 @@ export default function PhonePaymentModal({
       setCustomers(nextCustomers);
       persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
       setSelectedCustomer(newCust);
+      // R-PHONE-FAMILY-MULTICUST: keep searchbar empty after save.
+      setCustSearch('');
       // v2 Boundary 3: sanitize (defense in depth).
       setPhoneNumber(sanitizePhone(newCust.phone));
       setFirstName(newCust.firstName || '');
       setLastName(newCust.lastName || '');
+      // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+      emitOperatorActivity('phone.payment.customer_created', {
+        customerId: newCust.id,
+        phone: sanitizePhone(newCust.phone),
+        lineCount: newCust.phone ? 1 : 0,
+      });
     }
 
     // ── Auto-select the line that just got linked + carry the amount over ──
@@ -745,9 +1086,23 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1: emit BEFORE reset() so the
+    // payload still references valid in-state values; helper defers via
+    // setTimeout(0) anyway.
+    {
+      const firstPhone = newItems.find((it) => (it as { phoneNumber?: string }).phoneNumber)?.phoneNumber || '';
+      const totalCents = newItems.reduce((s, it) => s + ((it.price || 0) * (it.qty || 1)), 0);
+      if (firstPhone) {
+        emitOperatorActivity('phone.payment.payment_recorded', {
+          customerId: selectedCustomer?.id,
+          phone: firstPhone,
+          amountCents: totalCents,
+        });
+      }
+    }
     reset();
     onClose();
-  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
+  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // ── Add to cart ───────────────────────────────────────────
   const handleAddToCart = useCallback(() => {
@@ -759,9 +1114,21 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+    {
+      const firstPhone = newItems.find((it) => (it as { phoneNumber?: string }).phoneNumber)?.phoneNumber || '';
+      const totalCents = newItems.reduce((s, it) => s + ((it.price || 0) * (it.qty || 1)), 0);
+      if (firstPhone) {
+        emitOperatorActivity('phone.payment.payment_recorded', {
+          customerId: selectedCustomer?.id,
+          phone: firstPhone,
+          amountCents: totalCents,
+        });
+      }
+    }
     reset();
     onClose();
-  }, [canAddToCart, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer]);
+  }, [canAddToCart, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // R-PHONE-FAMILY-PERLINE: per-line portal handler — multi-line mode.
   // Processes ONE line at a time: validates, builds its cart item with
@@ -791,11 +1158,17 @@ export default function PhonePaymentModal({
     // and fall back to the global note for manually typed lines.
     const customerNote = line.customerName || `${firstName} ${lastName}`.trim();
 
+    const priceCents = Math.round(amt * 100);
+    const commRate = (settings.carrierCommissions?.[normCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
     const newItem: CartItem = {
       id: generateId(),
       name: `${normCarrier} - ${formatPhone(phone)}`,
       category: 'phone_payment',
-      price: Math.round(amt * 100),
+      price: priceCents,
+      // R-PHONEPAYMENT-COST-STAMP: stamp cost at sale time (parity w/ buildCartItems paths).
+      cost: Math.round(priceCents * (1 - commRate)),
       qty: 1,
       taxable: false,
       cbeEligible: false,
@@ -803,9 +1176,7 @@ export default function PhonePaymentModal({
       phoneNumber: phone,
       notes: customerNote,
       // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-      commissionRate: (settings.carrierCommissions?.[normCarrier]
-        ?? settings.defaultCommissionRate
-        ?? 0.07),
+      commissionRate: commRate,
     };
 
     // Open this carrier's portal (if URL configured).
@@ -823,6 +1194,12 @@ export default function PhonePaymentModal({
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
+    // R-OPERATOR-ACTIVITY-OUTCOME-AWARE-V1
+    emitOperatorActivity('phone.payment.payment_recorded', {
+      customerId: selectedCustomer?.id,
+      phone,
+      amountCents: priceCents,
+    });
 
     // Remove the processed line; if it was the last, close the modal.
     setLines((prev) => {
@@ -834,7 +1211,105 @@ export default function PhonePaymentModal({
       }
       return remaining;
     });
-  }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer]);
+  }, [lines, firstName, lastName, settings, setCart, onClose, t, toast, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
+
+  // ── Multi-line runner: mark current paid & advance to next ──
+  // R-PHONE-PAYMENTS-MULTILINE-RUNNER: process selected known lines one at
+  // a time. Cashier opens portal externally, returns, clicks Mark Paid &
+  // Next → we add this line to cart (CartItem identical to handlePortalForLine
+  // output) and flip the line's paid flag. Re-derivation in JSX surfaces the
+  // next unpaid line as the new current. No portal automation.
+  const markPaidAndNext = useCallback(() => {
+    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: derive runner order from
+    // the knownLines memo (already normalized strings, sorted most-recent
+    // first inside the memo) rather than Object.keys(selectedKnownLines)
+    // — the latter's ordering depends on toggle/insertion sequence and
+    // can drift away from the panel rows the cashier actually sees.
+    const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+    const current = selectedNorms.find((n) => !paidKnownLines[n]);
+    if (!current) return;
+    // Safety: phone validation (defensive — known lines are normalized 10-digit).
+    if (!isValidPhone(current)) {
+      toast(t('phonePay.errInvalidPhoneShort'), 'error');
+      return;
+    }
+    // Safety: amount required.
+    const amtStr = selectedKnownLines[current] || '';
+    const amt = parseFloat(amtStr);
+    if (!amt || amt <= 0) {
+      toast(t('phonePay.errInvalidAmount'), 'error');
+      return;
+    }
+    // Carrier required (global state — known-lines flow uses the global pick).
+    if (!carrier) {
+      toast(t('phonePay.errPickCarrierLine'), 'error');
+      return;
+    }
+    // Duplicate guard (idempotent against rapid double-clicks).
+    if (paidKnownLines[current]) return;
+
+    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: cart-level duplicate
+    // protection. paidKnownLines can reset on customer/modal state
+    // changes while the item still lives in cartRef — cart is the
+    // final source of truth for "this line was already added".
+    const alreadyInCart = cartRef.current.some(
+      (item) => item.category === 'phone_payment' && item.phoneNumber === current,
+    );
+    if (alreadyInCart) {
+      setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
+      return;
+    }
+
+    const normCarrier = normalizeCarrier(carrier);
+    const phone = current;
+    const customerNote = `${firstName} ${lastName}`.trim();
+    const priceCents = Math.round(amt * 100);
+    const commRate = (settings.carrierCommissions?.[normCarrier]
+      ?? settings.defaultCommissionRate
+      ?? 0.07);
+    const newItem: CartItem = {
+      id: generateId(),
+      name: `${normCarrier} - ${formatPhone(phone)}`,
+      category: 'phone_payment',
+      price: priceCents,
+      // R-PHONEPAYMENT-COST-STAMP: parity with handlePortalForLine.
+      cost: Math.round(priceCents * (1 - commRate)),
+      qty: 1,
+      taxable: false,
+      cbeEligible: false,
+      carrier: normCarrier,
+      phoneNumber: phone,
+      notes: customerNote,
+      commissionRate: commRate,
+    };
+
+    const nextCart = [...cartRef.current, newItem];
+    cartRef.current = nextCart;
+    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
+    setCart(nextCart);
+
+    setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
+  }, [knownLines, selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
+
+  // ── Portal opener for a single known-line row ─────────────
+  // R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line 🌐 button in the Known
+  // Lines panel. Opens the carrier portal so the cashier can pay this
+  // specific number externally before clicking "Mark Paid & Next" in the
+  // runner. URL is read from settings.carrierPortalUrls[normCarrier] —
+  // same source used by handlePortalForLine and the activation flow.
+  // Spec called this getCarrierPortalUrl(carrier, phone); adapted to the
+  // existing carrierPortalUrls map (no helper of that name exists).
+  const handlePortalForKnownLine = (_phone: string) => {
+    void _phone;
+    if (!carrier) {
+      toast(t('phonePay.errPickCarrierLine'), 'error');
+      return;
+    }
+    const normCarrier = normalizeCarrier(carrier);
+    const url = settings.carrierPortalUrls?.[normCarrier];
+    if (!url) return;
+    window.open(url, '_blank');
+  };
 
   // ── Manual line helpers ───────────────────────────────────
   // R-PHONE-MULTILINE-AUTOFILL-v2: functional setState form — avoids any
@@ -876,10 +1351,59 @@ export default function PhonePaymentModal({
   // digit input is accepted as before (first 10 kept).
   const actPhoneValid = isValidPhone(actPhone);
 
+  // R-PHONE-ACTIVATION-SIM-ONLY-FIX: a picked SIM is itself a valid line
+  // item (price decremented from inventory), so it alone satisfies the
+  // "something to charge" requirement. Previously SIM-only flows were
+  // blocked because activationFee=0 AND planPrice=0 failed the OR check.
   const canAddActivation =
     !!actCarrier &&
     actPhoneValid &&
-    ((parseFloat(actAmount) || 0) > 0 || (parseFloat(actPlanPrice) || 0) > 0);
+    (
+      (parseFloat(actAmount) || 0) > 0 ||
+      (parseFloat(actPlanPrice) || 0) > 0 ||
+      !!selectedSim
+    );
+
+  // R-SIM-INTAKE: SIM Cards in stock (category 'sim', qty>0). Optional — the
+  // activation can complete without a SIM. The cart-side decrement at checkout
+  // (POSModule) uses the stamped inventoryId on the SIM cart line.
+  const availableSims = useMemo(
+    () => inventory.filter((i) => (i.category || '').toLowerCase() === 'sim' && (i.qty || 0) > 0),
+    [inventory],
+  );
+  // R-SIM-ACTIVATION: distinct carriers present in stock (used to render
+  // carrier filter buttons above the search input). Reads either the legacy
+  // `carrier` field or the SimManagerModal `brand` field.
+  const simCarriers = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of availableSims) {
+      const c = ((i as any).carrier || i.brand || '').trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort();
+  }, [availableSims]);
+  // R-SIM-ACTIVATION: SIMs after the carrier-button filter, before the
+  // text-search filter. simResults below narrows further by simSearch.
+  const carrierFilteredSims = useMemo(
+    () => simCarrierFilter === 'All'
+      ? availableSims
+      : availableSims.filter(
+          (i) => (((i as any).carrier || i.brand || '') as string).toLowerCase()
+                 === simCarrierFilter.toLowerCase(),
+        ),
+    [availableSims, simCarrierFilter],
+  );
+  const simResults = useMemo(() => {
+    const list = simSearch.trim()
+      ? carrierFilteredSims.filter((i) =>
+          // R-SIM-ACTIVATION: include `brand` in search — SimManagerModal
+          // stores carrier in InventoryItem.brand, so a search for "Verizon"
+          // would otherwise miss SIMs created from the new manager.
+          matchesSearch(simSearch, i.name, i.imei, i.sku, i.barcode, (i as any).carrier, i.brand),
+        )
+      : carrierFilteredSims;
+    return list.slice(0, 8);
+  }, [simSearch, carrierFilteredSims]);
 
   // Plan autocomplete — load previously-used plans from localStorage
   const knownPlans = useMemo<string[]>(() => {
@@ -908,11 +1432,16 @@ export default function PhonePaymentModal({
     // or the customer gets double-charged.
     const customerNote = `${firstName} ${lastName}`.trim();
     if (planPriceCents > 0) {
+      const commRate = (settings.carrierCommissions?.[normalizedCarrier]
+        ?? settings.defaultCommissionRate
+        ?? 0.07);
       newItems.push({
         id: generateId(),
         name: `📱 ${t('phonePay.itemPlanName')} ${normalizedCarrier}${planLabel}`,
         category: 'phone_payment',
         price: planPriceCents,
+        // R-PHONEPAYMENT-COST-STAMP: stamp cost on activation plan (treated as phone_payment by Reports).
+        cost: Math.round(planPriceCents * (1 - commRate)),
         qty: 1,
         taxable: false,
         cbeEligible: false,
@@ -920,14 +1449,16 @@ export default function PhonePaymentModal({
         phoneNumber: phoneNorm,
         notes: [customerNote, actNotes.trim()].filter(Boolean).join(' — '),
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
-        commissionRate: (settings.carrierCommissions?.[normalizedCarrier]
-          ?? settings.defaultCommissionRate
-          ?? 0.07),
+        commissionRate: commRate,
       });
     }
 
     // ── Item 2: Activation / SIM / setup fee — 100% profit for the owner ──
     // No commission, no utility tax, no mobility fee. Fixed price.
+    // R-PHONE-ACTIVATION-FEE-TAX-LOCK-V1: activation fee is a service/setup
+    // fee — MUST stay non-taxable per business rule. category='activation'
+    // (not 'phone_payment') ensures utility-tax + mobility-surcharge in
+    // calculateCartTotals are also skipped. Do not flip taxable:true.
     if (amountCents > 0) {
       newItems.push({
         id: generateId(),
@@ -943,14 +1474,106 @@ export default function PhonePaymentModal({
       });
     }
 
+    // ── Item 3 (R-SIM-INTAKE): SIM Card from inventory ──
+    // Separate cart line with category='sim' so reports can attribute SIM
+    // revenue/profit independently from activation fees. inventoryId triggers
+    // the existing POSModule.tsx decrement loop (no new checkout code needed).
+    // spiffAmount is stamped here (NOT on Plan or Activation Fee) per auditor
+    // decision — single source of truth for downstream commission/tax reports.
+    //
+    // R-PHONE-ACTIVATION-ESIM-MUTEX-V1: when Activation Fee (amountCents) > 0
+    // we treat this as an eSIM activation — physical SIM line is skipped even
+    // if `selectedSim` happens to be set. eSIM and physical SIM are mutually
+    // exclusive: a single phone gets ONE provisioning method, not both.
+    const isEsimActivation = amountCents > 0;
+    if (selectedSim && !isEsimActivation) {
+      const simPriceCents = selectedSim.price || 0;
+      newItems.push({
+        id: generateId(),
+        inventoryId: selectedSim.id,
+        // R-SIM-ACTIVATION: simNameOverride lets the cashier rename the SIM
+        // ad-hoc per transaction without mutating the inventory record.
+        name: `📶 ${t('phonePay.itemSimName')} — ${simNameOverride.trim() || selectedSim.name || normalizedCarrier}`,
+        category: 'sim',
+        price: simPriceCents,
+        qty: 1,
+        taxable: !!selectedSim.taxable,
+        cbeEligible: false,
+        carrier: normalizedCarrier,
+        phoneNumber: phoneNorm,
+        notes: [
+          customerNote,
+          selectedSim.imei ? `IMEI: ${selectedSim.imei}` : '',
+          actNotes.trim(),
+        ].filter(Boolean).join(' — '),
+        // Stamped tracking fields — read by reports / receipts.
+        simCardId: selectedSim.id,
+        simCardImei: selectedSim.imei || '',
+        simPrice: simPriceCents,
+        spiffAmount: useSpiff ? spiffCents : 0,
+      } as unknown as CartItem);
+    }
+
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
+
+    // R-PHONE-ACTIVATION-AUTOCREATE-CUSTOMER-V1: walk-in activations now
+    // capture the customer in the DB with carrier + phone + name. Mirrors
+    // CustomerForm's "Create new" branch (silent — no toast, no modal,
+    // cashier is mid-POS flow). Existing-customer flow unchanged: if the
+    // cashier already picked someone, the modal preserves that selection.
+    //
+    // R-PHONE-ACTIVATION-AUTOCREATE-DEDUPE-V1 (auditor caution patch):
+    // before creating, look up by normalized phone across primary `phone`
+    // AND `phones[]` array. Prevents duplicate walk-in records when the
+    // same number gets entered across sessions/cashiers. Keeps existing
+    // customer untouched (no overwrite of name/email/etc — the new carrier
+    // info still lands on the sale's cart items, which is the SoT).
+    let resolvedCustomer = selectedCustomer;
+    const nameTrim = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!resolvedCustomer && phoneNorm) {
+      const existing = customersRef.current.find((c) => {
+        const phonesToCheck = [c.phone, ...((c as { phones?: string[] }).phones || [])];
+        return phonesToCheck.some((p) => normalizePhone(p || '') === phoneNorm);
+      });
+      if (existing) resolvedCustomer = existing;
+    }
+    if (!resolvedCustomer && nameTrim && phoneNorm) {
+      const newCust: Customer = {
+        id: generateId(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name: nameTrim,
+        phone: phoneNorm,
+        phones: [phoneNorm],
+        carriers: [normalizedCarrier],
+        carrier: normalizedCarrier,
+        plan: actPlan.trim() || undefined,
+        email: '',
+        loyaltyPoints: 0,
+        storeCredit: 0,
+        customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-4)}`,
+        notes: `Auto-created from activation: ${normalizedCarrier}${planLabel}`,
+        communicationConsent: false,
+        createdAt: new Date().toISOString(),
+      } as Customer;
+      const nextCustomers = [...customersRef.current, newCust];
+      customersRef.current = nextCustomers;
+      setCustomers(nextCustomers);
+      persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
+      resolvedCustomer = newCust;
+    }
+
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
-    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
+    if (resolvedCustomer) propagateSelectedCustomer(resolvedCustomer);
     setCart(nextCart);
 
-    // Persist spiff (INTERNAL — does NOT touch cart, reported separately in Taxes)
-    if (spiffCents > 0 && settings.trackActivationSpiffs) {
+    // Persist spiff (INTERNAL — does NOT touch customer total, reported in Taxes).
+    // R-SIM-INTAKE: gated on the manual `useSpiff` toggle (default OFF) instead of
+    // settings.trackActivationSpiffs. The legacy `activation_spiffs` localStorage
+    // is preserved for Tax Reports backward-compat; the spiffAmount is also
+    // stamped on the SIM cart line (above) so future reports can read either.
+    if (useSpiff && spiffCents > 0) {
       try {
         const all = loadLocal<any[]>('activation_spiffs', []) || [];
         all.push({
@@ -981,15 +1604,34 @@ export default function PhonePaymentModal({
       } catch { /* noop */ }
     }
 
+    // R-PHONE-ACTIVATION-INTELLIGENCE-EVENT-V1: notify operator-activity
+    // pipeline that an activation was completed. Reuses the existing
+    // 'payment_recorded' event (an activation IS a captured-payment-with-
+    // extra-context). Carrier + service info is already stamped on cart
+    // items (categories phone_payment / activation / sim), so
+    // SalesAnalyzer / Reports can derive per-carrier activation counts
+    // from the sale record without a new event type.
+    emitOperatorActivity('phone.payment.payment_recorded', {
+      customerId: resolvedCustomer?.id,
+      phone: phoneNorm,
+      amountCents: planPriceCents + amountCents + (selectedSim?.price || 0),
+    });
+
     // Reset all activation fields
     setActCarrier('');
     setActPhone(''); setActPlan(''); setActPlanPrice(''); setActAmount(''); setActNotes(''); setActSpiff('0');
+    // R-SIM-INTAKE: reset SIM picker + spiff toggle for next transaction
+    setSelectedSim(null); setSimSearch(''); setUseSpiff(false);
+    // R-SIM-ACTIVATION: reset the new picker UX state too.
+    setSimCarrierFilter('All'); setSimNameOverride(''); setEditingSimName(false);
     // Also reset main panel fields to avoid data leak between transactions
     reset();
     onClose();
   }, [canAddActivation, actCarrier, actPhone, actPlan, actPlanPrice, actAmount, actNotes, actSpiff,
       actCommissionCents, settings, setCart, onClose, t, firstName, lastName,
-      selectedCustomer, propagateSelectedCustomer]);
+      selectedCustomer, propagateSelectedCustomer, selectedSim, useSpiff,
+      // R-SIM-ACTIVATION: the renamed SIM line picks up simNameOverride.
+      simNameOverride]);
 
   const handleOpenActivationPortal = () => {
     // Try both raw and normalized carrier name as keys
@@ -1051,19 +1693,63 @@ export default function PhonePaymentModal({
         {modalTab === 'activation' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', minHeight: '540px' }}>
 
-            {/* Customer search */}
-            <CustomerPicker
-              customers={customers}
-              selectedCustomer={selectedCustomer}
-              lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
-              allowClear={false}
-              onSelect={(c) => {
-                if (c) {
-                  handleSelectCustomer(c);
-                  if (c.phone && !actPhone) setActPhone(c.phone);
-                }
-              }}
-            />
+            {/* Customer search — same component as bill payment tab */}
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                padding: '0.5rem 0.875rem',
+                background: 'rgba(102,126,234,0.08)',
+                border: '1px solid rgba(102,126,234,0.25)',
+                borderRadius: '0.625rem',
+                fontSize: '0.78rem', color: '#a5b4fc',
+                marginBottom: '0.5rem',
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+              }}>
+                🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
+              </div>
+              <input
+                className="input"
+                placeholder={t('phonePay.searchCustomerPlaceholder')}
+                value={custSearch}
+                onChange={(e) => {
+                  setCustSearch(e.target.value);
+                  setShowCustDropdown(true);
+                  setSelectedCustomer(null);
+                }}
+                onFocus={() => setShowCustDropdown(true)}
+              />
+              {showCustDropdown && custResults.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden',
+                }}>
+                  {custResults.map((c) => (
+                    <button key={c.id} onClick={() => {
+                      handleSelectCustomer(c);
+                      // Autopopulate activation phone from customer primary phone
+                      if (c.phone) setActPhone(c.phone);
+                    }} style={{
+                      width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem',
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: '#e2e8f0', fontSize: '0.875rem',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(102,126,234,0.15)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <span style={{ fontWeight: 600 }}>{c.name}</span>
+                      <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{c.phone}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedCustomer && (
+                <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>
+                  ✓ {selectedCustomer.name}
+                </div>
+              )}
+            </div>
 
             {/* First / Last name */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -1140,41 +1826,55 @@ export default function PhonePaymentModal({
               </div>
             )}
 
-            {/* Spiff — visible whenever tracking is enabled in Settings.
-                Autopopulates from settings.carrierSpiffs[carrier] once carrier is picked. */}
-            {settings.trackActivationSpiffs && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
-                padding: '0.625rem 0.875rem',
-                background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.2)',
-                borderRadius: '0.625rem',
-              }}>
+            {/* R-SIM-INTAKE: Spiff toggle — opt-in per transaction (default OFF).
+                Replaces the prior auto-populate that read settings.carrierSpiffs.
+                When ON: cashier types the spiff amount; gets stamped onto the
+                SIM cart line as `spiffAmount` and persisted to legacy
+                `activation_spiffs` localStorage (Tax Reports source). */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.625rem 0.875rem',
+              background: useSpiff ? 'rgba(251,191,36,0.07)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${useSpiff ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '0.625rem',
+            }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={useSpiff}
+                  onChange={(e) => {
+                    setUseSpiff(e.target.checked);
+                    if (!e.target.checked) setActSpiff('0');
+                  }}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#fbbf24' }}
+                />
                 <span style={{ fontSize: '1.1rem' }}>🎯</span>
-                <div style={{ fontSize: '0.82rem', color: '#94a3b8', flex: 1 }}>
-                  <strong style={{ color: '#fbbf24' }}>Spiff</strong>
-                  <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: '#64748b' }}>
-                    {t('phonePay.spiffHint')}
-                  </span>
-                </div>
+                <strong style={{ color: useSpiff ? '#fbbf24' : '#94a3b8', fontSize: '0.85rem' }}>
+                  {t('phonePay.spiffToggleLabel')}
+                </strong>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  {t('phonePay.spiffToggleHint')}
+                </span>
+              </label>
+              {useSpiff && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>$</span>
                   <input
-                    type="number" min="0" step="1"
+                    type="number" min="0" step="0.01"
                     value={actSpiff}
                     onChange={(e) => setActSpiff(e.target.value)}
-                    disabled={!actCarrier}
-                    placeholder={actCarrier ? '0' : '—'}
+                    placeholder="0.00"
                     style={{
-                      width: '80px', padding: '0.25rem 0.5rem', textAlign: 'right',
+                      width: '90px', padding: '0.25rem 0.5rem', textAlign: 'right',
                       background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
                       borderRadius: '0.375rem',
-                      color: actCarrier ? '#fbbf24' : '#64748b',
+                      color: '#fbbf24',
                       fontWeight: 700, fontSize: '0.9rem',
                     }}
                   />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Phone + Plan grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -1235,8 +1935,12 @@ export default function PhonePaymentModal({
                 <input className="input" type="number" min="0" step="0.01"
                   value={actAmount} onChange={(e) => setActAmount(e.target.value)}
                   placeholder="0.00" />
+                {/* R-PHONE-ACTIVATION-ESIM-HINT-V1: eSIM hint under the
+                    activation fee. Subtle styling (muted color, not red),
+                    purely informational — does not auto-fill, does not
+                    enforce, does not change logic. */}
                 <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  SIM / setup
+                  {t('phonePay.activationFeeEsimHint')}
                 </p>
               </div>
             </div>
@@ -1251,6 +1955,191 @@ export default function PhonePaymentModal({
                 placeholder={t('phonePay.internalNotesPlaceholder')} />
             </div>
 
+            {/* R-SIM-INTAKE: SIM Card picker. Lists category='sim' items with
+                qty>0 from inventory. Optional — activation can complete without
+                a SIM. The selected SIM's price is added to the cart total and
+                its qty is decremented at checkout via inventoryId. */}
+            <div>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                {t('phonePay.simCardLabel')}
+              </label>
+              {selectedSim ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.5rem 0.75rem',
+                  background: 'rgba(34,211,238,0.08)',
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: '0.5rem',
+                }}>
+                  <span style={{ fontSize: '1rem' }}>📶</span>
+                  {/* R-SIM-ACTIVATION: pill flex container so the editable
+                      name input can claim flex:1 alongside ICCID + price. */}
+                  <span style={{ fontSize: '0.82rem', color: '#e2e8f0', flex: 1, display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flexWrap: 'wrap' }}>
+                    {editingSimName ? (
+                      <input
+                        value={simNameOverride}
+                        onChange={(e) => setSimNameOverride(e.target.value)}
+                        onBlur={() => setEditingSimName(false)}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: '1px solid rgba(34,211,238,0.5)',
+                          color: '#e2e8f0',
+                          fontSize: '0.82rem',
+                          outline: 'none',
+                          padding: '0.1rem 0.2rem',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <strong>{simNameOverride || selectedSim.name}</strong>
+                        <button
+                          type="button"
+                          onClick={() => setEditingSimName(true)}
+                          aria-label="edit SIM name"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            fontSize: '0.78rem',
+                            padding: '0 0.2rem',
+                          }}
+                        >
+                          ✏️
+                        </button>
+                      </>
+                    )}
+                    {/* R-SIM-ACTIVATION: ICCID label (was "IMEI" — semantically wrong for SIMs). */}
+                    {selectedSim.imei && <span style={{ color: '#94a3b8' }}>· ICCID {selectedSim.imei}</span>}
+                    <span style={{ color: '#22c55e', fontWeight: 700 }}>
+                      {formatCurrency(selectedSim.price || 0)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // R-SIM-ACTIVATION: reset all SIM-picker state on clear.
+                      setSelectedSim(null);
+                      setSimSearch('');
+                      setSimCarrierFilter('All');
+                      setSimNameOverride('');
+                      setEditingSimName(false);
+                    }}
+                    style={{
+                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#f87171', padding: '0.2rem 0.55rem', borderRadius: '0.375rem',
+                      cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+                    }}
+                    aria-label="clear selected SIM"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* R-SIM-ACTIVATION: carrier filter buttons (only render
+                      when at least one carrier is present in stock). 'All'
+                      pill always first; the rest is the sorted set of
+                      distinct carriers from `simCarriers` memo. */}
+                  {simCarriers.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSimCarrierFilter('All')}
+                        style={{
+                          padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700,
+                          borderRadius: '0.4rem', cursor: 'pointer',
+                          background: simCarrierFilter === 'All' ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${simCarrierFilter === 'All' ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                          color: simCarrierFilter === 'All' ? '#67e8f9' : '#94a3b8',
+                        }}
+                      >
+                        All
+                      </button>
+                      {simCarriers.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setSimCarrierFilter(c)}
+                          style={{
+                            padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700,
+                            borderRadius: '0.4rem', cursor: 'pointer',
+                            background: simCarrierFilter === c ? 'rgba(34,211,238,0.2)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${simCarrierFilter === c ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                            color: simCarrierFilter === c ? '#67e8f9' : '#cbd5e1',
+                          }}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    className="input"
+                    value={simSearch}
+                    onChange={(e) => setSimSearch(e.target.value)}
+                    placeholder={t('phonePay.simCardSearchPlaceholder')}
+                    disabled={availableSims.length === 0}
+                  />
+                  {availableSims.length === 0 ? (
+                    <p style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '0.25rem' }}>
+                      ⚠️ {t('phonePay.noSimsInStock')}
+                    </p>
+                  ) : simResults.length > 0 && (
+                    <div style={{
+                      marginTop: '0.25rem',
+                      background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '0.5rem', overflow: 'hidden',
+                      maxHeight: '180px', overflowY: 'auto',
+                    }}>
+                      {simResults.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            // R-SIM-ACTIVATION: seed simNameOverride from the
+                            // picked SIM so the editable pill input starts
+                            // with the inventory name as the placeholder text.
+                            setSelectedSim(s);
+                            setSimSearch('');
+                            setSimNameOverride(s.name || '');
+                            setEditingSimName(false);
+                          }}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left',
+                            padding: '0.45rem 0.75rem', cursor: 'pointer',
+                            background: 'transparent', border: 'none',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            color: '#e2e8f0', fontSize: '0.78rem',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.12)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 600 }}>{s.name}</span>
+                            <span style={{ color: '#22c55e', fontWeight: 700 }}>{formatCurrency(s.price || 0)}</span>
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                            {[
+                              // R-SIM-ACTIVATION: ICCID label (was "IMEI") +
+                              // brand fallback for SIMs created via
+                              // SimManagerModal (which stores carrier in `brand`).
+                              s.imei && `ICCID ${s.imei}`,
+                              (s as any).carrier || s.brand,
+                              `qty ${s.qty}`,
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
             {/* Add to cart */}
             <button
               onClick={handleAddActivation}
@@ -1262,11 +2151,13 @@ export default function PhonePaymentModal({
               {(() => {
                 const plan = parseFloat(actPlanPrice) || 0;
                 const fee  = parseFloat(actAmount) || 0;
+                // R-SIM-INTAKE: include selected SIM price in the preview total.
+                const sim  = (selectedSim?.price || 0) / 100;
                 // If plan > 0, add utility tax + mobility (same as bill payment)
                 const utilRate = settings.utilityUsersTax || 0.055;
                 const mobility = settings.mobileSurcharge || 0.41;
                 const planExtras = plan > 0 ? (plan * utilRate + mobility) : 0;
-                const total = plan + fee + planExtras;
+                const total = plan + fee + sim + planExtras;
                 return total > 0 ? ` — $${total.toFixed(2)}` : '';
               })()}
             </button>
@@ -1279,26 +2170,76 @@ export default function PhonePaymentModal({
         ══════════════════════════════════════════════════ */}
         {modalTab === 'payment' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div>
-          <CustomerPicker
-            customers={customers}
-            selectedCustomer={selectedCustomer}
-            lang={lang === 'es' ? 'es' : lang === 'pt' ? 'pt' : 'en'}
-            allowClear={false}
-            onSelect={(c) => { if (c) handleSelectCustomer(c); }}
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            padding: '0.5rem 0.875rem',
+            background: 'rgba(102,126,234,0.08)',
+            border: '1px solid rgba(102,126,234,0.25)',
+            borderRadius: '0.625rem',
+            fontSize: '0.78rem', color: '#a5b4fc',
+            marginBottom: '0.5rem',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+          }}>
+            🔍 <span>{t('phonePay.searchCustomerLabel')}</span>
+          </div>
+          <input
+            className="input"
+            placeholder={t('phonePay.searchCustomerPlaceholder')}
+            value={custSearch}
+            onChange={(e) => {
+              setCustSearch(e.target.value);
+              setShowCustDropdown(true);
+              setSelectedCustomer(null);
+              setSelectedKnownLines({});
+    setPaidKnownLines({});
+            }}
+            onFocus={() => setShowCustDropdown(true)}
           />
+          {showCustDropdown && custResults.length > 0 && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+              background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '0.5rem', marginTop: '0.25rem', overflow: 'hidden',
+            }}>
+              {custResults.map((c) => (
+                <button key={c.id} onClick={() => handleSelectCustomer(c)} style={{
+                  width: '100%', textAlign: 'left', padding: '0.625rem 0.875rem',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: '#e2e8f0', fontSize: '0.875rem',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(102,126,234,0.15)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                  <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{c.phone}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {selectedCustomer && (
-            <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{
+              fontSize: '0.75rem', marginTop: '0.25rem',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ color: '#22c55e' }}>✓ {selectedCustomer.name}</span>
               {hasKnownLines && (
                 <span style={{ color: '#a5b4fc' }}>
                   · {knownLines.length} {t('phonePay.knownLineCount', knownLines.length)}
                 </span>
               )}
+              {/* R-PHONE-FAMILY-SWITCHCUSTOMER: explicit "change customer" button.
+                  Clears everything so user can search a different customer without
+                  having to manually delete the filled input value. */}
               <button
                 type="button"
                 onClick={() => {
                   setSelectedCustomer(null);
+                  setCustSearch('');
                   setSelectedKnownLines({});
+    setPaidKnownLines({});
                   setFirstName('');
                   setLastName('');
                   setPhoneNumber('');
@@ -1308,6 +2249,7 @@ export default function PhonePaymentModal({
                   setNewLinePhone('');
                   setNewLineAmount('');
                   setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
+                  setShowCustDropdown(true);
                 }}
                 style={{
                   marginLeft: 'auto',
@@ -1430,6 +2372,48 @@ export default function PhonePaymentModal({
                         📋 {t('phonePay.ready')}
                       </span>
                     )}
+                    {/* R-MULTILINE-PICKER-FIX: per-line amount input. Visible
+                        only when this line is checked. Lets the cashier enter
+                        a different amount per phone in multi-select mode
+                        (validLines filters parseFloat(amt) > 0, so without
+                        this field 2+ selected lines never reach Portal / Add
+                        to Cart). */}
+                    {selectedKnownLines[norm] !== undefined && (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={lineAmt}
+                        onChange={(e) => updateKnownLineAmount(norm, e.target.value)}
+                        placeholder={t('pos.amountPlaceholder')}
+                        aria-label={t('pos.knownLineAmountAria')}
+                        className="input"
+                        style={{ width: '90px', flexShrink: 0, fontSize: '0.82rem' }}
+                      />
+                    )}
+                    {/* R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line portal
+                        opener. Disabled until cashier picks a carrier (URL is
+                        keyed by normalized carrier name). */}
+                    <button
+                      type="button"
+                      onClick={() => handlePortalForKnownLine(norm)}
+                      disabled={!carrier}
+                      title={t('phonePay.openPortal')}
+                      aria-label={t('phonePay.openPortal')}
+                      style={{
+                        marginLeft: '0.5rem',
+                        padding: '0.3rem 0.5rem',
+                        borderRadius: '0.4rem',
+                        border: '1px solid rgba(59,130,246,0.4)',
+                        background: carrier ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                        color: carrier ? '#93c5fd' : '#64748b',
+                        cursor: carrier ? 'pointer' : 'not-allowed',
+                        fontSize: '0.75rem',
+                        flexShrink: 0,
+                      }}
+                    >
+                      🌐
+                    </button>
                   </div>
                 );
               })}
@@ -1454,6 +2438,84 @@ export default function PhonePaymentModal({
                 </span>
               </div>
             )}
+
+            {/* R-PHONE-PAYMENTS-MULTILINE-RUNNER: per-line runner shown when 2+
+                lines are selected. Tracks paid status and advances cashier
+                through unpaid lines one at a time. Inline EN/ES strings —
+                spec did not list translations.ts. */}
+            {selectedKnownCount > 1 && (() => {
+              // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: same deterministic
+              // order as markPaidAndNext (knownLines memo sequence) so the UI
+              // current/next display matches what the handler will actually
+              // process on click.
+              const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+              const paidCount = selectedNorms.filter((n) => paidKnownLines[n]).length;
+              const unpaidNorms = selectedNorms.filter((n) => !paidKnownLines[n]);
+              const currentNorm = unpaidNorms[0];
+              const nextNorm = unpaidNorms[1];
+              const allDone = unpaidNorms.length === 0;
+              const currentAmt = currentNorm ? parseFloat(selectedKnownLines[currentNorm] || '0') : 0;
+              const canAdvance = !allDone && currentAmt > 0 && !!carrier;
+              const isEs = lang === 'es';
+              return (
+                <div style={{
+                  padding: '0.625rem 1rem',
+                  borderTop: '1px solid rgba(102,126,234,0.2)',
+                  background: 'rgba(102,126,234,0.06)',
+                  display: 'flex', flexDirection: 'column', gap: '0.4rem',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#a5b4fc', fontWeight: 700 }}>
+                      🏁 {isEs ? 'Procesar línea por línea' : 'Run lines one by one'}
+                      {' '}
+                      <span style={{ color: '#cbd5e1', fontWeight: 500 }}>
+                        — {isEs ? 'Pagadas' : 'Paid'} {paidCount} / {selectedNorms.length}
+                      </span>
+                    </span>
+                    {allDone && (
+                      <span style={{ color: '#22c55e', fontWeight: 700, fontSize: '0.75rem' }}>
+                        ✓ {isEs ? 'Todas pagadas' : 'All selected lines paid'}
+                      </span>
+                    )}
+                  </div>
+                  {!allDone && currentNorm && (
+                    <>
+                      <div style={{ fontSize: '0.78rem', color: '#cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>
+                          {isEs ? 'Actual:' : 'Current:'}{' '}
+                          <strong style={{ color: '#fbbf24', fontFamily: 'monospace' }}>{formatPhone(currentNorm)}</strong>
+                          {' '}— ${currentAmt.toFixed(2)}
+                        </span>
+                        {nextNorm && (
+                          <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                            {isEs ? 'Siguiente:' : 'Next:'}{' '}
+                            <span style={{ fontFamily: 'monospace' }}>{formatPhone(nextNorm)}</span>
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={markPaidAndNext}
+                        disabled={!canAdvance}
+                        style={{
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '0.5rem',
+                          border: '1px solid rgba(34,197,94,0.4)',
+                          background: canAdvance ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.04)',
+                          color: canAdvance ? '#86efac' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: canAdvance ? 'pointer' : 'not-allowed',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        ✓ {isEs ? 'Marcar pagada y siguiente' : 'Mark Paid & Next'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1563,7 +2625,13 @@ export default function PhonePaymentModal({
                         name={`line-number-${line.id}`}
                         autoComplete="off"
                         inputMode="numeric"
-                        maxLength={10}
+                        // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10} which
+                        // truncated formatted pastes like "(805) 403-8679" to
+                        // "(805) 403-" before the onChange handler could
+                        // sanitize. sanitizePhone() does the final 10-digit
+                        // cap. Allow up to 20 chars for typical formatted
+                        // phones: "+1 (805) 403-8679" = 18 chars.
+                        maxLength={20}
                         pattern="[0-9]*"
                         readOnly
                         onFocus={(e) => { e.currentTarget.readOnly = false; }}
@@ -1699,7 +2767,10 @@ export default function PhonePaymentModal({
                     placeholder="(555) 123-4567"
                     value={phoneNumber || ''}
                     inputMode="numeric"
-                    maxLength={10}
+                    // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10}; see
+                    // multi-line input comment for context. sanitizePhone()
+                    // performs the final 10-digit cap.
+                    maxLength={20}
                     pattern="[0-9]*"
                     onChange={(e) => {
                       setPhoneNumber(sanitizePhone(e.target.value));
@@ -1718,6 +2789,17 @@ export default function PhonePaymentModal({
                     </span>
                   )}
                 </div>
+                {/* R-PHONE-AUTOFILL: shown when the typed-phone lookup
+                    populated carrier / amount / name from CustomerDB or
+                    sales history. Fades silently when phone is cleared. */}
+                {autoFilledSnap && (
+                  <div style={{
+                    fontSize: '0.7rem', color: '#22c55e', marginTop: '0.3rem',
+                    textAlign: 'center', fontWeight: 600,
+                  }}>
+                    ✓ {t('phonePay.autoFilled')}
+                  </div>
+                )}
               </div>
             ) : null}
           </>
@@ -1741,7 +2823,10 @@ export default function PhonePaymentModal({
                 placeholder={t('phonePay.newNumberPlaceholder')}
                 value={newLinePhone}
                 inputMode="numeric"
-                maxLength={10}
+                // R-PHONE-INPUT-TRUNCATION-FIX: was maxLength={10}; see
+                // multi-line input comment for context. sanitizePhone()
+                // performs the final 10-digit cap.
+                maxLength={20}
                 pattern="[0-9]*"
                 autoComplete="off"
                 onChange={(e) => {

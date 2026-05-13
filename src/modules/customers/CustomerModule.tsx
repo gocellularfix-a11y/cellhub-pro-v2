@@ -11,8 +11,8 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { computeCustomerProfit } from '@/utils/customerProfit';
-import { matchesSearch } from '@/utils/fuzzyMatch';
+import { computeCustomerProfit, adjustSalesItemCosts } from '@/utils/customerProfit';
+import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
@@ -45,9 +45,45 @@ export default function CustomerModule() {
   const customersRef = useRef(customers);
   useEffect(() => { customersRef.current = customers; }, [customers]);
 
+  // R-OPERATOR-VIEW-HISTORY-DIRECT-V1: open the same history modal the
+  // row action button opens, in response to the Operator bubble's "View
+  // Customer History" quick action. Listener is scoped to this module's
+  // mount — operator bubble navigates to the Customers tab first, then
+  // dispatches with a small defer so this effect has attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ customerId?: string }>).detail;
+      const cid = detail?.customerId;
+      if (!cid) return;
+      const cust = customersRef.current.find((c) => c && c.id === cid);
+      if (cust) setViewHistory(cust);
+    };
+    window.addEventListener('cellhub:open-customer-history', handler);
+    return () => window.removeEventListener('cellhub:open-customer-history', handler);
+  }, []);
+
+  // R-OPERATOR-AMBIENT-AWARENESS-V1: open the create-mode CustomerForm
+  // with an optional phone prefill. Triggered by the Operator bubble's
+  // Create Customer quick action on an unknown_phone context.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ phone?: string }>).detail;
+      setEditCustomer(null);                 // create mode
+      setPrefillPhone(detail?.phone || '');  // optional prefill
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:open-new-customer-form', handler);
+    return () => window.removeEventListener('cellhub:open-new-customer-form', handler);
+  }, []);
+
   const [search, setSearch] = useState(customerSearchTerm || '');
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  // R-OPERATOR-AMBIENT-AWARENESS-V1: phone prefill for the create-mode
+  // form when triggered externally (e.g. Operator bubble Create Customer
+  // for an unknown_phone context). Only consulted when editCustomer is
+  // null. Cleared on modal close.
+  const [prefillPhone, setPrefillPhone] = useState<string>('');
   const [viewHistory, setViewHistory] = useState<Customer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteWarningMsg, setDeleteWarningMsg] = useState<string | null>(null);
@@ -90,21 +126,26 @@ export default function CustomerModule() {
             : new Date(c.createdAt as string).getTime();
           if ((Date.now() - last) <= DAYS_30) return false;
         }
-        // Base fuzzy match on common fields
-        if (matchesSearch(search, c.name, c.phone, c.email, c.customerNumber, (c as any).carrier, (c as any).plan, (c as any).address)) {
-          return true;
-        }
-        // Also search secondary phones[] if present
-        const phones = (c as any).phones;
-        if (search && Array.isArray(phones) && phones.length > 0) {
-          const sDigits = search.replace(/\D/g, '');
-          if (sDigits.length >= 3) {
-            for (const p of phones) {
-              if (p && String(p).replace(/\D/g, '').includes(sDigits)) return true;
-            }
-          }
-        }
-        return !search;
+        // R-SEARCH-NORMALIZE-V1: route the primary phone and any
+        // secondary phones[] through the shared phone-aware helper so
+        // queries like "(805) 555-1234" match storage like "8055551234"
+        // (and vice-versa), and so the secondary-phones fallback uses
+        // the same logic instead of the bespoke inline digit-strip.
+        const secondaryPhones = Array.isArray((c as any).phones)
+          ? ((c as any).phones as unknown[]).map((p) => String(p ?? ''))
+          : [];
+        const notes = String((c as any).notes ?? '');
+        return matchesSearchPhones(
+          search,
+          [c.phone, ...secondaryPhones],
+          c.name,
+          c.email,
+          c.customerNumber,
+          (c as any).carrier,
+          (c as any).plan,
+          (c as any).address,
+          notes,
+        );
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [customers, search, showLapsedOnly]);
@@ -293,7 +334,10 @@ export default function CustomerModule() {
         const { firstName: _df, lastName: _dl, name: _dn, ...dataRest } = data;
         const newCustomer: Customer = {
           id: generateId(),
-          phone: data.phone || '',
+          // R-PHONE-SANITIZE-SWEEP: persist 10-digit form (or empty) so wa.me /
+          // SMS / search downstream see consistent input regardless of how the
+          // cashier typed the number.
+          phone: normalizePhone(data.phone || ''),
           email: data.email || '',
           loyaltyPoints: 0,
           storeCredit: 0,
@@ -599,7 +643,15 @@ export default function CustomerModule() {
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(59,130,246,0.3)', color: '#3b82f6' }}
                         >💬</button>
                         <button
-                          onClick={() => setViewHistory(c)}
+                          onClick={() => {
+                            setViewHistory(c);
+                            // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a customer history was opened
+                            try {
+                              window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+                                detail: { type: 'customer.history_opened', payload: { customerId: c.id } },
+                              }));
+                            } catch { /* env without CustomEvent — silent */ }
+                          }}
                           title={t('customers.titleViewHistory')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(139,92,246,0.3)', color: '#8b5cf6' }}
                         >👁</button>
@@ -627,8 +679,9 @@ export default function CustomerModule() {
       {showModal && (
         <CustomerFormModal
           customer={editCustomer}
+          initialPhone={editCustomer ? '' : prefillPhone}
           onSave={handleSave}
-          onClose={() => { setShowModal(false); setEditCustomer(null); }}
+          onClose={() => { setShowModal(false); setEditCustomer(null); setPrefillPhone(''); }}
           toast={toast}
           confirmDialog={confirmDialog}
           setConfirmDialog={setConfirmDialog}
@@ -701,6 +754,13 @@ const DRAFT_KEY = 'customer_form_draft';
 
 interface CustomerFormModalProps {
   customer: Customer | null;
+  /**
+   * Optional phone prefill for create mode (customer == null).
+   * R-OPERATOR-AMBIENT-AWARENESS-V1 — used by the Operator bubble's
+   * Create Customer quick action so the cashier doesn't have to
+   * re-type a number they just entered in Phone Services.
+   */
+  initialPhone?: string;
   onSave: (d: Partial<Customer>) => void;
   onClose: () => void;
   toast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
@@ -722,13 +782,19 @@ interface CustomerFormModalProps {
   } | null>>;
 }
 
-function CustomerFormModal({ customer, onSave, onClose, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
+function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, confirmDialog, setConfirmDialog }: CustomerFormModalProps) {
   const { t } = useTranslation();
 
   // Build initial form state (handles: edit mode, draft restore, fresh)
   const [form, setForm] = useState(() => {
+    // R-OPERATOR-AMBIENT-AWARENESS-V1: create-mode prefill from
+    // initialPhone. Ignored when in edit mode (the customer hydration
+    // branch below overrides). Has zero effect when initialPhone is '' .
+    const prefillPhone = (initialPhone || '').trim();
     const defaults = {
-      firstName: '', lastName: '', phone: '', phones: [''] as string[],
+      firstName: '', lastName: '',
+      phone: prefillPhone,
+      phones: [prefillPhone] as string[],
       carrier: '', carriers: [''] as string[],
       email: '', address: '', city: '', state: '', zip: '',
       plan: '', monthlyPayment: '',
@@ -1128,11 +1194,21 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   settings: any;
 }) {
   const { t } = useTranslation();
+  // R-CUSTOMER-PROFIT-PARITY-V1: shared helper now centralizes the
+  // phone_payment commission rewrite + repair 35% fallback. CustomerModule,
+  // IntelligenceEngine.getCustomerHistory, and (indirectly) the chat
+  // history sentence all go through the same math — no more divergence
+  // between the customer-history card and the chat answer.
+  const adjustedSales = useMemo(
+    () => adjustSalesItemCosts(sales, settings),
+    [sales, settings],
+  );
+
   // Profit analytics — delegates refund math + per-line (price-cost)*qty
   // aggregation to the pure helper. See src/utils/customerProfit.ts.
   const stats = useMemo(
-    () => computeCustomerProfit(sales, returns),
-    [sales, returns],
+    () => computeCustomerProfit(adjustedSales, returns),
+    [adjustedSales, returns],
   );
   const totalSpent = stats.netRevenue;
 

@@ -29,11 +29,17 @@ export class RepairScorer {
     return items.filter(item => (item as any).storeId === this.storeId);
   }
 
-  calculateScore(repair: Repair): RepairScore {
+  // R-INTEL-SCORER-INDEX-V2: optional pre-bucketed customer→repairs index
+  // so scoreAll can build it ONCE instead of paying O(R²) inside
+  // calculateCustomerRiskScore. Direct callers without the index still work.
+  calculateScore(
+    repair: Repair,
+    prebuiltCustomerRepairs?: Repair[],
+  ): RepairScore {
     const priorityScore = this.calculatePriorityScore(repair);
     const turnaroundScore = this.calculateTurnaroundScore(repair);
     const profitabilityScore = this.calculateProfitabilityScore(repair);
-    const customerRiskScore = this.calculateCustomerRiskScore(repair);
+    const customerRiskScore = this.calculateCustomerRiskScore(repair, prebuiltCustomerRepairs);
 
     const totalScore = (priorityScore * 0.35 + turnaroundScore * 0.30 + profitabilityScore * 0.20 + customerRiskScore * 0.15);
 
@@ -141,23 +147,52 @@ export class RepairScorer {
     return Math.min(score, 100);
   }
 
-  private calculateCustomerRiskScore(repair: Repair): number {
+  // R-INTEL-SCORER-INDEX-V2: prebuiltCustomerRepairs is the bucket of all
+  // repairs for `repair.customerId` (built once by scoreAll). We exclude self
+  // by id to match the original `r.id !== repair.id` filter.
+  private calculateCustomerRiskScore(repair: Repair, prebuiltCustomerRepairs?: Repair[]): number {
     let score = 30;
 
     if (repair.customerId) score += 20;
 
-    const customerRepairs = this.repairs.filter(r => r.customerId === repair.customerId && r.id !== repair.id);
-    if (customerRepairs.length > 0) score += 20;
-    if (customerRepairs.length >= 3) score += 20;
+    let customerRepairsCount: number;
+    if (prebuiltCustomerRepairs) {
+      // Exclude self.
+      let count = 0;
+      for (const r of prebuiltCustomerRepairs) {
+        if (r.id !== repair.id) count++;
+      }
+      customerRepairsCount = count;
+    } else {
+      customerRepairsCount = this.repairs.filter(r => r.customerId === repair.customerId && r.id !== repair.id).length;
+    }
+    if (customerRepairsCount > 0) score += 20;
+    if (customerRepairsCount >= 3) score += 20;
 
     if (repair.warranty) score += 20;
 
     return Math.min(score, 100);
   }
 
+  // R-INTEL-SCORER-INDEX-V2: build customer→repairs index ONCE before
+  // iterating, then thread per-repair bucket through calculateScore.
+  // Reduces calculateCustomerRiskScore: was O(R²) (filter `this.repairs`
+  // per repair) → O(R) total. For 1k repairs: ~1M ops → ~1k ops.
   scoreAll(): RepairScore[] {
     const filtered = this.filterByStore(this.repairs);
-    return filtered.map(r => this.calculateScore(r)).sort((a, b) => b.score - a.score);
+
+    const repairsByCustomer = new Map<string, Repair[]>();
+    for (const r of this.repairs) {
+      const cid = r.customerId;
+      if (!cid) continue;
+      const arr = repairsByCustomer.get(cid);
+      if (arr) arr.push(r);
+      else repairsByCustomer.set(cid, [r]);
+    }
+
+    return filtered
+      .map(r => this.calculateScore(r, r.customerId ? (repairsByCustomer.get(r.customerId) || []) : []))
+      .sort((a, b) => b.score - a.score);
   }
 
   getUrgent(count: number = 10): RepairScore[] {

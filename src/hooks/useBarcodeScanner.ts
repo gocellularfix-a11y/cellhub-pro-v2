@@ -6,14 +6,20 @@
 // <100ms, humans can't type that fast).
 //
 // Routing priority:
-//   1. Invoice (INV-xxxx)     → Returns module + auto-search
-//   2. Customer (GC-xxxx)     → PhonePaymentModal pre-filled
-//   3. Anything else          → POS search (inventory barcode)
+//   1. Structured receipt (CHP|SALE|...) → unwrap → onInvoiceScan(saleRef)
+//      [R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1]
+//   2. Invoice (INV-xxxx)                → Returns module + auto-search
+//   3. Customer (GC-xxxx)                → PhonePaymentModal pre-filled
+//   4. Anything else                     → POS search (inventory barcode)
 //
 // Usage: call once at AppShell level.
 // ============================================================
 
 import { useEffect, useRef } from 'react';
+import {
+  isStructuredReceiptBarcode,
+  parseReceiptBarcodePayload,
+} from '@/services/barcode/receiptPayload';
 
 interface Options {
   invoicePrefix: string;        // e.g. 'INV' — from settings.invoicePrefix
@@ -81,6 +87,25 @@ export function useBarcodeScanner({
     };
 
     const routeScan = (code: string) => {
+      // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: structured receipt
+      // payload (CHP|SALE|{invoiceNumber}[|CUST|{customerId}]) takes
+      // precedence. We unwrap to the saleRef and reuse onInvoiceScan
+      // so BarcodeActionModal handles the lookup + customer-history
+      // shortcut path it already implements. The customer link in the
+      // payload is informational redundancy — the in-memory sale's
+      // sale.customerId drives the existing UI buttons.
+      if (isStructuredReceiptBarcode(code)) {
+        const parsed = parseReceiptBarcodePayload(code);
+        if (parsed && parsed.saleRef) {
+          onInvoiceScan(parsed.saleRef);
+          return;
+        }
+        // Malformed structured payload — fall through to inventory so
+        // the cashier still sees something happen.
+        onInventoryScan(code);
+        return;
+      }
+
       const upper = code.toUpperCase();
       const invPrefix  = (invoicePrefix  || 'INV').toUpperCase();
       const custPrefix = (customerPrefix || 'GC').toUpperCase();

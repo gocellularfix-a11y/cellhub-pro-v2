@@ -12,9 +12,10 @@ import { useTranslation } from '@/i18n';
 import { generateId } from '@/utils/dates';
 import { hashPin, isHashed } from '@/utils/pinHash';
 import { usePrint } from '@/hooks/usePrint';
-import type { Employee, EmployeeRole } from '@/store/types';
+import type { Employee, EmployeeRole, EmployeePermissions } from '@/store/types';
 import { persist, remove } from '@/services/persist';
 import { ASSIGNABLE_MODULES, ROLE_DEFAULT_MODULES } from '@/config/constants';
+import { getEffectivePermissions } from '@/services/security/permissions';
 
 // ── HTML escape helper (round 24) — prevents XSS in buildOnboardingHTML ──
 function escHtml(s: unknown): string {
@@ -51,6 +52,10 @@ const FORM_EDITABLE_FIELDS = [
   'skillWater', 'skillUnlock', 'skillData',
   'managerNotes',
   'allowedModules',
+  // R-APPROVAL-PIN-V1: per-employee permission overrides (object).
+  // approvalPin is intentionally NOT whitelisted — same security pattern
+  // as `pin` (never load hash into form state, edit modal types fresh).
+  'permissions',
 ] as const;
 
 function pickFormFields(emp: any): Record<string, unknown> {
@@ -75,6 +80,8 @@ const MODAL_SECTIONS = [
   { id: 'legal',       icon: '📄', key: 'employees.section.legal' },
   { id: 'skills',      icon: '⚙️',  key: 'employees.section.skills' },
   { id: 'notes',       icon: '📝', key: 'employees.section.notes' },
+  // R-APPROVAL-PIN-V1
+  { id: 'permissions', icon: '🔐', key: 'employees.section.permissions' },
 ];
 
 // Round 24: role is canonical lowercase EmployeeRole; money in cents;
@@ -103,6 +110,10 @@ const DEFAULT_FORM = {
   managerNotes: '',
   // Module access (per-employee override)
   allowedModules: [] as string[],
+  // R-APPROVAL-PIN-V1 — Permissions tab. approvalPin is hashed on save
+  // (same lifecycle as `pin`) and starts blank on edit.
+  approvalPin: '',
+  permissions: {} as EmployeePermissions,
 };
 
 // ── Print helpers ─────────────────────────────────────────
@@ -242,6 +253,19 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
 
   const handleSave = useCallback(async (data: any) => {
     if (editEmployee) {
+      // r-employee-dedupe: block promoting/keeping a second active owner.
+      // Skips self via e.id !== editEmployee.id so "save" on the existing
+      // owner is allowed.
+      const willBeActiveOwner = (data.role || 'sales') === 'owner' && data.active !== false;
+      if (willBeActiveOwner) {
+        const otherOwner = employeesRef.current.find(
+          (e) => e.role === 'owner' && e.active && e.id !== editEmployee.id,
+        );
+        if (otherOwner) {
+          toast(`${t('employees.cantPromoteDuplicateOwner')} (${otherOwner.name})`, 'error');
+          return;
+        }
+      }
       // Edit mode: if form.pin is blank, preserve the existing PIN (round 24 — M3 fix:
       // edit modal no longer loads plaintext PIN into React state at all).
       // r27 M3: hash the new PIN if one was typed. Preserved PINs are already hashed
@@ -250,19 +274,43 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
       const preservedPin = typedPin
         ? await hashPin(typedPin)
         : editEmployee.pin;
-      const updated = { ...editEmployee, ...data, pin: preservedPin };
+      // R-APPROVAL-PIN-V1: same lifecycle for the 6-digit approval PIN.
+      const typedApprovalPin = (data.approvalPin && String(data.approvalPin).trim().length === 6) ? data.approvalPin : '';
+      const preservedApprovalPin = typedApprovalPin
+        ? await hashPin(typedApprovalPin)
+        : (editEmployee.approvalPin || '');
+      const updated = { ...editEmployee, ...data, pin: preservedPin, approvalPin: preservedApprovalPin };
       const nextEmployees = employeesRef.current.map((e) => (e.id === editEmployee.id ? updated : e));
       employeesRef.current = nextEmployees;
       setEmployees(nextEmployees);
       persist.employee(updated.id, updated as Record<string, unknown>);
     } else {
+      // r-employee-dedupe: block creating a second active owner alongside an
+      // existing one. The data.active flag may be missing on creation forms,
+      // so default-true matches DEFAULT_FORM.
+      const willBeActiveOwner = (data.role || 'sales') === 'owner' && data.active !== false;
+      if (willBeActiveOwner) {
+        const existingOwner = employeesRef.current.find(
+          (e) => e.role === 'owner' && e.active,
+        );
+        if (existingOwner) {
+          toast(`${t('employees.cantCreateDuplicateOwner')} (${existingOwner.name})`, 'error');
+          return;
+        }
+      }
       // r27 M3: hash the create-mode PIN. Empty PIN is allowed (no-PIN employee).
       const hashedPin = data.pin ? await hashPin(String(data.pin)) : '';
+      // R-APPROVAL-PIN-V1: optional 6-digit approval PIN. Validation already
+      // ran in handleSubmit, so by the time we get here it's either '' or 6 digits.
+      const hashedApprovalPin = (data.approvalPin && String(data.approvalPin).length === 6)
+        ? await hashPin(String(data.approvalPin))
+        : '';
       const newEmp = {
         id: generateId(),
         ...DEFAULT_FORM,
         ...data,
         pin: hashedPin,
+        approvalPin: hashedApprovalPin,
         createdAt: new Date().toISOString(),
       };
       const nextEmployees = [...employeesRef.current, newEmp];
@@ -272,7 +320,7 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
     }
     setShowModal(false);
     setEditEmployee(null);
-  }, [editEmployee, setEmployees]);
+  }, [editEmployee, setEmployees, t, toast]);
 
   const toggleActive = useCallback((id: string) => {
     // Round 24 — C6: guard rails on deactivation too.
@@ -427,6 +475,7 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
           employee={editEmployee}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditEmployee(null); }}
+          settings={settings}
         />,
         document.body
       )}
@@ -445,8 +494,8 @@ export default function EmployeeSection({ employees, setEmployees, settings, cur
 
 // ── Employee Form Modal ───────────────────────────────────
 
-function EmployeeFormModal({ employee, onSave, onClose }: {
-  employee: any; onSave: (d: any) => void; onClose: () => void;
+function EmployeeFormModal({ employee, onSave, onClose, settings }: {
+  employee: any; onSave: (d: any) => void; onClose: () => void; settings?: any;
 }) {
   const { t } = useTranslation();
   const isEdit = !!employee;
@@ -474,6 +523,8 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
     ...DEFAULT_FORM,
     ...pickFormFields(employee),
     pin: '', // edit: blank means "keep existing PIN" (enforced in handleSave)
+    // R-APPROVAL-PIN-V1: never load existing approvalPin hash into form state.
+    approvalPin: '',
   }));
   // Initialize default modules for existing employees who don't have allowedModules
   useEffect(() => {
@@ -500,6 +551,12 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
       }
     } else if (form.pin && form.pin.length > 0 && form.pin.length < 4) {
       setValidationError(t('employees.validation.pinMin'));
+      return;
+    }
+    // R-APPROVAL-PIN-V1: 6-digit approval PIN — exactly 6 digits if typed,
+    // otherwise blank (preserves existing on edit, leaves unset on create).
+    if (form.approvalPin && form.approvalPin.length > 0 && form.approvalPin.length !== 6) {
+      setValidationError(t('employees.validation.approvalPinSix'));
       return;
     }
     onSave(form);
@@ -732,6 +789,73 @@ function EmployeeFormModal({ employee, onSave, onClose }: {
             </div>
           </div>
         )}
+
+        {/* ── PERMISSIONS (R-APPROVAL-PIN-V1) ── */}
+        {activeSection === 'permissions' && (() => {
+          const approvalsEnabled = !!(settings && settings.approvalsEnabled);
+          const effective = getEffectivePermissions({ role: form.role, permissions: form.permissions || {} });
+          const setPerm = (k: keyof EmployeePermissions, v: boolean) => {
+            const next: EmployeePermissions = { ...(form.permissions || {}), [k]: v };
+            upd('permissions', next);
+          };
+          const PermCb = ({ field, label }: { field: keyof EmployeePermissions; label: string }) => (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.83rem', cursor: 'pointer', padding: '2px 0', color: effective[field] ? '#e2e8f0' : '#94a3b8' }}>
+              <input type="checkbox" checked={!!effective[field]} onChange={(e) => setPerm(field, e.target.checked)}
+                style={{ width: '14px', height: '14px', accentColor: '#818cf8', cursor: 'pointer' }} />
+              {label}
+            </label>
+          );
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <div style={{ padding: '0.625rem 0.75rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '0.5rem', fontSize: '0.78rem', color: '#a5b4fc' }}>
+                🔐 {t('employees.permissions.intro')}
+              </div>
+              {!approvalsEnabled && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '0.5rem', fontSize: '0.75rem', color: '#fbbf24' }}>
+                  ⚠️ {t('employees.permissions.disabledHint')}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                    {t('employees.permissions.approvalPin')} {isEdit ? <span style={{ color: '#64748b', fontSize: '0.68rem' }}>{t('employees.permissions.approvalPinBlank')}</span> : ''}
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    className="input"
+                    value={form.approvalPin}
+                    onChange={(e) => upd('approvalPin', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    placeholder={isEdit ? t('employees.permissions.approvalPinPlaceholderEdit') : t('employees.permissions.approvalPinPlaceholderNew')}
+                    autoComplete="new-password"
+                    style={{ fontFamily: 'Courier New, monospace', fontSize: '1.25rem', letterSpacing: '0.6em', textAlign: 'center' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: '0.25rem' }}>
+                  <PermCb field="canApprove" label={t('employees.permissions.canApprove')} />
+                  <p style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.25rem', lineHeight: 1.4 }}>
+                    {t('employees.permissions.canApproveHint')}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: '0.5rem' }}>
+                  {t('employees.permissions.requireSection')}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 1rem' }}>
+                  <PermCb field="requireApprovalForPriceChange"        label={t('employees.permissions.requirePrice')} />
+                  <PermCb field="requireApprovalForDiscount"           label={t('employees.permissions.requireDiscount')} />
+                  <PermCb field="requireApprovalForLayawayCancel"      label={t('employees.permissions.requireLayawayCancel')} />
+                  <PermCb field="requireApprovalForRepairCancel"       label={t('employees.permissions.requireRepairCancel')} />
+                  <PermCb field="requireApprovalForUnlockCancel"       label={t('employees.permissions.requireUnlockCancel')} />
+                  <PermCb field="requireApprovalForSpecialOrderCancel" label={t('employees.permissions.requireSpecialOrderCancel')} />
+                  <PermCb field="requireApprovalForRefund"             label={t('employees.permissions.requireRefund')} />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── NOTES ── */}
         {activeSection === 'notes' && (

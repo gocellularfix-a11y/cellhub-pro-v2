@@ -19,6 +19,17 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { loadLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
+import { normalizeCarrier } from '@/utils/normalize';
+// R-DASHBOARD-PROFIT-RECONCILE-V1: reuse Reports' pseudo-item detection
+// + proportional-cost helpers so the Dashboard's profit pipeline applies
+// the SAME accounting rules as Reports (no duplicated math).
+import {
+  isPseudoItem,
+  getLayawayProportionalCost,
+  getSpecialOrderProportionalCost,
+  getRepairProportionalCost,
+  getUnlockProportionalCost,
+} from '@/modules/reports/ReportsModule';
 
 /** Sale is countable for revenue if not voided/refunded. Handles legacy case variations. */
 function isSaleCountable(s: { status?: string }): boolean {
@@ -121,16 +132,117 @@ export default function Dashboard() {
   // from profit because those are commission/fee-based (phone payments) or
   // price=cost labor (services) — counting them in margin math inflates profit
   // or double-counts commission income tracked elsewhere.
+  // R-DASHBOARD-PROFIT-COMMISSION: phone_payment items must use commission
+  // lookup (mirrors ReportsModule L672-710) — they ship from PhonePaymentModal
+  // with cost=undefined, so (price-cost) treated 100% as margin which inflates
+  // Dashboard profit by ~10x for typical carrier rates. Replicated logic:
+  //   1) Trust transaction-time stamped item.commissionRate first.
+  //   2) Else resolve carrier: item.carrier → name regex → known-carrier regex.
+  //   3) commRate = settings.carrierCommissions[normalized] ?? defaultCommissionRate ?? 0.
+  //   4) profit = revenue × commRate (Reports: cost = revenue × (1-commRate)).
+  // Strict rule: if no commission resolvable → that item's profit = 0
+  // (NO 0.07 fallback — refuse to fabricate profit).
+  // R-DASHBOARD-PROFIT-RECONCILE-V1: precomputed entity Maps so per-item
+  // proportional-cost lookups are O(1). Built once per source array
+  // change — no per-render scans.
+  const layawaysById       = useMemo(() => new Map((layaways || []).map((l) => [l.id, l])), [layaways]);
+  const specialOrdersById  = useMemo(() => new Map((specialOrders || []).map((o) => [o.id, o])), [specialOrders]);
+  const repairsById        = useMemo(() => new Map((repairs || []).map((r) => [r.id, r])), [repairs]);
+  const unlocksById        = useMemo(() => new Map((unlocks || []).map((u) => [u.id, u])), [unlocks]);
+
   const todayProfitGross = useMemo(
     () => todaySales.reduce((sum, s) => {
       const itemProfit = (s.items || []).reduce((p, item) => {
+        const qty = item.qty || (item as any).quantity || 1;
+        const revenueCents = (item.price || 0) * qty;
         const cat = (item.category || '').toLowerCase();
-        if (cat === 'service' || cat === 'phone_payment' || cat === 'activation') return p;
-        return p + ((item.price || 0) - (item.cost || 0)) * (item.qty || (item as any).quantity || 1);
+
+        if (cat === 'phone_payment') {
+          let commRate = (item as any).commissionRate;
+          if (commRate == null || commRate === 0) {
+            let rawCarrier = ((item as any).carrier || (item as any).carrierName || (item as any).provider || '').trim();
+            if (!rawCarrier && item.name) {
+              const m = String(item.name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
+              if (m) rawCarrier = m[1].trim();
+            }
+            if (!rawCarrier && item.name) {
+              const km = String(item.name).match(
+                /\b(h2o|t-?mobile|verizon|at&?t|cricket|tracfone|page\s*plus|simple\s*mobile|ultra(?:\s+mobile)?|telcel|boost|metro(?:\s*pcs)?|mint\s*mobile|visible)\b/i,
+              );
+              if (km) rawCarrier = km[1].trim();
+            }
+            const normalized = normalizeCarrier(rawCarrier);
+            // R-DASHBOARD-CARRIER-COMMISSION-LOOKUP-FIX: settings keys are
+            // Title Case ("AT&T", "Simple Mobile", "H2O") so a normalized-only
+            // lookup misses when normalizeCarrier returns different casing or
+            // spacing. Try raw → normalized → case-insensitive → default → 0.
+            const ccs: Record<string, number> = settings.carrierCommissions || {};
+            let carrierRate: number | undefined;
+            if (rawCarrier && typeof ccs[rawCarrier] === 'number') carrierRate = ccs[rawCarrier];
+            if (carrierRate == null && normalized && typeof ccs[normalized] === 'number') carrierRate = ccs[normalized];
+            if (carrierRate == null) {
+              const needle = (rawCarrier || normalized || '').toLowerCase();
+              if (needle) {
+                const hit = Object.keys(ccs).find((k) => k.toLowerCase() === needle);
+                if (hit && typeof ccs[hit] === 'number') carrierRate = ccs[hit];
+              }
+            }
+            commRate = carrierRate ?? settings.defaultCommissionRate ?? 0;
+          }
+          if (!commRate) return p;
+          const costCents = Math.round(revenueCents * (1 - commRate));
+          return p + (revenueCents - costCents);
+        }
+
+        // R-DASHBOARD-PROFIT-RECONCILE-V1: pseudo-item branch. Mirrors
+        // ReportsModule lines 839-863. Layaway/Repair/SO/Unlock Deposit
+        // and Balance pseudo-items ship with cost=0 → without this branch
+        // they trivially booked 100% margin and inflated dashboard profit.
+        // When the linked entity has reliable cost+price data, inherit
+        // a proportional slice (payment / totalPrice * totalCost). When
+        // the helper returns 0 (missing cost data), the pseudo-item is
+        // EXCLUDED from profit (matches Reports' Round 10 fix 3 — they
+        // contribute to revenue display only, not to margin numerator).
+        if (isPseudoItem(item)) {
+          let realCost = 0;
+          if (item.layawayId) {
+            const linked = layawaysById.get(item.layawayId);
+            if (linked) realCost = getLayawayProportionalCost(linked, inventory, revenueCents);
+          } else if (item.specialOrderId) {
+            const linked = specialOrdersById.get(item.specialOrderId);
+            if (linked) realCost = getSpecialOrderProportionalCost(linked, inventory, revenueCents);
+          } else if (item.repairId) {
+            const linked = repairsById.get(item.repairId);
+            if (linked) realCost = getRepairProportionalCost(linked, inventory, revenueCents);
+          } else if (item.unlockId) {
+            const linked = unlocksById.get(item.unlockId);
+            if (linked) realCost = getUnlockProportionalCost(linked, inventory, revenueCents);
+          }
+          if (realCost > 0) {
+            return p + (revenueCents - realCost);
+          }
+          return p; // pseudo-item with no recoverable cost — exclude from profit
+        }
+
+        // R-DASHBOARD-PROFIT-RECONCILE-V1: layaway-linked NON-pseudo items
+        // also use proportional cost (mirrors Reports lines 812-821). Cart
+        // lines tied to a layaway often ship with cost=undefined; without
+        // this they'd book 100% margin too.
+        if (item.layawayId) {
+          const linked = layawaysById.get(item.layawayId);
+          if (linked) {
+            const proportional = getLayawayProportionalCost(linked, inventory, revenueCents);
+            if (proportional > 0) {
+              return p + (revenueCents - proportional);
+            }
+          }
+        }
+
+        return p + (revenueCents - (item.cost || 0) * qty);
       }, 0);
       // CC fee is 100% margin — add directly to sum (no cost to deduct).
       return sum + itemProfit + (s.creditCardFee || 0);
-    }, 0), [todaySales],
+    }, 0), [todaySales, settings, inventory, layawaysById, specialOrdersById, repairsById, unlocksById],
   );
 
   // Subtotal of ONLY profit-generating items + CC fee (apples-to-apples with
@@ -140,13 +252,65 @@ export default function Dashboard() {
   const todayProfitableSubtotal = useMemo(
     () => todaySales.reduce((sum, s) => {
       const lineTotal = (s.items || []).reduce((p, item) => {
-        const cat = (item.category || '').toLowerCase();
-        if (cat === 'service' || cat === 'phone_payment' || cat === 'activation') return p;
         return p + (item.price || 0) * (item.qty || (item as any).quantity || 1);
       }, 0);
       return sum + lineTotal + (s.creditCardFee || 0);
     }, 0), [todaySales],
   );
+
+  // R-DASHBOARD-PROFIT-PARITY Fix 2: standalone repairs completed today,
+  // not already counted via POS sale items (mirrors Reports' isRepairCompleted
+  // + repairsAlreadyInSales filter for true parity with totalProfitCents).
+  const todayRepairProfit = useMemo(() => {
+    const inSales = new Set<string>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        if ((item as any).repairId) inSales.add((item as any).repairId);
+      }
+    }
+    return repairs.reduce((sum, r) => {
+      const status = String(r.status || '').toLowerCase();
+      const completedStatuses = ['complete', 'completed', 'picked_up', 'pickedup'];
+      if (!completedStatuses.includes(status)) return sum;
+      if ((r.balance ?? 0) !== 0) return sum;
+      if (!isToday(r.completedAt)) return sum;
+      if (inSales.has(r.id)) return sum;
+
+      const rev = r.total ?? r.estimatedCost ?? 0;
+      const partsCost = (r.parts || []).reduce(
+        (p, part) => p + ((part.cost || 0) * (part.qty || 1)),
+        0,
+      );
+      const labor = r.laborCost || 0;
+      // 0.35 fallback ratio matches REPAIR_COST_FALLBACK in ReportsModule.tsx.
+      const cost = (partsCost + labor) > 0
+        ? (partsCost + labor)
+        : Math.round(rev * 0.35);
+      return sum + (rev - cost);
+    }, 0);
+  }, [repairs, todaySales]);
+
+  // R-DASHBOARD-PROFIT-PARITY Fix 3: standalone unlocks completed today,
+  // not already counted via POS sale items (mirrors Reports' isUnlockCompleted
+  // + unlocksAlreadyInSales filter — note unlocks check both item.unlockId
+  // and item.meta?.unlockId per Reports L444-455).
+  const todayUnlockProfit = useMemo(() => {
+    const inSales = new Set<string>();
+    for (const sale of todaySales) {
+      for (const item of (sale.items || [])) {
+        if ((item as any).unlockId) inSales.add((item as any).unlockId);
+        const metaUnlockId = (item as unknown as { meta?: { unlockId?: string } }).meta?.unlockId;
+        if (metaUnlockId) inSales.add(metaUnlockId);
+      }
+    }
+    return unlocks.reduce((sum, u) => {
+      const status = String(u.status || '').toLowerCase();
+      if (status !== 'completed' && status !== 'complete') return sum;
+      if (!isToday(u.completedAt)) return sum;
+      if (inSales.has(u.id)) return sum;
+      return sum + ((u.price || 0) - (u.cost || 0));
+    }, 0);
+  }, [unlocks, todaySales]);
 
   // Subtract today's refunds from profit proportionally.
   // ALL values in cents — no unit mismatch. No outer Math.round (formatCurrency handles display).
@@ -156,7 +320,9 @@ export default function Dashboard() {
   // produces a positive. Clamping floors the ratio at 0 in loss scenarios.
   const rawRatio = todayProfitableSubtotal > 0 ? (todayProfitGross / todayProfitableSubtotal) : 0;
   const marginRatio = Math.max(0, Math.min(1, rawRatio));
-  const todayProfit = todayProfitGross - Math.round(todayReturnsCents * marginRatio);
+  // R-DASHBOARD-PROFIT-PARITY Fix 4: include standalone repair + unlock profit.
+  const todayProfit = todayProfitGross + todayRepairProfit + todayUnlockProfit
+    - Math.round(todayReturnsCents * marginRatio);
 
   // Profit margin on PROFITABLE subtotal (apples-to-apples with profit calc).
   const profitMargin = todayProfitableSubtotal > 0 ? ((todayProfit / todayProfitableSubtotal) * 100).toFixed(1) : '0.0';

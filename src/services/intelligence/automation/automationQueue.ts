@@ -4,6 +4,38 @@
 
 import type { ActionPayload } from '../actions/actionEngine';
 
+// R-INTEL-QUEUE-PARSE-DEDUP: shared key + read helper. Four chat handlers
+// (handleProactiveOpportunities, handleTodayMoneyMap, handleDailyOperatorBrief,
+// handleDailyRevenueMissions) previously duplicated the same
+// `localStorage.getItem` + `JSON.parse` + slice + count loop to surface
+// approved pending-deals. Each chat query that hit any of those intents
+// paid the parse cost. Centralizing makes the read trivially shared and
+// gives one definition of "approved pending deals" for the whole module.
+export const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
+
+const QUEUE_SLICE_CAP = 200;
+
+export function readPersistedAutomationQueue(): AutomationQueueItem[] {
+  try {
+    const raw = localStorage.getItem(AUTOMATION_QUEUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.length > QUEUE_SLICE_CAP ? parsed.slice(parsed.length - QUEUE_SLICE_CAP) : parsed;
+  } catch {
+    return [];
+  }
+}
+
+export function countApprovedPendingDeals(): number {
+  const slice = readPersistedAutomationQueue();
+  let count = 0;
+  for (const q of slice) {
+    if (q && q.kind === 'pending_deal' && q.status === 'approved') count++;
+  }
+  return count;
+}
+
 export type AutomationStatus =
   | 'pending'
   | 'approved'
@@ -16,7 +48,10 @@ export type AutomationKind =
   | 'discount_review'
   | 'bundle_review'
   | 'reminder_followup'
-  | 'manual_review';
+  | 'manual_review'
+  // R-INTELLIGENCE-PENDING-DEAL-V1: owner-mediated deal draft. Approval opens
+  // WhatsApp with the deal's offer text; outcome marked manually by owner.
+  | 'pending_deal';
 
 export interface AutomationExecutionLog {
   executedAt: string;
@@ -146,4 +181,389 @@ export function addAutomationOutcome(
       { recordedAt: new Date().toISOString(), outcome, note },
     ],
   };
+}
+
+// R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1 ─────────────────────
+// Owner-recorded outcome for a pending_deal after WhatsApp outreach.
+// Pure read/write helpers around localStorage — no UI, no engine wiring,
+// no automatic learning. Mirrors the executionLog pattern in
+// actionExecutor.ts (FIFO cap, best-effort writes, never blocks).
+
+export type DealOutcome = 'won' | 'lost' | 'no_response';
+
+export interface DealOutcomeLogEntry {
+  id: string;
+  dealId: string;
+  customerId?: string;
+  inventoryId?: string;
+  category?: string;
+  proposedPriceCents: number;
+  originalPriceCents: number;
+  outcome: DealOutcome;
+  timestamp: number;
+}
+
+const DEAL_OUTCOME_LOG_KEY = 'cellhub:intelligence:dealOutcomeLog:v1';
+const MAX_DEAL_OUTCOME_LOG = 500;
+
+export function getDealOutcomeLog(): DealOutcomeLogEntry[] {
+  try {
+    const raw = localStorage.getItem(DEAL_OUTCOME_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1 ────────────────────
+// Tracks proposals/promotions sent via manual WhatsApp so the owner
+// can manage follow-ups even though there's no WhatsApp API. Pure
+// localStorage write/read; no scraping, no auto-send, no inbound
+// listener. Status is owner-recorded.
+
+export type ProposalFollowupStatus =
+  | 'sent'
+  | 'replied'
+  | 'interested'
+  | 'won'
+  | 'lost'
+  | 'no_response';
+
+export interface ProposalFollowup {
+  id: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productName?: string;
+  proposedPriceCents?: number;
+  sourceActionId?: string;
+  status: ProposalFollowupStatus;
+  sentAt: number;
+  lastReplyText?: string;
+  lastReplyAt?: number;
+}
+
+const PROPOSAL_FOLLOWUP_KEY = 'cellhub:intelligence:proposalFollowups:v1';
+const MAX_PROPOSAL_FOLLOWUPS = 300;
+
+export function getProposalFollowups(): ProposalFollowup[] {
+  try {
+    const raw = localStorage.getItem(PROPOSAL_FOLLOWUP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addProposalFollowup(entry: ProposalFollowup): void {
+  try {
+    const list = getProposalFollowups();
+    list.push(entry);
+    const trimmed = list.length > MAX_PROPOSAL_FOLLOWUPS
+      ? list.slice(list.length - MAX_PROPOSAL_FOLLOWUPS)
+      : list;
+    localStorage.setItem(PROPOSAL_FOLLOWUP_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* incognito / quota — best-effort, never block */
+  }
+}
+
+export function updateProposalFollowup(
+  id: string,
+  patch: Partial<ProposalFollowup>,
+): void {
+  try {
+    const list = getProposalFollowups();
+    const idx = list.findIndex((f) => f.id === id);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch };
+    localStorage.setItem(PROPOSAL_FOLLOWUP_KEY, JSON.stringify(list));
+  } catch {
+    /* skip */
+  }
+}
+
+// R-INTELLIGENCE-DEAL-PIPELINE-V1 ─────────────────────────────
+// Lightweight manual deal pipeline. Tracks active sales opportunities
+// from proposal → reply → interested → close. All mutations are
+// triggered by explicit owner actions (Open WhatsApp click, paste
+// reply, "mark X deal won"). No autonomous transitions. localStorage
+// only; no remote sync, no scraping.
+
+export type DealStage =
+  | 'proposal_sent'
+  | 'customer_replied'
+  | 'interested'
+  | 'negotiating'
+  | 'pending_approval'
+  | 'pending_pickup'
+  | 'won'
+  | 'lost';
+
+export interface DealPipelineItem {
+  id: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productName?: string;
+  proposedPriceCents?: number;
+  stage: DealStage;
+  sourceFollowupId?: string;
+  sourceActionId?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastReplyText?: string;
+  lastRecommendation?: string;
+}
+
+const DEAL_PIPELINE_KEY = 'cellhub:intelligence:dealPipeline:v1';
+const MAX_DEAL_PIPELINE = 300;
+
+export function getDealPipeline(): DealPipelineItem[] {
+  try {
+    const raw = localStorage.getItem(DEAL_PIPELINE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addDealPipelineItem(entry: DealPipelineItem): void {
+  try {
+    const list = getDealPipeline();
+    list.push(entry);
+    const trimmed = list.length > MAX_DEAL_PIPELINE
+      ? list.slice(list.length - MAX_DEAL_PIPELINE)
+      : list;
+    localStorage.setItem(DEAL_PIPELINE_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* skip */
+  }
+}
+
+export function updateDealPipelineItem(
+  id: string,
+  patch: Partial<DealPipelineItem>,
+): void {
+  try {
+    const list = getDealPipeline();
+    const idx = list.findIndex((d) => d.id === id);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch, updatedAt: Date.now() };
+    localStorage.setItem(DEAL_PIPELINE_KEY, JSON.stringify(list));
+  } catch {
+    /* skip */
+  }
+}
+
+// Phone-first match (exact=100), name fallback (exact=80, first-name=60,
+// substring=40), optional product-name boost (+20). Open = stage not in
+// (won, lost). Pure read; no mutation.
+export function findOpenDealByCustomerOrProduct(
+  customerName?: string,
+  customerPhone?: string,
+  productName?: string,
+): DealPipelineItem | null {
+  const list = getDealPipeline();
+  const open = list.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+  if (open.length === 0) return null;
+
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+  const targetPhone = normalizePhone(customerPhone || '');
+  const targetName = (customerName || '').toLowerCase().trim();
+  const targetProduct = (productName || '').toLowerCase().trim();
+
+  let best: DealPipelineItem | null = null;
+  let bestScore = 0;
+  for (const d of open) {
+    let score = 0;
+    if (targetPhone && d.customerPhone) {
+      const dp = normalizePhone(d.customerPhone);
+      if (dp === targetPhone) score = 100;
+      else if (dp && (dp.endsWith(targetPhone) || targetPhone.endsWith(dp))) score = 50;
+    }
+    if (targetName && d.customerName) {
+      const dn = d.customerName.toLowerCase().trim();
+      if (dn === targetName) score = Math.max(score, 80);
+      else {
+        const firstWord = dn.split(' ')[0];
+        if (firstWord && (firstWord === targetName || targetName.startsWith(firstWord))) {
+          score = Math.max(score, 60);
+        } else if (dn.includes(targetName) || targetName.includes(dn)) {
+          score = Math.max(score, 40);
+        }
+      }
+    }
+    if (targetProduct && d.productName) {
+      const dpn = d.productName.toLowerCase();
+      if (dpn === targetProduct || dpn.includes(targetProduct) || targetProduct.includes(dpn)) {
+        score += 20;
+      }
+    }
+    if (score > bestScore || (score > 0 && score === bestScore && d.updatedAt > (best?.updatedAt || 0))) {
+      best = d;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+export function closeDealPipelineItem(id: string, stage: 'won' | 'lost'): void {
+  updateDealPipelineItem(id, { stage });
+}
+
+// Find the most recent OPEN follow-up that matches by customer name
+// or phone. Open = status not in (won, lost, no_response). Phone is
+// the strongest signal; name fallback uses substring + first-name
+// match. Pure read; no mutation.
+export function findOpenFollowupByCustomerOrProduct(
+  customerName?: string,
+  customerPhone?: string,
+): ProposalFollowup | null {
+  const list = getProposalFollowups();
+  const open = list.filter(
+    (f) => f.status !== 'won' && f.status !== 'lost' && f.status !== 'no_response',
+  );
+  if (open.length === 0) return null;
+
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+  const targetPhone = normalizePhone(customerPhone || '');
+  const targetName = (customerName || '').toLowerCase().trim();
+
+  let best: ProposalFollowup | null = null;
+  let bestScore = 0;
+  for (const f of open) {
+    let score = 0;
+    if (targetPhone && f.customerPhone) {
+      const fp = normalizePhone(f.customerPhone);
+      if (fp === targetPhone) score = 100;
+      else if (fp && (fp.endsWith(targetPhone) || targetPhone.endsWith(fp))) score = 50;
+    }
+    if (targetName && f.customerName) {
+      const fn = f.customerName.toLowerCase().trim();
+      if (fn === targetName) score = Math.max(score, 80);
+      else {
+        const firstWord = fn.split(' ')[0];
+        if (firstWord && (firstWord === targetName || targetName.startsWith(firstWord))) {
+          score = Math.max(score, 60);
+        } else if (fn.includes(targetName) || targetName.includes(fn)) {
+          score = Math.max(score, 40);
+        }
+      }
+    }
+    if (score > bestScore || (score > 0 && score === bestScore && f.sentAt > (best?.sentAt || 0))) {
+      best = f;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+export function addDealOutcomeLog(entry: DealOutcomeLogEntry): void {
+  try {
+    const log = getDealOutcomeLog();
+    log.push(entry);
+    // FIFO cap — drop oldest entries if exceeding MAX. Same shape as
+    // executionLog so unbounded outcome history doesn't bloat storage.
+    const trimmed = log.length > MAX_DEAL_OUTCOME_LOG
+      ? log.slice(log.length - MAX_DEAL_OUTCOME_LOG)
+      : log;
+    localStorage.setItem(DEAL_OUTCOME_LOG_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* incognito / quota — best-effort, never block */
+  }
+}
+
+// R-INTELLIGENCE-DEAL-PERFORMANCE-INSIGHTS-V1 ─────────────────
+// Deterministic aggregation over the dealOutcomeLog. Pure read — no
+// mutation, no side effects, no UI. Called on demand by the chat handler
+// (no background work). Discount range bins follow the spec exactly:
+// 0-10, 11-20, 21-30, 31+.
+
+export interface DealPerformanceResult {
+  totalDeals: number;
+  won: number;
+  lost: number;
+  noResponse: number;
+  winRate: number;            // 0..1
+  avgDiscountPercent: number; // 0..100 (integer)
+  bestCategory?: { category: string; wins: number };
+  bestDiscountRange?: { range: '0-10' | '11-20' | '21-30' | '31+'; winRate: number; sample: number };
+}
+
+export function getDealPerformance(): DealPerformanceResult {
+  // Defensive read-side cap: the writer already FIFO-trims at 500, but a
+  // future migration or direct localStorage import could bypass that cap.
+  // Always analyze only the most recent MAX_DEAL_OUTCOME_LOG entries so
+  // this stays O(500) even if the underlying array grew.
+  const raw = getDealOutcomeLog();
+  const log = raw.length > MAX_DEAL_OUTCOME_LOG
+    ? raw.slice(raw.length - MAX_DEAL_OUTCOME_LOG)
+    : raw;
+  const totalDeals = log.length;
+
+  let won = 0, lost = 0, noResponse = 0;
+  let totalDiscountPct = 0;
+
+  const catWins = new Map<string, number>();
+  type RangeId = '0-10' | '11-20' | '21-30' | '31+';
+  const rangeStats: Record<RangeId, { won: number; total: number }> = {
+    '0-10':  { won: 0, total: 0 },
+    '11-20': { won: 0, total: 0 },
+    '21-30': { won: 0, total: 0 },
+    '31+':   { won: 0, total: 0 },
+  };
+  const bucketFor = (pct: number): RangeId => {
+    if (pct <= 10) return '0-10';
+    if (pct <= 20) return '11-20';
+    if (pct <= 30) return '21-30';
+    return '31+';
+  };
+
+  for (const entry of log) {
+    if (entry.outcome === 'won') won++;
+    else if (entry.outcome === 'lost') lost++;
+    else if (entry.outcome === 'no_response') noResponse++;
+
+    const discountPct = entry.originalPriceCents > 0
+      ? Math.round(((entry.originalPriceCents - entry.proposedPriceCents) / entry.originalPriceCents) * 100)
+      : 0;
+    totalDiscountPct += discountPct;
+
+    if (entry.outcome === 'won' && entry.category) {
+      catWins.set(entry.category, (catWins.get(entry.category) || 0) + 1);
+    }
+
+    const bucket = bucketFor(discountPct);
+    rangeStats[bucket].total++;
+    if (entry.outcome === 'won') rangeStats[bucket].won++;
+  }
+
+  const winRate = totalDeals > 0 ? won / totalDeals : 0;
+  const avgDiscountPercent = totalDeals > 0 ? Math.round(totalDiscountPct / totalDeals) : 0;
+
+  // Best category by absolute wins. Tie-break: first-seen (Map iteration order).
+  let bestCategory: { category: string; wins: number } | undefined;
+  for (const [cat, wins] of catWins) {
+    if (!bestCategory || wins > bestCategory.wins) bestCategory = { category: cat, wins };
+  }
+
+  // Best discount range by win rate. Require sample >= 2 to avoid 1-deal noise.
+  let bestDiscountRange: DealPerformanceResult['bestDiscountRange'];
+  for (const id of Object.keys(rangeStats) as RangeId[]) {
+    const s = rangeStats[id];
+    if (s.total < 2) continue;
+    const rate = s.won / s.total;
+    if (!bestDiscountRange || rate > bestDiscountRange.winRate) {
+      bestDiscountRange = { range: id, winRate: rate, sample: s.total };
+    }
+  }
+
+  return { totalDeals, won, lost, noResponse, winRate, avgDiscountPercent, bestCategory, bestDiscountRange };
 }

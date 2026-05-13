@@ -55,9 +55,18 @@ export function formatDateTime(
 
 /**
  * Check if a date is today.
+ *
+ * R-ISTODAY-MISSING-DATE-FIX: explicit guards for missing/invalid input.
+ * Without these, toDate(undefined) returns `new Date()` (NOW), which made
+ * isToday(undefined) return TRUE — silently bucketing every record with a
+ * missing date into "today". This caused Dashboard.todayRepairProfit and
+ * todayUnlockProfit to count old completed entities that happened to be
+ * missing completedAt as today's profit.
  */
 export function isToday(value: Timestamp | Date | string | undefined | null): boolean {
+  if (!value) return false;
   const d = toDate(value);
+  if (isNaN(d.getTime())) return false;
   const now = new Date();
   return (
     d.getFullYear() === now.getFullYear() &&

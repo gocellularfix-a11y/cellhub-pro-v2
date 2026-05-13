@@ -27,6 +27,13 @@ export function isCloudEnabled(): boolean {
   return _db !== null;
 }
 
+// R-FIREBASE-MULTIPC-SYNC: getter so the bulk push/pull buttons in
+// Settings can access the same singleton without re-plumbing db down
+// the AppShell → SettingsModule prop chain.
+export function getFirestoreInstance(): Firestore | null {
+  return _db;
+}
+
 // ── Multi-store: auto-tag storeId on writes ───────────────
 // r-multi-m1: Instead of editing 42 persist call sites across 12 modules,
 // we inject storeId at the persist layer. setCurrentStoreId() is called
@@ -72,6 +79,8 @@ const LOCAL_KEYS: Record<string, string> = {
   // those consumers keep working without modification.
   [COLLECTIONS.customerReturns]:  'customer_returns',
   [COLLECTIONS.vendorReturns]:    'vendor_returns',
+  // R-LOSSES-SHRINKAGE-V1
+  [COLLECTIONS.inventoryLosses]:  'inventory_losses',
 };
 
 // ── Local helpers ─────────────────────────────────────────
@@ -222,6 +231,8 @@ export const persist = {
   // r-pkg-b3: Returns foundation
   customerReturn:(id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.customerReturns, id, data),
   vendorReturn:  (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.vendorReturns,   id, data),
+  // R-LOSSES-SHRINKAGE-V1
+  inventoryLoss: (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.inventoryLosses, id, data),
 };
 
 export const remove = {

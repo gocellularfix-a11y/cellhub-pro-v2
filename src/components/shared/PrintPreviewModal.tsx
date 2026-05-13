@@ -4,7 +4,7 @@
 // margins, zoom. No dependency on Chrome or Windows print dialog.
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 
 // ── Page size presets (width × height in microns) ───────────
@@ -56,12 +56,32 @@ export default function PrintPreviewModal({
   const [pageSize, setPageSize] = useState(initialPageSize || '4x6');
   const [landscape, setLandscape] = useState(initialLandscape || false);
   const [scaleFactor, setScaleFactor] = useState(100);
+  // R-PRINT-SHRINK-TO-FIT: default ON — auto-shrinks oversized content to fit page width.
+  const [shrinkToFit, setShrinkToFit] = useState(true);
   const [margins, setMargins] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
   const [zoom, setZoom] = useState(100);
   const [copies, setCopies] = useState(initialCopies || 1);
 
   const [printing, setPrinting] = useState(false);
   const [printResult, setPrintResult] = useState<string | null>(null);
+  // R-PRINT-INPUT-FIX-V1: shadow string states for the percent + copies
+  // number inputs. The previous pattern parsed-and-clamped on every
+  // keystroke, so typing "75" went "7" → clamp(7, [25,200]) = 25, and
+  // the field snapped to 25 before the user could finish typing. With
+  // the shadow string we accept whatever the user types, commit the
+  // numeric state live only when the typed value is in range, and
+  // apply the hard clamp on blur. Slider drags / external resets keep
+  // working because the useEffects below mirror scaleFactor → scaleInput
+  // and copies → copiesInput whenever the numeric state changes.
+  const [scaleInput, setScaleInput] = useState<string>(String(scaleFactor));
+  const [copiesInput, setCopiesInput] = useState<string>(String(copies));
+  useEffect(() => { setScaleInput(String(scaleFactor)); }, [scaleFactor]);
+  useEffect(() => { setCopiesInput(String(copies)); }, [copies]);
+  // R-PRINT-PAGE-RANGES-V1: page-range UI. 'all' is the default; 'custom'
+  // exposes a free-text input where the owner enters "1", "2", "1-2",
+  // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
+  const [pageRangeMode, setPageRangeMode] = useState<'all' | 'custom'>('all');
+  const [pageRangeInput, setPageRangeInput] = useState<string>('');
 
   // ── Load printers on open ─────────────────────────────────
   useEffect(() => {
@@ -82,6 +102,29 @@ export default function PrintPreviewModal({
   }, [open, html]);
 
 
+  // R-PRINT-PAGE-RANGES-V1: parse user-typed range like "1", "2", "1-2", "1,3",
+  // "1-2,4" into Electron's `pageRanges: [{from, to}]` shape (1-based, inclusive).
+  // Returns undefined when the input doesn't parse — caller falls back to all pages.
+  const parsePageRanges = (input: string): Array<{ from: number; to: number }> | undefined => {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return undefined;
+    const out: Array<{ from: number; to: number }> = [];
+    for (const part of trimmed.split(',')) {
+      const seg = part.trim();
+      if (!seg) continue;
+      if (seg.includes('-')) {
+        const [a, b] = seg.split('-').map((s) => parseInt(s.trim(), 10));
+        if (Number.isFinite(a) && Number.isFinite(b) && a >= 1 && b >= a) {
+          out.push({ from: a, to: b });
+        }
+      } else {
+        const n = parseInt(seg, 10);
+        if (Number.isFinite(n) && n >= 1) out.push({ from: n, to: n });
+      }
+    }
+    return out.length > 0 ? out : undefined;
+  };
+
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = async () => {
     if (!window.electronAPI?.printRun || !selectedPrinter) return;
@@ -90,14 +133,23 @@ export default function PrintPreviewModal({
     setPrintResult(null);
     try {
       const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+      // R-PRINT-SHRINK-FIX-V1: pass the effective scale to Electron's
+      // printRun. Previously this was hardcoded to 100 — the "Shrink to
+      // fit" toggle scaled the PREVIEW iframe via CSS transform but never
+      // affected the actual print, so multi-page reports kept printing
+      // at 100% and spilling onto two pages. CSS transforms don't survive
+      // the print pipeline; scaleFactor (passed to webContents.print) does.
+      // R-PRINT-PAGE-RANGES-V1: parsed pageRanges (or undefined for "all").
+      const pageRanges = pageRangeMode === 'custom' ? parsePageRanges(pageRangeInput) : undefined;
       const result = await window.electronAPI.printRun({
-        html: scaledHtml,
+        html,
         deviceName: selectedPrinter,
         pageSize: { width: ps.width, height: ps.height },
         landscape,
-        scaleFactor: 100,
+        scaleFactor: effectiveScale,
         copies,
         margins,
+        pageRanges,
       });
       if (result.success) {
         setPrintResult('✅ Sent to printer');
@@ -117,13 +169,40 @@ export default function PrintPreviewModal({
     setMargins((prev) => ({ ...prev, [side]: Math.max(0, value) }));
   };
 
+  // R-PRINT-SHRINK-FALLBACK-FIX: predictable page-size-based shrink.
+  // Replaces the DOM-measurement helper, which couldn't see inside the
+  // sandboxed iframe and effectively returned 100 on every flow.
+  // R-PRINT-SHRINK-FIX-V1: bumped letter scale 90→80 — at 90% a typical
+  // sales report still spilled to 2 pages. 80% reliably fits the
+  // 4-card summary + 4 sections + net banner on one letter page.
+  // Owner can override with manual scale if a specific report needs
+  // different sizing.
+  // R-PRINT-PREVIEW-PERF-V1: memoised so unrelated keystrokes (copies,
+  // margins, zoom, page ranges) don't recompute the effective scale.
+  // Hooks must run BEFORE the early-return below — Rules of Hooks.
+  const effectiveScale = useMemo(
+    () => (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor),
+    [shrinkToFit, pageSize, scaleFactor],
+  );
+
+  // R-PRINT-PREVIEW-PERF-V1: previously this regex-replace ran on every
+  // render, so every keystroke (copies / page range / margin / zoom slider)
+  // generated a new string identity, React passed a new srcDoc, and the
+  // sandboxed iframe re-parsed the entire receipt HTML. Memoising on the
+  // only two inputs that actually affect the output makes unrelated
+  // sidebar interactions feel instant.
+  const scaledHtml = useMemo(
+    () => (
+      effectiveScale === 100
+        ? html
+        : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${effectiveScale / 100}); transform-origin: center center;">`)
+    ),
+    [html, effectiveScale],
+  );
+
   if (!open) return null;
 
   const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
-
-  const scaledHtml = scaleFactor === 100
-    ? html
-    : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${scaleFactor / 100}); transform-origin: center center;">`);
 
   return (
     <div style={{
@@ -186,14 +265,62 @@ export default function PrintPreviewModal({
 
           {/* Scale */}
           <Field label="Print Scale">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <input type="number" min={25} max={200} step={1} value={scaleFactor}
-                onChange={(e) => setScaleFactor(Math.min(200, Math.max(25, parseFloat(e.target.value) || 100)))}
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }} />
+            {/* R-PRINT-SHRINK-TO-FIT: toggle disables manual scale and uses calculateAutoScale() */}
+            <label
+              title="Auto adjusts to fit page width"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#cbd5e1', fontSize: '0.8rem', cursor: 'pointer', marginBottom: '0.4rem' }}
+            >
+              <input
+                type="checkbox"
+                checked={shrinkToFit}
+                onChange={(e) => setShrinkToFit(e.target.checked)}
+                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+              />
+              Shrink to fit page
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: shrinkToFit ? 0.5 : 1 }}>
+              <input
+                type="number"
+                min={25}
+                max={200}
+                step={1}
+                value={shrinkToFit ? String(effectiveScale) : scaleInput}
+                disabled={shrinkToFit}
+                title={shrinkToFit ? 'Auto adjusts to fit page width' : ''}
+                onChange={(e) => {
+                  // R-PRINT-INPUT-FIX-V1: keep raw text for the user
+                  // and only commit live to scaleFactor while it's a
+                  // valid in-range number, so mid-typing "75" / "100"
+                  // doesn't snap to the min bound.
+                  const raw = e.target.value;
+                  setScaleInput(raw);
+                  const n = parseFloat(raw);
+                  if (Number.isFinite(n) && n >= 25 && n <= 200) {
+                    setScaleFactor(n);
+                  }
+                }}
+                onBlur={() => {
+                  // R-PRINT-INPUT-FIX-V1: hard clamp on blur. Empty /
+                  // NaN falls back to 100 (the natural default).
+                  const n = parseFloat(scaleInput);
+                  const clamped = Number.isFinite(n) ? Math.min(200, Math.max(25, n)) : 100;
+                  setScaleFactor(clamped);
+                  setScaleInput(String(clamped));
+                }}
+                style={{ ...inputStyle, width: '60px', textAlign: 'right', cursor: shrinkToFit ? 'not-allowed' : 'text' }}
+              />
               <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>%</span>
-              <input type="range" min={25} max={200} step={5} value={scaleFactor}
+              <input
+                type="range"
+                min={25}
+                max={200}
+                step={5}
+                value={shrinkToFit ? effectiveScale : scaleFactor}
+                disabled={shrinkToFit}
+                title={shrinkToFit ? 'Auto adjusts to fit page width' : ''}
                 onChange={(e) => setScaleFactor(Number(e.target.value))}
-                style={{ flex: 1, cursor: 'pointer' }} />
+                style={{ flex: 1, cursor: shrinkToFit ? 'not-allowed' : 'pointer' }}
+              />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748b' }}>
               <span>25%</span><span>100%</span><span>200%</span>
@@ -217,9 +344,58 @@ export default function PrintPreviewModal({
 
           {/* Copies */}
           <Field label="Copies">
-            <input type="number" min={1} max={99} value={copies}
-              onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
-              style={inputStyle} />
+            <input
+              type="number"
+              min={1}
+              max={99}
+              step={1}
+              value={copiesInput}
+              onChange={(e) => {
+                // R-PRINT-INPUT-FIX-V1: same shadow-string pattern as
+                // scale — keep raw text, commit live only when valid in
+                // [1, 99]. The prior pattern (a) snapped empty input to
+                // 1 mid-typing, (b) had no upper clamp, so the user
+                // could enter "100" despite max=99 and the modal would
+                // happily forward 100 copies to the printer.
+                const raw = e.target.value;
+                setCopiesInput(raw);
+                const n = parseInt(raw, 10);
+                if (Number.isFinite(n) && n >= 1 && n <= 99) {
+                  setCopies(n);
+                }
+              }}
+              onBlur={() => {
+                const n = parseInt(copiesInput, 10);
+                const clamped = Number.isFinite(n) ? Math.min(99, Math.max(1, n)) : 1;
+                setCopies(clamped);
+                setCopiesInput(String(clamped));
+              }}
+              style={inputStyle}
+            />
+          </Field>
+
+          {/* R-PRINT-PAGE-RANGES-V1: page-range picker. "All" = print every
+              page (default). "Custom" exposes a free-text input the owner
+              fills with page numbers / ranges (e.g., "1", "2", "1-2",
+              "1,3"). Empty/invalid input falls back to all pages. */}
+          <Field label="Pages">
+            <select
+              value={pageRangeMode}
+              onChange={(e) => setPageRangeMode(e.target.value as 'all' | 'custom')}
+              style={selectStyle}
+            >
+              <option value="all">All pages</option>
+              <option value="custom">Custom range…</option>
+            </select>
+            {pageRangeMode === 'custom' && (
+              <input
+                type="text"
+                value={pageRangeInput}
+                onChange={(e) => setPageRangeInput(e.target.value)}
+                placeholder="e.g., 1 or 1-2 or 1,3"
+                style={{ ...inputStyle, marginTop: '0.4rem', width: '100%' }}
+              />
+            )}
           </Field>
 
           {/* Preview Zoom */}
@@ -280,11 +456,14 @@ export default function PrintPreviewModal({
           {/* r-print-preview-iframe-foundation: direct HTML render via iframe srcDoc.
               This is the same pattern used in ReceiptModal (r-receipt-unify) which
               works reliably in Electron 31 sandbox. No PDF intermediate. */}
-          <div style={{
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: 'top center',
-            transition: 'transform 0.15s ease',
-          }}>
+          <div
+            id="print-content"
+            style={{
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.15s ease',
+            }}
+          >
             <iframe
               srcDoc={scaledHtml}
               title="Print preview"
