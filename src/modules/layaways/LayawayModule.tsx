@@ -675,6 +675,12 @@ export default function LayawayModule() {
       actionType: 'CANCEL_LAYAWAY',
       requestedByEmployeeId: currentEmployee?.id || '',
       entityId: l.id,
+      affectedAmount: l.paidAmount || 0,
+      reason: choice.method === 'cash'
+        ? 'Layaway cancellation — cash refund'
+        : choice.method === 'store_credit'
+        ? 'Layaway cancellation — store credit'
+        : 'Layaway cancellation — deposit forfeited',
     });
     if (!approval.approved) {
       setCancelInFlight(false);
