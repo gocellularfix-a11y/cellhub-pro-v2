@@ -101,11 +101,11 @@ export interface BuildPairingQrPayloadInput {
  */
 export function buildPairingQrPayload(input: BuildPairingQrPayloadInput): string {
   const params = new URLSearchParams({
-    bridge: input.bridgeUrl,
-    store: input.storeId,
-    code: input.code,
-    role: input.role,
-    exp: String(input.expiresAt),
+    bridgeUrl: input.bridgeUrl,
+    storeId:   input.storeId,
+    code:      input.code,
+    role:      input.role,
+    exp:       String(input.expiresAt),
   });
-  return `cellhub://pair?${params.toString()}`;
+  return `cellhub-pair://v1?${params.toString()}`;
 }
