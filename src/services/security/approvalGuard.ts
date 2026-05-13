@@ -37,6 +37,10 @@ export interface ApprovalRequest {
   actionType: ApprovalActionType;
   requestedByEmployeeId: string;
   entityId?: string;
+  /** R-COMPANION-APPROVALS-LIVE-V1: integer cents forwarded to bridge payload. */
+  affectedAmount?: number;
+  /** R-COMPANION-APPROVALS-LIVE-V1: human-readable context forwarded to bridge payload. */
+  reason?: string;
 }
 
 export type ApprovalDenialReason =
@@ -124,6 +128,8 @@ export async function requestApproval(
     approvalId,
     actionType: request.actionType,
     requestedByEmployeeId: request.requestedByEmployeeId,
+    affectedAmount: request.affectedAmount,
+    reason: request.reason,
   });
 
   const response = await prompter(request);

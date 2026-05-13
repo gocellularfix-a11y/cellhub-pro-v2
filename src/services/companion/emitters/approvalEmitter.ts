@@ -44,6 +44,8 @@ export interface ApprovalEmitInput {
   reason?: string;
   /** Optional override; if omitted the source is derived from actionType. */
   source?: string;
+  /** R-COMPANION-APPROVALS-LIVE-V1: integer cents — forwarded to bridge payload. */
+  affectedAmount?: number;
 }
 
 /** Approval gate triggered — guard is about to prompt the user. */
@@ -93,6 +95,7 @@ function buildPayload(
   if (input.requestedByEmployeeId) out.requestedByEmployeeId = input.requestedByEmployeeId;
   if (input.approvedByEmployeeId)  out.approvedByEmployeeId = input.approvedByEmployeeId;
   if (input.reason)                out.reason = input.reason;
+  if (input.affectedAmount != null) out.affectedAmount = input.affectedAmount;
   out.source = (input.source ?? sourceFromActionType(input.actionType)) || 'unknown';
   return out;
 }

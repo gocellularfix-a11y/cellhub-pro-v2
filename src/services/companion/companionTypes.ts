@@ -51,6 +51,9 @@ export interface CompanionApprovalPayload {
    *  'specialOrders', 'pos', 'returns'). Cero PII. */
   source?: string;
   status?: 'pending' | 'approved' | 'denied';
+  /** R-COMPANION-APPROVALS-LIVE-V1: integer cents forwarded from the
+   *  bridge ApprovalRequestPayload. 0 when caller didn't supply it. */
+  affectedAmount?: number;
 }
 
 export interface CompanionMessagePayload {

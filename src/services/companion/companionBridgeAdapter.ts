@@ -21,7 +21,7 @@
 // Money: cents on the wire (CellHub Pro canonical).
 // ============================================================
 
-import { subscribeAll } from './companionEventBus';
+import { subscribeAll, emit as emitToBus } from './companionEventBus';
 import { createPosBridgeClient } from './sdk/posBridgeClient';
 import type { PosBridgeClient, PosBridgeStatus } from './sdk/posBridgeClient';
 import {
@@ -162,6 +162,20 @@ function mapSeverity(severity: string | undefined): AlertSeverity {
   return 'info';
 }
 
+// R-COMPANION-APPROVALS-LIVE-V1: human reason derived from actionType for bridge payload.
+function reasonFromActionType(actionType: string | undefined): string {
+  switch (actionType) {
+    case 'CANCEL_LAYAWAY':        return 'Layaway cancellation requested';
+    case 'CANCEL_REPAIR':         return 'Repair cancellation requested';
+    case 'CANCEL_UNLOCK':         return 'Unlock cancellation requested';
+    case 'CANCEL_SPECIAL_ORDER':  return 'Special order cancellation requested';
+    case 'PRICE_OVERRIDE':        return 'Price override requested';
+    case 'DISCOUNT_OVERRIDE':     return 'Discount override requested';
+    case 'REFUND':                return 'Refund requested';
+    default:                      return 'Approval requested';
+  }
+}
+
 // ── Event translation handlers ────────────────────────────
 
 function handleEvent(event: CompanionEvent): void {
@@ -198,8 +212,8 @@ function handleEvent(event: CompanionEvent): void {
           employeeId,
           employeeName,                  // ID lookup only; no customer PII
           storeLocation,
-          reason: 'Approval requested',  // generic — NO PII / no note bodies
-          affectedAmount: 0,             // cents; producer doesn't carry it yet
+          reason: p.reason || reasonFromActionType(p.actionType),
+          affectedAmount: p.affectedAmount ?? 0,
           requestedAt: new Date(event.createdAt).toISOString(),
           expiresAt: new Date(event.createdAt + 10 * 60 * 1000).toISOString(),
         });
@@ -370,6 +384,14 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             },
           });
           processApprovalAction(submitted.actionId);
+          // R-COMPANION-APPROVALS-LIVE-V1: emit to companion event bus so
+          // companionApprovalRuntime + CompanionCenter update live.
+          emitToBus({
+            type: 'APPROVAL_APPROVED',
+            category: 'approvals',
+            payload: { approvalId: requestId, approvedByEmployeeId: payload.managerId },
+            createdAt: Date.now(),
+          });
         } else if (action === 'deny') {
           const submitted = submitAction({
             type: 'deny_request',
@@ -380,6 +402,13 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             },
           });
           processApprovalAction(submitted.actionId);
+          // R-COMPANION-APPROVALS-LIVE-V1: same — update runtime live.
+          emitToBus({
+            type: 'APPROVAL_DENIED',
+            category: 'approvals',
+            payload: { approvalId: requestId, reason: payload.managerNote },
+            createdAt: Date.now(),
+          });
         } else {
           // request_explanation — Phase 1 logs only, no inbox shape exists.
           console.info(
