@@ -20,6 +20,8 @@ import FirebaseSetupModal from './FirebaseSetupModal';
 import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
+// R-DESKTOP-LICENSE-V1-SCAFFOLD
+import { getDesktopIdentity } from '@/services/license/desktopIdentity';
 
 
 // ── Field/Toggle helpers — HOISTED (r26 fix C1) ──────────────
@@ -1613,6 +1615,37 @@ export default function SettingsModule() {
                   </p>
                 </div>
               </div>
+
+              {/* R-DESKTOP-LICENSE-V1-SCAFFOLD — read-only installation identity panel */}
+              {(() => {
+                const identity = getDesktopIdentity();
+                if (!identity) return null;
+                const deviceShort = identity.desktopDeviceId.slice(0, 8) + '…';
+                return (
+                  <div style={{
+                    padding: '0.9rem 1.1rem',
+                    background: 'rgba(15,23,42,0.5)',
+                    border: '1px solid rgba(148,163,184,0.18)',
+                    borderRadius: '0.75rem',
+                  }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {lang === 'es' ? 'Identidad de instalación' : 'Installation Identity'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {[
+                        [lang === 'es' ? 'Tienda' : 'Store', identity.storeId],
+                        [lang === 'es' ? 'Dispositivo' : 'Device ID', deviceShort],
+                        [lang === 'es' ? 'Licencia' : 'License', lang === 'es' ? 'Sin restricción (dogfood)' : 'Not enforced yet'],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.8rem' }}>
+                          <span style={{ color: '#64748b', minWidth: 90 }}>{label}</span>
+                          <span style={{ color: '#cbd5e1', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Companion-Center cross-link */}
               <div style={{
