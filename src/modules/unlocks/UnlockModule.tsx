@@ -37,6 +37,7 @@ import {
   UNLOCK_MONEY_FIELDS, UNLOCK_ALL_FIELDS,
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 
 // R-EDIT-AUDIT: added 'Refund Pending' (active) and 'Refunded' (done).
 // Normalized forms: refund_pending, refunded.
@@ -55,7 +56,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function UnlockModule() {
   const {
-    state: { unlocks, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
+    state: { unlocks, customers, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setUnlocks, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -64,6 +65,7 @@ export default function UnlockModule() {
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
   const L = getLabels(lang);
+  const approvalGate = useApprovalGate({ employees, settings, attemptedByName: currentEmployee?.name });
 
   const unlocksRef = useRef(unlocks);
   useEffect(() => { unlocksRef.current = unlocks; }, [unlocks]);
@@ -760,10 +762,24 @@ export default function UnlockModule() {
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
   // from Gross/Cash/Profit. A voided REFUND-* audit sale is also created.
-  const handleCancelUnlock = useCallback((unlock: Unlock, choice: {
+  const handleCancelUnlock = useCallback(async (unlock: Unlock, choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1: approval gate before any mutation.
+    const approval = await approvalGate.requestApproval({
+      actionType: 'CANCEL_UNLOCK',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: unlock.id,
+      affectedAmount: unlock.depositAmount || 0,
+      reason: choice.method === 'cash'
+        ? 'Unlock cancellation — cash refund'
+        : choice.method === 'store_credit'
+        ? 'Unlock cancellation — store credit'
+        : 'Unlock cancellation — deposit forfeited',
+    });
+    if (!approval.approved) return;
+
     const depositCents = unlock.depositAmount || 0;
     const now = new Date().toISOString();
 
@@ -873,7 +889,7 @@ export default function UnlockModule() {
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, t, setCustomers, setUnlocks, setSales, currentEmployee, toast]);
+  }, [lang, t, setCustomers, setUnlocks, setSales, currentEmployee, toast, approvalGate.requestApproval]);
 
   const handleComplete = useCallback((unlock: Unlock) => {
     const balance = unlock.balance || 0;
@@ -1625,6 +1641,9 @@ export default function UnlockModule() {
           onClose={() => setCancelTarget(null)}
         />
       )}
+
+      {/* R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1 */}
+      {approvalGate.modal}
 
       {deleteConfirm && (
         <ConfirmDialog

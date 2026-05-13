@@ -31,6 +31,7 @@ import type { Repair, CartItem, Customer, Sale, EditAuditEntry } from '@/store/t
 import {
   appendEditEntry, captureSnapshot, checkEditHistoryStatus,
 } from '@/services/editAudit';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 
 // Round R1 F1: full HTML escape (defense-in-depth,
 // matches ReportsModule canonical pattern).
@@ -58,7 +59,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function RepairModule() {
   const {
-    state: { repairs, customers, inventory, settings, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
+    state: { repairs, customers, inventory, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setRepairs, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -66,6 +67,7 @@ export default function RepairModule() {
   const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
+  const approvalGate = useApprovalGate({ employees, settings, attemptedByName: currentEmployee?.name });
 
   const [search, setSearch] = useState(globalSearchTerm || '');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -722,10 +724,24 @@ export default function RepairModule() {
   // BUG #1 fix: Before this, cancelling a repair left depositAmount intact
   // on the entity — ghost revenue with no record of what happened to the money.
   // Now every cancellation forces a disposition choice.
-  const handleCancelRepair = useCallback((repair: Repair, choice: {
+  const handleCancelRepair = useCallback(async (repair: Repair, choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1: approval gate before any mutation.
+    const approval = await approvalGate.requestApproval({
+      actionType: 'CANCEL_REPAIR',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: repair.id,
+      affectedAmount: repair.depositAmount || (repair as any).deposit || 0,
+      reason: choice.method === 'cash'
+        ? 'Repair cancellation — cash refund'
+        : choice.method === 'store_credit'
+        ? 'Repair cancellation — store credit'
+        : 'Repair cancellation — deposit forfeited',
+    });
+    if (!approval.approved) return;
+
     // Round R3-mini: legacy repairs may have { deposit: X, depositAmount: undefined }.
     // Match the fallback pattern used in handleCompleteRequest, TicketCard display,
     // and handleSave EDIT so legacy cancellations refund the actual amount paid.
@@ -844,7 +860,7 @@ export default function RepairModule() {
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, setCustomers, setSales, setRepairs, toast, currentEmployee]);
+  }, [lang, setCustomers, setSales, setRepairs, toast, currentEmployee, approvalGate.requestApproval]);
 
   // ── Collect balance ─────────────────────────────────────
 
@@ -1245,6 +1261,9 @@ export default function RepairModule() {
           onClose={() => setCancelTarget(null)}
         />
       )}
+
+      {/* R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1 */}
+      {approvalGate.modal}
 
       {deleteConfirm && (
         <ConfirmDialog
