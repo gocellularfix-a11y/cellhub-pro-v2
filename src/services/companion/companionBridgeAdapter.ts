@@ -32,10 +32,16 @@ import {
   initIntelligenceEmitter,
   intelligenceEmitter,
 } from './sdk/intelligenceEmitter';
+import {
+  initMessageEmitter,
+  messageEmitter,
+} from './sdk/messageEmitter';
+import { EVENTS as SDK_EVENTS } from './sdk/events';
 import type {
   ApprovalPriority,
   ApprovalType,
   AlertSeverity,
+  NewMessagePayload,
 } from './sdk/payloads';
 import type {
   CompanionApprovalPayload,
@@ -78,6 +84,7 @@ let busUnsubscribe: (() => void) | null = null;
 let statusUnsubscribe: (() => void) | null = null;
 let intelligenceDismissUnsubscribe: (() => void) | null = null;
 let approvalResponseUnsubscribe: (() => void) | null = null;
+let messageUnsubscribe: (() => void) | null = null;
 let lastStatus: PosBridgeStatus = 'idle';
 
 // R-COMPANION-BRIDGE-DEDUP-V1 — in-memory processed-event cache. Prevents
@@ -289,6 +296,35 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
     });
     initApprovalEmitter(client);
     initIntelligenceEmitter(client.getSocket(), client.getStoreId());
+    initMessageEmitter(client.getSocket(), args.storeId, '', '');
+
+    // R-COMPANION-MESSAGING-SIMPLE-V1 — inbound: bridge routes
+    // message:new from mobile to the store room; listen and feed the
+    // local companion event bus so CompanionCenter chat panel updates.
+    if (messageUnsubscribe) {
+      try { messageUnsubscribe(); } catch { /* isolate */ }
+      messageUnsubscribe = null;
+    }
+    messageUnsubscribe = messageEmitter.onNewMessage((p) => {
+      const preview = p.content.length > 80 ? `${p.content.slice(0, 77)}…` : p.content;
+      emitToBus({
+        type: 'MESSAGE_RECEIVED',
+        category: 'messaging',
+        payload: {
+          messageId: p.id,
+          fromEmployeeId: p.senderId,
+          senderRole: p.senderRole === 'manager' ? 'manager' : undefined,
+          channel: 'internal',
+          direction: 'inbound',
+          preview,
+          body: p.content,
+        },
+        createdAt: Date.now(),
+      });
+      console.info(
+        `[companion-bridge-adapter] inbound MESSAGE_NEW from=${p.senderId} id=${p.id}`,
+      );
+    });
 
     statusUnsubscribe = client.onStatus((s) => {
       lastStatus = s;
@@ -427,11 +463,13 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
     try { statusUnsubscribe?.(); } catch { /* isolate */ }
     try { busUnsubscribe?.(); } catch { /* isolate */ }
     try { intelligenceDismissUnsubscribe?.(); } catch { /* isolate */ }
+    try { messageUnsubscribe?.(); } catch { /* isolate */ }
     try { approvalResponseUnsubscribe?.(); } catch { /* isolate */ }
     try { client?.disconnect(); } catch { /* isolate */ }
     statusUnsubscribe = null;
     busUnsubscribe = null;
     intelligenceDismissUnsubscribe = null;
+    messageUnsubscribe = null;
     approvalResponseUnsubscribe = null;
     client = null;
     currentArgs = null;
@@ -462,6 +500,12 @@ export function stopCompanionBridgeAdapter(): void {
   if (intelligenceDismissUnsubscribe) {
     try { intelligenceDismissUnsubscribe(); } catch { /* isolate */ }
     intelligenceDismissUnsubscribe = null;
+  }
+
+  // Inbound message listener (R-COMPANION-MESSAGING-SIMPLE-V1).
+  if (messageUnsubscribe) {
+    try { messageUnsubscribe(); } catch { /* isolate */ }
+    messageUnsubscribe = null;
   }
 
   // Inbound approval response listener (observe-only — Phase 1).
@@ -499,6 +543,55 @@ export function getBridgeAdapterStatus(): PosBridgeStatus {
 /** True when the adapter is fully started (bus subscribed, client owned). */
 export function isCompanionBridgeAdapterStarted(): boolean {
   return lifecycle === 'started';
+}
+
+/**
+ * R-COMPANION-MESSAGING-SIMPLE-V1 — send a message from the desktop POS
+ * to the mobile Companion via the bridge. Emits message:new to the store
+ * room AND fires MESSAGE_SENT on the local bus so CompanionCenter reflects
+ * the outbound message immediately.
+ *
+ * Returns true when the emit was attempted (socket connected), false otherwise.
+ * Caller is responsible for showing a toast if false.
+ */
+export function sendCompanionMessage(
+  content: string,
+  senderId: string,
+  senderName: string,
+): boolean {
+  if (!client || client.getStatus() !== 'connected' || !currentArgs) return false;
+  const socket = client.getSocket();
+  const msgId = `pos-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const payload: NewMessagePayload = {
+    id: msgId,
+    threadId: 'store-general',
+    storeId: currentArgs.storeId,
+    senderId,
+    senderName,
+    senderRole: 'employee',
+    content,
+    timestamp: new Date().toISOString(),
+  };
+  socket.emit(SDK_EVENTS.MESSAGE_NEW, payload);
+  // Reflect outbound on local bus so the runtime + CompanionCenter update.
+  const preview = content.length > 80 ? `${content.slice(0, 77)}…` : content;
+  emitToBus({
+    type: 'MESSAGE_SENT',
+    category: 'messaging',
+    payload: {
+      messageId: msgId,
+      fromEmployeeId: senderId,
+      channel: 'internal',
+      direction: 'outbound',
+      preview,
+      body: content,
+    },
+    createdAt: Date.now(),
+  });
+  console.info(
+    `[companion-bridge-adapter] outbound MESSAGE_NEW id=${msgId} from=${senderId}`,
+  );
+  return true;
 }
 
 /**

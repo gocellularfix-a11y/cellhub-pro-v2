@@ -77,6 +77,8 @@ export interface CompanionMessagePayload {
    *  without an extra employee lookup. */
   senderRole?: 'owner' | 'manager' | 'technician' | 'sales' | 'cashier';
   preview?: string;                // short, sanitised preview only
+  /** R-COMPANION-MESSAGING-SIMPLE-V1: full message body for chat display. */
+  body?: string;
 }
 
 export interface CompanionStoreStatusPayload {
@@ -401,6 +403,8 @@ export interface CompanionMessageRuntimeItem {
   senderRole?: 'owner' | 'manager' | 'technician' | 'sales' | 'cashier';
   /** Short non-sensitive preview only — mirrors the bus payload. */
   preview?: string;
+  /** R-COMPANION-MESSAGING-SIMPLE-V1: full message body for chat display. */
+  body?: string;
   /** Inbound messages start unread; outbound start read. MESSAGE_READ
    *  flips the inbound flag. */
   isRead: boolean;
@@ -435,6 +439,9 @@ export interface CompanionMessagingRuntimeSnapshot {
   latestMessage: CompanionMessageRuntimeItem | null;
   /** ms epoch of the most-recent activity across every thread, or null. */
   lastActivityAt: number | null;
+  /** R-COMPANION-MESSAGING-SIMPLE-V1: up to 50 recent messages, newest first.
+   *  Shallow copies — safe for direct React render without re-walking the bus. */
+  recentMessages: CompanionMessageRuntimeItem[];
 }
 
 export type CompanionMessagingRuntimeListener = (snapshot: CompanionMessagingRuntimeSnapshot) => void;

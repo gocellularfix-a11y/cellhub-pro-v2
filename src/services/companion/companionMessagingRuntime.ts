@@ -64,7 +64,7 @@ function resolveDirection(
 
 function buildSnapshot(): CompanionMessagingRuntimeSnapshot {
   if (messages.size === 0) {
-    return { threads: [], totalUnread: 0, latestMessage: null, lastActivityAt: null };
+    return { threads: [], totalUnread: 0, latestMessage: null, lastActivityAt: null, recentMessages: [] };
   }
 
   // Roll up per-thread state in a single pass. Map<threadKey, thread>.
@@ -105,11 +105,17 @@ function buildSnapshot(): CompanionMessagingRuntimeSnapshot {
   let totalUnread = 0;
   for (const t of threads) totalUnread += t.unreadCount;
 
+  const recentMessages = Array.from(messages.values())
+    .map((m) => ({ ...m }))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 50);
+
   return {
     threads,
     totalUnread,
     latestMessage: latest ? { ...(latest as CompanionMessageRuntimeItem) } : null,
     lastActivityAt: latest ? (latest as CompanionMessageRuntimeItem).updatedAt : null,
+    recentMessages,
   };
 }
 
@@ -145,6 +151,7 @@ function upsertMessage(
     toEmployeeId: payload.toEmployeeId,
     senderRole: payload.senderRole,
     preview: payload.preview,
+    body: payload.body,
     // Outbound is read by definition. Inbound starts unread unless an
     // earlier MESSAGE_READ already flipped it (late-arriving SENT).
     isRead: direction === 'outbound' ? true : (existing?.isRead ?? false),

@@ -65,6 +65,7 @@ import {
   startCompanionBridgeAdapter,
   stopCompanionBridgeAdapter,
   getBridgeAdapterStatus,
+  sendCompanionMessage,
 } from '@/services/companion/companionBridgeAdapter';
 import type { PosBridgeStatus } from '@/services/companion/sdk/posBridgeClient';
 import { useApp } from '@/store/AppProvider';
@@ -318,7 +319,7 @@ export default function CompanionCenter() {
 
   // R-COMPANION-BRIDGE-WIRE-V1: pull settings + employees for the adapter.
   // Cero store mutations from this component — read-only access.
-  const { state: { settings, employees, currentStoreId, sales, repairs } } = useApp();
+  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, lang } } = useApp();
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
   // R-BRIDGE-CLOUD-WIRING-V1 — default points at Railway-hosted bridge
   // so a fresh install just works. Users can still override the URL via
@@ -383,6 +384,8 @@ export default function CompanionCenter() {
   // MESSAGE_SENT / MESSAGE_RECEIVED / MESSAGE_READ events. Used by
   // the Messaging card body.
   const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
+  // R-COMPANION-MESSAGING-SIMPLE-V1: chat input draft.
+  const [msgDraft, setMsgDraft] = useState('');
 
   // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model snapshot driven
   // by STORE_OPENED / STORE_CLOSED / STORE_STATUS_UPDATED events.
@@ -1244,6 +1247,141 @@ export default function CompanionCenter() {
             })}
           </div>
         )}
+      </div>
+
+      {/* R-COMPANION-MESSAGING-SIMPLE-V1: live chat panel */}
+      <div style={{
+        marginTop: '0.75rem',
+        background: 'linear-gradient(160deg, #120820 0%, #0b0516 100%)',
+        border: '1px solid rgba(192,132,252,0.18)',
+        borderRadius: '0.9rem',
+        padding: '1rem 1.1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            💬 {lang === 'es' ? 'Mensajes' : 'Messages'}
+          </span>
+          {messagingRuntime.totalUnread > 0 && (
+            <span style={{
+              background: 'rgba(192,132,252,0.18)',
+              color: '#c084fc',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 10,
+              border: '1px solid rgba(192,132,252,0.3)',
+            }}>
+              {messagingRuntime.totalUnread} {lang === 'es' ? 'sin leer' : 'unread'}
+            </span>
+          )}
+        </div>
+
+        {/* Message feed — oldest first, max 30 shown */}
+        <div style={{
+          maxHeight: 240,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.35rem',
+        }}>
+          {messagingRuntime.recentMessages.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
+              {lang === 'es' ? 'Sin mensajes esta sesión.' : 'No messages this session.'}
+            </p>
+          ) : (
+            [...messagingRuntime.recentMessages].reverse().map((msg) => {
+              const isOut = msg.direction === 'outbound';
+              const senderEmp = employees.find((e) => e.id === msg.fromEmployeeId);
+              const senderLabel = senderEmp?.name || (isOut ? (currentEmployee?.name || 'You') : 'Manager');
+              const text = msg.body || msg.preview || '';
+              return (
+                <div key={msg.messageId} style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: isOut ? 'flex-end' : 'flex-start',
+                }}>
+                  <div style={{
+                    maxWidth: '80%',
+                    background: isOut ? 'rgba(192,132,252,0.18)' : 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${isOut ? 'rgba(192,132,252,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: isOut ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                    padding: '0.45rem 0.65rem',
+                    fontSize: '0.78rem',
+                    color: '#e2e8f0',
+                    lineHeight: 1.4,
+                    wordBreak: 'break-word',
+                  }}>
+                    {text}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: '#475569', marginTop: 2, paddingInline: 4 }}>
+                    {senderLabel} · {auditRelTime(msg.updatedAt)}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Input row */}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            type="text"
+            value={msgDraft}
+            onChange={(e) => setMsgDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && msgDraft.trim() && bridgeStatus === 'connected') {
+                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
+                setMsgDraft('');
+              }
+            }}
+            placeholder={bridgeStatus === 'connected'
+              ? (lang === 'es' ? 'Escribe un mensaje…' : 'Type a message…')
+              : (lang === 'es' ? 'Conecta el bridge para enviar' : 'Connect bridge to send')}
+            disabled={bridgeStatus !== 'connected'}
+            style={{
+              flex: 1,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(192,132,252,0.25)',
+              borderRadius: 8,
+              color: '#e2e8f0',
+              fontSize: '0.82rem',
+              padding: '0.45rem 0.65rem',
+              outline: 'none',
+              opacity: bridgeStatus !== 'connected' ? 0.5 : 1,
+            }}
+          />
+          <button
+            type="button"
+            disabled={!msgDraft.trim() || bridgeStatus !== 'connected'}
+            onClick={() => {
+              if (msgDraft.trim()) {
+                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
+                setMsgDraft('');
+              }
+            }}
+            style={{
+              padding: '0.45rem 0.9rem',
+              background: msgDraft.trim() && bridgeStatus === 'connected'
+                ? 'rgba(192,132,252,0.22)'
+                : 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(192,132,252,0.35)',
+              borderRadius: 8,
+              color: '#c084fc',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: msgDraft.trim() && bridgeStatus === 'connected' ? 'pointer' : 'default',
+              opacity: msgDraft.trim() && bridgeStatus === 'connected' ? 1 : 0.4,
+              transition: 'background 0.15s, opacity 0.15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {lang === 'es' ? 'Enviar' : 'Send'}
+          </button>
+        </div>
       </div>
 
       {/* R-COMPANION-CENTER-UX-REDESIGN: developer diagnostics hidden
