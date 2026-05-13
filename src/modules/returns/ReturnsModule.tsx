@@ -23,6 +23,7 @@ import { generateId } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { persist, batchSave } from '@/services/persist';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { COLLECTIONS } from '@/config/constants';
 import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem } from '@/store/types';
 
@@ -52,7 +53,7 @@ function normalizeStatus(s: string): string {
 
 export default function ReturnsModule() {
   const {
-    state: { sales, inventory, customers, settings, currentEmployee, cart, lang, pendingBarcodeInvoice, globalSearchTerm,
+    state: { sales, inventory, customers, settings, employees, currentEmployee, cart, lang, pendingBarcodeInvoice, globalSearchTerm,
              repairs, unlocks, specialOrders, layaways, customerReturns, vendorReturns },
     setSales, setInventory, setCustomers, setCart, setActiveTab, dispatch,
     setRepairs, setUnlocks, setSpecialOrders, setLayaways,
@@ -62,6 +63,8 @@ export default function ReturnsModule() {
   const { toast } = useToast();
   const { printHtml } = usePrint();
   const { t } = useTranslation();
+  // R-APPROVAL-GATE-RETURNS-V1: gate for refund execution.
+  const approvalGate = useApprovalGate({ employees, settings, attemptedByName: currentEmployee?.name });
   const taxRate = settings.taxRate ?? 0.0925;
   // r-pkg-b4 fix B1: was reading nonexistent `returnDays` — `returnPolicyDays`
   // is the actual field on StoreSettings (types.ts L74).
@@ -318,7 +321,7 @@ export default function ReturnsModule() {
     : true;
 
   // ── Process customer return ────────────────────────────────
-  const processReturn = useCallback(() => {
+  const processReturn = useCallback(async () => {
     if (selectedCount === 0) { toast(t('returns.selectAtLeastOne'), 'warning'); return; }
 
     // R-RETURNS-F1.4: hard guard — if the original sale was paid with store
@@ -366,6 +369,17 @@ export default function ReturnsModule() {
     const subtotalCents = returnItems.reduce((s, i) => s + i.subtotalCents, 0);
     const taxCentsTotal = returnItems.reduce((s, i) => s + i.taxCents, 0);
     const totalCents    = subtotalCents + taxCentsTotal;
+
+    // R-APPROVAL-GATE-RETURNS-V1: gate before any mutation.
+    const refundReasonStr = reason ? `Refund requested — ${reason}` : 'Refund requested — customer return';
+    const refundApproval = await approvalGate.requestApproval({
+      actionType: 'REFUND',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: foundSale?.id || '',
+      affectedAmount: totalCents,
+      reason: refundReasonStr,
+    });
+    if (!refundApproval.approved) return;
 
     const returnRecord: CustomerReturn = {
       id: generateId(),
@@ -782,7 +796,7 @@ export default function ReturnsModule() {
   }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
       currentEmployee, taxRate, t,
       setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
-      setReturnHistory, toast]);
+      setReturnHistory, toast, approvalGate.requestApproval]);
 
   // ── Print return receipt ───────────────────────────────────
   // Round 19 fixes:
@@ -1372,6 +1386,9 @@ export default function ReturnsModule() {
           )}
         </div>
       )}
+
+      {/* R-APPROVAL-GATE-RETURNS-V1 */}
+      {approvalGate.modal}
     </div>
   );
 }
