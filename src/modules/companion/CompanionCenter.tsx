@@ -845,11 +845,7 @@ export default function CompanionCenter() {
               background: sty.fg,
               boxShadow: `0 0 6px ${sty.fg}88`,
             }} />
-            <span style={{ color: '#94a3b8', fontWeight: 700, letterSpacing: '0.02em' }}>
-              {t('companion.bridge.status.label')}
-            </span>
-            <span aria-hidden="true" style={{ color: '#475569' }}>·</span>
-            <span>{t(sty.labelKey)}</span>
+            <span style={{ fontWeight: 600 }}>{t(sty.labelKey)}</span>
           </div>
         );
       })()}
@@ -1469,9 +1465,6 @@ export default function CompanionCenter() {
               fontWeight: 600,
             }}>
               {companionConnState === 'connected' ? t('companion.debug.yes') : t('companion.debug.no')}
-              <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '0.35rem' }}>
-                ({companionConnState})
-              </span>
             </div>
           </div>
           <div>
@@ -1589,7 +1582,6 @@ export default function CompanionCenter() {
               cursor: 'pointer',
               fontSize: '0.74rem',
               fontWeight: 600,
-              fontFamily: 'Courier New, monospace',
             }}
           >
             {t('companion.inbox.submitApprove')}
@@ -1606,7 +1598,6 @@ export default function CompanionCenter() {
               cursor: 'pointer',
               fontSize: '0.74rem',
               fontWeight: 600,
-              fontFamily: 'Courier New, monospace',
             }}
           >
             {t('companion.inbox.submitDeny')}
@@ -1623,7 +1614,6 @@ export default function CompanionCenter() {
               cursor: 'pointer',
               fontSize: '0.74rem',
               fontWeight: 600,
-              fontFamily: 'Courier New, monospace',
             }}
           >
             {t('companion.inbox.submitMessage')}
@@ -1640,7 +1630,6 @@ export default function CompanionCenter() {
               cursor: 'pointer',
               fontSize: '0.74rem',
               fontWeight: 600,
-              fontFamily: 'Courier New, monospace',
             }}
           >
             {t('companion.inbox.submitAck')}
