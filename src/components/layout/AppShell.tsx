@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback } from 'react';
 import Sidebar from './Sidebar';
+import SidebarList from './SidebarList';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
@@ -7,6 +8,7 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
 import { useLicense } from '@/contexts/LicenseContext';
+import { readDashboardTheme } from '@/theme/dashboardTheme';
 
 // ── Lazy-load all modules ─────────────────────────────────
 const Dashboard        = lazy(() => import('@/modules/dashboard/Dashboard'));
@@ -116,12 +118,18 @@ export default function AppShell() {
   const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
+  // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (current
+  // production) is the default; 'list' restores the pre-redesign sidebar.
+  // 'bold-blocks' currently uses the same Sidebar — the dashboard body
+  // variant lands in a follow-up phase. Stored in settings.dashboardTheme.
+  const dashboardTheme = readDashboardTheme(state.settings);
+
   return (
-    <div className="flex h-screen max-h-screen overflow-hidden">
+    <div className={`flex h-screen max-h-screen overflow-hidden theme-${dashboardTheme}`}>
       {/* r-pkg-a2: auto-update banner — renders at top of screen when
           an update is available. No-op in browser (non-Electron). */}
       <AutoUpdateNotifier />
-      <Sidebar />
+      {dashboardTheme === 'list' ? <SidebarList /> : <Sidebar />}
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden h-screen p-6">
         <Suspense fallback={<LoadingSpinner message="Loading module…" />}>
