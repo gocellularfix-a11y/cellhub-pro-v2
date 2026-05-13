@@ -34,6 +34,10 @@ export interface IntelligenceAlertEmitInput {
   /** Optional entity context — only opaque IDs; cero PII. */
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /** R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: human-readable title forwarded to bridge. */
+  title?: string;
+  /** R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: actionable recommendation text forwarded to bridge. */
+  body?: string;
 }
 
 /**
@@ -66,5 +70,7 @@ function buildPayload(input: IntelligenceAlertEmitInput): CompanionIntelligenceA
   else if (input.severity)     out.priority = input.severity;
   if (input.relatedEntityType) out.relatedEntityType = input.relatedEntityType;
   if (input.relatedEntityId)   out.relatedEntityId = input.relatedEntityId;
+  if (input.title)             out.title = input.title;
+  if (input.body)              out.body = input.body;
   return out;
 }

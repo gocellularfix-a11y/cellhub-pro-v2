@@ -246,9 +246,9 @@ function handleEvent(event: CompanionEvent): void {
         const p = event.payload as CompanionIntelligenceAlertPayload;
         intelligenceEmitter.push({
           severity: mapSeverity(p.severity),
-          category: p.insightType ?? 'system',
-          title: p.kind ?? 'Alert',     // configId is what AlertEngine emits
-          recommendation: '',           // empty — no NLG output on the wire yet
+          category: p.insightType ?? 'operations',
+          title: p.title || p.kind || 'Store Alert',
+          recommendation: p.body || '',
           suggestedAction: 'view_details',
           suggestedActionLabel: 'View',
         });

@@ -67,6 +67,10 @@ import {
   getBridgeAdapterStatus,
   sendCompanionMessage,
 } from '@/services/companion/companionBridgeAdapter';
+import {
+  generateCompanionAlerts,
+} from '@/services/companion/companionAlertProducer';
+import { emitIntelligenceAlertCreated } from '@/services/companion/emitters/intelligenceEmitter';
 import type { PosBridgeStatus } from '@/services/companion/sdk/posBridgeClient';
 import { useApp } from '@/store/AppProvider';
 // R-COMPANION-APPROVAL-RUNTIME-V1: read model over approval events.
@@ -319,7 +323,7 @@ export default function CompanionCenter() {
 
   // R-COMPANION-BRIDGE-WIRE-V1: pull settings + employees for the adapter.
   // Cero store mutations from this component — read-only access.
-  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, lang } } = useApp();
+  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, inventory, lang } } = useApp();
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
   // R-BRIDGE-CLOUD-WIRING-V1 — default points at Railway-hosted bridge
   // so a fresh install just works. Users can still override the URL via
@@ -386,6 +390,36 @@ export default function CompanionCenter() {
   const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
   // R-COMPANION-MESSAGING-SIMPLE-V1: chat input draft.
   const [msgDraft, setMsgDraft] = useState('');
+
+  // R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: run deterministic alert rules
+  // every 5 minutes while bridge is connected. emitIntelligenceAlertCreated
+  // feeds the companion event bus → bridge adapter → mobile feed. Producer
+  // has built-in 30-min per-rule cooldown so the timer is safe to tick often.
+  useEffect(() => {
+    const run = () => {
+      if (bridgeStatus !== 'connected') return;
+      const alerts = generateCompanionAlerts({
+        sales,
+        repairs,
+        inventory,
+        pendingApprovalCount: approvalRuntime.pendingCount,
+      });
+      for (const a of alerts) {
+        emitIntelligenceAlertCreated({
+          alertId: `${a.configId}-${Date.now()}`,
+          severity: a.severity,
+          kind: a.configId,
+          insightType: a.insightType,
+          title: a.title,
+          body: a.body,
+        });
+      }
+    };
+    run(); // fire immediately on mount / bridgeStatus change
+    const handle = setInterval(run, 5 * 60 * 1000);
+    return () => clearInterval(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridgeStatus, sales, repairs, inventory, approvalRuntime.pendingCount]);
 
   // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model snapshot driven
   // by STORE_OPENED / STORE_CLOSED / STORE_STATUS_UPDATED events.

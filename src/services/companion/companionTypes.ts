@@ -134,6 +134,12 @@ export interface CompanionIntelligenceAlertPayload {
    *  is responsible for confirming it carries no PII (it shouldn't —
    *  app entity ids are opaque). */
   relatedEntityId?: string;
+  /** R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: human-readable alert title
+   *  in the store's primary language. Forwarded as bridge payload title. */
+  title?: string;
+  /** R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: short actionable sentence
+   *  shown as the recommendation body on the mobile feed card. */
+  body?: string;
 }
 
 // ── Discriminated union of all events ─────────────────────
