@@ -3753,6 +3753,7 @@ export const translations: TranslationDictionary = {
   'settings.nav.hardware':                 { en: 'Hardware',                    es: 'Hardware',                      pt: 'Hardware' },
   'settings.nav.whatsapp':                 { en: 'WhatsApp',                    es: 'WhatsApp',                      pt: 'WhatsApp' },
   'settings.nav.ai':                       { en: 'AI Assistant',                es: 'Asistente IA',                  pt: 'Assistente IA' },
+  'settings.nav.companion':                { en: 'Companion',                   es: 'Companion',                     pt: 'Companion' },
   'settings.nav.employees':               { en: 'Employees',                   es: 'Empleados',                     pt: 'Funcionários' },
   'settings.nav.backup':                   { en: 'Backup & Restore',            es: 'Respaldo y Restauración',       pt: 'Backup e Restauração' },
 
@@ -4824,8 +4825,10 @@ export const translations: TranslationDictionary = {
   'companion.subtitle':              { en: 'Connect CellHub Pro with the Companion mobile app.', es: 'Conecta CellHub Pro con la app móvil Companion.', pt: 'Conecte o CellHub Pro com o app móvel Companion.' },
   'companion.statusBanner.notConnected':   { en: 'Not connected',         es: 'No conectado',            pt: 'Não conectado' },
   'companion.statusBanner.pairing':        { en: 'Pairing pending',       es: 'Emparejamiento pendiente',pt: 'Emparelhamento pendente' },
-  'companion.statusBanner.connected':      { en: 'Connected soon',        es: 'Conexión próxima',        pt: 'Conexão em breve' },
-  'companion.statusBanner.comingSoon':     { en: 'Coming soon',           es: 'Próximamente',            pt: 'Em breve' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: replace misleading
+  // "Connected soon" / "Coming soon" with honest labels.
+  'companion.statusBanner.connected':      { en: 'Connected',             es: 'Conectado',               pt: 'Conectado' },
+  'companion.statusBanner.comingSoon':     { en: 'Not enabled',           es: 'No habilitado',           pt: 'Não habilitado' },
 
   'companion.card.connect.title':      { en: 'Connect Companion App',     es: 'Conectar app Companion',  pt: 'Conectar app Companion' },
   'companion.card.connect.body':       { en: 'Link this terminal to the mobile Companion so you can monitor and assist the store from anywhere.', es: 'Vincula esta terminal con el Companion móvil para monitorear y asistir la tienda desde cualquier lugar.', pt: 'Vincule este terminal ao Companion móvel para monitorar e assistir a loja de qualquer lugar.' },
@@ -4888,8 +4891,18 @@ export const translations: TranslationDictionary = {
   'companion.card.pair.repairButton':{ en: 'Pair another device',    es: 'Emparejar otro',          pt: 'Parear outro' },
   'companion.pair.modalTitle':       { en: 'Pair Companion Device',  es: 'Emparejar Dispositivo Companion', pt: 'Parear Dispositivo Companion' },
   'companion.pair.qrCaption':        { en: 'Scan with the Companion app', es: 'Escanea con la app Companion', pt: 'Escaneie com o app Companion' },
+  'companion.pair.expiresIn':        { en: 'Expires in',              es: 'Expira en',                pt: 'Expira em' },
   'companion.pair.pinLabel':         { en: 'Or enter this 6-digit code', es: 'O ingresa este código de 6 dígitos', pt: 'Ou insira este código de 6 dígitos' },
-  'companion.pair.instructions':     { en: 'Open the Companion app on your phone and tap Pair to scan the code above.', es: 'Abre la app Companion en tu teléfono y toca Emparejar para escanear el código.', pt: 'Abra o app Companion no celular e toque em Parear para escanear o código.' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: honest QR-scan instruction.
+  'companion.pair.instructions':     { en: 'Open CellHub Companion on your phone and scan this QR code.', es: 'Abre CellHub Companion en tu teléfono y escanea este código QR.', pt: 'Abra o CellHub Companion no celular e escaneie este QR code.' },
+  // Real pairing-status labels surfaced inside the modal.
+  'companion.pair.status.waiting':           { en: 'Waiting for phone',           es: 'Esperando teléfono',          pt: 'Aguardando telefone' },
+  'companion.pair.status.received':          { en: 'Pairing request received',    es: 'Solicitud de emparejamiento recibida', pt: 'Solicitação de pareamento recebida' },
+  'companion.pair.status.connected':         { en: 'Connected',                   es: 'Conectado',                   pt: 'Conectado' },
+  'companion.pair.status.expired':           { en: 'Pairing code expired',        es: 'Código de emparejamiento expirado', pt: 'Código de pareamento expirado' },
+  'companion.pair.status.bridgeUnavailable': { en: 'Bridge unavailable — check Settings', es: 'Bridge no disponible — revisa Ajustes', pt: 'Bridge indisponível — verifique as Configurações' },
+  'companion.pair.status.offerFailed':       { en: 'Bridge rejected the pairing offer', es: 'El bridge rechazó la oferta de emparejamiento', pt: 'O bridge rejeitou a oferta de pareamento' },
+  'companion.pair.bridge.offerFailedHint':   { en: 'The bridge server returned an error. Close this modal, verify Bridge URL and Settings, and try again.', es: 'El servidor del bridge devolvió un error. Cierra este modal, verifica la URL del Bridge y los Ajustes, e inténtalo de nuevo.', pt: 'O servidor do bridge retornou um erro. Feche este modal, verifique a URL do Bridge e as Configurações, e tente novamente.' },
   'companion.pair.phase.waiting':    { en: 'Waiting for device…',    es: 'Esperando dispositivo…',  pt: 'Aguardando dispositivo…' },
   'companion.pair.phase.pending':    { en: 'Pairing pending…',       es: 'Emparejamiento pendiente…', pt: 'Pareamento pendente…' },
   'companion.pair.phase.connected':  { en: 'Connected!',             es: '¡Conectado!',             pt: 'Conectado!' },
@@ -4904,6 +4917,13 @@ export const translations: TranslationDictionary = {
   'companion.device.platform.unknown':{ en: 'Device',                es: 'Dispositivo',             pt: 'Dispositivo' },
   'companion.device.lastConnected':  { en: 'Last connected',         es: 'Última conexión',         pt: 'Última conexão' },
   'companion.device.justNow':        { en: 'just now',               es: 'hace un momento',         pt: 'agora mesmo' },
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: paired-device card labels.
+  'companion.device.lastSeen':       { en: 'Last seen',              es: 'Visto por última vez',    pt: 'Visto por último' },
+  'companion.device.seconds':        { en: 's ago',                  es: 's atrás',                 pt: 's atrás' },
+  'companion.device.minutes':        { en: 'm ago',                  es: 'min atrás',               pt: 'min atrás' },
+  'companion.device.hours':          { en: 'h ago',                  es: 'h atrás',                 pt: 'h atrás' },
+  'companion.device.status.connected':    { en: 'Connected',         es: 'Conectado',               pt: 'Conectado' },
+  'companion.device.status.disconnected': { en: 'Disconnected',      es: 'Desconectado',            pt: 'Desconectado' },
   'companion.device.health.good':    { en: 'Healthy',                es: 'Saludable',               pt: 'Saudável' },
   'companion.device.disconnect':     { en: 'Disconnect',             es: 'Desconectar',             pt: 'Desconectar' },
 
@@ -4916,6 +4936,8 @@ export const translations: TranslationDictionary = {
   'companion.debug.queueSize':       { en: 'Queue size',              es: 'Tamaño de cola',           pt: 'Tamanho da fila' },
   'companion.debug.toggleConnection':{ en: 'Toggle connection',       es: 'Alternar conexión',        pt: 'Alternar conexão' },
   'companion.debug.simulateEvent':   { en: 'Simulate event',          es: 'Simular evento',           pt: 'Simular evento' },
+  'companion.debug.mockPair':        { en: 'Simulate paired device (testing only)', es: 'Simular dispositivo emparejado (solo pruebas)', pt: 'Simular dispositivo pareado (apenas testes)' },
+  'companion.debug.mockPairHint':    { en: 'Bypasses the real bridge claim flow. For UI development only — does NOT pair a real phone.', es: 'Salta el flujo real de emparejamiento del bridge. Solo para desarrollo de UI — NO empareja un teléfono real.', pt: 'Pula o fluxo real de pareamento do bridge. Apenas para desenvolvimento de UI — NÃO pareia um telefone real.' },
   'companion.debug.noEvents':        { en: 'no events yet',           es: 'sin eventos aún',          pt: 'sem eventos ainda' },
   'companion.debug.yes':             { en: 'yes',                     es: 'sí',                       pt: 'sim' },
   'companion.debug.no':              { en: 'no',                      es: 'no',                       pt: 'não' },
@@ -4930,6 +4952,16 @@ export const translations: TranslationDictionary = {
   'companion.inbox.submitAck':       { en: '+ ack_alert',             es: '+ ack_alert',               pt: '+ ack_alert' },
   'companion.inbox.processPending':  { en: 'Process pending',         es: 'Procesar pendientes',       pt: 'Processar pendentes' },
   'companion.inbox.clearHandled':    { en: 'Clear handled',           es: 'Limpiar procesadas',        pt: 'Limpar processadas' },
+
+  // R-COMPANION-BRIDGE-SETTINGS-V1 — Settings → Companion section copy
+  'settings.companion.title':              { en: 'Companion',                                                                es: 'Companion',                                                                pt: 'Companion' },
+  'settings.companion.desc':               { en: 'Configure the Companion mobile bridge.',                                   es: 'Configura el puente móvil de Companion.',                                   pt: 'Configure a ponte móvel do Companion.' },
+  'settings.companion.bridge.title':       { en: 'Bridge Transport',                                                         es: 'Transporte del Bridge',                                                     pt: 'Transporte do Bridge' },
+  'settings.companion.bridge.enabledLabel':{ en: 'Enable Companion bridge transport',                                        es: 'Habilitar transporte del bridge Companion',                                 pt: 'Ativar transporte do bridge Companion' },
+  'settings.companion.bridge.enabledHint': { en: 'When enabled, this terminal connects to the Companion bridge so approvals, messaging, and store status flow to/from the mobile app.', es: 'Cuando está habilitado, esta terminal se conecta al bridge de Companion para enviar y recibir aprobaciones, mensajería y estado de la tienda con la app móvil.', pt: 'Quando ativado, este terminal se conecta ao bridge do Companion para sincronizar aprovações, mensagens e status da loja com o app móvel.' },
+  'settings.companion.bridge.urlLabel':    { en: 'Bridge URL (optional override)',                                           es: 'URL del Bridge (anulación opcional)',                                       pt: 'URL do Bridge (substituição opcional)' },
+  'settings.companion.bridge.urlHint':     { en: 'Leave blank to use the default bridge URL. Override only if pointing to a custom bridge server.', es: 'Déjalo vacío para usar la URL por defecto. Solo anula si apuntas a un servidor de bridge personalizado.', pt: 'Deixe em branco para usar a URL padrão. Substitua apenas se estiver apontando para um servidor de bridge personalizado.' },
+  'settings.companion.openCenterHint':     { en: 'Pairing, device status, and connection diagnostics live in Companion Center.', es: 'El emparejamiento, el estado del dispositivo y los diagnósticos de conexión están en Centro Companion.', pt: 'O pareamento, status do dispositivo e diagnósticos de conexão ficam em Central Companion.' },
 
   // R-COMPANION-BRIDGE-WIRE-V1 — outbound bridge transport copy
   'companion.bridge.disabled':       { en: 'Bridge transport disabled — enable in Settings', es: 'Transporte de Bridge deshabilitado — habilítalo en Ajustes', pt: 'Transporte do Bridge desativado — ative em Configurações' },
@@ -4973,7 +5005,7 @@ export const translations: TranslationDictionary = {
   'operator.overlay.watching':      { en: 'Watching this screen.', es: 'Observando esta pantalla.', pt: 'Observando esta tela.' },
 
   // R-OPERATOR-ACTIVITY-CONTEXT-V1 — persistent context block
-  'operator.context.title.phonePayment': { en: 'Working on phone payment', es: 'Trabajando en pago de teléfono', pt: 'Trabalhando em pagamento de telefone' },
+  'operator.context.title.phone_payment': { en: 'Working on phone payment', es: 'Trabajando en pago de teléfono', pt: 'Trabalhando em pagamento de telefone' },
   'operator.context.title.customer':     { en: 'Working with customer',    es: 'Trabajando con cliente',         pt: 'Trabalhando com cliente' },
   'operator.context.title.sale':         { en: 'Reviewing sale',           es: 'Revisando venta',                pt: 'Revisando venda' },
   'operator.context.title.layaway':      { en: 'Reviewing layaway',        es: 'Revisando apartado',             pt: 'Revisando layaway' },
