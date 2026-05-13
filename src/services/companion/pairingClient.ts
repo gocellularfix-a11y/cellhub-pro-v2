@@ -76,8 +76,8 @@ export interface RevokePairingOfferInput {
 
 export async function revokePairingOffer(input: RevokePairingOfferInput): Promise<void> {
   try {
-    await fetch(`${input.bridgeUrl}/pair/offer`, {
-      method: 'DELETE',
+    await fetch(`${input.bridgeUrl}/pair/revoke`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: input.code, storeId: input.storeId }),
     });
