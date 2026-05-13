@@ -14,6 +14,12 @@ import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
 import { isElectron, getElectronAPI } from '@/utils/platform';
+import {
+  readDashboardTheme,
+  dashboardThemeLabel,
+  DASHBOARD_THEMES,
+  type DashboardTheme,
+} from '@/theme/dashboardTheme';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
@@ -335,6 +341,8 @@ export default function SettingsModule() {
   const { t, locale } = useTranslation();
   const SECTIONS = [
     { id: 'store',       icon: '🏪',  label: t('settings.nav.store') },
+    // R-DASHBOARD-THEME-V1
+    { id: 'appearance',  icon: '🎨',  label: t('settings.nav.appearance') },
     { id: 'multistore',  icon: '🏬',  label: t('settings.nav.multistore') },
     { id: 'taxes',       icon: '💰',  label: t('settings.nav.taxes') },
     // r-settings-2b1: commissions tab unifies carriers + top-ups
@@ -427,6 +435,7 @@ export default function SettingsModule() {
 
   const sectionLabels: Record<string, string> = {
     store:       t('settings.nav.store'),
+    appearance:  t('settings.nav.appearance'),
     multistore:  t('settings.nav.multistore'),
     taxes:       t('settings.nav.taxes'),
     commissions: t('settings.nav.commissions'),
@@ -725,6 +734,123 @@ export default function SettingsModule() {
               <AdminPinField settings={settings} update={update} label="Admin PIN" />
             </div>
           )}
+
+          {/* R-DASHBOARD-THEME-V1: Appearance section — 3 theme preview cards. */}
+          {activeSection === 'appearance' && (() => {
+            const currentTheme = readDashboardTheme(settings);
+            const renderPreview = (key: DashboardTheme) => {
+              if (key === 'tiles') {
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, height: '100%' }}>
+                    {['#FBBF24', '#2DD4BF', '#C084FC', '#22D3EE', '#4ADE80', '#FB7185'].map((c, i) => (
+                      <div key={i} style={{ background: `linear-gradient(145deg, ${c}33, ${c}11)`, border: `1px solid ${c}66`, borderRadius: 4 }} />
+                    ))}
+                  </div>
+                );
+              }
+              if (key === 'list') {
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: '100%', padding: 2 }}>
+                    {[0,1,2,3,4].map((i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? '#a78bfa' : 'rgba(255,255,255,0.35)' }} />
+                        <div style={{ flex: 1, height: 5, borderRadius: 2, background: i === 0 ? 'rgba(167,139,250,0.5)' : 'rgba(255,255,255,0.10)' }} />
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+              // bold-blocks
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, height: '100%' }}>
+                  {[
+                    { from: '#10B981', to: '#059669' },
+                    { from: '#F97316', to: '#EA580C' },
+                    { from: '#EF4444', to: '#DC2626' },
+                    { from: '#EC4899', to: '#DB2777' },
+                    { from: '#14B8A6', to: '#0D9488' },
+                    { from: '#8B5CF6', to: '#7C3AED' },
+                  ].map((c, i) => (
+                    <div key={i} style={{ background: `linear-gradient(155deg, ${c.from}, ${c.to})`, borderRadius: 4, boxShadow: `0 2px 6px ${c.from}55` }} />
+                  ))}
+                </div>
+              );
+            };
+            const descKey = (k: DashboardTheme) => `settings.appearance.${k === 'bold-blocks' ? 'boldBlocks' : k}.desc`;
+            return (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white mb-1">
+                  🎨 {t('settings.appearance.title')}
+                </h2>
+                <p className="text-sm text-slate-400 mb-4">
+                  {t('settings.appearance.subtitle')}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                  {DASHBOARD_THEMES.map((key) => {
+                    const isActive = currentTheme === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => update('dashboardTheme', key)}
+                        style={{
+                          padding: '1rem',
+                          borderRadius: '0.85rem',
+                          background: isActive
+                            ? 'linear-gradient(135deg, rgba(124,58,237,0.22), rgba(99,102,241,0.10))'
+                            : 'rgba(255,255,255,0.025)',
+                          border: isActive
+                            ? '2px solid rgba(167,139,250,0.65)'
+                            : '1px solid rgba(255,255,255,0.08)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem',
+                          textAlign: 'left',
+                          transition: 'all .18s ease',
+                          boxShadow: isActive ? '0 10px 28px rgba(124,58,237,0.30)' : 'none',
+                        }}
+                      >
+                        {/* Mini preview swatch */}
+                        <div style={{
+                          height: 88,
+                          borderRadius: 6,
+                          padding: 6,
+                          background: key === 'bold-blocks' ? '#F4F5F7' : '#0E1018',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                        }}>
+                          {renderPreview(key)}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
+                              {dashboardThemeLabel(key, locale)}
+                            </span>
+                            {isActive && (
+                              <span style={{
+                                fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em',
+                                padding: '2px 8px', borderRadius: 999,
+                                background: 'rgba(167,139,250,0.20)', color: '#c4b5fd',
+                                border: '1px solid rgba(167,139,250,0.40)',
+                              }}>
+                                ✓ {t('settings.appearance.active')}
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 6, lineHeight: 1.4 }}>
+                            {t(descKey(key))}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.75rem' }}>
+                  💡 {t('settings.appearance.hint')}
+                </p>
+              </div>
+            );
+          })()}
 
           {activeSection === 'taxes' && (
             <div className="space-y-4">
