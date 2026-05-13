@@ -195,6 +195,8 @@ export interface CompanionPairingSession {
   pin: string;
   /** ms epoch when the session opened. */
   startedAt: number;
+  /** ms epoch when the session expires (startedAt + TTL). */
+  expiresAt: number;
   phase: CompanionPairingPhase;
 }
 

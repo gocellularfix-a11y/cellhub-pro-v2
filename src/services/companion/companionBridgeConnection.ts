@@ -84,10 +84,12 @@ function notifySnapshot(): void {
  */
 export function startPairingSession(opts?: { pin?: string }): CompanionPairingSession {
   if (pairingSession) return pairingSession;
+  const now = Date.now();
   pairingSession = {
     sessionId: generateId(),
     pin: opts?.pin || generatePin(),
-    startedAt: Date.now(),
+    startedAt: now,
+    expiresAt: now + 5 * 60 * 1_000, // 5-minute pairing window
     phase: 'waiting',
   };
   // Move the lower transport to 'connecting' if we don't already have
@@ -146,6 +148,25 @@ export function mockConnectDevice(input: MockConnectInput = {}): CompanionPaired
   setBridgeState('connected');
   notifySnapshot();
   return pairedDevice;
+}
+
+export interface ConfirmPairedDeviceInput {
+  deviceId: string;
+  deviceName?: string;
+  platform?: CompanionDevicePlatform;
+}
+
+/**
+ * Confirm a real bridge-claimed device as paired.
+ * Real-pairing sibling of mockConnectDevice — same internal state
+ * mutation but with a required deviceId from the bridge claim response.
+ */
+export function confirmPairedDevice(input: ConfirmPairedDeviceInput): CompanionPairedDevice {
+  return mockConnectDevice({
+    deviceId: input.deviceId,
+    deviceName: input.deviceName,
+    platform: input.platform,
+  });
 }
 
 /**
