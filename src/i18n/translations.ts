@@ -4804,6 +4804,12 @@ export const translations: TranslationDictionary = {
   'reports.noName':            { en: 'No name',                                         es: 'Sin nombre',                                       pt: 'Sem nome' },
   'reports.unknownEmployee':   { en: 'Unknown',                                         es: 'Sin nombre',                                       pt: 'Desconhecido' },
   'reports.noProvider':        { en: '(No provider)',                                   es: '(Sin proveedor)',                                  pt: '(Sem provedor)' },
+  // R-ACTIVATIONS-BY-CARRIER-V1
+  'reports.noCarrier':              { en: '(No carrier)',                                  es: '(Sin compañía)',                                   pt: '(Sem operadora)' },
+  'reports.activationsByCarrier':   { en: 'Activations by Carrier',                        es: 'Activaciones por Compañía',                        pt: 'Ativações por Operadora' },
+  'reports.activationsByCarrierSub':{ en: 'Phone activations grouped by carrier company',  es: 'Activaciones agrupadas por compañía telefónica',   pt: 'Ativações agrupadas por operadora' },
+  'reports.activations':            { en: 'activations',                                   es: 'activaciones',                                     pt: 'ativações' },
+  'reports.lines':                  { en: 'lines',                                         es: 'líneas',                                           pt: 'linhas' },
 
   // ── Nav tab labels ────────────────────────────────────────
   'nav.dashboard':       { en: 'Dashboard',        es: 'Tablero',              pt: 'Painel' },

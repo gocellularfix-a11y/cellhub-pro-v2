@@ -643,7 +643,15 @@ export default function CustomerModule() {
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(59,130,246,0.3)', color: '#3b82f6' }}
                         >💬</button>
                         <button
-                          onClick={() => setViewHistory(c)}
+                          onClick={() => {
+                            setViewHistory(c);
+                            // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a customer history was opened
+                            try {
+                              window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+                                detail: { type: 'customer.history_opened', payload: { customerId: c.id } },
+                              }));
+                            } catch { /* env without CustomEvent — silent */ }
+                          }}
                           title={t('customers.titleViewHistory')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(139,92,246,0.3)', color: '#8b5cf6' }}
                         >👁</button>

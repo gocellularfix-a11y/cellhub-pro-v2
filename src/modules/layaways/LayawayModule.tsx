@@ -302,6 +302,12 @@ export default function LayawayModule() {
   const openEdit = (l: Layaway) => {
     const r = l as any;
     setEditLayaway(l);
+    // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a layaway was opened
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+        detail: { type: 'layaway.opened', payload: { layawayId: l.id } },
+      }));
+    } catch { /* env without CustomEvent — silent */ }
     setForm({
       firstName:       r.firstName    || l.customerName?.split(' ')[0] || '',
       lastName:        r.lastName     || l.customerName?.split(' ').slice(1).join(' ') || '',

@@ -1043,7 +1043,16 @@ export default function RepairModule() {
               pendingCents={pendingByRepairId.get(repair.id) || 0}
               createdAt={repair.createdAt as string}
               priority={repair.priority}
-              onClick={() => { setEditRepair(repair); setShowModal(true); }}
+              onClick={() => {
+                setEditRepair(repair);
+                setShowModal(true);
+                // R-OPERATOR-ACTIVITY-WIRING: notify FloatingOperatorBubble that a repair was opened
+                try {
+                  window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+                    detail: { type: 'repair.opened', payload: { repairId: repair.id } },
+                  }));
+                } catch { /* env without CustomEvent — silent */ }
+              }}
               onCollectBalance={repair.balance > 0 ? () => setDepositModalRepair(repair) : undefined}
               onWhatsApp={settings.waEnabled !== false && repair.customerPhone ? () => {
                 // Round R2: canonical status checks for WA template selection.

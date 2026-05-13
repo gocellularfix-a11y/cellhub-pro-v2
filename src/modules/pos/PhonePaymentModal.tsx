@@ -1351,10 +1351,18 @@ export default function PhonePaymentModal({
   // digit input is accepted as before (first 10 kept).
   const actPhoneValid = isValidPhone(actPhone);
 
+  // R-PHONE-ACTIVATION-SIM-ONLY-FIX: a picked SIM is itself a valid line
+  // item (price decremented from inventory), so it alone satisfies the
+  // "something to charge" requirement. Previously SIM-only flows were
+  // blocked because activationFee=0 AND planPrice=0 failed the OR check.
   const canAddActivation =
     !!actCarrier &&
     actPhoneValid &&
-    ((parseFloat(actAmount) || 0) > 0 || (parseFloat(actPlanPrice) || 0) > 0);
+    (
+      (parseFloat(actAmount) || 0) > 0 ||
+      (parseFloat(actPlanPrice) || 0) > 0 ||
+      !!selectedSim
+    );
 
   // R-SIM-INTAKE: SIM Cards in stock (category 'sim', qty>0). Optional — the
   // activation can complete without a SIM. The cart-side decrement at checkout
@@ -1472,7 +1480,13 @@ export default function PhonePaymentModal({
     // the existing POSModule.tsx decrement loop (no new checkout code needed).
     // spiffAmount is stamped here (NOT on Plan or Activation Fee) per auditor
     // decision — single source of truth for downstream commission/tax reports.
-    if (selectedSim) {
+    //
+    // R-PHONE-ACTIVATION-ESIM-MUTEX-V1: when Activation Fee (amountCents) > 0
+    // we treat this as an eSIM activation — physical SIM line is skipped even
+    // if `selectedSim` happens to be set. eSIM and physical SIM are mutually
+    // exclusive: a single phone gets ONE provisioning method, not both.
+    const isEsimActivation = amountCents > 0;
+    if (selectedSim && !isEsimActivation) {
       const simPriceCents = selectedSim.price || 0;
       newItems.push({
         id: generateId(),
@@ -1502,8 +1516,56 @@ export default function PhonePaymentModal({
 
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
+
+    // R-PHONE-ACTIVATION-AUTOCREATE-CUSTOMER-V1: walk-in activations now
+    // capture the customer in the DB with carrier + phone + name. Mirrors
+    // CustomerForm's "Create new" branch (silent — no toast, no modal,
+    // cashier is mid-POS flow). Existing-customer flow unchanged: if the
+    // cashier already picked someone, the modal preserves that selection.
+    //
+    // R-PHONE-ACTIVATION-AUTOCREATE-DEDUPE-V1 (auditor caution patch):
+    // before creating, look up by normalized phone across primary `phone`
+    // AND `phones[]` array. Prevents duplicate walk-in records when the
+    // same number gets entered across sessions/cashiers. Keeps existing
+    // customer untouched (no overwrite of name/email/etc — the new carrier
+    // info still lands on the sale's cart items, which is the SoT).
+    let resolvedCustomer = selectedCustomer;
+    const nameTrim = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!resolvedCustomer && phoneNorm) {
+      const existing = customersRef.current.find((c) => {
+        const phonesToCheck = [c.phone, ...((c as { phones?: string[] }).phones || [])];
+        return phonesToCheck.some((p) => normalizePhone(p || '') === phoneNorm);
+      });
+      if (existing) resolvedCustomer = existing;
+    }
+    if (!resolvedCustomer && nameTrim && phoneNorm) {
+      const newCust: Customer = {
+        id: generateId(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name: nameTrim,
+        phone: phoneNorm,
+        phones: [phoneNorm],
+        carriers: [normalizedCarrier],
+        carrier: normalizedCarrier,
+        plan: actPlan.trim() || undefined,
+        email: '',
+        loyaltyPoints: 0,
+        storeCredit: 0,
+        customerNumber: `${settings.customerNumberPrefix || 'GC'}-${Date.now().toString().slice(-4)}`,
+        notes: `Auto-created from activation: ${normalizedCarrier}${planLabel}`,
+        communicationConsent: false,
+        createdAt: new Date().toISOString(),
+      } as Customer;
+      const nextCustomers = [...customersRef.current, newCust];
+      customersRef.current = nextCustomers;
+      setCustomers(nextCustomers);
+      persist.customer(newCust.id, newCust as unknown as Record<string, unknown>);
+      resolvedCustomer = newCust;
+    }
+
     // R-PHONE-PAYMENT-CUSTOMER-PROPAGATION
-    if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
+    if (resolvedCustomer) propagateSelectedCustomer(resolvedCustomer);
     setCart(nextCart);
 
     // Persist spiff (INTERNAL — does NOT touch customer total, reported in Taxes).
@@ -1541,6 +1603,19 @@ export default function PhonePaymentModal({
         }
       } catch { /* noop */ }
     }
+
+    // R-PHONE-ACTIVATION-INTELLIGENCE-EVENT-V1: notify operator-activity
+    // pipeline that an activation was completed. Reuses the existing
+    // 'payment_recorded' event (an activation IS a captured-payment-with-
+    // extra-context). Carrier + service info is already stamped on cart
+    // items (categories phone_payment / activation / sim), so
+    // SalesAnalyzer / Reports can derive per-carrier activation counts
+    // from the sale record without a new event type.
+    emitOperatorActivity('phone.payment.payment_recorded', {
+      customerId: resolvedCustomer?.id,
+      phone: phoneNorm,
+      amountCents: planPriceCents + amountCents + (selectedSim?.price || 0),
+    });
 
     // Reset all activation fields
     setActCarrier('');

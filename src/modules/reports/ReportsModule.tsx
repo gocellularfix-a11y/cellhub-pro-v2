@@ -925,6 +925,17 @@ export default function ReportsModule() {
       profitCents: number;
       numbers: Set<string>;
     }> = {};
+    // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket grouped by carrier
+    // (AT&T, Verizon, T-Mobile, etc.) rather than by portal/provider. This
+    // is the "how many activations per phone company" metric independent
+    // of which top-up portal processed the payment. Pure additive — does
+    // not touch the by-provider math.
+    const activationsByCarrier: Record<string, {
+      count: number;
+      totalCents: number;
+      profitCents: number;
+      numbers: Set<string>;
+    }> = {};
     const activePortals = getActivePortals(settings);
     const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
 
@@ -1059,6 +1070,18 @@ export default function ReportsModule() {
           phonePaymentsByProvider[provider].totalCents += revenueCents;
           phonePaymentsByProvider[provider].profitCents += profitCents;
           if (item.phoneNumber) phonePaymentsByProvider[provider].numbers.add(item.phoneNumber);
+
+          // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket keyed by CARRIER
+          // (not provider). Each phone_payment item = one activation event
+          // (multi-line activations correctly count once per phone line).
+          const carrierKey = normalizedCarrier || t('reports.noCarrier');
+          if (!activationsByCarrier[carrierKey]) {
+            activationsByCarrier[carrierKey] = { count: 0, totalCents: 0, profitCents: 0, numbers: new Set() };
+          }
+          activationsByCarrier[carrierKey].count += qty;
+          activationsByCarrier[carrierKey].totalCents += revenueCents;
+          activationsByCarrier[carrierKey].profitCents += profitCents;
+          if (item.phoneNumber) activationsByCarrier[carrierKey].numbers.add(item.phoneNumber);
         } else if (kind === 'topup') {
           catName = 'Top-Ups';
           costCents = Math.round(revenueCents * TOPUP_COST_RATE);
@@ -1335,8 +1358,10 @@ export default function ReportsModule() {
       topItems,
       topEmployees,
       phonePaymentsByProvider,
+      // R-ACTIVATIONS-BY-CARRIER-V1
+      activationsByCarrier,
     };
-  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, filteredVendorReturns, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale]);
+  }, [filteredSales, allFilteredSales, filteredRepairs, filteredUnlocks, standaloneRepairs, standaloneUnlocks, returnsFromPeriodSales, filteredVendorReturns, inventory, settings, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, locale, t]);
 
   // ── Round 10 fix 1: Cash tripartite (In / Out / Net) ──────
   // Gross "Cash" previously equalled "Cash In" only, hiding real cash drawer
@@ -2265,6 +2290,44 @@ tr:last-child td { border-bottom: none; }
                   })()}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── R-ACTIVATIONS-BY-CARRIER-V1: activations grouped by phone company ── */}
+          {Object.keys(stats.activationsByCarrier).length > 0 && (
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', overflow: 'hidden', marginBottom: '0.75rem' }}>
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#fff' }}>
+                  📞 {t('reports.activationsByCarrier')}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
+                  {t('reports.activationsByCarrierSub')}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem' }}>
+                {Object.entries(stats.activationsByCarrier)
+                  .sort((a, b) => b[1].count - a[1].count)
+                  .map(([carrier, d]) => (
+                    <div key={carrier} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.35rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>{carrier}</span>
+                        {d.numbers.size > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            · {d.numbers.size} {t('reports.lines')}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#fbbf24', fontWeight: 700 }}>
+                          {d.count} {t('reports.activations')}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: '70px', textAlign: 'right' }}>
+                          {formatCurrency(d.totalCents)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
 
