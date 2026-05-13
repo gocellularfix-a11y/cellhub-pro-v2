@@ -92,6 +92,8 @@ import type {
   CompanionMessagingRuntimeSnapshot,
   CompanionStoreStatusRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
+// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1
+import { getDesktopIdentity } from '@/services/license/desktopIdentity';
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
 
@@ -394,19 +396,26 @@ export default function CompanionCenter() {
   // (b) settings.companionBridgeEnabled is true.
   // Adapter is idempotent so re-runs from remounts / setting flips are
   // safe — singleton guard inside the adapter prevents duplicate listeners.
+  // R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1: use stable installation identity
+  // for bridge registration. Guards on missing identity so a fresh install
+  // that hasn't completed setup never connects with a fallback/default ID.
   useEffect(() => {
     if (companionConnState === 'connected' && bridgeEnabled) {
-      const deviceId = pairedDevice?.deviceId || `cellhub-pos-${currentStoreId || 'default'}`;
-      const storeId  = currentStoreId || (settings.storeName || 'default');
+      const identity = getDesktopIdentity();
+      if (!identity || !identity.desktopDeviceId || !identity.storeId) {
+        console.warn('[CompanionBridge] Missing desktop identity — bridge registration skipped');
+        return;
+      }
+      console.info(`[CompanionBridge] Registering desktopDeviceId=${identity.desktopDeviceId} storeId=${identity.storeId}`);
       startCompanionBridgeAdapter({
         bridgeUrl,
-        storeId,
-        deviceId,
+        storeId: identity.storeId,
+        deviceId: identity.desktopDeviceId,
         // R-COMPANION-DESKTOP-DEV-TOKEN-PATCH-V1 — bridge auth now enforces
         // verifiable tokens (R-BRIDGE-AUTH-HARDENING-V1). DEV-prefix form is
         // the temporary observe-only stand-in until a real signed-token
         // mint path exists. Strict-format HMAC tokens land in a later round.
-        authToken: `dev.${storeId}.${deviceId}.pos`,
+        authToken: `dev.${identity.storeId}.${identity.desktopDeviceId}.pos`,
         getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
         getStoreLocation: () => settings.storeAddress || '',
       });
@@ -414,7 +423,7 @@ export default function CompanionCenter() {
       stopCompanionBridgeAdapter();
     }
     return () => { stopCompanionBridgeAdapter(); };
-  }, [companionConnState, bridgeEnabled, bridgeUrl, currentStoreId, pairedDevice?.deviceId, settings.storeName, settings.storeAddress, employees]);
+  }, [companionConnState, bridgeEnabled, bridgeUrl, settings.storeAddress, employees]);
 
   const toggleCompanionConnection = useCallback(() => {
     setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
