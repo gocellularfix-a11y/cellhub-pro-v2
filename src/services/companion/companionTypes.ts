@@ -355,7 +355,12 @@ export interface CompanionApprovalRuntimeItem {
   status: CompanionApprovalRuntimeStatus;
   requestedByEmployeeId?: string;
   approvedByEmployeeId?: string;
+  /** Terminal denial reason — 'cancelled' | 'timeout' | 'invalid_pin' | 'self_approval_blocked'. */
   reason?: string;
+  /** R-APPROVAL-AUDIT-LOG-V1: integer cents from the approval request payload. */
+  affectedAmount?: number;
+  /** R-APPROVAL-AUDIT-LOG-V1: human-readable context string from the requester. */
+  requestReason?: string;
   /** ms epoch when the runtime first saw this approval. */
   createdAt: number;
   /** ms epoch of the most-recent status change. */

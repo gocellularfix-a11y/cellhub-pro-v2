@@ -284,6 +284,34 @@ function RealPairingQR({ payload }: { payload: string }) {
   );
 }
 
+// ── R-APPROVAL-AUDIT-LOG-V1: pure helpers for the history feed ──
+
+function auditActionLabel(actionType: string | undefined): string {
+  switch (actionType) {
+    case 'CANCEL_LAYAWAY':       return 'Layaway cancel';
+    case 'CANCEL_REPAIR':        return 'Repair cancel';
+    case 'CANCEL_UNLOCK':        return 'Unlock cancel';
+    case 'CANCEL_SPECIAL_ORDER': return 'Special order cancel';
+    case 'PRICE_OVERRIDE':       return 'Price override';
+    case 'DISCOUNT_OVERRIDE':    return 'Discount';
+    case 'REFUND':               return 'Refund';
+    default:                     return actionType || 'Approval';
+  }
+}
+
+function auditRelTime(ms: number): string {
+  const diff = Date.now() - ms;
+  if (diff < 60_000)   return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return new Date(ms).toLocaleDateString();
+}
+
+function auditFmtAmt(cents: number | undefined): string {
+  if (!cents || cents === 0) return '';
+  return ` — $${(cents / 100).toFixed(2)}`;
+}
+
 // ── Main component ────────────────────────────────────────
 export default function CompanionCenter() {
   const { t } = useTranslation();
@@ -1021,6 +1049,95 @@ export default function CompanionCenter() {
             </div>
           );
         })}
+      </div>
+
+      {/* R-APPROVAL-AUDIT-LOG-V1: live approval history feed */}
+      <div style={{
+        marginTop: '0.75rem',
+        background: 'rgba(255,255,255,0.015)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: '0.75rem',
+        padding: '0.75rem 1rem',
+      }}>
+        <div style={{
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.07em',
+          marginBottom: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}>
+          Approval Activity
+          {approvalRuntime.items.length > 0 && (
+            <span style={{
+              background: 'rgba(148,163,184,0.15)',
+              color: '#94a3b8',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              padding: '1px 6px',
+              borderRadius: 4,
+            }}>
+              {approvalRuntime.items.length}
+            </span>
+          )}
+        </div>
+
+        {approvalRuntime.items.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
+            No approval activity this session.
+          </p>
+        ) : (
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            {approvalRuntime.items.slice(0, 50).map((item) => {
+              const isApproved = item.status === 'approved';
+              const isDenied   = item.status === 'denied';
+              const isPending  = item.status === 'pending';
+              const reqEmp = employees.find((e) => e.id === item.requestedByEmployeeId);
+              const reqName = reqEmp?.name || (item.requestedByEmployeeId ? item.requestedByEmployeeId.slice(-6) : '—');
+              const approverRaw = item.approvedByEmployeeId;
+              const approverName = approverRaw === 'approver:admin'
+                ? 'Admin PIN'
+                : approverRaw
+                  ? (employees.find((e) => e.id === approverRaw)?.name || approverRaw.slice(-6))
+                  : null;
+              const statusColor = isApproved ? '#4ade80' : isDenied ? '#f87171' : '#fbbf24';
+              const statusIcon  = isApproved ? '✔' : isDenied ? '✖' : '…';
+              const label = auditActionLabel(item.actionType) + auditFmtAmt(item.affectedAmount);
+              return (
+                <div key={item.approvalId} style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: 6,
+                  background: 'rgba(255,255,255,0.03)',
+                  fontSize: '0.75rem',
+                }}>
+                  <span style={{ color: statusColor, fontWeight: 700, minWidth: 14, lineHeight: 1.6 }}>
+                    {statusIcon}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#e2e8f0', fontWeight: 600, lineHeight: 1.3 }}>
+                      {label}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '0.68rem', lineHeight: 1.4 }}>
+                      {reqName}
+                      {approverName && ` → ${approverName}`}
+                      {isPending && <span style={{ color: '#fbbf24' }}> · pending</span>}
+                      {isDenied && item.reason && <span> · {item.reason}</span>}
+                    </div>
+                  </div>
+                  <span style={{ color: '#475569', fontSize: '0.65rem', whiteSpace: 'nowrap', lineHeight: 1.6 }}>
+                    {auditRelTime(item.updatedAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* R-COMPANION-CENTER-UX-REDESIGN: developer diagnostics hidden

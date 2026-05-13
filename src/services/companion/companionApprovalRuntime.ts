@@ -70,6 +70,9 @@ subscribe('APPROVAL_CREATED', (event) => {
     source: p.source,
     status: 'pending',
     requestedByEmployeeId: p.requestedByEmployeeId,
+    // R-APPROVAL-AUDIT-LOG-V1: capture request-time context for the history feed.
+    affectedAmount: p.affectedAmount,
+    requestReason: p.reason,
     createdAt: now,
     updatedAt: now,
   });
