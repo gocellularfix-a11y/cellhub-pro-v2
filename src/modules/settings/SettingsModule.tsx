@@ -433,6 +433,7 @@ export default function SettingsModule() {
     hardware:    t('settings.nav.hardware'),
     whatsapp:    t('settings.nav.whatsapp'),
     ai:          t('settings.nav.ai'),
+    companion:   t('settings.nav.companion'),
     employees:   t('settings.nav.employees'),
     backup:      t('settings.nav.backup'),
   };
