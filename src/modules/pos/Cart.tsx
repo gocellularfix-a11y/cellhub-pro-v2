@@ -8,6 +8,8 @@ import type { CartTotals, DiscountState } from './types';
 import { formatCurrency } from '@/utils/currency';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
+import { useApp } from '@/store/AppProvider';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: compact modal for per-line
 // override / amount-off / percent-off. Effective per-unit price is
 // written back into item.price so downstream totals/tax/receipts
@@ -80,6 +82,9 @@ export default function Cart({
 }: CartProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { state: { employees, currentEmployee } } = useApp();
+  // R-APPROVAL-GATE-POS-OVERRIDES-V1: gate for per-line price/discount overrides.
+  const approvalGate = useApprovalGate({ employees, settings, attemptedByName: currentEmployee?.name });
   const [showCcFeeOverride, setShowCcFeeOverride] = useState(false);
 
   // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: line-discount modal state.
@@ -115,7 +120,7 @@ export default function Cart({
     closeLineDiscount();
   }, [cart, setCart, discountTarget, closeLineDiscount]);
 
-  const applyLineDiscount = useCallback(() => {
+  const applyLineDiscount = useCallback(async () => {
     if (!discountTarget) return;
     const raw = parseFloat(discountValue);
     if (!Number.isFinite(raw) || raw < 0) {
@@ -141,6 +146,24 @@ export default function Cart({
       toast(t('cart.lineDiscount.invalid'), 'warning');
       return;
     }
+
+    // R-APPROVAL-GATE-POS-OVERRIDES-V1: gate before applying override/discount.
+    const actionType = discountMode === 'override' ? 'PRICE_OVERRIDE' : 'DISCOUNT_OVERRIDE';
+    const affectedAmount = Math.max(0, original - effective);
+    const reasonStr = discountMode === 'override'
+      ? `Price override — ${discountTarget.name}`
+      : discountMode === 'percent'
+      ? `${raw}% discount — ${discountTarget.name}`
+      : `$${raw.toFixed(2)} off — ${discountTarget.name}`;
+    const approval = await approvalGate.requestApproval({
+      actionType,
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: discountTarget.id,
+      affectedAmount,
+      reason: reasonStr,
+    });
+    if (!approval.approved) return;
+
     setCart(cart.map((c) =>
       c.id === discountTarget.id
         ? {
@@ -152,7 +175,7 @@ export default function Cart({
         : c,
     ));
     closeLineDiscount();
-  }, [cart, setCart, discountTarget, discountMode, discountValue, discountReason, t, toast, closeLineDiscount]);
+  }, [cart, setCart, discountTarget, discountMode, discountValue, discountReason, t, toast, closeLineDiscount, approvalGate.requestApproval, currentEmployee]);
 
   const updateQty = useCallback(
     (itemId: string, delta: number) => {
@@ -975,6 +998,9 @@ export default function Cart({
           </div>
         )}
       </Modal>
+
+      {/* R-APPROVAL-GATE-POS-OVERRIDES-V1 */}
+      {approvalGate.modal}
     </div>
   );
 }
