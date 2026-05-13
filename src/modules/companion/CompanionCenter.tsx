@@ -318,7 +318,7 @@ export default function CompanionCenter() {
 
   // R-COMPANION-BRIDGE-WIRE-V1: pull settings + employees for the adapter.
   // Cero store mutations from this component — read-only access.
-  const { state: { settings, employees, currentStoreId } } = useApp();
+  const { state: { settings, employees, currentStoreId, sales, repairs } } = useApp();
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
   // R-BRIDGE-CLOUD-WIRING-V1 — default points at Railway-hosted bridge
   // so a fresh install just works. Users can still override the URL via
@@ -419,6 +419,32 @@ export default function CompanionCenter() {
   const pairingPin = snapshot.pairingSession?.pin ?? '';
   const pairedDevice = snapshot.pairedDevice;
   const companionConnState = snapshot.connectionState;
+
+  // R-COMPANION-STORE-STATUS-LIVE-V1: operational snapshot derived from live store state.
+  const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, locale-independent
+  const clockedInEmployees = useMemo(() =>
+    employees.filter((e) => {
+      if (!e.active) return false;
+      const log = e.clockLog || [];
+      if (log.length === 0) return false;
+      return !log[log.length - 1].clockOut;
+    }), [employees]);
+
+  const todaySales = useMemo(() =>
+    sales.filter((s) => {
+      if (s.status !== 'completed') return false;
+      try { return new Date(s.createdAt as string).toLocaleDateString('en-CA') === todayDateStr; }
+      catch { return false; }
+    }), [sales, todayDateStr]);
+
+  const todayRevenueCents = useMemo(() =>
+    todaySales.reduce((sum, s) => sum + (s.total || 0), 0), [todaySales]);
+
+  const openRepairsCount = useMemo(() =>
+    repairs.filter((r) => {
+      const s = (r.status || '').toLowerCase().replace(/ /g, '_');
+      return s !== 'picked_up' && s !== 'cancelled' && s !== 'refunded';
+    }).length, [repairs]);
 
   // R-COMPANION-BRIDGE-WIRE-V1: adapter lifecycle. Starts only when both
   // (a) the local mock bridge state is 'connected' AND
@@ -1049,6 +1075,86 @@ export default function CompanionCenter() {
             </div>
           );
         })}
+      </div>
+
+      {/* R-COMPANION-STORE-STATUS-LIVE-V1: live operational snapshot */}
+      <div style={{
+        marginTop: '0.75rem',
+        background: 'linear-gradient(160deg, #0a1a14 0%, #060e0c 100%)',
+        border: '1px solid rgba(45,212,191,0.18)',
+        borderRadius: '0.9rem',
+        padding: '1rem 1.1rem',
+      }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#2dd4bf', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Store Snapshot
+          </span>
+          <span style={{
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            padding: '2px 8px',
+            borderRadius: 5,
+            background: companionConnState === 'connected' ? 'rgba(74,222,128,0.12)' : 'rgba(148,163,184,0.10)',
+            color: companionConnState === 'connected' ? '#4ade80' : '#64748b',
+            border: `1px solid ${companionConnState === 'connected' ? 'rgba(74,222,128,0.3)' : 'rgba(148,163,184,0.2)'}`,
+          }}>
+            {companionConnState === 'connected' ? '● Live' : companionConnState === 'connecting' ? '○ Connecting…' : '○ Offline'}
+          </span>
+        </div>
+
+        {/* Stat grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+
+          {/* On Shift */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600, marginBottom: 2 }}>ON SHIFT</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: clockedInEmployees.length > 0 ? '#e2e8f0' : '#475569', lineHeight: 1.1 }}>
+              {clockedInEmployees.length}
+            </div>
+            {clockedInEmployees.length > 0 ? (
+              <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3, lineHeight: 1.4 }}>
+                {clockedInEmployees.slice(0, 3).map((e) => e.name).join(', ')}
+                {clockedInEmployees.length > 3 ? ` +${clockedInEmployees.length - 3}` : ''}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: 3 }}>Nobody clocked in</div>
+            )}
+          </div>
+
+          {/* Today's Sales */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600, marginBottom: 2 }}>TODAY</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: todayRevenueCents > 0 ? '#e2e8f0' : '#475569', lineHeight: 1.1 }}>
+              ${(todayRevenueCents / 100).toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>
+              {todaySales.length} {todaySales.length === 1 ? 'sale' : 'sales'}
+            </div>
+          </div>
+
+          {/* Open Repairs */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600, marginBottom: 2 }}>OPEN REPAIRS</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: openRepairsCount > 0 ? '#fbbf24' : '#475569', lineHeight: 1.1 }}>
+              {openRepairsCount}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>
+              {openRepairsCount === 1 ? 'ticket' : 'tickets'} in progress
+            </div>
+          </div>
+
+          {/* Pending Approvals */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600, marginBottom: 2 }}>PENDING APPROVALS</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: approvalRuntime.pendingCount > 0 ? '#f87171' : '#475569', lineHeight: 1.1 }}>
+              {approvalRuntime.pendingCount}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>
+              {approvalRuntime.pendingCount === 0 ? 'all clear' : 'waiting for response'}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* R-APPROVAL-AUDIT-LOG-V1: live approval history feed */}
