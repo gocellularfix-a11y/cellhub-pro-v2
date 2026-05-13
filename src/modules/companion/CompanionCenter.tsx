@@ -92,8 +92,9 @@ import type {
   CompanionMessagingRuntimeSnapshot,
   CompanionStoreStatusRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
-// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1
+// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1 / R-BRIDGE-SIGNED-TOKEN-V1
 import { getDesktopIdentity } from '@/services/license/desktopIdentity';
+import { mintDesktopBridgeToken } from '@/services/companion/bridgeSignedToken';
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
 
@@ -396,33 +397,39 @@ export default function CompanionCenter() {
   // (b) settings.companionBridgeEnabled is true.
   // Adapter is idempotent so re-runs from remounts / setting flips are
   // safe — singleton guard inside the adapter prevents duplicate listeners.
-  // R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1: use stable installation identity
-  // for bridge registration. Guards on missing identity so a fresh install
-  // that hasn't completed setup never connects with a fallback/default ID.
+  // R-BRIDGE-SIGNED-TOKEN-V1: mint a STRICT HMAC-signed token before starting
+  // the adapter. cancelled guard prevents a stale async callback from starting
+  // the adapter after the effect has already cleaned up (deps changed / unmount).
   useEffect(() => {
+    let cancelled = false;
+
     if (companionConnState === 'connected' && bridgeEnabled) {
       const identity = getDesktopIdentity();
       if (!identity || !identity.desktopDeviceId || !identity.storeId) {
         console.warn('[CompanionBridge] Missing desktop identity — bridge registration skipped');
-        return;
+      } else {
+        void mintDesktopBridgeToken({ storeId: identity.storeId, deviceId: identity.desktopDeviceId })
+          .then(authToken => {
+            if (cancelled) return;
+            console.info(`[CompanionBridge] Registering desktopDeviceId=${identity.desktopDeviceId} storeId=${identity.storeId}`);
+            startCompanionBridgeAdapter({
+              bridgeUrl,
+              storeId: identity.storeId,
+              deviceId: identity.desktopDeviceId,
+              authToken,
+              getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
+              getStoreLocation: () => settings.storeAddress || '',
+            });
+          });
       }
-      console.info(`[CompanionBridge] Registering desktopDeviceId=${identity.desktopDeviceId} storeId=${identity.storeId}`);
-      startCompanionBridgeAdapter({
-        bridgeUrl,
-        storeId: identity.storeId,
-        deviceId: identity.desktopDeviceId,
-        // R-COMPANION-DESKTOP-DEV-TOKEN-PATCH-V1 — bridge auth now enforces
-        // verifiable tokens (R-BRIDGE-AUTH-HARDENING-V1). DEV-prefix form is
-        // the temporary observe-only stand-in until a real signed-token
-        // mint path exists. Strict-format HMAC tokens land in a later round.
-        authToken: `dev.${identity.storeId}.${identity.desktopDeviceId}.pos`,
-        getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
-        getStoreLocation: () => settings.storeAddress || '',
-      });
     } else {
       stopCompanionBridgeAdapter();
     }
-    return () => { stopCompanionBridgeAdapter(); };
+
+    return () => {
+      cancelled = true;
+      stopCompanionBridgeAdapter();
+    };
   }, [companionConnState, bridgeEnabled, bridgeUrl, settings.storeAddress, employees]);
 
   const toggleCompanionConnection = useCallback(() => {

@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_SMS_PROXY_URL?: string;
+  // R-BRIDGE-SIGNED-TOKEN-V1: must match BRIDGE_AUTH_SECRET on Railway bridge
+  readonly VITE_BRIDGE_AUTH_SECRET?: string;
 }
 
 interface ImportMeta {
