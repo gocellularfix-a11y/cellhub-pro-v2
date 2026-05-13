@@ -40,6 +40,21 @@ function writeRaw(identity: DesktopIdentity): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
 }
 
+/**
+ * Normalize a human store name into a stable, lowercase, dash-separated
+ * storeId slug. Strips everything except a-z, 0-9, and dashes.
+ * Example: "Go Cellular Santa Barbara" → "go-cellular-santa-barbara"
+ */
+export function normalizeStoreId(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 /** Returns the stored identity, or null if not yet initialised. */
 export function getDesktopIdentity(): DesktopIdentity | null {
   return readRaw();

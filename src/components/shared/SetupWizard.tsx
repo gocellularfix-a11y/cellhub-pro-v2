@@ -16,6 +16,12 @@ import { COLLECTIONS } from '@/config/constants';
 import { hashPin, isWeakPin } from '@/utils/pinHash';
 import { DEFAULT_PAYMENT_PORTALS } from '@/config/paymentPortals';
 import type { Employee, FirebaseConfig } from '@/store/types';
+// R-DESKTOP-IDENTITY-WIRING-V1
+import {
+  getDesktopIdentity,
+  initializeDesktopIdentity,
+  normalizeStoreId,
+} from '@/services/license/desktopIdentity';
 
 // R-MULTIPC-WIZARD: Read Vite-baked Firebase credentials at module scope so
 // every render sees the same value (these are static after build). If all six
@@ -233,6 +239,17 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       };
 
       await persistSettings(settingsData);
+
+      // R-DESKTOP-IDENTITY-WIRING-V1: initialize installation identity from
+      // the validated store name. Only runs when no identity exists yet.
+      // desktopDeviceId + installationId are generated once and never touched again.
+      if (!getDesktopIdentity()) {
+        const storeId = normalizeStoreId(store.storeName.trim());
+        if (storeId) {
+          initializeDesktopIdentity({ storeId });
+          console.info(`[DesktopIdentity] initialized storeId=${storeId}`);
+        }
+      }
 
       // r-employee-dedupe: defense in depth. If the wizard re-runs (e.g. user
       // cleared only the cellhub_setup_complete flag), skip employee creation

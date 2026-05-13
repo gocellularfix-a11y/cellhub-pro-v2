@@ -20,8 +20,13 @@ import FirebaseSetupModal from './FirebaseSetupModal';
 import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
-// R-DESKTOP-LICENSE-V1-SCAFFOLD
-import { getDesktopIdentity } from '@/services/license/desktopIdentity';
+// R-DESKTOP-LICENSE-V1-SCAFFOLD / R-DESKTOP-IDENTITY-WIRING-V1
+import {
+  getDesktopIdentity,
+  initializeDesktopIdentity,
+  updateDesktopIdentity,
+  normalizeStoreId,
+} from '@/services/license/desktopIdentity';
 
 
 // ── Field/Toggle helpers — HOISTED (r26 fix C1) ──────────────
@@ -497,6 +502,28 @@ export default function SettingsModule() {
       }
       setSettings(delta as any);
       persistSettings(delta);
+    }
+    // Mount-only migration; intentionally empty deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // R-DESKTOP-IDENTITY-WIRING-V1: one-shot migration for installs that
+  // completed setup before desktopIdentity existed. Reads storeName from
+  // already-loaded settings and initializes identity if not yet present.
+  // Safe update rule: storeId is only set when currently empty — UUIDs
+  // are never regenerated.
+  useEffect(() => {
+    const rawName = String((settings as any).storeName ?? '').trim();
+    if (!rawName) return;
+    const storeId = normalizeStoreId(rawName);
+    if (!storeId) return;
+    const existing = getDesktopIdentity();
+    if (!existing) {
+      initializeDesktopIdentity({ storeId });
+      console.info(`[DesktopIdentity] initialized storeId=${storeId}`);
+    } else if (!existing.storeId) {
+      updateDesktopIdentity({ storeId });
+      console.info(`[DesktopIdentity] updated storeId=${storeId}`);
     }
     // Mount-only migration; intentionally empty deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
