@@ -36,6 +36,7 @@ import {
   SPECIAL_ORDER_MONEY_FIELDS, SPECIAL_ORDER_ALL_FIELDS,
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
+import { useApprovalGate } from '@/hooks/useApprovalGate';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -53,7 +54,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function SpecialOrdersModule() {
   const {
-    state: { specialOrders, customers, settings, currentEmployee, cart, sales, lang, globalSearchTerm },
+    state: { specialOrders, customers, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm },
     setSpecialOrders, setCustomers, setCart, setSales, dispatch,
   } = useApp();
 
@@ -61,6 +62,7 @@ export default function SpecialOrdersModule() {
   const { t } = useTranslation();
   const { highlightRef, isHighlighted } = useHighlightRecord();
   const { printHtml } = usePrint();
+  const approvalGate = useApprovalGate({ employees, settings, attemptedByName: currentEmployee?.name });
 
   const [search, setSearch] = useState(globalSearchTerm || '');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -556,10 +558,24 @@ export default function SpecialOrdersModule() {
   // Before this, cancelling left depositAmount intact — ghost revenue with
   // no record of what happened to the money. Every cancellation now forces
   // a disposition choice (store_credit / cash / forfeit).
-  const handleCancelSpecialOrder = useCallback((order: SpecialOrder, choice: {
+  const handleCancelSpecialOrder = useCallback(async (order: SpecialOrder, choice: {
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-APPROVAL-GATE-SPECIALORDERS-V1: approval gate before any mutation.
+    const approval = await approvalGate.requestApproval({
+      actionType: 'CANCEL_SPECIAL_ORDER',
+      requestedByEmployeeId: currentEmployee?.id || '',
+      entityId: order.id,
+      affectedAmount: order.depositAmount || 0,
+      reason: choice.method === 'cash'
+        ? 'Special order cancellation — cash refund'
+        : choice.method === 'store_credit'
+        ? 'Special order cancellation — store credit'
+        : 'Special order cancellation — deposit forfeited',
+    });
+    if (!approval.approved) return;
+
     const depositCents = order.depositAmount || 0;
     const now = new Date().toISOString();
 
@@ -673,7 +689,7 @@ export default function SpecialOrdersModule() {
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee]);
+  }, [t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee, approvalGate.requestApproval]);
 
   const handleComplete = useCallback((order: SpecialOrder) => {
     const balance = order.balance || 0;
@@ -1002,6 +1018,9 @@ export default function SpecialOrdersModule() {
           onClose={() => setCancelTarget(null)}
         />
       )}
+
+      {/* R-APPROVAL-GATE-SPECIALORDERS-V1 */}
+      {approvalGate.modal}
 
       {deleteConfirm && (
         <ConfirmDialog
