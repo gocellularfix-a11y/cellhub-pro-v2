@@ -35,7 +35,7 @@ export interface StoreSettings {
   // approvals and intelligence alerts. Mobile cannot mutate desktop state
   // either way — local PIN modal remains the authority.
   companionBridgeEnabled?: boolean;
-  companionBridgeUrl?: string;     // default 'http://localhost:3001'
+  companionBridgeUrl?: string;     // default 'https://cellhub-companion-production.up.railway.app' (Railway cloud bridge); override for on-prem / dogfood
 
   // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch plumbing
   // only. Default false. Phase 1 keeps approvalGuard / useApprovalGate

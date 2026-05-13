@@ -25,14 +25,25 @@ import {
 } from '@/services/companion/companionMockBridge';
 // R-COMPANION-PAIRING-WIRED-V1: the pairing/device UI now reads from
 // the bridge connection shell instead of isolated local mock state.
+// R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: confirmPairedDevice is the
+// real-claim sibling of mockConnectDevice (latter stays for diagnostics).
 import {
   cancelPairingSession,
+  confirmPairedDevice,
   getConnectionSnapshot,
   mockConnectDevice,
   mockDisconnectDevice,
   startPairingSession,
   subscribeConnectionSnapshot,
 } from '@/services/companion/companionBridgeConnection';
+// R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: bridge pairing HTTP client.
+import {
+  submitPairingOffer,
+  pollPairingStatus,
+  revokePairingOffer,
+  buildPairingQrPayload,
+} from '@/services/companion/pairingClient';
+import QRCode from 'qrcode';
 // R-COMPANION-RUNTIME-TEST-PANEL-V1: dev panel that exercises the
 // inbox + receiver triplet end-to-end before any real producer exists.
 import {
@@ -213,6 +224,63 @@ function MockQR({ pin }: { pin: string }) {
   );
 }
 
+// R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1 — Real scannable QR. The
+// payload is the URL-style string built by buildPairingQrPayload; the
+// mobile companion app parses it to extract bridgeUrl, storeId, code,
+// role, exp.
+function RealPairingQR({ payload }: { payload: string }) {
+  const [src, setSrc] = useState<string>('');
+  useEffect(() => {
+    if (!payload) { setSrc(''); return undefined; }
+    let cancelled = false;
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      scale: 6,
+      color: { dark: '#000000', light: '#ffffff' },
+    }).then((url) => {
+      if (!cancelled) setSrc(url);
+    }).catch((err) => {
+      console.warn('[CompanionCenter] QR generation failed', err);
+    });
+    return () => { cancelled = true; };
+  }, [payload]);
+
+  if (!src) {
+    return (
+      <div
+        aria-label="Generating QR"
+        style={{
+          width: 180, height: 180,
+          background: '#0f172a',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 8,
+          color: '#475569', fontSize: 12,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+        }}
+      >
+        Generating QR…
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="Companion pairing QR code"
+      width={180}
+      height={180}
+      style={{
+        borderRadius: 8,
+        padding: 6,
+        background: '#fff',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+        boxSizing: 'content-box',
+        imageRendering: 'pixelated',
+      }}
+    />
+  );
+}
+
 // ── Main component ────────────────────────────────────────
 export default function CompanionCenter() {
   const { t } = useTranslation();
@@ -221,7 +289,10 @@ export default function CompanionCenter() {
   // Cero store mutations from this component — read-only access.
   const { state: { settings, employees, currentStoreId } } = useApp();
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
-  const bridgeUrl     = ((settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl) || 'http://localhost:3001';
+  // R-BRIDGE-CLOUD-WIRING-V1 — default points at Railway-hosted bridge
+  // so a fresh install just works. Users can still override the URL via
+  // Settings → Companion → Bridge URL (e.g., for on-prem / dogfood).
+  const bridgeUrl     = ((settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl) || 'https://cellhub-companion-production.up.railway.app';
 
   // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — mirror the adapter's PosBridgeStatus
   // into local state. Polling uses the existing getBridgeAdapterStatus() with
@@ -232,6 +303,13 @@ export default function CompanionCenter() {
     const sync = () => setBridgeStatus(getBridgeAdapterStatus());
     sync();
     const handle = setInterval(sync, 1000);
+    return () => clearInterval(handle);
+  }, []);
+
+  // R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: pairing-countdown ticker.
+  useEffect(() => {
+    setNowMs(Date.now());
+    const handle = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(handle);
   }, []);
 
@@ -248,6 +326,18 @@ export default function CompanionCenter() {
     getLastCompanionEvent()
   );
   const [companionQueue, setCompanionQueue] = useState<number>(() => getCompanionQueueSize());
+
+  // R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: 1-second ticker drives
+  // the pairing-modal countdown without re-rendering CompanionCenter on
+  // every animation frame. Stops when no pairing session is open.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: bridge offer outcome
+  // tracked separately from the local pairing session so the modal can
+  // distinguish "waiting for phone" (offer registered) from "bridge
+  // unavailable / offer rejected".
+  const [offerAccepted, setOfferAccepted] = useState<boolean>(false);
+  const [offerError, setOfferError] = useState<string | null>(null);
 
   // R-COMPANION-RUNTIME-TEST-PANEL-V1: inbox snapshot for the dev
   // panel below. Cero touches to existing event-bus subscriptions.
@@ -406,45 +496,129 @@ export default function CompanionCenter() {
     clearHandledActions();
   }, []);
 
-  // R-COMPANION-PAIRING-WIRED-V1: pairing controls now delegate to
-  // the bridge service so the centralised snapshot stays the source
-  // of truth. UI state (modal open, PIN, paired device) is derived.
-  const startPairing = useCallback(() => {
+  // R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: pairing controls now
+  // also publish the offer to the bridge and listen for a real claim.
+  // The local CompanionPairingSession remains the React-facing source
+  // of truth for the modal UI; the bridge is the cross-device truth.
+  const pairingStoreId = currentStoreId || settings.storeName || 'default';
+
+  const startPairing = useCallback(async () => {
     setLocalPhase('waiting');
-    startPairingSession();
-  }, []);
+    setOfferAccepted(false);
+    setOfferError(null);
+    const session = startPairingSession();
+    if (!bridgeEnabled) {
+      // Local-only session — used by the diagnostics panel's
+      // "Simulate paired device" flow. Bridge-side claim is unreachable.
+      return;
+    }
+    const result = await submitPairingOffer({
+      bridgeUrl,
+      code: session.pin,
+      storeId: pairingStoreId,
+      role: 'manager',
+      expiresAt: session.expiresAt,
+    });
+    if (result.ok) {
+      setOfferAccepted(true);
+    } else {
+      console.warn(
+        `[CompanionCenter] pairing offer rejected by bridge — reason=${result.reason ?? 'unknown'}`,
+      );
+      setOfferError(result.reason ?? 'unknown');
+    }
+  }, [bridgeEnabled, bridgeUrl, pairingStoreId]);
 
   const cancelPairing = useCallback(() => {
+    const session = snapshot.pairingSession;
     cancelPairingSession();
     setLocalPhase('waiting');
-  }, []);
+    setOfferAccepted(false);
+    setOfferError(null);
+    if (session && bridgeEnabled) {
+      void revokePairingOffer({
+        bridgeUrl,
+        code: session.pin,
+        storeId: pairingStoreId,
+      });
+    }
+  }, [bridgeEnabled, bridgeUrl, pairingStoreId, snapshot.pairingSession]);
 
-  /** Commit a mock paired device — randomised iPhone/Pixel for variety. */
+  /** Diagnostics-only: bypass the real bridge claim flow and stamp a
+   *  random mock device as paired. Useful for UI dev without a phone.
+   *  R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: dropped "(mock)"
+   *  suffix from the device names so the paired-device card in the
+   *  main UI never carries dev/mock wording. The button itself is
+   *  fully inside Developer Diagnostics with a clear "testing only"
+   *  label. */
   const commitMockDevice = useCallback(() => {
     const platform: CompanionDevicePlatform = Math.random() < 0.5 ? 'ios' : 'android';
     mockConnectDevice({
       deviceName: platform === 'ios' ? 'iPhone 15 Pro' : 'Pixel 9',
       platform,
     });
-    setLocalPhase('waiting'); // reset for next session
+    setLocalPhase('waiting');
   }, []);
 
-  // Phase animation: local sub-state of 'waiting' that progresses
-  // 'waiting' → 'pending' → 'connected' while the bridge session is
-  // open, then the auto-commit fires bridge.mockConnectDevice. Re-runs
-  // whenever a fresh sessionId opens. All timers cleaned up on cancel.
+  // R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: real pairing poller.
+  // While a pairing session is open AND bridge is enabled, poll the
+  // bridge every 2 s for the offer's status. On 'claimed' → confirm
+  // device locally; on 'expired' → close the modal and revoke server-side.
+  // Replaces the prior 4.5s commitMockDevice auto-timer.
   const sessionId = snapshot.pairingSession?.sessionId;
+  const sessionPin = snapshot.pairingSession?.pin;
+  const sessionExpiresAt = snapshot.pairingSession?.expiresAt;
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId || !sessionPin || !sessionExpiresAt) {
       setLocalPhase('waiting');
       return undefined;
     }
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-    timers.push(setTimeout(() => setLocalPhase('pending'),   1500));
-    timers.push(setTimeout(() => setLocalPhase('connected'), 3500));
-    timers.push(setTimeout(() => { commitMockDevice(); }, 4500));
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [sessionId, commitMockDevice]);
+    // UX phase animation: 'waiting' → 'pending' after a brief delay so
+    // the user sees motion while the bridge offer is propagating.
+    const animationTimer = setTimeout(() => setLocalPhase('pending'), 1200);
+
+    if (!bridgeEnabled) {
+      // No bridge: poller does nothing. User can still cancel manually.
+      return () => clearTimeout(animationTimer);
+    }
+
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      if (cancelled) return;
+      // Client-side expiry guard: if we passed expiresAt, the bridge
+      // would already report 'expired' on next poll, but cancelling
+      // here keeps the UI tight.
+      if (Date.now() >= sessionExpiresAt) {
+        cancelPairing();
+        return;
+      }
+      const result = await pollPairingStatus({ bridgeUrl, code: sessionPin });
+      if (cancelled) return;
+      if (result.status === 'claimed' && result.deviceId) {
+        setLocalPhase('connected');
+        confirmPairedDevice({
+          deviceId: result.deviceId,
+          deviceName: result.deviceName,
+          platform: (result.platform as CompanionDevicePlatform | undefined) ?? 'unknown',
+        });
+        return; // stop polling — claim succeeded
+      }
+      if (result.status === 'expired') {
+        cancelPairing();
+        return;
+      }
+      pollTimer = setTimeout(tick, 2_000);
+    };
+    pollTimer = setTimeout(tick, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(animationTimer);
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [sessionId, sessionPin, sessionExpiresAt, bridgeEnabled, bridgeUrl, cancelPairing]);
 
   const disconnectDevice = useCallback(() => {
     mockDisconnectDevice();
@@ -601,7 +775,7 @@ export default function CompanionCenter() {
               <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0' }}>
                 {pairedDevice.deviceName}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#94a3b8' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#94a3b8', flexWrap: 'wrap' }}>
                 <span style={{
                   padding: '0.1rem 0.45rem',
                   borderRadius: '999px',
@@ -614,14 +788,40 @@ export default function CompanionCenter() {
                   {t(`companion.device.platform.${pairedDevice.platform}`)}
                 </span>
                 <span>·</span>
-                <span>
-                  {t('companion.device.lastConnected')}: {t('companion.device.justNow')}
-                </span>
+                {/* R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: real connected
+                    status + last-seen relative time (uses pairedDevice.lastSeenAt
+                    which today equals connectedAt; future heartbeats will
+                    bump it without any UI change). */}
+                {(() => {
+                  const isConnected = pairedDevice.status === 'connected';
+                  return (
+                    <span style={{
+                      color: isConnected ? '#86efac' : '#fca5a5',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: isConnected ? '#22c55e' : '#ef4444',
+                        boxShadow: `0 0 6px ${isConnected ? '#22c55e88' : '#ef444488'}`,
+                      }} />
+                      {t(isConnected ? 'companion.device.status.connected' : 'companion.device.status.disconnected')}
+                    </span>
+                  );
+                })()}
                 <span>·</span>
-                <span style={{ color: '#86efac', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e88' }} />
-                  {t('companion.device.health.good')}
-                </span>
+                {(() => {
+                  // Relative last-seen, derived from real pairedDevice.lastSeenAt.
+                  const diff = Math.max(0, Math.floor((nowMs - pairedDevice.lastSeenAt) / 1000));
+                  let label: string;
+                  if (diff < 5)        label = t('companion.device.justNow');
+                  else if (diff < 60)  label = `${diff}${t('companion.device.seconds')}`;
+                  else if (diff < 3600) label = `${Math.floor(diff / 60)}${t('companion.device.minutes')}`;
+                  else                  label = `${Math.floor(diff / 3600)}${t('companion.device.hours')}`;
+                  return <span>{t('companion.device.lastSeen')}: {label}</span>;
+                })()}
               </div>
             </div>
           </div>
@@ -907,6 +1107,27 @@ export default function CompanionCenter() {
           >
             ⚡ {t('companion.debug.simulateEvent')}
           </button>
+          {/* R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1 — diagnostics-only
+              mock-pair shortcut. Production path is the real pairing
+              modal + QR; this button bypasses the bridge claim flow for
+              UI development without a phone. */}
+          <button
+            type="button"
+            onClick={commitMockDevice}
+            style={{
+              padding: '0.35rem 0.65rem',
+              borderRadius: '0.4rem',
+              border: '1px solid rgba(251,191,36,0.30)',
+              background: 'rgba(251,191,36,0.08)',
+              color: '#fbbf24',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+            title={t('companion.debug.mockPairHint')}
+          >
+            🛠 {t('companion.debug.mockPair')}
+          </button>
         </div>
       </div>
 
@@ -1057,81 +1278,153 @@ export default function CompanionCenter() {
         </div>
       </details>
 
-      {/* Pairing modal */}
+      {/* Pairing modal — R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1 */}
       <Modal
         open={isPairingOpen}
         onClose={cancelPairing}
         title={`📱 ${t('companion.pair.modalTitle')}`}
         size="max-w-md"
         footer={
-          <>
-            <button className="btn btn-secondary" onClick={cancelPairing}>
-              {t('companion.pair.cancel')}
-            </button>
-            <button className="btn btn-primary" onClick={commitMockDevice}>
-              {t('companion.pair.mockConnect')}
-            </button>
-          </>
+          <button className="btn btn-secondary" onClick={cancelPairing}>
+            {t('companion.pair.cancel')}
+          </button>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem' }}>
-          {/* QR placeholder */}
-          <MockQR pin={pairingPin} />
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center' }}>
-            {t('companion.pair.qrCaption')}
-          </div>
+        {(() => {
+          // Real-pairing modal status derivation.
+          type ModalStatus = 'waiting' | 'received' | 'connected' | 'expired' | 'bridge_unavailable' | 'offer_failed';
+          const session = snapshot.pairingSession;
+          let modalStatus: ModalStatus;
+          if (!bridgeEnabled) {
+            modalStatus = 'bridge_unavailable';
+          } else if (offerError) {
+            modalStatus = 'offer_failed';
+          } else if (session && Date.now() >= session.expiresAt) {
+            modalStatus = 'expired';
+          } else if (localPhase === 'connected') {
+            modalStatus = 'connected';
+          } else if (offerAccepted && session) {
+            modalStatus = 'received';
+          } else {
+            modalStatus = 'waiting';
+          }
 
-          {/* PIN block */}
-          <div style={{
-            marginTop: '0.4rem',
-            padding: '0.65rem 0.95rem',
-            background: 'rgba(99,102,241,0.10)',
-            border: '1px solid rgba(99,102,241,0.30)',
-            borderRadius: '0.625rem',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
-          }}>
-            <div style={{ fontSize: '0.7rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-              {t('companion.pair.pinLabel')}
+          const statusPalette: Record<ModalStatus, { fg: string; bg: string; border: string; labelKey: string }> = {
+            waiting:            { fg: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.35)', labelKey: 'companion.pair.status.waiting' },
+            received:           { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.35)',  labelKey: 'companion.pair.status.received' },
+            connected:          { fg: '#22c55e', bg: 'rgba(34,197,94,0.12)',   border: 'rgba(34,197,94,0.40)',   labelKey: 'companion.pair.status.connected' },
+            expired:            { fg: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.40)',   labelKey: 'companion.pair.status.expired' },
+            bridge_unavailable: { fg: '#fb923c', bg: 'rgba(249,115,22,0.12)',  border: 'rgba(249,115,22,0.40)',  labelKey: 'companion.pair.status.bridgeUnavailable' },
+            offer_failed:      { fg: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.40)',   labelKey: 'companion.pair.status.offerFailed' },
+          };
+          const sty = statusPalette[modalStatus];
+          const isError = modalStatus === 'bridge_unavailable' || modalStatus === 'offer_failed';
+          const isTerminal = isError || modalStatus === 'expired';
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem' }}>
+              {/* Real-status badge (top of modal) */}
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.45rem 0.85rem',
+                background: sty.bg,
+                border: `1px solid ${sty.border}`,
+                borderRadius: '999px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                color: sty.fg,
+                transition: 'border-color 0.25s, color 0.25s, background 0.25s',
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: sty.fg,
+                  boxShadow: `0 0 6px ${sty.fg}88`,
+                }} />
+                {t(sty.labelKey)}
+              </div>
+
+              {/* Error helper text (when bridge unavailable or offer failed) */}
+              {isError && (
+                <div style={{
+                  fontSize: '0.78rem',
+                  color: sty.fg,
+                  textAlign: 'center',
+                  maxWidth: '340px',
+                  lineHeight: 1.45,
+                  padding: '0.6rem 0.8rem',
+                  background: 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${sty.border}`,
+                  borderRadius: '0.5rem',
+                }}>
+                  {modalStatus === 'bridge_unavailable'
+                    ? t('companion.bridge.disabled')
+                    : t('companion.pair.bridge.offerFailedHint')}
+                </div>
+              )}
+
+              {/* QR + PIN + countdown — hidden in terminal states */}
+              {!isTerminal && session && (
+                <>
+                  <RealPairingQR
+                    payload={buildPairingQrPayload({
+                      bridgeUrl,
+                      storeId: pairingStoreId,
+                      code: session.pin,
+                      role: 'manager',
+                      expiresAt: session.expiresAt,
+                    })}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center' }}>
+                    {t('companion.pair.qrCaption')}
+                  </div>
+
+                  {/* 6-digit fallback code */}
+                  <div style={{
+                    marginTop: '0.4rem',
+                    padding: '0.65rem 0.95rem',
+                    background: 'rgba(99,102,241,0.10)',
+                    border: '1px solid rgba(99,102,241,0.30)',
+                    borderRadius: '0.625rem',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
+                  }}>
+                    <div style={{ fontSize: '0.7rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+                      {t('companion.pair.pinLabel')}
+                    </div>
+                    <div style={{
+                      fontFamily: 'Courier New, monospace',
+                      fontSize: '1.85rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.5em',
+                      color: '#e2e8f0',
+                      paddingLeft: '0.5em',
+                    }}>
+                      {pairingPin}
+                    </div>
+                  </div>
+
+                  {/* Expiry countdown */}
+                  {(() => {
+                    const remaining = Math.max(0, Math.floor((session.expiresAt - nowMs) / 1000));
+                    const mins = Math.floor(remaining / 60);
+                    const secs = remaining % 60;
+                    const tone = remaining <= 5 ? '#ef4444' : remaining <= 30 ? '#fbbf24' : '#94a3b8';
+                    return (
+                      <div style={{ fontSize: '0.72rem', color: tone, textAlign: 'center', fontFamily: 'Courier New, monospace' }}>
+                        {t('companion.pair.expiresIn')} {mins}:{String(secs).padStart(2, '0')}
+                      </div>
+                    );
+                  })()}
+
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', maxWidth: '320px', lineHeight: 1.4 }}>
+                    {t('companion.pair.instructions')}
+                  </div>
+                </>
+              )}
             </div>
-            <div style={{
-              fontFamily: 'Courier New, monospace',
-              fontSize: '1.85rem',
-              fontWeight: 800,
-              letterSpacing: '0.5em',
-              color: '#e2e8f0',
-              paddingLeft: '0.5em', // optical-balance vs letter-spacing tail
-            }}>
-              {pairingPin}
-            </div>
-          </div>
-
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', maxWidth: '320px', lineHeight: 1.4 }}>
-            {t('companion.pair.instructions')}
-          </div>
-
-          {/* Phase indicator */}
-          <div style={{
-            marginTop: '0.4rem',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.45rem 0.75rem',
-            background: 'rgba(255,255,255,0.04)',
-            border: `1px solid ${phaseColor}55`,
-            borderRadius: '999px',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            color: phaseColor,
-            transition: 'border-color 0.25s, color 0.25s',
-          }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: phaseColor,
-              boxShadow: `0 0 6px ${phaseColor}88`,
-            }} />
-            {t(`companion.pair.phase.${localPhase}`)}
-          </div>
-        </div>
+          );
+        })()}
       </Modal>
     </div>
   );

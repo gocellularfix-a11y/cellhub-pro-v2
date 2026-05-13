@@ -1595,7 +1595,7 @@ export default function SettingsModule() {
                       setSettings({ companionBridgeUrl: next } as Partial<typeof settings>);
                       persistSettings({ companionBridgeUrl: next } as Record<string, unknown>);
                     }}
-                    placeholder="http://localhost:3001"
+                    placeholder="https://cellhub-companion-production.up.railway.app"
                     style={{
                       width: '100%',
                       padding: '0.5rem 0.75rem',
