@@ -50,6 +50,10 @@ export type LiveActionType =
   | 'module_changed'
   | 'phone_number_entered'
   | 'customer_history_opened'
+  | 'external_payment_started'
+  | 'external_flow_returned'
+  | 'external_payment_confirm_needed'
+  | 'external_payment_cancelled'
   | string; // forward-compat
 
 export interface LiveAction {

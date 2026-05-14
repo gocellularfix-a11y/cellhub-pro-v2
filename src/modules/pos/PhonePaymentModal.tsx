@@ -33,6 +33,7 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
+import { startWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
 import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
@@ -1291,6 +1292,21 @@ export default function PhonePaymentModal({
     setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
   }, [knownLines, selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
 
+  // Anti-stale-closure ref so the event listener always calls the current
+  // markPaidAndNext without re-attaching the listener on every dep change.
+  const markPaidAndNextRef = useRef(markPaidAndNext);
+  useEffect(() => { markPaidAndNextRef.current = markPaidAndNext; }, [markPaidAndNext]);
+
+  // R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1: listen for the bubble's
+  // "Mark Paid & Next" confirmation. The bubble dispatches this event when
+  // the cashier clicks "Confirm Paid" after returning from the carrier portal.
+  // NEVER auto-confirms — this path only fires on explicit human action.
+  useEffect(() => {
+    const handler = () => { markPaidAndNextRef.current(); };
+    window.addEventListener('cellhub:workflow-external-payment-confirm', handler);
+    return () => window.removeEventListener('cellhub:workflow-external-payment-confirm', handler);
+  }, []);
+
   // ── Portal opener for a single known-line row ─────────────
   // R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line 🌐 button in the Known
   // Lines panel. Opens the carrier portal so the cashier can pay this
@@ -1299,8 +1315,7 @@ export default function PhonePaymentModal({
   // same source used by handlePortalForLine and the activation flow.
   // Spec called this getCarrierPortalUrl(carrier, phone); adapted to the
   // existing carrierPortalUrls map (no helper of that name exists).
-  const handlePortalForKnownLine = (_phone: string) => {
-    void _phone;
+  const handlePortalForKnownLine = (phone: string) => {
     if (!carrier) {
       toast(t('phonePay.errPickCarrierLine'), 'error');
       return;
@@ -1309,6 +1324,11 @@ export default function PhonePaymentModal({
     const url = settings.carrierPortalUrls?.[normCarrier];
     if (!url) return;
     window.open(url, '_blank');
+    // R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1: record that a carrier portal
+    // was opened for this line. The bubble will surface a confirmation card
+    // when the cashier returns. NEVER auto-confirms — human click required.
+    const amtCents = Math.round(parseFloat(selectedKnownLines[normalizePhone(phone)] || '0') * 100);
+    startWorkflow('external_payment', { phone: normalizePhone(phone), carrier: normCarrier, amountCents: amtCents });
   };
 
   // ── Manual line helpers ───────────────────────────────────

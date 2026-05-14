@@ -41,6 +41,15 @@ import { buildActionExecutionContext } from '@/services/intelligence/actionExecu
 import { resolveSuggestionActions } from '@/services/intelligence/actionExecution/actionExecutionEngine';
 import { logBubbleAction } from '@/services/intelligence/actionExecution/actionExecutionQueue';
 import type { OperatorExecutableAction } from '@/services/intelligence/actionExecution/actionExecutionTypes';
+import {
+  getPendingWorkflows,
+  getPendingExternalPaymentWorkflow,
+  completeWorkflow,
+  cancelWorkflow,
+  subscribeWorkflowContinuity,
+} from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { initExternalFlowAwareness, subscribeExternalFlowReturn, resetReturnCooldown } from '@/services/intelligence/workflowContinuity/externalFlowAwareness';
+import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -167,7 +176,7 @@ export default function FloatingOperatorBubble() {
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
     unlocks,
   } = state;
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   // SVG <defs> ids must be globally unique. useId() returns a stable
   // per-instance string; we sanitise out non-id-safe characters (React
@@ -195,6 +204,10 @@ export default function FloatingOperatorBubble() {
   const [activeContext, setActiveContext] = useState<OperatorActiveContext | null>(null);
   // Brief "Copied!" flash after the Copy-Phone quick action.
   const [copiedFlash, setCopiedFlash] = useState(false);
+
+  // ── Workflow continuity (R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1) ────
+  const [pendingWorkflows, setPendingWorkflows] = useState<PendingWorkflow[]>(() => getPendingWorkflows());
+  const [returnDetected, setReturnDetected] = useState(false);
 
   // ── Live context (R-INTELLIGENCE-LIVE-CONTEXT-V1) ──────
   const [liveCtx, setLiveCtx] = useState<LiveContext>(() => getContext());
@@ -302,6 +315,24 @@ export default function FloatingOperatorBubble() {
 
   // ── Live context store — subscribe for re-renders ──────
   useEffect(() => subscribe(setLiveCtx), []);
+
+  // ── Workflow continuity store — subscribe for re-renders ─
+  useEffect(() => {
+    setPendingWorkflows(getPendingWorkflows());
+    return subscribeWorkflowContinuity(() => setPendingWorkflows(getPendingWorkflows()));
+  }, []);
+
+  // ── External flow awareness — detect portal return ────────
+  useEffect(() => {
+    const cleanupAwareness = initExternalFlowAwareness();
+    const unsubReturn = subscribeExternalFlowReturn(() => {
+      if (getPendingExternalPaymentWorkflow()) {
+        setReturnDetected(true);
+        setIsOverlayOpen(true);
+      }
+    });
+    return () => { cleanupAwareness(); unsubReturn(); };
+  }, []);
 
   // ── Sync AppState → live context store ─────────────────
   useEffect(() => {
@@ -570,6 +601,41 @@ export default function FloatingOperatorBubble() {
     }, 700);
   }, [execCtx]);
 
+  // ── Workflow continuity derived state + handlers ───────────────────────────
+
+  const pendingExternalPayment = pendingWorkflows.find(
+    (w) => w.type === 'external_payment' && w.status === 'pending',
+  ) ?? null;
+
+  // Cashier confirmed they completed the carrier payment — dispatch event to
+  // PhonePaymentModal, complete the workflow, and reset detection state.
+  // NEVER auto-records revenue. Human click is the only trigger.
+  const handleConfirmExternalPaid = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    completeWorkflow(pendingExternalPayment.id);
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:workflow-external-payment-confirm'));
+    } catch { /* non-CustomEvent environment — silent */ }
+    resetReturnCooldown();
+    setReturnDetected(false);
+    setIsOverlayOpen(false);
+  }, [pendingExternalPayment]);
+
+  // Cashier says payment is still processing — dismiss the card but keep
+  // the workflow pending so it can be re-surfaced on next return.
+  const handleExternalStillProcessing = useCallback(() => {
+    resetReturnCooldown();
+    setReturnDetected(false);
+  }, []);
+
+  // Cashier explicitly cancels — mark workflow cancelled and dismiss.
+  const handleCancelExternalPayment = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    cancelWorkflow(pendingExternalPayment.id);
+    resetReturnCooldown();
+    setReturnDetected(false);
+  }, [pendingExternalPayment]);
+
   const insightToneColor = (tone: OperatorInsightTone): string => {
     switch (tone) {
       case 'positive': return '#22c55e';
@@ -593,6 +659,11 @@ export default function FloatingOperatorBubble() {
     };
     return map[tier] ?? null;
   }, [activeCustomerProfile]);
+
+  // Override the badge preview text when a carrier payment is awaiting confirmation.
+  const effectivePreviewText = (pendingExternalPayment && returnDetected)
+    ? (locale === 'es' ? 'Confirmar pago del carrier' : 'Confirm carrier payment')
+    : previewText;
 
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen
@@ -859,7 +930,7 @@ export default function FloatingOperatorBubble() {
 
       {/* Context badge — small pill below the bubble, shows customer name
           or rotating suggestion preview. Hidden when overlay or hint is open. */}
-      {enabled && !isDragging && !isOverlayOpen && !showPill && previewText && (
+      {enabled && !isDragging && !isOverlayOpen && !showPill && effectivePreviewText && (
         <div
           aria-hidden="true"
           style={{
@@ -867,14 +938,18 @@ export default function FloatingOperatorBubble() {
             top: position.y + BUBBLE_SIZE + 5,
             left: position.x + BUBBLE_SIZE / 2,
             transform: 'translateX(-50%)',
-            background: 'rgba(15,23,42,0.82)',
-            border: '1px solid rgba(148,163,184,0.18)',
+            background: (pendingExternalPayment && returnDetected)
+              ? 'rgba(245,158,11,0.15)'
+              : 'rgba(15,23,42,0.82)',
+            border: (pendingExternalPayment && returnDetected)
+              ? '1px solid rgba(245,158,11,0.4)'
+              : '1px solid rgba(148,163,184,0.18)',
             borderRadius: '1rem',
             padding: '0.18rem 0.55rem',
-            color: '#94a3b8',
+            color: (pendingExternalPayment && returnDetected) ? '#fbbf24' : '#94a3b8',
             fontSize: '0.68rem',
             whiteSpace: 'nowrap',
-            maxWidth: 180,
+            maxWidth: 200,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             zIndex: Z_INDEX,
@@ -882,7 +957,7 @@ export default function FloatingOperatorBubble() {
             pointerEvents: 'none',
           }}
         >
-          {previewText}
+          {effectivePreviewText}
         </div>
       )}
 
@@ -954,6 +1029,83 @@ export default function FloatingOperatorBubble() {
               {statusLabel}
             </span>
           </div>
+
+          {/* R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1: external payment confirmation card.
+              Only shown when the cashier opened a carrier portal AND returned to CellHub.
+              NEVER auto-confirms — three explicit human choices required. */}
+          {pendingExternalPayment && returnDetected && (
+            <div style={{
+              background: 'rgba(245,158,11,0.10)',
+              border: '1px solid rgba(245,158,11,0.45)',
+              borderRadius: '0.5rem',
+              padding: '0.6rem 0.7rem',
+              display: 'flex', flexDirection: 'column', gap: '0.4rem',
+            }}>
+              <div style={{ fontSize: '0.70rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {locale === 'es' ? 'Pago externo pendiente' : 'External payment pending'}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#e2e8f0', lineHeight: 1.35 }}>
+                {locale === 'es'
+                  ? '¿Completaste el pago en el portal del carrier?'
+                  : 'Did you complete the payment on the carrier website?'}
+              </div>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                <button
+                  type="button"
+                  onClick={handleConfirmExternalPaid}
+                  style={{
+                    flex: '1 1 auto',
+                    padding: '0.38rem 0.55rem',
+                    borderRadius: '0.45rem',
+                    background: 'rgba(34,197,94,0.16)',
+                    border: '1px solid rgba(34,197,94,0.45)',
+                    color: '#86efac',
+                    cursor: 'pointer',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {locale === 'es' ? '✓ Pagado · Siguiente' : '✓ Mark Paid & Next'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExternalStillProcessing}
+                  style={{
+                    flex: '1 1 auto',
+                    padding: '0.38rem 0.55rem',
+                    borderRadius: '0.45rem',
+                    background: 'rgba(148,163,184,0.08)',
+                    border: '1px solid rgba(148,163,184,0.25)',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {locale === 'es' ? '⏳ En proceso' : '⏳ Still Processing'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelExternalPayment}
+                  style={{
+                    flex: '0 0 auto',
+                    padding: '0.38rem 0.55rem',
+                    borderRadius: '0.45rem',
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    color: '#fca5a5',
+                    cursor: 'pointer',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Body — priority: context block > hint > placeholder */}
           {activeContext ? (() => {
