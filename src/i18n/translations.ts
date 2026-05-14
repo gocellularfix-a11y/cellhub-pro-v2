@@ -4895,7 +4895,7 @@ export const translations: TranslationDictionary = {
   // R-COMPANION-PAIRING-MOCK-V1
   'companion.card.pair.startButton': { en: 'Start Pairing',          es: 'Iniciar Emparejamiento',  pt: 'Iniciar Pareamento' },
   'companion.card.pair.repairButton':{ en: 'Pair another device',    es: 'Emparejar otro',          pt: 'Parear outro' },
-  'companion.pair.modalTitle':       { en: 'Pair Companion Device',  es: 'Emparejar Dispositivo Companion', pt: 'Parear Dispositivo Companion' },
+  'companion.pair.modalTitle':       { en: 'Connect Your Phone',     es: 'Conectar tu teléfono',           pt: 'Conectar seu telefone' },
   'companion.pair.qrCaption':        { en: 'Scan with the Companion app', es: 'Escanea con la app Companion', pt: 'Escaneie com o app Companion' },
   'companion.pair.expiresIn':        { en: 'Expires in',              es: 'Expira en',                pt: 'Expira em' },
   'companion.pair.pinLabel':         { en: 'Or enter this 6-digit code', es: 'O ingresa este código de 6 dígitos', pt: 'Ou insira este código de 6 dígitos' },

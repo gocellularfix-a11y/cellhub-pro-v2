@@ -1764,9 +1764,43 @@ export default function CompanionCenter() {
                 </div>
               )}
 
-              {/* QR + PIN + countdown — hidden in terminal states */}
-              {!isTerminal && session && (
+              {/* Connected success state */}
+              {modalStatus === 'connected' && (
+                <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+                  <div style={{ fontSize: '3rem', lineHeight: 1, marginBottom: '0.75rem' }}>✅</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#22c55e' }}>
+                    {lang === 'es' ? '¡Tu teléfono está conectado!' : 'Your phone is connected!'}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#86efac', marginTop: '0.3rem' }}>
+                    {lang === 'es' ? 'La tienda está lista.' : 'Store is ready.'}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.65rem' }}>
+                    {lang === 'es' ? 'Puedes cerrar esta ventana.' : 'You can close this window.'}
+                  </div>
+                </div>
+              )}
+
+              {/* QR + PIN + countdown — hidden in terminal states and success */}
+              {!isTerminal && session && modalStatus !== 'connected' && (
                 <>
+                  {/* Numbered onboarding steps */}
+                  <div style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {([
+                      lang === 'es' ? 'Instala CellHub Companion en tu teléfono' : 'Install CellHub Companion on your phone',
+                      lang === 'es' ? 'Abre la app y toca Escanear QR' : 'Open the app and tap Scan QR',
+                      lang === 'es' ? 'Apunta al código — ¡listo!' : 'Point at this code — done!',
+                    ] as string[]).map((step, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 11, fontWeight: 800, color: '#a5b4fc', flexShrink: 0,
+                        }}>{i + 1}</span>
+                        <span style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.4 }}>{step}</span>
+                      </div>
+                    ))}
+                  </div>
                   <RealPairingQR
                     payload={buildPairingQrPayload({
                       bridgeUrl,
@@ -1817,9 +1851,6 @@ export default function CompanionCenter() {
                     );
                   })()}
 
-                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', maxWidth: '320px', lineHeight: 1.4 }}>
-                    {t('companion.pair.instructions')}
-                  </div>
                 </>
               )}
             </div>
