@@ -35,6 +35,8 @@ import { getContext, subscribe } from '@/services/intelligence/liveContext/liveC
 import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
 import { computeContextSuggestions, getMinimizedPreviewText } from '@/services/intelligence/liveContext/contextSuggestions';
 import type { LiveContext } from '@/services/intelligence/liveContext/contextTypes';
+import { getCustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringSelectors';
+import type { CustomerBusinessProfile, CustomerTier } from '@/services/intelligence/customerScoring/customerScoringTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -159,6 +161,7 @@ export default function FloatingOperatorBubble() {
     activeTab, cart, customers, sales, layaways, repairs,
     currentEmployee,
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
+    unlocks,
   } = state;
   const { t } = useTranslation();
 
@@ -503,15 +506,24 @@ export default function FloatingOperatorBubble() {
     [enabled, activeContext, inputs],
   );
 
+  // Active customer business profile — computed only when a customer is active.
+  // Memoized on the customer id + array references so it does not recompute
+  // on every preview-tick rotation (which changes only previewTick, not these deps).
+  const activeCustomerProfile = useMemo<CustomerBusinessProfile | null>(() => {
+    const custId = liveCtx.activeCustomer?.id;
+    if (!custId || !enabled) return null;
+    return getCustomerBusinessProfile(custId, customers, sales, repairs, layaways, unlocks ?? []);
+  }, [liveCtx.activeCustomer?.id, customers, sales, repairs, layaways, unlocks, enabled]);
+
   // Live-context suggestions and badge preview text.
   const suggestions = useMemo(
-    () => enabled ? computeContextSuggestions(liveCtx, inputs) : [],
-    [enabled, liveCtx, inputs],
+    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined) : [],
+    [enabled, liveCtx, inputs, activeCustomerProfile],
   );
 
   const previewText = useMemo(
-    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick) : '',
-    [enabled, liveCtx, inputs, previewTick],
+    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick, activeCustomerProfile ?? undefined) : '',
+    [enabled, liveCtx, inputs, previewTick, activeCustomerProfile],
   );
 
   const insightToneColor = (tone: OperatorInsightTone): string => {
@@ -522,6 +534,21 @@ export default function FloatingOperatorBubble() {
       default:         return '#a5b4fc';
     }
   };
+
+  // Tier badge colour helper — maps CustomerTier to a small inline pill style.
+  const tierBadgeColors = useMemo<{ bg: string; color: string } | null>(() => {
+    const tier: CustomerTier | undefined = activeCustomerProfile?.estimatedCustomerTier;
+    if (!tier || tier === 'Casual') return null; // Casual = no badge (not notable)
+    const map: Record<CustomerTier, { bg: string; color: string }> = {
+      VIP:      { bg: 'rgba(245,158,11,0.20)',  color: '#f59e0b' },
+      Loyal:    { bg: 'rgba(129,140,248,0.20)', color: '#818cf8' },
+      Active:   { bg: 'rgba(34,197,94,0.18)',   color: '#4ade80' },
+      'At Risk':{ bg: 'rgba(249,115,22,0.20)',  color: '#f97316' },
+      Lost:     { bg: 'rgba(239,68,68,0.20)',   color: '#f87171' },
+      Casual:   { bg: 'transparent',            color: 'transparent' },
+    };
+    return map[tier] ?? null;
+  }, [activeCustomerProfile]);
 
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen
@@ -909,7 +936,25 @@ export default function FloatingOperatorBubble() {
                   {t(titleKey)}
                 </div>
                 {ctxName && (
-                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>{ctxName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>{ctxName}</span>
+                    {tierBadgeColors && activeCustomerProfile && (
+                      <span style={{
+                        fontSize: '0.60rem',
+                        fontWeight: 700,
+                        padding: '0.10rem 0.38rem',
+                        borderRadius: '0.8rem',
+                        background: tierBadgeColors.bg,
+                        color: tierBadgeColors.color,
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                        {activeCustomerProfile.estimatedCustomerTier}
+                      </span>
+                    )}
+                  </div>
                 )}
                 {phoneFmt && (
                   <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontFamily: 'Courier New, monospace' }}>

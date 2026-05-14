@@ -6,6 +6,7 @@
 
 import type { LiveContext, ContextSuggestion } from './contextTypes';
 import type { OperatorActivityInputs } from '@/services/operator/operatorActivityHints';
+import type { CustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringTypes';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -19,10 +20,14 @@ import {
  * Compute the deterministic suggestion list for the current live context.
  * Returns up to 5 suggestions sorted by priority (highest first).
  * Pure function — safe to call on every render inside useMemo.
+ *
+ * @param profile Optional CustomerBusinessProfile — when provided, scoring-aware
+ *   suggestions are injected alongside the existing operational signals.
  */
 export function computeContextSuggestions(
   ctx: LiveContext,
   inputs: OperatorActivityInputs,
+  profile?: CustomerBusinessProfile,
 ): ContextSuggestion[] {
   const out: ContextSuggestion[] = [];
   const cust = getActiveCustomer(ctx, inputs);
@@ -112,6 +117,78 @@ export function computeContextSuggestions(
     });
   }
 
+  // ── Customer scoring signals (injected when profile is available) ────
+  if (profile) {
+    const { vipScore, churnRisk, upsellOpportunity, collectionPriority, estimatedCustomerTier } = profile;
+
+    // VIP — highest retention priority
+    if (estimatedCustomerTier === 'VIP') {
+      out.push({
+        id: 'scoring_vip_retention',
+        text: 'VIP customer — prioritize retention and offer loyalty reward',
+        kind: 'retention',
+        priority: 10,
+        actionTab: 'customers',
+      });
+    }
+
+    // High churn risk — urgent follow-up
+    if (churnRisk >= 70 && estimatedCustomerTier !== 'VIP') {
+      out.push({
+        id: 'scoring_churn_high',
+        text: 'High churn risk — follow up immediately to recover the relationship',
+        kind: 'follow_up',
+        priority: 9,
+        actionTab: 'customers',
+      });
+    } else if (churnRisk >= 50 && estimatedCustomerTier !== 'VIP') {
+      out.push({
+        id: 'scoring_churn_medium',
+        text: 'Customer showing inactivity — offer an incentive to come back',
+        kind: 'retention',
+        priority: 7,
+      });
+    }
+
+    // Collection priority
+    if (collectionPriority >= 60) {
+      out.push({
+        id: 'scoring_collection_high',
+        text: 'Outstanding balance detected — prioritize payment collection today',
+        kind: 'collect',
+        priority: 9,
+      });
+    } else if (collectionPriority >= 35) {
+      out.push({
+        id: 'scoring_collection_medium',
+        text: 'Customer has an open balance — good moment to ask about payment',
+        kind: 'collect',
+        priority: 6,
+      });
+    }
+
+    // Strong upsell signal (overrides generic accessory suggestion)
+    if (upsellOpportunity >= 65 && vipScore >= 40) {
+      out.push({
+        id: 'scoring_upsell_strong',
+        text: 'Strong upsell opportunity — offer a bundle or protection plan now',
+        kind: 'upsell',
+        priority: 8,
+        actionTab: 'pos',
+      });
+    }
+
+    // Lost customer recovery
+    if (estimatedCustomerTier === 'Lost') {
+      out.push({
+        id: 'scoring_lost_recovery',
+        text: 'Long-inactive customer — offer a welcome-back promotion',
+        kind: 'retention',
+        priority: 8,
+      });
+    }
+  }
+
   // Sort by priority descending, deduplicate by id, take top 5
   const seen = new Set<string>();
   return out
@@ -123,22 +200,29 @@ export function computeContextSuggestions(
 /**
  * A short (≤ 38 char) preview string for the badge below the bubble.
  * `tickIndex` increments externally; used to rotate through suggestions.
+ * When a profile is present, notable tiers surface in the even-tick customer label.
  */
 export function getMinimizedPreviewText(
   ctx: LiveContext,
   inputs: OperatorActivityInputs,
   tickIndex: number,
+  profile?: CustomerBusinessProfile,
 ): string {
-  const suggestions = computeContextSuggestions(ctx, inputs);
+  const suggestions = computeContextSuggestions(ctx, inputs, profile);
 
-  // Even ticks: customer name (or module label). Odd ticks: cycle suggestions.
+  // Even ticks: customer name (with tier prefix for notable tiers). Odd ticks: cycle suggestions.
   if (tickIndex % 2 === 1 && suggestions.length > 0) {
     const s = suggestions[tickIndex % suggestions.length];
     return s.text.length > 36 ? s.text.slice(0, 34) + '…' : s.text;
   }
 
   if (ctx.activeCustomer?.name) {
-    return ctx.activeCustomer.name;
+    const name = ctx.activeCustomer.name;
+    const tier = profile?.estimatedCustomerTier;
+    if (tier === 'VIP') return `VIP · ${name}`.slice(0, 36);
+    if (tier === 'At Risk') return `At Risk · ${name}`.slice(0, 36);
+    if (tier === 'Lost') return `Lost · ${name}`.slice(0, 36);
+    return name;
   }
 
   const moduleLabels: Record<string, string> = {
