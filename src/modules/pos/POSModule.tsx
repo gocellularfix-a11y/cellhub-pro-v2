@@ -359,6 +359,14 @@ export default function POSModule() {
       setSales(nextSales);
       setLastSale(sale);
       persist.sale(sale.id, sale as unknown as Record<string, unknown>);
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: {
+            type: 'sale.completed',
+            payload: { customerId: sale.customerId || undefined, amountCents: sale.total || 0 },
+          },
+        }));
+      } catch { /* env without CustomEvent */ }
 
       // 2. Deduct inventory (using ref)
       const updatedInventory = [...inventoryRef.current];

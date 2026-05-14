@@ -493,6 +493,11 @@ export default function SpecialOrdersModule() {
       specialOrdersRef.current = nextOrders;
       setSpecialOrders(nextOrders);
       persist.specialOrder(newOrder.id, newOrder as unknown as Record<string, unknown>);
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: { type: 'special_order.created', payload: { customerId: (newOrder as any).customerId || undefined } },
+        }));
+      } catch { /* env without CustomEvent */ }
 
       // Commit customer changes if any (must happen BEFORE deposit cart add so
       // the customer exists in state when subsequent modules look it up)

@@ -5166,6 +5166,53 @@ export const translations: TranslationDictionary = {
     pt: (phone: string) => `Número ${phone} vinculado ao cliente.`,
   },
 
+  // Cross-module outcome hints
+  'operator.hint.saleCompleted': {
+    en: (total: string) => `Sale complete • $${total} collected.`,
+    es: (total: string) => `Venta completada • $${total} cobrado.`,
+    pt: (total: string) => `Venda concluída • $${total} coletado.`,
+  },
+  'operator.hint.saleCompletedWithCustomer': {
+    en: (name: string, total: string) => `${name} • Sale $${total} complete.`,
+    es: (name: string, total: string) => `${name} • Venta $${total} completada.`,
+    pt: (name: string, total: string) => `${name} • Venda $${total} concluída.`,
+  },
+  'operator.hint.unlockSubmitted': {
+    en: () => `Unlock order submitted.`,
+    es: () => `Orden de desbloqueo enviada.`,
+    pt: () => `Pedido de desbloqueio enviado.`,
+  },
+  'operator.hint.unlockSubmittedForCustomer': {
+    en: (name: string) => `Unlock submitted for ${name}.`,
+    es: (name: string) => `Desbloqueo enviado para ${name}.`,
+    pt: (name: string) => `Desbloqueio enviado para ${name}.`,
+  },
+  'operator.hint.specialOrderCreated': {
+    en: () => `Special order created.`,
+    es: () => `Pedido especial creado.`,
+    pt: () => `Pedido especial criado.`,
+  },
+  'operator.hint.specialOrderCreatedForCustomer': {
+    en: (name: string) => `Special order created for ${name}.`,
+    es: (name: string) => `Pedido especial creado para ${name}.`,
+    pt: (name: string) => `Pedido especial criado para ${name}.`,
+  },
+  'operator.hint.returnProcessed': {
+    en: (total: string) => `Return processed • $${total} refunded.`,
+    es: (total: string) => `Devolución procesada • $${total} reembolsado.`,
+    pt: (total: string) => `Devolução processada • $${total} reembolsado.`,
+  },
+  'operator.hint.appointmentBooked': {
+    en: () => `Appointment booked.`,
+    es: () => `Cita agendada.`,
+    pt: () => `Agendamento criado.`,
+  },
+  'operator.hint.appointmentBookedForCustomer': {
+    en: (name: string) => `Appointment booked for ${name}.`,
+    es: (name: string) => `Cita agendada para ${name}.`,
+    pt: (name: string) => `Agendamento criado para ${name}.`,
+  },
+
   // ── Employee login ────────────────────────────────────────
   'employee.whoIsWorking':      { en: 'Who is working today?',            es: '¿Quién está trabajando hoy?',         pt: 'Quem está trabalhando hoje?' },
   'employee.selectEmployee':    { en: 'Select an employee to clock in',   es: 'Seleccionar Empleado',                pt: 'Selecionar Funcionário' },

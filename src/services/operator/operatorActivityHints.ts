@@ -48,7 +48,12 @@ export type OperatorHintKind =
   | 'sale_scanned'
   | 'layaway_open'
   | 'repair_open'
-  | 'customer_history_opened';
+  | 'customer_history_opened'
+  | 'sale_completed'
+  | 'unlock_submitted'
+  | 'special_order_created'
+  | 'return_processed'
+  | 'appointment_booked';
 
 /**
  * Minimal hint shape. The bubble component runs the i18n key + args
@@ -125,6 +130,11 @@ export interface OperatorActivityEventDetail {
     | 'phone.payment.customer_updated'
     | 'phone.payment.payment_recorded'
     | 'phone.payment.number_linked_to_customer'
+    | 'sale.completed'
+    | 'unlock.submitted'
+    | 'special_order.created'
+    | 'return.processed'
+    | 'appointment.booked'
     | string; // forward-compat
   payload?: {
     // Generic IDs / values reused across event types. Always minimal —
@@ -552,6 +562,99 @@ export function computeHintFromEvent(
     };
   }
 
+  // ── Cross-module outcome events ────────────────────────────────────────────
+
+  if (detail.type === 'sale.completed') {
+    const dollars = ((payload.amountCents ?? 0) / 100).toFixed(2);
+    if (payload.customerId) {
+      const cust = findCustomer(inputs.customers, payload.customerId);
+      if (cust) {
+        return {
+          kind: 'sale_completed',
+          i18nKey: 'operator.hint.saleCompletedWithCustomer',
+          args: [shortName(cust), dollars],
+          severity: 'info',
+        };
+      }
+    }
+    return {
+      kind: 'sale_completed',
+      i18nKey: 'operator.hint.saleCompleted',
+      args: [dollars],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'unlock.submitted') {
+    if (payload.customerId) {
+      const cust = findCustomer(inputs.customers, payload.customerId);
+      if (cust) {
+        return {
+          kind: 'unlock_submitted',
+          i18nKey: 'operator.hint.unlockSubmittedForCustomer',
+          args: [shortName(cust)],
+          severity: 'info',
+        };
+      }
+    }
+    return {
+      kind: 'unlock_submitted',
+      i18nKey: 'operator.hint.unlockSubmitted',
+      args: [],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'special_order.created') {
+    if (payload.customerId) {
+      const cust = findCustomer(inputs.customers, payload.customerId);
+      if (cust) {
+        return {
+          kind: 'special_order_created',
+          i18nKey: 'operator.hint.specialOrderCreatedForCustomer',
+          args: [shortName(cust)],
+          severity: 'info',
+        };
+      }
+    }
+    return {
+      kind: 'special_order_created',
+      i18nKey: 'operator.hint.specialOrderCreated',
+      args: [],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'return.processed') {
+    const dollars = ((payload.amountCents ?? 0) / 100).toFixed(2);
+    return {
+      kind: 'return_processed',
+      i18nKey: 'operator.hint.returnProcessed',
+      args: [dollars],
+      severity: 'info',
+    };
+  }
+
+  if (detail.type === 'appointment.booked') {
+    if (payload.customerId) {
+      const cust = findCustomer(inputs.customers, payload.customerId);
+      if (cust) {
+        return {
+          kind: 'appointment_booked',
+          i18nKey: 'operator.hint.appointmentBookedForCustomer',
+          args: [shortName(cust)],
+          severity: 'info',
+        };
+      }
+    }
+    return {
+      kind: 'appointment_booked',
+      i18nKey: 'operator.hint.appointmentBooked',
+      args: [],
+      severity: 'info',
+    };
+  }
+
   return null;
 }
 
@@ -652,6 +755,25 @@ export function computeOperatorContextFromEvent(
   }
   if (detail.type === 'customer.history_opened' && payload.customerId) {
     return { contextType: 'customer', customerId: payload.customerId, updatedAt: now };
+  }
+
+  if (detail.type === 'sale.completed') {
+    return {
+      contextType: 'sale',
+      customerId: payload.customerId,
+      amountCents: payload.amountCents,
+      updatedAt: now,
+    };
+  }
+
+  if (
+    detail.type === 'unlock.submitted'
+    || detail.type === 'special_order.created'
+    || detail.type === 'appointment.booked'
+  ) {
+    if (payload.customerId) {
+      return { contextType: 'customer', customerId: payload.customerId, updatedAt: now };
+    }
   }
 
   return null;

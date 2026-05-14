@@ -695,6 +695,11 @@ export default function UnlockModule() {
       unlocksRef.current = nextUnlocks;
       setUnlocks(nextUnlocks);
         persist.unlock(newUnlock.id, newUnlock as unknown as Record<string, unknown>);
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: { type: 'unlock.submitted', payload: { customerId: newUnlock.customerId || undefined } },
+        }));
+      } catch { /* env without CustomEvent */ }
 
       if (depositCents > 0) {
         consolidateCartForUnlock({

@@ -782,6 +782,11 @@ export default function ReturnsModule() {
     customerReturnsRef.current = history;
     setReturnHistory(history);
     persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+        detail: { type: 'return.processed', payload: { amountCents: totalCents } },
+      }));
+    } catch { /* env without CustomEvent */ }
 
     // Toasts
     if (skippedAlreadyDone.length > 0) {

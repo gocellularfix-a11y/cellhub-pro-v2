@@ -288,6 +288,11 @@ export default function AppointmentsModule() {
       appointmentsRef.current = nextAppts;
       setAppointments(nextAppts);
       persist.appointment(appt.id, appt as unknown as Record<string, unknown>);
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
+          detail: { type: 'appointment.booked', payload: { customerId: (appt as any).customerId || undefined } },
+        }));
+      } catch { /* env without CustomEvent */ }
 
       toast(t('appt.toastCreated'), 'success');
       setPostSaveModal(appt);
