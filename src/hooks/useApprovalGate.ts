@@ -30,7 +30,7 @@ import { validateRemoteApprovalActor } from '@/services/companion/remoteApproval
 
 export interface UseApprovalGateArgs {
   employees: Employee[];
-  settings: { adminPin?: string | null; approvalsEnabled?: boolean } | null | undefined;
+  settings: { adminPin?: string | null; approvalsEnabled?: boolean; companionRemoteApprovalEnabled?: boolean } | null | undefined;
   /** Optional name of the employee triggering the action — shown in the modal. */
   attemptedByName?: string;
 }
@@ -94,8 +94,7 @@ export function useApprovalGate({
         const r = resolverRef.current;
         if (!r) return; // already resolved locally
         const trust = validateRemoteApprovalActor({
-          isRemoteEnabled: () =>
-            !!((settingsRef.current as unknown as Record<string, unknown>)?.companionRemoteApprovalEnabled),
+          isRemoteEnabled: () => !!settingsRef.current?.companionRemoteApprovalEnabled,
           managerId: response.managerId,
           employees: employeesRef.current,
           settings: settingsRef.current,

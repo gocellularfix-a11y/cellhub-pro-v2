@@ -129,6 +129,10 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   carrierSpiffs: {},
   claudeModel: 'claude-sonnet-4-6',
   spiffTaxableRatio: 1.0,
+
+  // Companion
+  companionBridgeEnabled: false,
+  companionRemoteApprovalEnabled: false,
 };
 
 // ── Sidebar Navigation Tabs ──────────────────────────────

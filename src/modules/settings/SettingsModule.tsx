@@ -1801,6 +1801,48 @@ export default function SettingsModule() {
                 );
               })()}
 
+              {/* Remote approval toggle — mirrors the one in Employees/Approvals */}
+              <div style={{
+                padding: '1rem 1.1rem',
+                background: 'rgba(99,102,241,0.06)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: '0.75rem',
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  🔐 {t('settings.approvals.remote.label')}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.companionRemoteApprovalEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setSettings({ companionRemoteApprovalEnabled: next });
+                      persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
+                    {t('settings.approvals.remote.label')}
+                  </span>
+                </label>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
+                  {t('settings.approvals.remote.desc')}
+                </p>
+                <p style={{
+                  fontSize: '0.7rem',
+                  color: '#fbbf24',
+                  marginTop: '0.35rem',
+                  lineHeight: 1.45,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.4rem',
+                }}>
+                  <span aria-hidden="true">⚠️</span>
+                  <span>{t('settings.approvals.remote.warning')}</span>
+                </p>
+              </div>
+
               {/* Companion-Center cross-link */}
               <div style={{
                 padding: '0.75rem 1rem',
@@ -1850,10 +1892,8 @@ export default function SettingsModule() {
                   {t('settings.approvals.enabledHint')}
                 </p>
 
-                {/* R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — kill-switch
-                    plumbing only. Setting toggles flip false → true on disk
-                    but no behavior changes until Phase 2 wires the hybrid
-                    prompter in approvalGuard. Local PIN remains authority. */}
+                {/* R-COMPANION-REMOTE-APPROVAL-SETTINGS-V1 — live since Phase 2B.
+                    Managers can approve/deny from Companion app when enabled. */}
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -1862,10 +1902,10 @@ export default function SettingsModule() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
-                      checked={!!(settings as any).companionRemoteApprovalEnabled}
+                      checked={!!settings.companionRemoteApprovalEnabled}
                       onChange={(e) => {
                         const next = e.target.checked;
-                        setSettings({ companionRemoteApprovalEnabled: next } as any);
+                        setSettings({ companionRemoteApprovalEnabled: next });
                         persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
                       }}
                       style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}

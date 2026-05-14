@@ -4989,8 +4989,8 @@ export const translations: TranslationDictionary = {
 
   // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 — Settings toggle copy.
   // Plumbing only; setting is read by future Phase 2 wiring.
-  'settings.approvals.remote.label':       { en: 'Remote approvals from Companion',                                                  es: 'Aprobaciones remotas desde Companion',                                                              pt: 'Aprovações remotas pelo Companion' },
-  'settings.approvals.remote.desc':        { en: 'Allow paired Companion devices to approve or deny restricted actions remotely.', es: 'Permite que los dispositivos Companion emparejados aprueben o denieguen acciones restringidas de forma remota.', pt: 'Permite que dispositivos Companion pareados aprovem ou neguem ações restritas remotamente.' },
+  'settings.approvals.remote.label':       { en: 'Allow remote approvals from Companion',                                              es: 'Permitir aprobaciones remotas desde Companion',                                                     pt: 'Permitir aprovações remotas pelo Companion' },
+  'settings.approvals.remote.desc':        { en: 'Managers can approve or deny protected actions from the Companion app.',          es: 'Los gerentes pueden aprobar o rechazar acciones protegidas desde la app Companion.',                  pt: 'Os gerentes podem aprovar ou negar ações protegidas pelo app Companion.' },
   'settings.approvals.remote.warning':     { en: 'Local PIN remains available. Only enable this for trusted paired devices.',       es: 'El PIN local sigue disponible. Actívalo solo para dispositivos emparejados de confianza.',            pt: 'O PIN local continua disponível. Ative apenas para dispositivos pareados de confiança.' },
 
   // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — short pill labels per adapter state
