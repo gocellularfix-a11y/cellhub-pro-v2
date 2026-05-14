@@ -4920,6 +4920,17 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
   },
 
+  // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1
+  'companion.intelligence.title':              { en: 'Intelligence Actions',              es: 'Acciones de Inteligencia',       pt: 'Ações de Inteligência' },
+  'companion.intelligence.empty':              { en: 'No active intelligence alerts.',    es: 'Sin alertas de inteligencia activas.', pt: 'Sem alertas de inteligência ativos.' },
+  'companion.intelligence.ack':                { en: 'Ack',                               es: 'OK',                             pt: 'OK' },
+  'companion.intelligence.createMsg':          { en: 'Create message',                    es: 'Crear mensaje',                  pt: 'Criar mensagem' },
+  'companion.intelligence.priority.info':      { en: 'Info',                              es: 'Info',                           pt: 'Info' },
+  'companion.intelligence.priority.warning':   { en: 'Warning',                           es: 'Alerta',                         pt: 'Atenção' },
+  'companion.intelligence.priority.critical':  { en: 'Critical',                          es: 'Crítico',                        pt: 'Crítico' },
+  'companion.intelligence.priority.opportunity':{ en: 'Opportunity',                      es: 'Oportunidad',                    pt: 'Oportunidade' },
+  'companion.intelligence.acknowledged':       { en: 'Acknowledged',                      es: 'Reconocido',                     pt: 'Reconhecido' },
+
   // R-COMPANION-MESSAGING-LIVE-V1: operational messaging panel
   'companion.messaging.panelTitle':      { en: 'Operations Dispatch', es: 'Despacho de Operaciones', pt: 'Despacho Operacional' },
   'companion.messaging.unreadBadge': {

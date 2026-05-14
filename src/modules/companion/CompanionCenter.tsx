@@ -85,6 +85,14 @@ import {
   markMessageRead,
   subscribeMessagingRuntime,
 } from '@/services/companion/companionMessagingRuntime';
+// R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: read model over intelligence alerts.
+import {
+  acknowledgeIntelligenceAlert,
+  getIntelligenceRuntimeSnapshot,
+  subscribeIntelligenceRuntime,
+} from '@/services/companion/companionIntelligenceRuntime';
+import type { CompanionIntelligenceRuntimeItem } from '@/services/companion/companionIntelligenceRuntime';
+import { emitMessageSent } from '@/services/companion/emitters/messagingEmitter';
 import type { CompanionOpCategory } from '@/services/companion/companionTypes';
 // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model over store-status events.
 import {
@@ -330,6 +338,33 @@ const TIMELINE_CHIP: Record<TimelineStatus, { bg: string; border: string; color:
   expired:   { bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.35)', color: '#fb923c' },
 };
 
+// R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: priority chip palette
+type IntelPriority = 'info' | 'warning' | 'critical' | 'opportunity';
+const INTEL_CHIP: Record<IntelPriority, { bg: string; border: string; color: string }> = {
+  info:        { bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.35)',  color: '#60a5fa' },
+  warning:     { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.35)',  color: '#fbbf24' },
+  critical:    { bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)', color: '#f87171' },
+  opportunity: { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.35)', color: '#a78bfa' },
+};
+
+// Map insightType to operational category for auto-filled messages
+function insightToOpCategory(insightType?: string): CompanionOpCategory {
+  if (!insightType) return 'intelligence';
+  const t = insightType.toLowerCase();
+  if (t.includes('inventory')) return 'inventory';
+  if (t.includes('repair'))    return 'repair';
+  if (t.includes('customer') || t.includes('churn')) return 'customer';
+  if (t.includes('operations') || t.includes('approval')) return 'operations';
+  return 'intelligence';
+}
+
+// Build a short, actionable operational message from an alert item
+function buildIntelMessageText(item: CompanionIntelligenceRuntimeItem): string {
+  const title = item.title || item.kind || 'Intelligence alert';
+  const body  = item.body ? ` — ${item.body.slice(0, 120)}` : '';
+  return `${title}${body}`;
+}
+
 function auditRelTime(ms: number): string {
   const diff = Date.now() - ms;
   if (diff < 60_000)   return 'just now';
@@ -454,6 +489,9 @@ export default function CompanionCenter() {
   // Used by the Store Status card body.
   const [storeStatusRuntime, setStoreStatusRuntime] = useState<CompanionStoreStatusRuntimeSnapshot>(() => getStoreStatusRuntimeSnapshot());
 
+  // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: read model over INTELLIGENCE_ALERT_CREATED events.
+  const [intelligenceRuntime, setIntelligenceRuntime] = useState(() => getIntelligenceRuntimeSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -473,10 +511,11 @@ export default function CompanionCenter() {
     const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
     const unsubMessaging = subscribeMessagingRuntime((s) => setMessagingRuntime(s));
     const unsubStoreStatus = subscribeStoreStatusRuntime((s) => setStoreStatusRuntime(s));
+    const unsubIntelligence = subscribeIntelligenceRuntime((s) => setIntelligenceRuntime(s));
     // R-COMPANION-CENTER-UX-REDESIGN-V2: inject card hover + badge
     // pulse keyframes once. Idempotent.
     ensureCompanionCardStyles();
-    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); };
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); unsubIntelligence(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -1354,6 +1393,166 @@ export default function CompanionCenter() {
                   <span style={{ color: '#475569', fontSize: '0.63rem', whiteSpace: 'nowrap', lineHeight: 1.8, flexShrink: 0 }}>
                     {auditRelTime(item.updatedAt)}
                   </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: intelligence action panel */}
+      <div style={{
+        marginTop: '0.75rem',
+        background: 'linear-gradient(160deg, #0d1a2e 0%, #080f1c 100%)',
+        border: '1px solid rgba(96,165,250,0.15)',
+        borderRadius: '0.9rem',
+        padding: '0.9rem 1.1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.6rem',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            🧠 {t('companion.intelligence.title')}
+          </span>
+          {intelligenceRuntime.unacknowledgedCount > 0 && (
+            <span style={{
+              background: 'rgba(96,165,250,0.18)',
+              color: '#60a5fa',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 10,
+              border: '1px solid rgba(96,165,250,0.3)',
+            }}>
+              {intelligenceRuntime.unacknowledgedCount}
+            </span>
+          )}
+        </div>
+
+        {/* Alert feed */}
+        {intelligenceRuntime.items.filter((i) => !i.isAcknowledged).length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
+            {t('companion.intelligence.empty')}
+          </p>
+        ) : (
+          <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            {intelligenceRuntime.items.filter((i) => !i.isAcknowledged).slice(0, 10).map((item) => {
+              const pri = (item.priority ?? item.severity ?? 'info') as IntelPriority;
+              const chip = INTEL_CHIP[pri] ?? INTEL_CHIP.info;
+              const opCat = insightToOpCategory(item.insightType);
+              return (
+                <div key={item.alertId} style={{
+                  padding: '0.5rem 0.6rem',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(96,165,250,0.1)',
+                  borderLeft: `3px solid ${chip.color}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.3rem',
+                }}>
+                  {/* Top row: priority chip + title + timestamp */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      fontSize: '0.58rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      marginTop: 2,
+                      background: chip.bg,
+                      border: `1px solid ${chip.border}`,
+                      color: chip.color,
+                    }}>
+                      {t(`companion.intelligence.priority.${pri}` as const)}
+                    </span>
+                    <span style={{ flex: 1, fontSize: '0.78rem', fontWeight: 600, color: '#e2e8f0', lineHeight: 1.3 }}>
+                      {item.title || item.kind || t('companion.approvals.action.fallback')}
+                    </span>
+                    <span style={{ fontSize: '0.62rem', color: '#475569', whiteSpace: 'nowrap', flexShrink: 0, marginTop: 2 }}>
+                      {auditRelTime(item.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Body text */}
+                  {item.body && (
+                    <p style={{ margin: 0, fontSize: '0.73rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                      {item.body}
+                    </p>
+                  )}
+
+                  {/* Category + action buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: 2 }}>
+                    {item.insightType && (
+                      <span style={{
+                        fontSize: '0.58rem',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: 4,
+                        background: 'rgba(96,165,250,0.08)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(96,165,250,0.18)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}>
+                        {item.insightType}
+                      </span>
+                    )}
+                    <div style={{ flex: 1 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const msgId = `intel-${item.alertId}-${Date.now().toString(36)}`;
+                        emitMessageSent({
+                          messageId: msgId,
+                          senderType: 'desktop',
+                          senderName: currentEmployee?.name || 'Store',
+                          fromEmployeeId: currentEmployee?.id,
+                          category: opCat,
+                          conversationId: 'store-general',
+                          channel: 'internal',
+                          text: buildIntelMessageText(item),
+                          preview: (item.title || '').slice(0, 80),
+                        });
+                      }}
+                      style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: 5,
+                        border: '1px solid rgba(96,165,250,0.3)',
+                        background: 'rgba(96,165,250,0.08)',
+                        color: '#60a5fa',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {t('companion.intelligence.createMsg')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => acknowledgeIntelligenceAlert(item.alertId)}
+                      style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: 5,
+                        border: '1px solid rgba(148,163,184,0.25)',
+                        background: 'rgba(148,163,184,0.06)',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {t('companion.intelligence.ack')}
+                    </button>
+                  </div>
                 </div>
               );
             })}
