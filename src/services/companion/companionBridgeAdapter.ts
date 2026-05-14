@@ -42,6 +42,7 @@ import type {
   ApprovalType,
   AlertSeverity,
   NewMessagePayload,
+  StoreSnapshotPayload,
 } from './sdk/payloads';
 import type {
   CompanionApprovalPayload,
@@ -590,6 +591,24 @@ export function sendCompanionMessage(
   });
   console.info(
     `[companion-bridge-adapter] outbound MESSAGE_NEW id=${msgId} from=${senderId}`,
+  );
+  return true;
+}
+
+/**
+ * R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1 — push a live store snapshot
+ * to the mobile Companion dashboard. Emits dashboard:stats_updated directly
+ * to the bridge socket (same pattern as sendCompanionMessage).
+ *
+ * Returns true when the emit was attempted (socket connected), false otherwise.
+ * CompanionCenter calls this in a useEffect whenever store data changes.
+ */
+export function emitStoreSnapshot(payload: StoreSnapshotPayload): boolean {
+  if (!client || client.getStatus() !== 'connected' || !currentArgs) return false;
+  const socket = client.getSocket();
+  socket.emit(SDK_EVENTS.DASHBOARD_STATS_UPDATED, payload);
+  console.info(
+    `[companion-bridge-adapter] outbound DASHBOARD_STATS_UPDATED storeId=${payload.storeId} revenueCents=${payload.todayRevenueCents} sales=${payload.todaySalesCount}`,
   );
   return true;
 }

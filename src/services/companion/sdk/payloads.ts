@@ -165,6 +165,20 @@ export interface DashboardStatsPayload {
   updatedAt: string;
 }
 
+// R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1 — live store snapshot payload.
+// Desktop emits this on dashboard:stats_updated whenever store data changes.
+// Money: cents (CellHub Pro canonical). All fields required.
+export interface StoreSnapshotPayload {
+  todayRevenueCents: number;
+  todaySalesCount: number;
+  openRepairsCount: number;
+  clockedInCount: number;
+  clockedInNames: string[];
+  pendingApprovalsCount: number;
+  storeId: string;
+  updatedAt: string;
+}
+
 // ─── System ────────────────────────────────────────────────────────────────
 
 export interface SystemErrorPayload {

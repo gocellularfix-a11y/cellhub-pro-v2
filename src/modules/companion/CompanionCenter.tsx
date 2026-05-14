@@ -66,6 +66,7 @@ import {
   stopCompanionBridgeAdapter,
   getBridgeAdapterStatus,
   sendCompanionMessage,
+  emitStoreSnapshot,
 } from '@/services/companion/companionBridgeAdapter';
 import {
   generateCompanionAlerts,
@@ -117,10 +118,10 @@ interface CardSpec {
 const CARDS: CardSpec[] = [
   { id: 'connect',     titleKey: 'companion.card.connect.title',     bodyKey: 'companion.card.connect.body',     icon: '🔗',  defaultStatus: 'not_connected' },
   { id: 'pair',        titleKey: 'companion.card.pair.title',        bodyKey: 'companion.card.pair.body',        icon: '📲', defaultStatus: 'not_connected' },
-  { id: 'approvals',   titleKey: 'companion.card.approvals.title',   bodyKey: 'companion.card.approvals.body',   icon: '✅', defaultStatus: 'coming_soon' },
-  { id: 'storeStatus', titleKey: 'companion.card.storeStatus.title', bodyKey: 'companion.card.storeStatus.body', icon: '🏪', defaultStatus: 'coming_soon' },
-  { id: 'messaging',   titleKey: 'companion.card.messaging.title',   bodyKey: 'companion.card.messaging.body',   icon: '💬', defaultStatus: 'coming_soon' },
-  { id: 'health',      titleKey: 'companion.card.health.title',      bodyKey: 'companion.card.health.body',      icon: '📡', defaultStatus: 'coming_soon' },
+  { id: 'approvals',   titleKey: 'companion.card.approvals.title',   bodyKey: 'companion.card.approvals.body',   icon: '✅', defaultStatus: 'not_connected' },
+  { id: 'storeStatus', titleKey: 'companion.card.storeStatus.title', bodyKey: 'companion.card.storeStatus.body', icon: '🏪', defaultStatus: 'not_connected' },
+  { id: 'messaging',   titleKey: 'companion.card.messaging.title',   bodyKey: 'companion.card.messaging.body',   icon: '💬', defaultStatus: 'not_connected' },
+  { id: 'health',      titleKey: 'companion.card.health.title',      bodyKey: 'companion.card.health.body',      icon: '📡', defaultStatus: 'not_connected' },
 ];
 
 // R-COMPANION-CENTER-UX-REDESIGN-V2: Quick-Actions-style tile palette.
@@ -483,6 +484,24 @@ export default function CompanionCenter() {
       return s !== 'picked_up' && s !== 'cancelled' && s !== 'refunded';
     }).length, [repairs]);
 
+  // R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1: push live store snapshot
+  // to mobile dashboard whenever bridge is connected and any store value
+  // changes. Fires immediately on connect so mobile gets values right away.
+  useEffect(() => {
+    if (bridgeStatus !== 'connected') return;
+    emitStoreSnapshot({
+      todayRevenueCents,
+      todaySalesCount: todaySales.length,
+      openRepairsCount,
+      clockedInCount: clockedInEmployees.length,
+      clockedInNames: clockedInEmployees.map((e) => e.name),
+      pendingApprovalsCount: approvalRuntime.pendingCount,
+      storeId: currentStoreId || '',
+      updatedAt: new Date().toISOString(),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridgeStatus, todayRevenueCents, todaySales.length, openRepairsCount, clockedInEmployees, approvalRuntime.pendingCount, currentStoreId]);
+
   // R-COMPANION-BRIDGE-WIRE-V1: adapter lifecycle. Starts only when both
   // (a) the local mock bridge state is 'connected' AND
   // (b) settings.companionBridgeEnabled is true.
@@ -737,15 +756,22 @@ export default function CompanionCenter() {
     : isPairingOpen ? 'pairing' : 'not_connected';
   const banner = statusPalette(overallStatus);
 
-  // Per-card status: pair + connect cards mirror live pairing state.
+  // Per-card status:
+  //   connect/pair  — mirror live pairing state
+  //   approvals/storeStatus/messaging/health — follow bridge connection
   const cardStatus = useMemo(() => (id: string, fallback: CardStatus): CardStatus => {
     if (id === 'pair' || id === 'connect') {
       if (pairedDevice) return 'connected_soon';
       if (isPairingOpen) return 'pairing';
       return 'not_connected';
     }
+    if (id === 'approvals' || id === 'storeStatus' || id === 'messaging' || id === 'health') {
+      if (bridgeStatus === 'connected') return 'connected_soon';
+      if (bridgeStatus === 'connecting' || bridgeStatus === 'reconnecting') return 'pairing';
+      return fallback;
+    }
     return fallback;
-  }, [pairedDevice, isPairingOpen]);
+  }, [pairedDevice, isPairingOpen, bridgeStatus]);
 
   const phaseColor =
     localPhase === 'connected' ? '#22c55e'
