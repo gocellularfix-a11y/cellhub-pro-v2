@@ -95,13 +95,21 @@ export function createPosBridgeClient(config: PosBridgeClientConfig): PosBridgeC
     setStatus('reconnecting');
   });
 
-  socket.on('disconnect', () => {
+  // R-COMPANION-CORE-STABILIZATION-DIAG-V1 — surface the disconnect /
+  // connect_error reason so silent drops become diagnosable. Socket.IO
+  // passes `reason: string` to the disconnect handler ('transport close',
+  // 'ping timeout', 'io server disconnect', 'parse error', etc.) and an
+  // Error to connect_error. Before this, every drop logged only
+  // "status → disconnected" with no cause.
+  socket.on('disconnect', (reason: string) => {
     if (disposed) return;
+    console.info(`[posBridgeClient] disconnect — reason=${reason}`);
     setStatus('disconnected');
   });
 
-  socket.on('connect_error', () => {
+  socket.on('connect_error', (err: Error) => {
     if (disposed) return;
+    console.info(`[posBridgeClient] connect_error — ${err?.message ?? 'unknown'}`);
     setStatus('disconnected');
   });
 
