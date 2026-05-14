@@ -4920,6 +4920,29 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
   },
 
+  // R-COMPANION-NOTIFICATION-INFRA-V1
+  'companion.notifications.title':       { en: 'Notification Center',      es: 'Centro de Notificaciones',    pt: 'Central de Notificações' },
+  'companion.notifications.empty':       { en: 'No notifications.',         es: 'Sin notificaciones.',         pt: 'Sem notificações.' },
+  'companion.notifications.markAllRead': { en: 'Mark all read',             es: 'Marcar todo como leído',      pt: 'Marcar tudo como lido' },
+  'companion.notifications.clearRead':   { en: 'Clear read',                es: 'Limpiar leídos',              pt: 'Limpar lidos' },
+  'companion.notifications.ack':         { en: 'Read',                      es: 'Leído',                       pt: 'Lido' },
+  'companion.notifications.priority.info':       { en: 'Info',        es: 'Info',       pt: 'Info' },
+  'companion.notifications.priority.warning':    { en: 'Warning',     es: 'Alerta',     pt: 'Atenção' },
+  'companion.notifications.priority.critical':   { en: 'Critical',    es: 'Crítico',    pt: 'Crítico' },
+  'companion.notifications.priority.opportunity':{ en: 'Opportunity', es: 'Oportunidad',pt: 'Oportunidade' },
+  'companion.notifications.type.approval':     { en: 'Approval',      es: 'Aprobación', pt: 'Aprovação' },
+  'companion.notifications.type.message':      { en: 'Message',       es: 'Mensaje',    pt: 'Mensagem' },
+  'companion.notifications.type.intelligence': { en: 'Intelligence',  es: 'Inteligencia',pt: 'Inteligência' },
+  'companion.notifications.type.store_status': { en: 'Store',         es: 'Tienda',     pt: 'Loja' },
+  'companion.notifications.type.repair':       { en: 'Repair',        es: 'Reparación', pt: 'Reparo' },
+  'companion.notifications.type.inventory':    { en: 'Inventory',     es: 'Inventario', pt: 'Inventário' },
+  'companion.notifications.type.operations':   { en: 'Operations',    es: 'Operaciones',pt: 'Operações' },
+  'companion.notifications.unreadBadge': {
+    en: (n: number) => `${n} new`,
+    es: (n: number) => `${n} nueva${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} nova${n === 1 ? '' : 's'}`,
+  },
+
   // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1
   'companion.intelligence.title':              { en: 'Intelligence Actions',              es: 'Acciones de Inteligencia',       pt: 'Ações de Inteligência' },
   'companion.intelligence.empty':              { en: 'No active intelligence alerts.',    es: 'Sin alertas de inteligencia activas.', pt: 'Sem alertas de inteligência ativos.' },

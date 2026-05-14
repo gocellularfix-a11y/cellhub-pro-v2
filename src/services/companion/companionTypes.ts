@@ -532,3 +532,38 @@ export interface CompanionStoreStatusRuntimeSnapshot {
 }
 
 export type CompanionStoreStatusRuntimeListener = (snapshot: CompanionStoreStatusRuntimeSnapshot) => void;
+
+// ── Notification runtime (R-COMPANION-NOTIFICATION-INFRA-V1) ──
+// In-memory notification layer. Aggregates operational events from
+// all companion runtimes into a single prioritized feed that the
+// Companion Center Notification Panel consumes.
+
+export type CompanionNotificationType =
+  | 'approval'
+  | 'message'
+  | 'intelligence'
+  | 'store_status'
+  | 'repair'
+  | 'inventory'
+  | 'operations';
+
+export type CompanionNotificationPriority = 'info' | 'warning' | 'critical' | 'opportunity';
+
+export interface CompanionNotification {
+  notificationId: string;
+  type: CompanionNotificationType;
+  priority: CompanionNotificationPriority;
+  title: string;
+  body?: string;
+  relatedEntityId?: string;
+  relatedEntityType?: string;
+  createdAt: number;
+  isRead: boolean;
+}
+
+export interface CompanionNotificationSnapshot {
+  notifications: CompanionNotification[];
+  unreadCount: number;
+}
+
+export type CompanionNotificationListener = (snap: CompanionNotificationSnapshot) => void;
