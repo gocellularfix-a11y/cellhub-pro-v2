@@ -246,6 +246,14 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   workflow_external_payment: [actResumeExternalPayment, actMarkExternalPaymentPaid, actKeepExternalPaymentPending, actCancelWorkflow],
   workflow_resumption:       [actResumeWorkflow],
 
+  // ── Cross-signal reasoning conclusions (R-INTELLIGENCE-CROSS-SIGNAL-REASONING-V1) ──
+  reasoning_critical_customer_recovery: [openCustomers],
+  reasoning_operational_overload:       [openRepairs],
+  reasoning_collection_escalation:      [openRepairs, openLayaways],
+  reasoning_revenue_recovery_window:    [openCustomers, openPOS],
+  reasoning_upsell_momentum:            [openPOS],
+  reasoning_workflow_stability_risk:    [actResumeExternalPayment, openRepairs],
+
   // ── Store rhythm modes (R-INTELLIGENCE-STORE-RHYTHM-V1) ──────────────
   rhythm_rush:             [],  // informational — cashier should stay at current task
   rhythm_repair_overload:  [openRepairs],

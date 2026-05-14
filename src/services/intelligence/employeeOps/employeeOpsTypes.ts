@@ -7,6 +7,7 @@ import type { LiveAction } from '@/services/intelligence/liveContext/contextType
 import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
 import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportunities/revenueOpportunityTypes';
 import type { StoreRhythmSnapshot } from '@/services/intelligence/storeRhythm/storeRhythmTypes';
+import type { OperationalReasoningConclusion } from '@/services/intelligence/reasoning/reasoningTypes';
 
 // ── Operational signal ────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ export interface OperationalHealthSnapshot {
   signals: OperationalSignal[];
   revenueOpportunities: RevenueOpportunity[];
   storeRhythm: StoreRhythmSnapshot;
+  conclusions: OperationalReasoningConclusion[];
   activeWorkflowCount: number;
   overdueRepairCount: number;
   readyForPickupCount: number;

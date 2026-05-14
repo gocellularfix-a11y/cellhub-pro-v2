@@ -8,6 +8,7 @@ import type { LiveContext, ContextSuggestion } from './contextTypes';
 import type { OperatorActivityInputs } from '@/services/operator/operatorActivityHints';
 import type { CustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringTypes';
 import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
+import { CONCLUSION_SUPPRESSIONS } from '@/services/intelligence/reasoning/reasoningSelectors';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -264,12 +265,25 @@ export function computeContextSuggestions(
     }
   }
 
-  // Sort by priority descending, deduplicate by id, take top 6
-  // (bumped from 5 to give operational signals room alongside customer signals)
+  // Inject cross-signal reasoning conclusions (highest priority) + build suppression set.
+  const suppressedIds = new Set<string>();
+  if (opHealth?.conclusions?.length) {
+    for (const c of opHealth.conclusions) {
+      const sid = `reasoning_${c.id}`;
+      out.push({ id: sid, text: c.title, detail: c.detail, kind: c.suggestionKind, priority: c.priority });
+      for (const suppressed of CONCLUSION_SUPPRESSIONS[sid] ?? []) suppressedIds.add(suppressed);
+    }
+  }
+
   const seen = new Set<string>();
   return out
     .sort((a, b) => b.priority - a.priority)
-    .filter((s) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; })
+    .filter((s) => {
+      if (suppressedIds.has(s.id)) return false;
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    })
     .slice(0, 6);
 }
 

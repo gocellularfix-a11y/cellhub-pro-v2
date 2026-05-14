@@ -7,6 +7,7 @@ import { computeAnomalies } from './operationalAnomalyDetection';
 import { toMs } from '@/services/intelligence/customerScoring/customerOpportunitySignals';
 import { computeRevenueOpportunities } from '@/services/intelligence/revenueOpportunities/revenueOpportunityEngine';
 import { computeStoreRhythm } from '@/services/intelligence/storeRhythm/storeRhythmEngine';
+import { computeReasoningConclusions } from '@/services/intelligence/reasoning/reasoningEngine';
 
 const READY_STATUSES = new Set(['completed', 'ready', 'ready_for_pickup']);
 const TERMINAL_STATUSES = new Set(['picked_up', 'cancelled', 'refunded', 'refund_pending']);
@@ -63,10 +64,25 @@ export function computeOperationalHealth(ctx: OperationalHealthContext): Operati
     if (due > 0 && due < now) overdueLayawayCount++;
   }
 
+  const conclusions = computeReasoningConclusions({
+    rhythmMode: storeRhythm.currentMode,
+    trendMode: storeRhythm.temporalTrend.trendMode,
+    salesMomentumScore: storeRhythm.temporalTrend.salesMomentumScore,
+    collectionMomentumScore: storeRhythm.temporalTrend.collectionMomentumScore,
+    workflowMomentumScore: storeRhythm.temporalTrend.workflowMomentumScore,
+    activeWorkflowCount: ctx.pendingWorkflowCount,
+    overdueRepairCount,
+    overdueLayawayCount,
+    revenueOpportunityTypes: revenueOpportunities.map((o) => o.type),
+    revenueOpportunityCount: revenueOpportunities.length,
+    signalIds: signals.map((s) => s.id),
+  });
+
   return {
     signals,
     revenueOpportunities,
     storeRhythm,
+    conclusions,
     activeWorkflowCount: ctx.pendingWorkflowCount,
     overdueRepairCount,
     readyForPickupCount,
