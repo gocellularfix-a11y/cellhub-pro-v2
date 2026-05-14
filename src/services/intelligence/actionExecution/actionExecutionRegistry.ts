@@ -116,6 +116,17 @@ const openPOS: OperatorExecutableAction = {
   execute: (ctx) => navigate('pos', ctx),
 };
 
+// Navigate to customers list (no specific customer required — used by rhythm mode actions).
+const openCustomers: OperatorExecutableAction = {
+  id: 'act_open_customers',
+  label: 'Open Customers',
+  category: 'customer',
+  priority: 6,
+  safetyLevel: 'safe',
+  canExecute: () => true,
+  execute: (ctx) => navigate('customers', ctx),
+};
+
 /** Navigate to repairs and emit open-customer-history so repairs module can filter. */
 const openRepairFollowUp: OperatorExecutableAction = {
   id: 'act_repair_follow_up',
@@ -234,6 +245,15 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   // ── Workflow resumption (R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1) ──────
   workflow_external_payment: [actResumeExternalPayment, actMarkExternalPaymentPaid, actKeepExternalPaymentPending, actCancelWorkflow],
   workflow_resumption:       [actResumeWorkflow],
+
+  // ── Store rhythm modes (R-INTELLIGENCE-STORE-RHYTHM-V1) ──────────────
+  rhythm_rush:             [],  // informational — cashier should stay at current task
+  rhythm_repair_overload:  [openRepairs],
+  rhythm_collection_mode:  [openRepairs, openLayaways],
+  rhythm_slow_day:         [openCustomers],
+  rhythm_opportunity_window:[openPOS, openCustomers],
+  rhythm_revenue_recovery: [openCustomers, openRepairs],
+  rhythm_low_activity:     [openCustomers],
 
   // ── Operational signals (R-INTELLIGENCE-EMPLOYEE-OPS-V1) ─────────────
   op_unfinished_workflows:          [actResumeExternalPayment],

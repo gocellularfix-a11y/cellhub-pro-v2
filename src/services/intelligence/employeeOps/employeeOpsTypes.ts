@@ -6,6 +6,7 @@ import type { Repair, Layaway, Sale, Customer, InventoryItem } from '@/store/typ
 import type { LiveAction } from '@/services/intelligence/liveContext/contextTypes';
 import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
 import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportunities/revenueOpportunityTypes';
+import type { StoreRhythmSnapshot } from '@/services/intelligence/storeRhythm/storeRhythmTypes';
 
 // ── Operational signal ────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ export interface OperationalHealthContext {
 export interface OperationalHealthSnapshot {
   signals: OperationalSignal[];
   revenueOpportunities: RevenueOpportunity[];
+  storeRhythm: StoreRhythmSnapshot;
   activeWorkflowCount: number;
   overdueRepairCount: number;
   readyForPickupCount: number;

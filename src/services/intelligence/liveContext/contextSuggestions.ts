@@ -225,6 +225,26 @@ export function computeContextSuggestions(
     }
   }
 
+  // ── Store rhythm suggestions (R-INTELLIGENCE-STORE-RHYTHM-V1) ──────────────
+  // Mode-level suggestions fire only when the store is in a non-normal mode.
+  // Priority 6-10 so they compete naturally with customer and operational signals.
+  if (opHealth?.storeRhythm && opHealth.storeRhythm.currentMode !== 'normal') {
+    type SuggKind = 'upsell' | 'follow_up' | 'collect' | 'retention' | 'operational';
+    const RHYTHM_DEFS: Partial<Record<string, { text: string; kind: SuggKind; priority: number }>> = {
+      rush:              { text: 'Rush — prioritize active transactions', kind: 'operational', priority: 10 },
+      repair_overload:   { text: 'Repair overload — review delayed repairs', kind: 'operational', priority: 9 },
+      collection_mode:   { text: 'Collection mode — recover unpaid balances', kind: 'collect', priority: 9 },
+      slow_day:          { text: 'Slow day — contact high-value customers', kind: 'retention', priority: 8 },
+      opportunity_window:{ text: 'Opportunity window — push accessories now', kind: 'upsell', priority: 8 },
+      revenue_recovery:  { text: 'Revenue recovery opportunities available', kind: 'follow_up', priority: 7 },
+      low_activity:      { text: 'Low activity — follow up inactive customers', kind: 'follow_up', priority: 6 },
+    };
+    const def = RHYTHM_DEFS[opHealth.storeRhythm.currentMode];
+    if (def) {
+      out.push({ id: `rhythm_${opHealth.storeRhythm.currentMode}`, text: def.text, kind: def.kind, priority: def.priority });
+    }
+  }
+
   // Sort by priority descending, deduplicate by id, take top 6
   // (bumped from 5 to give operational signals room alongside customer signals)
   const seen = new Set<string>();
