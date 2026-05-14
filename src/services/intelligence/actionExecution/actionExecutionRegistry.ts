@@ -281,6 +281,15 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   op_accessory_attach_opportunity:  [openPOS],
   op_discount_activity:             [],  // informational — no nav shortcut
   op_approval_activity:             [],  // informational
+
+  // ── Business strategy focus (R-INTELLIGENCE-BUSINESS-STRATEGY-V1) ────
+  strategy_workflow_stabilization_focus: [actResumeExternalPayment, openRepairs],
+  strategy_collection_focus:             [openLayaways, openRepairs],
+  strategy_repair_cleanup_focus:         [openRepairs],
+  strategy_recovery_focus:              [openCustomers],
+  strategy_customer_retention_focus:    [openCustomers],
+  strategy_upsell_focus:                [openPOS, openCustomers],
+  strategy_balanced_operations:         [],
 };
 
 /**

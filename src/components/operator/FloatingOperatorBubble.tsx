@@ -57,6 +57,7 @@ import { computeOperationalHealth } from '@/services/intelligence/employeeOps/em
 import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 import { getRhythmModeLabel, isRhythmActionable } from '@/services/intelligence/storeRhythm/storeRhythmSelectors';
 import { getTrendModeLabel, isTemporalTrendActionable } from '@/services/intelligence/temporalTrends/temporalTrendSelectors';
+import { getStrategyLabel, isStrategyActionable } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -708,14 +709,16 @@ export default function FloatingOperatorBubble() {
   }, [activeCustomerProfile]);
 
   // Override the badge preview text.
-  // Priority: carrier payment > customer ctx > rhythm mode > temporal trend > normal rotation.
+  // Priority: carrier payment > strategy > rhythm mode > temporal trend > normal rotation.
   const effectivePreviewText = (pendingExternalPayment && returnDetected)
     ? (locale === 'es' ? 'Confirmar pago del carrier' : 'Confirm carrier payment')
-    : (!liveCtx.activeCustomer && isRhythmActionable(opHealth.storeRhythm))
-      ? getRhythmModeLabel(opHealth.storeRhythm.currentMode)
-      : (!liveCtx.activeCustomer && isTemporalTrendActionable(opHealth.storeRhythm.temporalTrend))
-        ? getTrendModeLabel(opHealth.storeRhythm.temporalTrend.trendMode)
-        : previewText;
+    : (!liveCtx.activeCustomer && isStrategyActionable(opHealth.strategy))
+      ? getStrategyLabel(opHealth.strategy.type)
+      : (!liveCtx.activeCustomer && isRhythmActionable(opHealth.storeRhythm))
+        ? getRhythmModeLabel(opHealth.storeRhythm.currentMode)
+        : (!liveCtx.activeCustomer && isTemporalTrendActionable(opHealth.storeRhythm.temporalTrend))
+          ? getTrendModeLabel(opHealth.storeRhythm.temporalTrend.trendMode)
+          : previewText;
 
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen

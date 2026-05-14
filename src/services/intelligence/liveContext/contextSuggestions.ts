@@ -9,6 +9,7 @@ import type { OperatorActivityInputs } from '@/services/operator/operatorActivit
 import type { CustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringTypes';
 import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 import { CONCLUSION_SUPPRESSIONS } from '@/services/intelligence/reasoning/reasoningSelectors';
+import { STRATEGY_SUPPRESSIONS } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -273,6 +274,13 @@ export function computeContextSuggestions(
       out.push({ id: sid, text: c.title, detail: c.detail, kind: c.suggestionKind, priority: c.priority });
       for (const suppressed of CONCLUSION_SUPPRESSIONS[sid] ?? []) suppressedIds.add(suppressed);
     }
+  }
+
+  // Inject dominant business strategy focus (highest-level synthesis).
+  if (opHealth?.strategy && opHealth.strategy.type !== 'balanced_operations') {
+    const sid = `strategy_${opHealth.strategy.type}`;
+    out.push({ id: sid, text: opHealth.strategy.title, detail: opHealth.strategy.detail, kind: opHealth.strategy.suggestionKind, priority: opHealth.strategy.priority });
+    for (const suppressed of STRATEGY_SUPPRESSIONS[sid] ?? []) suppressedIds.add(suppressed);
   }
 
   const seen = new Set<string>();

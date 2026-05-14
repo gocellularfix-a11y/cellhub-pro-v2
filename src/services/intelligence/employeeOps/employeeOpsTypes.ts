@@ -8,6 +8,7 @@ import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity
 import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportunities/revenueOpportunityTypes';
 import type { StoreRhythmSnapshot } from '@/services/intelligence/storeRhythm/storeRhythmTypes';
 import type { OperationalReasoningConclusion } from '@/services/intelligence/reasoning/reasoningTypes';
+import type { BusinessStrategyFocus } from '@/services/intelligence/businessStrategy/businessStrategyTypes';
 
 // ── Operational signal ────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ export interface OperationalHealthSnapshot {
   revenueOpportunities: RevenueOpportunity[];
   storeRhythm: StoreRhythmSnapshot;
   conclusions: OperationalReasoningConclusion[];
+  strategy: BusinessStrategyFocus;
   activeWorkflowCount: number;
   overdueRepairCount: number;
   readyForPickupCount: number;
