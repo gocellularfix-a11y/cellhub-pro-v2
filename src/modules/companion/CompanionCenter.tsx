@@ -71,6 +71,17 @@ import {
 } from '@/services/companion/companionAlertProducer';
 import { emitIntelligenceAlertCreated } from '@/services/companion/emitters/intelligenceEmitter';
 import type { PosBridgeStatus } from '@/services/companion/sdk/posBridgeClient';
+// R-COMPANION-CORE-STABILIZATION-PR3 — single source of truth for the
+// storeId that the desktop registers with on the bridge. The pairing QR
+// must carry this exact value (already normalized) so the mobile joins
+// the same room the desktop is in. Falling back to currentStoreId /
+// settings.storeName produced an un-normalized slug that diverged from
+// CompanionRuntimeMount's `identity.storeId` registration → mobile
+// silently joined the wrong room and saw no events.
+import {
+  getDesktopIdentity,
+  normalizeStoreId,
+} from '@/services/license/desktopIdentity';
 import { useApp } from '@/store/AppProvider';
 // R-COMPANION-APPROVAL-RUNTIME-V1: read model over approval events.
 import {
@@ -574,7 +585,19 @@ export default function CompanionCenter() {
   // also publish the offer to the bridge and listen for a real claim.
   // The local CompanionPairingSession remains the React-facing source
   // of truth for the modal UI; the bridge is the cross-device truth.
-  const pairingStoreId = currentStoreId || settings.storeName || 'default';
+  //
+  // R-COMPANION-CORE-STABILIZATION-PR3 — MUST match the storeId that
+  // CompanionRuntimeMount registers on the bridge (identity.storeId).
+  // Order of precedence:
+  //   1. getDesktopIdentity().storeId — already normalized at first-run.
+  //   2. normalizeStoreId(currentStoreId) — pre-identity setups.
+  //   3. normalizeStoreId(settings.storeName) — single-store local mode.
+  //   4. 'default' — last-resort sentinel (kept for backwards compat).
+  const pairingStoreId =
+    getDesktopIdentity()?.storeId
+    || normalizeStoreId(currentStoreId || '')
+    || normalizeStoreId(settings.storeName || '')
+    || 'default';
 
   const startPairing = useCallback(async () => {
     setLocalPhase('waiting');
