@@ -640,7 +640,7 @@ export function emitStoreSnapshot(payload: StoreSnapshotPayload): boolean {
   const socket = client.getSocket();
   socket.emit(SDK_EVENTS.DASHBOARD_STATS_UPDATED, payload);
   console.info(
-    `[companion-bridge-adapter] outbound DASHBOARD_STATS_UPDATED storeId=${payload.storeId} revenueCents=${payload.todayRevenueCents} sales=${payload.todaySalesCount}`,
+    `[companion-bridge-adapter] outbound DASHBOARD_STATS_UPDATED storeId=${payload.storeId} revenueCents=${payload.todayRevenueCents} sales=${payload.todaySalesCount} growthPct=${payload.todaySalesGrowthPct} repairs=${payload.openRepairsCount} layaways=${payload.pendingLayawaysCount} clockedIn=${payload.clockedInCount} approvals=${payload.pendingApprovalsCount}`,
   );
   return true;
 }

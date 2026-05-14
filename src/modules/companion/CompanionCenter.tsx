@@ -324,7 +324,7 @@ export default function CompanionCenter() {
 
   // R-COMPANION-BRIDGE-WIRE-V1: pull settings + employees for the adapter.
   // Cero store mutations from this component — read-only access.
-  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, inventory, lang } } = useApp();
+  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, layaways, inventory, lang } } = useApp();
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
   // R-BRIDGE-CLOUD-WIRING-V1 — default points at Railway-hosted bridge
   // so a fresh install just works. Users can still override the URL via
@@ -472,10 +472,11 @@ export default function CompanionCenter() {
   const storeSnapshot = useMemo(() => computeCompanionStoreSnapshot({
     sales,
     repairs,
+    layaways,
     employees,
     currentEmployee: currentEmployee ?? null,
     pendingApprovalsCount: approvalRuntime.pendingCount,
-  }), [sales, repairs, employees, currentEmployee, approvalRuntime.pendingCount]);
+  }), [sales, repairs, layaways, employees, currentEmployee, approvalRuntime.pendingCount]);
   const clockedInEmployees = storeSnapshot.clockedInEmployees;
   const todayRevenueCents = storeSnapshot.todayRevenueCents;
   const todaySales = storeSnapshot.todaySalesCount;

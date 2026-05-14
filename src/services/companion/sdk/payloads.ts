@@ -168,10 +168,21 @@ export interface DashboardStatsPayload {
 // R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1 — live store snapshot payload.
 // Desktop emits this on dashboard:stats_updated whenever store data changes.
 // Money: cents (CellHub Pro canonical). All fields required.
+//
+// R-COMPANION-SNAPSHOT-GROWTH-LAYAWAYS-V1 (2026-05-14): added
+// todaySalesGrowthPct + pendingLayawaysCount so the mobile dashboard
+// can render the trend chip and the layaways card without a separate
+// stat feed. Both fields are integers — growth as a signed percent
+// rounded to nearest whole, layaways as a count.
 export interface StoreSnapshotPayload {
   todayRevenueCents: number;
   todaySalesCount: number;
+  /** Signed integer percent change vs same calendar weekday 7 days ago.
+   *  0 when no comparable prior data exists (e.g. last-week revenue was 0). */
+  todaySalesGrowthPct: number;
   openRepairsCount: number;
+  /** Active (non-completed / non-cancelled / non-forfeited) layaways. */
+  pendingLayawaysCount: number;
   clockedInCount: number;
   clockedInNames: string[];
   pendingApprovalsCount: number;

@@ -47,7 +47,7 @@ import type {
 } from '@/services/companion/companionTypes';
 
 export default function CompanionRuntimeMount() {
-  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs } } = useApp();
+  const { state: { settings, employees, currentEmployee, currentStoreId, sales, repairs, layaways } } = useApp();
 
   const bridgeEnabled = ((settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled) === true;
   const bridgeUrl     = ((settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl) || 'https://cellhub-companion-production.up.railway.app';
@@ -91,10 +91,11 @@ export default function CompanionRuntimeMount() {
   const storeSnapshot = useMemo(() => computeCompanionStoreSnapshot({
     sales,
     repairs,
+    layaways,
     employees,
     currentEmployee: currentEmployee ?? null,
     pendingApprovalsCount: approvalRuntime.pendingCount,
-  }), [sales, repairs, employees, currentEmployee, approvalRuntime.pendingCount]);
+  }), [sales, repairs, layaways, employees, currentEmployee, approvalRuntime.pendingCount]);
 
   // ── Bridge adapter lifecycle ──────────────────────────────
   // Start when (a) the bridge connection shell has a paired device AND
@@ -141,7 +142,9 @@ export default function CompanionRuntimeMount() {
     emitStoreSnapshot({
       todayRevenueCents: storeSnapshot.todayRevenueCents,
       todaySalesCount: storeSnapshot.todaySalesCount,
+      todaySalesGrowthPct: storeSnapshot.todaySalesGrowthPct,
       openRepairsCount: storeSnapshot.openRepairsCount,
+      pendingLayawaysCount: storeSnapshot.pendingLayawaysCount,
       clockedInCount: storeSnapshot.clockedInCount,
       clockedInNames: storeSnapshot.clockedInNames,
       pendingApprovalsCount: storeSnapshot.pendingApprovalsCount,
