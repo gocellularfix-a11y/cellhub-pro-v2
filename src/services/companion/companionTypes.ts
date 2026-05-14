@@ -24,10 +24,21 @@ export type CompanionEventType =
   | 'MESSAGE_SENT'
   | 'MESSAGE_RECEIVED'
   | 'MESSAGE_READ'              // R-COMPANION-MESSAGING-RUNTIME-V1
+  | 'MESSAGE_ACKNOWLEDGED'      // R-COMPANION-MESSAGING-LIVE-V1: desktop marks inbound read
   | 'STORE_OPENED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
   | 'STORE_CLOSED'              // R-COMPANION-STORE-STATUS-EMITTERS-V1
   | 'STORE_STATUS_UPDATED'
   | 'INTELLIGENCE_ALERT_CREATED';
+
+/** Operational category for filtering / UI chips.
+ *  R-COMPANION-MESSAGING-LIVE-V1 */
+export type CompanionOpCategory =
+  | 'approval'
+  | 'repair'
+  | 'customer'
+  | 'inventory'
+  | 'operations'
+  | 'intelligence';
 
 // ── Payload shapes per category ───────────────────────────
 // IDs only — cero PII (no names, no notes, no phone numbers). The
@@ -79,6 +90,20 @@ export interface CompanionMessagePayload {
   preview?: string;                // short, sanitised preview only
   /** R-COMPANION-MESSAGING-SIMPLE-V1: full message body for chat display. */
   body?: string;
+  /** R-COMPANION-MESSAGING-LIVE-V1: explicit conversation/thread id.
+   *  When supplied, the runtime uses it as the threadKey directly. */
+  conversationId?: string;
+  /** R-COMPANION-MESSAGING-LIVE-V1: whether the sender is the desktop or Companion. */
+  senderType?: 'desktop' | 'companion';
+  /** R-COMPANION-MESSAGING-LIVE-V1: sender display name (no lookup needed on render). */
+  senderName?: string;
+  /** R-COMPANION-MESSAGING-LIVE-V1: operational category for filtering + chips. */
+  category?: CompanionOpCategory;
+  /** R-COMPANION-MESSAGING-LIVE-V1: message text (canonical alias of body). */
+  text?: string;
+  /** R-COMPANION-MESSAGING-LIVE-V1: optional entity context (cero PII — id only). */
+  relatedEntityId?: string;
+  relatedEntityType?: string;
 }
 
 export interface CompanionStoreStatusPayload {
@@ -152,6 +177,7 @@ export type CompanionEvent =
   | { type: 'MESSAGE_SENT';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'MESSAGE_RECEIVED';           category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'MESSAGE_READ';               category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
+  | { type: 'MESSAGE_ACKNOWLEDGED';       category: 'messaging';           payload: CompanionMessagePayload;           createdAt: number }
   | { type: 'STORE_OPENED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'STORE_CLOSED';               category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
   | { type: 'STORE_STATUS_UPDATED';       category: 'store_status';        payload: CompanionStoreStatusPayload;       createdAt: number }
@@ -413,8 +439,16 @@ export interface CompanionMessageRuntimeItem {
   preview?: string;
   /** R-COMPANION-MESSAGING-SIMPLE-V1: full message body for chat display. */
   body?: string;
-  /** Inbound messages start unread; outbound start read. MESSAGE_READ
-   *  flips the inbound flag. */
+  /** R-COMPANION-MESSAGING-LIVE-V1: new payload fields mirrored into runtime. */
+  conversationId?: string;
+  senderType?: 'desktop' | 'companion';
+  senderName?: string;
+  category?: CompanionOpCategory;
+  text?: string;
+  relatedEntityId?: string;
+  relatedEntityType?: string;
+  /** Inbound messages start unread; outbound start read. MESSAGE_READ /
+   *  MESSAGE_ACKNOWLEDGED flips the inbound flag. */
   isRead: boolean;
   /** ms epoch when the runtime first saw this message. */
   createdAt: number;

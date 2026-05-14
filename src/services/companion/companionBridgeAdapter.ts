@@ -48,6 +48,7 @@ import type {
   CompanionApprovalPayload,
   CompanionEvent,
   CompanionIntelligenceAlertPayload,
+  CompanionOpCategory,
 } from './companionTypes';
 // R-COMPANION-INTELLIGENCE-ACK-INBOUND-V1 — funnel bridge dismissals
 // through the inbox + receiver path so the dispatch + audit semantics
@@ -584,6 +585,7 @@ export function sendCompanionMessage(
   content: string,
   senderId: string,
   senderName: string,
+  opCategory?: CompanionOpCategory,
 ): boolean {
   if (!client || client.getStatus() !== 'connected' || !currentArgs) return false;
   const socket = client.getSocket();
@@ -607,15 +609,20 @@ export function sendCompanionMessage(
     payload: {
       messageId: msgId,
       fromEmployeeId: senderId,
+      senderName,
+      senderType: 'desktop',
       channel: 'internal',
       direction: 'outbound',
+      conversationId: 'store-general',
+      category: opCategory,
       preview,
       body: content,
+      text: content,
     },
     createdAt: Date.now(),
   });
   console.info(
-    `[companion-bridge-adapter] outbound MESSAGE_NEW id=${msgId} from=${senderId}`,
+    `[companion-bridge-adapter] outbound MESSAGE_NEW id=${msgId} from=${senderId} cat=${opCategory ?? 'operations'}`,
   );
   return true;
 }

@@ -4901,6 +4901,28 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
   },
 
+  // R-COMPANION-MESSAGING-LIVE-V1: operational messaging panel
+  'companion.messaging.panelTitle':      { en: 'Operations Dispatch', es: 'Despacho de Operaciones', pt: 'Despacho Operacional' },
+  'companion.messaging.unreadBadge': {
+    en: (n: number) => `${n} unread`,
+    es: (n: number) => `${n} sin leer`,
+    pt: (n: number) => `${n} não lida${n === 1 ? '' : 's'}`,
+  },
+  'companion.messaging.empty':           { en: 'No messages this session.', es: 'Sin mensajes esta sesión.', pt: 'Sem mensagens nesta sessão.' },
+  'companion.messaging.placeholder':     { en: 'Type an operational message…', es: 'Escribe un mensaje operacional…', pt: 'Digite uma mensagem operacional…' },
+  'companion.messaging.placeholderOff':  { en: 'Connect bridge to send', es: 'Conecta el bridge para enviar', pt: 'Conecte o bridge para enviar' },
+  'companion.messaging.send':            { en: 'Send', es: 'Enviar', pt: 'Enviar' },
+  'companion.messaging.ack':             { en: 'Ack', es: 'OK', pt: 'OK' },
+  'companion.messaging.you':             { en: 'You', es: 'Tú', pt: 'Você' },
+  'companion.messaging.manager':         { en: 'Manager', es: 'Gerente', pt: 'Gerente' },
+  'companion.messaging.categoryLabel':   { en: 'Category', es: 'Categoría', pt: 'Categoria' },
+  'companion.messaging.cat.approval':    { en: 'Approval', es: 'Aprobación', pt: 'Aprovação' },
+  'companion.messaging.cat.repair':      { en: 'Repair', es: 'Reparación', pt: 'Reparação' },
+  'companion.messaging.cat.customer':    { en: 'Customer', es: 'Cliente', pt: 'Cliente' },
+  'companion.messaging.cat.inventory':   { en: 'Inventory', es: 'Inventario', pt: 'Inventário' },
+  'companion.messaging.cat.operations':  { en: 'Operations', es: 'Operaciones', pt: 'Operações' },
+  'companion.messaging.cat.intelligence':{ en: 'Intelligence', es: 'Inteligencia', pt: 'Inteligência' },
+
   'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
   'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },
 

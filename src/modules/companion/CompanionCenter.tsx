@@ -82,8 +82,10 @@ import {
 // R-COMPANION-MESSAGING-RUNTIME-V1: read model over messaging events.
 import {
   getMessagingRuntimeSnapshot,
+  markMessageRead,
   subscribeMessagingRuntime,
 } from '@/services/companion/companionMessagingRuntime';
+import type { CompanionOpCategory } from '@/services/companion/companionTypes';
 // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model over store-status events.
 import {
   getStoreStatusRuntimeSnapshot,
@@ -391,6 +393,8 @@ export default function CompanionCenter() {
   const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
   // R-COMPANION-MESSAGING-SIMPLE-V1: chat input draft.
   const [msgDraft, setMsgDraft] = useState('');
+  // R-COMPANION-MESSAGING-LIVE-V1: operational category for outbound messages.
+  const [msgCategory, setMsgCategory] = useState<CompanionOpCategory>('operations');
 
   // R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: run deterministic alert rules
   // every 5 minutes while bridge is connected. emitIntelligenceAlertCreated
@@ -1305,7 +1309,7 @@ export default function CompanionCenter() {
         )}
       </div>
 
-      {/* R-COMPANION-MESSAGING-SIMPLE-V1: live chat panel */}
+      {/* R-COMPANION-MESSAGING-LIVE-V1: operational dispatch panel */}
       <div style={{
         marginTop: '0.75rem',
         background: 'linear-gradient(160deg, #120820 0%, #0b0516 100%)',
@@ -1319,41 +1323,46 @@ export default function CompanionCenter() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            💬 {lang === 'es' ? 'Mensajes' : 'Messages'}
+            📡 {t('companion.messaging.panelTitle')}
           </span>
           {messagingRuntime.totalUnread > 0 && (
             <span style={{
-              background: 'rgba(192,132,252,0.18)',
+              background: 'rgba(192,132,252,0.25)',
               color: '#c084fc',
               fontSize: '0.65rem',
               fontWeight: 700,
               padding: '2px 8px',
               borderRadius: 10,
-              border: '1px solid rgba(192,132,252,0.3)',
+              border: '1px solid rgba(192,132,252,0.4)',
+              animation: 'cellhubCompanionApprovalBadgePulse 2s ease-in-out infinite',
             }}>
-              {messagingRuntime.totalUnread} {lang === 'es' ? 'sin leer' : 'unread'}
+              {t('companion.messaging.unreadBadge', messagingRuntime.totalUnread)}
             </span>
           )}
         </div>
 
         {/* Message feed — oldest first, max 30 shown */}
         <div style={{
-          maxHeight: 240,
+          maxHeight: 260,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.35rem',
+          gap: '0.4rem',
         }}>
           {messagingRuntime.recentMessages.length === 0 ? (
             <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-              {lang === 'es' ? 'Sin mensajes esta sesión.' : 'No messages this session.'}
+              {t('companion.messaging.empty')}
             </p>
           ) : (
             [...messagingRuntime.recentMessages].reverse().map((msg) => {
               const isOut = msg.direction === 'outbound';
-              const senderEmp = employees.find((e) => e.id === msg.fromEmployeeId);
-              const senderLabel = senderEmp?.name || (isOut ? (currentEmployee?.name || 'You') : 'Manager');
-              const text = msg.body || msg.preview || '';
+              const isUnread = !msg.isRead && !isOut;
+              const senderLabel = msg.senderName
+                || (isOut
+                  ? (employees.find((e) => e.id === msg.fromEmployeeId)?.name || currentEmployee?.name || t('companion.messaging.you'))
+                  : (employees.find((e) => e.id === msg.fromEmployeeId)?.name || t('companion.messaging.manager')));
+              const msgText = msg.text || msg.body || msg.preview || '';
+              const catKey = msg.category ? `companion.messaging.cat.${msg.category}` as const : null;
               return (
                 <div key={msg.messageId} style={{
                   display: 'flex',
@@ -1361,9 +1370,13 @@ export default function CompanionCenter() {
                   alignItems: isOut ? 'flex-end' : 'flex-start',
                 }}>
                   <div style={{
-                    maxWidth: '80%',
-                    background: isOut ? 'rgba(192,132,252,0.18)' : 'rgba(255,255,255,0.06)',
-                    border: `1px solid ${isOut ? 'rgba(192,132,252,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                    maxWidth: '82%',
+                    background: isOut
+                      ? 'rgba(192,132,252,0.18)'
+                      : isUnread
+                        ? 'rgba(255,255,255,0.09)'
+                        : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${isOut ? 'rgba(192,132,252,0.3)' : isUnread ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.07)'}`,
                     borderRadius: isOut ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
                     padding: '0.45rem 0.65rem',
                     fontSize: '0.78rem',
@@ -1371,15 +1384,81 @@ export default function CompanionCenter() {
                     lineHeight: 1.4,
                     wordBreak: 'break-word',
                   }}>
-                    {text}
+                    {msgText}
                   </div>
-                  <div style={{ fontSize: '0.62rem', color: '#475569', marginTop: 2, paddingInline: 4 }}>
-                    {senderLabel} · {auditRelTime(msg.updatedAt)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: 2, paddingInline: 4 }}>
+                    <span style={{ fontSize: '0.62rem', color: '#475569' }}>
+                      {senderLabel} · {auditRelTime(msg.updatedAt)}
+                    </span>
+                    {catKey && (
+                      <span style={{
+                        fontSize: '0.58rem',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: 4,
+                        background: 'rgba(192,132,252,0.12)',
+                        color: '#a78bfa',
+                        border: '1px solid rgba(192,132,252,0.2)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}>
+                        {t(catKey)}
+                      </span>
+                    )}
+                    {isUnread && (
+                      <button
+                        type="button"
+                        onClick={() => markMessageRead(msg.messageId)}
+                        style={{
+                          fontSize: '0.58rem',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          background: 'rgba(34,197,94,0.10)',
+                          color: '#86efac',
+                          border: '1px solid rgba(34,197,94,0.25)',
+                          cursor: 'pointer',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {t('companion.messaging.ack')}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })
           )}
+        </div>
+
+        {/* Category selector */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+          {(['operations','repair','customer','inventory','approval','intelligence'] as CompanionOpCategory[]).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setMsgCategory(cat)}
+              style={{
+                fontSize: '0.62rem',
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 5,
+                border: msgCategory === cat
+                  ? '1px solid rgba(192,132,252,0.55)'
+                  : '1px solid rgba(148,163,184,0.2)',
+                background: msgCategory === cat
+                  ? 'rgba(192,132,252,0.18)'
+                  : 'rgba(255,255,255,0.03)',
+                color: msgCategory === cat ? '#c084fc' : '#64748b',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                transition: 'background 0.12s, border-color 0.12s',
+              }}
+            >
+              {t(`companion.messaging.cat.${cat}` as const)}
+            </button>
+          ))}
         </div>
 
         {/* Input row */}
@@ -1390,13 +1469,13 @@ export default function CompanionCenter() {
             onChange={(e) => setMsgDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && msgDraft.trim() && bridgeStatus === 'connected') {
-                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
+                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store', msgCategory);
                 setMsgDraft('');
               }
             }}
             placeholder={bridgeStatus === 'connected'
-              ? (lang === 'es' ? 'Escribe un mensaje…' : 'Type a message…')
-              : (lang === 'es' ? 'Conecta el bridge para enviar' : 'Connect bridge to send')}
+              ? t('companion.messaging.placeholder')
+              : t('companion.messaging.placeholderOff')}
             disabled={bridgeStatus !== 'connected'}
             style={{
               flex: 1,
@@ -1415,7 +1494,7 @@ export default function CompanionCenter() {
             disabled={!msgDraft.trim() || bridgeStatus !== 'connected'}
             onClick={() => {
               if (msgDraft.trim()) {
-                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
+                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store', msgCategory);
                 setMsgDraft('');
               }
             }}
@@ -1435,7 +1514,7 @@ export default function CompanionCenter() {
               whiteSpace: 'nowrap',
             }}
           >
-            {lang === 'es' ? 'Enviar' : 'Send'}
+            {t('companion.messaging.send')}
           </button>
         </div>
       </div>
