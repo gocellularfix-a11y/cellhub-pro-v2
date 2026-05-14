@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CustomLabelConfig, LabelElement, TextElement, BarcodeElement, QRElement } from '../../types';
 import { mmToPx } from '../../utils';
-import { TextRenderer } from '../elements/TextRenderer';
+import { TextRenderer, resolveTextFontSize } from '../elements/TextRenderer';
 import { BarcodeElementRenderer } from '../elements/BarcodeElementRenderer';
 import { QRElementRenderer } from '../elements/QRElementRenderer';
 
@@ -28,6 +28,7 @@ interface ResizeState {
   startH: number;
   startElemX: number;
   startElemY: number;
+  startFontSize: number;
 }
 
 interface EditorCanvasProps {
@@ -112,8 +113,20 @@ export function EditorCanvas({
       let updated: LabelElement;
       if (el.type === 'text') {
         const next: TextElement = { ...(el as TextElement) };
-        if (resize.handle === 'e' || resize.handle === 'se') next.width = Math.round(newW);
-        if (resize.handle === 's' || resize.handle === 'se') next.height = Math.round(Math.max(10, newH));
+        if (resize.handle === 'e') {
+          // E: widen the text box for wrapping — font size unchanged
+          next.width = Math.round(Math.max(20, newW));
+        } else if (resize.handle === 's') {
+          // S: taller clip window — font size unchanged
+          next.height = Math.round(Math.max(10, newH));
+        } else {
+          // SE corner: scale font size so the glyphs actually grow with the drag
+          const factor = Math.max(newW / resize.startW, newH / resize.startH);
+          next.fontSize = Math.round(Math.max(6, Math.min(144, resize.startFontSize * factor)));
+          next.size = undefined;   // clear preset so fontSize takes over
+          next.width = undefined;  // let natural width follow new font size
+          next.height = undefined;
+        }
         updated = next;
       } else if (el.type === 'barcode') {
         const next: BarcodeElement = { ...(el as BarcodeElement) };
@@ -183,6 +196,7 @@ export function EditorCanvas({
       startH: selectedSize.h,
       startElemX: el.x,
       startElemY: el.y,
+      startFontSize: el.type === 'text' ? resolveTextFontSize(el as TextElement) : 0,
     };
   }
 
