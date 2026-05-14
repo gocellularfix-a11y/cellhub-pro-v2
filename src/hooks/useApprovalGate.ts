@@ -53,15 +53,19 @@ export function useApprovalGate({
   const { t, locale } = useTranslation();
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [remoteApprovedMsg, setRemoteApprovedMsg] = useState<string | null>(null);
+  const [remoteNote, setRemoteNote] = useState<string | null>(null);
   const resolverRef = useRef<((r: PrompterResponse) => void) | null>(null);
   const gatewayUnregisterRef = useRef<(() => void) | null>(null);
 
-  // Refs for latest employees/settings so the prompter closure (stable, [] deps)
-  // always uses current values without capturing stale snapshots.
+  // Refs for latest values so the prompter closure (stable, [] deps) reads
+  // current state without stale captures.
   const employeesRef = useRef(employees);
   employeesRef.current = employees;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const tRef = useRef(t);
+  tRef.current = t;
 
   // Per-attempt prompter — guard calls this once per submission. A fresh
   // promise is created per attempt; modal state stays mounted across retry
@@ -83,10 +87,9 @@ export function useApprovalGate({
       resolverRef.current = wrappedResolve;
       setRequest(req);
 
-      // Register remote resolver. The handler validates the actor against live
-      // employees + settings via refs, then resolves if valid. If validation
-      // fails, the handler returns without calling wrappedResolve — the local
-      // PIN modal stays open and the operator can still approve in person.
+      // Register remote resolver. Validates actor, then either flashes
+      // success (approve) or sets deny feedback and resolves (deny).
+      // Invalid actor → silent no-op, local PIN modal stays open.
       gatewayUnregisterRef.current = registerApprovalResolver(approvalId, (response) => {
         const r = resolverRef.current;
         if (!r) return; // already resolved locally
@@ -102,16 +105,24 @@ export function useApprovalGate({
           },
         });
         if (!trust.valid) {
-          console.warn(
-            '[approval-gate] remote actor rejected',
-            trust.reason,
-            response.managerId,
-          );
-          return; // silent reject — local modal stays open
+          console.warn('[approval-gate] remote actor rejected', trust.reason, response.managerId);
+          return;
         }
+
         if (response.action === 'approve') {
-          r({ cancelled: false, remote: true, managerId: response.managerId });
+          // Null resolver immediately — prevents cancel/timeout during the flash.
+          resolverRef.current = null;
+          gatewayUnregisterRef.current?.();
+          gatewayUnregisterRef.current = null;
+          // Show brief success flash, then resolve the Promise.
+          setRemoteApprovedMsg(tRef.current('approval.remote.approvedMsg'));
+          setTimeout(() => {
+            r({ cancelled: false, remote: true, managerId: response.managerId });
+          }, 600);
         } else {
+          // Deny: set the manager note before resolving so the retry loop can
+          // display it while the modal stays open for local PIN retry.
+          setRemoteNote(response.managerNote ?? null);
           r({ cancelled: true, reason: 'remote_denied' });
         }
       });
@@ -133,9 +144,10 @@ export function useApprovalGate({
   const requestApproval = useCallback(
     async (req: ApprovalRequest): Promise<ApprovalResult> => {
       setError(null);
-      // Retry loop: bad PIN / self-approval blocked → stay open with inline
-      // error. Final reasons (cancelled / timeout / approved / not-required)
-      // exit the loop and close the modal.
+      setRemoteApprovedMsg(null);
+      setRemoteNote(null);
+      // Retry loop: bad PIN / self-approval blocked / remote_denied → modal
+      // stays open with inline error. Terminal reasons close the modal.
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const result = await runApprovalGuard(req, {
@@ -146,6 +158,8 @@ export function useApprovalGate({
         if (result.approved) {
           setRequest(null);
           setError(null);
+          setRemoteApprovedMsg(null);
+          setRemoteNote(null);
           return result;
         }
         if (result.reason === 'invalid_pin') {
@@ -156,9 +170,18 @@ export function useApprovalGate({
           setError(t('approval.error.selfBlocked'));
           continue;
         }
+        if (result.reason === 'remote_denied') {
+          // Modal stays open — remoteNote already set by the gateway resolver.
+          // Employee can retry with a local manager PIN or cancel.
+          setError(t('approval.error.remoteDenied'));
+          setRemoteApprovedMsg(null);
+          continue;
+        }
         // cancelled / timeout / feature_disabled / not_required → terminal
         setRequest(null);
         setError(null);
+        setRemoteApprovedMsg(null);
+        setRemoteNote(null);
         return result;
       }
     },
@@ -180,6 +203,8 @@ export function useApprovalGate({
     errorMessage: error,
     onSubmit,
     onCancel,
+    remoteApprovedMsg,
+    remoteNote,
   });
 
   return { requestApproval, modal };

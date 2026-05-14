@@ -3593,6 +3593,9 @@ export const translations: TranslationDictionary = {
   'approval.error.selfBlocked':     { en: 'You cannot approve your own action. Ask another manager.', es: 'No puedes aprobar tu propia acción. Pide a otro gerente.', pt: 'Você não pode aprovar sua própria ação. Peça a outro gerente.' },
   'approval.toast.cancelled':       { en: 'Action cancelled — manager approval not provided.', es: 'Acción cancelada — no se obtuvo aprobación de gerente.', pt: 'Ação cancelada — aprovação do gerente não fornecida.' },
   'approval.toast.timeout':         { en: 'Approval timed out — try again.',                  es: 'Aprobación expiró — intenta de nuevo.',                 pt: 'Aprovação expirou — tente novamente.' },
+  // R-COMPANION-REMOTE-APPROVAL-UX-V1
+  'approval.error.remoteDenied':    { en: 'Manager denied this request.',                   es: 'El gerente rechazó esta solicitud.',                    pt: 'O gerente negou esta solicitação.' },
+  'approval.remote.approvedMsg':    { en: 'Approved remotely by manager',                  es: 'Aprobado remotamente por el gerente',                   pt: 'Aprovado remotamente pelo gerente' },
 
   // R-APPROVAL-PIN-V1 — Action labels (used by ApprovalPinModal subtitle)
   'approval.action.PRICE_OVERRIDE':       { en: 'Price override',          es: 'Cambio de precio',           pt: 'Alteração de preço' },

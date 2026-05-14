@@ -32,6 +32,12 @@ export interface ApprovalPinModalProps {
   onSubmit: (pin: string) => void;
   /** Called when the user cancels (X / ESC / Cancel button / inactivity timeout). */
   onCancel: (reason: 'cancelled' | 'timeout') => void;
+  /** R-COMPANION-REMOTE-APPROVAL-UX-V1: when set, hides PIN input/keypad and
+   *  shows a brief success flash before the modal closes. Pre-localized string. */
+  remoteApprovedMsg?: string | null;
+  /** R-COMPANION-REMOTE-APPROVAL-UX-V1: optional manager note from a remote
+   *  denial — shown read-only below the denial error message. */
+  remoteNote?: string | null;
 }
 
 const COPY = {
@@ -75,6 +81,8 @@ export default function ApprovalPinModal({
   errorMessage,
   onSubmit,
   onCancel,
+  remoteApprovedMsg,
+  remoteNote,
 }: ApprovalPinModalProps) {
   const t = COPY[lang || 'en'] || COPY.en;
   const [pin, setPin] = useState('');
@@ -154,6 +162,26 @@ export default function ApprovalPinModal({
     setPin('');
   }, [armTimer]);
 
+  // Remote approved flash — hide PIN/keypad, show success, no footer buttons.
+  if (remoteApprovedMsg) {
+    return (
+      <Modal
+        open={open}
+        onClose={() => {/* locked during flash */}}
+        title={`🔐 ${t.title}`}
+        size="max-w-sm"
+        footer={<></>}
+      >
+        <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✓</div>
+          <p style={{ color: '#4ade80', fontSize: '1rem', fontWeight: 600 }}>
+            {remoteApprovedMsg}
+          </p>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open={open}
@@ -209,6 +237,20 @@ export default function ApprovalPinModal({
 
         {errorMessage && (
           <p className="text-red-400 text-sm text-center" role="alert">{errorMessage}</p>
+        )}
+
+        {/* Manager note from a remote denial — read-only, never persisted. */}
+        {remoteNote && (
+          <p style={{
+            fontSize: '0.8rem',
+            color: '#94a3b8',
+            borderLeft: '2px solid rgba(148,163,184,0.3)',
+            paddingLeft: '0.6rem',
+            margin: 0,
+            fontStyle: 'italic',
+          }}>
+            {remoteNote}
+          </p>
         )}
 
         {/* Numeric keypad — touch-first, but keyboard still works via the input. */}

@@ -438,6 +438,7 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             managerId: payload.managerId ?? '',
             source: 'companion_remote',
             receivedAt: Date.now(),
+            managerNote: payload.managerNote,
           });
           console.info(
             `[companion-bridge-adapter] gateway approve dispatch requestId=${requestId} result=${dispatched}`,
@@ -465,6 +466,7 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             managerId: payload.managerId ?? '',
             source: 'companion_remote',
             receivedAt: Date.now(),
+            managerNote: payload.managerNote,
           });
           console.info(
             `[companion-bridge-adapter] gateway deny dispatch requestId=${requestId} result=${dispatched}`,
