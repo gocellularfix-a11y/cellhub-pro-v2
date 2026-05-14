@@ -388,6 +388,11 @@
   }
 }
 
+/* Price Labels print portal — hidden in normal UI, shown only during label print */
+#price-label-print-root {
+  display: none;
+}
+
 /* Print styles — hide everything except receipt content */
 @media print {
   body * {
@@ -402,6 +407,31 @@
     left: 0;
     top: 0;
     width: 4in;
+  }
+
+  /* Price Labels portal: when it has content it takes over the print output.
+     :not(:empty) ensures this doesn't interfere with receipt printing. */
+  #price-label-print-root:not(:empty) {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+  }
+  #price-label-print-root:not(:empty),
+  #price-label-print-root:not(:empty) * {
+    visibility: visible !important;
+  }
+  #price-label-print-root .print-label-page {
+    page-break-after: always;
+    break-after: page;
+  }
+  #price-label-print-root .print-label-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  @page {
+    margin: 0;
+    padding: 0;
   }
 }
 

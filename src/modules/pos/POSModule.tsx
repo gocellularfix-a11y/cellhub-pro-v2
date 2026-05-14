@@ -26,7 +26,7 @@ import CredentialMakerModal from './CredentialMakerModal';
 import NotepadModal from './NotepadModal';
 import EstimateModal from './EstimateModal';
 import RMALabelModal from './RMALabelModal';
-import LabelPrinterModal from './LabelPrinterModal';
+import PriceLabelsModal from '../priceLabels/PriceLabelsModal';
 import TopUpModal from './TopUpModal';
 import type { CartTotals, DiscountState, CustomCategory, calculateCartTotals } from './types';
 import { calculateCartTotals as calcTotals } from './types';
@@ -1424,9 +1424,9 @@ export default function POSModule() {
         />
       )}
 
-      {/* Label Printer */}
+      {/* Price Labels */}
       {showLabelPrinter && (
-        <LabelPrinterModal
+        <PriceLabelsModal
           open={showLabelPrinter}
           onClose={() => setShowLabelPrinter(false)}
         />

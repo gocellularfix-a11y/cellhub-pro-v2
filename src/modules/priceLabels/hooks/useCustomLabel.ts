@@ -1,0 +1,145 @@
+import { useState, useCallback, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import type {
+  CustomLabelConfig,
+  LabelElement,
+  TextElement,
+  BarcodeElement,
+  QRElement,
+} from '../types';
+
+const DEFAULT_CONFIG: CustomLabelConfig = {
+  widthMm: 89,
+  heightMm: 36,
+  elements: [],
+};
+
+export function useCustomLabel() {
+  const [config, setConfig] = useState<CustomLabelConfig>(DEFAULT_CONFIG);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Refs so stable callbacks can always read the latest values without deps
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const latestConfigRef = useRef(config);
+  latestConfigRef.current = config;
+
+  const addText = useCallback(() => {
+    const el: TextElement = {
+      id: uuidv4(),
+      type: 'text',
+      x: 10,
+      y: 10,
+      value: 'New Text',
+      size: 'medium',
+      fontSize: 15,
+      bold: false,
+    };
+    setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
+    setSelectedId(el.id);
+  }, []);
+
+  /** Create a text element from pasted/clipboard text, placed near the selected element */
+  const addTextWithValue = useCallback((value: string) => {
+    const currentSelectedId = selectedIdRef.current;
+    const currentElements = latestConfigRef.current.elements;
+    const base = currentElements.find(el => el.id === currentSelectedId);
+    const x = base ? Math.min(base.x + 15, 200) : 10;
+    const y = base ? Math.min(base.y + 20, 200) : 10;
+    const el: TextElement = {
+      id: uuidv4(),
+      type: 'text',
+      x,
+      y,
+      value,
+      size: 'medium',
+      fontSize: 15,
+      bold: false,
+    };
+    setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
+    setSelectedId(el.id);
+  }, []); // stable — reads latest values via refs
+
+  const addBarcode = useCallback(() => {
+    const el: BarcodeElement = {
+      id: uuidv4(),
+      type: 'barcode',
+      x: 10,
+      y: 10,
+      value: '012345678901',
+      height: 40,
+    };
+    setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
+    setSelectedId(el.id);
+  }, []);
+
+  const addQR = useCallback(() => {
+    const el: QRElement = {
+      id: uuidv4(),
+      type: 'qr',
+      x: 10,
+      y: 10,
+      value: 'https://example.com',
+      size: 64,
+    };
+    setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
+    setSelectedId(el.id);
+  }, []);
+
+  const updateElement = useCallback((updated: LabelElement) => {
+    setConfig(prev => ({
+      ...prev,
+      elements: prev.elements.map(el => (el.id === updated.id ? updated : el)),
+    }));
+  }, []);
+
+  const moveElement = useCallback((id: string, x: number, y: number) => {
+    setConfig(prev => ({
+      ...prev,
+      elements: prev.elements.map(el =>
+        el.id === id ? { ...el, x: Math.max(0, x), y: Math.max(0, y) } : el
+      ),
+    }));
+  }, []);
+
+  const deleteElement = useCallback((id: string) => {
+    setConfig(prev => ({
+      ...prev,
+      elements: prev.elements.filter(el => el.id !== id),
+    }));
+    setSelectedId(prev => (prev === id ? null : prev));
+  }, []);
+
+  const setLabelSize = useCallback((widthMm: number, heightMm: number) => {
+    setConfig(prev => ({ ...prev, widthMm, heightMm }));
+  }, []);
+
+  const loadConfig = useCallback((incoming: CustomLabelConfig) => {
+    setConfig({ ...incoming, elements: incoming.elements.map(el => ({ ...el })) });
+    setSelectedId(null);
+  }, []);
+
+  const clearCanvas = useCallback(() => {
+    setConfig(prev => ({ ...prev, elements: [] }));
+    setSelectedId(null);
+  }, []);
+
+  const selectedElement = config.elements.find(el => el.id === selectedId) ?? null;
+
+  return {
+    config,
+    selectedId,
+    selectedElement,
+    setSelectedId,
+    addText,
+    addTextWithValue,
+    addBarcode,
+    addQR,
+    updateElement,
+    moveElement,
+    deleteElement,
+    setLabelSize,
+    loadConfig,
+    clearCanvas,
+  };
+}
