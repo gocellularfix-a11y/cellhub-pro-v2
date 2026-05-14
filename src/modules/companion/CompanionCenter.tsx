@@ -62,11 +62,10 @@ import { processIntelligenceAck } from '@/services/companion/receivers/intellige
 // R-COMPANION-BRIDGE-STATUS-BADGE-V1: also pull the snapshot getter so a
 // small status pill can mirror PosBridgeClient state in the UI.
 import {
-  startCompanionBridgeAdapter,
-  stopCompanionBridgeAdapter,
   getBridgeAdapterStatus,
-  emitStoreSnapshot,
 } from '@/services/companion/companionBridgeAdapter';
+// R-COMPANION-SNAPSHOT-AGGREGATOR-V1 — canonical store snapshot math.
+import { computeCompanionStoreSnapshot } from '@/services/companion/companionSnapshotAggregator';
 import {
   generateCompanionAlerts,
 } from '@/services/companion/companionAlertProducer';
@@ -112,9 +111,8 @@ import type {
   CompanionMessagingRuntimeSnapshot,
   CompanionStoreStatusRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
-// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1 / R-BRIDGE-SIGNED-TOKEN-V1
-import { getDesktopIdentity } from '@/services/license/desktopIdentity';
-import { mintDesktopBridgeToken } from '@/services/companion/bridgeSignedToken';
+// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1 / R-BRIDGE-SIGNED-TOKEN-V1 — bridge
+// token mint + identity now consumed by CompanionRuntimeMount (global).
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
 
@@ -466,89 +464,30 @@ export default function CompanionCenter() {
   const pairedDevice = snapshot.pairedDevice;
   const companionConnState = snapshot.connectionState;
 
-  // R-COMPANION-STORE-STATUS-LIVE-V1: operational snapshot derived from live store state.
-  const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, locale-independent
-  const clockedInEmployees = useMemo(() =>
-    employees.filter((e) => {
-      if (!e.active) return false;
-      const log = e.clockLog || [];
-      if (log.length === 0) return false;
-      return !log[log.length - 1].clockOut;
-    }), [employees]);
+  // R-COMPANION-SNAPSHOT-AGGREGATOR-V1 — desktop UI reads the same
+  // canonical snapshot the mobile bridge does. Single source of truth
+  // for: today revenue/sales, open repairs, on-shift employees,
+  // pending approvals. currentEmployee is the primary on-shift signal
+  // (CellHub Pro doesn't write to clockLog today).
+  const storeSnapshot = useMemo(() => computeCompanionStoreSnapshot({
+    sales,
+    repairs,
+    employees,
+    currentEmployee: currentEmployee ?? null,
+    pendingApprovalsCount: approvalRuntime.pendingCount,
+  }), [sales, repairs, employees, currentEmployee, approvalRuntime.pendingCount]);
+  const clockedInEmployees = storeSnapshot.clockedInEmployees;
+  const todayRevenueCents = storeSnapshot.todayRevenueCents;
+  const todaySales = storeSnapshot.todaySalesCount;
+  const openRepairsCount = storeSnapshot.openRepairsCount;
 
-  const todaySales = useMemo(() =>
-    sales.filter((s) => {
-      if (s.status !== 'completed') return false;
-      try { return new Date(s.createdAt as string).toLocaleDateString('en-CA') === todayDateStr; }
-      catch { return false; }
-    }), [sales, todayDateStr]);
-
-  const todayRevenueCents = useMemo(() =>
-    todaySales.reduce((sum, s) => sum + (s.total || 0), 0), [todaySales]);
-
-  const openRepairsCount = useMemo(() =>
-    repairs.filter((r) => {
-      const s = (r.status || '').toLowerCase().replace(/ /g, '_');
-      return s !== 'picked_up' && s !== 'cancelled' && s !== 'refunded';
-    }).length, [repairs]);
-
-  // R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1: push live store snapshot
-  // to mobile dashboard whenever bridge is connected and any store value
-  // changes. Fires immediately on connect so mobile gets values right away.
-  useEffect(() => {
-    if (bridgeStatus !== 'connected') return;
-    emitStoreSnapshot({
-      todayRevenueCents,
-      todaySalesCount: todaySales.length,
-      openRepairsCount,
-      clockedInCount: clockedInEmployees.length,
-      clockedInNames: clockedInEmployees.map((e) => e.name),
-      pendingApprovalsCount: approvalRuntime.pendingCount,
-      storeId: currentStoreId || '',
-      updatedAt: new Date().toISOString(),
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridgeStatus, todayRevenueCents, todaySales.length, openRepairsCount, clockedInEmployees, approvalRuntime.pendingCount, currentStoreId]);
-
-  // R-COMPANION-BRIDGE-WIRE-V1: adapter lifecycle. Starts only when both
-  // (a) the local mock bridge state is 'connected' AND
-  // (b) settings.companionBridgeEnabled is true.
-  // Adapter is idempotent so re-runs from remounts / setting flips are
-  // safe — singleton guard inside the adapter prevents duplicate listeners.
-  // R-BRIDGE-SIGNED-TOKEN-V1: mint a STRICT HMAC-signed token before starting
-  // the adapter. cancelled guard prevents a stale async callback from starting
-  // the adapter after the effect has already cleaned up (deps changed / unmount).
-  useEffect(() => {
-    let cancelled = false;
-
-    if (companionConnState === 'connected' && bridgeEnabled) {
-      const identity = getDesktopIdentity();
-      if (!identity || !identity.desktopDeviceId || !identity.storeId) {
-        console.warn('[CompanionBridge] Missing desktop identity — bridge registration skipped');
-      } else {
-        void mintDesktopBridgeToken({ storeId: identity.storeId, deviceId: identity.desktopDeviceId })
-          .then(authToken => {
-            if (cancelled) return;
-            console.info(`[CompanionBridge] Registering desktopDeviceId=${identity.desktopDeviceId} storeId=${identity.storeId}`);
-            startCompanionBridgeAdapter({
-              bridgeUrl,
-              storeId: identity.storeId,
-              deviceId: identity.desktopDeviceId,
-              authToken,
-              getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
-              getStoreLocation: () => settings.storeAddress || '',
-            });
-          });
-      }
-    } else {
-      stopCompanionBridgeAdapter();
-    }
-
-    return () => {
-      cancelled = true;
-      stopCompanionBridgeAdapter();
-    };
-  }, [companionConnState, bridgeEnabled, bridgeUrl, settings.storeAddress, employees]);
+  // R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: bridge adapter lifecycle AND
+  // live store snapshot emit moved to <CompanionRuntimeMount /> (mounted
+  // globally in AppShell). Previously they lived here, but CompanionCenter
+  // is lazy-mounted only when the Companion tab is active, which meant
+  // navigating away tore down the bridge and stopped pushing snapshots.
+  // CompanionCenter still reads bridgeStatus via the polling effect above
+  // for its status pill + card body — that surface is unaffected.
 
   const toggleCompanionConnection = useCallback(() => {
     setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
@@ -1196,7 +1135,7 @@ export default function CompanionCenter() {
               ${(todayRevenueCents / 100).toFixed(2)}
             </div>
             <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>
-              {todaySales.length} {todaySales.length === 1 ? 'sale' : 'sales'}
+              {todaySales} {todaySales === 1 ? 'sale' : 'sales'}
             </div>
           </div>
 

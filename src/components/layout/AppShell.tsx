@@ -29,6 +29,11 @@ const AppointmentsModule = lazy(() => import('@/modules/appointments/Appointment
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 // R-COMPANION-CENTER-V1: UI shell for the future mobile-companion app.
 const CompanionCenter = lazy(() => import('@/modules/companion/CompanionCenter'));
+// R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible runtime that owns the
+// bridge adapter lifecycle + live snapshot emit. Mounted at AppShell
+// level so the mobile keeps receiving updates regardless of which tab
+// the operator is on.
+const CompanionRuntimeMount = lazy(() => import('@/modules/companion/CompanionRuntimeMount'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
 // R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
 const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
@@ -181,6 +186,13 @@ export default function AppShell() {
           avoid a second engine instance and any duplicate logic. */}
       <Suspense fallback={null}>
         <FloatingOperatorBubble />
+      </Suspense>
+
+      {/* R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible. Owns the
+          companion bridge adapter lifecycle + live store snapshot emit
+          so the mobile stays in sync regardless of which tab is open. */}
+      <Suspense fallback={null}>
+        <CompanionRuntimeMount />
       </Suspense>
     </div>
   );
