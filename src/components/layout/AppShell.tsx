@@ -29,6 +29,8 @@ const AppointmentsModule = lazy(() => import('@/modules/appointments/Appointment
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 // R-COMPANION-CENTER-V1: UI shell for the future mobile-companion app.
 const CompanionCenter = lazy(() => import('@/modules/companion/CompanionCenter'));
+// COMPANION-LITE: parallel simplified companion using REST polling. Isolated from CompanionCenter.
+const CompanionLitePage = lazy(() => import('@/modules/companionLite/CompanionLitePage'));
 // R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible runtime that owns the
 // bridge adapter lifecycle + live snapshot emit. Mounted at AppShell
 // level so the mobile keeps receiving updates regardless of which tab
@@ -120,7 +122,7 @@ export default function AppShell() {
   });
 
   // Admin-only tabs — show lock screen if not in admin mode
-  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
+  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion', 'companionLite'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
   // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (current
@@ -154,6 +156,7 @@ export default function AppShell() {
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'companion'      && (isAdminMode ? <CompanionCenter />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'companionLite'  && (isAdminMode ? <CompanionLitePage />       : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'settings'       && (isAdminMode ? <SettingsModule />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'reports'        && (!isAdminMode
             ? <AdminLockScreen onUnlock={requireAdmin} lang={lang} />

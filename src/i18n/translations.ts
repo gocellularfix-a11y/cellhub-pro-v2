@@ -4836,6 +4836,7 @@ export const translations: TranslationDictionary = {
   'nav.appointments':    { en: 'Appointments',      es: 'Citas',                pt: 'Agendamentos' },
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
   'nav.companion':       { en: 'Companion',         es: 'Companion',            pt: 'Companion' },
+  'nav.companionLite':   { en: 'Companion Lite',    es: 'Companion Lite',       pt: 'Companion Lite' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
 
   // R-COMPANION-CENTER-V1 — UI shell strings (no backend yet)
