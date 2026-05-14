@@ -234,6 +234,16 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   // ── Workflow resumption (R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1) ──────
   workflow_external_payment: [actResumeExternalPayment, actMarkExternalPaymentPaid, actKeepExternalPaymentPending, actCancelWorkflow],
   workflow_resumption:       [actResumeWorkflow],
+
+  // ── Operational signals (R-INTELLIGENCE-EMPLOYEE-OPS-V1) ─────────────
+  op_unfinished_workflows:          [actResumeExternalPayment],
+  op_repair_delays:                 [openRepairs],
+  op_repairs_ready:                 [openRepairs],
+  op_overdue_layaways:              [openLayaways],
+  op_repair_balance_leak:           [openRepairs],
+  op_accessory_attach_opportunity:  [openPOS],
+  op_discount_activity:             [],  // informational — no nav shortcut
+  op_approval_activity:             [],  // informational
 };
 
 /**

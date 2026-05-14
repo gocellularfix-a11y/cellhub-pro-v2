@@ -53,6 +53,8 @@ import {
 } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 import { initExternalFlowAwareness, subscribeExternalFlowReturn, resetReturnCooldown } from '@/services/intelligence/workflowContinuity/externalFlowAwareness';
 import type { PendingWorkflow, WorkflowResumeContext } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
+import { computeOperationalHealth } from '@/services/intelligence/employeeOps/employeeOpsEngine';
+import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -553,15 +555,32 @@ export default function FloatingOperatorBubble() {
     return getCustomerBusinessProfile(custId, customers, sales, repairs, layaways, unlocks ?? []);
   }, [liveCtx.activeCustomer?.id, customers, sales, repairs, layaways, unlocks, enabled]);
 
+  // Operational health snapshot — keyed on store data + pending workflow count.
+  // Does NOT depend on previewTick so it doesn't recompute every 4 seconds.
+  const opHealth = useMemo<OperationalHealthSnapshot>(
+    () => computeOperationalHealth({
+      repairs,
+      layaways,
+      sales,
+      customers,
+      recentActions: liveCtx.recentActions,
+      activeEmployeeId: liveCtx.activeEmployeeId,
+      activeEmployeeName: liveCtx.activeEmployeeName,
+      pendingWorkflowCount: pendingWorkflows.length,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [repairs, layaways, sales, customers, liveCtx.recentActions, liveCtx.activeEmployeeId, pendingWorkflows.length],
+  );
+
   // Live-context suggestions and badge preview text.
   const suggestions = useMemo(
-    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined) : [],
-    [enabled, liveCtx, inputs, activeCustomerProfile],
+    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined, opHealth) : [],
+    [enabled, liveCtx, inputs, activeCustomerProfile, opHealth],
   );
 
   const previewText = useMemo(
-    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick, activeCustomerProfile ?? undefined) : '',
-    [enabled, liveCtx, inputs, previewTick, activeCustomerProfile],
+    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick, activeCustomerProfile ?? undefined, opHealth) : '',
+    [enabled, liveCtx, inputs, previewTick, activeCustomerProfile, opHealth],
   );
 
   // Action execution context — built from bubble runtime state.

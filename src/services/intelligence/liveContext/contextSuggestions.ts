@@ -7,6 +7,7 @@
 import type { LiveContext, ContextSuggestion } from './contextTypes';
 import type { OperatorActivityInputs } from '@/services/operator/operatorActivityHints';
 import type { CustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringTypes';
+import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -18,16 +19,17 @@ import {
 
 /**
  * Compute the deterministic suggestion list for the current live context.
- * Returns up to 5 suggestions sorted by priority (highest first).
+ * Returns up to 6 suggestions sorted by priority (highest first).
  * Pure function — safe to call on every render inside useMemo.
  *
- * @param profile Optional CustomerBusinessProfile — when provided, scoring-aware
- *   suggestions are injected alongside the existing operational signals.
+ * @param profile   Optional CustomerBusinessProfile — scoring-aware suggestions.
+ * @param opHealth  Optional OperationalHealthSnapshot — store-level operational signals.
  */
 export function computeContextSuggestions(
   ctx: LiveContext,
   inputs: OperatorActivityInputs,
   profile?: CustomerBusinessProfile,
+  opHealth?: OperationalHealthSnapshot,
 ): ContextSuggestion[] {
   const out: ContextSuggestion[] = [];
   const cust = getActiveCustomer(ctx, inputs);
@@ -189,12 +191,30 @@ export function computeContextSuggestions(
     }
   }
 
-  // Sort by priority descending, deduplicate by id, take top 5
+  // ── Operational health signals (R-INTELLIGENCE-EMPLOYEE-OPS-V1) ─────────────
+  // Injected last so priority sorting naturally positions them relative to
+  // customer signals. Operational signals compete on priority — a repair
+  // delay at p=7 will outrank a upsell suggestion at p=5.
+  if (opHealth?.signals.length) {
+    for (const sig of opHealth.signals) {
+      out.push({
+        id: sig.id,
+        text: sig.title,
+        detail: sig.detail,
+        kind: sig.suggestionKind,
+        priority: sig.priority,
+        actionKey: sig.actionId,
+      });
+    }
+  }
+
+  // Sort by priority descending, deduplicate by id, take top 6
+  // (bumped from 5 to give operational signals room alongside customer signals)
   const seen = new Set<string>();
   return out
     .sort((a, b) => b.priority - a.priority)
     .filter((s) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; })
-    .slice(0, 5);
+    .slice(0, 6);
 }
 
 /**
@@ -207,8 +227,9 @@ export function getMinimizedPreviewText(
   inputs: OperatorActivityInputs,
   tickIndex: number,
   profile?: CustomerBusinessProfile,
+  opHealth?: OperationalHealthSnapshot,
 ): string {
-  const suggestions = computeContextSuggestions(ctx, inputs, profile);
+  const suggestions = computeContextSuggestions(ctx, inputs, profile, opHealth);
 
   // Even ticks: customer name (with tier prefix for notable tiers). Odd ticks: cycle suggestions.
   if (tickIndex % 2 === 1 && suggestions.length > 0) {
