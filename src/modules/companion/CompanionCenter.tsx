@@ -307,6 +307,29 @@ function auditActionLabel(actionType: string | undefined): string {
   }
 }
 
+// R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1: derive display status from
+// runtime item — maps denial reasons to Cancelled / Expired chips.
+type TimelineStatus = 'pending' | 'approved' | 'denied' | 'cancelled' | 'expired';
+
+function resolveTimelineStatus(
+  status: 'pending' | 'approved' | 'denied',
+  reason: string | undefined,
+): TimelineStatus {
+  if (status === 'approved') return 'approved';
+  if (status === 'pending')  return 'pending';
+  if (reason === 'cancelled') return 'cancelled';
+  if (reason === 'timeout')   return 'expired';
+  return 'denied';
+}
+
+const TIMELINE_CHIP: Record<TimelineStatus, { bg: string; border: string; color: string }> = {
+  pending:   { bg: 'rgba(251,191,36,0.15)',  border: 'rgba(251,191,36,0.4)',   color: '#fbbf24' },
+  approved:  { bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.35)', color: '#4ade80' },
+  denied:    { bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)',color: '#f87171' },
+  cancelled: { bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.3)', color: '#94a3b8' },
+  expired:   { bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.35)', color: '#fb923c' },
+};
+
 function auditRelTime(ms: number): string {
   const diff = Date.now() - ms;
   if (diff < 60_000)   return 'just now';
@@ -1220,7 +1243,7 @@ export default function CompanionCenter() {
         </div>
       </div>
 
-      {/* R-APPROVAL-AUDIT-LOG-V1: live approval history feed */}
+      {/* R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1: approval timeline */}
       <div style={{
         marginTop: '0.75rem',
         background: 'rgba(255,255,255,0.015)',
@@ -1239,7 +1262,7 @@ export default function CompanionCenter() {
           alignItems: 'center',
           gap: '0.5rem',
         }}>
-          Approval Activity
+          {t('companion.approvals.title')}
           {approvalRuntime.items.length > 0 && (
             <span style={{
               background: 'rgba(148,163,184,0.15)',
@@ -1249,57 +1272,86 @@ export default function CompanionCenter() {
               padding: '1px 6px',
               borderRadius: 4,
             }}>
-              {approvalRuntime.items.length}
+              {Math.min(approvalRuntime.items.length, 20)}
             </span>
           )}
         </div>
 
         {approvalRuntime.items.length === 0 ? (
           <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-            No approval activity this session.
+            {t('companion.approvals.empty')}
           </p>
         ) : (
-          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            {approvalRuntime.items.slice(0, 50).map((item) => {
-              const isApproved = item.status === 'approved';
-              const isDenied   = item.status === 'denied';
-              const isPending  = item.status === 'pending';
+          <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {approvalRuntime.items.slice(0, 20).map((item) => {
+              const displayStatus = resolveTimelineStatus(item.status, item.reason);
+              const chip = TIMELINE_CHIP[displayStatus];
+              const actionKey = `companion.approvals.action.${item.actionType}` as const;
+              const actionLabel = (
+                item.actionType && [
+                  'CANCEL_LAYAWAY','CANCEL_REPAIR','CANCEL_UNLOCK','CANCEL_SPECIAL_ORDER',
+                  'PRICE_OVERRIDE','DISCOUNT_OVERRIDE','REFUND',
+                ].includes(item.actionType)
+                  ? t(actionKey)
+                  : item.actionType || t('companion.approvals.action.fallback')
+              ) + auditFmtAmt(item.affectedAmount);
               const reqEmp = employees.find((e) => e.id === item.requestedByEmployeeId);
-              const reqName = reqEmp?.name || (item.requestedByEmployeeId ? item.requestedByEmployeeId.slice(-6) : '—');
+              const reqName = reqEmp?.name
+                || (item.requestedByEmployeeId ? item.requestedByEmployeeId.slice(-6) : null);
               const approverRaw = item.approvedByEmployeeId;
               const approverName = approverRaw === 'approver:admin'
-                ? 'Admin PIN'
+                ? t('companion.approvals.adminPin')
                 : approverRaw
                   ? (employees.find((e) => e.id === approverRaw)?.name || approverRaw.slice(-6))
                   : null;
-              const statusColor = isApproved ? '#4ade80' : isDenied ? '#f87171' : '#fbbf24';
-              const statusIcon  = isApproved ? '✔' : isDenied ? '✖' : '…';
-              const label = auditActionLabel(item.actionType) + auditFmtAmt(item.affectedAmount);
               return (
                 <div key={item.approvalId} style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '0.5rem',
-                  padding: '0.35rem 0.5rem',
-                  borderRadius: 6,
+                  padding: '0.4rem 0.5rem',
+                  borderRadius: 7,
                   background: 'rgba(255,255,255,0.03)',
                   fontSize: '0.75rem',
+                  borderLeft: `2px solid ${chip.color}`,
                 }}>
-                  <span style={{ color: statusColor, fontWeight: 700, minWidth: 14, lineHeight: 1.6 }}>
-                    {statusIcon}
+                  {/* Status chip */}
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    fontSize: '0.6rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    background: chip.bg,
+                    border: `1px solid ${chip.border}`,
+                    color: chip.color,
+                    marginTop: 1,
+                    flexShrink: 0,
+                  }}>
+                    {t(`companion.approvals.status.${displayStatus}` as const)}
                   </span>
+                  {/* Body */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#e2e8f0', fontWeight: 600, lineHeight: 1.3 }}>
-                      {label}
+                      {actionLabel}
                     </div>
-                    <div style={{ color: '#64748b', fontSize: '0.68rem', lineHeight: 1.4 }}>
-                      {reqName}
-                      {approverName && ` → ${approverName}`}
-                      {isPending && <span style={{ color: '#fbbf24' }}> · pending</span>}
-                      {isDenied && item.reason && <span> · {item.reason}</span>}
-                    </div>
+                    {(reqName || approverName) && (
+                      <div style={{ color: '#64748b', fontSize: '0.68rem', lineHeight: 1.4, marginTop: 1 }}>
+                        {reqName && <span>{reqName}</span>}
+                        {approverName && (
+                          <span>
+                            {reqName ? ' → ' : ''}{approverName}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <span style={{ color: '#475569', fontSize: '0.65rem', whiteSpace: 'nowrap', lineHeight: 1.6 }}>
+                  {/* Timestamp */}
+                  <span style={{ color: '#475569', fontSize: '0.63rem', whiteSpace: 'nowrap', lineHeight: 1.8, flexShrink: 0 }}>
                     {auditRelTime(item.updatedAt)}
                   </span>
                 </div>

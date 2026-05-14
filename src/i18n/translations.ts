@@ -4885,6 +4885,25 @@ export const translations: TranslationDictionary = {
   'companion.card.storeStatus.alert.critical': { en: 'Critical', es: 'Crítico',     pt: 'Crítico' },
   'companion.card.storeStatus.latestEvent':    { en: 'Latest event', es: 'Último evento', pt: 'Último evento' },
 
+  // R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1
+  'companion.approvals.title':                 { en: 'Approval Timeline',         es: 'Historial de Aprobaciones',     pt: 'Histórico de Aprovações' },
+  'companion.approvals.empty':                 { en: 'No approval activity this session.', es: 'Sin actividad de aprobaciones esta sesión.', pt: 'Nenhuma aprovação nesta sessão.' },
+  'companion.approvals.status.pending':        { en: 'Pending',    es: 'Pendiente',  pt: 'Pendente' },
+  'companion.approvals.status.approved':       { en: 'Approved',   es: 'Aprobado',   pt: 'Aprovado' },
+  'companion.approvals.status.denied':         { en: 'Denied',     es: 'Denegado',   pt: 'Negado' },
+  'companion.approvals.status.cancelled':      { en: 'Cancelled',  es: 'Cancelado',  pt: 'Cancelado' },
+  'companion.approvals.status.expired':        { en: 'Expired',    es: 'Expirado',   pt: 'Expirado' },
+  'companion.approvals.by':                    { en: 'by',         es: 'por',        pt: 'por' },
+  'companion.approvals.adminPin':              { en: 'Admin PIN',  es: 'PIN Admin',  pt: 'PIN Admin' },
+  'companion.approvals.action.CANCEL_LAYAWAY':       { en: 'Layaway cancel',       es: 'Cancelar apartado',         pt: 'Cancelar layaway' },
+  'companion.approvals.action.CANCEL_REPAIR':        { en: 'Repair cancel',        es: 'Cancelar reparación',       pt: 'Cancelar reparo' },
+  'companion.approvals.action.CANCEL_UNLOCK':        { en: 'Unlock cancel',        es: 'Cancelar desbloqueo',       pt: 'Cancelar desbloqueio' },
+  'companion.approvals.action.CANCEL_SPECIAL_ORDER': { en: 'Special order cancel', es: 'Cancelar orden especial',   pt: 'Cancelar pedido especial' },
+  'companion.approvals.action.PRICE_OVERRIDE':       { en: 'Price override',       es: 'Modificar precio',          pt: 'Ajuste de preço' },
+  'companion.approvals.action.DISCOUNT_OVERRIDE':    { en: 'Discount',             es: 'Descuento',                 pt: 'Desconto' },
+  'companion.approvals.action.REFUND':               { en: 'Refund',               es: 'Reembolso',                 pt: 'Reembolso' },
+  'companion.approvals.action.fallback':             { en: 'Approval',             es: 'Aprobación',                pt: 'Aprovação' },
+
   'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
   'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
   // R-COMPANION-MESSAGING-RUNTIME-V1 — runtime metric lines inside the card
