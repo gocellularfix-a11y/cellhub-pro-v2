@@ -7,7 +7,8 @@
 // src/modules/companion. Companion Lite stands alone.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { useApp } from '@/store/AppProvider';
 import type { CompanionLiteDesktopSession } from '@/types/companionLite';
 import {
@@ -18,6 +19,7 @@ import {
   startPairing,
   getPairStatus,
 } from '@/services/companionLite/pairingService';
+import { buildPairingQrPayload } from '@/services/companionLite/qrPayload';
 import ApprovalsPanel from './ApprovalsPanel';
 import MessagesPanel from './MessagesPanel';
 import StatusPanel from './StatusPanel';
@@ -180,9 +182,17 @@ function PairingPanel({
   if (phase === 'waiting') {
     return (
       <div style={cardStyle}>
-        <div style={titleStyle}>Code ready — enter it on your phone</div>
-        <div style={{ textAlign: 'center', margin: '20px 0' }}>
-          <div style={codeBigStyle}>{code}</div>
+        <div style={titleStyle}>Code ready — scan or enter on your phone</div>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
+          {code && <QrPanel bridgeUrl={bridgeUrl} code={code} />}
+          <div style={{ textAlign: 'center' }}>
+            <div style={codeBigStyle}>{code}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              6-digit code
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
           {expiresAt && (
             <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
               Expires {new Date(expiresAt).toLocaleTimeString()}
@@ -190,8 +200,9 @@ function PairingPanel({
           )}
         </div>
         <div style={bodyTextStyle}>
-          Open Companion Lite on your phone → enter the bridge URL + this code.
-          The desktop will detect the claim automatically.
+          Open Companion Lite on your phone → tap <b>Scan QR Code</b> and point at the QR,
+          or enter the bridge URL + this 6-digit code manually. The desktop will detect
+          the claim automatically.
         </div>
       </div>
     );
@@ -246,6 +257,44 @@ function PairedShell({
         {tab === 'messages' && <MessagesPanel session={session} />}
       </div>
     </>
+  );
+}
+
+// ── QR panel ─────────────────────────────────────────────────────────
+
+function QrPanel({ bridgeUrl, code }: { bridgeUrl: string; code: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const payload = buildPairingQrPayload(bridgeUrl, code);
+    QRCode.toCanvas(canvas, payload, {
+      width: 168,
+      margin: 1,
+      color: { dark: '#0f1729', light: '#ffffff' },
+    }).catch((err: unknown) => {
+      setRenderError(err instanceof Error ? err.message : 'qr_failed');
+    });
+  }, [bridgeUrl, code]);
+
+  if (renderError) {
+    return (
+      <div style={{ fontSize: 11, color: '#fca5a5' }}>QR failed: {renderError}</div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: '#ffffff',
+      padding: 8,
+      borderRadius: 10,
+      lineHeight: 0,
+      boxShadow: '0 4px 20px rgba(56, 189, 248, 0.18)',
+    }}>
+      <canvas ref={canvasRef} />
+    </div>
   );
 }
 

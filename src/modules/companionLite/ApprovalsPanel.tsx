@@ -3,7 +3,7 @@
 // Approval" button is the MVP path; real wiring to approvalGuard
 // happens later — this PR is core-flow only.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ApprovalRequest,
   CompanionLiteDesktopSession,
@@ -12,6 +12,10 @@ import {
   createApproval,
   listApprovals,
 } from '@/services/companionLite/approvalsService';
+// Companion Lite polish: surface mobile responses on the existing global
+// toast so the operator sees the approve/deny outcome even when not on
+// this tab.
+import { useToast } from '@/components/ui/Toast';
 
 const POLL_MS = 3000;
 
@@ -23,16 +27,35 @@ export default function ApprovalsPanel({ session }: Props) {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  // Track the last-seen status per approvalId. Only fire a toast when an
+  // approval transitions FROM 'pending' TO 'approved' or 'denied' so the
+  // initial poll (which loads existing rows) stays silent.
+  const lastStatusRef = useRef<Map<string, ApprovalRequest['status']>>(new Map());
 
   const refresh = useCallback(async () => {
     try {
       const items = await listApprovals(session);
+      const prev = lastStatusRef.current;
+      for (const a of items) {
+        const previousStatus = prev.get(a.id);
+        if (previousStatus !== undefined
+          && previousStatus === 'pending'
+          && (a.status === 'approved' || a.status === 'denied')
+        ) {
+          const verb = a.status === 'approved' ? '✅ Approved' : '❌ Denied';
+          const who = a.respondedBy ?? 'manager';
+          const note = a.managerNote ? ` — "${a.managerNote}"` : '';
+          toast(`${verb} by ${who}${note}`, a.status === 'approved' ? 'success' : 'warning');
+        }
+        prev.set(a.id, a.status);
+      }
       setApprovals(items);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
-  }, [session]);
+  }, [session, toast]);
 
   useEffect(() => {
     void refresh();

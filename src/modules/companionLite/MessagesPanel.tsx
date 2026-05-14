@@ -10,6 +10,9 @@ import {
   listMessages,
   sendMessage,
 } from '@/services/companionLite/messagesService';
+// Companion Lite polish: surface inbound manager messages on the existing
+// global toast so the operator sees them even when not on this tab.
+import { useToast } from '@/components/ui/Toast';
 
 const POLL_MS = 3000;
 
@@ -23,16 +26,41 @@ export default function MessagesPanel({ session }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+  // Track which inbound (manager) message ids we've already toasted so a
+  // re-poll doesn't fire the same notification repeatedly. Initial-load
+  // messages are seeded WITHOUT toasting so signing in mid-conversation
+  // is silent.
+  const seenManagerIdsRef = useRef<Set<string> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const items = await listMessages(session);
+      // First-load seeding: pretend we've seen every existing manager
+      // message so we only toast genuinely NEW arrivals.
+      if (seenManagerIdsRef.current === null) {
+        const seed = new Set<string>();
+        for (const m of items) {
+          if (m.fromRole === 'manager') seed.add(m.id);
+        }
+        seenManagerIdsRef.current = seed;
+      } else {
+        const seen = seenManagerIdsRef.current;
+        for (const m of items) {
+          if (m.fromRole !== 'manager') continue;
+          if (seen.has(m.id)) continue;
+          seen.add(m.id);
+          const who = m.fromName ?? 'Manager';
+          const preview = m.body.length > 80 ? `${m.body.slice(0, 77)}…` : m.body;
+          toast(`💬 ${who}: ${preview}`, 'info');
+        }
+      }
       setMessages(items);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load');
     }
-  }, [session]);
+  }, [session, toast]);
 
   useEffect(() => {
     void refresh();
