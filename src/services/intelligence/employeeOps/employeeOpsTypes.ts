@@ -2,8 +2,10 @@
 // Pure TypeScript types — no React, no DOM, no I/O.
 // Operational assistance only — not surveillance, not punishment.
 
-import type { Repair, Layaway, Sale, Customer } from '@/store/types';
+import type { Repair, Layaway, Sale, Customer, InventoryItem } from '@/store/types';
 import type { LiveAction } from '@/services/intelligence/liveContext/contextTypes';
+import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
+import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportunities/revenueOpportunityTypes';
 
 // ── Operational signal ────────────────────────────────────────────────────────
 
@@ -64,6 +66,8 @@ export interface OperationalHealthContext {
   layaways: Layaway[];
   sales: Sale[];
   customers: Customer[];
+  inventory: InventoryItem[];
+  pendingWorkflows: PendingWorkflow[];
   recentActions: LiveAction[];
   activeEmployeeId: string | null;
   activeEmployeeName: string | null;
@@ -75,6 +79,7 @@ export interface OperationalHealthContext {
 
 export interface OperationalHealthSnapshot {
   signals: OperationalSignal[];
+  revenueOpportunities: RevenueOpportunity[];
   activeWorkflowCount: number;
   overdueRepairCount: number;
   readyForPickupCount: number;

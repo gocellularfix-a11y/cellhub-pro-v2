@@ -5,6 +5,7 @@
 import type { OperationalHealthContext, OperationalHealthSnapshot } from './employeeOpsTypes';
 import { computeAnomalies } from './operationalAnomalyDetection';
 import { toMs } from '@/services/intelligence/customerScoring/customerOpportunitySignals';
+import { computeRevenueOpportunities } from '@/services/intelligence/revenueOpportunities/revenueOpportunityEngine';
 
 const READY_STATUSES = new Set(['completed', 'ready', 'ready_for_pickup']);
 const TERMINAL_STATUSES = new Set(['picked_up', 'cancelled', 'refunded', 'refund_pending']);
@@ -16,6 +17,14 @@ const TERMINAL_STATUSES = new Set(['picked_up', 'cancelled', 'refunded', 'refund
 export function computeOperationalHealth(ctx: OperationalHealthContext): OperationalHealthSnapshot {
   const now = Date.now();
   const signals = computeAnomalies(ctx);
+  const revenueOpportunities = computeRevenueOpportunities({
+    repairs: ctx.repairs,
+    layaways: ctx.layaways,
+    sales: ctx.sales,
+    customers: ctx.customers,
+    inventory: ctx.inventory,
+    pendingWorkflows: ctx.pendingWorkflows,
+  });
 
   // Quick aggregate counts for the snapshot (O(R) + O(L) passes).
   const overdueRepairCutoff = now - 7 * 24 * 60 * 60 * 1000;
@@ -46,6 +55,7 @@ export function computeOperationalHealth(ctx: OperationalHealthContext): Operati
 
   return {
     signals,
+    revenueOpportunities,
     activeWorkflowCount: ctx.pendingWorkflowCount,
     overdueRepairCount,
     readyForPickupCount,

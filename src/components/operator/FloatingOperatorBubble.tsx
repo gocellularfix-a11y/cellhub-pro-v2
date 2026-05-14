@@ -177,6 +177,7 @@ export default function FloatingOperatorBubble() {
   const { state, dispatch } = useApp();
   const {
     activeTab, cart, customers, sales, layaways, repairs,
+    inventory,
     currentEmployee,
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
     unlocks,
@@ -563,13 +564,15 @@ export default function FloatingOperatorBubble() {
       layaways,
       sales,
       customers,
+      inventory: inventory ?? [],
+      pendingWorkflows,
       recentActions: liveCtx.recentActions,
       activeEmployeeId: liveCtx.activeEmployeeId,
       activeEmployeeName: liveCtx.activeEmployeeName,
       pendingWorkflowCount: pendingWorkflows.length,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [repairs, layaways, sales, customers, liveCtx.recentActions, liveCtx.activeEmployeeId, pendingWorkflows.length],
+    [repairs, layaways, sales, customers, inventory, liveCtx.recentActions, liveCtx.activeEmployeeId, pendingWorkflows],
   );
 
   // Live-context suggestions and badge preview text.

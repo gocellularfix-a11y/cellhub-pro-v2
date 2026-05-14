@@ -208,6 +208,23 @@ export function computeContextSuggestions(
     }
   }
 
+  // ── Revenue opportunities (R-INTELLIGENCE-REVENUE-OPPORTUNITIES-V1) ─────────
+  // High-confidence, high-impact opportunities surface as actionable suggestions.
+  // Dollar amounts appended when confidence !== 'low' and amount > 0.
+  if (opHealth?.revenueOpportunities.length) {
+    for (const opp of opHealth.revenueOpportunities) {
+      const dollars = (opp.estimatedImpactCents / 100).toFixed(2);
+      const showAmount = opp.confidence !== 'low' && opp.estimatedImpactCents > 0;
+      out.push({
+        id: `rev_opp_${opp.id}`,
+        text: showAmount ? `${opp.title} · $${dollars}` : opp.title,
+        detail: opp.detail,
+        kind: opp.suggestionKind,
+        priority: Math.max(1, Math.round(opp.priority / 10)),
+      });
+    }
+  }
+
   // Sort by priority descending, deduplicate by id, take top 6
   // (bumped from 5 to give operational signals room alongside customer signals)
   const seen = new Set<string>();
