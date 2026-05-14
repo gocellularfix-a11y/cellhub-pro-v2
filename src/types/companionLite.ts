@@ -37,6 +37,17 @@ export interface ApprovalRequest {
   respondedAt?: string;
   respondedBy?: string;
   managerNote?: string;
+  productContext?: ProductCostContext;
+}
+
+/** Optional cost/margin context surfaced to the manager. Money in cents. */
+export interface ProductCostContext {
+  name?: string;
+  sku?: string;
+  retailCents: number;
+  costCents?: number;
+  requestedDiscountCents?: number;
+  requestedDiscountPercent?: number;
 }
 
 export interface CompanionLiteMessage {
@@ -46,6 +57,8 @@ export interface CompanionLiteMessage {
   fromRole: ManagerRole;
   fromName?: string;
   createdAt: string;
+  /** Present when the message belongs to a per-approval thread. */
+  approvalId?: string;
 }
 
 // ── API request/response shapes ──────────────────────────────────────
@@ -72,6 +85,16 @@ export interface CreateApprovalRequest {
   affectedAmountCents: number;
   affectedItem?: string;
   expiresInMs?: number;
+  productContext?: ProductCostContext;
+}
+
+export interface SendApprovalMessageRequest {
+  body: string;
+  fromRole: ManagerRole;
+  fromName?: string;
+}
+export interface ListApprovalMessagesResponse {
+  messages: CompanionLiteMessage[];
 }
 export interface CreateApprovalResponse {
   id: string;

@@ -1,36 +1,36 @@
 // Companion Lite — Approvals panel (desktop).
-// Creates test approvals and polls for current status. The "Send Test
-// Approval" button is the MVP path; real wiring to approvalGuard
-// happens later — this PR is core-flow only.
+// Creates test approvals, polls for current status, and per-card supports
+// a message thread plus product/discount cost context.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useApp } from '@/store/AppProvider';
 import type {
   ApprovalRequest,
   CompanionLiteDesktopSession,
+  CompanionLiteMessage,
 } from '@/types/companionLite';
 import {
   createApproval,
   listApprovals,
+  listApprovalMessages,
+  sendApprovalMessage,
 } from '@/services/companionLite/approvalsService';
-// Companion Lite polish: surface mobile responses on the existing global
-// toast so the operator sees the approve/deny outcome even when not on
-// this tab.
+import { deriveProductContext } from '@/services/companionLite/productContext';
 import { useToast } from '@/components/ui/Toast';
 
 const POLL_MS = 3000;
+const THREAD_POLL_MS = 3000;
 
 interface Props {
   session: CompanionLiteDesktopSession;
 }
 
 export default function ApprovalsPanel({ session }: Props) {
+  const { state: { inventory } } = useApp();
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  // Track the last-seen status per approvalId. Only fire a toast when an
-  // approval transitions FROM 'pending' TO 'approved' or 'denied' so the
-  // initial poll (which loads existing rows) stays silent.
   const lastStatusRef = useRef<Map<string, ApprovalRequest['status']>>(new Map());
 
   const refresh = useCallback(async () => {
@@ -68,13 +68,28 @@ export default function ApprovalsPanel({ session }: Props) {
     setBusy(true);
     setError(null);
     try {
+      // Pick a real inventory item if any exists so the manager sees real
+      // cost/retail data. Falls back to a no-context approval otherwise.
+      const sample = inventory.find(i => typeof i.cost === 'number' && i.cost > 0)
+        ?? inventory[0];
+      const productContext = sample
+        ? deriveProductContext({
+            query: sample.id,
+            inventory,
+            requestedDiscountPercent: 15,
+            requestedDiscountCents: Math.round(sample.price * 0.15),
+          })
+        : undefined;
       await createApproval(session, {
         type: 'discount',
-        reason: 'Test approval — customer requesting 15% off accessories bundle.',
+        reason: sample
+          ? `Test approval — customer requesting 15% off ${sample.name}.`
+          : 'Test approval — customer requesting 15% off accessories bundle.',
         employeeName: 'Maria Santos',
-        affectedAmountCents: 4500,
-        affectedItem: 'Accessories Bundle',
+        affectedAmountCents: productContext?.requestedDiscountCents ?? 4500,
+        affectedItem: sample?.name ?? 'Accessories Bundle',
         expiresInMs: 15 * 60 * 1000,
+        productContext,
       });
       await refresh();
     } catch (err) {
@@ -104,14 +119,22 @@ export default function ApprovalsPanel({ session }: Props) {
         <div style={emptyStyle}>No approvals yet. Click "Send Test Approval" to create one.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {approvals.map(a => <ApprovalRow key={a.id} approval={a} />)}
+          {approvals.map(a => <ApprovalRow key={a.id} approval={a} session={session} />)}
         </div>
       )}
     </div>
   );
 }
 
-function ApprovalRow({ approval }: { approval: ApprovalRequest }) {
+// ── Row ─────────────────────────────────────────────────────────────
+
+function ApprovalRow({
+  approval, session,
+}: {
+  approval: ApprovalRequest;
+  session: CompanionLiteDesktopSession;
+}) {
+  const [open, setOpen] = useState(false);
   const statusColor =
     approval.status === 'approved' ? '#22c55e' :
     approval.status === 'denied'   ? '#ef4444' :
@@ -132,20 +155,140 @@ function ApprovalRow({ approval }: { approval: ApprovalRequest }) {
       <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
         {approval.reason}
       </div>
-      <div style={{ fontSize: 11, color: '#64748b' }}>
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
         {approval.employeeName} · ${(approval.affectedAmountCents / 100).toFixed(2)}
         {approval.affectedItem ? ` · ${approval.affectedItem}` : ''}
       </div>
       {approval.respondedBy && (
-        <div style={{ fontSize: 11, color: statusColor, marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: statusColor, marginTop: 4, marginBottom: 6 }}>
           Resolved by {approval.respondedBy}
           {approval.respondedAt ? ` at ${new Date(approval.respondedAt).toLocaleTimeString()}` : ''}
           {approval.managerNote ? ` — "${approval.managerNote}"` : ''}
         </div>
       )}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={threadToggleStyle}
+      >
+        {open ? '▾ Hide messages' : '▸ View / Send Message'}
+      </button>
+      {open && <ApprovalThread approval={approval} session={session} />}
     </div>
   );
 }
+
+// ── Thread ──────────────────────────────────────────────────────────
+
+function ApprovalThread({
+  approval, session,
+}: {
+  approval: ApprovalRequest;
+  session: CompanionLiteDesktopSession;
+}) {
+  const [messages, setMessages] = useState<CompanionLiteMessage[]>([]);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  // Track ids we've toasted so a re-poll doesn't fire duplicates.
+  const seenManagerIdsRef = useRef<Set<string> | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const items = await listApprovalMessages(session, approval.id);
+      if (seenManagerIdsRef.current === null) {
+        const seed = new Set<string>();
+        for (const m of items) if (m.fromRole === 'manager') seed.add(m.id);
+        seenManagerIdsRef.current = seed;
+      } else {
+        const seen = seenManagerIdsRef.current;
+        for (const m of items) {
+          if (m.fromRole !== 'manager' || seen.has(m.id)) continue;
+          seen.add(m.id);
+          const who = m.fromName ?? 'Manager';
+          const preview = m.body.length > 70 ? `${m.body.slice(0, 67)}…` : m.body;
+          toast(`💬 Approval: ${who}: ${preview}`, 'info');
+        }
+      }
+      setMessages(items);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load');
+    }
+  }, [session, approval.id, toast]);
+
+  useEffect(() => {
+    void refresh();
+    const handle = setInterval(refresh, THREAD_POLL_MS);
+    return () => clearInterval(handle);
+  }, [refresh]);
+
+  const handleSend = async () => {
+    const body = draft.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await sendApprovalMessage(session, approval.id, body, 'Store');
+      setDraft('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={threadContainerStyle}>
+      <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {messages.length === 0
+          ? <div style={threadEmptyStyle}>No messages yet for this approval.</div>
+          : messages.map(m => <Bubble key={m.id} msg={m} />)}
+      </div>
+      {error && <div style={{ ...errorBoxStyle, marginTop: 6 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
+          placeholder="Ask the manager about this approval…"
+          disabled={busy}
+          style={threadInputStyle}
+        />
+        <button onClick={() => void handleSend()} disabled={!draft.trim() || busy} style={threadSendStyle}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Bubble({ msg }: { msg: CompanionLiteMessage }) {
+  const fromMe = msg.fromRole === 'pos';
+  return (
+    <div style={{ alignSelf: fromMe ? 'flex-end' : 'flex-start', maxWidth: '82%' }}>
+      <div style={{
+        background: fromMe ? 'rgba(56,189,248,0.14)' : 'rgba(148,163,184,0.10)',
+        border: `1px solid ${fromMe ? 'rgba(56,189,248,0.30)' : 'rgba(148,163,184,0.20)'}`,
+        borderRadius: 10,
+        padding: '6px 10px',
+        color: '#e2e8f0',
+        fontSize: 12,
+        lineHeight: 1.4,
+        wordBreak: 'break-word',
+      }}>
+        {msg.body}
+      </div>
+      <div style={{ fontSize: 10, color: '#64748b', textAlign: fromMe ? 'right' : 'left', marginTop: 2 }}>
+        {msg.fromName ?? (fromMe ? 'Store' : 'Manager')} · {new Date(msg.createdAt).toLocaleTimeString()}
+      </div>
+    </div>
+  );
+}
+
+// ── Styles ──────────────────────────────────────────────────────────
 
 const primaryButtonStyle: React.CSSProperties = {
   background: '#38bdf8',
@@ -190,6 +333,51 @@ const statusPillStyle: React.CSSProperties = {
   border: '1px solid',
   borderRadius: 4,
   background: 'transparent',
+};
+const threadToggleStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px dashed rgba(148,163,184,0.25)',
+  borderRadius: 6,
+  padding: '4px 8px',
+  color: '#94a3b8',
+  fontSize: 11,
+  fontWeight: 600,
+  cursor: 'pointer',
+  marginTop: 4,
+};
+const threadContainerStyle: React.CSSProperties = {
+  marginTop: 8,
+  padding: 8,
+  background: 'rgba(2,6,15,0.50)',
+  border: '1px solid rgba(148,163,184,0.10)',
+  borderRadius: 8,
+};
+const threadEmptyStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: '#64748b',
+  fontStyle: 'italic',
+  padding: 8,
+  textAlign: 'center',
+};
+const threadInputStyle: React.CSSProperties = {
+  flex: 1,
+  background: 'rgba(15,23,42,0.6)',
+  border: '1px solid rgba(148,163,184,0.20)',
+  borderRadius: 6,
+  padding: '6px 10px',
+  color: '#e2e8f0',
+  fontSize: 12,
+  outline: 'none',
+};
+const threadSendStyle: React.CSSProperties = {
+  background: '#38bdf8',
+  border: 'none',
+  borderRadius: 6,
+  padding: '0 12px',
+  color: '#000',
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: 'pointer',
 };
 const emptyStyle: React.CSSProperties = {
   fontSize: 13,

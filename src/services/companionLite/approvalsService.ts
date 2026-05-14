@@ -5,8 +5,11 @@ import { apiGet, apiPost } from './apiClient';
 import type {
   ApprovalRequest,
   CompanionLiteDesktopSession,
+  CompanionLiteMessage,
   CreateApprovalRequest,
+  ListApprovalMessagesResponse,
   ListApprovalsResponse,
+  SendApprovalMessageRequest,
 } from '@/types/companionLite';
 
 interface CreateResponse {
@@ -41,4 +44,37 @@ export async function listApprovals(
     `/store/${encodeURIComponent(session.storeId)}/approvals${qs}`,
   );
   return result.approvals;
+}
+
+// ── Per-approval message thread ────────────────────────────────────
+
+export async function listApprovalMessages(
+  session: CompanionLiteDesktopSession,
+  approvalId: string,
+  since?: string,
+): Promise<CompanionLiteMessage[]> {
+  const qs = since ? `?since=${encodeURIComponent(since)}` : '';
+  const result = await apiGet<ListApprovalMessagesResponse>(
+    { bridgeUrl: session.bridgeUrl, token: session.posToken },
+    `/approvals/${encodeURIComponent(approvalId)}/messages${qs}`,
+  );
+  return result.messages;
+}
+
+export async function sendApprovalMessage(
+  session: CompanionLiteDesktopSession,
+  approvalId: string,
+  body: string,
+  fromName?: string,
+): Promise<{ id: string; createdAt: string }> {
+  const req: SendApprovalMessageRequest = {
+    body,
+    fromRole: 'pos',
+    fromName,
+  };
+  return apiPost<{ id: string; createdAt: string }>(
+    { bridgeUrl: session.bridgeUrl, token: session.posToken },
+    `/approvals/${encodeURIComponent(approvalId)}/messages`,
+    req,
+  );
 }
