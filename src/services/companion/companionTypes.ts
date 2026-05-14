@@ -206,7 +206,9 @@ export interface CompanionPairingSession {
   pin: string;
   /** ms epoch when the session opened. */
   startedAt: number;
-  /** ms epoch when the session expires (startedAt + TTL). */
+  /** R-COMPANION-DESKTOP-REAL-PAIRING-SOURCE-V1: ms epoch when this
+   *  pairing offer expires (startedAt + TTL). Bridge consumes the same
+   *  value so the desktop UI countdown matches the server-side window. */
   expiresAt: number;
   phase: CompanionPairingPhase;
 }
