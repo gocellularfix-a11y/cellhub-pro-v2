@@ -9,6 +9,7 @@ import { computeRevenueOpportunities } from '@/services/intelligence/revenueOppo
 import { computeStoreRhythm } from '@/services/intelligence/storeRhythm/storeRhythmEngine';
 import { computeReasoningConclusions } from '@/services/intelligence/reasoning/reasoningEngine';
 import { computeBusinessStrategy } from '@/services/intelligence/businessStrategy/businessStrategyEngine';
+import { computeActiveChain } from '@/services/intelligence/actionChains/actionChainEngine';
 
 const READY_STATUSES = new Set(['completed', 'ready', 'ready_for_pickup']);
 const TERMINAL_STATUSES = new Set(['picked_up', 'cancelled', 'refunded', 'refund_pending']);
@@ -94,12 +95,24 @@ export function computeOperationalHealth(ctx: OperationalHealthContext): Operati
     signalIds: signals.map((s) => s.id),
   });
 
+  const activeChain = computeActiveChain({
+    strategyType: strategy.type,
+    conclusionTypes: conclusions.map((c) => c.type),
+    rhythmMode: storeRhythm.currentMode,
+    activeWorkflowCount: ctx.pendingWorkflowCount,
+    overdueRepairCount,
+    overdueLayawayCount,
+    readyForPickupCount,
+    signalIds: signals.map((s) => s.id),
+  });
+
   return {
     signals,
     revenueOpportunities,
     storeRhythm,
     conclusions,
     strategy,
+    activeChain,
     activeWorkflowCount: ctx.pendingWorkflowCount,
     overdueRepairCount,
     readyForPickupCount,

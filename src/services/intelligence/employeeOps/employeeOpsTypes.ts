@@ -9,6 +9,7 @@ import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportun
 import type { StoreRhythmSnapshot } from '@/services/intelligence/storeRhythm/storeRhythmTypes';
 import type { OperationalReasoningConclusion } from '@/services/intelligence/reasoning/reasoningTypes';
 import type { BusinessStrategyFocus } from '@/services/intelligence/businessStrategy/businessStrategyTypes';
+import type { ActionChain } from '@/services/intelligence/actionChains/actionChainTypes';
 
 // ── Operational signal ────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export interface OperationalHealthSnapshot {
   storeRhythm: StoreRhythmSnapshot;
   conclusions: OperationalReasoningConclusion[];
   strategy: BusinessStrategyFocus;
+  activeChain: ActionChain | null;
   activeWorkflowCount: number;
   overdueRepairCount: number;
   readyForPickupCount: number;

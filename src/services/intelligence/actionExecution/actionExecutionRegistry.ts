@@ -292,6 +292,34 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   strategy_balanced_operations:         [],
 };
 
+// Direct action lookup — used by action chain step execution in the bubble.
+const ACTION_LOOKUP: Record<string, OperatorExecutableAction> = {
+  [openCustomer.id]:                  openCustomer,
+  [viewHistory.id]:                   viewHistory,
+  [whatsAppFollowUp.id]:              whatsAppFollowUp,
+  [openRepairs.id]:                   openRepairs,
+  [openLayaways.id]:                  openLayaways,
+  [openPhonePayments.id]:             openPhonePayments,
+  [openPOS.id]:                       openPOS,
+  [openCustomers.id]:                 openCustomers,
+  [openRepairFollowUp.id]:            openRepairFollowUp,
+  [actResumeWorkflow.id]:             actResumeWorkflow,
+  [actResumeExternalPayment.id]:      actResumeExternalPayment,
+  [actMarkExternalPaymentPaid.id]:    actMarkExternalPaymentPaid,
+  [actKeepExternalPaymentPending.id]: actKeepExternalPaymentPending,
+  [actCancelWorkflow.id]:             actCancelWorkflow,
+};
+
+/** Look up a single action by its ID, filtered through canExecute. Returns null if not found or not executable. */
+export function getActionById(
+  actionId: string,
+  ctx: ActionExecutionContext,
+): OperatorExecutableAction | null {
+  const action = ACTION_LOOKUP[actionId];
+  if (!action || !action.canExecute(ctx)) return null;
+  return action;
+}
+
 /**
  * Return the applicable, canExecute-filtered actions for a given suggestion.
  * Pure function — safe inside useMemo / render.

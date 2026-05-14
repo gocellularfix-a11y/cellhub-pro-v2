@@ -10,6 +10,7 @@ import type { CustomerBusinessProfile } from '@/services/intelligence/customerSc
 import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 import { CONCLUSION_SUPPRESSIONS } from '@/services/intelligence/reasoning/reasoningSelectors';
 import { STRATEGY_SUPPRESSIONS } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
+import { CHAIN_SUPPRESSIONS } from '@/services/intelligence/actionChains/actionChainSelectors';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -281,6 +282,11 @@ export function computeContextSuggestions(
     const sid = `strategy_${opHealth.strategy.type}`;
     out.push({ id: sid, text: opHealth.strategy.title, detail: opHealth.strategy.detail, kind: opHealth.strategy.suggestionKind, priority: opHealth.strategy.priority });
     for (const suppressed of STRATEGY_SUPPRESSIONS[sid] ?? []) suppressedIds.add(suppressed);
+  }
+
+  // Active chain subsumes its lower-level signals — suppress redundant nudges.
+  if (opHealth?.activeChain) {
+    for (const suppressed of CHAIN_SUPPRESSIONS[opHealth.activeChain.type] ?? []) suppressedIds.add(suppressed);
   }
 
   const seen = new Set<string>();

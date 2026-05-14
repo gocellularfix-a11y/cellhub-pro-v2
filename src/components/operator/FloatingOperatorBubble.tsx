@@ -58,6 +58,9 @@ import type { OperationalHealthSnapshot } from '@/services/intelligence/employee
 import { getRhythmModeLabel, isRhythmActionable } from '@/services/intelligence/storeRhythm/storeRhythmSelectors';
 import { getTrendModeLabel, isTemporalTrendActionable } from '@/services/intelligence/temporalTrends/temporalTrendSelectors';
 import { getStrategyLabel, isStrategyActionable } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
+import type { ActionChainStep } from '@/services/intelligence/actionChains/actionChainTypes';
+import { loadActiveChainState, applyChainState, advanceChainStep, getCurrentStep, getChainProgress, isChainComplete } from '@/services/intelligence/actionChains/actionChainSelectors';
+import { getActionById } from '@/services/intelligence/actionExecution/actionExecutionRegistry';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -614,6 +617,18 @@ export default function FloatingOperatorBubble() {
   // Tracks which suggestion's action was last clicked (for "Opened" flash).
   const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
 
+  // Incremented when chain step state changes (localStorage write) to trigger re-render.
+  const [chainStateTick, setChainStateTick] = useState(0);
+
+  // Active chain with persisted step state applied.
+  const displayedChain = useMemo(() => {
+    if (!opHealth.activeChain) return null;
+    const applied = applyChainState(opHealth.activeChain, loadActiveChainState());
+    return isChainComplete(applied) ? null : applied;
+  // chainStateTick is the reactive signal for localStorage step changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opHealth.activeChain, chainStateTick]);
+
   // Execute a bubble action: run it, log it, flash feedback, close overlay.
   // Declared after execCtx so the dep array reference is valid.
   const handleActionClick = useCallback((
@@ -628,6 +643,24 @@ export default function FloatingOperatorBubble() {
       setIsOverlayOpen(false);
     }, 700);
   }, [execCtx]);
+
+  const handleChainStepClick = useCallback((step: ActionChainStep) => {
+    if (!displayedChain) return;
+    const action = getActionById(step.actionId, execCtx);
+    if (action) {
+      try { action.execute(execCtx); } catch { /* safe */ }
+      logBubbleAction(action.id, execCtx.customerId, `chain_${displayedChain.type}`);
+    }
+    advanceChainStep(displayedChain.type, step.id, 'complete');
+    setChainStateTick((t) => t + 1);
+    setTimeout(() => setIsOverlayOpen(false), 400);
+  }, [displayedChain, execCtx]);
+
+  const handleChainStepSkip = useCallback((step: ActionChainStep) => {
+    if (!displayedChain) return;
+    advanceChainStep(displayedChain.type, step.id, 'skip');
+    setChainStateTick((t) => t + 1);
+  }, [displayedChain]);
 
   // ── Workflow continuity derived state + handlers ───────────────────────────
 
@@ -1394,6 +1427,83 @@ export default function FloatingOperatorBubble() {
               )}
             </div>
           )}
+
+          {/* Guided action chain card (R-INTELLIGENCE-ACTION-CHAINS-V1).
+              Shown when a dominant operational chain is active and has pending steps.
+              Surfaces current step + next step preview only — never a full workflow graph. */}
+          {displayedChain && (() => {
+            const currentStep = getCurrentStep(displayedChain);
+            if (!currentStep) return null;
+            const nextStep = displayedChain.steps[displayedChain.currentStepIndex + 1] ?? null;
+            const { completed, total } = getChainProgress(displayedChain);
+            const stepAction = getActionById(currentStep.actionId, execCtx);
+            return (
+              <div style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: '1px solid rgba(99,102,241,0.35)',
+                borderRadius: '0.5rem',
+                padding: '0.6rem 0.7rem',
+                display: 'flex', flexDirection: 'column', gap: '0.3rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {locale === 'es' ? 'Secuencia guiada' : 'Guided Sequence'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                    {locale === 'es' ? `Paso ${completed + 1} de ${total}` : `Step ${completed + 1} of ${total}`}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#e2e8f0' }}>{displayedChain.title}</div>
+                {displayedChain.detail && (
+                  <div style={{ fontSize: '0.73rem', color: '#64748b' }}>{displayedChain.detail}</div>
+                )}
+                {/* Current step */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.1rem' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#818cf8', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.78rem', color: '#c7d2fe', flex: 1 }}>{currentStep.label}</span>
+                  {stepAction && (
+                    <button
+                      type="button"
+                      onClick={() => handleChainStepClick(currentStep)}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        borderRadius: '0.9rem',
+                        fontSize: '0.70rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: '1px solid rgba(99,102,241,0.55)',
+                        background: 'rgba(99,102,241,0.18)',
+                        color: '#a5b4fc',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {stepAction.label}
+                    </button>
+                  )}
+                </div>
+                {/* Next step preview */}
+                {nextStep && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', border: '1px solid #334155', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.73rem', color: '#334155' }}>
+                      {locale === 'es' ? 'Siguiente: ' : 'Next: '}{nextStep.label}
+                    </span>
+                  </div>
+                )}
+                {/* Skip step */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.05rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleChainStepSkip(currentStep)}
+                    style={{ fontSize: '0.68rem', color: '#334155', background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
+                  >
+                    {locale === 'es' ? 'Saltar paso →' : 'Skip step →'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Live-context suggestions + executable actions (R-INTELLIGENCE-ACTION-EXECUTION-V1) */}
           {suggestionsWithActions.length > 0 && (
