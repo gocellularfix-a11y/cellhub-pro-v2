@@ -13,6 +13,7 @@ import { reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
+import { emitRepairCompleted } from '@/services/intelligence/liveContext/liveContextEvents';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
@@ -897,6 +898,7 @@ export default function RepairModule() {
       repairsRef.current = next;
       setRepairs(next);
       persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+      emitRepairCompleted(repair.id, (repair as any).customerId);
       toast(t('repairs.repairCompleted'), 'success');
       return;
     }
@@ -958,6 +960,7 @@ export default function RepairModule() {
       repairsRef.current = next;
       setRepairs(next);
       persist.repair(updated.id, updated as unknown as Record<string, unknown>);
+      emitRepairCompleted(repair.id, (repair as any).customerId);
     }
 
     setCompleteConfirm(null);

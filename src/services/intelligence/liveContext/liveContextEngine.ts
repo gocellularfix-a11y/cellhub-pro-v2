@@ -26,11 +26,23 @@ const ACTION_TYPE_MAP: Record<string, LiveAction['type']> = {
   'phone.payment.customer_updated':          'customer_selected',
   'phone.payment.payment_recorded':          'payment_started',
   'phone.payment.number_linked_to_customer': 'customer_selected',
+  'phone.payment.flow_started':              'payment_started',
   'sale.completed':                          'sale_completed',
   'unlock.submitted':                        'unlock_submitted',
   'special_order.created':                   'special_order_created',
   'return.processed':                        'return_processed',
   'appointment.booked':                      'appointment_booked',
+  // R-INTELLIGENCE-EVENT-INSTRUMENTATION-V1
+  'customer.selected':                       'customer_selected',
+  'customer.searched':                       'customer_searched',
+  'item.added':                              'item_added',
+  'discount.attempted':                      'discount_attempted',
+  'repair.completed':                        'repair_completed',
+  'layaway.payment.started':                 'layaway_payment_started',
+  'inventory.item_opened':                   'inventory_lookup',
+  'approval.requested':                      'approval_requested',
+  'approval.accepted':                       'approval_accepted',
+  'approval.denied':                         'approval_denied',
 };
 
 /** Call once from the bubble's mount useEffect. Safe to call multiple times. */

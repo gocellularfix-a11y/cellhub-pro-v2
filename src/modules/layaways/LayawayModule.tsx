@@ -44,6 +44,7 @@ import { AutocompleteInput, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
+import { emitLayawayPaymentStarted } from '@/services/intelligence/liveContext/liveContextEvents';
 import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
@@ -616,6 +617,7 @@ export default function LayawayModule() {
     // if the user cancelled checkout. Also, marking status='completed'
     // before payment is collected is incorrect — the layaway isn't
     // complete until the money is actually in the drawer.
+    emitLayawayPaymentStarted(l.id, (l as any).customerId);
     setDepositTarget(null);
     toast(t('layaway.paymentAddedToCart', formatCurrency(paymentCents)), 'info');
   }, [t, toast, consolidateCartForLayaway, dispatch]);

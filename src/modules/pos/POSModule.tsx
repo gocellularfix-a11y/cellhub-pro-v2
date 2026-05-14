@@ -18,6 +18,7 @@ import { loadLocal, saveLocal } from '@/services/storage';
 import QuickActionGrid from './QuickActionGrid';
 import ProductGrid from './ProductGrid';
 import QuickServicePanel from './QuickServicePanel';
+import { emitCustomerSelected, emitItemAdded } from '@/services/intelligence/liveContext/liveContextEvents';
 import Cart from './Cart';
 import PhonePaymentModal from './PhonePaymentModal';
 import PaymentModal from './PaymentModal';
@@ -344,6 +345,7 @@ export default function POSModule() {
       }
 
       toast(t('pos.itemAdded', item.name), 'success');
+      emitItemAdded({ sku: item.sku, category: item.category, itemCount: (cartRef.current.length) });
     },
     [setCart, activeCategory, customCategories, getStock, toast, L, inventory, lang],
   );
@@ -1388,6 +1390,7 @@ export default function POSModule() {
                 onSelect={(c) => {
                   if (c && (!selectedCustomer || selectedCustomer.id !== c.id)) {
                     setSelectedCustomer(c);
+                    emitCustomerSelected(c.id);
                   }
                   setShowCustomerSearch(false);
                 }}

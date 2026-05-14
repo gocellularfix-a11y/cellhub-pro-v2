@@ -22,6 +22,7 @@ import { persist, persistSettings, remove } from '@/services/persist';
 import AdminPinGate from '@/components/shared/AdminPinGate';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
+import { emitInventoryLookup } from '@/services/intelligence/liveContext/liveContextEvents';
 import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequired } from './FieldCustomizerModal';
 // R-INTEL-INVENTORY-PROMOTE-BUTTON: per-row Promote button delegates to
 // the same Product Push engine the chat handler uses (single-source).
@@ -782,7 +783,7 @@ export default function InventoryModule() {
                             kicks off the intel chunk download in parallel
                             so the eventual click feels instant. */}
                         <button onClick={() => handlePromote(item)} onMouseEnter={preloadPromoteIntel} onFocus={preloadPromoteIntel} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
-                        <button onClick={() => { setEditItem(item); setShowModal(true); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
+                        <button onClick={() => { setEditItem(item); setShowModal(true); emitInventoryLookup({ sku: item.sku, itemName: item.name }); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
                         {/* R-LOSSES-SHRINKAGE-V1: Mark as Loss — opens the
                             shrinkage modal; manager-PIN guarded on commit. */}
                         <button onClick={() => openMarkAsLoss(item)} title={t('inventory.loss.button')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(234,88,12,0.15)', color: '#fb923c' }}>📉</button>

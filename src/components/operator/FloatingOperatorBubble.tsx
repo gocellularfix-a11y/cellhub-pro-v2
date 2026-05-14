@@ -33,7 +33,7 @@ import {
 } from '@/services/operator/operatorActivityHints';
 import { getContext, subscribe } from '@/services/intelligence/liveContext/liveContextStore';
 import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
-import { computeContextSuggestions, getMinimizedPreviewText } from '@/services/intelligence/liveContext/contextSuggestions';
+import { computeContextSuggestions, getMinimizedPreviewText, hasUrgentSuggestion } from '@/services/intelligence/liveContext/contextSuggestions';
 import type { LiveContext } from '@/services/intelligence/liveContext/contextTypes';
 
 // ── Constants ─────────────────────────────────────────────
@@ -514,6 +514,12 @@ export default function FloatingOperatorBubble() {
     [enabled, liveCtx, inputs, previewTick],
   );
 
+  // Urgency signal — drives stronger bubble pulse when high-priority context exists.
+  const isUrgentContext = useMemo(
+    () => enabled ? hasUrgentSuggestion(liveCtx, inputs) : false,
+    [enabled, liveCtx, inputs],
+  );
+
   const insightToneColor = (tone: OperatorInsightTone): string => {
     switch (tone) {
       case 'positive': return '#22c55e';
@@ -541,7 +547,7 @@ export default function FloatingOperatorBubble() {
   // Hint pill is a passive ambient surface. It hides while the overlay
   // is open (overlay shows the same hint inside its body).
   const showPill = enabled && bubbleState === 'ready' && !!hintText && !isDragging && !isOverlayOpen;
-  const showRing = enabled && (bubbleState === 'ready' || bubbleState === 'alert');
+  const showRing = enabled && (bubbleState === 'ready' || bubbleState === 'alert' || isUrgentContext);
 
   const statusLabel = t(`operator.status.${enabled ? bubbleState : 'sleeping'}`);
 
@@ -748,19 +754,20 @@ export default function FloatingOperatorBubble() {
           </svg>
         </span>
 
-        {/* Optional outer pulse ring — keeps the existing
-            cellhubOperatorPulseRing behaviour for ready/alert so the
-            hint ring inside the SVG is reinforced with a slow outward
-            pulse. CSS-only, pointer-events none. */}
+        {/* Pulse ring — green for ready hints, amber when urgent context */}
         {showRing && (
           <span
             aria-hidden="true"
             style={{
               position: 'absolute',
-              inset: -6,
+              inset: isUrgentContext ? -8 : -6,
               borderRadius: '50%',
-              border: '2px solid rgba(52,211,153,0.55)',
-              animation: 'cellhubOperatorPulseRing 1.6s ease-out infinite',
+              border: isUrgentContext
+                ? '2.5px solid rgba(251,191,36,0.7)'
+                : '2px solid rgba(52,211,153,0.55)',
+              animation: isUrgentContext
+                ? 'cellhubOperatorPulseRing 1.1s ease-out infinite'
+                : 'cellhubOperatorPulseRing 1.6s ease-out infinite',
               pointerEvents: 'none',
             }}
           />

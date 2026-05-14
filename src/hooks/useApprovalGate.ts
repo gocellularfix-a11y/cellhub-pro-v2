@@ -17,6 +17,7 @@
 import { createElement, useCallback, useMemo, useRef, useState } from 'react';
 import ApprovalPinModal from '@/components/shared/ApprovalPinModal';
 import { requestApproval as runApprovalGuard } from '@/services/security/approvalGuard';
+import { emitApprovalRequested, emitApprovalAccepted, emitApprovalDenied } from '@/services/intelligence/liveContext/liveContextEvents';
 import type {
   ApprovalPrompter,
   ApprovalRequest,
@@ -78,6 +79,7 @@ export function useApprovalGate({
   const requestApproval = useCallback(
     async (req: ApprovalRequest): Promise<ApprovalResult> => {
       setError(null);
+      emitApprovalRequested(req.actionType);
       // Retry loop: bad PIN / self-approval blocked → stay open with inline
       // error. Final reasons (cancelled / timeout / approved / not-required)
       // exit the loop and close the modal.
@@ -91,6 +93,7 @@ export function useApprovalGate({
         if (result.approved) {
           setRequest(null);
           setError(null);
+          emitApprovalAccepted(req.actionType);
           return result;
         }
         if (result.reason === 'invalid_pin') {
@@ -104,6 +107,9 @@ export function useApprovalGate({
         // cancelled / timeout / feature_disabled / not_required → terminal
         setRequest(null);
         setError(null);
+        if (result.reason === 'cancelled' || result.reason === 'timeout') {
+          emitApprovalDenied(req.actionType);
+        }
         return result;
       }
     },

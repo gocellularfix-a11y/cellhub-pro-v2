@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { useApp } from '@/store/AppProvider';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { emitDiscountAttempted } from '@/services/intelligence/liveContext/liveContextEvents';
 // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: compact modal for per-line
 // override / amount-off / percent-off. Effective per-unit price is
 // written back into item.price so downstream totals/tax/receipts
@@ -101,6 +102,7 @@ export default function Cart({
     setDiscountMode('amount');
     setDiscountValue('');
     setDiscountReason(item.lineDiscountReason || '');
+    emitDiscountAttempted();
   }, []);
 
   const closeLineDiscount = useCallback(() => {

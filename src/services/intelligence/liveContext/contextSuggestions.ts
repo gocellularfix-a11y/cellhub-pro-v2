@@ -1,6 +1,7 @@
 // ============================================================
-// CellHub Pro — Context Suggestions (R-INTELLIGENCE-LIVE-CONTEXT-V1)
-// Deterministic suggestions derived from live context + activity inputs.
+// CellHub Pro — Context Suggestions (R-INTELLIGENCE-LIVE-CONTEXT-V1 +
+//               R-INTELLIGENCE-EVENT-INSTRUMENTATION-V1)
+// Deterministic suggestions from live context + action patterns.
 // No AI, no randomness, no external dependencies.
 // ============================================================
 
@@ -13,12 +14,29 @@ import {
   hasUpsellOpportunity,
   hasLongInactiveCustomer,
   hasMultiLineCustomer,
+  hasPendingApprovalFlow,
 } from './contextSignals';
+import {
+  countCustomerFrequency,
+  countActionTypeFrequency,
+  countRepairFrequency,
+  getRecentRepairs,
+} from './contextSelectors';
+
+// ── Priority scoring constants ────────────────────────────
+// Higher = shown first in overlay. Slots:
+//   10    – critical / pending approval
+//   9     – urgent operational (inactive, repeated views)
+//   8     – strong upsell (phone payment + no accessories)
+//   7–6   – moderate upsell / retention
+//   5–4   – standard follow-up / operational
+//   3     – data collection
+//   2–1   – ambient / informational
 
 /**
  * Compute the deterministic suggestion list for the current live context.
- * Returns up to 5 suggestions sorted by priority (highest first).
- * Pure function — safe to call on every render inside useMemo.
+ * Returns up to 5 suggestions sorted by priority descending.
+ * Pure function — safe inside useMemo.
  */
 export function computeContextSuggestions(
   ctx: LiveContext,
@@ -26,6 +44,55 @@ export function computeContextSuggestions(
 ): ContextSuggestion[] {
   const out: ContextSuggestion[] = [];
   const cust = getActiveCustomer(ctx, inputs);
+
+  // ── CRITICAL: pending approval ────────────────────────────
+  if (hasPendingApprovalFlow(ctx)) {
+    out.push({
+      id: 'pending_approval',
+      text: 'Approval requested — manager attention needed',
+      detail: 'A restricted action is waiting for authorization.',
+      kind: 'operational',
+      priority: 10,
+    });
+  }
+
+  // ── Pattern: same customer viewed 3+ times in 10 min ─────
+  const activeId = ctx.activeCustomer?.id;
+  if (activeId && countCustomerFrequency(ctx, activeId, 600_000) >= 3) {
+    out.push({
+      id: 'repeat_customer_view',
+      text: 'Customer checked multiple times — schedule a follow-up?',
+      kind: 'follow_up',
+      priority: 9,
+      actionTab: 'customers',
+    });
+  }
+
+  // ── Pattern: repeated discount attempts ──────────────────
+  const discountCount = countActionTypeFrequency(ctx, 'discount_attempted', 600_000);
+  if (discountCount >= 2) {
+    out.push({
+      id: 'repeated_discounts',
+      text: `${discountCount} discount attempts this session — consider manager review`,
+      kind: 'operational',
+      priority: 8,
+    });
+  }
+
+  // ── Pattern: repair viewed repeatedly ────────────────────
+  const recentRepairs = getRecentRepairs(ctx, 3);
+  for (const repairId of recentRepairs) {
+    if (countRepairFrequency(ctx, repairId, 900_000) >= 2) {
+      out.push({
+        id: `repair_repeat_${repairId}`,
+        text: 'Repair checked multiple times — consider a status update or follow-up',
+        kind: 'follow_up',
+        priority: 8,
+        actionTab: 'repairs',
+      });
+      break; // only one of this type
+    }
+  }
 
   // ── Phone payment flow ────────────────────────────────────
   if (hasPhonePaymentFlow(ctx)) {
@@ -68,7 +135,6 @@ export function computeContextSuggestions(
 
   // ── Customer-anchored signals ─────────────────────────────
   if (cust) {
-    // Inactive customer — highest priority retention nudge
     if (hasLongInactiveCustomer(ctx, inputs)) {
       out.push({
         id: 'retention_inactive',
@@ -78,7 +144,6 @@ export function computeContextSuggestions(
       });
     }
 
-    // General upsell moment (service flow, no accessories yet)
     if (hasUpsellOpportunity(ctx)) {
       out.push({
         id: 'upsell_opportunity',
@@ -89,7 +154,6 @@ export function computeContextSuggestions(
       });
     }
 
-    // Collect missing email
     const fullCust = inputs.customers.find((c) => c && c.id === cust.id);
     if (fullCust && !fullCust.email) {
       out.push({
@@ -112,12 +176,23 @@ export function computeContextSuggestions(
     });
   }
 
-  // Sort by priority descending, deduplicate by id, take top 5
+  // Deduplicate, sort by priority desc, cap at 5
   const seen = new Set<string>();
   return out
     .sort((a, b) => b.priority - a.priority)
     .filter((s) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; })
     .slice(0, 5);
+}
+
+/**
+ * Returns true when any suggestion has urgency priority >= 9
+ * (used by the bubble to intensify its visual pulse).
+ */
+export function hasUrgentSuggestion(
+  ctx: LiveContext,
+  inputs: OperatorActivityInputs,
+): boolean {
+  return computeContextSuggestions(ctx, inputs).some((s) => s.priority >= 9);
 }
 
 /**

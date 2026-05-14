@@ -36,12 +36,17 @@ export interface LiveCartMeta {
 
 export type LiveActionType =
   | 'customer_selected'
+  | 'customer_searched'
   | 'repair_opened'
+  | 'repair_completed'
   | 'layaway_opened'
+  | 'layaway_payment_started'
   | 'payment_started'
   | 'item_added'
   | 'discount_attempted'
   | 'approval_requested'
+  | 'approval_accepted'
+  | 'approval_denied'
   | 'sale_completed'
   | 'unlock_submitted'
   | 'special_order_created'
@@ -50,6 +55,7 @@ export type LiveActionType =
   | 'module_changed'
   | 'phone_number_entered'
   | 'customer_history_opened'
+  | 'inventory_lookup'
   | string; // forward-compat
 
 export interface LiveAction {

@@ -135,6 +135,18 @@ export interface OperatorActivityEventDetail {
     | 'special_order.created'
     | 'return.processed'
     | 'appointment.booked'
+    // R-INTELLIGENCE-EVENT-INSTRUMENTATION-V1 — new operational events
+    | 'customer.selected'
+    | 'customer.searched'
+    | 'item.added'
+    | 'discount.attempted'
+    | 'repair.completed'
+    | 'layaway.payment.started'
+    | 'phone.payment.flow_started'
+    | 'inventory.item_opened'
+    | 'approval.requested'
+    | 'approval.accepted'
+    | 'approval.denied'
     | string; // forward-compat
   payload?: {
     // Generic IDs / values reused across event types. Always minimal —
@@ -145,6 +157,13 @@ export interface OperatorActivityEventDetail {
     phone?: string;
     lineCount?: number;
     amountCents?: number;
+    // R-INTELLIGENCE-EVENT-INSTRUMENTATION-V1 additions
+    sku?: string;
+    itemName?: string;
+    itemCount?: number;
+    category?: string;
+    actionType?: string;
+    query?: string;
   };
 }
 
