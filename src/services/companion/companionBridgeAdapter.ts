@@ -54,13 +54,13 @@ import type {
 // match the existing dev-panel "Process pending" flow.
 import { submitAction } from './companionActionInbox';
 import { processIntelligenceAck } from './receivers/intelligenceAckReceiver';
-// R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 Phase 1 — observe-only.
-// Bridge approval responses funnel through the inbox + EXISTING receiver
-// shell. processApprovalAction explicitly does NOT call approvalGuard,
-// does NOT resolve any pending gate, and does NOT mutate state. Local
-// PIN remains the sole authority. See docs/companion-remote-approval-authority.md
-// §6 Phase 1 for the contract.
+// R-COMPANION-REMOTE-APPROVAL-RESOLUTION-V1 Phase 2B — gateway dispatch.
+// Bridge responses funnel through inbox (audit trail) + gateway (resolution).
+// validateRemoteApprovalActor runs inside the useApprovalGate resolver before
+// the pending prompter promise resolves — the guard never sees an unvalidated
+// remote response. Financial mutations only proceed when caller gets approved:true.
 import { processApprovalAction } from './receivers/approvalActionReceiver';
+import { dispatchRemoteApprovalResponse } from './remoteApprovalGateway';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -421,14 +421,27 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             },
           });
           processApprovalAction(submitted.actionId);
-          // R-COMPANION-APPROVALS-LIVE-V1: emit to companion event bus so
-          // companionApprovalRuntime + CompanionCenter update live.
+          // Update companionApprovalRuntime + CompanionCenter immediately.
           emitToBus({
             type: 'APPROVAL_APPROVED',
             category: 'approvals',
             payload: { approvalId: requestId, approvedByEmployeeId: payload.managerId },
             createdAt: Date.now(),
           });
+          // R-COMPANION-REMOTE-APPROVAL-RESOLUTION-V1 Phase 2B — dispatch to
+          // the gateway so the waiting useApprovalGate resolver can validate
+          // and resolve the pending prompter promise. No-op when no gate is
+          // waiting (expired, already resolved locally, unknown id).
+          const dispatched = dispatchRemoteApprovalResponse({
+            approvalId: requestId,
+            action: 'approve',
+            managerId: payload.managerId ?? '',
+            source: 'companion_remote',
+            receivedAt: Date.now(),
+          });
+          console.info(
+            `[companion-bridge-adapter] gateway approve dispatch requestId=${requestId} result=${dispatched}`,
+          );
         } else if (action === 'deny') {
           const submitted = submitAction({
             type: 'deny_request',
@@ -439,17 +452,27 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
             },
           });
           processApprovalAction(submitted.actionId);
-          // R-COMPANION-APPROVALS-LIVE-V1: same — update runtime live.
           emitToBus({
             type: 'APPROVAL_DENIED',
             category: 'approvals',
             payload: { approvalId: requestId, reason: payload.managerNote },
             createdAt: Date.now(),
           });
-        } else {
-          // request_explanation — Phase 1 logs only, no inbox shape exists.
+          // Phase 2B — dispatch deny to gateway.
+          const dispatched = dispatchRemoteApprovalResponse({
+            approvalId: requestId,
+            action: 'deny',
+            managerId: payload.managerId ?? '',
+            source: 'companion_remote',
+            receivedAt: Date.now(),
+          });
           console.info(
-            `[companion-bridge-adapter] inbound APPROVAL_EXPLANATION_REQUESTED (OBSERVE-ONLY, not routed) requestId=${requestId}`,
+            `[companion-bridge-adapter] gateway deny dispatch requestId=${requestId} result=${dispatched}`,
+          );
+        } else {
+          // request_explanation — log only; no inbox shape, no gateway dispatch.
+          console.info(
+            `[companion-bridge-adapter] inbound APPROVAL_EXPLANATION_REQUESTED (not routed) requestId=${requestId}`,
           );
         }
       } catch (err) {

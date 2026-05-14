@@ -25,6 +25,8 @@ import type {
 } from '@/services/security/approvalGuard';
 import { useTranslation } from '@/i18n';
 import type { Employee } from '@/store/types';
+import { registerApprovalResolver } from '@/services/companion/remoteApprovalGateway';
+import { validateRemoteApprovalActor } from '@/services/companion/remoteApprovalTrust';
 
 export interface UseApprovalGateArgs {
   employees: Employee[];
@@ -52,16 +54,69 @@ export function useApprovalGate({
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolverRef = useRef<((r: PrompterResponse) => void) | null>(null);
+  const gatewayUnregisterRef = useRef<(() => void) | null>(null);
 
-  // Per-attempt prompter — guard calls this once per submission. We hand
-  // back a fresh promise each call; modal state stays mounted across
-  // iterations of the retry loop so the user sees a continuous session.
-  const prompter: ApprovalPrompter = useCallback((req) => {
+  // Refs for latest employees/settings so the prompter closure (stable, [] deps)
+  // always uses current values without capturing stale snapshots.
+  const employeesRef = useRef(employees);
+  employeesRef.current = employees;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  // Per-attempt prompter — guard calls this once per submission. A fresh
+  // promise is created per attempt; modal state stays mounted across retry
+  // iterations so the user sees a continuous session.
+  //
+  // Phase 2B: also registers a one-shot gateway resolver keyed by approvalId.
+  // If a validated Companion remote response arrives while the gate is open,
+  // the resolver fires before any local PIN submission. validateRemoteApprovalActor
+  // runs inside the resolver closure (reads live refs) before the gate resolves.
+  const prompter: ApprovalPrompter = useCallback((req, approvalId) => {
     return new Promise<PrompterResponse>((resolve) => {
-      resolverRef.current = resolve;
+      // Wrap resolve so both local and remote paths clean up the gateway entry.
+      const wrappedResolve = (r: PrompterResponse) => {
+        gatewayUnregisterRef.current?.();
+        gatewayUnregisterRef.current = null;
+        resolverRef.current = null;
+        resolve(r);
+      };
+      resolverRef.current = wrappedResolve;
       setRequest(req);
+
+      // Register remote resolver. The handler validates the actor against live
+      // employees + settings via refs, then resolves if valid. If validation
+      // fails, the handler returns without calling wrappedResolve — the local
+      // PIN modal stays open and the operator can still approve in person.
+      gatewayUnregisterRef.current = registerApprovalResolver(approvalId, (response) => {
+        const r = resolverRef.current;
+        if (!r) return; // already resolved locally
+        const trust = validateRemoteApprovalActor({
+          isRemoteEnabled: () =>
+            !!((settingsRef.current as unknown as Record<string, unknown>)?.companionRemoteApprovalEnabled),
+          managerId: response.managerId,
+          employees: employeesRef.current,
+          settings: settingsRef.current,
+          gate: {
+            actionType: req.actionType,
+            requestedByEmployeeId: req.requestedByEmployeeId,
+          },
+        });
+        if (!trust.valid) {
+          console.warn(
+            '[approval-gate] remote actor rejected',
+            trust.reason,
+            response.managerId,
+          );
+          return; // silent reject — local modal stays open
+        }
+        if (response.action === 'approve') {
+          r({ cancelled: false, remote: true, managerId: response.managerId });
+        } else {
+          r({ cancelled: true, reason: 'remote_denied' });
+        }
+      });
     });
-  }, []);
+  }, []); // stable — all dynamic values accessed via refs
 
   const onSubmit = useCallback((pin: string) => {
     const r = resolverRef.current;
