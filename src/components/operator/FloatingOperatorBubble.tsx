@@ -31,6 +31,10 @@ import {
   type OperatorInsight,
   type OperatorInsightTone,
 } from '@/services/operator/operatorActivityHints';
+import { getContext, subscribe } from '@/services/intelligence/liveContext/liveContextStore';
+import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
+import { computeContextSuggestions, getMinimizedPreviewText } from '@/services/intelligence/liveContext/contextSuggestions';
+import type { LiveContext } from '@/services/intelligence/liveContext/contextTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -153,6 +157,7 @@ export default function FloatingOperatorBubble() {
   const { state, dispatch } = useApp();
   const {
     activeTab, cart, customers, sales, layaways, repairs,
+    currentEmployee,
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
   } = state;
   const { t } = useTranslation();
@@ -183,6 +188,10 @@ export default function FloatingOperatorBubble() {
   const [activeContext, setActiveContext] = useState<OperatorActiveContext | null>(null);
   // Brief "Copied!" flash after the Copy-Phone quick action.
   const [copiedFlash, setCopiedFlash] = useState(false);
+
+  // ── Live context (R-INTELLIGENCE-LIVE-CONTEXT-V1) ──────
+  const [liveCtx, setLiveCtx] = useState<LiveContext>(() => getContext());
+  const [previewTick, setPreviewTick] = useState(0);
 
   // ── Overlay (V2) ───────────────────────────────────────
   // Replaces the V1-AWARE right-click menu. Toggled by left-click
@@ -280,6 +289,31 @@ export default function FloatingOperatorBubble() {
 
   // ── Keyframes (one-time) ──────────────────────────────
   useEffect(() => { ensureKeyframes(); }, []);
+
+  // ── Live context engine — init once on mount ───────────
+  useEffect(() => { initLiveContextEngine(); }, []);
+
+  // ── Live context store — subscribe for re-renders ──────
+  useEffect(() => subscribe(setLiveCtx), []);
+
+  // ── Sync AppState → live context store ─────────────────
+  useEffect(() => {
+    syncFromAppState({
+      activeTab,
+      currentEmployee,
+      cart,
+      customers,
+      pendingPhonePaymentCustomerId,
+      pendingPosCustomer,
+    });
+  }, [activeTab, currentEmployee, cart, customers, pendingPhonePaymentCustomerId, pendingPosCustomer]);
+
+  // ── Rotate preview badge text every 4 s ────────────────
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setPreviewTick((t) => t + 1), 4000);
+    return () => clearInterval(id);
+  }, [enabled]);
 
   // ── Hint pipeline (disable cleanup) ───────────────────
   useEffect(() => {
@@ -467,6 +501,17 @@ export default function FloatingOperatorBubble() {
   const insights: OperatorInsight[] = useMemo(
     () => enabled ? computeInsightsForContext(activeContext, inputs) : [],
     [enabled, activeContext, inputs],
+  );
+
+  // Live-context suggestions and badge preview text.
+  const suggestions = useMemo(
+    () => enabled ? computeContextSuggestions(liveCtx, inputs) : [],
+    [enabled, liveCtx, inputs],
+  );
+
+  const previewText = useMemo(
+    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick) : '',
+    [enabled, liveCtx, inputs, previewTick],
   );
 
   const insightToneColor = (tone: OperatorInsightTone): string => {
@@ -741,6 +786,35 @@ export default function FloatingOperatorBubble() {
         />
       </button>
 
+      {/* Context badge — small pill below the bubble, shows customer name
+          or rotating suggestion preview. Hidden when overlay or hint is open. */}
+      {enabled && !isDragging && !isOverlayOpen && !showPill && previewText && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            top: position.y + BUBBLE_SIZE + 5,
+            left: position.x + BUBBLE_SIZE / 2,
+            transform: 'translateX(-50%)',
+            background: 'rgba(15,23,42,0.82)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            borderRadius: '1rem',
+            padding: '0.18rem 0.55rem',
+            color: '#94a3b8',
+            fontSize: '0.68rem',
+            whiteSpace: 'nowrap',
+            maxWidth: 180,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            zIndex: Z_INDEX,
+            backdropFilter: 'blur(4px)',
+            pointerEvents: 'none',
+          }}
+        >
+          {previewText}
+        </div>
+      )}
+
       {/* Ambient hint pill */}
       {showPill && (
         <div
@@ -972,6 +1046,48 @@ export default function FloatingOperatorBubble() {
                   ＋ {t('operator.action.createCustomer')}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Live-context suggestions (R-INTELLIGENCE-LIVE-CONTEXT-V1) */}
+          {suggestions.length > 0 && (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(251,191,36,0.2)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.65rem',
+              display: 'flex', flexDirection: 'column', gap: '0.3rem',
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.1rem' }}>
+                {t('operator.suggestions.title')}
+              </div>
+              {suggestions.map((s) => {
+                const kindColor =
+                  s.kind === 'upsell'     ? '#34d399'
+                  : s.kind === 'retention' ? '#f59e0b'
+                  : s.kind === 'collect'   ? '#60a5fa'
+                  : s.kind === 'follow_up' ? '#a78bfa'
+                  :                          '#a5b4fc';
+                return (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                    <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: kindColor, boxShadow: `0 0 5px ${kindColor}88` }} />
+                    <span style={{ color: '#e2e8f0', flex: 1 }}>{s.text}</span>
+                    {s.actionTab && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! });
+                          setIsOverlayOpen(false);
+                        }}
+                        style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
+                        title="Go there"
+                      >
+                        →
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

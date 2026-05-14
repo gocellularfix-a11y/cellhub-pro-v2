@@ -5040,6 +5040,9 @@ export const translations: TranslationDictionary = {
   // R-OPERATOR-AMBIENT-AWARENESS-V1 — context title for unknown phone
   'operator.context.title.unknown_phone': { en: 'New number detected', es: 'Número nuevo detectado', pt: 'Novo número detectado' },
 
+  // R-INTELLIGENCE-LIVE-CONTEXT-V1 — live context suggestions
+  'operator.suggestions.title': { en: 'Suggestions', es: 'Sugerencias', pt: 'Sugestões' },
+
   // R-OPERATOR-AMBIENT-AWARENESS-V1 — operational insights
   'operator.insights.title': { en: 'Operational insights', es: 'Insights operativos', pt: 'Insights operacionais' },
   'operator.insight.firstTimeCustomer': { en: 'First-time customer detected.', es: 'Cliente nuevo detectado.', pt: 'Cliente novo detectado.' },
