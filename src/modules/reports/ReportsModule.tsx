@@ -303,7 +303,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, currentEmployee, customerReturns, vendorReturns, inventoryLosses },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses },
     dispatch,
   } = useApp();
 
@@ -600,11 +600,20 @@ export default function ReportsModule() {
     }
   }, [editingSale, sales, settings, currentEmployee, dispatch, t, toast]);
 
-  // ── Consume globalSearchTerm ──────────────────────────────
+  // ── Consume globalSearchTerm (+ pendingReportDate for invoice navigation) ──
   useEffect(() => {
     if (!globalSearchTerm) return;
     setTxSearch(globalSearchTerm);
     dispatch({ type: 'SET_GLOBAL_SEARCH', payload: '' });
+    // If a specific sale date was passed (e.g. from BarcodeActionModal), jump
+    // to that date so the invoice is inside the filtered window. Without this
+    // the user lands on today's date and the old invoice is invisible.
+    if (pendingReportDate) {
+      setStartDate(pendingReportDate);
+      setEndDate(pendingReportDate);
+      setReportType('daily');
+      dispatch({ type: 'SET_PENDING_REPORT_DATE', payload: '' });
+    }
     setTimeout(() => {
       document.getElementById('reports-transactions-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 200);

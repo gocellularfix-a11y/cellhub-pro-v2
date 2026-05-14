@@ -54,6 +54,13 @@ export default function BarcodeActionModal() {
 
   const goToReports = () => {
     dispatch({ type: 'SET_GLOBAL_SEARCH', payload: pendingBarcodeInvoice });
+    if (sale?.createdAt) {
+      const d = new Date(sale.createdAt as string);
+      if (!isNaN(d.getTime())) {
+        const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        dispatch({ type: 'SET_PENDING_REPORT_DATE', payload: ymd });
+      }
+    }
     navigate('reports');
   };
 
