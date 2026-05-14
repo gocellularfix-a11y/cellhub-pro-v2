@@ -727,12 +727,17 @@ export default function CompanionCenter() {
     : isPairingOpen ? 'pairing' : 'not_connected';
   const banner = statusPalette(overallStatus);
 
-  // Per-card status:
-  //   connect/pair  — mirror live pairing state
-  //   approvals/storeStatus/messaging/health — follow bridge connection
+  // R-COMPANION-CORE-STABILIZATION-UI-HONEST-V1 — all per-card statuses
+  // now follow the REAL bridgeStatus, not the mock companionConnState /
+  // pairedDevice flag. Previously the 'connect' and 'pair' cards stayed
+  // green ("CONNECTED") even when the real socket was down, while the
+  // feature cards correctly said "NOT CONNECTED" — the UI lied in two
+  // directions simultaneously. Now every card mirrors the actual
+  // transport health.
   const cardStatus = useMemo(() => (id: string, fallback: CardStatus): CardStatus => {
     if (id === 'pair' || id === 'connect') {
-      if (pairedDevice) return 'connected_soon';
+      if (bridgeStatus === 'connected') return 'connected_soon';
+      if (bridgeStatus === 'connecting' || bridgeStatus === 'reconnecting') return 'pairing';
       if (isPairingOpen) return 'pairing';
       return 'not_connected';
     }
@@ -1125,11 +1130,19 @@ export default function CompanionCenter() {
             fontWeight: 700,
             padding: '2px 8px',
             borderRadius: 5,
-            background: companionConnState === 'connected' ? 'rgba(74,222,128,0.12)' : 'rgba(148,163,184,0.10)',
-            color: companionConnState === 'connected' ? '#4ade80' : '#64748b',
-            border: `1px solid ${companionConnState === 'connected' ? 'rgba(74,222,128,0.3)' : 'rgba(148,163,184,0.2)'}`,
+            // R-COMPANION-CORE-STABILIZATION-UI-HONEST-V1 — the Store
+            // Snapshot pill must mirror the real bridge transport, not the
+            // mock state. Previously this said "● Live" while the actual
+            // socket was disconnected.
+            background: bridgeStatus === 'connected' ? 'rgba(74,222,128,0.12)' : 'rgba(148,163,184,0.10)',
+            color: bridgeStatus === 'connected' ? '#4ade80' : '#64748b',
+            border: `1px solid ${bridgeStatus === 'connected' ? 'rgba(74,222,128,0.3)' : 'rgba(148,163,184,0.2)'}`,
           }}>
-            {companionConnState === 'connected' ? '● Live' : companionConnState === 'connecting' ? '○ Connecting…' : '○ Offline'}
+            {bridgeStatus === 'connected'
+              ? '● Live'
+              : (bridgeStatus === 'connecting' || bridgeStatus === 'reconnecting')
+                ? '○ Connecting…'
+                : '○ Offline'}
           </span>
         </div>
 

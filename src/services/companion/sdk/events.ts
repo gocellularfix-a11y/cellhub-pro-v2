@@ -30,6 +30,11 @@ export const EVENTS = {
 
   // ─── Dashboard sync ───────────────────────────────────────────────────────
   DASHBOARD_STATS_UPDATED:       'dashboard:stats_updated',
+  // R-COMPANION-CORE-STABILIZATION-SNAPSHOT-ON-DEMAND-V1 — mobile fires
+  // this immediately after AUTH_REGISTERED so the desktop responds with
+  // its current snapshot. Without this, a mobile that connects after the
+  // desktop's initial emit waits until the next store change to see data.
+  DASHBOARD_REQUEST_SNAPSHOT:    'dashboard:request_snapshot',
 
   // ─── Auth / Session (bridge level) ────────────────────────────────────────
   AUTH_REGISTER:                 'auth:register',

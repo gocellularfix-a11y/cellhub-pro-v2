@@ -89,6 +89,14 @@ let approvalResponseUnsubscribe: (() => void) | null = null;
 let messageUnsubscribe: (() => void) | null = null;
 let lastStatus: PosBridgeStatus = 'idle';
 
+// R-COMPANION-CORE-STABILIZATION-SNAPSHOT-ON-DEMAND-V1 — cache the most
+// recent snapshot so we can re-emit it on demand when a mobile asks for
+// the current state via DASHBOARD_REQUEST_SNAPSHOT. socket.io does not
+// replay events to clients that joined the room after the event was
+// emitted — without this cache, a mobile that connects after the
+// desktop's initial emit sees nothing until the next store change.
+let lastEmittedSnapshot: StoreSnapshotPayload | null = null;
+
 // R-COMPANION-BRIDGE-DEDUP-V1 — in-memory processed-event cache. Prevents
 // the same local event (re-emitted by a flaky producer, queue drain on
 // reconnect, or two consumers both calling _drainCompanionEvent) from
@@ -299,6 +307,20 @@ export function startCompanionBridgeAdapter(args: BridgeAdapterStartArgs): void 
     initApprovalEmitter(client);
     initIntelligenceEmitter(client.getSocket(), client.getStoreId());
     initMessageEmitter(client.getSocket(), args.storeId, '', '');
+
+    // R-COMPANION-CORE-STABILIZATION-SNAPSHOT-ON-DEMAND-V1 — when a mobile
+    // joins the room (after AUTH_REGISTERED) it emits DASHBOARD_REQUEST_SNAPSHOT.
+    // The bridge fans it out to the room and we re-emit the cached snapshot.
+    // If nothing has been emitted yet (cold start), this is a no-op and the
+    // mobile waits for the next store change as before.
+    client.getSocket().on(SDK_EVENTS.DASHBOARD_REQUEST_SNAPSHOT, () => {
+      if (!lastEmittedSnapshot) {
+        console.info('[companion-bridge-adapter] DASHBOARD_REQUEST_SNAPSHOT received — no cached snapshot yet');
+        return;
+      }
+      console.info(`[companion-bridge-adapter] DASHBOARD_REQUEST_SNAPSHOT received — replaying cached snapshot storeId=${lastEmittedSnapshot.storeId}`);
+      client?.getSocket().emit(SDK_EVENTS.DASHBOARD_STATS_UPDATED, lastEmittedSnapshot);
+    });
 
     // R-COMPANION-MESSAGING-SIMPLE-V1 — inbound: bridge routes
     // message:new from mobile to the store room; listen and feed the
@@ -636,6 +658,11 @@ export function sendCompanionMessage(
  * CompanionCenter calls this in a useEffect whenever store data changes.
  */
 export function emitStoreSnapshot(payload: StoreSnapshotPayload): boolean {
+  // R-COMPANION-CORE-STABILIZATION-SNAPSHOT-ON-DEMAND-V1 — always cache,
+  // even when not yet connected. A request from a mobile that arrives
+  // post-connect can then replay the latest known state without waiting
+  // for a store change.
+  lastEmittedSnapshot = payload;
   if (!client || client.getStatus() !== 'connected' || !currentArgs) return false;
   const socket = client.getSocket();
   socket.emit(SDK_EVENTS.DASHBOARD_STATS_UPDATED, payload);
