@@ -13,6 +13,7 @@ import {
 } from './storeRhythmSignals';
 import { selectStoreMode, getRecommendedActionsForMode } from './storeRhythmModes';
 import { toMs } from '@/services/intelligence/customerScoring/customerOpportunitySignals';
+import { computeTemporalTrend } from '@/services/intelligence/temporalTrends/temporalTrendEngine';
 
 const MIN_MS = 60_000;
 const DAY_MS = 86_400_000;
@@ -97,6 +98,13 @@ export function computeStoreRhythm(ctx: StoreRhythmContext): StoreRhythmSnapshot
     (repairLoadScore * 0.4) + (paymentFlowScore * 0.4) + (ctx.pendingWorkflows.length * 10),
   ));
 
+  const temporalTrend = computeTemporalTrend({
+    sales: ctx.sales,
+    recentActions: ctx.recentActions,
+    pendingWorkflows: ctx.pendingWorkflows,
+    revenueOpportunities: ctx.revenueOpportunities,
+  });
+
   return {
     currentMode,
     salesPaceScore,
@@ -107,6 +115,7 @@ export function computeStoreRhythm(ctx: StoreRhythmContext): StoreRhythmSnapshot
     operationalLoadScore,
     detectedRhythmSignals: signals,
     recommendedActions,
+    temporalTrend,
     generatedAt: now,
   };
 }

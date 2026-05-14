@@ -255,6 +255,15 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   rhythm_revenue_recovery: [openCustomers, openRepairs],
   rhythm_low_activity:     [openCustomers],
 
+  // ── Temporal trend modes (R-INTELLIGENCE-TEMPORAL-TRENDS-V1) ────────
+  trend_risk_increasing:        [openRepairs, openLayaways],
+  trend_worsening:              [openCustomers, openRepairs],
+  trend_slowing:                [openCustomers],
+  trend_opportunity_increasing: [openPOS, openCustomers],
+  trend_recovering:             [openCustomers],
+  trend_accelerating:           [openPOS],
+  trend_improving:              [],  // positive — no urgent nav needed
+
   // ── Operational signals (R-INTELLIGENCE-EMPLOYEE-OPS-V1) ─────────────
   op_unfinished_workflows:          [actResumeExternalPayment],
   op_repair_delays:                 [openRepairs],

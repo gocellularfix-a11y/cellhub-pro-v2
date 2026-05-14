@@ -56,6 +56,7 @@ import type { PendingWorkflow, WorkflowResumeContext } from '@/services/intellig
 import { computeOperationalHealth } from '@/services/intelligence/employeeOps/employeeOpsEngine';
 import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
 import { getRhythmModeLabel, isRhythmActionable } from '@/services/intelligence/storeRhythm/storeRhythmSelectors';
+import { getTrendModeLabel, isTemporalTrendActionable } from '@/services/intelligence/temporalTrends/temporalTrendSelectors';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -706,13 +707,15 @@ export default function FloatingOperatorBubble() {
     return map[tier] ?? null;
   }, [activeCustomerProfile]);
 
-  // Override the badge preview text — priority: carrier payment > rhythm mode label > normal rotation.
-  // Rhythm label only shows when no active customer so customer context always wins.
+  // Override the badge preview text.
+  // Priority: carrier payment > customer ctx > rhythm mode > temporal trend > normal rotation.
   const effectivePreviewText = (pendingExternalPayment && returnDetected)
     ? (locale === 'es' ? 'Confirmar pago del carrier' : 'Confirm carrier payment')
     : (!liveCtx.activeCustomer && isRhythmActionable(opHealth.storeRhythm))
       ? getRhythmModeLabel(opHealth.storeRhythm.currentMode)
-      : previewText;
+      : (!liveCtx.activeCustomer && isTemporalTrendActionable(opHealth.storeRhythm.temporalTrend))
+        ? getTrendModeLabel(opHealth.storeRhythm.temporalTrend.trendMode)
+        : previewText;
 
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen

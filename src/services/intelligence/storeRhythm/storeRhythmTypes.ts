@@ -2,6 +2,7 @@
 // Pure TypeScript types — no React, no DOM, no I/O.
 
 import type { Repair, Layaway, Sale } from '@/store/types';
+import type { TemporalTrendSnapshot } from '@/services/intelligence/temporalTrends/temporalTrendTypes';
 import type { LiveAction } from '@/services/intelligence/liveContext/contextTypes';
 import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
 import type { RevenueOpportunity } from '@/services/intelligence/revenueOpportunities/revenueOpportunityTypes';
@@ -75,5 +76,7 @@ export interface StoreRhythmSnapshot {
   detectedRhythmSignals: RhythmSignal[];
   /** Recommended action IDs for the current mode (informational). */
   recommendedActions: string[];
+  /** Temporal trend overlay — momentum direction across key dimensions. */
+  temporalTrend: TemporalTrendSnapshot;
   generatedAt: number;
 }

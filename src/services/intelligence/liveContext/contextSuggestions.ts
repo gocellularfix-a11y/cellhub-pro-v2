@@ -245,6 +245,25 @@ export function computeContextSuggestions(
     }
   }
 
+  // ── Temporal trend suggestions (R-INTELLIGENCE-TEMPORAL-TRENDS-V1) ─────────
+  // Surface only when actionable (non-stable) and not redundant with rhythm mode.
+  if (opHealth?.storeRhythm?.temporalTrend && opHealth.storeRhythm.temporalTrend.trendMode !== 'stable') {
+    type SuggKind = 'upsell' | 'follow_up' | 'collect' | 'retention' | 'operational';
+    const TREND_DEFS: Partial<Record<string, { text: string; kind: SuggKind; priority: number }>> = {
+      risk_increasing:       { text: 'Repair risk increasing — review delayed repairs', kind: 'operational', priority: 8 },
+      worsening:             { text: 'Store conditions worsening — take action now', kind: 'operational', priority: 8 },
+      opportunity_increasing:{ text: 'Opportunity pressure rising — act now', kind: 'upsell', priority: 8 },
+      slowing:               { text: 'Sales momentum slowing — follow up customers', kind: 'retention', priority: 7 },
+      recovering:            { text: 'Store recovering — keep pushing follow-ups', kind: 'follow_up', priority: 6 },
+      improving:             { text: 'Store improving — capitalize on momentum', kind: 'upsell', priority: 5 },
+      accelerating:          { text: 'Momentum accelerating — great time to upsell', kind: 'upsell', priority: 6 },
+    };
+    const def = TREND_DEFS[opHealth.storeRhythm.temporalTrend.trendMode];
+    if (def) {
+      out.push({ id: `trend_${opHealth.storeRhythm.temporalTrend.trendMode}`, text: def.text, kind: def.kind, priority: def.priority });
+    }
+  }
+
   // Sort by priority descending, deduplicate by id, take top 6
   // (bumped from 5 to give operational signals room alongside customer signals)
   const seen = new Set<string>();
