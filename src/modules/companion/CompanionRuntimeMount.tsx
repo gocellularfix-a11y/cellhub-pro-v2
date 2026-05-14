@@ -145,7 +145,12 @@ export default function CompanionRuntimeMount() {
       clockedInCount: storeSnapshot.clockedInCount,
       clockedInNames: storeSnapshot.clockedInNames,
       pendingApprovalsCount: storeSnapshot.pendingApprovalsCount,
-      storeId: currentStoreId || '',
+      // R-COMPANION-SNAPSHOT-STORE-ID-FIX-V1: use the SAME storeId the
+      // bridge registered with (getDesktopIdentity().storeId), NOT the
+      // app-state currentStoreId. They can drift — the bridge server
+      // routes by registered room and may reject (or kick the socket)
+      // when the payload's storeId doesn't match the registered one.
+      storeId: getDesktopIdentity()?.storeId || currentStoreId || '',
       updatedAt: new Date().toISOString(),
     });
   }, [bridgeStatus, storeSnapshot, currentStoreId]);
