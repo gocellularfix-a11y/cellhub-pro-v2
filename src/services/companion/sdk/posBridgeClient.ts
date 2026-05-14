@@ -78,8 +78,23 @@ export function createPosBridgeClient(config: PosBridgeClientConfig): PosBridgeC
     socket.emit(EVENTS.AUTH_REGISTER, register);
   });
 
+  // R-COMPANION-CORE-STABILIZATION-KICK-RECONNECT-V1 — server-kick backoff state.
+  // socket.io v4 does NOT auto-reconnect when reason === 'io server disconnect'
+  // (the bridge actively called socket.disconnect() on us). We retry manually
+  // with exponential backoff; the counter resets on every successful AUTH.
+  const KICK_RECONNECT_MAX = 8;
+  const KICK_RECONNECT_BASE_MS = 1000;
+  let kickReconnectAttempts = 0;
+  let kickReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
   socket.on(EVENTS.AUTH_REGISTERED, () => {
     setStatus('connected');
+    // Successful auth — clear the kick-reconnect backoff counter.
+    kickReconnectAttempts = 0;
+    if (kickReconnectTimer) {
+      clearTimeout(kickReconnectTimer);
+      kickReconnectTimer = null;
+    }
   });
 
   socket.on(EVENTS.AUTH_REJECTED, (payload: RejectedPayload) => {
@@ -101,10 +116,33 @@ export function createPosBridgeClient(config: PosBridgeClientConfig): PosBridgeC
   // 'ping timeout', 'io server disconnect', 'parse error', etc.) and an
   // Error to connect_error. Before this, every drop logged only
   // "status → disconnected" with no cause.
+  //
+  // R-COMPANION-CORE-STABILIZATION-KICK-RECONNECT-V1 — when reason is
+  // 'io server disconnect' the bridge actively kicked us and socket.io's
+  // built-in reconnection logic does NOT retry. Without this manual
+  // backoff retry, the desktop stayed disconnected forever (or until the
+  // next outbound emit happened to silently revive the socket), which
+  // is why "the mobile only sees data when I make a sale" was happening.
   socket.on('disconnect', (reason: string) => {
     if (disposed) return;
     console.info(`[posBridgeClient] disconnect — reason=${reason}`);
     setStatus('disconnected');
+
+    if (reason === 'io server disconnect') {
+      if (kickReconnectAttempts >= KICK_RECONNECT_MAX) {
+        console.warn(`[posBridgeClient] server kicked ${KICK_RECONNECT_MAX} times — giving up auto-reconnect (check bridge logs / membership / store binding)`);
+        return;
+      }
+      const backoff = KICK_RECONNECT_BASE_MS * Math.pow(2, kickReconnectAttempts);
+      kickReconnectAttempts++;
+      console.info(`[posBridgeClient] server-kick reconnect in ${backoff}ms (attempt ${kickReconnectAttempts}/${KICK_RECONNECT_MAX})`);
+      if (kickReconnectTimer) clearTimeout(kickReconnectTimer);
+      kickReconnectTimer = setTimeout(() => {
+        if (disposed) return;
+        setStatus('reconnecting');
+        socket.connect();
+      }, backoff);
+    }
   });
 
   socket.on('connect_error', (err: Error) => {
@@ -129,6 +167,12 @@ export function createPosBridgeClient(config: PosBridgeClientConfig): PosBridgeC
     },
     disconnect() {
       disposed = true;
+      // R-COMPANION-CORE-STABILIZATION-KICK-RECONNECT-V1 — cancel any pending
+      // server-kick reconnect attempt so a torn-down adapter can't revive.
+      if (kickReconnectTimer) {
+        clearTimeout(kickReconnectTimer);
+        kickReconnectTimer = null;
+      }
       statusListeners.clear();
       rejectListeners.clear();
       socket.removeAllListeners();
