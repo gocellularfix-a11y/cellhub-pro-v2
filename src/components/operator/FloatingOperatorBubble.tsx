@@ -37,6 +37,10 @@ import { computeContextSuggestions, getMinimizedPreviewText } from '@/services/i
 import type { LiveContext } from '@/services/intelligence/liveContext/contextTypes';
 import { getCustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringSelectors';
 import type { CustomerBusinessProfile, CustomerTier } from '@/services/intelligence/customerScoring/customerScoringTypes';
+import { buildActionExecutionContext } from '@/services/intelligence/actionExecution/actionExecutionContext';
+import { resolveSuggestionActions } from '@/services/intelligence/actionExecution/actionExecutionEngine';
+import { logBubbleAction } from '@/services/intelligence/actionExecution/actionExecutionQueue';
+import type { OperatorExecutableAction } from '@/services/intelligence/actionExecution/actionExecutionTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -525,6 +529,46 @@ export default function FloatingOperatorBubble() {
     () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick, activeCustomerProfile ?? undefined) : '',
     [enabled, liveCtx, inputs, previewTick, activeCustomerProfile],
   );
+
+  // Action execution context — built from bubble runtime state.
+  // Resolves effective customer from liveCtx (preferred) or activeContext (fallback).
+  const execCtx = useMemo(
+    () => buildActionExecutionContext(
+      dispatch as (action: { type: string; payload?: unknown }) => void,
+      liveCtx.activeCustomer?.id ?? activeContext?.customerId ?? null,
+      customers,
+      repairs,
+      layaways,
+      activeCustomerProfile,
+    ),
+    // dispatch is stable; the rest are reactive deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveCtx.activeCustomer?.id, activeContext?.customerId, customers, repairs, layaways, activeCustomerProfile],
+  );
+
+  // Pair each suggestion with its canExecute-filtered action buttons.
+  const suggestionsWithActions = useMemo(
+    () => resolveSuggestionActions(suggestions, execCtx),
+    [suggestions, execCtx],
+  );
+
+  // Tracks which suggestion's action was last clicked (for "Opened" flash).
+  const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
+
+  // Execute a bubble action: run it, log it, flash feedback, close overlay.
+  // Declared after execCtx so the dep array reference is valid.
+  const handleActionClick = useCallback((
+    action: OperatorExecutableAction,
+    suggestionId: string,
+  ) => {
+    try { action.execute(execCtx); } catch { /* safe — never throw */ }
+    logBubbleAction(action.id, execCtx.customerId, suggestionId);
+    setFlashedSuggId(suggestionId);
+    setTimeout(() => {
+      setFlashedSuggId(null);
+      setIsOverlayOpen(false);
+    }, 700);
+  }, [execCtx]);
 
   const insightToneColor = (tone: OperatorInsightTone): string => {
     switch (tone) {
@@ -1094,41 +1138,68 @@ export default function FloatingOperatorBubble() {
             </div>
           )}
 
-          {/* Live-context suggestions (R-INTELLIGENCE-LIVE-CONTEXT-V1) */}
-          {suggestions.length > 0 && (
+          {/* Live-context suggestions + executable actions (R-INTELLIGENCE-ACTION-EXECUTION-V1) */}
+          {suggestionsWithActions.length > 0 && (
             <div style={{
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(251,191,36,0.2)',
               borderRadius: '0.5rem',
               padding: '0.5rem 0.65rem',
-              display: 'flex', flexDirection: 'column', gap: '0.3rem',
+              display: 'flex', flexDirection: 'column', gap: '0.35rem',
             }}>
               <div style={{ fontSize: '0.68rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.1rem' }}>
                 {t('operator.suggestions.title')}
               </div>
-              {suggestions.map((s) => {
+              {suggestionsWithActions.map(({ suggestion: s, actions: sActions }) => {
                 const kindColor =
                   s.kind === 'upsell'     ? '#34d399'
                   : s.kind === 'retention' ? '#f59e0b'
                   : s.kind === 'collect'   ? '#60a5fa'
                   : s.kind === 'follow_up' ? '#a78bfa'
                   :                          '#a5b4fc';
+                const isFlashed = flashedSuggId === s.id;
                 return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
-                    <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: kindColor, boxShadow: `0 0 5px ${kindColor}88` }} />
-                    <span style={{ color: '#e2e8f0', flex: 1 }}>{s.text}</span>
-                    {s.actionTab && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! });
-                          setIsOverlayOpen(false);
-                        }}
-                        style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
-                        title="Go there"
-                      >
-                        →
-                      </button>
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {/* Suggestion text row */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                      <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: kindColor, boxShadow: `0 0 5px ${kindColor}88` }} />
+                      <span style={{ color: '#e2e8f0', flex: 1 }}>{s.text}</span>
+                      {sActions.length === 0 && s.actionTab && (
+                        <button
+                          type="button"
+                          onClick={() => { dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! }); setIsOverlayOpen(false); }}
+                          style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
+                          title="Go there"
+                        >
+                          →
+                        </button>
+                      )}
+                    </div>
+                    {/* Executable action pill buttons */}
+                    {sActions.length > 0 && (
+                      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', paddingLeft: '0.95rem' }}>
+                        {sActions.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => handleActionClick(a, s.id)}
+                            style={{
+                              padding: '0.22rem 0.55rem',
+                              borderRadius: '0.9rem',
+                              fontSize: '0.70rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: `1px solid ${kindColor}55`,
+                              background: isFlashed ? `${kindColor}22` : 'rgba(255,255,255,0.06)',
+                              color: isFlashed ? kindColor : '#cbd5e1',
+                              transition: 'background 0.15s, color 0.15s',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {isFlashed ? '✓ Opened' : a.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );

@@ -1,0 +1,163 @@
+// CellHub Intelligence — Action Execution Registry
+// Maps suggestion IDs → concrete OperatorExecutableAction implementations.
+// All actions are deterministic, fail-safe, and never mutate financial state.
+
+import type { OperatorExecutableAction, ActionExecutionContext } from './actionExecutionTypes';
+import { openWhatsApp } from '@/services/whatsapp';
+
+// ── Navigation primitive ───────────────────────────────────────────────────────
+
+function navigate(
+  tab: string,
+  ctx: ActionExecutionContext,
+  delayedEvent?: () => void,
+): void {
+  ctx.dispatch({ type: 'SET_ACTIVE_TAB', payload: tab });
+  if (delayedEvent) {
+    // 80 ms matches the existing module-mount defer pattern in the bubble.
+    setTimeout(delayedEvent, 80);
+  }
+}
+
+// ── Concrete action implementations ───────────────────────────────────────────
+
+const openCustomer: OperatorExecutableAction = {
+  id: 'act_open_customer',
+  label: 'Open Customer',
+  category: 'customer',
+  priority: 8,
+  safetyLevel: 'safe',
+  canExecute: (ctx) => !!ctx.customerId,
+  execute: (ctx) => navigate('customers', ctx),
+};
+
+const viewHistory: OperatorExecutableAction = {
+  id: 'act_view_history',
+  label: 'View History',
+  category: 'customer',
+  priority: 7,
+  safetyLevel: 'safe',
+  canExecute: (ctx) => !!ctx.customerId,
+  execute: (ctx) => {
+    navigate('customers', ctx, () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('cellhub:open-customer-history', {
+            detail: { customerId: ctx.customerId },
+          }),
+        );
+      } catch { /* non-CustomEvent environment — silent */ }
+    });
+  },
+};
+
+const whatsAppFollowUp: OperatorExecutableAction = {
+  id: 'act_whatsapp_follow_up',
+  label: 'WhatsApp',
+  category: 'customer',
+  priority: 6,
+  safetyLevel: 'safe',
+  canExecute: (ctx) => !!ctx.customerPhone,
+  execute: (ctx) => {
+    if (!ctx.customerPhone) return;
+    const firstName = ctx.customerName?.split(' ')[0] || 'there';
+    const msg =
+      `Hi ${firstName}, this is Go Cellular! Just checking in — is there anything we can help you with today?`;
+    try {
+      openWhatsApp(ctx.customerPhone, msg);
+    } catch { /* window.open unavailable — silent */ }
+  },
+};
+
+const openRepairs: OperatorExecutableAction = {
+  id: 'act_open_repairs',
+  label: 'Open Repairs',
+  category: 'repairs',
+  priority: 7,
+  safetyLevel: 'safe',
+  canExecute: () => true,
+  execute: (ctx) => navigate('repairs', ctx),
+};
+
+const openLayaways: OperatorExecutableAction = {
+  id: 'act_open_layaways',
+  label: 'Layaways',
+  category: 'payments',
+  priority: 6,
+  safetyLevel: 'safe',
+  canExecute: () => true,
+  execute: (ctx) => navigate('layaways', ctx),
+};
+
+const openPhonePayments: OperatorExecutableAction = {
+  id: 'act_open_phone_payments',
+  label: 'Phone Payments',
+  category: 'payments',
+  priority: 5,
+  safetyLevel: 'safe',
+  canExecute: () => true,
+  execute: (ctx) => navigate('phone-payments', ctx),
+};
+
+const openPOS: OperatorExecutableAction = {
+  id: 'act_open_pos',
+  label: 'Open POS',
+  category: 'inventory',
+  priority: 5,
+  safetyLevel: 'safe',
+  canExecute: () => true,
+  execute: (ctx) => navigate('pos', ctx),
+};
+
+/** Navigate to repairs and emit open-customer-history so repairs module can filter. */
+const openRepairFollowUp: OperatorExecutableAction = {
+  id: 'act_repair_follow_up',
+  label: 'Repair Follow-Up',
+  category: 'repairs',
+  priority: 8,
+  safetyLevel: 'safe',
+  canExecute: (ctx) => ctx.repairs.some((r) => r.customerId === ctx.customerId),
+  execute: (ctx) => navigate('repairs', ctx),
+};
+
+// ── Registry ──────────────────────────────────────────────────────────────────
+// Keyed by the ContextSuggestion.id from contextSuggestions.ts.
+// Each entry lists candidate actions in priority order; the engine
+// filters by canExecute and caps at maxActions before rendering.
+
+const REGISTRY: Record<string, OperatorExecutableAction[]> = {
+  // ── Customer scoring suggestions (R-INTELLIGENCE-CUSTOMER-SCORING-V1) ──
+  scoring_vip_retention:     [viewHistory, openCustomer],
+  scoring_churn_high:        [openCustomer, whatsAppFollowUp],
+  scoring_churn_medium:      [openCustomer, whatsAppFollowUp],
+  scoring_lost_recovery:     [whatsAppFollowUp, openCustomer],
+  scoring_collection_high:   [openRepairs, openLayaways],
+  scoring_collection_medium: [openRepairs, openLayaways],
+  scoring_upsell_strong:     [openPOS, openCustomer],
+
+  // ── Existing context suggestions (contextSuggestions.ts) ──────────────
+  retention_inactive:           [openCustomer, whatsAppFollowUp],
+  upsell_accessories_phonepay:  [openPOS],
+  multiline_promo:              [openPhonePayments, openCustomer],
+  repair_accessories_upsell:    [openPOS],
+  follow_up_repair_warranty:    [openRepairFollowUp, viewHistory],
+  upsell_opportunity:           [openPOS],
+  collect_email:                [openCustomer],
+  post_sale_review:             [],  // informational — no navigation shortcut
+};
+
+/**
+ * Return the applicable, canExecute-filtered actions for a given suggestion.
+ * Pure function — safe inside useMemo / render.
+ */
+export function getActionsForSuggestion(
+  suggestionId: string,
+  ctx: ActionExecutionContext,
+  maxActions = 2,
+): OperatorExecutableAction[] {
+  const candidates = REGISTRY[suggestionId] ?? [];
+  return candidates
+    .filter((a) => a.canExecute(ctx))
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, maxActions);
+}
