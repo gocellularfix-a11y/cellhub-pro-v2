@@ -7,28 +7,67 @@
 // src/modules/companion. Companion Lite stands alone.
 // ============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useApp } from '@/store/AppProvider';
 import type { CompanionLiteDesktopSession } from '@/types/companionLite';
+import {
+  loadDesktopSession,
+  clearDesktopSession,
+} from '@/services/companionLite/identityStore';
+import {
+  startPairing,
+  getPairStatus,
+} from '@/services/companionLite/pairingService';
 
 type Tab = 'status' | 'approvals' | 'messages';
+type PairingPhase = 'idle' | 'starting' | 'waiting' | 'claimed' | 'expired' | 'error';
+
+const DEFAULT_BRIDGE_URL = 'https://cellhub-companion-production.up.railway.app';
+const POLL_STATUS_MS = 3000;
 
 export default function CompanionLitePage() {
-  const [session] = useState<CompanionLiteDesktopSession | null>(null);
+  const { state: { settings, currentStoreId } } = useApp();
+  const [session, setSession] = useState<CompanionLiteDesktopSession | null>(null);
   const [tab, setTab] = useState<Tab>('status');
 
-  // Pairing UI is wired in Step 5. For now we render the shell + placeholders
-  // so the menu entry has something honest to show.
+  useEffect(() => {
+    setSession(loadDesktopSession());
+  }, []);
+
   const isPaired = session !== null;
+
+  const handleSignOut = () => {
+    clearDesktopSession();
+    setSession(null);
+  };
 
   return (
     <div style={shellStyle}>
-      <Header isPaired={isPaired} />
-      {!isPaired ? <NotPairedNotice /> : <PairedShell tab={tab} onTab={setTab} />}
+      <Header isPaired={isPaired} session={session} onSignOut={handleSignOut} />
+      {!isPaired
+        ? (
+          <PairingPanel
+            bridgeUrl={DEFAULT_BRIDGE_URL}
+            storeId={currentStoreId || settings.storeName || 'store'}
+            storeName={settings.storeName || currentStoreId || 'Store'}
+            onPaired={setSession}
+          />
+        )
+        : <PairedShell session={session!} tab={tab} onTab={setTab} />
+      }
     </div>
   );
 }
 
-function Header({ isPaired }: { isPaired: boolean }) {
+// ── Header ───────────────────────────────────────────────────────────
+
+function Header({
+  isPaired, session, onSignOut,
+}: {
+  isPaired: boolean;
+  session: CompanionLiteDesktopSession | null;
+  onSignOut: () => void;
+}) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
       <span style={{ fontSize: 30 }}>📲</span>
@@ -43,25 +82,142 @@ function Header({ isPaired }: { isPaired: boolean }) {
       <span style={pillStyle(isPaired ? '#22c55e' : '#94a3b8')}>
         {isPaired ? '● Paired' : '○ Not paired'}
       </span>
+      {isPaired && session && (
+        <button onClick={onSignOut} style={signOutButtonStyle}>
+          Unpair
+        </button>
+      )}
     </div>
   );
 }
 
-function NotPairedNotice() {
-  return (
-    <div style={cardStyle}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
-        Not paired yet
+// ── Pairing flow ─────────────────────────────────────────────────────
+
+function PairingPanel({
+  bridgeUrl,
+  storeId,
+  storeName,
+  onPaired,
+}: {
+  bridgeUrl: string;
+  storeId: string;
+  storeName: string;
+  onPaired: (s: CompanionLiteDesktopSession) => void;
+}) {
+  const [phase, setPhase] = useState<PairingPhase>('idle');
+  const [code, setCode] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingSession, setPendingSession] = useState<CompanionLiteDesktopSession | null>(null);
+
+  const handleStart = async () => {
+    setPhase('starting');
+    setError(null);
+    try {
+      const result = await startPairing({ bridgeUrl, storeId, storeName });
+      setCode(result.code);
+      setExpiresAt(result.expiresAt);
+      setPendingSession(result.session);
+      setPhase('waiting');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(msg);
+      setPhase('error');
+    }
+  };
+
+  // Poll /pair/status until claimed / expired.
+  useEffect(() => {
+    if (phase !== 'waiting' || !code || !pendingSession) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const status = await getPairStatus(bridgeUrl, code);
+        if (cancelled) return;
+        if (status.status === 'claimed') {
+          setPhase('claimed');
+          onPaired(pendingSession);
+        } else if (status.status === 'expired') {
+          setPhase('expired');
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+    void tick();
+    const handle = setInterval(tick, POLL_STATUS_MS);
+    return () => { cancelled = true; clearInterval(handle); };
+  }, [phase, code, pendingSession, bridgeUrl, onPaired]);
+
+  if (phase === 'idle' || phase === 'error') {
+    return (
+      <div style={cardStyle}>
+        <div style={titleStyle}>Pair this terminal</div>
+        <div style={bodyTextStyle}>
+          Generates a 6-digit code that the manager enters on the Companion mobile app.
+        </div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+          <span>Store ID: <code style={codeInlineStyle}>{storeId}</code></span>
+          <span>· Bridge: <code style={codeInlineStyle}>{bridgeUrl.replace(/^https?:\/\//, '')}</code></span>
+        </div>
+        {error && (
+          <div style={errorBoxStyle}>{error}</div>
+        )}
+        <button onClick={handleStart} style={primaryButtonStyle}>
+          Start Pairing
+        </button>
       </div>
-      <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
-        Pairing UI ships in Step 5. After that, this screen will show a 6-digit
-        code + QR for the manager to scan from the Companion mobile app.
+    );
+  }
+
+  if (phase === 'starting') {
+    return <div style={cardStyle}>Generating code…</div>;
+  }
+
+  if (phase === 'waiting') {
+    return (
+      <div style={cardStyle}>
+        <div style={titleStyle}>Code ready — enter it on your phone</div>
+        <div style={{ textAlign: 'center', margin: '20px 0' }}>
+          <div style={codeBigStyle}>{code}</div>
+          {expiresAt && (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+              Expires {new Date(expiresAt).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+        <div style={bodyTextStyle}>
+          Open Companion Lite on your phone → enter the bridge URL + this code.
+          The desktop will detect the claim automatically.
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (phase === 'expired') {
+    return (
+      <div style={cardStyle}>
+        <div style={titleStyle}>Code expired</div>
+        <div style={bodyTextStyle}>
+          The pairing code timed out without being claimed. Click below to generate a fresh one.
+        </div>
+        <button onClick={handleStart} style={primaryButtonStyle}>Generate New Code</button>
+      </div>
+    );
+  }
+
+  return <div style={cardStyle}>Paired ✓</div>;
 }
 
-function PairedShell({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
+// ── Paired shell ─────────────────────────────────────────────────────
+
+function PairedShell({
+  session, tab, onTab,
+}: {
+  session: CompanionLiteDesktopSession;
+  tab: Tab;
+  onTab: (t: Tab) => void;
+}) {
   return (
     <>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -77,17 +233,22 @@ function PairedShell({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
         ))}
       </div>
       <div style={cardStyle}>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+          Paired to <code style={codeInlineStyle}>{session.storeId}</code>
+          {' · since '}
+          {new Date(session.pairedAt).toLocaleTimeString()}
+        </div>
         <div style={{ fontSize: 13, color: '#94a3b8' }}>
-          {tab === 'status' && 'Status panel — wired in Step 5/8.'}
-          {tab === 'approvals' && 'Approvals panel — wired in Step 7.'}
-          {tab === 'messages' && 'Messages panel — wired in Step 8.'}
+          {tab === 'status' && 'Status panel — push wired in step 8.'}
+          {tab === 'approvals' && 'Approvals panel — wired in step 7.'}
+          {tab === 'messages' && 'Messages panel — wired in step 8.'}
         </div>
       </div>
     </>
   );
 }
 
-// ── Styles (inline; no shared stylesheet imports from legacy companion) ──
+// ── Styles ───────────────────────────────────────────────────────────
 
 const shellStyle: React.CSSProperties = {
   display: 'flex',
@@ -104,6 +265,30 @@ const cardStyle: React.CSSProperties = {
   padding: '1rem 1.1rem',
 };
 
+const titleStyle: React.CSSProperties = {
+  fontSize: 14, fontWeight: 700, color: '#e2e8f0', marginBottom: 8,
+};
+
+const bodyTextStyle: React.CSSProperties = {
+  fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 12,
+};
+
+const codeBigStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 48,
+  fontWeight: 800,
+  letterSpacing: 12,
+  color: '#38bdf8',
+};
+
+const codeInlineStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  background: 'rgba(148,163,184,0.10)',
+  padding: '1px 6px',
+  borderRadius: 4,
+  fontSize: 11,
+};
+
 const pillStyle = (color: string): React.CSSProperties => ({
   fontSize: 12,
   fontWeight: 700,
@@ -113,6 +298,37 @@ const pillStyle = (color: string): React.CSSProperties => ({
   color,
   border: `1px solid ${color}40`,
 });
+
+const primaryButtonStyle: React.CSSProperties = {
+  background: '#38bdf8',
+  border: 'none',
+  borderRadius: 8,
+  padding: '10px 18px',
+  color: '#000',
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+const signOutButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid rgba(148,163,184,0.25)',
+  borderRadius: 6,
+  padding: '5px 10px',
+  color: '#94a3b8',
+  fontSize: 11,
+  cursor: 'pointer',
+};
+
+const errorBoxStyle: React.CSSProperties = {
+  background: 'rgba(239, 68, 68, 0.10)',
+  border: '1px solid rgba(239, 68, 68, 0.30)',
+  borderRadius: 8,
+  padding: '8px 10px',
+  fontSize: 12,
+  color: '#fca5a5',
+  marginBottom: 12,
+};
 
 const tabButtonStyle = (active: boolean): React.CSSProperties => ({
   flex: 1,
