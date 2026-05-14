@@ -4,6 +4,13 @@
 
 import type { OperatorExecutableAction, ActionExecutionContext } from './actionExecutionTypes';
 import { openWhatsApp } from '@/services/whatsapp';
+import {
+  getPendingExternalPaymentWorkflow,
+  completeWorkflow,
+  cancelWorkflow,
+  resumeWorkflow,
+} from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { resetReturnCooldown } from '@/services/intelligence/workflowContinuity/externalFlowAwareness';
 
 // ── Navigation primitive ───────────────────────────────────────────────────────
 
@@ -120,6 +127,85 @@ const openRepairFollowUp: OperatorExecutableAction = {
   execute: (ctx) => navigate('repairs', ctx),
 };
 
+// ── Workflow resumption actions (R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1) ───────
+// Read-only store access — never mutate financial state.
+
+const actResumeWorkflow: OperatorExecutableAction = {
+  id: 'act_resume_workflow',
+  label: 'Resume Workflow',
+  category: 'operational',
+  priority: 10,
+  safetyLevel: 'safe',
+  canExecute: () => !!getPendingExternalPaymentWorkflow(),
+  execute: (ctx) => {
+    const w = getPendingExternalPaymentWorkflow();
+    if (!w) return;
+    resumeWorkflow(w.id);
+    navigate('phone-payments', ctx);
+  },
+};
+
+const actResumeExternalPayment: OperatorExecutableAction = {
+  id: 'act_resume_external_payment',
+  label: 'Resume Payment',
+  category: 'payments',
+  priority: 10,
+  safetyLevel: 'safe',
+  canExecute: () => !!getPendingExternalPaymentWorkflow(),
+  execute: (ctx) => {
+    const w = getPendingExternalPaymentWorkflow();
+    if (!w) return;
+    resumeWorkflow(w.id);
+    navigate('phone-payments', ctx);
+  },
+};
+
+const actMarkExternalPaymentPaid: OperatorExecutableAction = {
+  id: 'act_mark_external_payment_paid',
+  label: 'Mark Paid & Next',
+  category: 'payments',
+  priority: 9,
+  safetyLevel: 'safe',
+  canExecute: () => !!getPendingExternalPaymentWorkflow(),
+  execute: () => {
+    const w = getPendingExternalPaymentWorkflow();
+    if (!w) return;
+    completeWorkflow(w.id);
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:workflow-external-payment-confirm'));
+    } catch { /* non-CustomEvent environment — silent */ }
+  },
+};
+
+const actKeepExternalPaymentPending: OperatorExecutableAction = {
+  id: 'act_keep_external_payment_pending',
+  label: 'Still Processing',
+  category: 'payments',
+  priority: 8,
+  safetyLevel: 'safe',
+  canExecute: () => !!getPendingExternalPaymentWorkflow(),
+  execute: () => {
+    const w = getPendingExternalPaymentWorkflow();
+    if (!w) return;
+    resumeWorkflow(w.id); // extend TTL
+    resetReturnCooldown();
+  },
+};
+
+const actCancelWorkflow: OperatorExecutableAction = {
+  id: 'act_cancel_workflow',
+  label: 'Cancel',
+  category: 'operational',
+  priority: 7,
+  safetyLevel: 'safe',
+  canExecute: () => !!getPendingExternalPaymentWorkflow(),
+  execute: () => {
+    const w = getPendingExternalPaymentWorkflow();
+    if (!w) return;
+    cancelWorkflow(w.id);
+  },
+};
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 // Keyed by the ContextSuggestion.id from contextSuggestions.ts.
 // Each entry lists candidate actions in priority order; the engine
@@ -144,6 +230,10 @@ const REGISTRY: Record<string, OperatorExecutableAction[]> = {
   upsell_opportunity:           [openPOS],
   collect_email:                [openCustomer],
   post_sale_review:             [],  // informational — no navigation shortcut
+
+  // ── Workflow resumption (R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1) ──────
+  workflow_external_payment: [actResumeExternalPayment, actMarkExternalPaymentPaid, actKeepExternalPaymentPending, actCancelWorkflow],
+  workflow_resumption:       [actResumeWorkflow],
 };
 
 /**

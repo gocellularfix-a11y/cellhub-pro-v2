@@ -1324,11 +1324,33 @@ export default function PhonePaymentModal({
     const url = settings.carrierPortalUrls?.[normCarrier];
     if (!url) return;
     window.open(url, '_blank');
-    // R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1: record that a carrier portal
-    // was opened for this line. The bubble will surface a confirmation card
-    // when the cashier returns. NEVER auto-confirms — human click required.
-    const amtCents = Math.round(parseFloat(selectedKnownLines[normalizePhone(phone)] || '0') * 100);
-    startWorkflow('external_payment', { phone: normalizePhone(phone), carrier: normCarrier, amountCents: amtCents });
+    // R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: record richer workflow context so
+    // Intelligence can surface a resume card when the cashier returns.
+    // NEVER auto-confirms — human click required.
+    const normPhone = normalizePhone(phone);
+    const amtCents = Math.round(parseFloat(selectedKnownLines[normPhone] || '0') * 100);
+    const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+    const lineIndex = selectedNorms.findIndex((n) => n === normPhone);
+    const totalLines = selectedNorms.length;
+    const now = Date.now();
+    startWorkflow(
+      'external_payment',
+      {
+        phone: normPhone,
+        carrier: normCarrier,
+        amountCents: amtCents,
+        activeLine: normPhone,
+        lineIndex,
+        totalLines,
+        source: 'phone_payments',
+      },
+      {
+        steps: [
+          { id: 'external_portal_opened',  label: 'Portal opened',    status: 'completed', createdAt: now, updatedAt: now },
+          { id: 'confirm_payment_return',  label: 'Confirm payment',  status: 'active',    createdAt: now, updatedAt: now },
+        ],
+      },
+    );
   };
 
   // ── Manual line helpers ───────────────────────────────────

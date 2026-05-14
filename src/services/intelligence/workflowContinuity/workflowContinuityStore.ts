@@ -2,7 +2,13 @@
 // localStorage-backed pending workflow state.
 // NEVER auto-confirms, NEVER auto-records revenue — human confirmation required.
 
-import type { PendingWorkflow, WorkflowType, ExternalPaymentMetadata } from './workflowContinuityTypes';
+import type {
+  PendingWorkflow,
+  WorkflowType,
+  WorkflowStep,
+  WorkflowResumeContext,
+  ExternalPaymentMetadata,
+} from './workflowContinuityTypes';
 
 const STORE_KEY = 'cellhub:intelligence:workflowContinuity:v1';
 const MAX_WORKFLOWS = 50;
@@ -50,15 +56,58 @@ function isActive(w: PendingWorkflow): boolean {
   return w.status === 'pending' && Date.now() < w.expiresAt;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Resume context builder ────────────────────────────────────────────────────
+
+function buildResumeContext(w: PendingWorkflow): WorkflowResumeContext {
+  const activeStep = w.steps?.find((s) => s.status === 'active') ?? null;
+  const nextStep = w.steps?.find((s) => s.status === 'pending') ?? null;
+  const meta = w.metadata as Record<string, unknown>;
+
+  let resumeLabel = 'Resume workflow';
+  let resumeDescription = 'Active workflow';
+
+  if (w.type === 'external_payment') {
+    const phone = String(meta.phone ?? '');
+    const carrier = String(meta.carrier ?? '');
+    const lineIndex = typeof meta.lineIndex === 'number' ? meta.lineIndex : undefined;
+    const totalLines = typeof meta.totalLines === 'number' ? meta.totalLines : undefined;
+
+    resumeLabel = 'Resume payment workflow';
+    resumeDescription = carrier ? `Collecting ${carrier} payment` : 'Collecting carrier payment';
+    if (phone) resumeDescription += ` for ${phone}`;
+    if (typeof lineIndex === 'number' && typeof totalLines === 'number' && totalLines > 1) {
+      resumeDescription += ` · line ${lineIndex + 1} of ${totalLines}`;
+    }
+  }
+
+  return {
+    workflowId: w.id,
+    type: w.type,
+    currentStepId: activeStep?.id ?? null,
+    nextStepId: nextStep?.id ?? null,
+    relatedCustomerId: typeof meta.customerId === 'string' ? meta.customerId : null,
+    relatedModule: w.type === 'external_payment' ? 'phone-payments' : null,
+    resumeLabel,
+    resumeDescription,
+    metadata: meta,
+  };
+}
+
+// ── Public API — lifecycle ────────────────────────────────────────────────────
+
+export interface StartWorkflowOptions {
+  ttlMs?: number;
+  steps?: WorkflowStep[];
+}
 
 /** Create and persist a new pending workflow. Returns the created entry. */
 export function startWorkflow(
   type: WorkflowType,
   metadata: ExternalPaymentMetadata | Record<string, unknown>,
-  ttlMs: number = DEFAULT_TTL_MS,
+  options?: StartWorkflowOptions,
 ): PendingWorkflow {
   const now = Date.now();
+  const ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS;
   const workflow: PendingWorkflow = {
     id: `wf-${type}-${now}`,
     type,
@@ -66,6 +115,7 @@ export function startWorkflow(
     startedAt: now,
     expiresAt: now + ttlMs,
     metadata,
+    steps: options?.steps,
   };
   const all = readAll();
   writeAll([...all, workflow]);
@@ -105,7 +155,7 @@ export function cancelWorkflow(id: string): void {
   notify();
 }
 
-/** Mark an expired workflow (auto-cleanup path). */
+/** Mark a workflow expired (auto-cleanup path). */
 export function expireWorkflow(id: string): void {
   const all = readAll();
   const idx = all.findIndex((w) => w.id === id);
@@ -114,6 +164,69 @@ export function expireWorkflow(id: string): void {
   writeAll(all);
   notify();
 }
+
+// ── Public API — step management ──────────────────────────────────────────────
+
+/** Generic step patch — updates status and/or metadata, stamps updatedAt. */
+export function updateWorkflowStep(
+  workflowId: string,
+  stepId: string,
+  patch: Partial<Pick<WorkflowStep, 'status' | 'metadata'>>,
+): void {
+  const all = readAll();
+  const wIdx = all.findIndex((w) => w.id === workflowId);
+  if (wIdx === -1) return;
+  const w = all[wIdx];
+  if (!w.steps) return;
+  const sIdx = w.steps.findIndex((s) => s.id === stepId);
+  if (sIdx === -1) return;
+  const now = Date.now();
+  const updatedSteps = [...w.steps];
+  updatedSteps[sIdx] = { ...updatedSteps[sIdx], ...patch, updatedAt: now };
+  all[wIdx] = { ...w, steps: updatedSteps };
+  writeAll(all);
+  notify();
+}
+
+export function setActiveWorkflowStep(workflowId: string, stepId: string): void {
+  updateWorkflowStep(workflowId, stepId, { status: 'active' });
+}
+
+export function completeWorkflowStep(workflowId: string, stepId: string): void {
+  updateWorkflowStep(workflowId, stepId, { status: 'completed' });
+}
+
+export function skipWorkflowStep(workflowId: string, stepId: string): void {
+  updateWorkflowStep(workflowId, stepId, { status: 'skipped' });
+}
+
+// ── Public API — resume contexts ──────────────────────────────────────────────
+
+/** Resume context for a specific workflow, or null if not active. */
+export function getResumeContext(workflowId: string): WorkflowResumeContext | null {
+  const w = readAll().find((wf) => wf.id === workflowId);
+  if (!w || !isActive(w)) return null;
+  return buildResumeContext(w);
+}
+
+/** Resume contexts for all currently active workflows. */
+export function getPendingResumeContexts(): WorkflowResumeContext[] {
+  return readAll().filter(isActive).map(buildResumeContext);
+}
+
+/**
+ * Highest-priority resume context across all active workflows.
+ * Priority: external_payment > any other type.
+ */
+export function getMostImportantResumeContext(): WorkflowResumeContext | null {
+  const active = readAll().filter(isActive);
+  const extPayment = active.find((w) => w.type === 'external_payment');
+  if (extPayment) return buildResumeContext(extPayment);
+  if (active.length > 0) return buildResumeContext(active[0]);
+  return null;
+}
+
+// ── Public API — queries ──────────────────────────────────────────────────────
 
 /** All currently active (pending + not expired) workflows. */
 export function getPendingWorkflows(): PendingWorkflow[] {

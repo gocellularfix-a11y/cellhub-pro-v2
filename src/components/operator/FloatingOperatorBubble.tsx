@@ -46,10 +46,13 @@ import {
   getPendingExternalPaymentWorkflow,
   completeWorkflow,
   cancelWorkflow,
+  resumeWorkflow,
+  setActiveWorkflowStep,
+  getMostImportantResumeContext,
   subscribeWorkflowContinuity,
 } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 import { initExternalFlowAwareness, subscribeExternalFlowReturn, resetReturnCooldown } from '@/services/intelligence/workflowContinuity/externalFlowAwareness';
-import type { PendingWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
+import type { PendingWorkflow, WorkflowResumeContext } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -607,6 +610,25 @@ export default function FloatingOperatorBubble() {
     (w) => w.type === 'external_payment' && w.status === 'pending',
   ) ?? null;
 
+  // Rich resume context — rebuilt only when pendingWorkflows changes (not on every tick).
+  const resumeCtx = useMemo<WorkflowResumeContext | null>(
+    () => getMostImportantResumeContext(),
+    // pendingWorkflows is the proxy dep — changes when store notifies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingWorkflows],
+  );
+
+  // Navigate to Phone Payments and mark the workflow as resumed.
+  const handleResumeWorkflow = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    resumeWorkflow(pendingExternalPayment.id);
+    setActiveWorkflowStep(pendingExternalPayment.id, 'confirm_payment_return');
+    resetReturnCooldown();
+    setReturnDetected(false);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'phone-payments' });
+    setIsOverlayOpen(false);
+  }, [pendingExternalPayment, dispatch]);
+
   // Cashier confirmed they completed the carrier payment — dispatch event to
   // PhonePaymentModal, complete the workflow, and reset detection state.
   // NEVER auto-records revenue. Human click is the only trigger.
@@ -621,12 +643,13 @@ export default function FloatingOperatorBubble() {
     setIsOverlayOpen(false);
   }, [pendingExternalPayment]);
 
-  // Cashier says payment is still processing — dismiss the card but keep
-  // the workflow pending so it can be re-surfaced on next return.
+  // Cashier says payment is still processing — extend TTL and dismiss card.
+  // Workflow stays pending so it re-surfaces on next return (past cooldown).
   const handleExternalStillProcessing = useCallback(() => {
+    if (pendingExternalPayment) resumeWorkflow(pendingExternalPayment.id);
     resetReturnCooldown();
     setReturnDetected(false);
-  }, []);
+  }, [pendingExternalPayment]);
 
   // Cashier explicitly cancels — mark workflow cancelled and dismiss.
   const handleCancelExternalPayment = useCallback(() => {
@@ -1030,82 +1053,132 @@ export default function FloatingOperatorBubble() {
             </span>
           </div>
 
-          {/* R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1: external payment confirmation card.
-              Only shown when the cashier opened a carrier portal AND returned to CellHub.
-              NEVER auto-confirms — three explicit human choices required. */}
-          {pendingExternalPayment && returnDetected && (
-            <div style={{
-              background: 'rgba(245,158,11,0.10)',
-              border: '1px solid rgba(245,158,11,0.45)',
-              borderRadius: '0.5rem',
-              padding: '0.6rem 0.7rem',
-              display: 'flex', flexDirection: 'column', gap: '0.4rem',
-            }}>
-              <div style={{ fontSize: '0.70rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {locale === 'es' ? 'Pago externo pendiente' : 'External payment pending'}
+          {/* R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: workflow resume card.
+              Shown when the cashier opened a carrier portal AND returned to CellHub.
+              Priority 1 surface — outranks all suggestions.
+              NEVER auto-confirms — four explicit human choices required. */}
+          {pendingExternalPayment && returnDetected && (() => {
+            const meta = pendingExternalPayment.metadata as Record<string, unknown>;
+            const carrier = String(meta.carrier ?? '');
+            const phone = String(meta.phone ?? '');
+            const lineIndex = typeof meta.lineIndex === 'number' ? meta.lineIndex : undefined;
+            const totalLines = typeof meta.totalLines === 'number' ? meta.totalLines : undefined;
+            const multiLine = typeof lineIndex === 'number' && typeof totalLines === 'number' && totalLines > 1;
+
+            const headerLabel = locale === 'es' ? 'Retomar flujo de pago' : (resumeCtx?.resumeLabel ?? 'Resume payment workflow');
+            const descLine1 = locale === 'es'
+              ? `Cobrabas pago${carrier ? ` de ${carrier}` : ''}${phone ? ` para ${phone}` : ''}`
+              : (resumeCtx?.resumeDescription ?? 'External payment pending');
+            const descLine2 = multiLine
+              ? (locale === 'es' ? `Línea ${(lineIndex as number) + 1} de ${totalLines}` : `Line ${(lineIndex as number) + 1} of ${totalLines}`)
+              : null;
+
+            return (
+              <div style={{
+                background: 'rgba(245,158,11,0.10)',
+                border: '1px solid rgba(245,158,11,0.45)',
+                borderRadius: '0.5rem',
+                padding: '0.6rem 0.7rem',
+                display: 'flex', flexDirection: 'column', gap: '0.4rem',
+              }}>
+                <div style={{ fontSize: '0.70rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {headerLabel}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                  <div style={{ fontSize: '0.82rem', color: '#e2e8f0', lineHeight: 1.35 }}>
+                    {descLine1}
+                  </div>
+                  {descLine2 && (
+                    <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                      {descLine2}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.78rem', color: '#a5b4fc', marginTop: '0.15rem' }}>
+                    {locale === 'es'
+                      ? '¿Completaste el pago en el portal del carrier?'
+                      : 'Did you complete the payment on the carrier website?'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.05rem' }}>
+                  {/* Resume — navigate back to Phone Payments */}
+                  <button
+                    type="button"
+                    onClick={handleResumeWorkflow}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(99,102,241,0.18)',
+                      border: '1px solid rgba(99,102,241,0.5)',
+                      color: '#a5b4fc',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '↩ Retomar' : '↩ Resume'}
+                  </button>
+                  {/* Mark Paid — safe PhonePaymentModal event path */}
+                  <button
+                    type="button"
+                    onClick={handleConfirmExternalPaid}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(34,197,94,0.16)',
+                      border: '1px solid rgba(34,197,94,0.45)',
+                      color: '#86efac',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '✓ Pagado · Sig' : '✓ Mark Paid & Next'}
+                  </button>
+                  {/* Still Processing — keep pending, dismiss card */}
+                  <button
+                    type="button"
+                    onClick={handleExternalStillProcessing}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(148,163,184,0.08)',
+                      border: '1px solid rgba(148,163,184,0.25)',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '⏳ En proceso' : '⏳ Still Processing'}
+                  </button>
+                  {/* Cancel — remove workflow from queue */}
+                  <button
+                    type="button"
+                    onClick={handleCancelExternalPayment}
+                    style={{
+                      flex: '0 0 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      color: '#fca5a5',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
-              <div style={{ fontSize: '0.82rem', color: '#e2e8f0', lineHeight: 1.35 }}>
-                {locale === 'es'
-                  ? '¿Completaste el pago en el portal del carrier?'
-                  : 'Did you complete the payment on the carrier website?'}
-              </div>
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
-                <button
-                  type="button"
-                  onClick={handleConfirmExternalPaid}
-                  style={{
-                    flex: '1 1 auto',
-                    padding: '0.38rem 0.55rem',
-                    borderRadius: '0.45rem',
-                    background: 'rgba(34,197,94,0.16)',
-                    border: '1px solid rgba(34,197,94,0.45)',
-                    color: '#86efac',
-                    cursor: 'pointer',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {locale === 'es' ? '✓ Pagado · Siguiente' : '✓ Mark Paid & Next'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExternalStillProcessing}
-                  style={{
-                    flex: '1 1 auto',
-                    padding: '0.38rem 0.55rem',
-                    borderRadius: '0.45rem',
-                    background: 'rgba(148,163,184,0.08)',
-                    border: '1px solid rgba(148,163,184,0.25)',
-                    color: '#94a3b8',
-                    cursor: 'pointer',
-                    fontSize: '0.76rem',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {locale === 'es' ? '⏳ En proceso' : '⏳ Still Processing'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelExternalPayment}
-                  style={{
-                    flex: '0 0 auto',
-                    padding: '0.38rem 0.55rem',
-                    borderRadius: '0.45rem',
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.25)',
-                    color: '#fca5a5',
-                    cursor: 'pointer',
-                    fontSize: '0.76rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Body — priority: context block > hint > placeholder */}
           {activeContext ? (() => {
