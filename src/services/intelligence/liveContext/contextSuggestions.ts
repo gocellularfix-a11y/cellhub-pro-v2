@@ -11,6 +11,7 @@ import type { OperationalHealthSnapshot } from '@/services/intelligence/employee
 import { CONCLUSION_SUPPRESSIONS } from '@/services/intelligence/reasoning/reasoningSelectors';
 import { STRATEGY_SUPPRESSIONS } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
 import { CHAIN_SUPPRESSIONS } from '@/services/intelligence/actionChains/actionChainSelectors';
+import type { OutcomeStats } from '@/services/intelligence/outcomes/outcomeTypes';
 import {
   getActiveCustomer,
   hasPhonePaymentFlow,
@@ -33,6 +34,7 @@ export function computeContextSuggestions(
   inputs: OperatorActivityInputs,
   profile?: CustomerBusinessProfile,
   opHealth?: OperationalHealthSnapshot,
+  outcomeStats?: OutcomeStats,
 ): ContextSuggestion[] {
   const out: ContextSuggestion[] = [];
   const cust = getActiveCustomer(ctx, inputs);
@@ -287,6 +289,19 @@ export function computeContextSuggestions(
   // Active chain subsumes its lower-level signals — suppress redundant nudges.
   if (opHealth?.activeChain) {
     for (const suppressed of CHAIN_SUPPRESSIONS[opHealth.activeChain.type] ?? []) suppressedIds.add(suppressed);
+  }
+
+  // Outcome-based adaptive behavior (deterministic, no ML).
+  if (outcomeStats) {
+    // Suppress strategy suggestions for recently completed chains (2h cooldown).
+    for (const id of outcomeStats.recentlyCompletedSourceIds) suppressedIds.add(id);
+    // Dampen priority (-1) for sources repeatedly skipped/dismissed today.
+    if (outcomeStats.recentlyIgnoredSourceIds.length) {
+      const dampened = new Set(outcomeStats.recentlyIgnoredSourceIds);
+      for (const s of out) {
+        if (dampened.has(s.id)) s.priority = Math.max(1, s.priority - 1);
+      }
+    }
   }
 
   const seen = new Set<string>();

@@ -61,6 +61,8 @@ import { getStrategyLabel, isStrategyActionable } from '@/services/intelligence/
 import type { ActionChainStep } from '@/services/intelligence/actionChains/actionChainTypes';
 import { loadActiveChainState, applyChainState, advanceChainStep, getCurrentStep, getChainProgress, isChainComplete } from '@/services/intelligence/actionChains/actionChainSelectors';
 import { getActionById } from '@/services/intelligence/actionExecution/actionExecutionRegistry';
+import { recordOutcome } from '@/services/intelligence/outcomes/outcomeStore';
+import { getOutcomeStats, getRecentlyCompletedChainTypes } from '@/services/intelligence/outcomes/outcomeSelectors';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -581,10 +583,37 @@ export default function FloatingOperatorBubble() {
     [repairs, layaways, sales, customers, inventory, liveCtx.recentActions, liveCtx.activeEmployeeId, pendingWorkflows],
   );
 
+  // Tracks which suggestion's action was last clicked (for "Opened" flash).
+  const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
+
+  // Incremented when chain step state changes (localStorage write) to trigger re-render.
+  const [chainStateTick, setChainStateTick] = useState(0);
+  // Set to chain type when whole chain completes — drives "Sequence complete" flash.
+  const [chainCompletedType, setChainCompletedType] = useState<string | null>(null);
+
+  // Aggregated outcome stats — refreshed when chain state changes.
+  const outcomeStats = useMemo(() => getOutcomeStats(), [chainStateTick]);
+
+  // Chain types completed within the last 2h — prevents immediate re-surfacing.
+  const recentlyCompletedChains = useMemo(
+    () => getRecentlyCompletedChainTypes(),
+    [chainStateTick],
+  );
+
+  // Active chain with persisted step state applied.
+  const displayedChain = useMemo(() => {
+    if (!opHealth.activeChain) return null;
+    if (recentlyCompletedChains.has(opHealth.activeChain.type)) return null;
+    const applied = applyChainState(opHealth.activeChain, loadActiveChainState());
+    return isChainComplete(applied) ? null : applied;
+  // chainStateTick / recentlyCompletedChains are the reactive signals for localStorage changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opHealth.activeChain, chainStateTick, recentlyCompletedChains]);
+
   // Live-context suggestions and badge preview text.
   const suggestions = useMemo(
-    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined, opHealth) : [],
-    [enabled, liveCtx, inputs, activeCustomerProfile, opHealth],
+    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined, opHealth, outcomeStats) : [],
+    [enabled, liveCtx, inputs, activeCustomerProfile, opHealth, outcomeStats],
   );
 
   const previewText = useMemo(
@@ -614,21 +643,6 @@ export default function FloatingOperatorBubble() {
     [suggestions, execCtx],
   );
 
-  // Tracks which suggestion's action was last clicked (for "Opened" flash).
-  const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
-
-  // Incremented when chain step state changes (localStorage write) to trigger re-render.
-  const [chainStateTick, setChainStateTick] = useState(0);
-
-  // Active chain with persisted step state applied.
-  const displayedChain = useMemo(() => {
-    if (!opHealth.activeChain) return null;
-    const applied = applyChainState(opHealth.activeChain, loadActiveChainState());
-    return isChainComplete(applied) ? null : applied;
-  // chainStateTick is the reactive signal for localStorage step changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opHealth.activeChain, chainStateTick]);
-
   // Execute a bubble action: run it, log it, flash feedback, close overlay.
   // Declared after execCtx so the dep array reference is valid.
   const handleActionClick = useCallback((
@@ -637,6 +651,7 @@ export default function FloatingOperatorBubble() {
   ) => {
     try { action.execute(execCtx); } catch { /* safe — never throw */ }
     logBubbleAction(action.id, execCtx.customerId, suggestionId);
+    recordOutcome({ sourceType: 'action', sourceId: action.id, outcome: 'completed', relatedCustomerId: execCtx.customerId ?? undefined });
     setFlashedSuggId(suggestionId);
     setTimeout(() => {
       setFlashedSuggId(null);
@@ -650,14 +665,23 @@ export default function FloatingOperatorBubble() {
     if (action) {
       try { action.execute(execCtx); } catch { /* safe */ }
       logBubbleAction(action.id, execCtx.customerId, `chain_${displayedChain.type}`);
+      recordOutcome({ sourceType: 'action', sourceId: action.id, outcome: 'completed', relatedCustomerId: execCtx.customerId ?? undefined });
     }
+    recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'completed', metadata: { stepId: step.id, type: 'step' } });
     advanceChainStep(displayedChain.type, step.id, 'complete');
+    // Check if the chain is now fully complete after this step.
+    const updatedChain = applyChainState(displayedChain, loadActiveChainState());
+    if (isChainComplete(updatedChain)) {
+      recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'completed', metadata: { type: 'chain', totalSteps: String(displayedChain.steps.length) } });
+      setChainCompletedType(displayedChain.type);
+      setTimeout(() => { setChainCompletedType(null); setIsOverlayOpen(false); }, 2000);
+    }
     setChainStateTick((t) => t + 1);
-    setTimeout(() => setIsOverlayOpen(false), 400);
   }, [displayedChain, execCtx]);
 
   const handleChainStepSkip = useCallback((step: ActionChainStep) => {
     if (!displayedChain) return;
+    recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'skipped', metadata: { stepId: step.id, type: 'step' } });
     advanceChainStep(displayedChain.type, step.id, 'skip');
     setChainStateTick((t) => t + 1);
   }, [displayedChain]);
@@ -692,6 +716,7 @@ export default function FloatingOperatorBubble() {
   // NEVER auto-records revenue. Human click is the only trigger.
   const handleConfirmExternalPaid = useCallback(() => {
     if (!pendingExternalPayment) return;
+    recordOutcome({ sourceType: 'workflow', sourceId: 'external_payment', outcome: 'recovered', relatedWorkflowId: pendingExternalPayment.id });
     completeWorkflow(pendingExternalPayment.id);
     try {
       window.dispatchEvent(new CustomEvent('cellhub:workflow-external-payment-confirm'));
@@ -712,6 +737,7 @@ export default function FloatingOperatorBubble() {
   // Cashier explicitly cancels — mark workflow cancelled and dismiss.
   const handleCancelExternalPayment = useCallback(() => {
     if (!pendingExternalPayment) return;
+    recordOutcome({ sourceType: 'workflow', sourceId: 'external_payment', outcome: 'dismissed', relatedWorkflowId: pendingExternalPayment.id });
     cancelWorkflow(pendingExternalPayment.id);
     resetReturnCooldown();
     setReturnDetected(false);
@@ -1428,10 +1454,28 @@ export default function FloatingOperatorBubble() {
             </div>
           )}
 
+          {/* Sequence-complete flash — shown for 2s after the last chain step is clicked. */}
+          {chainCompletedType && (
+            <div style={{
+              background: 'rgba(34,197,94,0.10)',
+              border: '1px solid rgba(34,197,94,0.35)',
+              borderRadius: '0.5rem',
+              padding: '0.6rem 0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <span style={{ color: '#86efac', fontSize: '0.9rem', flexShrink: 0 }}>✓</span>
+              <span style={{ fontSize: '0.82rem', color: '#86efac', fontWeight: 600 }}>
+                {locale === 'es' ? 'Secuencia completada' : 'Sequence complete'}
+              </span>
+            </div>
+          )}
+
           {/* Guided action chain card (R-INTELLIGENCE-ACTION-CHAINS-V1).
               Shown when a dominant operational chain is active and has pending steps.
               Surfaces current step + next step preview only — never a full workflow graph. */}
-          {displayedChain && (() => {
+          {displayedChain && !chainCompletedType && (() => {
             const currentStep = getCurrentStep(displayedChain);
             if (!currentStep) return null;
             const nextStep = displayedChain.steps[displayedChain.currentStepIndex + 1] ?? null;
