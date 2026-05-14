@@ -15,7 +15,7 @@
 // ============================================================
 
 import { emit } from '../companionEventBus';
-import type { CompanionMessagePayload } from '../companionTypes';
+import type { CompanionMessagePayload, CompanionOpCategory } from '../companionTypes';
 
 export interface MessageEmitInput {
   messageId: string;
@@ -32,6 +32,14 @@ export interface MessageEmitInput {
    *  is non-sensitive — never a customer name, phone, address, or
    *  any PII. Leave undefined when in doubt. */
   preview?: string;
+  // R-COMPANION-MESSAGING-LIVE-V1: operational fields
+  conversationId?: string;
+  senderType?: 'desktop' | 'companion';
+  senderName?: string;
+  category?: CompanionOpCategory;
+  text?: string;
+  relatedEntityId?: string;
+  relatedEntityType?: string;
 }
 
 /**
@@ -62,18 +70,38 @@ export function emitMessageReceived(input: MessageEmitInput): void {
   });
 }
 
+/**
+ * R-COMPANION-MESSAGING-LIVE-V1: emit MESSAGE_ACKNOWLEDGED so the
+ * runtime marks an inbound message read and unread count decrements.
+ */
+export function emitMessageAcknowledged(input: { messageId: string }): void {
+  emit({
+    type: 'MESSAGE_ACKNOWLEDGED',
+    category: 'messaging',
+    payload: { messageId: input.messageId },
+    createdAt: Date.now(),
+  });
+}
+
 // ── Internal ─────────────────────────────────────────────
 
 function buildPayload(input: MessageEmitInput): CompanionMessagePayload {
   const out: CompanionMessagePayload = {
     messageId: input.messageId,
   };
-  if (input.direction)      out.direction = input.direction;
-  if (input.channel)        out.channel = input.channel;
-  if (input.source)         out.source = input.source;
-  if (input.fromEmployeeId) out.fromEmployeeId = input.fromEmployeeId;
-  if (input.toEmployeeId)   out.toEmployeeId = input.toEmployeeId;
-  if (input.senderRole)     out.senderRole = input.senderRole;
-  if (input.preview)        out.preview = input.preview;
+  if (input.direction)         out.direction = input.direction;
+  if (input.channel)           out.channel = input.channel;
+  if (input.source)            out.source = input.source;
+  if (input.fromEmployeeId)    out.fromEmployeeId = input.fromEmployeeId;
+  if (input.toEmployeeId)      out.toEmployeeId = input.toEmployeeId;
+  if (input.senderRole)        out.senderRole = input.senderRole;
+  if (input.preview)           out.preview = input.preview;
+  if (input.conversationId)    out.conversationId = input.conversationId;
+  if (input.senderType)        out.senderType = input.senderType;
+  if (input.senderName)        out.senderName = input.senderName;
+  if (input.category)          out.category = input.category;
+  if (input.text)              out.text = input.text;
+  if (input.relatedEntityId)   out.relatedEntityId = input.relatedEntityId;
+  if (input.relatedEntityType) out.relatedEntityType = input.relatedEntityType;
   return out;
 }

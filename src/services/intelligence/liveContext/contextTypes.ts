@@ -56,6 +56,15 @@ export type LiveActionType =
   | 'phone_number_entered'
   | 'customer_history_opened'
   | 'inventory_lookup'
+  | 'external_payment_started'
+  | 'external_flow_returned'
+  | 'external_payment_confirm_needed'
+  | 'external_payment_cancelled'
+  | 'workflow_started'
+  | 'workflow_resumed'
+  | 'workflow_step_completed'
+  | 'workflow_cancelled'
+  | 'workflow_expired'
   | string; // forward-compat
 
 export interface LiveAction {

@@ -49,6 +49,9 @@ export interface RemoteApprovalResponse {
   source: 'companion_remote';
   /** ms epoch the bridge delivered the response to the desktop. */
   receivedAt: number;
+  /** Optional free-text note the manager entered on the Companion app.
+   *  Read-only display only — never persisted, never used for auth. */
+  managerNote?: string;
 }
 
 /** Options for the factory. The two slots are the only public surface

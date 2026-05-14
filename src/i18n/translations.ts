@@ -3593,6 +3593,9 @@ export const translations: TranslationDictionary = {
   'approval.error.selfBlocked':     { en: 'You cannot approve your own action. Ask another manager.', es: 'No puedes aprobar tu propia acción. Pide a otro gerente.', pt: 'Você não pode aprovar sua própria ação. Peça a outro gerente.' },
   'approval.toast.cancelled':       { en: 'Action cancelled — manager approval not provided.', es: 'Acción cancelada — no se obtuvo aprobación de gerente.', pt: 'Ação cancelada — aprovação do gerente não fornecida.' },
   'approval.toast.timeout':         { en: 'Approval timed out — try again.',                  es: 'Aprobación expiró — intenta de nuevo.',                 pt: 'Aprovação expirou — tente novamente.' },
+  // R-COMPANION-REMOTE-APPROVAL-UX-V1
+  'approval.error.remoteDenied':    { en: 'Manager denied this request.',                   es: 'El gerente rechazó esta solicitud.',                    pt: 'O gerente negou esta solicitação.' },
+  'approval.remote.approvedMsg':    { en: 'Approved remotely by manager',                  es: 'Aprobado remotamente por el gerente',                   pt: 'Aprovado remotamente pelo gerente' },
 
   // R-APPROVAL-PIN-V1 — Action labels (used by ApprovalPinModal subtitle)
   'approval.action.PRICE_OVERRIDE':       { en: 'Price override',          es: 'Cambio de precio',           pt: 'Alteração de preço' },
@@ -3747,6 +3750,15 @@ export const translations: TranslationDictionary = {
 
   // Nav labels
   'settings.nav.store':                    { en: 'Store Info',                  es: 'Información de Tienda',         pt: 'Info da Loja' },
+  // R-DASHBOARD-THEME-V1
+  'settings.nav.appearance':               { en: 'Appearance',                  es: 'Apariencia',                    pt: 'Aparência' },
+  'settings.appearance.title':             { en: 'Interface Look',              es: 'Apariencia de la Interfaz',     pt: 'Aparência da Interface' },
+  'settings.appearance.subtitle':          { en: 'Choose how the dashboard looks. Same modules, same workflow — just a different visual style.', es: 'Elige cómo se ve el dashboard. Mismos módulos, mismo flujo — solo cambia el estilo visual.', pt: 'Escolha como o painel aparece. Mesmos módulos, mesmo fluxo — apenas estilo visual diferente.' },
+  'settings.appearance.active':            { en: 'ACTIVE',                      es: 'ACTIVO',                        pt: 'ATIVO' },
+  'settings.appearance.hint':              { en: 'Changes apply instantly — no restart needed. Pick the one your eyes prefer.', es: 'Los cambios se aplican al instante — no necesita reiniciar. Escoge la que te guste más.', pt: 'Mudanças aplicam instantaneamente — sem necessidade de reiniciar.' },
+  'settings.appearance.tiles.desc':        { en: 'Colorful module-grid sidebar. Each module is a saturated tile. Current default.', es: 'Sidebar con botones coloridos por módulo. Cada módulo es una baldosa saturada. Por defecto actual.', pt: 'Barra lateral colorida com cada módulo como bloco saturado. Padrão atual.' },
+  'settings.appearance.list.desc':         { en: 'Classic vertical list. Compact, calm, scannable. Original pre-redesign look.', es: 'Lista vertical clásica. Compacta, tranquila, fácil de escanear. Look original antes del rediseño.', pt: 'Lista vertical clássica. Compacta e fácil de varrer. Visual original.' },
+  'settings.appearance.boldBlocks.desc':   { en: 'Light background with saturated color blocks for each stat. Apple Numbers feel.', es: 'Fondo claro con bloques de color saturado para cada métrica. Estilo Apple Numbers.', pt: 'Fundo claro com blocos de cor saturada para cada métrica. Estilo Apple Numbers.' },
   'settings.nav.multistore':               { en: 'Multi-Store',                 es: 'Multi-Tienda',                  pt: 'Multi-Loja' },
   'settings.nav.taxes':                    { en: 'Tax Rates & Fees',            es: 'Tasas e Impuestos',             pt: 'Taxas e Impostos' },
   'settings.nav.commissions':              { en: 'Commission Income',           es: 'Ingresos por Comisión',         pt: 'Renda de Comissões' },
@@ -4873,6 +4885,25 @@ export const translations: TranslationDictionary = {
   'companion.card.storeStatus.alert.critical': { en: 'Critical', es: 'Crítico',     pt: 'Crítico' },
   'companion.card.storeStatus.latestEvent':    { en: 'Latest event', es: 'Último evento', pt: 'Último evento' },
 
+  // R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1
+  'companion.approvals.title':                 { en: 'Approval Timeline',         es: 'Historial de Aprobaciones',     pt: 'Histórico de Aprovações' },
+  'companion.approvals.empty':                 { en: 'No approval activity this session.', es: 'Sin actividad de aprobaciones esta sesión.', pt: 'Nenhuma aprovação nesta sessão.' },
+  'companion.approvals.status.pending':        { en: 'Pending',    es: 'Pendiente',  pt: 'Pendente' },
+  'companion.approvals.status.approved':       { en: 'Approved',   es: 'Aprobado',   pt: 'Aprovado' },
+  'companion.approvals.status.denied':         { en: 'Denied',     es: 'Denegado',   pt: 'Negado' },
+  'companion.approvals.status.cancelled':      { en: 'Cancelled',  es: 'Cancelado',  pt: 'Cancelado' },
+  'companion.approvals.status.expired':        { en: 'Expired',    es: 'Expirado',   pt: 'Expirado' },
+  'companion.approvals.by':                    { en: 'by',         es: 'por',        pt: 'por' },
+  'companion.approvals.adminPin':              { en: 'Admin PIN',  es: 'PIN Admin',  pt: 'PIN Admin' },
+  'companion.approvals.action.CANCEL_LAYAWAY':       { en: 'Layaway cancel',       es: 'Cancelar apartado',         pt: 'Cancelar layaway' },
+  'companion.approvals.action.CANCEL_REPAIR':        { en: 'Repair cancel',        es: 'Cancelar reparación',       pt: 'Cancelar reparo' },
+  'companion.approvals.action.CANCEL_UNLOCK':        { en: 'Unlock cancel',        es: 'Cancelar desbloqueo',       pt: 'Cancelar desbloqueio' },
+  'companion.approvals.action.CANCEL_SPECIAL_ORDER': { en: 'Special order cancel', es: 'Cancelar orden especial',   pt: 'Cancelar pedido especial' },
+  'companion.approvals.action.PRICE_OVERRIDE':       { en: 'Price override',       es: 'Modificar precio',          pt: 'Ajuste de preço' },
+  'companion.approvals.action.DISCOUNT_OVERRIDE':    { en: 'Discount',             es: 'Descuento',                 pt: 'Desconto' },
+  'companion.approvals.action.REFUND':               { en: 'Refund',               es: 'Reembolso',                 pt: 'Reembolso' },
+  'companion.approvals.action.fallback':             { en: 'Approval',             es: 'Aprobación',                pt: 'Aprovação' },
+
   'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
   'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
   // R-COMPANION-MESSAGING-RUNTIME-V1 — runtime metric lines inside the card
@@ -4888,6 +4919,62 @@ export const translations: TranslationDictionary = {
     es: (n: number) => `${n} conversación${n === 1 ? '' : 'es'} activa${n === 1 ? '' : 's'}`,
     pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
   },
+
+  // R-COMPANION-NOTIFICATION-INFRA-V1
+  'companion.notifications.title':       { en: 'Notification Center',      es: 'Centro de Notificaciones',    pt: 'Central de Notificações' },
+  'companion.notifications.empty':       { en: 'No notifications.',         es: 'Sin notificaciones.',         pt: 'Sem notificações.' },
+  'companion.notifications.markAllRead': { en: 'Mark all read',             es: 'Marcar todo como leído',      pt: 'Marcar tudo como lido' },
+  'companion.notifications.clearRead':   { en: 'Clear read',                es: 'Limpiar leídos',              pt: 'Limpar lidos' },
+  'companion.notifications.ack':         { en: 'Read',                      es: 'Leído',                       pt: 'Lido' },
+  'companion.notifications.priority.info':       { en: 'Info',        es: 'Info',       pt: 'Info' },
+  'companion.notifications.priority.warning':    { en: 'Warning',     es: 'Alerta',     pt: 'Atenção' },
+  'companion.notifications.priority.critical':   { en: 'Critical',    es: 'Crítico',    pt: 'Crítico' },
+  'companion.notifications.priority.opportunity':{ en: 'Opportunity', es: 'Oportunidad',pt: 'Oportunidade' },
+  'companion.notifications.type.approval':     { en: 'Approval',      es: 'Aprobación', pt: 'Aprovação' },
+  'companion.notifications.type.message':      { en: 'Message',       es: 'Mensaje',    pt: 'Mensagem' },
+  'companion.notifications.type.intelligence': { en: 'Intelligence',  es: 'Inteligencia',pt: 'Inteligência' },
+  'companion.notifications.type.store_status': { en: 'Store',         es: 'Tienda',     pt: 'Loja' },
+  'companion.notifications.type.repair':       { en: 'Repair',        es: 'Reparación', pt: 'Reparo' },
+  'companion.notifications.type.inventory':    { en: 'Inventory',     es: 'Inventario', pt: 'Inventário' },
+  'companion.notifications.type.operations':   { en: 'Operations',    es: 'Operaciones',pt: 'Operações' },
+  'companion.notifications.unreadBadge': {
+    en: (n: number) => `${n} new`,
+    es: (n: number) => `${n} nueva${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} nova${n === 1 ? '' : 's'}`,
+  },
+
+  // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1
+  'companion.intelligence.title':              { en: 'Intelligence Actions',              es: 'Acciones de Inteligencia',       pt: 'Ações de Inteligência' },
+  'companion.intelligence.empty':              { en: 'No active intelligence alerts.',    es: 'Sin alertas de inteligencia activas.', pt: 'Sem alertas de inteligência ativos.' },
+  'companion.intelligence.ack':                { en: 'Ack',                               es: 'OK',                             pt: 'OK' },
+  'companion.intelligence.createMsg':          { en: 'Create message',                    es: 'Crear mensaje',                  pt: 'Criar mensagem' },
+  'companion.intelligence.priority.info':      { en: 'Info',                              es: 'Info',                           pt: 'Info' },
+  'companion.intelligence.priority.warning':   { en: 'Warning',                           es: 'Alerta',                         pt: 'Atenção' },
+  'companion.intelligence.priority.critical':  { en: 'Critical',                          es: 'Crítico',                        pt: 'Crítico' },
+  'companion.intelligence.priority.opportunity':{ en: 'Opportunity',                      es: 'Oportunidad',                    pt: 'Oportunidade' },
+  'companion.intelligence.acknowledged':       { en: 'Acknowledged',                      es: 'Reconocido',                     pt: 'Reconhecido' },
+
+  // R-COMPANION-MESSAGING-LIVE-V1: operational messaging panel
+  'companion.messaging.panelTitle':      { en: 'Operations Dispatch', es: 'Despacho de Operaciones', pt: 'Despacho Operacional' },
+  'companion.messaging.unreadBadge': {
+    en: (n: number) => `${n} unread`,
+    es: (n: number) => `${n} sin leer`,
+    pt: (n: number) => `${n} não lida${n === 1 ? '' : 's'}`,
+  },
+  'companion.messaging.empty':           { en: 'No messages this session.', es: 'Sin mensajes esta sesión.', pt: 'Sem mensagens nesta sessão.' },
+  'companion.messaging.placeholder':     { en: 'Type an operational message…', es: 'Escribe un mensaje operacional…', pt: 'Digite uma mensagem operacional…' },
+  'companion.messaging.placeholderOff':  { en: 'Connect bridge to send', es: 'Conecta el bridge para enviar', pt: 'Conecte o bridge para enviar' },
+  'companion.messaging.send':            { en: 'Send', es: 'Enviar', pt: 'Enviar' },
+  'companion.messaging.ack':             { en: 'Ack', es: 'OK', pt: 'OK' },
+  'companion.messaging.you':             { en: 'You', es: 'Tú', pt: 'Você' },
+  'companion.messaging.manager':         { en: 'Manager', es: 'Gerente', pt: 'Gerente' },
+  'companion.messaging.categoryLabel':   { en: 'Category', es: 'Categoría', pt: 'Categoria' },
+  'companion.messaging.cat.approval':    { en: 'Approval', es: 'Aprobación', pt: 'Aprovação' },
+  'companion.messaging.cat.repair':      { en: 'Repair', es: 'Reparación', pt: 'Reparação' },
+  'companion.messaging.cat.customer':    { en: 'Customer', es: 'Cliente', pt: 'Cliente' },
+  'companion.messaging.cat.inventory':   { en: 'Inventory', es: 'Inventario', pt: 'Inventário' },
+  'companion.messaging.cat.operations':  { en: 'Operations', es: 'Operaciones', pt: 'Operações' },
+  'companion.messaging.cat.intelligence':{ en: 'Intelligence', es: 'Inteligencia', pt: 'Inteligência' },
 
   'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
   'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },
@@ -4977,8 +5064,8 @@ export const translations: TranslationDictionary = {
 
   // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 — Settings toggle copy.
   // Plumbing only; setting is read by future Phase 2 wiring.
-  'settings.approvals.remote.label':       { en: 'Remote approvals from Companion',                                                  es: 'Aprobaciones remotas desde Companion',                                                              pt: 'Aprovações remotas pelo Companion' },
-  'settings.approvals.remote.desc':        { en: 'Allow paired Companion devices to approve or deny restricted actions remotely.', es: 'Permite que los dispositivos Companion emparejados aprueben o denieguen acciones restringidas de forma remota.', pt: 'Permite que dispositivos Companion pareados aprovem ou neguem ações restritas remotamente.' },
+  'settings.approvals.remote.label':       { en: 'Allow remote approvals from Companion',                                              es: 'Permitir aprobaciones remotas desde Companion',                                                     pt: 'Permitir aprovações remotas pelo Companion' },
+  'settings.approvals.remote.desc':        { en: 'Managers can approve or deny protected actions from the Companion app.',          es: 'Los gerentes pueden aprobar o rechazar acciones protegidas desde la app Companion.',                  pt: 'Os gerentes podem aprovar ou negar ações protegidas pelo app Companion.' },
   'settings.approvals.remote.warning':     { en: 'Local PIN remains available. Only enable this for trusted paired devices.',       es: 'El PIN local sigue disponible. Actívalo solo para dispositivos emparejados de confianza.',            pt: 'O PIN local continua disponível. Ative apenas para dispositivos pareados de confiança.' },
 
   // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — short pill labels per adapter state

@@ -13,7 +13,7 @@
 // websocket, cero polling, cero business logic. In-memory only.
 // ============================================================
 
-import { subscribe } from './companionEventBus';
+import { emit, subscribe } from './companionEventBus';
 import type {
   CompanionMessageDirection,
   CompanionMessagePayload,
@@ -39,6 +39,8 @@ const listeners = new Set<CompanionMessagingRuntimeListener>();
  * ids are missing.
  */
 function deriveThreadKey(payload: CompanionMessagePayload): string {
+  // R-COMPANION-MESSAGING-LIVE-V1: prefer explicit conversationId when supplied.
+  if (payload.conversationId) return payload.conversationId;
   const channel = payload.channel ?? 'internal';
   const a = payload.fromEmployeeId ?? '';
   const b = payload.toEmployeeId ?? '';
@@ -152,6 +154,13 @@ function upsertMessage(
     senderRole: payload.senderRole,
     preview: payload.preview,
     body: payload.body,
+    conversationId: payload.conversationId,
+    senderType: payload.senderType,
+    senderName: payload.senderName,
+    category: payload.category,
+    text: payload.text,
+    relatedEntityId: payload.relatedEntityId,
+    relatedEntityType: payload.relatedEntityType,
     // Outbound is read by definition. Inbound starts unread unless an
     // earlier MESSAGE_READ already flipped it (late-arriving SENT).
     isRead: direction === 'outbound' ? true : (existing?.isRead ?? false),
@@ -171,9 +180,7 @@ subscribe('MESSAGE_RECEIVED', (event) => {
   upsertMessage('MESSAGE_RECEIVED', event.payload);
 });
 
-subscribe('MESSAGE_READ', (event) => {
-  if (event.type !== 'MESSAGE_READ') return;
-  const p = event.payload;
+function markRead(p: CompanionMessagePayload): void {
   if (!p.messageId) return;
   const now = Date.now();
   const existing = messages.get(p.messageId);
@@ -181,9 +188,8 @@ subscribe('MESSAGE_READ', (event) => {
     if (existing.isRead) return; // idempotent
     messages.set(p.messageId, { ...existing, isRead: true, updatedAt: now });
   } else {
-    // Late-arriving READ before SENT/RECEIVED — synth an inbound,
-    // already-read entry so the roll-up stays consistent if the
-    // matching SENT/RECEIVED never arrives.
+    // Late-arriving READ/ACKNOWLEDGED before SENT/RECEIVED — synth an
+    // inbound, already-read entry so the roll-up stays consistent.
     const direction: CompanionMessageDirection = p.direction === 'outbound' ? 'outbound' : 'inbound';
     messages.set(p.messageId, {
       messageId: p.messageId,
@@ -201,6 +207,16 @@ subscribe('MESSAGE_READ', (event) => {
     });
   }
   notify();
+}
+
+subscribe('MESSAGE_READ', (event) => {
+  if (event.type !== 'MESSAGE_READ') return;
+  markRead(event.payload);
+});
+
+subscribe('MESSAGE_ACKNOWLEDGED', (event) => {
+  if (event.type !== 'MESSAGE_ACKNOWLEDGED') return;
+  markRead(event.payload);
 });
 
 // ── Public API ────────────────────────────────────────────
@@ -217,6 +233,20 @@ export function subscribeMessagingRuntime(
 ): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+/**
+ * R-COMPANION-MESSAGING-LIVE-V1: acknowledge an inbound message from
+ * the desktop. Emits MESSAGE_ACKNOWLEDGED to the bus so all runtime
+ * subscribers (including this one) reflect the read state atomically.
+ */
+export function markMessageRead(messageId: string): void {
+  emit({
+    type: 'MESSAGE_ACKNOWLEDGED',
+    category: 'messaging',
+    payload: { messageId },
+    createdAt: Date.now(),
+  });
 }
 
 /** Drop the entire runtime view. Listeners untouched. Dev-only. */

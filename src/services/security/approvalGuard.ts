@@ -49,7 +49,8 @@ export type ApprovalDenialReason =
   | 'cancelled'
   | 'timeout'
   | 'invalid_pin'
-  | 'self_approval_blocked';
+  | 'self_approval_blocked'
+  | 'remote_denied';
 
 export interface ApprovalResult {
   approved: boolean;
@@ -60,12 +61,15 @@ export interface ApprovalResult {
 
 /** What the prompter resolves with. `cancelled` covers ESC, X click, and the inactivity timeout. */
 export type PrompterResponse =
-  | { cancelled: true; reason?: 'cancelled' | 'timeout' }
-  | { cancelled: false; pin: string };
+  | { cancelled: true; reason?: 'cancelled' | 'timeout' | 'remote_denied' }
+  | { cancelled: false; pin: string }
+  | { cancelled: false; remote: true; managerId: string };
 
-/** Modal-agnostic PIN input. The local-modal wrapper and the future remote
- *  approver both implement this signature. */
-export type ApprovalPrompter = (req: ApprovalRequest) => Promise<PrompterResponse>;
+/** Modal-agnostic PIN input. The local-modal wrapper and the Companion
+ *  remote prompter both implement this signature. approvalId is the
+ *  stable gate id emitted at APPROVAL_CREATED — the remote path uses it
+ *  to register a per-gate resolver without additional threading. */
+export type ApprovalPrompter = (req: ApprovalRequest, approvalId: string) => Promise<PrompterResponse>;
 
 export interface ApprovalGuardContext {
   employees: Employee[];
@@ -132,9 +136,36 @@ export async function requestApproval(
     reason: request.reason,
   });
 
-  const response = await prompter(request);
+  const response = await prompter(request, approvalId);
+
+  // Remote approval path — validated by useApprovalGate resolver before
+  // this branch is reached. No PIN verification needed; managerId is already
+  // trusted. All permission checks (canApprove, self-approval, requiresApproval)
+  // ran inside validateRemoteApprovalActor() in the resolver closure.
+  if (!response.cancelled && 'remote' in response && response.remote) {
+    const managerId = response.managerId;
+    logger({
+      requestedByEmployeeId: request.requestedByEmployeeId,
+      approvedByEmployeeId: managerId,
+      actionType: request.actionType,
+      category: categoryFor(request.actionType),
+      status: 'approved',
+      entityId: request.entityId,
+    });
+    emitApprovalApproved({
+      approvalId,
+      actionType: request.actionType,
+      requestedByEmployeeId: request.requestedByEmployeeId,
+      approvedByEmployeeId: managerId,
+    });
+    return { approved: true, approvedByEmployeeId: managerId };
+  }
+
   if (response.cancelled) {
-    const reason: ApprovalDenialReason = response.reason === 'timeout' ? 'timeout' : 'cancelled';
+    const reason: ApprovalDenialReason =
+      response.reason === 'timeout'       ? 'timeout' :
+      response.reason === 'remote_denied' ? 'remote_denied' :
+      'cancelled';
     logger({
       requestedByEmployeeId: request.requestedByEmployeeId,
       approvedByEmployeeId: '',
@@ -152,7 +183,7 @@ export async function requestApproval(
     return { approved: false, approvedByEmployeeId: '', reason };
   }
 
-  const pin = response.pin || '';
+  const pin = ('pin' in response ? response.pin : '') || '';
 
   // 1) Try employee approvers first.
   const matchedEmpId = verifyApprovalPin(pin, employees);

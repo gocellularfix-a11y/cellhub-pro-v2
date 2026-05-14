@@ -62,12 +62,10 @@ import { processIntelligenceAck } from '@/services/companion/receivers/intellige
 // R-COMPANION-BRIDGE-STATUS-BADGE-V1: also pull the snapshot getter so a
 // small status pill can mirror PosBridgeClient state in the UI.
 import {
-  startCompanionBridgeAdapter,
-  stopCompanionBridgeAdapter,
   getBridgeAdapterStatus,
-  sendCompanionMessage,
-  emitStoreSnapshot,
 } from '@/services/companion/companionBridgeAdapter';
+// R-COMPANION-SNAPSHOT-AGGREGATOR-V1 — canonical store snapshot math.
+import { computeCompanionStoreSnapshot } from '@/services/companion/companionSnapshotAggregator';
 import {
   generateCompanionAlerts,
 } from '@/services/companion/companionAlertProducer';
@@ -84,6 +82,21 @@ import {
   getMessagingRuntimeSnapshot,
   subscribeMessagingRuntime,
 } from '@/services/companion/companionMessagingRuntime';
+// R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: read model over intelligence alerts.
+import {
+  getIntelligenceRuntimeSnapshot,
+  subscribeIntelligenceRuntime,
+} from '@/services/companion/companionIntelligenceRuntime';
+// R-COMPANION-NOTIFICATION-INFRA-V1: operational notification layer.
+import {
+  getNotificationSnapshot,
+  subscribeNotifications,
+} from '@/services/companion/companionNotificationRuntime';
+// R-COMPANION-CENTER-SPLIT-V1: extracted panel sub-components.
+import ApprovalTimelinePanel from './components/ApprovalTimelinePanel';
+import IntelligenceActionsPanel from './components/IntelligenceActionsPanel';
+import NotificationCenterPanel from './components/NotificationCenterPanel';
+import OperationsMessagingPanel from './components/OperationsMessagingPanel';
 // R-COMPANION-STORE-STATUS-RUNTIME-V1: read model over store-status events.
 import {
   getStoreStatusRuntimeSnapshot,
@@ -98,9 +111,8 @@ import type {
   CompanionMessagingRuntimeSnapshot,
   CompanionStoreStatusRuntimeSnapshot,
 } from '@/services/companion/companionTypes';
-// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1 / R-BRIDGE-SIGNED-TOKEN-V1
-import { getDesktopIdentity } from '@/services/license/desktopIdentity';
-import { mintDesktopBridgeToken } from '@/services/companion/bridgeSignedToken';
+// R-COMPANION-DESKTOP-IDENTITY-BRIDGE-V1 / R-BRIDGE-SIGNED-TOKEN-V1 — bridge
+// token mint + identity now consumed by CompanionRuntimeMount (global).
 
 type CardStatus = 'not_connected' | 'pairing' | 'connected_soon' | 'coming_soon';
 
@@ -305,18 +317,6 @@ function auditActionLabel(actionType: string | undefined): string {
   }
 }
 
-function auditRelTime(ms: number): string {
-  const diff = Date.now() - ms;
-  if (diff < 60_000)   return 'just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return new Date(ms).toLocaleDateString();
-}
-
-function auditFmtAmt(cents: number | undefined): string {
-  if (!cents || cents === 0) return '';
-  return ` — $${(cents / 100).toFixed(2)}`;
-}
 
 // ── Main component ────────────────────────────────────────
 export default function CompanionCenter() {
@@ -389,8 +389,6 @@ export default function CompanionCenter() {
   // MESSAGE_SENT / MESSAGE_RECEIVED / MESSAGE_READ events. Used by
   // the Messaging card body.
   const [messagingRuntime, setMessagingRuntime] = useState<CompanionMessagingRuntimeSnapshot>(() => getMessagingRuntimeSnapshot());
-  // R-COMPANION-MESSAGING-SIMPLE-V1: chat input draft.
-  const [msgDraft, setMsgDraft] = useState('');
 
   // R-COMPANION-INTELLIGENCE-LIVE-ALERTS-V1: run deterministic alert rules
   // every 5 minutes while bridge is connected. emitIntelligenceAlertCreated
@@ -427,6 +425,12 @@ export default function CompanionCenter() {
   // Used by the Store Status card body.
   const [storeStatusRuntime, setStoreStatusRuntime] = useState<CompanionStoreStatusRuntimeSnapshot>(() => getStoreStatusRuntimeSnapshot());
 
+  // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1: read model over INTELLIGENCE_ALERT_CREATED events.
+  const [intelligenceRuntime, setIntelligenceRuntime] = useState(() => getIntelligenceRuntimeSnapshot());
+
+  // R-COMPANION-NOTIFICATION-INFRA-V1: operational notification layer.
+  const [notificationSnap, setNotificationSnap] = useState(() => getNotificationSnapshot());
+
   useEffect(() => {
     // Bridge snapshot subscription — fires for pairing-session start/
     // cancel, mock-connect/disconnect, AND for any low-level bridge
@@ -446,10 +450,12 @@ export default function CompanionCenter() {
     const unsubApprovals = subscribeApprovalRuntime((s) => setApprovalRuntime(s));
     const unsubMessaging = subscribeMessagingRuntime((s) => setMessagingRuntime(s));
     const unsubStoreStatus = subscribeStoreStatusRuntime((s) => setStoreStatusRuntime(s));
+    const unsubIntelligence    = subscribeIntelligenceRuntime((s) => setIntelligenceRuntime(s));
+    const unsubNotifications   = subscribeNotifications((s) => setNotificationSnap(s));
     // R-COMPANION-CENTER-UX-REDESIGN-V2: inject card hover + badge
     // pulse keyframes once. Idempotent.
     ensureCompanionCardStyles();
-    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); };
+    return () => { unsubSnap(); unsubEvents(); unsubInbox(); unsubApprovals(); unsubMessaging(); unsubStoreStatus(); unsubIntelligence(); unsubNotifications(); };
   }, []);
 
   // ── Derived flags from snapshot ───────────────────────
@@ -458,89 +464,30 @@ export default function CompanionCenter() {
   const pairedDevice = snapshot.pairedDevice;
   const companionConnState = snapshot.connectionState;
 
-  // R-COMPANION-STORE-STATUS-LIVE-V1: operational snapshot derived from live store state.
-  const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, locale-independent
-  const clockedInEmployees = useMemo(() =>
-    employees.filter((e) => {
-      if (!e.active) return false;
-      const log = e.clockLog || [];
-      if (log.length === 0) return false;
-      return !log[log.length - 1].clockOut;
-    }), [employees]);
+  // R-COMPANION-SNAPSHOT-AGGREGATOR-V1 — desktop UI reads the same
+  // canonical snapshot the mobile bridge does. Single source of truth
+  // for: today revenue/sales, open repairs, on-shift employees,
+  // pending approvals. currentEmployee is the primary on-shift signal
+  // (CellHub Pro doesn't write to clockLog today).
+  const storeSnapshot = useMemo(() => computeCompanionStoreSnapshot({
+    sales,
+    repairs,
+    employees,
+    currentEmployee: currentEmployee ?? null,
+    pendingApprovalsCount: approvalRuntime.pendingCount,
+  }), [sales, repairs, employees, currentEmployee, approvalRuntime.pendingCount]);
+  const clockedInEmployees = storeSnapshot.clockedInEmployees;
+  const todayRevenueCents = storeSnapshot.todayRevenueCents;
+  const todaySales = storeSnapshot.todaySalesCount;
+  const openRepairsCount = storeSnapshot.openRepairsCount;
 
-  const todaySales = useMemo(() =>
-    sales.filter((s) => {
-      if (s.status !== 'completed') return false;
-      try { return new Date(s.createdAt as string).toLocaleDateString('en-CA') === todayDateStr; }
-      catch { return false; }
-    }), [sales, todayDateStr]);
-
-  const todayRevenueCents = useMemo(() =>
-    todaySales.reduce((sum, s) => sum + (s.total || 0), 0), [todaySales]);
-
-  const openRepairsCount = useMemo(() =>
-    repairs.filter((r) => {
-      const s = (r.status || '').toLowerCase().replace(/ /g, '_');
-      return s !== 'picked_up' && s !== 'cancelled' && s !== 'refunded';
-    }).length, [repairs]);
-
-  // R-COMPANION-MOBILE-DASHBOARD-REAL-DATA-V1: push live store snapshot
-  // to mobile dashboard whenever bridge is connected and any store value
-  // changes. Fires immediately on connect so mobile gets values right away.
-  useEffect(() => {
-    if (bridgeStatus !== 'connected') return;
-    emitStoreSnapshot({
-      todayRevenueCents,
-      todaySalesCount: todaySales.length,
-      openRepairsCount,
-      clockedInCount: clockedInEmployees.length,
-      clockedInNames: clockedInEmployees.map((e) => e.name),
-      pendingApprovalsCount: approvalRuntime.pendingCount,
-      storeId: currentStoreId || '',
-      updatedAt: new Date().toISOString(),
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridgeStatus, todayRevenueCents, todaySales.length, openRepairsCount, clockedInEmployees, approvalRuntime.pendingCount, currentStoreId]);
-
-  // R-COMPANION-BRIDGE-WIRE-V1: adapter lifecycle. Starts only when both
-  // (a) the local mock bridge state is 'connected' AND
-  // (b) settings.companionBridgeEnabled is true.
-  // Adapter is idempotent so re-runs from remounts / setting flips are
-  // safe — singleton guard inside the adapter prevents duplicate listeners.
-  // R-BRIDGE-SIGNED-TOKEN-V1: mint a STRICT HMAC-signed token before starting
-  // the adapter. cancelled guard prevents a stale async callback from starting
-  // the adapter after the effect has already cleaned up (deps changed / unmount).
-  useEffect(() => {
-    let cancelled = false;
-
-    if (companionConnState === 'connected' && bridgeEnabled) {
-      const identity = getDesktopIdentity();
-      if (!identity || !identity.desktopDeviceId || !identity.storeId) {
-        console.warn('[CompanionBridge] Missing desktop identity — bridge registration skipped');
-      } else {
-        void mintDesktopBridgeToken({ storeId: identity.storeId, deviceId: identity.desktopDeviceId })
-          .then(authToken => {
-            if (cancelled) return;
-            console.info(`[CompanionBridge] Registering desktopDeviceId=${identity.desktopDeviceId} storeId=${identity.storeId}`);
-            startCompanionBridgeAdapter({
-              bridgeUrl,
-              storeId: identity.storeId,
-              deviceId: identity.desktopDeviceId,
-              authToken,
-              getEmployeeName: (id) => (employees.find((e) => e.id === id)?.name) || '',
-              getStoreLocation: () => settings.storeAddress || '',
-            });
-          });
-      }
-    } else {
-      stopCompanionBridgeAdapter();
-    }
-
-    return () => {
-      cancelled = true;
-      stopCompanionBridgeAdapter();
-    };
-  }, [companionConnState, bridgeEnabled, bridgeUrl, settings.storeAddress, employees]);
+  // R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: bridge adapter lifecycle AND
+  // live store snapshot emit moved to <CompanionRuntimeMount /> (mounted
+  // globally in AppShell). Previously they lived here, but CompanionCenter
+  // is lazy-mounted only when the Companion tab is active, which meant
+  // navigating away tore down the bridge and stopped pushing snapshots.
+  // CompanionCenter still reads bridgeStatus via the polling effect above
+  // for its status pill + card body — that surface is unaffected.
 
   const toggleCompanionConnection = useCallback(() => {
     setCompanionConnectionState(companionConnState === 'connected' ? 'disconnected' : 'connected');
@@ -1188,7 +1135,7 @@ export default function CompanionCenter() {
               ${(todayRevenueCents / 100).toFixed(2)}
             </div>
             <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: 3 }}>
-              {todaySales.length} {todaySales.length === 1 ? 'sale' : 'sales'}
+              {todaySales} {todaySales === 1 ? 'sale' : 'sales'}
             </div>
           </div>
 
@@ -1216,229 +1163,27 @@ export default function CompanionCenter() {
         </div>
       </div>
 
-      {/* R-APPROVAL-AUDIT-LOG-V1: live approval history feed */}
-      <div style={{
-        marginTop: '0.75rem',
-        background: 'rgba(255,255,255,0.015)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '0.75rem',
-        padding: '0.75rem 1rem',
-      }}>
-        <div style={{
-          fontSize: '0.72rem',
-          fontWeight: 700,
-          color: '#64748b',
-          textTransform: 'uppercase',
-          letterSpacing: '0.07em',
-          marginBottom: '0.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-        }}>
-          Approval Activity
-          {approvalRuntime.items.length > 0 && (
-            <span style={{
-              background: 'rgba(148,163,184,0.15)',
-              color: '#94a3b8',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              padding: '1px 6px',
-              borderRadius: 4,
-            }}>
-              {approvalRuntime.items.length}
-            </span>
-          )}
-        </div>
+      {/* R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1 */}
+      <ApprovalTimelinePanel approvalRuntime={approvalRuntime} employees={employees} />
 
-        {approvalRuntime.items.length === 0 ? (
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-            No approval activity this session.
-          </p>
-        ) : (
-          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            {approvalRuntime.items.slice(0, 50).map((item) => {
-              const isApproved = item.status === 'approved';
-              const isDenied   = item.status === 'denied';
-              const isPending  = item.status === 'pending';
-              const reqEmp = employees.find((e) => e.id === item.requestedByEmployeeId);
-              const reqName = reqEmp?.name || (item.requestedByEmployeeId ? item.requestedByEmployeeId.slice(-6) : '—');
-              const approverRaw = item.approvedByEmployeeId;
-              const approverName = approverRaw === 'approver:admin'
-                ? 'Admin PIN'
-                : approverRaw
-                  ? (employees.find((e) => e.id === approverRaw)?.name || approverRaw.slice(-6))
-                  : null;
-              const statusColor = isApproved ? '#4ade80' : isDenied ? '#f87171' : '#fbbf24';
-              const statusIcon  = isApproved ? '✔' : isDenied ? '✖' : '…';
-              const label = auditActionLabel(item.actionType) + auditFmtAmt(item.affectedAmount);
-              return (
-                <div key={item.approvalId} style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  padding: '0.35rem 0.5rem',
-                  borderRadius: 6,
-                  background: 'rgba(255,255,255,0.03)',
-                  fontSize: '0.75rem',
-                }}>
-                  <span style={{ color: statusColor, fontWeight: 700, minWidth: 14, lineHeight: 1.6 }}>
-                    {statusIcon}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#e2e8f0', fontWeight: 600, lineHeight: 1.3 }}>
-                      {label}
-                    </div>
-                    <div style={{ color: '#64748b', fontSize: '0.68rem', lineHeight: 1.4 }}>
-                      {reqName}
-                      {approverName && ` → ${approverName}`}
-                      {isPending && <span style={{ color: '#fbbf24' }}> · pending</span>}
-                      {isDenied && item.reason && <span> · {item.reason}</span>}
-                    </div>
-                  </div>
-                  <span style={{ color: '#475569', fontSize: '0.65rem', whiteSpace: 'nowrap', lineHeight: 1.6 }}>
-                    {auditRelTime(item.updatedAt)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1 */}
+      <IntelligenceActionsPanel
+        intelligenceRuntime={intelligenceRuntime}
+        currentEmployeeId={currentEmployee?.id}
+        currentEmployeeName={currentEmployee?.name}
+      />
 
-      {/* R-COMPANION-MESSAGING-SIMPLE-V1: live chat panel */}
-      <div style={{
-        marginTop: '0.75rem',
-        background: 'linear-gradient(160deg, #120820 0%, #0b0516 100%)',
-        border: '1px solid rgba(192,132,252,0.18)',
-        borderRadius: '0.9rem',
-        padding: '1rem 1.1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            💬 {lang === 'es' ? 'Mensajes' : 'Messages'}
-          </span>
-          {messagingRuntime.totalUnread > 0 && (
-            <span style={{
-              background: 'rgba(192,132,252,0.18)',
-              color: '#c084fc',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              padding: '2px 8px',
-              borderRadius: 10,
-              border: '1px solid rgba(192,132,252,0.3)',
-            }}>
-              {messagingRuntime.totalUnread} {lang === 'es' ? 'sin leer' : 'unread'}
-            </span>
-          )}
-        </div>
+      {/* R-COMPANION-NOTIFICATION-INFRA-V1 */}
+      <NotificationCenterPanel notificationSnap={notificationSnap} />
 
-        {/* Message feed — oldest first, max 30 shown */}
-        <div style={{
-          maxHeight: 240,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.35rem',
-        }}>
-          {messagingRuntime.recentMessages.length === 0 ? (
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-              {lang === 'es' ? 'Sin mensajes esta sesión.' : 'No messages this session.'}
-            </p>
-          ) : (
-            [...messagingRuntime.recentMessages].reverse().map((msg) => {
-              const isOut = msg.direction === 'outbound';
-              const senderEmp = employees.find((e) => e.id === msg.fromEmployeeId);
-              const senderLabel = senderEmp?.name || (isOut ? (currentEmployee?.name || 'You') : 'Manager');
-              const text = msg.body || msg.preview || '';
-              return (
-                <div key={msg.messageId} style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: isOut ? 'flex-end' : 'flex-start',
-                }}>
-                  <div style={{
-                    maxWidth: '80%',
-                    background: isOut ? 'rgba(192,132,252,0.18)' : 'rgba(255,255,255,0.06)',
-                    border: `1px solid ${isOut ? 'rgba(192,132,252,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: isOut ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                    padding: '0.45rem 0.65rem',
-                    fontSize: '0.78rem',
-                    color: '#e2e8f0',
-                    lineHeight: 1.4,
-                    wordBreak: 'break-word',
-                  }}>
-                    {text}
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: '#475569', marginTop: 2, paddingInline: 4 }}>
-                    {senderLabel} · {auditRelTime(msg.updatedAt)}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Input row */}
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <input
-            type="text"
-            value={msgDraft}
-            onChange={(e) => setMsgDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && msgDraft.trim() && bridgeStatus === 'connected') {
-                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
-                setMsgDraft('');
-              }
-            }}
-            placeholder={bridgeStatus === 'connected'
-              ? (lang === 'es' ? 'Escribe un mensaje…' : 'Type a message…')
-              : (lang === 'es' ? 'Conecta el bridge para enviar' : 'Connect bridge to send')}
-            disabled={bridgeStatus !== 'connected'}
-            style={{
-              flex: 1,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(192,132,252,0.25)',
-              borderRadius: 8,
-              color: '#e2e8f0',
-              fontSize: '0.82rem',
-              padding: '0.45rem 0.65rem',
-              outline: 'none',
-              opacity: bridgeStatus !== 'connected' ? 0.5 : 1,
-            }}
-          />
-          <button
-            type="button"
-            disabled={!msgDraft.trim() || bridgeStatus !== 'connected'}
-            onClick={() => {
-              if (msgDraft.trim()) {
-                sendCompanionMessage(msgDraft.trim(), currentEmployee?.id || '', currentEmployee?.name || 'Store');
-                setMsgDraft('');
-              }
-            }}
-            style={{
-              padding: '0.45rem 0.9rem',
-              background: msgDraft.trim() && bridgeStatus === 'connected'
-                ? 'rgba(192,132,252,0.22)'
-                : 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(192,132,252,0.35)',
-              borderRadius: 8,
-              color: '#c084fc',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              cursor: msgDraft.trim() && bridgeStatus === 'connected' ? 'pointer' : 'default',
-              opacity: msgDraft.trim() && bridgeStatus === 'connected' ? 1 : 0.4,
-              transition: 'background 0.15s, opacity 0.15s',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {lang === 'es' ? 'Enviar' : 'Send'}
-          </button>
-        </div>
-      </div>
+      {/* R-COMPANION-MESSAGING-LIVE-V1 */}
+      <OperationsMessagingPanel
+        messagingRuntime={messagingRuntime}
+        employees={employees}
+        currentEmployeeId={currentEmployee?.id}
+        currentEmployeeName={currentEmployee?.name}
+        bridgeStatus={bridgeStatus}
+      />
 
       {/* R-COMPANION-CENTER-UX-REDESIGN: developer diagnostics hidden
           inside a collapsed <details> so the main surface stays clean.

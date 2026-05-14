@@ -35,6 +35,34 @@ import { getContext, subscribe } from '@/services/intelligence/liveContext/liveC
 import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
 import { computeContextSuggestions, getMinimizedPreviewText, hasUrgentSuggestion } from '@/services/intelligence/liveContext/contextSuggestions';
 import type { LiveContext } from '@/services/intelligence/liveContext/contextTypes';
+import { getCustomerBusinessProfile } from '@/services/intelligence/customerScoring/customerScoringSelectors';
+import type { CustomerBusinessProfile, CustomerTier } from '@/services/intelligence/customerScoring/customerScoringTypes';
+import { buildActionExecutionContext } from '@/services/intelligence/actionExecution/actionExecutionContext';
+import { resolveSuggestionActions } from '@/services/intelligence/actionExecution/actionExecutionEngine';
+import { logBubbleAction } from '@/services/intelligence/actionExecution/actionExecutionQueue';
+import type { OperatorExecutableAction } from '@/services/intelligence/actionExecution/actionExecutionTypes';
+import {
+  getPendingWorkflows,
+  getPendingExternalPaymentWorkflow,
+  completeWorkflow,
+  cancelWorkflow,
+  resumeWorkflow,
+  setActiveWorkflowStep,
+  getMostImportantResumeContext,
+  subscribeWorkflowContinuity,
+} from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { initExternalFlowAwareness, subscribeExternalFlowReturn, resetReturnCooldown } from '@/services/intelligence/workflowContinuity/externalFlowAwareness';
+import type { PendingWorkflow, WorkflowResumeContext } from '@/services/intelligence/workflowContinuity/workflowContinuityTypes';
+import { computeOperationalHealth } from '@/services/intelligence/employeeOps/employeeOpsEngine';
+import type { OperationalHealthSnapshot } from '@/services/intelligence/employeeOps/employeeOpsTypes';
+import { getRhythmModeLabel, isRhythmActionable } from '@/services/intelligence/storeRhythm/storeRhythmSelectors';
+import { getTrendModeLabel, isTemporalTrendActionable } from '@/services/intelligence/temporalTrends/temporalTrendSelectors';
+import { getStrategyLabel, isStrategyActionable } from '@/services/intelligence/businessStrategy/businessStrategySelectors';
+import type { ActionChainStep } from '@/services/intelligence/actionChains/actionChainTypes';
+import { loadActiveChainState, applyChainState, advanceChainStep, getCurrentStep, getChainProgress, isChainComplete } from '@/services/intelligence/actionChains/actionChainSelectors';
+import { getActionById } from '@/services/intelligence/actionExecution/actionExecutionRegistry';
+import { recordOutcome } from '@/services/intelligence/outcomes/outcomeStore';
+import { getOutcomeStats, getRecentlyCompletedChainTypes } from '@/services/intelligence/outcomes/outcomeSelectors';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -157,10 +185,12 @@ export default function FloatingOperatorBubble() {
   const { state, dispatch } = useApp();
   const {
     activeTab, cart, customers, sales, layaways, repairs,
+    inventory,
     currentEmployee,
     pendingPosCustomer, pendingPhonePaymentCustomerId, pendingBarcodeInvoice,
+    unlocks,
   } = state;
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   // SVG <defs> ids must be globally unique. useId() returns a stable
   // per-instance string; we sanitise out non-id-safe characters (React
@@ -188,6 +218,10 @@ export default function FloatingOperatorBubble() {
   const [activeContext, setActiveContext] = useState<OperatorActiveContext | null>(null);
   // Brief "Copied!" flash after the Copy-Phone quick action.
   const [copiedFlash, setCopiedFlash] = useState(false);
+
+  // ── Workflow continuity (R-INTELLIGENCE-WORKFLOW-CONTINUITY-V1) ────
+  const [pendingWorkflows, setPendingWorkflows] = useState<PendingWorkflow[]>(() => getPendingWorkflows());
+  const [returnDetected, setReturnDetected] = useState(false);
 
   // ── Live context (R-INTELLIGENCE-LIVE-CONTEXT-V1) ──────
   const [liveCtx, setLiveCtx] = useState<LiveContext>(() => getContext());
@@ -295,6 +329,24 @@ export default function FloatingOperatorBubble() {
 
   // ── Live context store — subscribe for re-renders ──────
   useEffect(() => subscribe(setLiveCtx), []);
+
+  // ── Workflow continuity store — subscribe for re-renders ─
+  useEffect(() => {
+    setPendingWorkflows(getPendingWorkflows());
+    return subscribeWorkflowContinuity(() => setPendingWorkflows(getPendingWorkflows()));
+  }, []);
+
+  // ── External flow awareness — detect portal return ────────
+  useEffect(() => {
+    const cleanupAwareness = initExternalFlowAwareness();
+    const unsubReturn = subscribeExternalFlowReturn(() => {
+      if (getPendingExternalPaymentWorkflow()) {
+        setReturnDetected(true);
+        setIsOverlayOpen(true);
+      }
+    });
+    return () => { cleanupAwareness(); unsubReturn(); };
+  }, []);
 
   // ── Sync AppState → live context store ─────────────────
   useEffect(() => {
@@ -503,15 +555,70 @@ export default function FloatingOperatorBubble() {
     [enabled, activeContext, inputs],
   );
 
+  // Active customer business profile — computed only when a customer is active.
+  // Memoized on the customer id + array references so it does not recompute
+  // on every preview-tick rotation (which changes only previewTick, not these deps).
+  const activeCustomerProfile = useMemo<CustomerBusinessProfile | null>(() => {
+    const custId = liveCtx.activeCustomer?.id;
+    if (!custId || !enabled) return null;
+    return getCustomerBusinessProfile(custId, customers, sales, repairs, layaways, unlocks ?? []);
+  }, [liveCtx.activeCustomer?.id, customers, sales, repairs, layaways, unlocks, enabled]);
+
+  // Operational health snapshot — keyed on store data + pending workflow count.
+  // Does NOT depend on previewTick so it doesn't recompute every 4 seconds.
+  const opHealth = useMemo<OperationalHealthSnapshot>(
+    () => computeOperationalHealth({
+      repairs,
+      layaways,
+      sales,
+      customers,
+      inventory: inventory ?? [],
+      pendingWorkflows,
+      recentActions: liveCtx.recentActions,
+      activeEmployeeId: liveCtx.activeEmployeeId,
+      activeEmployeeName: liveCtx.activeEmployeeName,
+      pendingWorkflowCount: pendingWorkflows.length,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [repairs, layaways, sales, customers, inventory, liveCtx.recentActions, liveCtx.activeEmployeeId, pendingWorkflows],
+  );
+
+  // Tracks which suggestion's action was last clicked (for "Opened" flash).
+  const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
+
+  // Incremented when chain step state changes (localStorage write) to trigger re-render.
+  const [chainStateTick, setChainStateTick] = useState(0);
+  // Set to chain type when whole chain completes — drives "Sequence complete" flash.
+  const [chainCompletedType, setChainCompletedType] = useState<string | null>(null);
+
+  // Aggregated outcome stats — refreshed when chain state changes.
+  const outcomeStats = useMemo(() => getOutcomeStats(), [chainStateTick]);
+
+  // Chain types completed within the last 2h — prevents immediate re-surfacing.
+  const recentlyCompletedChains = useMemo(
+    () => getRecentlyCompletedChainTypes(),
+    [chainStateTick],
+  );
+
+  // Active chain with persisted step state applied.
+  const displayedChain = useMemo(() => {
+    if (!opHealth.activeChain) return null;
+    if (recentlyCompletedChains.has(opHealth.activeChain.type)) return null;
+    const applied = applyChainState(opHealth.activeChain, loadActiveChainState());
+    return isChainComplete(applied) ? null : applied;
+  // chainStateTick / recentlyCompletedChains are the reactive signals for localStorage changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opHealth.activeChain, chainStateTick, recentlyCompletedChains]);
+
   // Live-context suggestions and badge preview text.
   const suggestions = useMemo(
-    () => enabled ? computeContextSuggestions(liveCtx, inputs) : [],
-    [enabled, liveCtx, inputs],
+    () => enabled ? computeContextSuggestions(liveCtx, inputs, activeCustomerProfile ?? undefined, opHealth, outcomeStats) : [],
+    [enabled, liveCtx, inputs, activeCustomerProfile, opHealth, outcomeStats],
   );
 
   const previewText = useMemo(
-    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick) : '',
-    [enabled, liveCtx, inputs, previewTick],
+    () => enabled ? getMinimizedPreviewText(liveCtx, inputs, previewTick, activeCustomerProfile ?? undefined, opHealth) : '',
+    [enabled, liveCtx, inputs, previewTick, activeCustomerProfile, opHealth],
   );
 
   // Urgency signal — drives stronger bubble pulse when high-priority context exists.
@@ -519,6 +626,128 @@ export default function FloatingOperatorBubble() {
     () => enabled ? hasUrgentSuggestion(liveCtx, inputs) : false,
     [enabled, liveCtx, inputs],
   );
+
+  // Action execution context — built from bubble runtime state.
+  // Resolves effective customer from liveCtx (preferred) or activeContext (fallback).
+  const execCtx = useMemo(
+    () => buildActionExecutionContext(
+      dispatch as (action: { type: string; payload?: unknown }) => void,
+      liveCtx.activeCustomer?.id ?? activeContext?.customerId ?? null,
+      customers,
+      repairs,
+      layaways,
+      activeCustomerProfile,
+    ),
+    // dispatch is stable; the rest are reactive deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveCtx.activeCustomer?.id, activeContext?.customerId, customers, repairs, layaways, activeCustomerProfile],
+  );
+
+  // Pair each suggestion with its canExecute-filtered action buttons.
+  const suggestionsWithActions = useMemo(
+    () => resolveSuggestionActions(suggestions, execCtx),
+    [suggestions, execCtx],
+  );
+
+  // Execute a bubble action: run it, log it, flash feedback, close overlay.
+  // Declared after execCtx so the dep array reference is valid.
+  const handleActionClick = useCallback((
+    action: OperatorExecutableAction,
+    suggestionId: string,
+  ) => {
+    try { action.execute(execCtx); } catch { /* safe — never throw */ }
+    logBubbleAction(action.id, execCtx.customerId, suggestionId);
+    recordOutcome({ sourceType: 'action', sourceId: action.id, outcome: 'completed', relatedCustomerId: execCtx.customerId ?? undefined });
+    setFlashedSuggId(suggestionId);
+    setTimeout(() => {
+      setFlashedSuggId(null);
+      setIsOverlayOpen(false);
+    }, 700);
+  }, [execCtx]);
+
+  const handleChainStepClick = useCallback((step: ActionChainStep) => {
+    if (!displayedChain) return;
+    const action = getActionById(step.actionId, execCtx);
+    if (action) {
+      try { action.execute(execCtx); } catch { /* safe */ }
+      logBubbleAction(action.id, execCtx.customerId, `chain_${displayedChain.type}`);
+      recordOutcome({ sourceType: 'action', sourceId: action.id, outcome: 'completed', relatedCustomerId: execCtx.customerId ?? undefined });
+    }
+    recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'completed', metadata: { stepId: step.id, type: 'step' } });
+    advanceChainStep(displayedChain.type, step.id, 'complete');
+    // Check if the chain is now fully complete after this step.
+    const updatedChain = applyChainState(displayedChain, loadActiveChainState());
+    if (isChainComplete(updatedChain)) {
+      recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'completed', metadata: { type: 'chain', totalSteps: String(displayedChain.steps.length) } });
+      setChainCompletedType(displayedChain.type);
+      setTimeout(() => { setChainCompletedType(null); setIsOverlayOpen(false); }, 2000);
+    }
+    setChainStateTick((t) => t + 1);
+  }, [displayedChain, execCtx]);
+
+  const handleChainStepSkip = useCallback((step: ActionChainStep) => {
+    if (!displayedChain) return;
+    recordOutcome({ sourceType: 'chain', sourceId: displayedChain.type, outcome: 'skipped', metadata: { stepId: step.id, type: 'step' } });
+    advanceChainStep(displayedChain.type, step.id, 'skip');
+    setChainStateTick((t) => t + 1);
+  }, [displayedChain]);
+
+  // ── Workflow continuity derived state + handlers ───────────────────────────
+
+  const pendingExternalPayment = pendingWorkflows.find(
+    (w) => w.type === 'external_payment' && w.status === 'pending',
+  ) ?? null;
+
+  // Rich resume context — rebuilt only when pendingWorkflows changes (not on every tick).
+  const resumeCtx = useMemo<WorkflowResumeContext | null>(
+    () => getMostImportantResumeContext(),
+    // pendingWorkflows is the proxy dep — changes when store notifies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingWorkflows],
+  );
+
+  // Navigate to Phone Payments and mark the workflow as resumed.
+  const handleResumeWorkflow = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    resumeWorkflow(pendingExternalPayment.id);
+    setActiveWorkflowStep(pendingExternalPayment.id, 'confirm_payment_return');
+    resetReturnCooldown();
+    setReturnDetected(false);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'phone-payments' });
+    setIsOverlayOpen(false);
+  }, [pendingExternalPayment, dispatch]);
+
+  // Cashier confirmed they completed the carrier payment — dispatch event to
+  // PhonePaymentModal, complete the workflow, and reset detection state.
+  // NEVER auto-records revenue. Human click is the only trigger.
+  const handleConfirmExternalPaid = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    recordOutcome({ sourceType: 'workflow', sourceId: 'external_payment', outcome: 'recovered', relatedWorkflowId: pendingExternalPayment.id });
+    completeWorkflow(pendingExternalPayment.id);
+    try {
+      window.dispatchEvent(new CustomEvent('cellhub:workflow-external-payment-confirm'));
+    } catch { /* non-CustomEvent environment — silent */ }
+    resetReturnCooldown();
+    setReturnDetected(false);
+    setIsOverlayOpen(false);
+  }, [pendingExternalPayment]);
+
+  // Cashier says payment is still processing — extend TTL and dismiss card.
+  // Workflow stays pending so it re-surfaces on next return (past cooldown).
+  const handleExternalStillProcessing = useCallback(() => {
+    if (pendingExternalPayment) resumeWorkflow(pendingExternalPayment.id);
+    resetReturnCooldown();
+    setReturnDetected(false);
+  }, [pendingExternalPayment]);
+
+  // Cashier explicitly cancels — mark workflow cancelled and dismiss.
+  const handleCancelExternalPayment = useCallback(() => {
+    if (!pendingExternalPayment) return;
+    recordOutcome({ sourceType: 'workflow', sourceId: 'external_payment', outcome: 'dismissed', relatedWorkflowId: pendingExternalPayment.id });
+    cancelWorkflow(pendingExternalPayment.id);
+    resetReturnCooldown();
+    setReturnDetected(false);
+  }, [pendingExternalPayment]);
 
   const insightToneColor = (tone: OperatorInsightTone): string => {
     switch (tone) {
@@ -528,6 +757,33 @@ export default function FloatingOperatorBubble() {
       default:         return '#a5b4fc';
     }
   };
+
+  // Tier badge colour helper — maps CustomerTier to a small inline pill style.
+  const tierBadgeColors = useMemo<{ bg: string; color: string } | null>(() => {
+    const tier: CustomerTier | undefined = activeCustomerProfile?.estimatedCustomerTier;
+    if (!tier || tier === 'Casual') return null; // Casual = no badge (not notable)
+    const map: Record<CustomerTier, { bg: string; color: string }> = {
+      VIP:      { bg: 'rgba(245,158,11,0.20)',  color: '#f59e0b' },
+      Loyal:    { bg: 'rgba(129,140,248,0.20)', color: '#818cf8' },
+      Active:   { bg: 'rgba(34,197,94,0.18)',   color: '#4ade80' },
+      'At Risk':{ bg: 'rgba(249,115,22,0.20)',  color: '#f97316' },
+      Lost:     { bg: 'rgba(239,68,68,0.20)',   color: '#f87171' },
+      Casual:   { bg: 'transparent',            color: 'transparent' },
+    };
+    return map[tier] ?? null;
+  }, [activeCustomerProfile]);
+
+  // Override the badge preview text.
+  // Priority: carrier payment > strategy > rhythm mode > temporal trend > normal rotation.
+  const effectivePreviewText = (pendingExternalPayment && returnDetected)
+    ? (locale === 'es' ? 'Confirmar pago del carrier' : 'Confirm carrier payment')
+    : (!liveCtx.activeCustomer && isStrategyActionable(opHealth.strategy))
+      ? getStrategyLabel(opHealth.strategy.type)
+      : (!liveCtx.activeCustomer && isRhythmActionable(opHealth.storeRhythm))
+        ? getRhythmModeLabel(opHealth.storeRhythm.currentMode)
+        : (!liveCtx.activeCustomer && isTemporalTrendActionable(opHealth.storeRhythm.temporalTrend))
+          ? getTrendModeLabel(opHealth.storeRhythm.temporalTrend.trendMode)
+          : previewText;
 
   // ── Render decisions ───────────────────────────────────
   const tooltip = isOverlayOpen
@@ -795,7 +1051,7 @@ export default function FloatingOperatorBubble() {
 
       {/* Context badge — small pill below the bubble, shows customer name
           or rotating suggestion preview. Hidden when overlay or hint is open. */}
-      {enabled && !isDragging && !isOverlayOpen && !showPill && previewText && (
+      {enabled && !isDragging && !isOverlayOpen && !showPill && effectivePreviewText && (
         <div
           aria-hidden="true"
           style={{
@@ -803,14 +1059,18 @@ export default function FloatingOperatorBubble() {
             top: position.y + BUBBLE_SIZE + 5,
             left: position.x + BUBBLE_SIZE / 2,
             transform: 'translateX(-50%)',
-            background: 'rgba(15,23,42,0.82)',
-            border: '1px solid rgba(148,163,184,0.18)',
+            background: (pendingExternalPayment && returnDetected)
+              ? 'rgba(245,158,11,0.15)'
+              : 'rgba(15,23,42,0.82)',
+            border: (pendingExternalPayment && returnDetected)
+              ? '1px solid rgba(245,158,11,0.4)'
+              : '1px solid rgba(148,163,184,0.18)',
             borderRadius: '1rem',
             padding: '0.18rem 0.55rem',
-            color: '#94a3b8',
+            color: (pendingExternalPayment && returnDetected) ? '#fbbf24' : '#94a3b8',
             fontSize: '0.68rem',
             whiteSpace: 'nowrap',
-            maxWidth: 180,
+            maxWidth: 200,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             zIndex: Z_INDEX,
@@ -818,7 +1078,7 @@ export default function FloatingOperatorBubble() {
             pointerEvents: 'none',
           }}
         >
-          {previewText}
+          {effectivePreviewText}
         </div>
       )}
 
@@ -891,6 +1151,133 @@ export default function FloatingOperatorBubble() {
             </span>
           </div>
 
+          {/* R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: workflow resume card.
+              Shown when the cashier opened a carrier portal AND returned to CellHub.
+              Priority 1 surface — outranks all suggestions.
+              NEVER auto-confirms — four explicit human choices required. */}
+          {pendingExternalPayment && returnDetected && (() => {
+            const meta = pendingExternalPayment.metadata as Record<string, unknown>;
+            const carrier = String(meta.carrier ?? '');
+            const phone = String(meta.phone ?? '');
+            const lineIndex = typeof meta.lineIndex === 'number' ? meta.lineIndex : undefined;
+            const totalLines = typeof meta.totalLines === 'number' ? meta.totalLines : undefined;
+            const multiLine = typeof lineIndex === 'number' && typeof totalLines === 'number' && totalLines > 1;
+
+            const headerLabel = locale === 'es' ? 'Retomar flujo de pago' : (resumeCtx?.resumeLabel ?? 'Resume payment workflow');
+            const descLine1 = locale === 'es'
+              ? `Cobrabas pago${carrier ? ` de ${carrier}` : ''}${phone ? ` para ${phone}` : ''}`
+              : (resumeCtx?.resumeDescription ?? 'External payment pending');
+            const descLine2 = multiLine
+              ? (locale === 'es' ? `Línea ${(lineIndex as number) + 1} de ${totalLines}` : `Line ${(lineIndex as number) + 1} of ${totalLines}`)
+              : null;
+
+            return (
+              <div style={{
+                background: 'rgba(245,158,11,0.10)',
+                border: '1px solid rgba(245,158,11,0.45)',
+                borderRadius: '0.5rem',
+                padding: '0.6rem 0.7rem',
+                display: 'flex', flexDirection: 'column', gap: '0.4rem',
+              }}>
+                <div style={{ fontSize: '0.70rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {headerLabel}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                  <div style={{ fontSize: '0.82rem', color: '#e2e8f0', lineHeight: 1.35 }}>
+                    {descLine1}
+                  </div>
+                  {descLine2 && (
+                    <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                      {descLine2}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.78rem', color: '#a5b4fc', marginTop: '0.15rem' }}>
+                    {locale === 'es'
+                      ? '¿Completaste el pago en el portal del carrier?'
+                      : 'Did you complete the payment on the carrier website?'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.05rem' }}>
+                  {/* Resume — navigate back to Phone Payments */}
+                  <button
+                    type="button"
+                    onClick={handleResumeWorkflow}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(99,102,241,0.18)',
+                      border: '1px solid rgba(99,102,241,0.5)',
+                      color: '#a5b4fc',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '↩ Retomar' : '↩ Resume'}
+                  </button>
+                  {/* Mark Paid — safe PhonePaymentModal event path */}
+                  <button
+                    type="button"
+                    onClick={handleConfirmExternalPaid}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(34,197,94,0.16)',
+                      border: '1px solid rgba(34,197,94,0.45)',
+                      color: '#86efac',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '✓ Pagado · Sig' : '✓ Mark Paid & Next'}
+                  </button>
+                  {/* Still Processing — keep pending, dismiss card */}
+                  <button
+                    type="button"
+                    onClick={handleExternalStillProcessing}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(148,163,184,0.08)',
+                      border: '1px solid rgba(148,163,184,0.25)',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {locale === 'es' ? '⏳ En proceso' : '⏳ Still Processing'}
+                  </button>
+                  {/* Cancel — remove workflow from queue */}
+                  <button
+                    type="button"
+                    onClick={handleCancelExternalPayment}
+                    style={{
+                      flex: '0 0 auto',
+                      padding: '0.38rem 0.55rem',
+                      borderRadius: '0.45rem',
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      color: '#fca5a5',
+                      cursor: 'pointer',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Body — priority: context block > hint > placeholder */}
           {activeContext ? (() => {
             const ctxCust = activeContext.customerId
@@ -916,7 +1303,25 @@ export default function FloatingOperatorBubble() {
                   {t(titleKey)}
                 </div>
                 {ctxName && (
-                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>{ctxName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>{ctxName}</span>
+                    {tierBadgeColors && activeCustomerProfile && (
+                      <span style={{
+                        fontSize: '0.60rem',
+                        fontWeight: 700,
+                        padding: '0.10rem 0.38rem',
+                        borderRadius: '0.8rem',
+                        background: tierBadgeColors.bg,
+                        color: tierBadgeColors.color,
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                        {activeCustomerProfile.estimatedCustomerTier}
+                      </span>
+                    )}
+                  </div>
                 )}
                 {phoneFmt && (
                   <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontFamily: 'Courier New, monospace' }}>
@@ -1056,41 +1461,163 @@ export default function FloatingOperatorBubble() {
             </div>
           )}
 
-          {/* Live-context suggestions (R-INTELLIGENCE-LIVE-CONTEXT-V1) */}
-          {suggestions.length > 0 && (
+          {/* Sequence-complete flash — shown for 2s after the last chain step is clicked. */}
+          {chainCompletedType && (
+            <div style={{
+              background: 'rgba(34,197,94,0.10)',
+              border: '1px solid rgba(34,197,94,0.35)',
+              borderRadius: '0.5rem',
+              padding: '0.6rem 0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <span style={{ color: '#86efac', fontSize: '0.9rem', flexShrink: 0 }}>✓</span>
+              <span style={{ fontSize: '0.82rem', color: '#86efac', fontWeight: 600 }}>
+                {locale === 'es' ? 'Secuencia completada' : 'Sequence complete'}
+              </span>
+            </div>
+          )}
+
+          {/* Guided action chain card (R-INTELLIGENCE-ACTION-CHAINS-V1).
+              Shown when a dominant operational chain is active and has pending steps.
+              Surfaces current step + next step preview only — never a full workflow graph. */}
+          {displayedChain && !chainCompletedType && (() => {
+            const currentStep = getCurrentStep(displayedChain);
+            if (!currentStep) return null;
+            const nextStep = displayedChain.steps[displayedChain.currentStepIndex + 1] ?? null;
+            const { completed, total } = getChainProgress(displayedChain);
+            const stepAction = getActionById(currentStep.actionId, execCtx);
+            return (
+              <div style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: '1px solid rgba(99,102,241,0.35)',
+                borderRadius: '0.5rem',
+                padding: '0.6rem 0.7rem',
+                display: 'flex', flexDirection: 'column', gap: '0.3rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {locale === 'es' ? 'Secuencia guiada' : 'Guided Sequence'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                    {locale === 'es' ? `Paso ${completed + 1} de ${total}` : `Step ${completed + 1} of ${total}`}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#e2e8f0' }}>{displayedChain.title}</div>
+                {displayedChain.detail && (
+                  <div style={{ fontSize: '0.73rem', color: '#64748b' }}>{displayedChain.detail}</div>
+                )}
+                {/* Current step */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.1rem' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#818cf8', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.78rem', color: '#c7d2fe', flex: 1 }}>{currentStep.label}</span>
+                  {stepAction && (
+                    <button
+                      type="button"
+                      onClick={() => handleChainStepClick(currentStep)}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        borderRadius: '0.9rem',
+                        fontSize: '0.70rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: '1px solid rgba(99,102,241,0.55)',
+                        background: 'rgba(99,102,241,0.18)',
+                        color: '#a5b4fc',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {stepAction.label}
+                    </button>
+                  )}
+                </div>
+                {/* Next step preview */}
+                {nextStep && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', border: '1px solid #334155', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.73rem', color: '#334155' }}>
+                      {locale === 'es' ? 'Siguiente: ' : 'Next: '}{nextStep.label}
+                    </span>
+                  </div>
+                )}
+                {/* Skip step */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.05rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleChainStepSkip(currentStep)}
+                    style={{ fontSize: '0.68rem', color: '#334155', background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
+                  >
+                    {locale === 'es' ? 'Saltar paso →' : 'Skip step →'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Live-context suggestions + executable actions (R-INTELLIGENCE-ACTION-EXECUTION-V1) */}
+          {suggestionsWithActions.length > 0 && (
             <div style={{
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(251,191,36,0.2)',
               borderRadius: '0.5rem',
               padding: '0.5rem 0.65rem',
-              display: 'flex', flexDirection: 'column', gap: '0.3rem',
+              display: 'flex', flexDirection: 'column', gap: '0.35rem',
             }}>
               <div style={{ fontSize: '0.68rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.1rem' }}>
                 {t('operator.suggestions.title')}
               </div>
-              {suggestions.map((s) => {
+              {suggestionsWithActions.map(({ suggestion: s, actions: sActions }) => {
                 const kindColor =
                   s.kind === 'upsell'     ? '#34d399'
                   : s.kind === 'retention' ? '#f59e0b'
                   : s.kind === 'collect'   ? '#60a5fa'
                   : s.kind === 'follow_up' ? '#a78bfa'
                   :                          '#a5b4fc';
+                const isFlashed = flashedSuggId === s.id;
                 return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
-                    <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: kindColor, boxShadow: `0 0 5px ${kindColor}88` }} />
-                    <span style={{ color: '#e2e8f0', flex: 1 }}>{s.text}</span>
-                    {s.actionTab && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! });
-                          setIsOverlayOpen(false);
-                        }}
-                        style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
-                        title="Go there"
-                      >
-                        →
-                      </button>
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {/* Suggestion text row */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                      <span aria-hidden="true" style={{ flexShrink: 0, width: 6, height: 6, marginTop: 6, borderRadius: '50%', background: kindColor, boxShadow: `0 0 5px ${kindColor}88` }} />
+                      <span style={{ color: '#e2e8f0', flex: 1 }}>{s.text}</span>
+                      {sActions.length === 0 && s.actionTab && (
+                        <button
+                          type="button"
+                          onClick={() => { dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! }); setIsOverlayOpen(false); }}
+                          style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
+                          title="Go there"
+                        >
+                          →
+                        </button>
+                      )}
+                    </div>
+                    {/* Executable action pill buttons */}
+                    {sActions.length > 0 && (
+                      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', paddingLeft: '0.95rem' }}>
+                        {sActions.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => handleActionClick(a, s.id)}
+                            style={{
+                              padding: '0.22rem 0.55rem',
+                              borderRadius: '0.9rem',
+                              fontSize: '0.70rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: `1px solid ${kindColor}55`,
+                              background: isFlashed ? `${kindColor}22` : 'rgba(255,255,255,0.06)',
+                              color: isFlashed ? kindColor : '#cbd5e1',
+                              transition: 'background 0.15s, color 0.15s',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {isFlashed ? '✓ Opened' : a.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );

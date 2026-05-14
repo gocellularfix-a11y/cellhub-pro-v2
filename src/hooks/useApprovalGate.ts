@@ -26,10 +26,12 @@ import type {
 } from '@/services/security/approvalGuard';
 import { useTranslation } from '@/i18n';
 import type { Employee } from '@/store/types';
+import { registerApprovalResolver } from '@/services/companion/remoteApprovalGateway';
+import { validateRemoteApprovalActor } from '@/services/companion/remoteApprovalTrust';
 
 export interface UseApprovalGateArgs {
   employees: Employee[];
-  settings: { adminPin?: string | null; approvalsEnabled?: boolean } | null | undefined;
+  settings: { adminPin?: string | null; approvalsEnabled?: boolean; companionRemoteApprovalEnabled?: boolean } | null | undefined;
   /** Optional name of the employee triggering the action — shown in the modal. */
   attemptedByName?: string;
 }
@@ -52,17 +54,80 @@ export function useApprovalGate({
   const { t, locale } = useTranslation();
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [remoteApprovedMsg, setRemoteApprovedMsg] = useState<string | null>(null);
+  const [remoteNote, setRemoteNote] = useState<string | null>(null);
   const resolverRef = useRef<((r: PrompterResponse) => void) | null>(null);
+  const gatewayUnregisterRef = useRef<(() => void) | null>(null);
 
-  // Per-attempt prompter — guard calls this once per submission. We hand
-  // back a fresh promise each call; modal state stays mounted across
-  // iterations of the retry loop so the user sees a continuous session.
-  const prompter: ApprovalPrompter = useCallback((req) => {
+  // Refs for latest values so the prompter closure (stable, [] deps) reads
+  // current state without stale captures.
+  const employeesRef = useRef(employees);
+  employeesRef.current = employees;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  // Per-attempt prompter — guard calls this once per submission. A fresh
+  // promise is created per attempt; modal state stays mounted across retry
+  // iterations so the user sees a continuous session.
+  //
+  // Phase 2B: also registers a one-shot gateway resolver keyed by approvalId.
+  // If a validated Companion remote response arrives while the gate is open,
+  // the resolver fires before any local PIN submission. validateRemoteApprovalActor
+  // runs inside the resolver closure (reads live refs) before the gate resolves.
+  const prompter: ApprovalPrompter = useCallback((req, approvalId) => {
     return new Promise<PrompterResponse>((resolve) => {
-      resolverRef.current = resolve;
+      // Wrap resolve so both local and remote paths clean up the gateway entry.
+      const wrappedResolve = (r: PrompterResponse) => {
+        gatewayUnregisterRef.current?.();
+        gatewayUnregisterRef.current = null;
+        resolverRef.current = null;
+        resolve(r);
+      };
+      resolverRef.current = wrappedResolve;
       setRequest(req);
+
+      // Register remote resolver. Validates actor, then either flashes
+      // success (approve) or sets deny feedback and resolves (deny).
+      // Invalid actor → silent no-op, local PIN modal stays open.
+      gatewayUnregisterRef.current = registerApprovalResolver(approvalId, (response) => {
+        const r = resolverRef.current;
+        if (!r) return; // already resolved locally
+        const trust = validateRemoteApprovalActor({
+          isRemoteEnabled: () => !!settingsRef.current?.companionRemoteApprovalEnabled,
+          managerId: response.managerId,
+          employees: employeesRef.current,
+          settings: settingsRef.current,
+          gate: {
+            actionType: req.actionType,
+            requestedByEmployeeId: req.requestedByEmployeeId,
+          },
+        });
+        if (!trust.valid) {
+          console.warn('[approval-gate] remote actor rejected', trust.reason, response.managerId);
+          return;
+        }
+
+        if (response.action === 'approve') {
+          // Null resolver immediately — prevents cancel/timeout during the flash.
+          resolverRef.current = null;
+          gatewayUnregisterRef.current?.();
+          gatewayUnregisterRef.current = null;
+          // Show brief success flash, then resolve the Promise.
+          setRemoteApprovedMsg(tRef.current('approval.remote.approvedMsg'));
+          setTimeout(() => {
+            r({ cancelled: false, remote: true, managerId: response.managerId });
+          }, 600);
+        } else {
+          // Deny: set the manager note before resolving so the retry loop can
+          // display it while the modal stays open for local PIN retry.
+          setRemoteNote(response.managerNote ?? null);
+          r({ cancelled: true, reason: 'remote_denied' });
+        }
+      });
     });
-  }, []);
+  }, []); // stable — all dynamic values accessed via refs
 
   const onSubmit = useCallback((pin: string) => {
     const r = resolverRef.current;
@@ -80,9 +145,10 @@ export function useApprovalGate({
     async (req: ApprovalRequest): Promise<ApprovalResult> => {
       setError(null);
       emitApprovalRequested(req.actionType);
-      // Retry loop: bad PIN / self-approval blocked → stay open with inline
-      // error. Final reasons (cancelled / timeout / approved / not-required)
-      // exit the loop and close the modal.
+      setRemoteApprovedMsg(null);
+      setRemoteNote(null);
+      // Retry loop: bad PIN / self-approval blocked / remote_denied → modal
+      // stays open with inline error. Terminal reasons close the modal.
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const result = await runApprovalGuard(req, {
@@ -94,6 +160,8 @@ export function useApprovalGate({
           setRequest(null);
           setError(null);
           emitApprovalAccepted(req.actionType);
+          setRemoteApprovedMsg(null);
+          setRemoteNote(null);
           return result;
         }
         if (result.reason === 'invalid_pin') {
@@ -104,12 +172,21 @@ export function useApprovalGate({
           setError(t('approval.error.selfBlocked'));
           continue;
         }
+        if (result.reason === 'remote_denied') {
+          // Modal stays open — remoteNote already set by the gateway resolver.
+          // Employee can retry with a local manager PIN or cancel.
+          setError(t('approval.error.remoteDenied'));
+          setRemoteApprovedMsg(null);
+          continue;
+        }
         // cancelled / timeout / feature_disabled / not_required → terminal
         setRequest(null);
         setError(null);
         if (result.reason === 'cancelled' || result.reason === 'timeout') {
           emitApprovalDenied(req.actionType);
         }
+        setRemoteApprovedMsg(null);
+        setRemoteNote(null);
         return result;
       }
     },
@@ -131,6 +208,8 @@ export function useApprovalGate({
     errorMessage: error,
     onSubmit,
     onCancel,
+    remoteApprovedMsg,
+    remoteNote,
   });
 
   return { requestApproval, modal };
