@@ -19,6 +19,8 @@ import {
   getPairStatus,
 } from '@/services/companionLite/pairingService';
 import ApprovalsPanel from './ApprovalsPanel';
+import MessagesPanel from './MessagesPanel';
+import StatusPanel from './StatusPanel';
 
 type Tab = 'status' | 'approvals' | 'messages';
 type PairingPhase = 'idle' | 'starting' | 'waiting' | 'claimed' | 'expired' | 'error';
@@ -239,17 +241,9 @@ function PairedShell({
           {' · since '}
           {new Date(session.pairedAt).toLocaleTimeString()}
         </div>
-        {tab === 'status' && (
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>
-            Status push wired in step 8.
-          </div>
-        )}
+        {tab === 'status' && <StatusPanel session={session} />}
         {tab === 'approvals' && <ApprovalsPanel session={session} />}
-        {tab === 'messages' && (
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>
-            Messaging wired in step 8.
-          </div>
-        )}
+        {tab === 'messages' && <MessagesPanel session={session} />}
       </div>
     </>
   );
