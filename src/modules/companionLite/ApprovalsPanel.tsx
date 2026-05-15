@@ -17,6 +17,7 @@ import {
 } from '@/services/companionLite/approvalsService';
 import { deriveProductContext } from '@/services/companionLite/productContext';
 import { useToast } from '@/components/ui/Toast';
+import RequestApprovalModal from './RequestApprovalModal';
 
 const POLL_MS = 3000;
 const THREAD_POLL_MS = 3000;
@@ -30,6 +31,11 @@ export default function ApprovalsPanel({ session }: Props) {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+  // The id of an approval we just created — used to auto-open its thread
+  // on the very next render so the operator sees the conversation
+  // immediately. Cleared once consumed.
+  const [autoOpenId, setAutoOpenId] = useState<string | null>(null);
   const { toast } = useToast();
   const lastStatusRef = useRef<Map<string, ApprovalRequest['status']>>(new Map());
 
@@ -101,9 +107,12 @@ export default function ApprovalsPanel({ session }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <button onClick={handleSendTest} disabled={busy} style={primaryButtonStyle}>
-          {busy ? 'Sending…' : '+ Send Test Approval'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <button onClick={() => setRequestOpen(true)} style={primaryButtonStyle}>
+          + Request Approval
+        </button>
+        <button onClick={handleSendTest} disabled={busy} style={secondaryButtonStyle}>
+          {busy ? 'Sending…' : 'Send sample approval'}
         </button>
         <button onClick={() => void refresh()} style={ghostButtonStyle}>
           Refresh
@@ -116,12 +125,34 @@ export default function ApprovalsPanel({ session }: Props) {
       {error && <div style={errorBoxStyle}>{error}</div>}
 
       {approvals.length === 0 ? (
-        <div style={emptyStyle}>No approvals yet. Click "Send Test Approval" to create one.</div>
+        <div style={emptyStyle}>
+          No approvals yet. Click "Request Approval" to create one, or "Send sample approval" for a quick test.
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {approvals.map(a => <ApprovalRow key={a.id} approval={a} session={session} />)}
+          {approvals.map(a => (
+            <ApprovalRow
+              key={a.id}
+              approval={a}
+              session={session}
+              defaultOpen={a.id === autoOpenId}
+              onConsumedDefaultOpen={() => setAutoOpenId(null)}
+            />
+          ))}
         </div>
       )}
+
+      <RequestApprovalModal
+        open={requestOpen}
+        session={session}
+        onClose={() => setRequestOpen(false)}
+        onCreated={async (id) => {
+          // Pull the freshly created row in immediately so the thread can
+          // auto-mount, then mark its id so ApprovalRow renders open.
+          setAutoOpenId(id);
+          await refresh();
+        }}
+      />
     </div>
   );
 }
@@ -129,12 +160,19 @@ export default function ApprovalsPanel({ session }: Props) {
 // ── Row ─────────────────────────────────────────────────────────────
 
 function ApprovalRow({
-  approval, session,
+  approval, session, defaultOpen, onConsumedDefaultOpen,
 }: {
   approval: ApprovalRequest;
   session: CompanionLiteDesktopSession;
+  defaultOpen?: boolean;
+  onConsumedDefaultOpen?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
+  // Consume the parent's auto-open hint exactly once so a refresh that
+  // brings the same id back doesn't re-open after the operator closes.
+  useEffect(() => {
+    if (defaultOpen) onConsumedDefaultOpen?.();
+  }, [defaultOpen, onConsumedDefaultOpen]);
   const statusColor =
     approval.status === 'approved' ? '#22c55e' :
     approval.status === 'denied'   ? '#ef4444' :
@@ -297,6 +335,16 @@ const primaryButtonStyle: React.CSSProperties = {
   padding: '8px 14px',
   color: '#000',
   fontWeight: 700,
+  fontSize: 12,
+  cursor: 'pointer',
+};
+const secondaryButtonStyle: React.CSSProperties = {
+  background: 'rgba(56,189,248,0.10)',
+  border: '1px solid rgba(56,189,248,0.30)',
+  borderRadius: 8,
+  padding: '8px 12px',
+  color: '#38bdf8',
+  fontWeight: 600,
   fontSize: 12,
   cursor: 'pointer',
 };
