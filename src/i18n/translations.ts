@@ -6114,6 +6114,49 @@ export const translations: TranslationDictionary = {
     pt: (name: string, days: string) => `📊 ${name} — sem vendas em ${days} dias`,
   },
 
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1 — manager queue UI + chat keys
+  'mq.sectionTitle':    { en: 'Manager Queue', es: 'Cola del Gerente', pt: 'Fila do Gerente' },
+  'mq.emptyState':      { en: 'All clear — no pending reviews', es: 'Todo bien — sin revisiones pendientes', pt: 'Tudo certo — sem revisões pendentes' },
+  'mq.pendingCount': {
+    en: (n: number) => `${n} pending`,
+    es: (n: number) => `${n} pendiente${n !== 1 ? 's' : ''}`,
+    pt: (n: number) => `${n} pendente${n !== 1 ? 's' : ''}`,
+  },
+  'mq.showAll': {
+    en: (n: number) => `Show all ${n} items`,
+    es: (n: number) => `Ver los ${n} items`,
+    pt: (n: number) => `Ver todos os ${n} itens`,
+  },
+  'mq.showLess':        { en: 'Show less', es: 'Ver menos', pt: 'Ver menos' },
+  'mq.approve':         { en: 'Approve', es: 'Aprobar', pt: 'Aprovar' },
+  'mq.dismiss':         { en: 'Dismiss', es: 'Descartar', pt: 'Descartar' },
+  'mq.resolve':         { en: 'Resolve', es: 'Resolver', pt: 'Resolver' },
+  'mq.severity.critical': { en: 'Critical', es: 'Crítico',  pt: 'Crítico' },
+  'mq.severity.high':     { en: 'High',     es: 'Alto',     pt: 'Alto' },
+  'mq.severity.medium':   { en: 'Medium',   es: 'Medio',    pt: 'Médio' },
+  'mq.severity.low':      { en: 'Low',      es: 'Bajo',     pt: 'Baixo' },
+  'mq.category.refund':   { en: 'Refund',   es: 'Reembolso', pt: 'Reembolso' },
+  'mq.category.discount': { en: 'Discount', es: 'Descuento', pt: 'Desconto' },
+  'mq.category.override': { en: 'Override', es: 'Excepción', pt: 'Exceção' },
+  'mq.category.writeoff': { en: 'Write-off', es: 'Baja',    pt: 'Baixa' },
+  'mq.category.review':   { en: 'Review',   es: 'Revisión', pt: 'Revisão' },
+  'mq.category.general':  { en: 'General',  es: 'General',  pt: 'Geral' },
+  'mq.chat.empty': {
+    en: 'Manager queue is clear — no pending items.',
+    es: 'Cola del gerente vacía — sin items pendientes.',
+    pt: 'Fila do gerente vazia — sem itens pendentes.',
+  },
+  'mq.chat.summary': {
+    en: (n: number) => `Manager queue: ${n} pending item${n !== 1 ? 's' : ''}.`,
+    es: (n: number) => `Cola del gerente: ${n} item${n !== 1 ? 's' : ''} pendiente${n !== 1 ? 's' : ''}.`,
+    pt: (n: number) => `Fila do gerente: ${n} item${n !== 1 ? 'ns' : ''} pendente${n !== 1 ? 's' : ''}.`,
+  },
+  'mq.chat.more': {
+    en: (n: number) => `…and ${n} more in the Manager Queue section.`,
+    es: (n: number) => `…y ${n} más en la sección Cola del Gerente.`,
+    pt: (n: number) => `…e mais ${n} na seção Fila do Gerente.`,
+  },
+
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 — action button labels
   'oppo.action.whatsapp':      { en: 'Send WhatsApp',    es: 'Enviar WhatsApp',      pt: 'Enviar WhatsApp' },
   'oppo.action.openRepair':    { en: 'Open Ticket',      es: 'Abrir Ticket',         pt: 'Abrir Ticket' },

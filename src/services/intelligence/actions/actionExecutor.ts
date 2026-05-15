@@ -3,6 +3,9 @@
 // Callers receive a structured result and decide what to do with it.
 import type { ActionPayload } from './actionEngine';
 import type { Sale } from '@/store/types';
+// R-INTELLIGENCE-MANAGER-QUEUE-V1: create a real queue item when
+// queue_manager_review fires instead of just navigating.
+import { addManagerQueueItem } from '../managerQueue/actions';
 // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: converge wa.me URL
 // construction onto the canonical service. The previous inline build skipped
 // sanitizeToBMP, which on Windows + Electron corrupts non-BMP emojis in the
@@ -304,10 +307,28 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
       return { ok: true, type: 'open_inventory', itemId: payload.entityId };
     }
 
-    case 'queue_manager_review':
+    case 'queue_manager_review': {
       appendExecutionLog(payload);
+      // R-INTELLIGENCE-MANAGER-QUEUE-V1: create a real persistent queue item.
+      const title = payload.customerName
+        ? `Manager Review — ${payload.customerName}`
+        : payload.entityId
+          ? `Manager Review — #${payload.entityId.slice(-6).toUpperCase()}`
+          : 'Manager Review — Intelligence Recommendation';
+      const description = payload.customMessage?.trim()
+        || (payload.messageKey ? `Flagged: ${payload.messageKey}` : '')
+        || 'Flagged by intelligence engine for manager review.';
+      addManagerQueueItem({
+        severity: 'medium',
+        category: 'review',
+        title,
+        description,
+        entityId: payload.entityId,
+        entityType: undefined,
+      });
       window.dispatchEvent(new CustomEvent('cellhub:open-manager-review'));
       return { ok: true, type: 'queue_manager_review' };
+    }
 
     case 'none':
     default:

@@ -14,6 +14,10 @@
 // and does not execute action payloads.
 
 import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
+// R-INTELLIGENCE-MANAGER-QUEUE-V1
+import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem } from '@/services/intelligence/managerQueue/actions';
+import { getPendingItems, getQueueSummary } from '@/services/intelligence/managerQueue/selectors';
+import type { ManagerQueueItem, QueueItemSeverity } from '@/services/intelligence/managerQueue/types';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
@@ -73,6 +77,12 @@ export default function IntelligenceModule() {
   const [lookupQuery, setLookupQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [externalQuery, setExternalQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
+
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1: queue state — loaded from localStorage,
+  // refreshed on module open and whenever a queue_manager_review event fires.
+  const [queueItems, setQueueItems] = useState<ManagerQueueItem[]>(() => getQueue());
+  const [showAllQueue, setShowAllQueue] = useState(false);
+  const queueSectionRef = useRef<HTMLDivElement>(null);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -143,6 +153,54 @@ export default function IntelligenceModule() {
     setActiveIntelligenceEngine(engine);
     return () => { setActiveIntelligenceEngine(null); };
   }, [engine]);
+
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1: listen for queue_manager_review events
+  // so new items are reflected immediately without requiring a page reload.
+  const reloadQueue = useCallback(() => {
+    setQueueItems(getQueue());
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('cellhub:open-manager-review', reloadQueue);
+    return () => window.removeEventListener('cellhub:open-manager-review', reloadQueue);
+  }, [reloadQueue]);
+
+  // Queue action callbacks — read fresh queue from store after each mutation.
+  const handleQueueApprove = useCallback((id: string) => {
+    approveQueueItem(id);
+    setQueueItems(getQueue());
+  }, []);
+  const handleQueueDismiss = useCallback((id: string) => {
+    dismissQueueItem(id);
+    setQueueItems(getQueue());
+  }, []);
+  const handleQueueResolve = useCallback((id: string) => {
+    resolveQueueItem(id);
+    setQueueItems(getQueue());
+  }, []);
+
+  // R-INTELLIGENCE-QUEUE-DEDUP-NAVIGATION-V1: dispatch existing navigation
+  // CustomEvents — no new routing. Reuses the same events that
+  // actionExecutor.ts fires for open_repair / open_customer / etc.
+  const handleQueueOpen = useCallback((item: ManagerQueueItem) => {
+    if (!item.entityId || !item.entityType) return;
+    switch (item.entityType) {
+      case 'repair':
+        window.dispatchEvent(new CustomEvent('cellhub:open-repair',          { detail: { repairId:    item.entityId } })); break;
+      case 'customer':
+        window.dispatchEvent(new CustomEvent('cellhub:open-customer',        { detail: { customerId:  item.entityId } })); break;
+      case 'layaway':
+        window.dispatchEvent(new CustomEvent('cellhub:open-layaway',         { detail: { layawayId:   item.entityId } })); break;
+      case 'inventory':
+        window.dispatchEvent(new CustomEvent('cellhub:open-inventory-item',  { detail: { itemId:      item.entityId } })); break;
+      default: break;
+    }
+  }, []);
+
+  const pendingQueueItems = useMemo(() => getPendingItems(queueItems), [queueItems]);
+  const queueSummary = useMemo(() => getQueueSummary(queueItems), [queueItems]);
+  const QUEUE_PREVIEW = 5;
+  const visibleQueueItems = showAllQueue ? pendingQueueItems : pendingQueueItems.slice(0, QUEUE_PREVIEW);
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
   // collections updateData() propagates (added expenses/employees/appointments)
@@ -656,7 +714,70 @@ export default function IntelligenceModule() {
         </div>
       </div>
 
-      {/* ── 3. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      {/* ── 3. MANAGER QUEUE ─────────────────────────────────────────────── */}
+      <div
+        ref={queueSectionRef}
+        className="rounded-lg border p-3"
+        style={{ background: CARD_BG, borderColor: CARD_BORDER }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              📋 {t('mq.sectionTitle')}
+            </span>
+            {queueSummary.totalPending > 0 && (
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{
+                  background: queueSummary.critical > 0 ? '#EF444422' : queueSummary.high > 0 ? '#F59E0B22' : '#6B728022',
+                  color: queueSummary.critical > 0 ? '#EF4444' : queueSummary.high > 0 ? '#F59E0B' : '#9CA3AF',
+                  border: `1px solid ${queueSummary.critical > 0 ? '#EF444444' : queueSummary.high > 0 ? '#F59E0B44' : '#374151'}`,
+                }}
+              >
+                {t('mq.pendingCount', queueSummary.totalPending)}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => fireChat(t('mq.sectionTitle'))}
+            className="text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-300 hover:border-slate-500 transition"
+          >
+            {locale === 'es' ? 'Ver en chat' : locale === 'pt' ? 'Ver no chat' : 'Ask AI'}
+          </button>
+        </div>
+
+        {queueSummary.totalPending === 0 ? (
+          <p className="text-xs text-slate-500 italic py-2">{t('mq.emptyState')}</p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {visibleQueueItems.map((item) => (
+                <QueueCard
+                  key={item.id}
+                  item={item}
+                  lang={locale as 'en' | 'es' | 'pt'}
+                  onApprove={handleQueueApprove}
+                  onDismiss={handleQueueDismiss}
+                  onResolve={handleQueueResolve}
+                  onOpen={handleQueueOpen}
+                />
+              ))}
+            </div>
+            {pendingQueueItems.length > QUEUE_PREVIEW && (
+              <button
+                onClick={() => setShowAllQueue(v => !v)}
+                className="mt-2 text-[11px] text-slate-400 hover:text-slate-300 transition"
+              >
+                {showAllQueue
+                  ? t('mq.showLess')
+                  : t('mq.showAll', pendingQueueItems.length)}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── 4. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
       <div className="grid grid-cols-12 gap-3">
 
         {/* Promote Inventory */}
@@ -1208,6 +1329,133 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
     <div className="flex items-center justify-between bg-surface-900/40 rounded px-2 py-1.5 border border-surface-700">
       <span className="text-slate-400">{icon} {label}</span>
       <span className="text-slate-200 font-medium">{value}</span>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-QUEUE-DEDUP-NAVIGATION-V1: upgraded operational review card.
+// Adds: occurrence badge, last-seen age, Open button for entity navigation.
+
+const SEVERITY_COLOR: Record<QueueItemSeverity, { bg: string; text: string; border: string }> = {
+  critical: { bg: '#EF444422', text: '#EF4444', border: '#EF444444' },
+  high:     { bg: '#F59E0B22', text: '#F59E0B', border: '#F59E0B44' },
+  medium:   { bg: '#6366F122', text: '#818CF8', border: '#6366F144' },
+  low:      { bg: '#6B728022', text: '#9CA3AF', border: '#37415155' },
+};
+
+// Lightweight relative-time formatter — no external lib, no i18n overhead.
+function relativeTime(ts: number): string {
+  const diffMs = Date.now() - ts;
+  const m = Math.floor(diffMs / 60_000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function QueueCard({
+  item, lang, onApprove, onDismiss, onResolve, onOpen,
+}: {
+  item: ManagerQueueItem;
+  lang: 'en' | 'es' | 'pt';
+  onApprove: (id: string) => void;
+  onDismiss: (id: string) => void;
+  onResolve: (id: string) => void;
+  onOpen:    (item: ManagerQueueItem) => void;
+}) {
+  const colors = SEVERITY_COLOR[item.severity];
+  const occurrences = item.occurrenceCount ?? 1;
+  const lastSeen = item.lastSeenAt ?? item.updatedAt;
+  const hasEntity = Boolean(item.entityId && item.entityType);
+
+  const SEVER: Record<QueueItemSeverity, Record<'en' | 'es' | 'pt', string>> = {
+    critical: { en: 'Critical', es: 'Crítico',  pt: 'Crítico' },
+    high:     { en: 'High',     es: 'Alto',      pt: 'Alto' },
+    medium:   { en: 'Medium',   es: 'Medio',     pt: 'Médio' },
+    low:      { en: 'Low',      es: 'Bajo',      pt: 'Baixo' },
+  };
+  const L = {
+    approve: { en: 'Approve', es: 'Aprobar',   pt: 'Aprovar' }[lang],
+    dismiss: { en: 'Dismiss', es: 'Descartar', pt: 'Descartar' }[lang],
+    resolve: { en: 'Resolve', es: 'Resolver',  pt: 'Resolver' }[lang],
+    open:    { en: 'Open',    es: 'Abrir',     pt: 'Abrir' }[lang],
+    times:   lang === 'es' ? 'veces' : lang === 'pt' ? 'vezes' : 'times',
+  };
+
+  return (
+    <div
+      className="rounded border p-3"
+      style={{ background: CARD_BG, borderColor: CARD_BORDER, borderLeftWidth: 3, borderLeftColor: colors.text }}
+    >
+      {/* Header row: severity badge + title + occurrence badge */}
+      <div className="flex items-start gap-2 mb-1.5">
+        <span
+          className="shrink-0 mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide"
+          style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+        >
+          {SEVER[item.severity][lang]}
+        </span>
+        <span className="text-sm font-semibold text-slate-100 flex-1 leading-snug min-w-0 truncate">
+          {item.title}
+        </span>
+        {occurrences > 1 && (
+          <span
+            className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+            title={`${occurrences} ${L.times}`}
+          >
+            ×{occurrences}
+          </span>
+        )}
+      </div>
+
+      {/* Description */}
+      <p className="text-xs text-slate-400 leading-snug mb-1.5">{item.description}</p>
+
+      {/* Recommended action */}
+      {item.recommendedAction && (
+        <p className="text-[11px] text-slate-500 italic mb-1.5">→ {item.recommendedAction}</p>
+      )}
+
+      {/* Last-seen age — only when recurring or recent */}
+      {(occurrences > 1 || (Date.now() - lastSeen) < 3_600_000) && (
+        <p className="text-[10px] text-slate-600 mb-2">{relativeTime(lastSeen)}</p>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-1.5">
+        {hasEntity && (
+          <button
+            onClick={() => onOpen(item)}
+            className="px-2 py-1 text-[10px] font-semibold rounded transition"
+            style={{ background: '#8B5CF622', color: '#A78BFA', border: '1px solid #8B5CF644' }}
+          >
+            ↗ {L.open}
+          </button>
+        )}
+        <button
+          onClick={() => onApprove(item.id)}
+          className="px-2 py-1 text-[10px] font-semibold rounded transition"
+          style={{ background: '#10B98122', color: '#10B981', border: '1px solid #10B98144' }}
+        >
+          ✓ {L.approve}
+        </button>
+        <button
+          onClick={() => onResolve(item.id)}
+          className="px-2 py-1 text-[10px] font-semibold rounded transition"
+          style={{ background: '#3B82F622', color: '#3B82F6', border: '1px solid #3B82F644' }}
+        >
+          ✔ {L.resolve}
+        </button>
+        <button
+          onClick={() => onDismiss(item.id)}
+          className="px-2 py-1 text-[10px] font-medium rounded transition"
+          style={{ background: '#37415155', color: '#9CA3AF', border: '1px solid #37415188' }}
+        >
+          {L.dismiss}
+        </button>
+      </div>
     </div>
   );
 }

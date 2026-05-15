@@ -72,6 +72,9 @@ import { buildChatActionsFromOpportunity, dedupeAndLimitActions } from './opport
 // R-INTELLIGENCE-CONTEXT-AWARE-V1
 import { getIntelligenceContext } from '../context/intelligenceContext';
 import { computeContextualOpportunities } from '../context/contextualOpportunityService';
+// R-INTELLIGENCE-MANAGER-QUEUE-V1
+import { getQueue } from '../managerQueue/actions';
+import { getPendingItems, getQueueSummary } from '../managerQueue/selectors';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -316,6 +319,10 @@ export function handleIntent(
 
     case 'what_needs_attention':
       return handleWhatNeedsAttention(engine, lang);
+
+    // R-INTELLIGENCE-MANAGER-QUEUE-V1
+    case 'manager_queue':
+      return handleManagerQueue(lang);
 
     case 'fallback_question':
       return handleFallbackQuestion(match, engine, lang);
@@ -3663,4 +3670,38 @@ function handleUnknown(es: boolean): ChatResponse {
       ? 'No entendí tu pregunta. Escribe "ayuda" para ver lo que puedo responder.'
       : 'I didn\'t understand. Type "help" to see what I can answer.',
   };
+}
+
+// R-INTELLIGENCE-MANAGER-QUEUE-V1: manager queue chat handler.
+// Returns a plain-text summary of pending items — no engine reads needed.
+function handleManagerQueue(lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const queue = getQueue();
+  const summary = getQueueSummary(queue);
+
+  if (summary.totalPending === 0) {
+    return { kind: 'answer', text: t('mq.chat.empty') };
+  }
+
+  const pending = getPendingItems(queue);
+  const lines: string[] = [t('mq.chat.summary', summary.totalPending)];
+
+  if (summary.critical > 0) lines.push(`🔴 ${t('mq.severity.critical')}: ${summary.critical}`);
+  if (summary.high > 0)     lines.push(`🟠 ${t('mq.severity.high')}: ${summary.high}`);
+  if (summary.medium > 0)   lines.push(`🟡 ${t('mq.severity.medium')}: ${summary.medium}`);
+  if (summary.low > 0)      lines.push(`⚪ ${t('mq.severity.low')}: ${summary.low}`);
+
+  lines.push('');
+  pending.slice(0, 3).forEach((item, i) => {
+    lines.push(`**${i + 1}. ${item.title}**`);
+    lines.push(item.description);
+    if (item.recommendedAction) lines.push(`→ ${item.recommendedAction}`);
+    lines.push('');
+  });
+
+  if (pending.length > 3) {
+    lines.push(t('mq.chat.more', pending.length - 3));
+  }
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
 }

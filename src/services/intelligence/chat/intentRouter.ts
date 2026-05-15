@@ -77,6 +77,8 @@ export type IntentId =
   | 'what_needs_attention'
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: active-entity context query
   | 'active_context_query'
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1
+  | 'manager_queue'
   | 'fallback_question'
   | 'unknown';
 
@@ -933,6 +935,22 @@ const WHERE_LOSING_MONEY_KEYWORDS = [
   'perdendo dinheiro', 'perda de receita', 'vazamentos de receita',
 ];
 
+// R-INTELLIGENCE-MANAGER-QUEUE-V1: anchored phrases for the manager review inbox.
+// Multi-word triggers — no collision with single-word intents.
+const MANAGER_QUEUE_KEYWORDS = [
+  // EN
+  'manager queue', 'manager review', 'review queue', 'pending reviews',
+  'review inbox', 'manager inbox', 'items for review', 'needs manager',
+  'queue review', 'manager approval', 'pending approvals',
+  // ES
+  'cola del gerente', 'revisión del gerente', 'bandeja del gerente',
+  'cola de revisión', 'revisiones pendientes', 'aprobaciones pendientes',
+  'cola gerente', 'gerente cola', 'inbox gerente',
+  // PT
+  'fila do gerente', 'revisão do gerente', 'caixa do gerente',
+  'fila de revisão', 'revisões pendentes', 'aprovações pendentes',
+];
+
 const WHAT_NEEDS_ATTENTION_KEYWORDS = [
   // EN
   'what needs attention', 'needs attention', 'what needs my attention',
@@ -1100,6 +1118,8 @@ export function classifyIntent(
     { id: 'repairs_ready',   score: scoreKeywords(query, REPAIRS_READY_KEYWORDS) },
     { id: 'repairs_overdue', score: scoreKeywords(query, REPAIRS_KEYWORDS) },
     { id: 'what_needs_attention', score: scoreKeywords(query, WHAT_NEEDS_ATTENTION_KEYWORDS) },
+    // R-INTELLIGENCE-MANAGER-QUEUE-V1: anchored multi-word phrases — no collision.
+    { id: 'manager_queue', score: scoreKeywords(query, MANAGER_QUEUE_KEYWORDS) },
     { id: 'health_check', score: scoreKeywords(query, HEALTH_KEYWORDS) },
     { id: 'forecast_items', score: scoreKeywords(query, FORECAST_KEYWORDS) },
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
