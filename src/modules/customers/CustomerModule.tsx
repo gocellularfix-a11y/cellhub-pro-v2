@@ -76,6 +76,22 @@ export default function CustomerModule() {
     return () => window.removeEventListener('cellhub:open-new-customer-form', handler);
   }, []);
 
+  // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a customer profile from
+  // Intelligence action buttons. AppShell navigates here first, then defers
+  // 80ms before firing this event so this listener is attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { customerId } = (e as CustomEvent<{ customerId?: string }>).detail ?? {};
+      if (!customerId) return;
+      const cust = customersRef.current.find((c) => c && c.id === customerId);
+      if (!cust) { console.warn('[cellhub] _intel-open-customer: not found', customerId); return; }
+      setEditCustomer(cust);
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:_intel-open-customer', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-customer', handler);
+  }, []);
+
   const [search, setSearch] = useState(customerSearchTerm || '');
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);

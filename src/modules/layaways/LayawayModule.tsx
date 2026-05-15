@@ -111,6 +111,22 @@ export default function LayawayModule() {
   const cartRef = useRef(cart);
   useEffect(() => { cartRef.current = cart; }, [cart]);
 
+  // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a specific layaway from
+  // Intelligence action buttons. AppShell navigates here first, then defers
+  // 80ms before firing this event so this listener is attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { layawayId } = (e as CustomEvent<{ layawayId?: string }>).detail ?? {};
+      if (!layawayId) return;
+      const lay = layawaysRef.current.find((l) => l.id === layawayId);
+      if (!lay) { console.warn('[cellhub] _intel-open-layaway: not found', layawayId); return; }
+      setEditLayaway(lay);
+      setShowForm(true);
+    };
+    window.addEventListener('cellhub:_intel-open-layaway', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-layaway', handler);
+  }, []);
+
   // Consume cross-module search term once on mount
   useEffect(() => {
     if (globalSearchTerm) {

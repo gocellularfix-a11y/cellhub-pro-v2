@@ -90,6 +90,22 @@ export default function RepairModule() {
   const repairsRef = useRef(repairs);
   useEffect(() => { repairsRef.current = repairs; }, [repairs]);
 
+  // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a specific repair ticket from
+  // Intelligence action buttons. AppShell navigates here first, then defers
+  // 80ms before firing this event so this listener is attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { repairId } = (e as CustomEvent<{ repairId?: string }>).detail ?? {};
+      if (!repairId) return;
+      const repair = repairsRef.current.find((r) => r.id === repairId);
+      if (!repair) { console.warn('[cellhub] _intel-open-repair: not found', repairId); return; }
+      setEditRepair(repair);
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:_intel-open-repair', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-repair', handler);
+  }, []);
+
   // Round R2 + R2.1: one-time delta sweep to canonical repair statuses.
   // Persists the FULL repair record because persist.ts localSaveRecord
   // overwrites non-settings collections (only settings gets a merge per

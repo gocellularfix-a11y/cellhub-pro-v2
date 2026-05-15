@@ -243,6 +243,22 @@ export default function InventoryModule() {
   const inventoryRef = useRef(inventory);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
 
+  // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a specific inventory item from
+  // Intelligence action buttons. AppShell navigates here first, then defers
+  // 80ms before firing this event so this listener is attached.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { itemId } = (e as CustomEvent<{ itemId?: string }>).detail ?? {};
+      if (!itemId) return;
+      const item = inventoryRef.current.find((i) => i.id === itemId);
+      if (!item) { console.warn('[cellhub] _intel-open-inventory: not found', itemId); return; }
+      setEditItem(item);
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:_intel-open-inventory', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-inventory', handler);
+  }, []);
+
   // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: cache the IntelligenceEngine
   // across Promote clicks. Without this, every click rebuilt the engine
   // and ran a full analyze() (~200-400ms freeze). Now: first click pays

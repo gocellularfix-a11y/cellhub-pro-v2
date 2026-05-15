@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import SidebarList from './SidebarList';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
@@ -128,6 +128,72 @@ export default function AppShell() {
     onCustomerScan: handleCustomerScan,
     onInventoryScan: handleInventoryScan,
   });
+
+  // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: central coordinator for Intelligence
+  // action-button navigation. Step 1 → navigate to module tab. Step 2 (80ms
+  // defer, matching FloatingOperatorBubble) → fire module-scoped open event
+  // AFTER the lazy module has mounted and attached its listener.
+  useEffect(() => {
+    function nav(tab: string) {
+      dispatch({ type: 'SET_ACTIVE_TAB', payload: tab });
+    }
+
+    const onOpenRepair = (e: Event) => {
+      const { repairId } = (e as CustomEvent<{ repairId?: string }>).detail ?? {};
+      if (!repairId) return;
+      nav('repairs');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-repair', { detail: { repairId } }));
+      }, 80);
+    };
+
+    const onOpenCustomer = (e: Event) => {
+      const { customerId } = (e as CustomEvent<{ customerId?: string }>).detail ?? {};
+      if (!customerId) return;
+      nav('customers');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-customer', { detail: { customerId } }));
+      }, 80);
+    };
+
+    const onOpenLayaway = (e: Event) => {
+      const { layawayId } = (e as CustomEvent<{ layawayId?: string }>).detail ?? {};
+      if (!layawayId) return;
+      nav('layaways');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-layaway', { detail: { layawayId } }));
+      }, 80);
+    };
+
+    const onOpenInventory = (e: Event) => {
+      const { itemId } = (e as CustomEvent<{ itemId?: string }>).detail ?? {};
+      if (!itemId) return;
+      nav('inventory');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-inventory', { detail: { itemId } }));
+      }, 80);
+    };
+
+    const onManagerReview = () => {
+      // No dedicated approvals panel yet — navigate to Intelligence where the
+      // action queue is visible. Console.warn documents the gap.
+      console.warn('[cellhub] cellhub:open-manager-review: no dedicated review panel; navigating to intelligence.');
+      nav('intelligence');
+    };
+
+    window.addEventListener('cellhub:open-repair',         onOpenRepair);
+    window.addEventListener('cellhub:open-customer',       onOpenCustomer);
+    window.addEventListener('cellhub:open-layaway',        onOpenLayaway);
+    window.addEventListener('cellhub:open-inventory-item', onOpenInventory);
+    window.addEventListener('cellhub:open-manager-review', onManagerReview);
+    return () => {
+      window.removeEventListener('cellhub:open-repair',         onOpenRepair);
+      window.removeEventListener('cellhub:open-customer',       onOpenCustomer);
+      window.removeEventListener('cellhub:open-layaway',        onOpenLayaway);
+      window.removeEventListener('cellhub:open-inventory-item', onOpenInventory);
+      window.removeEventListener('cellhub:open-manager-review', onManagerReview);
+    };
+  }, [dispatch]);
 
   // Admin-only tabs — show lock screen if not in admin mode
   const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion', 'companionLite'];
