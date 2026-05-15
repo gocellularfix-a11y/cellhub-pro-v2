@@ -436,6 +436,27 @@ export const translations: TranslationDictionary = {
     es: (name: string) => `Sin clientes elegibles para promover "${name}" en este momento.`,
     pt: (name: string) => `Sem clientes elegíveis para promover "${name}" no momento.`,
   },
+  // COMPANION-LITE: per-row Request Approval button.
+  'inventory.approvalRequest.btn': {
+    en: () => 'Request approval',
+    es: () => 'Pedir aprobación',
+    pt: () => 'Pedir aprovação',
+  },
+  'inventory.approvalRequest.tooltip': {
+    en: () => 'Send to manager for approval (discount, price override, etc.)',
+    es: () => 'Enviar al manager para aprobación (descuento, precio, etc.)',
+    pt: () => 'Enviar ao gerente para aprovação (desconto, preço, etc.)',
+  },
+  'inventory.approvalRequest.notPaired': {
+    en: () => 'Pair Companion Lite on your phone first to request approvals.',
+    es: () => 'Empareja Companion Lite en tu teléfono primero para pedir aprobaciones.',
+    pt: () => 'Pareie o Companion Lite no telefone primeiro para pedir aprovações.',
+  },
+  'inventory.approvalRequest.sent': {
+    en: () => 'Approval request sent — the manager will respond on Companion Lite.',
+    es: () => 'Solicitud enviada — el manager responderá en Companion Lite.',
+    pt: () => 'Solicitação enviada — o gerente responderá no Companion Lite.',
+  },
   'chat.deadStock.action.bundle_item':    { en: 'Bundle with complementary products',       es: 'Agrupa con productos complementarios',        pt: 'Agrupar com produtos complementares' },
   'chat.deadStock.action.discount_item':  { en: 'Apply a clearance discount',               es: 'Aplica un descuento de liquidación',           pt: 'Aplicar desconto de liquidação' },
   'chat.deadStock.action.move_display':   { en: 'Move to a higher-visibility display spot', es: 'Mueve a un lugar más visible en la tienda',   pt: 'Mover para local de maior visibilidade' },

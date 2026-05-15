@@ -2,7 +2,7 @@
 // CellHub Pro — Inventory Module
 // ============================================================
 
-import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue, lazy, Suspense } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useLicense } from '@/contexts/LicenseContext';
 import { useToast } from '@/components/ui/Toast';
@@ -30,6 +30,11 @@ import FieldCustomizerModal, { resolveFieldConfig, isFieldVisible, isFieldRequir
 // intel runtime out of the Inventory chunk; the actual modules are
 // lazy-loaded inside handlePromote on first click.
 import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/intelligence/IntelligenceEngine';
+// COMPANION-LITE: per-row "Request approval" button. Lazy-imported so the
+// Inventory chunk doesn't pull in the modal until the operator clicks.
+import { loadDesktopSession } from '@/services/companionLite/identityStore';
+import type { CompanionLiteDesktopSession } from '@/types/companionLite';
+const RequestApprovalModal = lazy(() => import('@/modules/companionLite/RequestApprovalModal'));
 
 // R-PERF-INVENTORY-PROMOTE-PRELOAD: module-level preload cache. The first
 // onMouseEnter/onFocus on a Promote button kicks off the intel chunk
@@ -246,6 +251,24 @@ export default function InventoryModule() {
   // length delta). Mirrors IntelligenceModule's useRef + sig pattern.
   const promoteEngineRef = useRef<IntelligenceEngineType | null>(null);
   const promoteEngineSigRef = useRef<string>('');
+
+  // COMPANION-LITE: state for the per-row "Request approval" modal.
+  // Session is captured at click time so re-pairing in another tab takes
+  // effect on the next click without remounting Inventory.
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvalPrefillItem, setApprovalPrefillItem] = useState<InventoryItem | null>(null);
+  const [approvalSession, setApprovalSession] = useState<CompanionLiteDesktopSession | null>(null);
+
+  const handleRequestApprovalForItem = useCallback((item: InventoryItem) => {
+    const session = loadDesktopSession();
+    if (!session) {
+      toast(t('inventory.approvalRequest.notPaired'), 'warning');
+      return;
+    }
+    setApprovalSession(session);
+    setApprovalPrefillItem(item);
+    setApprovalModalOpen(true);
+  }, [toast, t]);
 
   // ── CRUD ────────────────────────────────────────────────
   const handleSave = useCallback(
@@ -783,6 +806,12 @@ export default function InventoryModule() {
                             kicks off the intel chunk download in parallel
                             so the eventual click feels instant. */}
                         <button onClick={() => handlePromote(item)} onMouseEnter={preloadPromoteIntel} onFocus={preloadPromoteIntel} title={t('inventory.promoteTooltip')} aria-label={t('inventory.promoteBtn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>🎯</button>
+                        {/* COMPANION-LITE: send this item to the manager for approval (discount,
+                            price override, etc.). Opens RequestApprovalModal with the item
+                            preselected so cost/margin context is auto-attached. Reads
+                            Companion Lite session at click time — if not paired yet, toasts
+                            a hint and skips. */}
+                        <button onClick={() => handleRequestApprovalForItem(item)} title={t('inventory.approvalRequest.tooltip')} aria-label={t('inventory.approvalRequest.btn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>📲</button>
                         <button onClick={() => { setEditItem(item); setShowModal(true); emitInventoryLookup({ sku: item.sku, itemName: item.name }); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
                         {/* R-LOSSES-SHRINKAGE-V1: Mark as Loss — opens the
                             shrinkage modal; manager-PIN guarded on commit. */}
@@ -979,6 +1008,24 @@ export default function InventoryModule() {
         onSuccess={handleCommitLoss}
         onCancel={() => setLossPinOpen(false)}
       />
+
+      {/* COMPANION-LITE: per-row Request Approval modal. Only renders the
+          modal subtree when a session is present (set by the click handler). */}
+      {approvalSession && (
+        <Suspense fallback={null}>
+          <RequestApprovalModal
+            open={approvalModalOpen}
+            session={approvalSession}
+            prefilledItem={approvalPrefillItem}
+            onClose={() => setApprovalModalOpen(false)}
+            onCreated={(id) => {
+              void id;
+              toast(t('inventory.approvalRequest.sent'), 'success');
+              setApprovalModalOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

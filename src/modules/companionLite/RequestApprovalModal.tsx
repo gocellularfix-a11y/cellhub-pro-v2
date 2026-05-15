@@ -10,7 +10,7 @@
 // src/modules/companion, or the legacy event-bus / SDK paths.
 // ============================================================
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/store/AppProvider';
 import type { InventoryItem } from '@/store/types';
@@ -38,14 +38,18 @@ interface Props {
   onClose: () => void;
   /** Called with the new approval id after a successful create. */
   onCreated: (approvalId: string) => void;
+  /** Optional inventory item to preselect (e.g. when launched from the
+   *  Inventory module's per-row approval button). User can still clear
+   *  it and pick a different item or send a manual approval. */
+  prefilledItem?: InventoryItem | null;
 }
 
-export default function RequestApprovalModal({ open, session, onClose, onCreated }: Props) {
+export default function RequestApprovalModal({ open, session, onClose, onCreated, prefilledItem }: Props) {
   const { state: { inventory, currentEmployee } } = useApp();
 
   const [type, setType] = useState('discount');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(prefilledItem ?? null);
   const [discountMode, setDiscountMode] = useState<'percent' | 'dollars'>('percent');
   const [discountPercent, setDiscountPercent] = useState('15');
   const [discountDollars, setDiscountDollars] = useState('');
@@ -60,6 +64,16 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
     setError(null);
     setBusy(false);
   });
+
+  // Re-apply the prefilledItem whenever the modal opens (so launching
+  // from Inventory with item B after a previous open with item A swaps
+  // the selection cleanly).
+  useEffect(() => {
+    if (open) {
+      setSelectedItem(prefilledItem ?? null);
+      setSearchQuery('');
+    }
+  }, [open, prefilledItem]);
 
   const searchResults: InventoryItem[] = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
