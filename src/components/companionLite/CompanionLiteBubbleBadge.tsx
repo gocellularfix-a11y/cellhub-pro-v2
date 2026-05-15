@@ -28,20 +28,35 @@ const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
 const BUBBLE_SIZE = 110;
 const BUBBLE_Z_INDEX = 880;
 const POLL_MS = 250;
+const EDGE_PADDING = 16;
 
 interface Position { x: number; y: number; }
 
-function readBubblePosition(): Position | null {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(POSITION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Position>;
-    if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
-      return { x: parsed.x, y: parsed.y };
-    }
-  } catch { /* ignore */ }
-  return null;
+/** Default bubble position when localStorage has no entry yet — the
+ *  FloatingOperatorBubble uses the same formula until the operator
+ *  drags it. We mirror it here so the badge renders correctly on the
+ *  very first session, before any drag has persisted a position. */
+function defaultBubblePosition(): Position {
+  if (typeof window === 'undefined') return { x: 0, y: 0 };
+  return {
+    x: Math.max(EDGE_PADDING, window.innerWidth  - BUBBLE_SIZE - 24),
+    y: Math.max(EDGE_PADDING, window.innerHeight - BUBBLE_SIZE - 24),
+  };
+}
+
+function readBubblePosition(): Position {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(POSITION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Position>;
+        if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
+          return { x: parsed.x, y: parsed.y };
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return defaultBubblePosition();
 }
 
 const KEYFRAMES_STYLE_ID = 'companion-lite-badge-keyframes';
@@ -63,7 +78,7 @@ function ensureKeyframes(): void {
 export default function CompanionLiteBubbleBadge() {
   const { setActiveTab } = useApp();
   const [count, setCount] = useState(0);
-  const [pos, setPos] = useState<Position | null>(() => readBubblePosition());
+  const [pos, setPos] = useState<Position>(() => readBubblePosition());
 
   // Inject pulse keyframes once.
   useEffect(() => { ensureKeyframes(); }, []);
@@ -80,8 +95,7 @@ export default function CompanionLiteBubbleBadge() {
   useEffect(() => {
     const tick = () => {
       const next = readBubblePosition();
-      if (!next) { setPos(null); return; }
-      setPos(prev => (prev && prev.x === next.x && prev.y === next.y) ? prev : next);
+      setPos(prev => (prev.x === next.x && prev.y === next.y) ? prev : next);
     };
     tick();
     const handle = setInterval(tick, POLL_MS);
@@ -97,7 +111,6 @@ export default function CompanionLiteBubbleBadge() {
   }, []);
 
   if (count === 0) return null;
-  if (!pos) return null;
 
   // Anchor top-right of the bubble (slightly overlapping for visibility).
   const left = pos.x + BUBBLE_SIZE - 18;
