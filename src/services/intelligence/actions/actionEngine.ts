@@ -29,6 +29,8 @@ export interface ActionPayload {
   strategy?: 'targeted_whatsapp' | 'broad_campaign' | 'in_store' | 'status_post';
   recommendedChannel?: 'whatsapp' | 'whatsapp_status' | 'in_store' | 'marketplace';
   preparedMessage?: string;
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: entity reference for navigation targets
+  entityId?: string;
   executable: boolean;
   executionTarget:
     | 'whatsapp_url'
@@ -37,6 +39,11 @@ export interface ActionPayload {
     | 'review_panel'
     | 'reminder_queue'
     | 'open_promote_panel'
+    | 'open_repair'
+    | 'open_customer'
+    | 'open_layaway'
+    | 'open_inventory'
+    | 'queue_manager_review'
     | 'none';
 }
 

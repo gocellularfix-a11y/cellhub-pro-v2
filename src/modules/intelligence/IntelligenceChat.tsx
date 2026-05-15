@@ -523,6 +523,24 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           setFeedbackForAction(action.id, t('chat.promote.unavailable'));
         }
         break;
+      // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: navigation events dispatched by
+      // executeActionPayload; we only add feedback labels here — the modules
+      // listening to cellhub:* events drive the actual navigation.
+      case 'open_repair':
+        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo ticket...' : 'Opening ticket...');
+        break;
+      case 'open_customer':
+        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo cliente...' : 'Opening customer...');
+        break;
+      case 'open_layaway':
+        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo layaway...' : 'Opening layaway...');
+        break;
+      case 'open_inventory':
+        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo artículo...' : 'Opening item...');
+        break;
+      case 'queue_manager_review':
+        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo revisión...' : 'Opening review...');
+        break;
     }
   }
 

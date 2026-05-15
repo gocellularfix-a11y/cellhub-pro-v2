@@ -170,6 +170,12 @@ export type ExecutionResult =
   // Promote Inventory panel. The executor returns a structured result;
   // IntelligenceChat translates it into a UI side-effect via onOpenPromote.
   | { ok: true;  type: 'open_promote_panel'; productId: string; productName: string }
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: navigation hand-offs via custom events
+  | { ok: true;  type: 'open_repair';           repairId: string }
+  | { ok: true;  type: 'open_customer';         customerId: string }
+  | { ok: true;  type: 'open_layaway';          layawayId: string }
+  | { ok: true;  type: 'open_inventory';        itemId: string }
+  | { ok: true;  type: 'queue_manager_review' }
   | { ok: false; reason: 'not_executable' | 'missing_customer' | 'missing_sku' | 'missing_template' | 'missing_product' };
 
 function buildMessage(messageKey: string, customerName?: string): string {
@@ -266,6 +272,42 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
         productName: payload.productName,
       };
     }
+
+    // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: navigation hand-offs via custom events.
+    // Executor dispatches the event; IntelligenceChat adds a feedback label.
+    // No autonomous navigation — the module listening to the event drives the UI.
+    case 'open_repair': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-repair', { detail: { repairId: payload.entityId } }));
+      return { ok: true, type: 'open_repair', repairId: payload.entityId };
+    }
+
+    case 'open_customer': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: payload.entityId } }));
+      return { ok: true, type: 'open_customer', customerId: payload.entityId };
+    }
+
+    case 'open_layaway': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-layaway', { detail: { layawayId: payload.entityId } }));
+      return { ok: true, type: 'open_layaway', layawayId: payload.entityId };
+    }
+
+    case 'open_inventory': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-inventory-item', { detail: { itemId: payload.entityId } }));
+      return { ok: true, type: 'open_inventory', itemId: payload.entityId };
+    }
+
+    case 'queue_manager_review':
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-manager-review'));
+      return { ok: true, type: 'queue_manager_review' };
 
     case 'none':
     default:

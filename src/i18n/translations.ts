@@ -5953,6 +5953,96 @@ export const translations: TranslationDictionary = {
   },
   'chat.repairsReady.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
 
+  // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1 — chat handler translations
+  'chat.whatToDo.header': { en: "Today's Priority Actions", es: 'Acciones Prioritarias de Hoy', pt: 'Ações Prioritárias de Hoje' },
+  'chat.whatToDo.empty': { en: 'All clear! No urgent actions right now.', es: '¡Todo en orden! Sin acciones urgentes en este momento.', pt: 'Tudo certo! Sem ações urgentes agora.' },
+  'chat.whereLosing.header': { en: 'Revenue Leak Report', es: 'Reporte de Pérdida de Ingresos', pt: 'Relatório de Perda de Receita' },
+  'chat.whereLosing.empty': { en: 'No significant revenue leaks detected right now.', es: 'No se detectaron pérdidas de ingresos significativas en este momento.', pt: 'Nenhuma perda de receita significativa detectada agora.' },
+  'chat.whereLosing.deadStockNote': {
+    en: (amt: string) => `Also: ${amt} in capital tied up in slow/dead stock.`,
+    es: (amt: string) => `Además: ${amt} en capital inmovilizado en stock muerto.`,
+    pt: (amt: string) => `Também: ${amt} em capital parado em estoque morto.`,
+  },
+  'chat.attention.header': { en: 'Needs Attention', es: 'Necesita Atención', pt: 'Precisa de Atenção' },
+  'chat.attention.empty': { en: 'Everything looks good! No urgent items.', es: '¡Todo bien! Sin elementos urgentes.', pt: 'Tudo parece bem! Sem itens urgentes.' },
+
+  // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1 — opportunity summary strings (interpolated with evidence[])
+  'oppo.repair.overdue.title': { en: 'Overdue Repair', es: 'Reparación Vencida', pt: 'Reparo Atrasado' },
+  'oppo.repair.overdue': {
+    en: (name: string, days: string) => `Follow up with repair for ${name} — waiting ${days} day${days === '1' ? '' : 's'}`,
+    es: (name: string, days: string) => `Seguimiento de reparación para ${name} — ${days} día${days === '1' ? '' : 's'} en espera`,
+    pt: (name: string, days: string) => `Acompanhar reparo de ${name} — ${days} dia${days === '1' ? '' : 's'} esperando`,
+  },
+  'oppo.repair.ready.title': { en: 'Repair Ready for Pickup', es: 'Reparación Lista para Recoger', pt: 'Reparo Pronto para Retirada' },
+  'oppo.repair.ready': {
+    en: (name: string, days: string) => `Notify ${name} — repair ready ${days} day${days === '1' ? '' : 's'} ago`,
+    es: (name: string, days: string) => `Notificar a ${name} — reparación lista hace ${days} día${days === '1' ? '' : 's'}`,
+    pt: (name: string, days: string) => `Notificar ${name} — reparo pronto há ${days} dia${days === '1' ? '' : 's'}`,
+  },
+  'oppo.inventory.lowstock.title': { en: 'Low Stock — Fast Mover', es: 'Stock Bajo — Rotación Alta', pt: 'Estoque Baixo — Alta Rotação' },
+  'oppo.inventory.lowstock': {
+    en: (name: string, qty: string) => `Restock ${name} — only ${qty} left`,
+    es: (name: string, qty: string) => `Reabastecer ${name} — solo quedan ${qty}`,
+    pt: (name: string, qty: string) => `Repor ${name} — apenas ${qty} em estoque`,
+  },
+  'oppo.inventory.deadstock.title': { en: 'Dead Stock Alert', es: 'Alerta de Stock Muerto', pt: 'Alerta de Estoque Parado' },
+  'oppo.inventory.deadstock': {
+    en: (name: string, days: string) => `Move dead stock — ${name}, no sales in ${days} days`,
+    es: (name: string, days: string) => `Mover stock muerto — ${name}, sin ventas en ${days} días`,
+    pt: (name: string, days: string) => `Movimentar estoque parado — ${name}, sem vendas em ${days} dias`,
+  },
+  'oppo.customer.vip.title': { en: 'VIP Inactive', es: 'VIP Inactivo', pt: 'VIP Inativo' },
+  'oppo.customer.vip': {
+    en: (name: string, days: string) => `Re-engage VIP ${name} — inactive ${days} days`,
+    es: (name: string, days: string) => `Reconectar con VIP ${name} — inactivo ${days} días`,
+    pt: (name: string, days: string) => `Reconectar com VIP ${name} — inativo ${days} dias`,
+  },
+  'oppo.customer.unpaid.title': { en: 'Unpaid Balance', es: 'Balance Pendiente', pt: 'Saldo Pendente' },
+  'oppo.customer.unpaid': {
+    en: (name: string, amount: string) => `Collect balance from ${name} — ${amount} pending`,
+    es: (name: string, amount: string) => `Cobrar balance a ${name} — ${amount} pendiente`,
+    pt: (name: string, amount: string) => `Cobrar saldo de ${name} — ${amount} pendente`,
+  },
+  'oppo.layaway.overdue.title': { en: 'Overdue Layaway', es: 'Layaway Vencido', pt: 'Layaway Vencido' },
+  'oppo.layaway.overdue': {
+    en: (name: string, amount: string) => `Contact ${name} — overdue layaway, ${amount} remaining`,
+    es: (name: string, amount: string) => `Contactar a ${name} — layaway vencido, ${amount} restante`,
+    pt: (name: string, amount: string) => `Contatar ${name} — layaway vencido, ${amount} restante`,
+  },
+  'oppo.layaway.near.title': { en: 'Layaway Near Completion', es: 'Layaway Casi Completado', pt: 'Layaway Quase Completo' },
+  'oppo.layaway.near': {
+    en: (name: string, amount: string) => `Layaway almost done — ${name} owes ${amount}`,
+    es: (name: string, amount: string) => `Layaway casi completo — ${name} debe ${amount}`,
+    pt: (name: string, amount: string) => `Layaway quase completo — ${name} deve ${amount}`,
+  },
+  'oppo.layaway.abandoned.title': { en: 'Abandoned Layaway', es: 'Layaway Abandonado', pt: 'Layaway Abandonado' },
+  'oppo.layaway.abandoned': {
+    en: (name: string, days: string) => `Abandoned layaway — ${name}, no payment in ${days} days`,
+    es: (name: string, days: string) => `Layaway abandonado — ${name}, sin pago en ${days} días`,
+    pt: (name: string, days: string) => `Layaway abandonado — ${name}, sem pagamento em ${days} dias`,
+  },
+  'oppo.discount.excessive.title': { en: 'Excessive Discounts', es: 'Descuentos Excesivos', pt: 'Descontos Excessivos' },
+  'oppo.discount.excessive': {
+    en: (count: string, pct: string) => `Review discounts — ${count} applied today (avg ${pct}% off)`,
+    es: (count: string, pct: string) => `Revisar descuentos — ${count} aplicados hoy (promedio ${pct}% off)`,
+    pt: (count: string, pct: string) => `Revisar descontos — ${count} aplicados hoje (média ${pct}% off)`,
+  },
+  'oppo.discount.employee.title': { en: 'Employee Override Pattern', es: 'Patrón de Override por Empleado', pt: 'Padrão de Override por Funcionário' },
+  'oppo.discount.employee': {
+    en: (name: string, count: string) => `${name} applied ${count} discounts today — manager review needed`,
+    es: (name: string, count: string) => `${name} aplicó ${count} descuentos hoy — revisión del gerente requerida`,
+    pt: (name: string, count: string) => `${name} aplicou ${count} descontos hoje — revisão do gerente necessária`,
+  },
+
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 — action button labels
+  'oppo.action.whatsapp':      { en: 'Send WhatsApp',    es: 'Enviar WhatsApp',      pt: 'Enviar WhatsApp' },
+  'oppo.action.openRepair':    { en: 'Open Ticket',      es: 'Abrir Ticket',         pt: 'Abrir Ticket' },
+  'oppo.action.openCustomer':  { en: 'Open Customer',    es: 'Ver Cliente',          pt: 'Ver Cliente' },
+  'oppo.action.openLayaway':   { en: 'Open Layaway',     es: 'Ver Layaway',          pt: 'Ver Layaway' },
+  'oppo.action.openInventory': { en: 'Open Item',        es: 'Ver Artículo',         pt: 'Ver Item' },
+  'oppo.action.review':        { en: 'Review Now',       es: 'Revisar Ahora',        pt: 'Revisar Agora' },
+  'oppo.action.reminder':      { en: 'Add Reminder',     es: 'Agregar Recordatorio', pt: 'Adicionar Lembrete' },
+
   'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
   'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },
   'intelligence.console.queuePending':         { en: (n: number) => `${n} pending`,                                 es: (n: number) => `${n} pendiente${n === 1 ? '' : 's'}`,                  pt: (n: number) => `${n} pendente${n === 1 ? '' : 's'}` },

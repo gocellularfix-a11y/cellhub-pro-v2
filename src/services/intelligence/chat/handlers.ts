@@ -65,6 +65,10 @@ import {
   getLiabilitySummary,
   type DateRange,
 } from '../dataAccess/cellhubDataAccess';
+// R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1
+import { computeModuleWideOpportunities } from '../moduleWideOpportunities/moduleWideOpportunityService';
+// R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1
+import { buildChatActionsFromOpportunity } from './opportunityActionAdapter';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -295,6 +299,16 @@ export function handleIntent(
 
     case 'data_query':
       return handleDataQuery(match, engine, lang);
+
+    // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1
+    case 'what_to_do_today':
+      return handleWhatToDoToday(engine, lang);
+
+    case 'where_losing_money':
+      return handleWhereLoosingMoney(engine, lang);
+
+    case 'what_needs_attention':
+      return handleWhatNeedsAttention(engine, lang);
 
     case 'fallback_question':
       return handleFallbackQuestion(match, engine, lang);
@@ -2137,6 +2151,123 @@ function handleTopItems(engine: IntelligenceEngine, es: boolean): ChatResponse {
   return {
     kind: 'answer',
     text: es ? `Tus top 5 artículos (últimos 30 días):\n${list}` : `Your top 5 items (last 30 days):\n${list}`,
+  };
+}
+
+// ── R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1 ───────────────────
+
+function mwoOpps(engine: IntelligenceEngine) {
+  return computeModuleWideOpportunities({
+    repairs: engine.getRepairs(),
+    inventory: engine.getInventory(),
+    customers: engine.getCustomers(),
+    sales: engine.getSales(),
+    layaways: engine.getLayaways(),
+  });
+}
+
+function handleWhatToDoToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const opps = mwoOpps(engine);
+
+  if (opps.length === 0) {
+    return {
+      kind: 'answer',
+      text: `**${t('chat.whatToDo.header')}**\n\n${t('chat.whatToDo.empty')}`,
+    };
+  }
+
+  const topOpps = opps.slice(0, 7);
+  const lines: string[] = [`**${t('chat.whatToDo.header')}**`, ''];
+  topOpps.forEach((opp, i) => {
+    lines.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`);
+  });
+
+  const actions = topOpps.flatMap(opp =>
+    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  );
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
+function handleWhereLoosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const opps = mwoOpps(engine);
+
+  const moneyOpps = opps.filter(o =>
+    o.module === 'inventory' ||
+    o.module === 'customers' ||
+    o.module === 'layaways' ||
+    (o.module === 'repairs' && (o.severity === 'critical' || o.severity === 'high')),
+  );
+
+  const lines: string[] = [`**${t('chat.whereLosing.header')}**`, ''];
+
+  const topMoneyOpps = moneyOpps.slice(0, 5);
+  if (topMoneyOpps.length === 0) {
+    lines.push(t('chat.whereLosing.empty'));
+  } else {
+    topMoneyOpps.forEach((opp, i) => {
+      lines.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`);
+    });
+  }
+
+  const missedRev = engine.getMissedRevenue();
+  if (missedRev.deadStockLockedCents > 10_000) {
+    lines.push('');
+    lines.push(t('chat.whereLosing.deadStockNote', COP(missedRev.deadStockLockedCents)));
+  }
+
+  const actions = topMoneyOpps.flatMap(opp =>
+    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  );
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
+function handleWhatNeedsAttention(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const opps = mwoOpps(engine);
+
+  if (opps.length === 0) {
+    return {
+      kind: 'answer',
+      text: `**${t('chat.attention.header')}**\n\n${t('chat.attention.empty')}`,
+    };
+  }
+
+  const lines: string[] = [`**${t('chat.attention.header')}**`, ''];
+  let i = 1;
+
+  const urgentSlice = opps.filter(o => o.severity === 'critical' || o.severity === 'high').slice(0, 5);
+  for (const opp of urgentSlice) {
+    const badge = opp.severity === 'critical' ? '🚨' : '⚠️';
+    lines.push(`${i++}. ${badge} ${t(opp.summaryKey, ...opp.evidence)}`);
+  }
+
+  const remaining = Math.max(0, 5 - urgentSlice.length);
+  const medLowSlice = opps.filter(o => o.severity === 'medium' || o.severity === 'low').slice(0, remaining);
+  for (const opp of medLowSlice) {
+    lines.push(`${i++}. ${t(opp.summaryKey, ...opp.evidence)}`);
+  }
+
+  const shownOpps = [...urgentSlice, ...medLowSlice];
+  const actions = shownOpps.flatMap(opp =>
+    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  );
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
   };
 }
 

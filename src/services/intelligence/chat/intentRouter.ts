@@ -71,6 +71,10 @@ export type IntentId =
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
   // union as a defensive default in the handler switch.
+  // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1: cross-module actionable opportunity intents
+  | 'what_to_do_today'
+  | 'where_losing_money'
+  | 'what_needs_attention'
   | 'fallback_question'
   | 'unknown';
 
@@ -878,6 +882,52 @@ export function enrichFollowUpQuery(
   return null;
 }
 
+// R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1: cross-module opportunity keyword banks
+
+const WHAT_TO_DO_TODAY_KEYWORDS = [
+  // EN
+  'what should i do today', 'what do i do today', 'what to do today',
+  'priority actions', 'priority actions today', 'what are my priorities',
+  'my priorities today', 'action plan today', 'what actions today',
+  // ES
+  'qué hago hoy', 'que hago hoy', 'qué debo hacer hoy', 'que debo hacer hoy',
+  'acciones prioritarias', 'acciones de hoy', 'plan de acción hoy',
+  'plan de accion hoy', 'mis prioridades', 'prioridades de hoy',
+  // PT
+  'o que fazer hoje', 'o que devo fazer hoje', 'ações prioritárias',
+  'acoes prioritarias', 'minhas prioridades hoje',
+];
+
+const WHERE_LOSING_MONEY_KEYWORDS = [
+  // EN
+  'where am i losing money', 'where losing money', 'money leaks',
+  'revenue leaks', 'losing revenue', 'losing money',
+  'where do i lose money', 'revenue loss',
+  // ES
+  'dónde estoy perdiendo dinero', 'donde estoy perdiendo dinero',
+  'dónde pierdo dinero', 'donde pierdo dinero',
+  'perdiendo dinero', 'pérdida de ingresos', 'perdida de ingresos',
+  'fugas de dinero', 'fugas de ingresos',
+  // PT
+  'onde estou perdendo dinheiro', 'onde perco dinheiro',
+  'perdendo dinheiro', 'perda de receita', 'vazamentos de receita',
+];
+
+const WHAT_NEEDS_ATTENTION_KEYWORDS = [
+  // EN
+  'what needs attention', 'needs attention', 'what needs my attention',
+  'what is urgent', 'urgent items', 'urgent actions',
+  'what should i prioritize', 'priority list',
+  // ES
+  'qué necesita atención', 'que necesita atencion', 'qué está urgente',
+  'que esta urgente', 'qué debo priorizar', 'que debo priorizar',
+  'lista de prioridades', 'qué es urgente', 'que es urgente',
+  'qué hay pendiente urgente', 'que hay pendiente urgente',
+  // PT
+  'o que precisa de atenção', 'o que precisa de atencao', 'o que é urgente',
+  'prioridades urgentes',
+];
+
 // Count how many keywords from a bank appear in the query.
 function scoreKeywords(query: string, keywords: string[]): number {
   let hits = 0;
@@ -1010,6 +1060,9 @@ export function classifyIntent(
     // ("daily brief", "resumen diario", "o que fazer hoje") route to the
     // multi-signal composer. Plain "today"/"hoy"/"hoje" still falls to
     // today_summary because DAILY_BRIEF_KEYWORDS only contains anchored phrases.
+    // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1: listed BEFORE daily_brief so
+    // cross-module action queries win over the reporting brief.
+    { id: 'what_to_do_today', score: scoreKeywords(query, WHAT_TO_DO_TODAY_KEYWORDS) },
     { id: 'daily_brief',   score: scoreKeywords(query, DAILY_BRIEF_KEYWORDS) },
     // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: must run BEFORE sales_summary so
     // queries like "hoy" / "como estamos hoy" route to today-only metrics.
@@ -1024,11 +1077,13 @@ export function classifyIntent(
     // listed ABOVE repairs_overdue so anchored "ready" phrases win.
     { id: 'repairs_ready',   score: scoreKeywords(query, REPAIRS_READY_KEYWORDS) },
     { id: 'repairs_overdue', score: scoreKeywords(query, REPAIRS_KEYWORDS) },
+    { id: 'what_needs_attention', score: scoreKeywords(query, WHAT_NEEDS_ATTENTION_KEYWORDS) },
     { id: 'health_check', score: scoreKeywords(query, HEALTH_KEYWORDS) },
     { id: 'forecast_items', score: scoreKeywords(query, FORECAST_KEYWORDS) },
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
+    { id: 'where_losing_money', score: scoreKeywords(query, WHERE_LOSING_MONEY_KEYWORDS) },
     // R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: list ABOVE product_opportunities
     // so a bare "opportunities" query routes to the multi-source operator
     // briefing. product_opportunities (product-only ranked list) still wins
