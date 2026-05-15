@@ -6034,6 +6034,54 @@ export const translations: TranslationDictionary = {
     pt: (name: string, count: string) => `${name} aplicou ${count} descontos hoje — revisão do gerente necessária`,
   },
 
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1 — contextual section headers + opportunity strings
+  'chat.context.header':    { en: '⚡ Active Context', es: '⚡ Contexto Activo', pt: '⚡ Contexto Ativo' },
+  'chat.context.noContext': {
+    en: "No active item detected. Try asking 'what should I do today' for a full overview.",
+    es: "Sin elemento activo. Intenta preguntar 'qué hago hoy' para un resumen completo.",
+    pt: "Nenhum item ativo. Tente perguntar 'o que fazer hoje' para uma visão geral.",
+  },
+  'ctx.repair.ready': {
+    en: (name: string, days: string) => `Active repair — ${name}'s device is ready, waiting ${days} day(s) for pickup`,
+    es: (name: string, days: string) => `Reparación activa — el dispositivo de ${name} está listo, ${days} día(s) esperando`,
+    pt: (name: string, days: string) => `Reparo ativo — o dispositivo de ${name} está pronto, aguardando ${days} dia(s)`,
+  },
+  'ctx.repair.overdue': {
+    en: (name: string, days: string) => `Active repair — ${name}'s device has been in shop ${days} days — update status`,
+    es: (name: string, days: string) => `Reparación activa — el dispositivo de ${name} lleva ${days} días en taller — actualizar estado`,
+    pt: (name: string, days: string) => `Reparo ativo — dispositivo de ${name} está na loja há ${days} dias — atualizar status`,
+  },
+  'ctx.customer.inactive': {
+    en: (name: string, days: string) => `Viewing customer — ${name} hasn't visited in ${days} days`,
+    es: (name: string, days: string) => `Cliente activo — ${name} sin visitar en ${days} días`,
+    pt: (name: string, days: string) => `Cliente ativo — ${name} sem visitar em ${days} dias`,
+  },
+  'ctx.customer.balance': {
+    en: (name: string, amount: string) => `Viewing customer — ${name} has an outstanding balance of ${amount}`,
+    es: (name: string, amount: string) => `Cliente activo — ${name} tiene balance pendiente de ${amount}`,
+    pt: (name: string, amount: string) => `Cliente ativo — ${name} tem saldo pendente de ${amount}`,
+  },
+  'ctx.layaway.overdue': {
+    en: (name: string, amount: string) => `Active layaway — ${name}'s payment is overdue, ${amount} remaining`,
+    es: (name: string, amount: string) => `Layaway activo — pago de ${name} vencido, quedan ${amount}`,
+    pt: (name: string, amount: string) => `Layaway ativo — pagamento de ${name} vencido, faltam ${amount}`,
+  },
+  'ctx.layaway.near': {
+    en: (name: string, amount: string) => `Active layaway — ${name} is almost done, only ${amount} left`,
+    es: (name: string, amount: string) => `Layaway activo — ${name} casi completo, solo quedan ${amount}`,
+    pt: (name: string, amount: string) => `Layaway ativo — ${name} quase concluído, faltam apenas ${amount}`,
+  },
+  'ctx.inventory.low': {
+    en: (name: string, qty: string) => `Viewing item — ${name} is running low (qty ${qty}) — reorder soon`,
+    es: (name: string, qty: string) => `Artículo activo — ${name} con stock bajo (qty ${qty}) — reordenar pronto`,
+    pt: (name: string, qty: string) => `Item ativo — ${name} com estoque baixo (qty ${qty}) — reabastecer em breve`,
+  },
+  'ctx.inventory.dead': {
+    en: (name: string, days: string) => `Viewing item — ${name} hasn't sold in ${days} days — consider a discount`,
+    es: (name: string, days: string) => `Artículo activo — ${name} sin ventas en ${days} días — considera un descuento`,
+    pt: (name: string, days: string) => `Item ativo — ${name} sem vendas em ${days} dias — considere um desconto`,
+  },
+
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 — action button labels
   'oppo.action.whatsapp':      { en: 'Send WhatsApp',    es: 'Enviar WhatsApp',      pt: 'Enviar WhatsApp' },
   'oppo.action.openRepair':    { en: 'Open Ticket',      es: 'Abrir Ticket',         pt: 'Abrir Ticket' },

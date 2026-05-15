@@ -53,6 +53,7 @@ import {
   calculateLayawayTotals,
   normalizeLayawayPayments,
 } from '@/services/layaway/payments';
+import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -126,6 +127,18 @@ export default function LayawayModule() {
     window.addEventListener('cellhub:_intel-open-layaway', handler);
     return () => window.removeEventListener('cellhub:_intel-open-layaway', handler);
   }, []);
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active layaway so Intelligence
+  // surfaces contextual recommendations for this specific ticket.
+  useEffect(() => {
+    if (editLayaway) {
+      setIntelligenceContext({
+        activeModule: 'layaways',
+        activeLayawayId: editLayaway.id,
+        activeCustomerId: (editLayaway as any).customerId ?? undefined,
+      });
+    }
+  }, [editLayaway]);
 
   // Consume cross-module search term once on mount
   useEffect(() => {

@@ -69,6 +69,9 @@ import {
 import { computeModuleWideOpportunities } from '../moduleWideOpportunities/moduleWideOpportunityService';
 // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 / R-INTELLIGENCE-ACTION-UX-STABILITY-V1
 import { buildChatActionsFromOpportunity, dedupeAndLimitActions } from './opportunityActionAdapter';
+// R-INTELLIGENCE-CONTEXT-AWARE-V1
+import { getIntelligenceContext } from '../context/intelligenceContext';
+import { computeContextualOpportunities } from '../context/contextualOpportunityService';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -299,6 +302,10 @@ export function handleIntent(
 
     case 'data_query':
       return handleDataQuery(match, engine, lang);
+
+    // R-INTELLIGENCE-CONTEXT-AWARE-V1
+    case 'active_context_query':
+      return handleActiveContextQuery(engine, lang);
 
     // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1
     case 'what_to_do_today':
@@ -2154,6 +2161,63 @@ function handleTopItems(engine: IntelligenceEngine, es: boolean): ChatResponse {
   };
 }
 
+// ── R-INTELLIGENCE-CONTEXT-AWARE-V1 ─────────────────────────
+
+// Shared helper: build the contextual preamble section for MWO handlers.
+// Returns null when no active context or no contextual opportunities found.
+function buildContextualPreamble(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): { text: string; actions: ChatActionUI[] } | null {
+  const ctx = getIntelligenceContext();
+  if (!ctx) return null;
+  const ctxOpps = computeContextualOpportunities(ctx, engine);
+  if (ctxOpps.length === 0) return null;
+
+  const t = tChat(lang);
+  const lines: string[] = [`**${t('chat.context.header')}**`, ''];
+  ctxOpps.slice(0, 3).forEach((opp) => {
+    const badge = opp.severity === 'critical' ? '🚨 ' : opp.severity === 'high' ? '⚡ ' : '';
+    lines.push(`• ${badge}${t(opp.summaryKey, ...opp.evidence)}`);
+  });
+
+  const actions = dedupeAndLimitActions(
+    ctxOpps.flatMap((opp) =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
+    3,
+  );
+
+  return { text: lines.join('\n'), actions };
+}
+
+function handleActiveContextQuery(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const ctx = getIntelligenceContext();
+  if (!ctx) {
+    return { kind: 'answer', text: t('chat.context.noContext') };
+  }
+  const ctxOpps = computeContextualOpportunities(ctx, engine);
+  if (ctxOpps.length === 0) {
+    return { kind: 'answer', text: t('chat.context.noContext') };
+  }
+  const lines: string[] = [`**${t('chat.context.header')}**`, ''];
+  ctxOpps.forEach((opp) => {
+    const badge = opp.severity === 'critical' ? '🚨 ' : opp.severity === 'high' ? '⚡ ' : '';
+    lines.push(`• ${badge}${t(opp.summaryKey, ...opp.evidence)}`);
+  });
+  const actions = dedupeAndLimitActions(
+    ctxOpps.flatMap((opp) =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
+  );
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
 // ── R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1 ───────────────────
 
 function mwoOpps(engine: IntelligenceEngine) {
@@ -2168,111 +2232,126 @@ function mwoOpps(engine: IntelligenceEngine) {
 
 function handleWhatToDoToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
+  const preamble = buildContextualPreamble(engine, lang);
   const opps = mwoOpps(engine);
 
-  if (opps.length === 0) {
+  if (opps.length === 0 && !preamble) {
     return {
       kind: 'answer',
       text: `**${t('chat.whatToDo.header')}**\n\n${t('chat.whatToDo.empty')}`,
     };
   }
 
-  const topOpps = opps.slice(0, 7);
-  const lines: string[] = [`**${t('chat.whatToDo.header')}**`, ''];
-  topOpps.forEach((opp, i) => {
-    lines.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`);
-  });
+  const parts: string[] = [];
+  if (preamble) { parts.push(preamble.text); parts.push(''); }
 
-  const actions = dedupeAndLimitActions(
-    topOpps.flatMap(opp =>
+  const topOpps = opps.slice(0, 7);
+  if (topOpps.length > 0) {
+    parts.push(`**${t('chat.whatToDo.header')}**`, '');
+    topOpps.forEach((opp, i) => { parts.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`); });
+  }
+
+  const globalActions = dedupeAndLimitActions(
+    topOpps.flatMap((opp) =>
       opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
     ),
+    3,
   );
+  const actions = dedupeAndLimitActions([...(preamble?.actions ?? []), ...globalActions]);
 
   return {
     kind: 'answer',
-    text: lines.join('\n'),
+    text: parts.join('\n'),
     ...(actions.length > 0 ? { actions } : {}),
   };
 }
 
 function handleWhereLoosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
+  const preamble = buildContextualPreamble(engine, lang);
   const opps = mwoOpps(engine);
 
-  const moneyOpps = opps.filter(o =>
+  const moneyOpps = opps.filter((o) =>
     o.module === 'inventory' ||
     o.module === 'customers' ||
     o.module === 'layaways' ||
     (o.module === 'repairs' && (o.severity === 'critical' || o.severity === 'high')),
   );
 
-  const lines: string[] = [`**${t('chat.whereLosing.header')}**`, ''];
+  const parts: string[] = [];
+  if (preamble) { parts.push(preamble.text); parts.push(''); }
 
+  parts.push(`**${t('chat.whereLosing.header')}**`, '');
   const topMoneyOpps = moneyOpps.slice(0, 5);
   if (topMoneyOpps.length === 0) {
-    lines.push(t('chat.whereLosing.empty'));
+    parts.push(t('chat.whereLosing.empty'));
   } else {
-    topMoneyOpps.forEach((opp, i) => {
-      lines.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`);
-    });
+    topMoneyOpps.forEach((opp, i) => { parts.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`); });
   }
 
   const missedRev = engine.getMissedRevenue();
   if (missedRev.deadStockLockedCents > 10_000) {
-    lines.push('');
-    lines.push(t('chat.whereLosing.deadStockNote', COP(missedRev.deadStockLockedCents)));
+    parts.push('', t('chat.whereLosing.deadStockNote', COP(missedRev.deadStockLockedCents)));
   }
 
-  const actions = dedupeAndLimitActions(
-    topMoneyOpps.flatMap(opp =>
+  const globalActions = dedupeAndLimitActions(
+    topMoneyOpps.flatMap((opp) =>
       opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
     ),
+    3,
   );
+  const actions = dedupeAndLimitActions([...(preamble?.actions ?? []), ...globalActions]);
 
   return {
     kind: 'answer',
-    text: lines.join('\n'),
+    text: parts.join('\n'),
     ...(actions.length > 0 ? { actions } : {}),
   };
 }
 
 function handleWhatNeedsAttention(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
+  const preamble = buildContextualPreamble(engine, lang);
   const opps = mwoOpps(engine);
 
-  if (opps.length === 0) {
+  const urgentSlice = opps.filter((o) => o.severity === 'critical' || o.severity === 'high').slice(0, 5);
+  const remaining = Math.max(0, 5 - urgentSlice.length);
+  const medLowSlice = opps.filter((o) => o.severity === 'medium' || o.severity === 'low').slice(0, remaining);
+  const shownOpps = [...urgentSlice, ...medLowSlice];
+
+  if (shownOpps.length === 0 && !preamble) {
     return {
       kind: 'answer',
       text: `**${t('chat.attention.header')}**\n\n${t('chat.attention.empty')}`,
     };
   }
 
-  const lines: string[] = [`**${t('chat.attention.header')}**`, ''];
-  let i = 1;
+  const parts: string[] = [];
+  if (preamble) { parts.push(preamble.text); parts.push(''); }
 
-  const urgentSlice = opps.filter(o => o.severity === 'critical' || o.severity === 'high').slice(0, 5);
-  for (const opp of urgentSlice) {
-    const badge = opp.severity === 'critical' ? '🚨' : '⚠️';
-    lines.push(`${i++}. ${badge} ${t(opp.summaryKey, ...opp.evidence)}`);
+  if (shownOpps.length > 0) {
+    parts.push(`**${t('chat.attention.header')}**`, '');
+    let idx = 1;
+    for (const opp of urgentSlice) {
+      const badge = opp.severity === 'critical' ? '🚨' : '⚠️';
+      parts.push(`${idx++}. ${badge} ${t(opp.summaryKey, ...opp.evidence)}`);
+    }
+    for (const opp of medLowSlice) {
+      parts.push(`${idx++}. ${t(opp.summaryKey, ...opp.evidence)}`);
+    }
   }
 
-  const remaining = Math.max(0, 5 - urgentSlice.length);
-  const medLowSlice = opps.filter(o => o.severity === 'medium' || o.severity === 'low').slice(0, remaining);
-  for (const opp of medLowSlice) {
-    lines.push(`${i++}. ${t(opp.summaryKey, ...opp.evidence)}`);
-  }
-
-  const shownOpps = [...urgentSlice, ...medLowSlice];
-  const actions = dedupeAndLimitActions(
-    shownOpps.flatMap(opp =>
+  const globalActions = dedupeAndLimitActions(
+    shownOpps.flatMap((opp) =>
       opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
     ),
+    3,
   );
+  const actions = dedupeAndLimitActions([...(preamble?.actions ?? []), ...globalActions]);
 
   return {
     kind: 'answer',
-    text: lines.join('\n'),
+    text: parts.join('\n'),
     ...(actions.length > 0 ? { actions } : {}),
   };
 }

@@ -34,6 +34,7 @@ import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/in
 // Inventory chunk doesn't pull in the modal until the operator clicks.
 import { loadDesktopSession } from '@/services/companionLite/identityStore';
 import type { CompanionLiteDesktopSession } from '@/types/companionLite';
+import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
 const RequestApprovalModal = lazy(() => import('@/modules/companionLite/RequestApprovalModal'));
 
 // R-PERF-INVENTORY-PROMOTE-PRELOAD: module-level preload cache. The first
@@ -258,6 +259,17 @@ export default function InventoryModule() {
     window.addEventListener('cellhub:_intel-open-inventory', handler);
     return () => window.removeEventListener('cellhub:_intel-open-inventory', handler);
   }, []);
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active inventory item so Intelligence
+  // surfaces contextual recommendations for this specific product.
+  useEffect(() => {
+    if (editItem) {
+      setIntelligenceContext({
+        activeModule: 'inventory',
+        activeInventoryItemId: editItem.id,
+      });
+    }
+  }, [editItem]);
 
   // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: cache the IntelligenceEngine
   // across Promote clicks. Without this, every click rebuilt the engine

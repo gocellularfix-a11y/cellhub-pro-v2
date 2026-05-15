@@ -75,6 +75,8 @@ export type IntentId =
   | 'what_to_do_today'
   | 'where_losing_money'
   | 'what_needs_attention'
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: active-entity context query
+  | 'active_context_query'
   | 'fallback_question'
   | 'unknown';
 
@@ -884,6 +886,24 @@ export function enrichFollowUpQuery(
 
 // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1: cross-module opportunity keyword banks
 
+// R-INTELLIGENCE-CONTEXT-AWARE-V1: "what about this / info on this" — queries
+// that explicitly reference the active entity the operator is looking at.
+// Scored high (90+) so it wins over global opportunity intents when the user
+// is clearly asking about the currently open repair/customer/layaway/item.
+const ACTIVE_CONTEXT_KEYWORDS = [
+  // EN
+  'what about this', 'anything on this', 'tell me about this',
+  'info on this', 'info on current', 'current item', 'current repair',
+  'this repair', 'this customer', 'this layaway', 'this item',
+  'what can i do with this', 'help me with this',
+  // ES
+  'qué pasa con esto', 'que pasa con esto', 'algo sobre esto',
+  'qué hay de esto', 'que hay de esto', 'este cliente',
+  'esta reparación', 'esta reparacion', 'este layaway', 'este artículo',
+  'este articulo', 'cuéntame de esto', 'cuentame de esto',
+  'qué hago con esto', 'que hago con esto',
+];
+
 const WHAT_TO_DO_TODAY_KEYWORDS = [
   // EN
   'what should i do today', 'what do i do today', 'what to do today',
@@ -1060,6 +1080,8 @@ export function classifyIntent(
     // ("daily brief", "resumen diario", "o que fazer hoje") route to the
     // multi-signal composer. Plain "today"/"hoy"/"hoje" still falls to
     // today_summary because DAILY_BRIEF_KEYWORDS only contains anchored phrases.
+    // R-INTELLIGENCE-CONTEXT-AWARE-V1: explicit context queries win over global opps.
+    { id: 'active_context_query', score: scoreKeywords(query, ACTIVE_CONTEXT_KEYWORDS) },
     // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1: listed BEFORE daily_brief so
     // cross-module action queries win over the reporting brief.
     { id: 'what_to_do_today', score: scoreKeywords(query, WHAT_TO_DO_TODAY_KEYWORDS) },

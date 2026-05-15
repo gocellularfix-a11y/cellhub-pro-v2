@@ -14,6 +14,7 @@ import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { emitRepairCompleted } from '@/services/intelligence/liveContext/liveContextEvents';
+import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
@@ -89,6 +90,18 @@ export default function RepairModule() {
   // setRepairs calls (modal save + collectBalance) don't pisarse mutually.
   const repairsRef = useRef(repairs);
   useEffect(() => { repairsRef.current = repairs; }, [repairs]);
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active repair entity so Intelligence
+  // can surface contextual recommendations for this specific ticket.
+  useEffect(() => {
+    if (editRepair) {
+      setIntelligenceContext({
+        activeModule: 'repairs',
+        activeRepairId: editRepair.id,
+        activeCustomerId: editRepair.customerId ?? undefined,
+      });
+    }
+  }, [editRepair]);
 
   // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a specific repair ticket from
   // Intelligence action buttons. AppShell navigates here first, then defers

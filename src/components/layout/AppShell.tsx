@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
 import Sidebar from './Sidebar';
 import SidebarList from './SidebarList';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
@@ -128,6 +129,12 @@ export default function AppShell() {
     onCustomerScan: handleCustomerScan,
     onInventoryScan: handleInventoryScan,
   });
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast coarse module context so Intelligence
+  // can adapt recommendations even when no specific entity is selected.
+  useEffect(() => {
+    setIntelligenceContext({ activeModule: activeTab });
+  }, [activeTab]);
 
   // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: central coordinator for Intelligence
   // action-button navigation. Step 1 → navigate to module tab. Step 2 (80ms
