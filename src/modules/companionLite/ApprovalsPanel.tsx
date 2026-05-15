@@ -2,13 +2,14 @@
 // Creates test approvals, polls for current status, and per-card supports
 // a message thread plus product/discount cost context.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import type {
   ApprovalRequest,
   CompanionLiteDesktopSession,
   CompanionLiteMessage,
 } from '@/types/companionLite';
+import { CompanionLiteApiError } from '@/services/companionLite/apiClient';
 import {
   createApproval,
   listApprovals,
@@ -38,6 +39,7 @@ export default function ApprovalsPanel({ session }: Props) {
   // on the very next render so the operator sees the conversation
   // immediately. Cleared once consumed.
   const [autoOpenId, setAutoOpenId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -45,14 +47,20 @@ export default function ApprovalsPanel({ session }: Props) {
       setApprovals(items);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      if (err instanceof CompanionLiteApiError && err.httpStatus === 401) {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        setError('Session expired — click Unpair and re-pair Companion Lite.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load');
+      }
     }
   }, [session]);
 
   useEffect(() => {
     void refresh();
     const handle = setInterval(refresh, POLL_MS);
-    return () => clearInterval(handle);
+    pollRef.current = handle;
+    return () => { clearInterval(handle); pollRef.current = null; };
   }, [refresh]);
 
   const handleSendTest = async () => {
@@ -214,6 +222,7 @@ function ApprovalThread({
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const threadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -221,14 +230,20 @@ function ApprovalThread({
       setMessages(items);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load');
+      if (err instanceof CompanionLiteApiError && err.httpStatus === 401) {
+        if (threadPollRef.current) { clearInterval(threadPollRef.current); threadPollRef.current = null; }
+        setError('Session expired.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not load');
+      }
     }
   }, [session, approval.id]);
 
   useEffect(() => {
     void refresh();
     const handle = setInterval(refresh, THREAD_POLL_MS);
-    return () => clearInterval(handle);
+    threadPollRef.current = handle;
+    return () => { clearInterval(handle); threadPollRef.current = null; };
   }, [refresh]);
 
   const handleSend = async () => {

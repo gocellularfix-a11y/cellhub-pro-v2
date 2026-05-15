@@ -20,6 +20,7 @@
 // ============================================================
 
 import type { ApprovalRequest, CompanionLiteDesktopSession } from '@/types/companionLite';
+import { CompanionLiteApiError } from './apiClient';
 import { loadDesktopSession } from './identityStore';
 import { listApprovals, listApprovalMessages } from './approvalsService';
 import { listMessages } from './messagesService';
@@ -50,12 +51,15 @@ let bindings: RuntimeBindings | null = null;
 // with a different store cannot reuse the prior seen-id sets.
 let trackedToken: string | null = null;
 let seedDone = false;
+// Set to true on 401 — clears when a new posToken appears (re-pair).
+let authFailed = false;
 const seenApprovalStatuses = new Map<string, ApprovalRequest['status']>();
 const seenApprovalMessageIds = new Set<string>();
 const seenGeneralMessageIds = new Set<string>();
 
 function resetSessionState(): void {
   seedDone = false;
+  authFailed = false;
   seenApprovalStatuses.clear();
   seenApprovalMessageIds.clear();
   seenGeneralMessageIds.clear();
@@ -93,6 +97,9 @@ async function poll(): Promise<void> {
     resetSessionState();
   }
 
+  // Auth failure from a previous cycle — skip until re-pair provides a new token.
+  if (authFailed) return;
+
   const isOnTab = local.getActiveTab() === 'companionLite';
   const seedingNow = !seedDone;
 
@@ -101,7 +108,12 @@ async function poll(): Promise<void> {
     await pollApprovalThreads(session, isOnTab, seedingNow, local.toast);
     await pollGeneralMessages(session, isOnTab, seedingNow, local.toast);
     seedDone = true;
-  } catch {
+  } catch (err) {
+    if (err instanceof CompanionLiteApiError && err.httpStatus === 401) {
+      authFailed = true;
+      console.warn('[CompanionLiteRuntime] 401 — pausing poll until session is re-paired');
+      return;
+    }
     /* transient — try again next interval */
   }
 }
