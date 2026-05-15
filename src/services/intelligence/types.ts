@@ -376,3 +376,6 @@ export interface ChurnRootCauseReport {
   confidence: number;               // 0..1, min(1, totalVisits / 5)
   actions: ActionItem[];
 }
+
+// R-INTELLIGENCE-FEEDBACK-LOOP-V1: re-export feedback types for unified import path.
+export type { IntelligenceFeedbackType, IntelligenceFeedbackEvent } from './feedback/types';

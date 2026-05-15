@@ -14,10 +14,13 @@
 // and does not execute action payloads.
 
 import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
-// R-INTELLIGENCE-MANAGER-QUEUE-V1
-import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem } from '@/services/intelligence/managerQueue/actions';
+// R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1
+import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem, snoozeQueueItem } from '@/services/intelligence/managerQueue/actions';
 import { getPendingItems, getQueueSummary } from '@/services/intelligence/managerQueue/selectors';
 import type { ManagerQueueItem, QueueItemSeverity } from '@/services/intelligence/managerQueue/types';
+import { addFeedbackEvent, getFeedbackEvents } from '@/services/intelligence/feedback/store';
+import { buildScoreMap } from '@/services/intelligence/feedback/scoring';
+import type { IntelligenceFeedbackType } from '@/services/intelligence/feedback/types';
 import { useApp } from '@/store/AppProvider';
 import {
   IntelligenceEngine,
@@ -78,11 +81,12 @@ export default function IntelligenceModule() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [externalQuery, setExternalQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
 
-  // R-INTELLIGENCE-MANAGER-QUEUE-V1: queue state — loaded from localStorage,
-  // refreshed on module open and whenever a queue_manager_review event fires.
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1
   const [queueItems, setQueueItems] = useState<ManagerQueueItem[]>(() => getQueue());
   const [showAllQueue, setShowAllQueue] = useState(false);
   const queueSectionRef = useRef<HTMLDivElement>(null);
+  // feedbackVersion bumps whenever feedback is written — triggers scoreMap recompute.
+  const [feedbackVersion, setFeedbackVersion] = useState(0);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -154,51 +158,79 @@ export default function IntelligenceModule() {
     return () => { setActiveIntelligenceEngine(null); };
   }, [engine]);
 
-  // R-INTELLIGENCE-MANAGER-QUEUE-V1: listen for queue_manager_review events
-  // so new items are reflected immediately without requiring a page reload.
-  const reloadQueue = useCallback(() => {
-    setQueueItems(getQueue());
-  }, []);
+  // R-INTELLIGENCE-MANAGER-QUEUE-V1: reload queue when a new item is pushed.
+  const reloadQueue = useCallback(() => { setQueueItems(getQueue()); }, []);
 
   useEffect(() => {
     window.addEventListener('cellhub:open-manager-review', reloadQueue);
     return () => window.removeEventListener('cellhub:open-manager-review', reloadQueue);
   }, [reloadQueue]);
 
-  // Queue action callbacks — read fresh queue from store after each mutation.
-  const handleQueueApprove = useCallback((id: string) => {
-    approveQueueItem(id);
-    setQueueItems(getQueue());
-  }, []);
-  const handleQueueDismiss = useCallback((id: string) => {
-    dismissQueueItem(id);
-    setQueueItems(getQueue());
-  }, []);
-  const handleQueueResolve = useCallback((id: string) => {
-    resolveQueueItem(id);
-    setQueueItems(getQueue());
+  // R-INTELLIGENCE-FEEDBACK-LOOP-V1: scoreMap rebuilt whenever feedback changes.
+  // O(n) over feedback events — fast for < 1000 entries.
+  const feedbackScoreMap = useMemo(() => buildScoreMap(getFeedbackEvents()), [feedbackVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Low-level feedback writer — bumps version so scoreMap and sort re-evaluate.
+  const writeFeedback = useCallback((item: ManagerQueueItem, type: IntelligenceFeedbackType) => {
+    addFeedbackEvent({ queueItemId: item.id, fingerprint: item.fingerprint, type });
+    setFeedbackVersion(v => v + 1);
   }, []);
 
-  // R-INTELLIGENCE-QUEUE-DEDUP-NAVIGATION-V1: dispatch existing navigation
-  // CustomEvents — no new routing. Reuses the same events that
-  // actionExecutor.ts fires for open_repair / open_customer / etc.
+  // Queue action callbacks — all accept full item (fingerprint needed for feedback).
+  const handleQueueApprove = useCallback((item: ManagerQueueItem) => {
+    approveQueueItem(item.id);
+    writeFeedback(item, 'useful');   // auto-signal: approved = useful
+    setQueueItems(getQueue());
+  }, [writeFeedback]);
+
+  const handleQueueDismiss = useCallback((item: ManagerQueueItem) => {
+    dismissQueueItem(item.id);
+    setQueueItems(getQueue());
+    // No auto-feedback on dismiss — neutral, operator may dismiss for any reason.
+  }, []);
+
+  const handleQueueResolve = useCallback((item: ManagerQueueItem) => {
+    resolveQueueItem(item.id);
+    writeFeedback(item, 'resolved'); // auto-signal: resolved = strong positive
+    setQueueItems(getQueue());
+  }, [writeFeedback]);
+
+  // R-INTELLIGENCE-QUEUE-DEDUP-NAVIGATION-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1:
+  // navigation reuses existing CustomEvents; opening entity = implicit useful signal.
   const handleQueueOpen = useCallback((item: ManagerQueueItem) => {
     if (!item.entityId || !item.entityType) return;
     switch (item.entityType) {
       case 'repair':
-        window.dispatchEvent(new CustomEvent('cellhub:open-repair',          { detail: { repairId:    item.entityId } })); break;
+        window.dispatchEvent(new CustomEvent('cellhub:open-repair',         { detail: { repairId:   item.entityId } })); break;
       case 'customer':
-        window.dispatchEvent(new CustomEvent('cellhub:open-customer',        { detail: { customerId:  item.entityId } })); break;
+        window.dispatchEvent(new CustomEvent('cellhub:open-customer',       { detail: { customerId: item.entityId } })); break;
       case 'layaway':
-        window.dispatchEvent(new CustomEvent('cellhub:open-layaway',         { detail: { layawayId:   item.entityId } })); break;
+        window.dispatchEvent(new CustomEvent('cellhub:open-layaway',        { detail: { layawayId:  item.entityId } })); break;
       case 'inventory':
-        window.dispatchEvent(new CustomEvent('cellhub:open-inventory-item',  { detail: { itemId:      item.entityId } })); break;
+        window.dispatchEvent(new CustomEvent('cellhub:open-inventory-item', { detail: { itemId:     item.entityId } })); break;
       default: break;
     }
-  }, []);
+    writeFeedback(item, 'useful');   // auto-signal: navigating to entity = useful
+  }, [writeFeedback]);
 
-  const pendingQueueItems = useMemo(() => getPendingItems(queueItems), [queueItems]);
-  const queueSummary = useMemo(() => getQueueSummary(queueItems), [queueItems]);
+  // Explicit feedback buttons — operator-driven signals.
+  const handleFeedbackUseful    = useCallback((item: ManagerQueueItem) => { writeFeedback(item, 'useful'); },    [writeFeedback]);
+  const handleFeedbackNotUseful = useCallback((item: ManagerQueueItem) => { writeFeedback(item, 'not_useful'); },[writeFeedback]);
+  const handleFeedbackSnooze    = useCallback((item: ManagerQueueItem) => {
+    snoozeQueueItem(item.id);
+    writeFeedback(item, 'snoozed'); // snoozed = mild negative signal
+    setQueueItems(getQueue());
+  }, [writeFeedback]);
+
+  // Derived pending list — scoreMap fed into sort comparator.
+  const pendingQueueItems = useMemo(
+    () => getPendingItems(queueItems, feedbackScoreMap),
+    [queueItems, feedbackScoreMap],
+  );
+  const queueSummary = useMemo(
+    () => getQueueSummary(queueItems, feedbackScoreMap),
+    [queueItems, feedbackScoreMap],
+  );
   const QUEUE_PREVIEW = 5;
   const visibleQueueItems = showAllQueue ? pendingQueueItems : pendingQueueItems.slice(0, QUEUE_PREVIEW);
 
@@ -760,6 +792,9 @@ export default function IntelligenceModule() {
                   onDismiss={handleQueueDismiss}
                   onResolve={handleQueueResolve}
                   onOpen={handleQueueOpen}
+                  onFeedbackUseful={handleFeedbackUseful}
+                  onFeedbackNotUseful={handleFeedbackNotUseful}
+                  onFeedbackSnooze={handleFeedbackSnooze}
                 />
               ))}
             </div>
@@ -1356,13 +1391,17 @@ function relativeTime(ts: number): string {
 
 function QueueCard({
   item, lang, onApprove, onDismiss, onResolve, onOpen,
+  onFeedbackUseful, onFeedbackNotUseful, onFeedbackSnooze,
 }: {
   item: ManagerQueueItem;
   lang: 'en' | 'es' | 'pt';
-  onApprove: (id: string) => void;
-  onDismiss: (id: string) => void;
-  onResolve: (id: string) => void;
-  onOpen:    (item: ManagerQueueItem) => void;
+  onApprove:           (item: ManagerQueueItem) => void;
+  onDismiss:           (item: ManagerQueueItem) => void;
+  onResolve:           (item: ManagerQueueItem) => void;
+  onOpen:              (item: ManagerQueueItem) => void;
+  onFeedbackUseful:    (item: ManagerQueueItem) => void;
+  onFeedbackNotUseful: (item: ManagerQueueItem) => void;
+  onFeedbackSnooze:    (item: ManagerQueueItem) => void;
 }) {
   const colors = SEVERITY_COLOR[item.severity];
   const occurrences = item.occurrenceCount ?? 1;
@@ -1376,11 +1415,14 @@ function QueueCard({
     low:      { en: 'Low',      es: 'Bajo',      pt: 'Baixo' },
   };
   const L = {
-    approve: { en: 'Approve', es: 'Aprobar',   pt: 'Aprovar' }[lang],
-    dismiss: { en: 'Dismiss', es: 'Descartar', pt: 'Descartar' }[lang],
-    resolve: { en: 'Resolve', es: 'Resolver',  pt: 'Resolver' }[lang],
-    open:    { en: 'Open',    es: 'Abrir',     pt: 'Abrir' }[lang],
-    times:   lang === 'es' ? 'veces' : lang === 'pt' ? 'vezes' : 'times',
+    approve:    { en: 'Approve',    es: 'Aprobar',   pt: 'Aprovar' }[lang],
+    dismiss:    { en: 'Dismiss',    es: 'Descartar', pt: 'Descartar' }[lang],
+    resolve:    { en: 'Resolve',    es: 'Resolver',  pt: 'Resolver' }[lang],
+    open:       { en: 'Open',       es: 'Abrir',     pt: 'Abrir' }[lang],
+    useful:     { en: 'Useful',     es: 'Útil',      pt: 'Útil' }[lang],
+    notUseful:  { en: 'Not useful', es: 'No útil',   pt: 'Inútil' }[lang],
+    snooze:     { en: 'Snooze 1h',  es: 'Posponer',  pt: 'Adiar' }[lang],
+    times:      lang === 'es' ? 'veces' : lang === 'pt' ? 'vezes' : 'times',
   };
 
   return (
@@ -1423,7 +1465,7 @@ function QueueCard({
         <p className="text-[10px] text-slate-600 mb-2">{relativeTime(lastSeen)}</p>
       )}
 
-      {/* Action buttons */}
+      {/* Primary action buttons */}
       <div className="flex flex-wrap gap-1.5">
         {hasEntity && (
           <button
@@ -1435,25 +1477,54 @@ function QueueCard({
           </button>
         )}
         <button
-          onClick={() => onApprove(item.id)}
+          onClick={() => onApprove(item)}
           className="px-2 py-1 text-[10px] font-semibold rounded transition"
           style={{ background: '#10B98122', color: '#10B981', border: '1px solid #10B98144' }}
         >
           ✓ {L.approve}
         </button>
         <button
-          onClick={() => onResolve(item.id)}
+          onClick={() => onResolve(item)}
           className="px-2 py-1 text-[10px] font-semibold rounded transition"
           style={{ background: '#3B82F622', color: '#3B82F6', border: '1px solid #3B82F644' }}
         >
           ✔ {L.resolve}
         </button>
         <button
-          onClick={() => onDismiss(item.id)}
+          onClick={() => onDismiss(item)}
           className="px-2 py-1 text-[10px] font-medium rounded transition"
           style={{ background: '#37415155', color: '#9CA3AF', border: '1px solid #37415188' }}
         >
           {L.dismiss}
+        </button>
+      </div>
+
+      {/* R-INTELLIGENCE-FEEDBACK-LOOP-V1: compact feedback signals.
+          Small, non-intrusive. No labels beyond minimal text. */}
+      <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-slate-800">
+        <span className="text-[9px] text-slate-600 uppercase tracking-wide shrink-0">
+          {lang === 'es' ? 'Feedback' : lang === 'pt' ? 'Feedback' : 'Feedback'}:
+        </span>
+        <button
+          onClick={() => onFeedbackUseful(item)}
+          className="text-[10px] text-slate-500 hover:text-emerald-400 transition px-1"
+          title={L.useful}
+        >
+          👍
+        </button>
+        <button
+          onClick={() => onFeedbackSnooze(item)}
+          className="text-[10px] text-slate-500 hover:text-amber-400 transition px-1"
+          title={L.snooze}
+        >
+          💤
+        </button>
+        <button
+          onClick={() => onFeedbackNotUseful(item)}
+          className="text-[10px] text-slate-500 hover:text-rose-400 transition px-1"
+          title={L.notUseful}
+        >
+          👎
         </button>
       </div>
     </div>

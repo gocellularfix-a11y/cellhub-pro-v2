@@ -138,3 +138,14 @@ function setStatus(id: string, status: QueueItemStatus, notes?: string): void {
 export function approveQueueItem(id: string, notes?: string): void  { setStatus(id, 'approved',  notes); }
 export function dismissQueueItem(id: string, notes?: string): void  { setStatus(id, 'dismissed', notes); }
 export function resolveQueueItem(id: string, notes?: string): void  { setStatus(id, 'resolved',  notes); }
+
+// R-INTELLIGENCE-FEEDBACK-LOOP-V1: snooze — hides item from pending view
+// for durationMs (default 1 hour). Item reappears automatically when
+// snoozedUntil expires. Status stays 'pending' — this is NOT a resolution.
+export function snoozeQueueItem(id: string, durationMs = 3_600_000): void {
+  const items = readQueue();
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  items[idx] = { ...items[idx], snoozedUntil: Date.now() + durationMs, updatedAt: Date.now() };
+  writeQueue(items);
+}

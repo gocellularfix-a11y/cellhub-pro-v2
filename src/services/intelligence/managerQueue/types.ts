@@ -25,4 +25,6 @@ export interface ManagerQueueItem {
   occurrenceCount?: number;    // defaults to 1 when absent (V1 migration)
   firstSeenAt?: number;        // set on first create; falls back to createdAt
   lastSeenAt?: number;         // updated on each dedup merge; falls back to updatedAt
+  // R-INTELLIGENCE-FEEDBACK-LOOP-V1: snooze
+  snoozedUntil?: number;       // epoch ms — item hidden from pending view until this time
 }
