@@ -43,6 +43,10 @@ const FloatingOperatorBubble = lazy(() => import('@/components/operator/Floating
 // Visible only when there's unattended Companion Lite activity; click navigates
 // to the right Companion Lite sub-tab and clears the count.
 const CompanionLiteBubbleBadge = lazy(() => import('@/components/companionLite/CompanionLiteBubbleBadge'));
+// COMPANION-LITE: background runtime that keeps polling even when the operator
+// is on a different sidebar tab. Without this, leaving Companion Lite silences
+// all inbound notifications because the per-page polls unmount.
+const CompanionLiteRuntimeMount = lazy(() => import('@/components/companionLite/CompanionLiteRuntimeMount'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -198,6 +202,10 @@ export default function AppShell() {
           routes to Companion Lite + Messages/Approvals sub-tab. */}
       <Suspense fallback={null}>
         <CompanionLiteBubbleBadge />
+      </Suspense>
+      {/* COMPANION-LITE: invisible — runs the background polling loop. */}
+      <Suspense fallback={null}>
+        <CompanionLiteRuntimeMount />
       </Suspense>
 
       {/* R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible. Owns the

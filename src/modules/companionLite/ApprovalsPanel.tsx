@@ -2,7 +2,7 @@
 // Creates test approvals, polls for current status, and per-card supports
 // a message thread plus product/discount cost context.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import type {
   ApprovalRequest,
@@ -16,12 +16,9 @@ import {
   sendApprovalMessage,
 } from '@/services/companionLite/approvalsService';
 import { deriveProductContext } from '@/services/companionLite/productContext';
-import { useToast } from '@/components/ui/Toast';
-import {
-  notifyApprovalAccepted,
-  notifyApprovalDenied,
-  notifyApprovalMessage,
-} from '@/services/companionLite/bubbleNotify';
+// Notification routing (toast + bubble + badge) for status transitions
+// and inbound messages is owned by the global CompanionLiteRuntime
+// mounted in AppShell. This panel only renders + sends.
 import RequestApprovalModal from './RequestApprovalModal';
 
 const POLL_MS = 3000;
@@ -41,36 +38,16 @@ export default function ApprovalsPanel({ session }: Props) {
   // on the very next render so the operator sees the conversation
   // immediately. Cleared once consumed.
   const [autoOpenId, setAutoOpenId] = useState<string | null>(null);
-  const { toast } = useToast();
-  const lastStatusRef = useRef<Map<string, ApprovalRequest['status']>>(new Map());
 
   const refresh = useCallback(async () => {
     try {
       const items = await listApprovals(session);
-      const prev = lastStatusRef.current;
-      for (const a of items) {
-        const previousStatus = prev.get(a.id);
-        if (previousStatus !== undefined
-          && previousStatus === 'pending'
-          && (a.status === 'approved' || a.status === 'denied')
-        ) {
-          const verb = a.status === 'approved' ? '✅ Approved' : '❌ Denied';
-          const who = a.respondedBy ?? 'manager';
-          const note = a.managerNote ? ` — "${a.managerNote}"` : '';
-          toast(`${verb} by ${who}${note}`, a.status === 'approved' ? 'success' : 'warning');
-          // Ephemeral bubble hint mirror — auto-dismisses after ~6s.
-          const label = a.affectedItem ?? a.reason.slice(0, 40);
-          if (a.status === 'approved') notifyApprovalAccepted(label);
-          else notifyApprovalDenied(label);
-        }
-        prev.set(a.id, a.status);
-      }
       setApprovals(items);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
-  }, [session, toast]);
+  }, [session]);
 
   useEffect(() => {
     void refresh();
@@ -237,34 +214,16 @@ function ApprovalThread({
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
-  // Track ids we've toasted so a re-poll doesn't fire duplicates.
-  const seenManagerIdsRef = useRef<Set<string> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const items = await listApprovalMessages(session, approval.id);
-      if (seenManagerIdsRef.current === null) {
-        const seed = new Set<string>();
-        for (const m of items) if (m.fromRole === 'manager') seed.add(m.id);
-        seenManagerIdsRef.current = seed;
-      } else {
-        const seen = seenManagerIdsRef.current;
-        for (const m of items) {
-          if (m.fromRole !== 'manager' || seen.has(m.id)) continue;
-          seen.add(m.id);
-          const who = m.fromName ?? 'Manager';
-          const preview = m.body.length > 70 ? `${m.body.slice(0, 67)}…` : m.body;
-          toast(`💬 Approval: ${who}: ${preview}`, 'info');
-          notifyApprovalMessage(who);
-        }
-      }
       setMessages(items);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load');
     }
-  }, [session, approval.id, toast]);
+  }, [session, approval.id]);
 
   useEffect(() => {
     void refresh();
