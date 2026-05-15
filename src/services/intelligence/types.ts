@@ -377,5 +377,37 @@ export interface ChurnRootCauseReport {
   actions: ActionItem[];
 }
 
+// R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: structured daily brief types.
+// Produced by generateDailyOperatorBrief (operator/dailyBrief.ts) — pure aggregator.
+// Fields use English strings (diagnostic-quality); chat handler provides bilingual output.
+export interface DailyBriefPriority {
+  severity: 'critical' | 'high' | 'medium';
+  title: string;
+  reason: string;
+  recommendedAction?: string;
+}
+
+export interface DailyBriefSection {
+  title: string;
+  items: string[];
+}
+
+export interface DailyOperatorBrief {
+  generatedAt: number;
+  summary: string;
+  topPriority?: DailyBriefPriority;
+  priorities: DailyBriefPriority[];
+  sections: DailyBriefSection[];
+  recommendedNextAction?: string;
+  metrics: {
+    pendingQueueItems: number;
+    criticalQueueItems: number;
+    recoverableRevenue: number;
+    overdueRepairs: number;
+    inactiveVIPCustomers: number;
+    lowStockItems: number;
+  };
+}
+
 // R-INTELLIGENCE-FEEDBACK-LOOP-V1: re-export feedback types for unified import path.
 export type { IntelligenceFeedbackType, IntelligenceFeedbackEvent } from './feedback/types';

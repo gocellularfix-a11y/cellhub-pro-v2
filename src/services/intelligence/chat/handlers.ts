@@ -75,6 +75,10 @@ import { computeContextualOpportunities } from '../context/contextualOpportunity
 // R-INTELLIGENCE-MANAGER-QUEUE-V1
 import { getQueue } from '../managerQueue/actions';
 import { getPendingItems, getQueueSummary } from '../managerQueue/selectors';
+// R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: pure aggregator — extracts data
+// collection from handleDailyOperatorBrief so the struct can be reused by
+// future UI widgets without re-running the handler.
+import { generateDailyOperatorBrief } from '../operator/dailyBrief';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -1188,15 +1192,17 @@ function handleDealPerformance(lang: Lang3): ChatResponse {
   return { kind: 'answer', text: lines.join('\n') };
 }
 
-// ── Daily Operator Brief (R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1) ──
-// Action-first daily focus list. Composes max 3 priorities from existing
-// engine helpers + the existing chat queue. Pure read — no engine writes,
-// no background work, no polling, no AI. Each source is wrapped in
-// try/catch so a missing/empty source silently skips. Reuses the same
-// `chat.opportunities.*` translation keys as proactive_opportunities for
-// the per-priority Why/Action lines (no new strings duplicated).
+// ── Daily Operator Brief (R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1 updated) ──
+// Calls generateDailyOperatorBrief (pure aggregator) for data, then formats
+// bilingually using tChat(lang) + existing translation keys. Manager queue
+// section is new — surfaced below the top-3 priorities if there are pending
+// items. Existing priority logic is preserved verbatim for bilingual fidelity.
 function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
+
+  // Pull structured data from aggregator (includes manager queue + feedback scores).
+  const brief = generateDailyOperatorBrief(engine);
+
   type Pri = { title: string; why: string; action: string; rank: number };
   const pris: Pri[] = [];
 
@@ -1214,38 +1220,16 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
   } catch { /* skip */ }
 
   // Source 2: Stale repairs ready for pickup (>3 days).
-  try {
-    const repairs = engine.getRepairs();
-    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    let staleCount = 0;
-    let recoverable = 0;
-    for (const r of repairs) {
-      const status = String((r as { status?: string }).status || '').toLowerCase();
-      if (status !== 'ready') continue;
-      const ca = (r as { completedAt?: unknown }).completedAt;
-      if (!ca) continue;
-      let ts = 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        ts = new Date(d as string | Date).getTime();
-      } catch { continue; }
-      if (!Number.isFinite(ts) || ts === 0) continue;
-      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
-      staleCount++;
-      recoverable += (r as { balance?: number }).balance || 0;
-    }
-    if (staleCount > 0) {
-      pris.push({
-        title: t('chat.opportunities.staleRepairs.title'),
-        why: t('chat.opportunities.staleRepairs.reason', staleCount, COP(recoverable)),
-        action: t('chat.opportunities.staleRepairs.action'),
-        rank: recoverable + staleCount * 1000,
-      });
-    }
-  } catch { /* skip */ }
+  // Reuses counts from brief.metrics so we don't re-scan the repairs array.
+  if (brief.metrics.overdueRepairs > 0) {
+    const recoverable = brief.metrics.recoverableRevenue;
+    pris.push({
+      title: t('chat.opportunities.staleRepairs.title'),
+      why: t('chat.opportunities.staleRepairs.reason', brief.metrics.overdueRepairs, COP(recoverable)),
+      action: t('chat.opportunities.staleRepairs.action'),
+      rank: recoverable + brief.metrics.overdueRepairs * 1000,
+    });
+  }
 
   // Source 3: Outreach candidates (consent + 24h dedup already applied).
   try {
@@ -1305,6 +1289,16 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
     }
   } catch { /* skip */ }
 
+  // Source 7: Manager queue critical items (R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1).
+  if (brief.metrics.criticalQueueItems > 0) {
+    pris.push({
+      title: t('chat.dailyBrief2.queueCritical.title'),
+      why: t('chat.dailyBrief2.queueCritical.why', brief.metrics.criticalQueueItems),
+      action: t('chat.dailyBrief2.queueCritical.action'),
+      rank: brief.metrics.criticalQueueItems * 1200,
+    });
+  }
+
   if (pris.length === 0) {
     return { kind: 'answer', text: `${t('chat.dailyBrief2.header')}\n\n${t('chat.dailyBrief2.empty')}` };
   }
@@ -1321,6 +1315,12 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(`   ${t('chat.dailyBrief2.actionLabel')} ${p.action}`);
     if (i < top3.length - 1) lines.push('');
   });
+
+  // Manager queue summary footer — shown if there are pending items not in top-3.
+  if (brief.metrics.pendingQueueItems > 0) {
+    lines.push('');
+    lines.push(t('mq.chat.summary', brief.metrics.pendingQueueItems));
+  }
 
   return { kind: 'answer', text: lines.join('\n') };
 }

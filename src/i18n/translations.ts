@@ -6486,6 +6486,14 @@ export const translations: TranslationDictionary = {
   'chat.dailyBrief2.noSalesToday.title':      { en: 'Push the first sale of the day', es: 'Empuja la primera venta del día', pt: 'Empurre a primeira venda do dia' },
   'chat.dailyBrief2.noSalesToday.why':        { en: 'No transactions yet today.', es: 'Aún no hay transacciones hoy.', pt: 'Ainda não há transações hoje.' },
   'chat.dailyBrief2.noSalesToday.action':     { en: 'Ping recent customers, run a flash promo, or open with a tile demo.', es: 'Contacta clientes recientes, lanza una promo rápida o abre con una demo del catálogo.', pt: 'Contate clientes recentes, faça uma promo rápida ou abra com uma demo do catálogo.' },
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: manager queue critical priority source.
+  'chat.dailyBrief2.queueCritical.title':  { en: 'Manager review required', es: 'Se requiere revisión del gerente', pt: 'Revisão do gerente necessária' },
+  'chat.dailyBrief2.queueCritical.why': {
+    en: (n: number) => `${n} critical item${n !== 1 ? 's' : ''} in the Manager Queue need immediate attention.`,
+    es: (n: number) => `${n} item${n !== 1 ? 's' : ''} crítico${n !== 1 ? 's' : ''} en la Cola del Gerente necesitan atención inmediata.`,
+    pt: (n: number) => `${n} item${n !== 1 ? 'ns' : ''} crítico${n !== 1 ? 's' : ''} na Fila do Gerente precisam de atenção imediata.`,
+  },
+  'chat.dailyBrief2.queueCritical.action': { en: 'Open the Manager Queue section and resolve critical items first.', es: 'Abre la sección Cola del Gerente y resuelve primero los items críticos.', pt: 'Abra a seção Fila do Gerente e resolva os itens críticos primeiro.' },
 
   // R-INTELLIGENCE-TODAY-MONEY-MAP-V1: tactical money-map briefing.
   // Per-priority Money/Move strings reuse the existing chat.opportunities.*
