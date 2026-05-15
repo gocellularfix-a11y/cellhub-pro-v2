@@ -6082,6 +6082,38 @@ export const translations: TranslationDictionary = {
     pt: (name: string, days: string) => `Item ativo — ${name} sem vendas em ${days} dias — considere um desconto`,
   },
 
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1 — passive bubble hint pills
+  'ambient.repair.overdue': {
+    en: (name: string, days: string) => `🔧 ${name} — no update in ${days} day(s)`,
+    es: (name: string, days: string) => `🔧 ${name} — sin actualización en ${days} día(s)`,
+    pt: (name: string, days: string) => `🔧 ${name} — sem atualização em ${days} dia(s)`,
+  },
+  'ambient.repair.ready': {
+    en: (name: string, days: string) => `✅ ${name} — ready for ${days} day(s), not picked up`,
+    es: (name: string, days: string) => `✅ ${name} — listo hace ${days} día(s), sin recoger`,
+    pt: (name: string, days: string) => `✅ ${name} — pronto há ${days} dia(s), não retirado`,
+  },
+  'ambient.layaway.overdue': {
+    en: (name: string, amount: string) => `💰 ${name} — layaway overdue (${amount} remaining)`,
+    es: (name: string, amount: string) => `💰 ${name} — layaway vencido (${amount} pendiente)`,
+    pt: (name: string, amount: string) => `💰 ${name} — layaway vencido (${amount} restante)`,
+  },
+  'ambient.layaway.near': {
+    en: (name: string, amount: string) => `✨ ${name} — almost done, ${amount} left`,
+    es: (name: string, amount: string) => `✨ ${name} — casi listo, quedan ${amount}`,
+    pt: (name: string, amount: string) => `✨ ${name} — quase pronto, ${amount} restante`,
+  },
+  'ambient.inventory.low': {
+    en: (name: string, qty: string) => `📦 Low stock: ${name} (qty ${qty})`,
+    es: (name: string, qty: string) => `📦 Stock bajo: ${name} (qty ${qty})`,
+    pt: (name: string, qty: string) => `📦 Estoque baixo: ${name} (qty ${qty})`,
+  },
+  'ambient.inventory.dead': {
+    en: (name: string, days: string) => `📊 ${name} — no sales in ${days} days`,
+    es: (name: string, days: string) => `📊 ${name} — sin ventas en ${days} días`,
+    pt: (name: string, days: string) => `📊 ${name} — sem vendas em ${days} dias`,
+  },
+
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 — action button labels
   'oppo.action.whatsapp':      { en: 'Send WhatsApp',    es: 'Enviar WhatsApp',      pt: 'Enviar WhatsApp' },
   'oppo.action.openRepair':    { en: 'Open Ticket',      es: 'Abrir Ticket',         pt: 'Abrir Ticket' },

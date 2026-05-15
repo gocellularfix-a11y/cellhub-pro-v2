@@ -53,7 +53,8 @@ import {
   calculateLayawayTotals,
   normalizeLayawayPayments,
 } from '@/services/layaway/payments';
-import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -130,6 +131,8 @@ export default function LayawayModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active layaway so Intelligence
   // surfaces contextual recommendations for this specific ticket.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: emit passive ambient hint on open;
+  // clear entity context on modal close.
   useEffect(() => {
     if (editLayaway) {
       setIntelligenceContext({
@@ -137,6 +140,9 @@ export default function LayawayModule() {
         activeLayawayId: editLayaway.id,
         activeCustomerId: (editLayaway as any).customerId ?? undefined,
       });
+      emitLayawayAmbient(editLayaway);
+    } else {
+      clearEntityContext();
     }
   }, [editLayaway]);
 

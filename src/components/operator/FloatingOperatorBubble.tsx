@@ -41,6 +41,7 @@ import { buildActionExecutionContext } from '@/services/intelligence/actionExecu
 import { resolveSuggestionActions } from '@/services/intelligence/actionExecution/actionExecutionEngine';
 import { logBubbleAction } from '@/services/intelligence/actionExecution/actionExecutionQueue';
 import type { OperatorExecutableAction } from '@/services/intelligence/actionExecution/actionExecutionTypes';
+import { AMBIENT_INSIGHT_EVENT, type AmbientInsightDetail } from '@/services/intelligence/ambient/ambientAwarenessService';
 import {
   getPendingWorkflows,
   getPendingExternalPaymentWorkflow,
@@ -441,6 +442,33 @@ export default function FloatingOperatorBubble() {
     };
     window.addEventListener(OPERATOR_ACTIVITY_EVENT, onActivity as EventListener);
     return () => window.removeEventListener(OPERATOR_ACTIVITY_EVENT, onActivity as EventListener);
+  }, [enabled]);
+
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: passive entity-open hints.
+  // Modules emit 'cellhub:ambient-insight' when a notable entity is opened
+  // (overdue repair, near-complete layaway, low-stock item). We feed it into
+  // the existing hint state machine — same 6s auto-dismiss, no popups.
+  useEffect(() => {
+    if (!enabled) return;
+    const onAmbient = (e: Event) => {
+      const detail = (e as CustomEvent<AmbientInsightDetail>).detail;
+      if (!detail?.i18nKey) return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (dismissRef.current)  clearTimeout(dismissRef.current);
+      setHint({
+        kind: 'ambient_insight',
+        i18nKey: detail.i18nKey,
+        args: detail.args,
+        severity: detail.severity === 'alert' ? 'alert' : 'info',
+      });
+      setBubbleState(detail.severity === 'alert' ? 'alert' : 'ready');
+      dismissRef.current = setTimeout(() => {
+        setHint(null);
+        setBubbleState('sleeping');
+      }, HINT_AUTO_DISMISS_MS);
+    };
+    window.addEventListener(AMBIENT_INSIGHT_EVENT, onAmbient as EventListener);
+    return () => window.removeEventListener(AMBIENT_INSIGHT_EVENT, onAmbient as EventListener);
   }, [enabled]);
 
   // Click-outside-to-close + ESC for the overlay.

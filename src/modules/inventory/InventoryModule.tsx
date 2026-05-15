@@ -34,7 +34,8 @@ import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/in
 // Inventory chunk doesn't pull in the modal until the operator clicks.
 import { loadDesktopSession } from '@/services/companionLite/identityStore';
 import type { CompanionLiteDesktopSession } from '@/types/companionLite';
-import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { emitInventoryAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 const RequestApprovalModal = lazy(() => import('@/modules/companionLite/RequestApprovalModal'));
 
 // R-PERF-INVENTORY-PROMOTE-PRELOAD: module-level preload cache. The first
@@ -262,14 +263,43 @@ export default function InventoryModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active inventory item so Intelligence
   // surfaces contextual recommendations for this specific product.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: compute lightweight sales signals then
+  // emit passive ambient hint; clear entity context when modal closes.
   useEffect(() => {
     if (editItem) {
       setIntelligenceContext({
         activeModule: 'inventory',
         activeInventoryItemId: editItem.id,
       });
+      // Compute recent sales count (last 30 days) and days-since-last-sale
+      // for this item. Kept inline to avoid pulling the sales array into
+      // the service's signature — it has no access to the store.
+      const now = Date.now();
+      const MS_30D = 30 * 86_400_000;
+      let recentSalesCount = 0;
+      let mostRecentSaleMs = 0;
+      for (const s of sales) {
+        if (!s.items) continue;
+        const hasItem = s.items.some((i) => (i as unknown as Record<string, unknown>)['inventoryId'] === editItem.id);
+        if (!hasItem) continue;
+        const ts = (() => {
+          const ca = s.createdAt;
+          if (typeof ca === 'string') { const p = Date.parse(ca); return Number.isFinite(p) ? p : 0; }
+          if (typeof ca === 'number') return ca;
+          if (ca instanceof Date) return ca.getTime();
+          return 0;
+        })();
+        if (ts > mostRecentSaleMs) mostRecentSaleMs = ts;
+        if (ts > 0 && now - ts <= MS_30D) recentSalesCount++;
+      }
+      const daysWithoutSale = mostRecentSaleMs
+        ? Math.floor((now - mostRecentSaleMs) / 86_400_000)
+        : 999;
+      emitInventoryAmbient(editItem, recentSalesCount, daysWithoutSale);
+    } else {
+      clearEntityContext();
     }
-  }, [editItem]);
+  }, [editItem, sales]);
 
   // R-PERF-INVENTORY-PROMOTE-ENGINE-REUSE: cache the IntelligenceEngine
   // across Promote clicks. Without this, every click rebuilt the engine

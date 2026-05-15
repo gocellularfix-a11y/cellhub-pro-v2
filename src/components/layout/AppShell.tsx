@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect } from 'react';
-import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import Sidebar from './Sidebar';
 import SidebarList from './SidebarList';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
@@ -132,7 +132,11 @@ export default function AppShell() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast coarse module context so Intelligence
   // can adapt recommendations even when no specific entity is selected.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear stale entity refs on tab switch so
+  // a repair/customer/layaway from the previous tab doesn't bleed into queries
+  // on the new tab. clearEntityContext() preserves activeModule + bumps updatedAt.
   useEffect(() => {
+    clearEntityContext();
     setIntelligenceContext({ activeModule: activeTab });
   }, [activeTab]);
 

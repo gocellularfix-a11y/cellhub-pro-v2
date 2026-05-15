@@ -33,3 +33,13 @@ export function getIntelligenceContext(): IntelligenceContext | null {
 export function clearIntelligenceContext(): void {
   _ctx = { updatedAt: 0 };
 }
+
+// R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity IDs (modal close / tab
+// switch) while preserving activeModule + bumping updatedAt so the TTL
+// resets. Prevents stale entity context bleeding into unrelated queries.
+export function clearEntityContext(): void {
+  _ctx = {
+    activeModule: _ctx.activeModule,
+    updatedAt: Date.now(),
+  };
+}

@@ -18,7 +18,7 @@ import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
 import { openWhatsApp } from '@/services/whatsapp';
-import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 
 export default function CustomerModule() {
   // Round 18: extract `state` at root and destructure separately so we can also
@@ -99,12 +99,17 @@ export default function CustomerModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active customer so Intelligence
   // surfaces contextual recommendations for this specific profile.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
+  // Customer ambient insights are already surfaced by the bubble's existing
+  // computeInsightsForContext pipeline — no duplicate emit needed here.
   useEffect(() => {
     if (editCustomer) {
       setIntelligenceContext({
         activeModule: 'customers',
         activeCustomerId: editCustomer.id,
       });
+    } else {
+      clearEntityContext();
     }
   }, [editCustomer]);
   // R-OPERATOR-AMBIENT-AWARENESS-V1: phone prefill for the create-mode

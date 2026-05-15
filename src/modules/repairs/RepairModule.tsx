@@ -14,7 +14,8 @@ import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { emitRepairCompleted } from '@/services/intelligence/liveContext/liveContextEvents';
-import { setIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { emitRepairAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
@@ -93,6 +94,8 @@ export default function RepairModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active repair entity so Intelligence
   // can surface contextual recommendations for this specific ticket.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: emit passive ambient hint on entity open;
+  // clear entity context when modal closes to prevent stale context bleed.
   useEffect(() => {
     if (editRepair) {
       setIntelligenceContext({
@@ -100,6 +103,9 @@ export default function RepairModule() {
         activeRepairId: editRepair.id,
         activeCustomerId: editRepair.customerId ?? undefined,
       });
+      emitRepairAmbient(editRepair);
+    } else {
+      clearEntityContext();
     }
   }, [editRepair]);
 

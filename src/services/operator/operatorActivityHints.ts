@@ -57,7 +57,9 @@ export type OperatorHintKind =
   // Companion Lite — ephemeral hints on the floating bubble.
   | 'companion_approval_accepted'
   | 'companion_approval_denied'
-  | 'companion_lite_message';
+  | 'companion_lite_message'
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: passive entity-open hints.
+  | 'ambient_insight';
 
 /**
  * Minimal hint shape. The bubble component runs the i18n key + args
