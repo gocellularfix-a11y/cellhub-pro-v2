@@ -131,6 +131,17 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+
+    // Guard: session must be fully configured before hitting the bridge.
+    if (!session?.bridgeUrl || !session?.storeId) {
+      console.warn('[CompanionLite] RequestApprovalModal: session not configured', {
+        hasBridgeUrl: !!session?.bridgeUrl,
+        hasStoreId: !!session?.storeId,
+      });
+      setError('Companion Lite not configured. Check connection settings.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -158,7 +169,18 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
       setDiscountDollars('');
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send approval');
+      const raw = err instanceof Error ? err.message : String(err);
+      console.warn('[CompanionLite] createApproval failed:', err);
+      // Translate common network/API error codes into operator-friendly messages.
+      const msg =
+        raw.includes('network_error') || raw.includes('Failed to fetch') || raw.includes('ERR_CONNECTION')
+          ? 'Connection failed — make sure the Companion server is reachable.'
+          : raw.includes('timeout')
+            ? 'Request timed out. Check your network and try again.'
+            : raw.includes('401') || raw.includes('403') || raw.includes('unauthorized')
+              ? 'Session expired. Re-pair Companion Lite in settings.'
+              : raw || 'Could not send approval.';
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -171,12 +193,26 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
       title="Request approval"
       size="max-w-2xl"
       footer={
-        <div style={footerStyle}>
-          {error && <span style={{ flex: 1, fontSize: 12, color: '#fca5a5' }}>{error}</span>}
-          <button onClick={onClose} style={ghostButtonStyle}>Cancel</button>
-          <button onClick={() => void handleSubmit()} disabled={!canSubmit} style={primaryButtonStyle}>
-            {busy ? 'Sending…' : 'Send approval'}
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 16px' }}>
+          {error && (
+            <div style={errorBannerStyle}>
+              ⚠ {error}
+            </div>
+          )}
+          <div style={footerStyle}>
+            <button onClick={onClose} style={ghostButtonStyle}>Cancel</button>
+            <button
+              onClick={() => void handleSubmit()}
+              disabled={!canSubmit}
+              style={{
+                ...primaryButtonStyle,
+                opacity: !canSubmit ? 0.55 : 1,
+                cursor: !canSubmit ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {busy ? '⏳ Sending…' : 'Send approval'}
+            </button>
+          </div>
         </div>
       }
     >
@@ -531,7 +567,16 @@ const footerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-  padding: '8px 16px',
+  justifyContent: 'flex-end',
+};
+const errorBannerStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#fca5a5',
+  background: 'rgba(239,68,68,0.10)',
+  border: '1px solid rgba(239,68,68,0.30)',
+  borderRadius: 6,
+  padding: '6px 10px',
+  lineHeight: 1.4,
 };
 const primaryButtonStyle: React.CSSProperties = {
   background: '#38bdf8',

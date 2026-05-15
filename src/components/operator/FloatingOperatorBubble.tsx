@@ -909,14 +909,20 @@ export default function FloatingOperatorBubble() {
     : visualMode === 'hint'   ? '#60e8b0'
     :                            '#a0c8ff';
 
-  // Overlay vertical anchor: prefer below the bubble, but flip above
-  // when the bubble is near the bottom edge so the panel stays on-screen.
-  const overlayBelow = typeof window !== 'undefined'
-    ? position.y + BUBBLE_SIZE + 8 + 220 < window.innerHeight - EDGE_PADDING
-    : true;
+  // R-BUBBLE-SCROLL-FIX-V1: compute available space above/below the bubble so
+  // the overlay never exceeds the viewport. Flip to whichever side has more room.
+  // maxOverlayHeight caps the overlay height and enables internal scrolling.
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const spaceBelow = viewportH - (position.y + BUBBLE_SIZE + 8) - EDGE_PADDING;
+  const spaceAbove = position.y - 8 - EDGE_PADDING;
+  const overlayBelow = spaceBelow >= spaceAbove;
+  const maxOverlayHeight = Math.max(120, Math.min(
+    overlayBelow ? spaceBelow : spaceAbove,
+    viewportH - EDGE_PADDING * 4,
+  ));
   const overlayTop = overlayBelow
     ? position.y + BUBBLE_SIZE + 8
-    : Math.max(EDGE_PADDING, position.y - 220 - 8);
+    : Math.max(EDGE_PADDING, position.y - 8 - Math.min(maxOverlayHeight, spaceAbove));
   const overlayLeft = pillOnLeft
     ? Math.max(EDGE_PADDING, position.x + BUBBLE_SIZE - OVERLAY_WIDTH)
     : Math.min(
@@ -1150,21 +1156,27 @@ export default function FloatingOperatorBubble() {
             top: overlayTop,
             left: overlayLeft,
             width: OVERLAY_WIDTH,
+            // R-BUBBLE-SCROLL-FIX-V1: cap height to available viewport space
+            // so content is never stranded off-screen on small windows.
+            maxHeight: maxOverlayHeight,
+            display: 'flex',
+            flexDirection: 'column',
             background: 'rgba(15,23,42,0.96)',
             border: '1px solid rgba(148,163,184,0.25)',
             borderRadius: '0.75rem',
-            padding: '0.65rem',
             color: '#e2e8f0',
             fontSize: '0.85rem',
             boxShadow: '0 16px 36px rgba(0,0,0,0.55)',
             zIndex: Z_INDEX + 1,
             backdropFilter: 'blur(8px)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
             animation: 'cellhubOperatorOverlayIn 0.18s ease-out',
           }}
         >
+          {/* R-BUBBLE-SCROLL-FIX-V1: single scrollable content wrapper so long
+              panels (many suggestions, chain steps, workflow cards) don't
+              overflow the viewport. Padding lives here to keep scroll track
+              flush to the overlay border. */}
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
@@ -1751,6 +1763,7 @@ export default function FloatingOperatorBubble() {
           >
             ↺ {t('operator.overlay.resetPosition')}
           </button>
+          </div>{/* /scrollable inner div */}
         </div>
       )}
     </>
