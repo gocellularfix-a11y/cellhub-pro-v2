@@ -17,6 +17,11 @@ import {
 } from '@/services/companionLite/approvalsService';
 import { deriveProductContext } from '@/services/companionLite/productContext';
 import { useToast } from '@/components/ui/Toast';
+import {
+  notifyApprovalAccepted,
+  notifyApprovalDenied,
+  notifyCompanionLiteMessage,
+} from '@/services/companionLite/bubbleNotify';
 import RequestApprovalModal from './RequestApprovalModal';
 
 const POLL_MS = 3000;
@@ -53,6 +58,10 @@ export default function ApprovalsPanel({ session }: Props) {
           const who = a.respondedBy ?? 'manager';
           const note = a.managerNote ? ` — "${a.managerNote}"` : '';
           toast(`${verb} by ${who}${note}`, a.status === 'approved' ? 'success' : 'warning');
+          // Ephemeral bubble hint mirror — auto-dismisses after ~6s.
+          const label = a.affectedItem ?? a.reason.slice(0, 40);
+          if (a.status === 'approved') notifyApprovalAccepted(label);
+          else notifyApprovalDenied(label);
         }
         prev.set(a.id, a.status);
       }
@@ -247,6 +256,7 @@ function ApprovalThread({
           const who = m.fromName ?? 'Manager';
           const preview = m.body.length > 70 ? `${m.body.slice(0, 67)}…` : m.body;
           toast(`💬 Approval: ${who}: ${preview}`, 'info');
+          notifyCompanionLiteMessage(who);
         }
       }
       setMessages(items);

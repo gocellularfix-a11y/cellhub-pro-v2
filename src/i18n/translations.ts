@@ -5298,6 +5298,22 @@ export const translations: TranslationDictionary = {
     es: () => `Cita agendada.`,
     pt: () => `Agendamento criado.`,
   },
+  // Companion Lite — ephemeral bubble hints.
+  'operator.hint.companionApprovalAccepted': {
+    en: (item: string) => item ? `Manager approved: ${item}` : `Manager approved an approval.`,
+    es: (item: string) => item ? `Manager aprobó: ${item}` : `Manager aprobó la solicitud.`,
+    pt: (item: string) => item ? `Manager aprovou: ${item}` : `Manager aprovou a solicitação.`,
+  },
+  'operator.hint.companionApprovalDenied': {
+    en: (item: string) => item ? `Manager denied: ${item}` : `Manager denied an approval.`,
+    es: (item: string) => item ? `Manager denegó: ${item}` : `Manager denegó la solicitud.`,
+    pt: (item: string) => item ? `Manager negou: ${item}` : `Manager negou a solicitação.`,
+  },
+  'operator.hint.companionLiteMessage': {
+    en: (sender: string) => `New message from ${sender}`,
+    es: (sender: string) => `Nuevo mensaje de ${sender}`,
+    pt: (sender: string) => `Nova mensagem de ${sender}`,
+  },
   'operator.hint.appointmentBookedForCustomer': {
     en: (name: string) => `Appointment booked for ${name}.`,
     es: (name: string) => `Cita agendada para ${name}.`,

@@ -53,7 +53,11 @@ export type OperatorHintKind =
   | 'unlock_submitted'
   | 'special_order_created'
   | 'return_processed'
-  | 'appointment_booked';
+  | 'appointment_booked'
+  // Companion Lite — ephemeral hints on the floating bubble.
+  | 'companion_approval_accepted'
+  | 'companion_approval_denied'
+  | 'companion_lite_message';
 
 /**
  * Minimal hint shape. The bubble component runs the i18n key + args
@@ -147,6 +151,9 @@ export interface OperatorActivityEventDetail {
     | 'approval.requested'
     | 'approval.accepted'
     | 'approval.denied'
+    // Companion Lite — ephemeral bubble hint when the mobile manager
+    // sends a message back to the store (general or per-approval).
+    | 'companion_lite.message'
     | string; // forward-compat
   payload?: {
     // Generic IDs / values reused across event types. Always minimal —
@@ -670,6 +677,38 @@ export function computeHintFromEvent(
       kind: 'appointment_booked',
       i18nKey: 'operator.hint.appointmentBooked',
       args: [],
+      severity: 'info',
+    };
+  }
+
+  // ── Companion Lite bridge events ─────────────────────────────────
+  // Fired by the desktop Companion Lite UI when the mobile manager
+  // approves/denies an approval or sends a message. These produce
+  // ephemeral hints on the FloatingOperatorBubble — no history,
+  // no NotificationCenter entry. Payload is intentionally minimal:
+  // a short display label (kept in payload.itemName for reuse of the
+  // existing string slot — no new payload fields needed).
+  if (detail.type === 'approval.accepted') {
+    return {
+      kind: 'companion_approval_accepted',
+      i18nKey: 'operator.hint.companionApprovalAccepted',
+      args: [payload.itemName ?? ''],
+      severity: 'info',
+    };
+  }
+  if (detail.type === 'approval.denied') {
+    return {
+      kind: 'companion_approval_denied',
+      i18nKey: 'operator.hint.companionApprovalDenied',
+      args: [payload.itemName ?? ''],
+      severity: 'alert',
+    };
+  }
+  if (detail.type === 'companion_lite.message') {
+    return {
+      kind: 'companion_lite_message',
+      i18nKey: 'operator.hint.companionLiteMessage',
+      args: [payload.itemName ?? 'Manager'],
       severity: 'info',
     };
   }
