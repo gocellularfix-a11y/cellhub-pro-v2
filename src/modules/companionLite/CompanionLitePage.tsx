@@ -20,6 +20,10 @@ import {
   getPairStatus,
 } from '@/services/companionLite/pairingService';
 import { buildPairingQrPayload } from '@/services/companionLite/qrPayload';
+import {
+  consumeRouteHint,
+  subscribe as subscribePending,
+} from '@/services/companionLite/pendingNotifications';
 import ApprovalsPanel from './ApprovalsPanel';
 import MessagesPanel from './MessagesPanel';
 import StatusPanel from './StatusPanel';
@@ -33,10 +37,24 @@ const POLL_STATUS_MS = 3000;
 export default function CompanionLitePage() {
   const { state: { settings, currentStoreId } } = useApp();
   const [session, setSession] = useState<CompanionLiteDesktopSession | null>(null);
-  const [tab, setTab] = useState<Tab>('status');
+  const [tab, setTab] = useState<Tab>(() => {
+    // First mount: if the bubble badge staged a sub-tab, open it directly.
+    const hint = consumeRouteHint();
+    return hint === 'messages' || hint === 'approvals' ? hint : 'status';
+  });
 
   useEffect(() => {
     setSession(loadDesktopSession());
+  }, []);
+
+  // Already-mounted case: if the badge fires while the page is open,
+  // switch to the requested sub-tab.
+  useEffect(() => {
+    const unsub = subscribePending(() => {
+      const hint = consumeRouteHint();
+      if (hint === 'messages' || hint === 'approvals') setTab(hint);
+    });
+    return unsub;
   }, []);
 
   const isPaired = session !== null;

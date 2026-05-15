@@ -1,21 +1,17 @@
-// Companion Lite — Ephemeral notifications on the FloatingOperatorBubble.
+// Companion Lite — Notifications to the FloatingOperatorBubble.
 //
-// Uses the existing public bridge contract:
-//   window.dispatchEvent(new CustomEvent('cellhub:operator-activity', { detail }))
-// FloatingOperatorBubble already listens for this event and runs the
-// detail through `computeHintFromEvent` (in @/services/operator), which
-// has cases for our `companion_lite.message` / `approval.accepted` /
-// `approval.denied` types. The bubble auto-dismisses the resulting
-// hint after ~6s — that's the "ephemeral, no history" surface.
+// Two surfaces are driven from here:
+//   1. Ephemeral hint pill on the bubble (auto-dismiss ~6s).
+//      Uses the bubble's public window CustomEvent contract.
+//   2. Persistent badge dot+count on top of the bubble until clicked.
+//      Pushes into ./pendingNotifications.
 //
-// Notes:
-//   - We pass the short display label in payload.itemName because the
-//     handler in operatorActivityHints reuses that string slot.
-//   - This file does NOT import from src/services/companion (old
-//     Companion) or the legacy event bus. The window CustomEvent is a
-//     plain browser API.
+// Source matters: a manager message in the general thread should route
+// the click to the Messages sub-tab; a thread message inside an approval
+// or an approve/deny transition should route to Approvals.
 
 import { OPERATOR_ACTIVITY_EVENT } from '@/services/operator/operatorActivityHints';
+import { pushPending } from './pendingNotifications';
 
 function dispatch(type: string, label?: string): void {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -28,12 +24,22 @@ function dispatch(type: string, label?: string): void {
 
 export function notifyApprovalAccepted(label?: string): void {
   dispatch('approval.accepted', label);
+  pushPending('approvals');
 }
 
 export function notifyApprovalDenied(label?: string): void {
   dispatch('approval.denied', label);
+  pushPending('approvals');
 }
 
-export function notifyCompanionLiteMessage(senderName: string): void {
+/** Manager wrote in the GENERAL message thread (Messages tab). */
+export function notifyGeneralMessage(senderName: string): void {
   dispatch('companion_lite.message', senderName);
+  pushPending('messages');
+}
+
+/** Manager wrote inside an approval-specific thread (Approvals tab). */
+export function notifyApprovalMessage(senderName: string): void {
+  dispatch('companion_lite.message', senderName);
+  pushPending('approvals');
 }

@@ -39,6 +39,10 @@ const CompanionRuntimeMount = lazy(() => import('@/modules/companion/CompanionRu
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
 // R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
 const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
+// COMPANION-LITE: persistent badge anchored on top-right of the operator bubble.
+// Visible only when there's unattended Companion Lite activity; click navigates
+// to the right Companion Lite sub-tab and clears the count.
+const CompanionLiteBubbleBadge = lazy(() => import('@/components/companionLite/CompanionLiteBubbleBadge'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -189,6 +193,11 @@ export default function AppShell() {
           avoid a second engine instance and any duplicate logic. */}
       <Suspense fallback={null}>
         <FloatingOperatorBubble />
+      </Suspense>
+      {/* COMPANION-LITE: persistent badge on top of the bubble — click
+          routes to Companion Lite + Messages/Approvals sub-tab. */}
+      <Suspense fallback={null}>
+        <CompanionLiteBubbleBadge />
       </Suspense>
 
       {/* R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible. Owns the

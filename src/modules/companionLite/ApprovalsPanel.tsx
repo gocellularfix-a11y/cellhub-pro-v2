@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   notifyApprovalAccepted,
   notifyApprovalDenied,
-  notifyCompanionLiteMessage,
+  notifyApprovalMessage,
 } from '@/services/companionLite/bubbleNotify';
 import RequestApprovalModal from './RequestApprovalModal';
 
@@ -256,7 +256,7 @@ function ApprovalThread({
           const who = m.fromName ?? 'Manager';
           const preview = m.body.length > 70 ? `${m.body.slice(0, 67)}…` : m.body;
           toast(`💬 Approval: ${who}: ${preview}`, 'info');
-          notifyCompanionLiteMessage(who);
+          notifyApprovalMessage(who);
         }
       }
       setMessages(items);

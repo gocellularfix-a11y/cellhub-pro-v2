@@ -13,7 +13,7 @@ import {
 // Companion Lite polish: surface inbound manager messages on the existing
 // global toast so the operator sees them even when not on this tab.
 import { useToast } from '@/components/ui/Toast';
-import { notifyCompanionLiteMessage } from '@/services/companionLite/bubbleNotify';
+import { notifyGeneralMessage } from '@/services/companionLite/bubbleNotify';
 
 const POLL_MS = 3000;
 
@@ -54,9 +54,10 @@ export default function MessagesPanel({ session }: Props) {
           const who = m.fromName ?? 'Manager';
           const preview = m.body.length > 80 ? `${m.body.slice(0, 77)}…` : m.body;
           toast(`💬 ${who}: ${preview}`, 'info');
-          // Mirror as an ephemeral bubble hint so the operator sees it
-          // even when the toast region is off-screen.
-          notifyCompanionLiteMessage(who);
+          // Mirror as a bubble hint + bump the persistent badge so the
+          // operator sees it even when the toast region is off-screen.
+          // Routes the badge click to the Messages sub-tab.
+          notifyGeneralMessage(who);
         }
       }
       setMessages(items);
