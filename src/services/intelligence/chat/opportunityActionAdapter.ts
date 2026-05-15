@@ -92,3 +92,42 @@ export function buildChatActionsFromOpportunity(
 
   return result;
 }
+
+// R-INTELLIGENCE-ACTION-UX-STABILITY-V1
+// Deduplication key per action. Prevents showing the same WhatsApp send to the
+// same phone number twice when multiple opportunities reference the same customer,
+// and prevents duplicate open-repair/open-customer buttons across opps.
+function dedupeKey(action: ChatActionUI): string {
+  const t = action.payload.executionTarget;
+  switch (t) {
+    case 'whatsapp_url':
+      return `whatsapp:${action.payload.customerPhone ?? action.payload.customerId ?? ''}`;
+    case 'open_repair':
+    case 'open_customer':
+    case 'open_layaway':
+    case 'open_inventory':
+      return `${t}:${action.payload.entityId ?? ''}`;
+    case 'reminder_queue':
+      return `reminder:${action.payload.customerId ?? action.payload.customerName ?? ''}`;
+    case 'queue_manager_review':
+      return 'queue_manager_review';
+    default:
+      return `${t}:${action.id}`;
+  }
+}
+
+// Dedupe + hard-cap. Higher-severity opps are processed first (mwoOpps already
+// sorts DESC by severity), so first-seen wins — which is the highest-severity instance.
+// WhatsApp stays before open/* because detectors push them in that order per opp.
+export function dedupeAndLimitActions(actions: ChatActionUI[], max = 6): ChatActionUI[] {
+  const seen = new Set<string>();
+  const result: ChatActionUI[] = [];
+  for (const action of actions) {
+    if (result.length >= max) break;
+    const key = dedupeKey(action);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
+}

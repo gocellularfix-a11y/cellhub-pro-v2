@@ -493,7 +493,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
-      setFeedbackForAction(action.id, `Action not available: ${result.reason}`);
+      // R-INTELLIGENCE-ACTION-UX-STABILITY-V1: bilingual safe feedback — no crash, auto-clears in 5s
+      setFeedbackForAction(action.id, lang === 'es' ? 'Acción no disponible.' : 'Action not available.');
       return;
     }
     switch (result.type) {

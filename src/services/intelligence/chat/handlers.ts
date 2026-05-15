@@ -67,8 +67,8 @@ import {
 } from '../dataAccess/cellhubDataAccess';
 // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1
 import { computeModuleWideOpportunities } from '../moduleWideOpportunities/moduleWideOpportunityService';
-// R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1
-import { buildChatActionsFromOpportunity } from './opportunityActionAdapter';
+// R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1 / R-INTELLIGENCE-ACTION-UX-STABILITY-V1
+import { buildChatActionsFromOpportunity, dedupeAndLimitActions } from './opportunityActionAdapter';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -2183,8 +2183,10 @@ function handleWhatToDoToday(engine: IntelligenceEngine, lang: Lang3): ChatRespo
     lines.push(`${i + 1}. ${t(opp.summaryKey, ...opp.evidence)}`);
   });
 
-  const actions = topOpps.flatMap(opp =>
-    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  const actions = dedupeAndLimitActions(
+    topOpps.flatMap(opp =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
   );
 
   return {
@@ -2222,8 +2224,10 @@ function handleWhereLoosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatR
     lines.push(t('chat.whereLosing.deadStockNote', COP(missedRev.deadStockLockedCents)));
   }
 
-  const actions = topMoneyOpps.flatMap(opp =>
-    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  const actions = dedupeAndLimitActions(
+    topMoneyOpps.flatMap(opp =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
   );
 
   return {
@@ -2260,8 +2264,10 @@ function handleWhatNeedsAttention(engine: IntelligenceEngine, lang: Lang3): Chat
   }
 
   const shownOpps = [...urgentSlice, ...medLowSlice];
-  const actions = shownOpps.flatMap(opp =>
-    opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+  const actions = dedupeAndLimitActions(
+    shownOpps.flatMap(opp =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
   );
 
   return {
