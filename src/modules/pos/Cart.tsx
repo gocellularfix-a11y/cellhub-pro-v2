@@ -477,7 +477,7 @@ export default function Cart({
       </div>
 
       {/* Discount */}
-      <div className="px-4 py-2 border-t border-white/10">
+      <div className="px-4 py-1.5 border-t border-white/10">
         <div className="flex gap-2">
           <input
             type="number"
@@ -500,7 +500,7 @@ export default function Cart({
       </div>
 
       {/* Totals */}
-      <div className="px-4 py-3 border-t border-white/10 space-y-1 text-sm">
+      <div className="px-4 py-2 border-t border-white/10 space-y-1 text-sm">
         <div className="flex justify-between text-slate-400">
           <span>{t('subtotal')}</span>
           <span>{formatCurrency(totals.subtotal)}</span>
@@ -547,15 +547,14 @@ export default function Cart({
             <span>{formatCurrency(totals.creditCardFee)}</span>
           </div>
         )}
-        <div className="flex justify-between text-white font-bold text-lg pt-2 border-t border-white/10">
+        <div className="flex justify-between text-white font-bold text-base pt-1.5 border-t border-white/10">
           <span>{t('total')}</span>
           <span className="text-emerald-400">{formatCurrency(totals.total)}</span>
         </div>
       </div>
 
       {/* Payment Method */}
-      <div className="px-4 py-3 border-t border-white/10 space-y-3">
-        <p className="text-xs text-slate-400">{t('paymentMethodLabel')}</p>
+      <div className="px-4 py-2 border-t border-white/10 space-y-2">
         <div className="grid grid-cols-4 gap-1">
           {['Cash', 'Card', 'Split', 'Store Credit'].map((method) => {
             const isStoreCredit = method === 'Store Credit';
@@ -582,7 +581,7 @@ export default function Cart({
                     setCardAmount(0);
                   }
                 }}
-                className={`py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                className={`py-1.5 px-1 rounded-lg text-xs font-medium transition-all ${
                   paymentMethod === method
                     ? 'bg-emerald-600 text-white border-2 border-emerald-500'
                     : isStoreCredit && creditBalance > 0
@@ -606,10 +605,7 @@ export default function Cart({
 
         {/* ── Cash mode: input + change ── */}
         {paymentMethod === 'Cash' && (
-          <div className="space-y-2">
-            <label className="text-[0.7rem] text-slate-500 uppercase tracking-wide font-bold">
-              {t('cart.cashReceived')}
-            </label>
+          <div className="space-y-1.5">
             <input
               type="number"
               step="0.01"
@@ -620,50 +616,50 @@ export default function Cart({
               className="input"
               style={{
                 textAlign: 'center',
-                fontSize: '1.4rem',
+                fontSize: '1.1rem',
                 fontWeight: 700,
                 color: '#10b981',
                 background: 'rgba(16,185,129,0.08)',
                 border: '1px solid rgba(16,185,129,0.3)',
+                paddingTop: '0.3rem',
+                paddingBottom: '0.3rem',
               }}
             />
             {/* Quick cash buttons */}
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-5 gap-1">
               {[20, 40, 60, 100].map((amt) => (
                 <button
                   key={amt}
                   onClick={() => setCashAmount(amt)}
-                  className="py-1 px-1 rounded text-[0.7rem] font-semibold bg-white/5 text-slate-400 hover:bg-white/10 transition"
+                  className="py-0.5 px-1 rounded text-[0.7rem] font-semibold bg-white/5 text-slate-400 hover:bg-white/10 transition"
                 >
                   ${amt}
                 </button>
               ))}
+              <button
+                onClick={() => setCashAmount(Math.ceil(totals.total / 100))}
+                className="py-0.5 px-1 rounded text-[0.7rem] font-semibold bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition"
+              >
+                ={(totals.total / 100).toFixed(2)}
+              </button>
             </div>
-            <button
-              onClick={() => setCashAmount(Math.ceil(totals.total / 100))}
-              className="w-full py-1 rounded text-[0.7rem] font-semibold bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition"
-            >
-              {t('cart.exact')}: ${(totals.total / 100).toFixed(2)}
-            </button>
             {(() => {
               // R-CHANGE-RECOMPUTE: cents-first to match saleBuilder.ts.
-              // Float math (cashAmount * 100) drifts on penny inputs and
-              // would trigger a phantom $0.00 change on exact payments.
               const cashCents = Math.round((cashAmount || 0) * 100);
               if (cashCents > totals.total) return (
-                <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}>
-                  <div className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{t('cart.change')}</div>
-                  <div className="text-2xl font-bold text-emerald-400">
+                <div className="rounded p-1.5 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}>
+                  <span className="text-[0.65rem] text-slate-400 uppercase tracking-wide">{t('cart.change')}</span>
+                  <span className="text-lg font-bold text-emerald-400">
                     ${((cashCents - totals.total) / 100).toFixed(2)}
-                  </div>
+                  </span>
                 </div>
               );
               if (cashCents > 0 && cashCents < totals.total) return (
-                <div className="rounded-lg p-2 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                  <div className="text-[0.65rem] text-red-400 uppercase tracking-wide">{t('cart.shortBy')}</div>
-                  <div className="text-base font-bold text-red-400">
+                <div className="rounded p-1.5 flex items-center justify-between" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <span className="text-[0.65rem] text-red-400 uppercase tracking-wide">{t('cart.shortBy')}</span>
+                  <span className="text-sm font-bold text-red-400">
                     ${((totals.total - cashCents) / 100).toFixed(2)}
-                  </div>
+                  </span>
                 </div>
               );
               return null;
@@ -673,10 +669,7 @@ export default function Cart({
 
         {/* ── Card mode: amount confirm ── */}
         {paymentMethod === 'Card' && (
-          <div className="space-y-2">
-            <label className="text-[0.7rem] text-slate-500 uppercase tracking-wide font-bold">
-              {t('cart.cardAmount')}
-            </label>
+          <div>
             <input
               type="number"
               step="0.01"
@@ -687,11 +680,13 @@ export default function Cart({
               className="input"
               style={{
                 textAlign: 'center',
-                fontSize: '1.3rem',
+                fontSize: '1.1rem',
                 fontWeight: 700,
                 color: '#a78bfa',
                 background: 'rgba(167,139,250,0.08)',
                 border: '1px solid rgba(167,139,250,0.3)',
+                paddingTop: '0.3rem',
+                paddingBottom: '0.3rem',
               }}
             />
           </div>
@@ -893,10 +888,10 @@ export default function Cart({
       </div>
 
       {/* Checkout button */}
-      <div className="p-4 border-t border-white/10">
+      <div className="px-4 py-2.5 border-t border-white/10">
         <button
           onClick={onCheckout}
-          className="btn btn-success w-full text-base py-3"
+          className="btn btn-success w-full text-base py-2"
           disabled={cart.length === 0}
         >
           {t('completeSale')} — {formatCurrency(totals.total)}
