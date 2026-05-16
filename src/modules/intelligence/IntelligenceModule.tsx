@@ -75,6 +75,10 @@ import {
   type DailyBriefingResult,
 } from '@/services/intelligence/briefing/dailyBriefing';
 import DailyBriefingSection from '@/components/DailyBriefingSection';
+import {
+  computeFocusMode,
+  type FocusModeResult,
+} from '@/services/intelligence/focus/operatorFocusMode';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -135,6 +139,11 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-CONTINUITY-V1: dismissed continuity item tracking.
   const [dismissedContinuity, setDismissedContinuity] = useState<Record<string, number>>(() => readDismissedContinuity());
+
+  // R-INTELLIGENCE-FOCUS-MODE-V1: collapse toggles for focus mode.
+  // Seeded by computeFocusMode on first render; user can override manually.
+  const [missionsCollapsed, setMissionsCollapsed] = useState(false);
+  const [taskQueueCollapsed, setTaskQueueCollapsed] = useState(false);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -527,6 +536,30 @@ export default function IntelligenceModule() {
       lang: engineLang,
     }),
     [storeState, repairs, layaways, sales, missions, continuityItems, pendingTaskItems, queueItems, engineLang, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-FOCUS-MODE-V1: deterministic attention management.
+  const focusMode: FocusModeResult = useMemo(
+    () => computeFocusMode({
+      storeState,
+      pendingQueueCount: pendingTaskItems.length,
+    }),
+    [storeState, pendingTaskItems.length, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Sync collapse state when focus mode changes. User can still manually
+  // toggle after — this only fires on mode transition.
+  useEffect(() => {
+    setMissionsCollapsed(focusMode.missionsDefaultCollapsed);
+    setTaskQueueCollapsed(focusMode.queueDefaultCollapsed);
+  }, [focusMode.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filter info-severity briefing items when focus mode suppresses them.
+  const visibleBriefingItems = useMemo(
+    () => focusMode.suppressedSections.includes('briefing_info')
+      ? briefing.items.filter((i) => i.severity !== 'info')
+      : briefing.items,
+    [briefing.items, focusMode.suppressedSections],
   );
 
   const topInsight = useMemo(() => {
@@ -1159,9 +1192,9 @@ export default function IntelligenceModule() {
       </div>
 
       {/* ── DAILY BRIEFING ── R-INTELLIGENCE-DAILY-BRIEFING-V1 ── */}
-      {briefing.items.length > 0 && (
+      {visibleBriefingItems.length > 0 && (
         <DailyBriefingSection
-          items={briefing.items}
+          items={visibleBriefingItems}
           lang={locale as 'en' | 'es' | 'pt'}
         />
       )}
@@ -1177,6 +1210,9 @@ export default function IntelligenceModule() {
         />
       )}
 
+      {/* ── FOCUS MODE INDICATOR ── R-INTELLIGENCE-FOCUS-MODE-V1 ── */}
+      <FocusModeIndicator focusMode={focusMode} lang={locale} />
+
       {/* ── STORE STATE BANNER ── R-INTELLIGENCE-STORE-STATE-V1 ── */}
       {storeState.state !== 'normal' && (
         <StoreBanner state={storeState} lang={locale as 'en' | 'es' | 'pt'} />
@@ -1184,66 +1220,108 @@ export default function IntelligenceModule() {
 
       {/* ── CONTINUITY PANEL ── R-INTELLIGENCE-CONTINUITY-V1 ── */}
       {continuityItems.length > 0 && (
-        <ContinuityPanel
-          items={continuityItems}
-          lang={locale as 'en' | 'es' | 'pt'}
-          onResume={handleContinuityResume}
-          onDismiss={handleContinuityDismiss}
-        />
+        <div style={{
+          borderRadius: 8,
+          border: `1px solid ${focusMode.highlightedSections.includes('continuity') ? focusMode.accentColor + '60' : 'transparent'}`,
+          padding: focusMode.highlightedSections.includes('continuity') ? 2 : 0,
+        }}>
+          <ContinuityPanel
+            items={continuityItems}
+            lang={locale as 'en' | 'es' | 'pt'}
+            onResume={handleContinuityResume}
+            onDismiss={handleContinuityDismiss}
+          />
+        </div>
       )}
 
       {/* ── 4. TODAY'S MISSIONS ── */}
       {missions.length > 0 && (
-        <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-            🎯 {locale === 'es' ? 'Misiones de hoy' : locale === 'pt' ? 'Missões de hoje' : "Today's Missions"}
-            <span className="ml-2 text-[11px] font-normal text-slate-400">({missions.length})</span>
-          </p>
-          <div className="flex flex-col gap-2">
-            {missions.map((mission) => (
-              <MissionCard
-                key={mission.id}
-                mission={mission}
-                lang={locale as 'en' | 'es' | 'pt'}
-                onAddToQueue={handleMissionAddToQueue}
-                onDismiss={handleMissionDismiss}
-                onCopyMessage={handleMissionCopyMessage}
-                onWhatsApp={handleMissionWhatsApp}
-                onView={handleMissionView}
-              />
-            ))}
+        <div
+          className="rounded-lg border p-3"
+          style={{
+            background: CARD_BG,
+            borderColor: focusMode.highlightedSections.includes('missions') ? focusMode.accentColor + '60' : CARD_BORDER,
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              🎯 {locale === 'es' ? 'Misiones de hoy' : locale === 'pt' ? 'Missões de hoje' : "Today's Missions"}
+              <span className="ml-2 text-[11px] font-normal text-slate-400">({missions.length})</span>
+            </p>
+            <button
+              onClick={() => setMissionsCollapsed((v) => !v)}
+              className="text-[10px] text-slate-500 hover:text-slate-300 transition px-1"
+              title={missionsCollapsed ? 'Expand' : 'Collapse'}
+            >
+              {missionsCollapsed ? '▶' : '▼'}
+            </button>
           </div>
+          {!missionsCollapsed && (
+            <div className="flex flex-col gap-2">
+              {missions.map((mission) => (
+                <MissionCard
+                  key={mission.id}
+                  mission={mission}
+                  lang={locale as 'en' | 'es' | 'pt'}
+                  onAddToQueue={handleMissionAddToQueue}
+                  onDismiss={handleMissionDismiss}
+                  onCopyMessage={handleMissionCopyMessage}
+                  onWhatsApp={handleMissionWhatsApp}
+                  onView={handleMissionView}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── 5. OPERATOR TASK QUEUE ── */}
       {pendingTaskItems.length > 0 && (
-        <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
-          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-            {t('oq.title')}
-            <span className="ml-2 text-[11px] font-normal text-slate-400">({pendingTaskItems.length})</span>
-          </p>
-          <div className="flex flex-col gap-2">
-            {visibleTaskItems.map((item) => (
-              <OperatorTaskCard
-                key={item.id}
-                item={item}
-                lang={locale as 'en' | 'es' | 'pt'}
-                onComplete={handleTaskComplete}
-                onDismiss={handleTaskDismiss}
-                onWhatsApp={handleTaskWhatsApp}
-                onCopyMessage={handleTaskCopyMessage}
-                onView={handleTaskView}
-              />
-            ))}
-          </div>
-          {pendingTaskItems.length > TASK_QUEUE_PREVIEW && (
+        <div
+          className="rounded-lg border p-3"
+          style={{
+            background: CARD_BG,
+            borderColor: focusMode.highlightedSections.includes('queue') ? focusMode.accentColor + '60' : CARD_BORDER,
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              {t('oq.title')}
+              <span className="ml-2 text-[11px] font-normal text-slate-400">({pendingTaskItems.length})</span>
+            </p>
             <button
-              onClick={() => setShowAllTaskQueue((v) => !v)}
-              className="mt-2 text-[11px] text-slate-400 hover:text-slate-300 transition"
+              onClick={() => setTaskQueueCollapsed((v) => !v)}
+              className="text-[10px] text-slate-500 hover:text-slate-300 transition px-1"
+              title={taskQueueCollapsed ? 'Expand' : 'Collapse'}
             >
-              {showAllTaskQueue ? t('oq.showLess') : t('oq.showAll')}
+              {taskQueueCollapsed ? '▶' : '▼'}
             </button>
+          </div>
+          {!taskQueueCollapsed && (
+            <>
+              <div className="flex flex-col gap-2">
+                {visibleTaskItems.map((item) => (
+                  <OperatorTaskCard
+                    key={item.id}
+                    item={item}
+                    lang={locale as 'en' | 'es' | 'pt'}
+                    onComplete={handleTaskComplete}
+                    onDismiss={handleTaskDismiss}
+                    onWhatsApp={handleTaskWhatsApp}
+                    onCopyMessage={handleTaskCopyMessage}
+                    onView={handleTaskView}
+                  />
+                ))}
+              </div>
+              {pendingTaskItems.length > TASK_QUEUE_PREVIEW && (
+                <button
+                  onClick={() => setShowAllTaskQueue((v) => !v)}
+                  className="mt-2 text-[11px] text-slate-400 hover:text-slate-300 transition"
+                >
+                  {showAllTaskQueue ? t('oq.showLess') : t('oq.showAll')}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -2167,6 +2245,52 @@ function CommandCenterHeader({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-FOCUS-MODE-V1: small indicator badge shown between Command
+// Center and Store Banner. Hidden when mode is 'balanced' (no signal needed).
+const FOCUS_LABEL: Record<FocusModeResult['mode'], Record<string, string>> = {
+  balanced:        { en: 'Balanced',        es: 'Equilibrado',     pt: 'Equilibrado'    },
+  execution_focus: { en: 'Execution Focus', es: 'Modo Ejecución',  pt: 'Foco Execução'  },
+  outreach_focus:  { en: 'Outreach Focus',  es: 'Modo Contacto',   pt: 'Foco Contato'   },
+  repair_focus:    { en: 'Repair Focus',    es: 'Modo Reparación', pt: 'Foco Reparos'   },
+  collection_focus:{ en: 'Collection Focus',es: 'Modo Cobranza',   pt: 'Foco Cobrança'  },
+  rush_focus:      { en: 'Rush Mode',       es: 'Modo Rush',       pt: 'Modo Rush'      },
+};
+
+function FocusModeIndicator({ focusMode, lang }: { focusMode: FocusModeResult; lang: string }) {
+  if (focusMode.mode === 'balanced') return null;
+  const l = lang === 'pt' ? 'pt' : lang === 'es' ? 'es' : 'en';
+  const label = FOCUS_LABEL[focusMode.mode][l];
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 5,
+      padding: '3px 8px',
+      borderRadius: 6,
+      background: `${focusMode.accentColor}10`,
+      border: `1px solid ${focusMode.accentColor}28`,
+    }}>
+      <span style={{
+        width: 5,
+        height: 5,
+        borderRadius: '50%',
+        background: focusMode.accentColor,
+        flexShrink: 0,
+        boxShadow: focusMode.isUrgentOverride ? `0 0 4px ${focusMode.accentColor}` : 'none',
+      }} />
+      <span style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: focusMode.accentColor,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+      }}>
+        {label}
+      </span>
     </div>
   );
 }
