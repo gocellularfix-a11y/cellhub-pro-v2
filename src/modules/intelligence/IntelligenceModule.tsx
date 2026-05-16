@@ -102,6 +102,11 @@ import {
   type OperationalHealthResult,
 } from '@/services/intelligence/health/operationalHealth';
 import OperationalHealthSection from '@/components/OperationalHealthSection';
+import {
+  generateWeeklyReview,
+  type WeeklyReviewResult,
+} from '@/services/intelligence/review/weeklyOperatorReview';
+import WeeklyReviewSection from '@/components/WeeklyReviewSection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -642,6 +647,20 @@ export default function IntelligenceModule() {
       outreachCandidateCount: outreachCount,
     }),
     [storeState, businessMemory.insights, strategicInsights.insights, recommendations.recommendations, repairs, layaways, queueItems, continuityItems, missions, pendingTaskItems.length, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-WEEKLY-REVIEW-V1: deterministic week-in-review summary.
+  const weeklyReview: WeeklyReviewResult = useMemo(
+    () => generateWeeklyReview({
+      operationalHealth,
+      businessMemoryInsights: businessMemory.insights,
+      strategicInsights: strategicInsights.insights,
+      recommendations: recommendations.recommendations,
+      continuityItemCount: continuityItems.length,
+      pendingQueueCount: pendingTaskItems.length,
+      outreachCandidateCount: outreachCount,
+    }),
+    [operationalHealth, businessMemory.insights, strategicInsights.insights, recommendations.recommendations, continuityItems.length, pendingTaskItems.length, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Record store state transitions so the memory layer can detect patterns.
@@ -1292,6 +1311,14 @@ export default function IntelligenceModule() {
           </>
         )}
       </div>
+
+      {/* ── WEEKLY REVIEW ── R-INTELLIGENCE-WEEKLY-REVIEW-V1 ── */}
+      {weeklyReview.reviewItems.length > 0 && (
+        <WeeklyReviewSection
+          review={weeklyReview}
+          lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
 
       {/* ── DAILY BRIEFING ── R-INTELLIGENCE-DAILY-BRIEFING-V1 ── */}
       {visibleBriefingItems.length > 0 && (
