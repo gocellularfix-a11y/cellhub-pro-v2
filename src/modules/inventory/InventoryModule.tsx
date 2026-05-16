@@ -34,7 +34,7 @@ import type { IntelligenceEngine as IntelligenceEngineType } from '@/services/in
 // Inventory chunk doesn't pull in the modal until the operator clicks.
 import { loadDesktopSession } from '@/services/companion/identityStore';
 import type { CompanionDesktopSession } from '@/types/companion';
-import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext, setPendingPromoteProduct } from '@/services/intelligence/context/intelligenceContext';
 import { emitInventoryAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 const RequestApprovalModal = lazy(() => import('@/modules/companion/RequestApprovalModal'));
 
@@ -586,10 +586,12 @@ export default function InventoryModule() {
       } else {
         toast(t('inventory.promoteNoTargets', item.name), 'warning');
       }
+      setPendingPromoteProduct(item.id, item.name);
+      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
     } catch {
       toast(t('inventory.promoteNoTargets', item.name), 'error');
     }
-  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, toast, t]);
+  }, [sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, locale, toast, t, dispatch]);
 
   const handleQuickRestock = useCallback(
     (id: string) => {
@@ -625,8 +627,9 @@ export default function InventoryModule() {
       };
       setCart([...cart, cartItem]);
       toast(`${item.name} → cart`, 'success');
+      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
     },
-    [cart, setCart, toast, t],
+    [cart, setCart, toast, t, dispatch],
   );
 
   return (

@@ -42,6 +42,7 @@ import { buildWhatsAppUrl } from '@/services/whatsapp';
 // `performance.now()` calls in render-prep can be skipped entirely
 // when perfDebug is off (which is always, in production).
 import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/perfDebug';
+import { consumePendingPromoteProduct, consumePendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -445,6 +446,28 @@ export default function IntelligenceModule() {
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     fireChat(`${t('intelligence.console.queryPromoteThis')} ${productName}`);
   }, [fireChat, t]);
+
+  // On mount, consume any pending promote product set by Inventory's Promote
+  // button. Deferred via setTimeout(0) so the first paint completes before
+  // the chat query fires (same pattern as the daily-brief auto-fire).
+  useEffect(() => {
+    const pending = consumePendingPromoteProduct();
+    if (!pending) return;
+    const tid = window.setTimeout(() => handleOpenPromote(pending.id, pending.name), 0);
+    return () => window.clearTimeout(tid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On mount, consume any general Intelligence action query set by other modules
+  // (Customer recover/VIP, Repair follow-up/escalate). Fires the prefilled query
+  // into chat immediately, giving the operator actionable context on arrival.
+  useEffect(() => {
+    const pending = consumePendingIntelligenceAction();
+    if (!pending) return;
+    const tid = window.setTimeout(() => fireChat(pending.query), 0);
+    return () => window.clearTimeout(tid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: callback invoked by IntelligenceChat
   // when a chat response carries panelCampaign. Stash the draft + seed the

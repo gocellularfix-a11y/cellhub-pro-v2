@@ -42,6 +42,10 @@ interface TicketCardProps {
   // badges (e.g. edit-history indicator). Caller is responsible for event
   // handling; stopPropagation in onClick to prevent card click passthrough.
   extraBadges?: ReactNode;
+
+  // Intelligence operator actions — open Intelligence with repair/customer context.
+  onFollowUp?: () => void;
+  onEscalate?: () => void;
 }
 
 const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCard({
@@ -71,6 +75,8 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   completeDisabled,
   completeVariant = 'amber',
   extraBadges,
+  onFollowUp,
+  onEscalate,
 }, ref) {
   const { t } = useTranslation();
   const PRIORITY_LABELS: Record<string, string> = {
@@ -194,7 +200,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
             )}
 
             {/* Secondary icon row */}
-            {(onPrint || (onWhatsApp && customerPhone) || onDelete) && (
+            {(onPrint || (onWhatsApp && customerPhone) || onDelete || onFollowUp || onEscalate) && (
               <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.5rem' }}>
                 {onPrint && (
                   <button
@@ -236,6 +242,32 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                     }}
                     title={t('ticket.delete')}
                   >🗑</button>
+                )}
+                {onFollowUp && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onFollowUp(); }}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(139,92,246,0.15)', color: '#a78bfa',
+                      border: '1px solid rgba(139,92,246,0.35)', cursor: 'pointer',
+                    }}
+                    title={t('ticket.followUp')}
+                  >📋</button>
+                )}
+                {onEscalate && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEscalate(); }}
+                    style={{
+                      width: 38, height: 38, padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '0.5rem', fontSize: '1rem',
+                      background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                      border: '1px solid rgba(245,158,11,0.35)', cursor: 'pointer',
+                    }}
+                    title={t('ticket.escalate')}
+                  >⚡</button>
                 )}
               </div>
             )}

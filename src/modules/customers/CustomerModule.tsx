@@ -18,7 +18,7 @@ import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
 import { openWhatsApp } from '@/services/whatsapp';
-import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
 
 export default function CustomerModule() {
   // Round 18: extract `state` at root and destructure separately so we can also
@@ -468,6 +468,18 @@ export default function CustomerModule() {
     [customers, repairs, layaways, unlocks, setCustomers, toast, t],
   );
 
+  const handleRecoverCustomer = useCallback((c: Customer) => {
+    const query = `${t('customers.queryRecover')}${c.name}${c.phone ? ` ${c.phone}` : ''}`;
+    setPendingIntelligenceAction(query);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
+  }, [t, dispatch]);
+
+  const handleVipOutreach = useCallback((c: Customer) => {
+    const query = `${t('customers.queryVip')}${c.name}${c.phone ? ` ${c.phone}` : ''}`;
+    setPendingIntelligenceAction(query);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
+  }, [t, dispatch]);
+
   return (
     <>
       <div className="space-y-4">
@@ -698,6 +710,16 @@ export default function CustomerModule() {
                           title={t('customers.titleDelete')}
                           style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(239,68,68,0.25)', color: '#ef4444' }}
                         >🗑️</button>
+                        <button
+                          onClick={() => handleRecoverCustomer(c)}
+                          title={t('customers.titleRecover')}
+                          style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(20,184,166,0.2)', color: '#2dd4bf' }}
+                        >🔄</button>
+                        <button
+                          onClick={() => handleVipOutreach(c)}
+                          title={t('customers.titleVipOutreach')}
+                          style={{ width: 38, height: 38, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', fontSize: '1.1rem', background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+                        >⭐</button>
                       </div>
                     </td>
                   </tr>

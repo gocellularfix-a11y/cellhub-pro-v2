@@ -14,7 +14,7 @@ import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { emitRepairCompleted } from '@/services/intelligence/liveContext/liveContextEvents';
-import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
 import { emitRepairAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
@@ -1045,6 +1045,20 @@ export default function RepairModule() {
     toast(t('repairs.repairDeleted'), 'success');
   }, [deleteConfirm, setRepairs, toast, lang]);
 
+  const handleRepairFollowUp = useCallback((repair: Repair) => {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(repair.createdAt as string).getTime()) / 86400000));
+    const query = `${t('repairs.queryFollowUp')}${repair.customerName}, ${repair.device || repair.issue}${days > 0 ? ` (${days}d)` : ''}`;
+    setPendingIntelligenceAction(query);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
+  }, [t, dispatch]);
+
+  const handleRepairEscalate = useCallback((repair: Repair) => {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(repair.createdAt as string).getTime()) / 86400000));
+    const query = `${t('repairs.queryEscalate')}${repair.customerName}, ${repair.device || repair.issue}, ${repair.status}${days > 0 ? ` (${days}d)` : ''}`;
+    setPendingIntelligenceAction(query);
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
+  }, [t, dispatch]);
+
   // ── Render ──────────────────────────────────────────────
 
   return (
@@ -1162,6 +1176,8 @@ export default function RepairModule() {
                 }
               }}
               onDelete={() => setDeleteConfirm(repair)}
+              onFollowUp={!isDoneRepairStatus(repair.status) ? () => handleRepairFollowUp(repair) : undefined}
+              onEscalate={!isDoneRepairStatus(repair.status) ? () => handleRepairEscalate(repair) : undefined}
               extraBadges={
                 <>
                   {/* R-EDIT-AUDIT F3.9: edit-history count badge. */}

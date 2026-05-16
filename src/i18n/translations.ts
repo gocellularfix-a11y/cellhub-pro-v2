@@ -3362,6 +3362,10 @@ export const translations: TranslationDictionary = {
   'customers.titleViewHistory':       { en: 'View history',           es: 'Ver historial',              pt: 'Ver histórico' },
   'customers.titleEdit':              { en: 'Edit',                   es: 'Editar',                     pt: 'Editar' },
   'customers.titleDelete':            { en: 'Delete',                 es: 'Eliminar',                   pt: 'Excluir' },
+  'customers.titleRecover':           { en: 'Recover Customer',       es: 'Recuperar Cliente',          pt: 'Recuperar Cliente' },
+  'customers.titleVipOutreach':       { en: 'VIP Outreach',           es: 'Alcance VIP',                pt: 'Alcance VIP' },
+  'customers.queryRecover':           { en: 'Help recover this customer: ', es: 'Ayuda a recuperar este cliente: ', pt: 'Ajude a recuperar este cliente: ' },
+  'customers.queryVip':               { en: 'Create VIP outreach strategy for: ', es: 'Crear estrategia de alcance VIP para: ', pt: 'Criar estratégia de alcance VIP para: ' },
   'customers.deleteMsg':              { en: 'Delete this customer?',  es: '¿Eliminar este cliente?',    pt: 'Excluir este cliente?' },
   'customers.confirmDelete':          { en: 'Delete',                 es: 'Eliminar',                   pt: 'Excluir' },
   'customers.cancelBtn':              { en: 'Cancel',                 es: 'Cancelar',                   pt: 'Cancelar' },
@@ -3745,6 +3749,10 @@ export const translations: TranslationDictionary = {
   'ticket.collectBalance': { en: 'Collect',        es: 'Cobrar',          pt: 'Cobrar' },
   'ticket.print':          { en: 'Print',          es: 'Imprimir',        pt: 'Imprimir' },
   'ticket.delete':         { en: 'Delete',         es: 'Eliminar',        pt: 'Excluir' },
+  'ticket.followUp':       { en: 'Follow Up',      es: 'Seguimiento',     pt: 'Acompanhar' },
+  'ticket.escalate':       { en: 'Escalate',       es: 'Escalar',         pt: 'Escalar' },
+  'repairs.queryFollowUp': { en: 'Follow up delayed repair for: ', es: 'Seguimiento de reparación retrasada para: ', pt: 'Acompanhamento de reparo atrasado para: ' },
+  'repairs.queryEscalate': { en: 'Escalate overdue repair: ',      es: 'Escalar reparación vencida: ',              pt: 'Escalar reparo atrasado: ' },
 
   'repairs.filter.all':              { en: 'All',           es: 'Todos',              pt: 'Todos' },
 
