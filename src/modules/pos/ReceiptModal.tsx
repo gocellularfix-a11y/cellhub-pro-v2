@@ -658,20 +658,16 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     }
   }
 
-  // R-RECEIPT-HYBRID-DISCOUNT-DISPLAY-V1 + R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1:
-  // the right column anchors on the ORIGINAL line amount (item.originalPrice * qty
-  // when set, else item.price * qty). The annotation combines BOTH per-line
-  // discount (originalPrice - effective price) AND the cart-distributed share
-  // from perItemDiscount — single "Discount Applied: -$X" line so the customer
-  // sees one consolidated savings number, not a double-counted set.
+  // R-RECEIPT-LINE-OVERRIDE-V1: right column shows the effective price the
+  // customer pays (item.price already reflects any manager override), minus
+  // the cart-level discount share. Annotation only appears for cart discounts;
+  // line-level overrides are silent — the customer just sees the final price.
   const itemRows = sale.items.map((item) => {
-    const orig = (item.originalPrice ?? item.price) * item.qty;     // anchor
-    const lineTotal = item.price * item.qty;                        // post-line-discount
-    const lineSavings = Math.max(0, orig - lineTotal);              // per-line discount baked into item.price
-    const cartShare = perItemDiscount[item.id] || 0;                // global cart-discount allocation
-    const totalDiscount = lineSavings + cartShare;
-    const discountAnnotation = totalDiscount > 0
-      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(totalDiscount)}</span>`
+    const lineTotal = item.price * item.qty;                        // effective price (override already baked in)
+    const cartShare = perItemDiscount[item.id] || 0;                // cart-level discount allocation
+    const effectiveTotal = lineTotal - cartShare;                   // what customer pays for this line
+    const discountAnnotation = cartShare > 0
+      ? `<br><span style="font-size:9px;font-style:italic;color:#c00;font-weight:500">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(cartShare)}</span>`
       : '';
     // R-RECEIPT-ID-V1: surface the most-specific identifier per line
     // with priority IMEI > SKU. Replaces the prior IMEI-only line so
@@ -687,7 +683,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     return `
     <tr>
       <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${idLine}</td>
-      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(orig)}${discountAnnotation}</td>
+      <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(effectiveTotal)}${discountAnnotation}</td>
     </tr>`;
   }).join('');
 
