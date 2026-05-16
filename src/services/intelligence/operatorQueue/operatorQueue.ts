@@ -23,6 +23,7 @@ export type OperatorTaskType =
   | 'repair_waiting';
 
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
+export type ConfidenceLabel = 'new' | 'weak' | 'proven' | 'strong';
 
 export interface OperatorQueueItem {
   id: string;
@@ -40,6 +41,8 @@ export interface OperatorQueueItem {
   priorityScore?: number;
   urgencyLevel?: UrgencyLevel;
   impactReason?: string;
+  // R-INTELLIGENCE-OUTCOME-LEARNING-V1: outcome-adjusted confidence.
+  confidenceLabel?: ConfidenceLabel;
 }
 
 export interface OperatorTaskOutcome {

@@ -1765,6 +1765,14 @@ function QueueCard({
   );
 }
 
+// R-INTELLIGENCE-OUTCOME-LEARNING-V1: confidence label style map.
+const CONFIDENCE_STYLE: Record<string, { color: string; label: string }> = {
+  new:    { color: '#475569', label: 'New'    },
+  weak:   { color: '#64748B', label: 'Weak'   },
+  proven: { color: '#60A5FA', label: 'Proven' },
+  strong: { color: '#34D399', label: 'Strong' },
+};
+
 // R-INTELLIGENCE-PRIORITY-ENGINE-V1: urgency badge style map.
 const URGENCY_STYLE: Record<string, { bg: string; text: string; border: string; label: { en: string; es: string; pt: string } }> = {
   critical: { bg: '#EF444422', text: '#EF4444', border: '#EF444444', label: { en: 'Critical', es: 'Crítico', pt: 'Crítico' } },
@@ -1797,6 +1805,7 @@ function OperatorTaskCard({
   const typeLabel = (TASK_TYPE_LABEL[item.type] ?? { en: item.type, es: item.type, pt: item.type })[lang];
   const age = relativeTime(item.createdAt);
   const urgency = item.urgencyLevel ? (URGENCY_STYLE[item.urgencyLevel] ?? null) : null;
+  const confidence = item.confidenceLabel ? (CONFIDENCE_STYLE[item.confidenceLabel] ?? null) : null;
 
   return (
     <div className="rounded border p-2.5" style={{ background: '#0D1B2A', borderColor: urgency?.border ?? '#1E3A5F' }}>
@@ -1814,6 +1823,11 @@ function OperatorTaskCard({
               style={{ background: urgency.bg, color: urgency.text, border: `1px solid ${urgency.border}` }}
             >
               {urgency.label[lang]}
+            </span>
+          )}
+          {confidence && (
+            <span className="text-[8px] font-medium shrink-0" style={{ color: confidence.color }}>
+              {confidence.label}
             </span>
           )}
           <span className="text-[11px] font-semibold text-slate-200 truncate">{item.summary}</span>
