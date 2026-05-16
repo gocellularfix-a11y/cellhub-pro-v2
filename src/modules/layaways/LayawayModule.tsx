@@ -1404,7 +1404,7 @@ export default function LayawayModule() {
                     {isActive && (
                       <>
                         <button className="btn btn-success btn-sm" onClick={() => setDepositTarget(l)}>
-                          💰 {t('layaway.collectBalance')} (${balDollars.toFixed(2)})
+                          💳 {t('layaway.addPayment')} (${balDollars.toFixed(2)})
                         </button>
                         {settings.waEnabled !== false && l.customerPhone && (
                           <button

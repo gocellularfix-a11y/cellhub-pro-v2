@@ -3012,6 +3012,7 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `Mostrar mais (${n} restantes)`,
   },
   'layaway.collectBalance': { en: 'Collect Balance', es: 'Cobrar Balance', pt: 'Cobrar Saldo' },
+  'layaway.addPayment':     { en: 'Add Payment',     es: 'Agregar Pago',   pt: 'Adicionar Pagamento' },
   'layaway.collectTitle': {
     en: (ticket: string) => `Layaway ${ticket} — Collect`,
     es: (ticket: string) => `Apartado ${ticket} — Cobrar`,
