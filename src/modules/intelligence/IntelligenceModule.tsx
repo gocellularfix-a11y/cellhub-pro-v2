@@ -107,6 +107,13 @@ import {
   type WeeklyReviewResult,
 } from '@/services/intelligence/review/weeklyOperatorReview';
 import WeeklyReviewSection from '@/components/WeeklyReviewSection';
+import {
+  generateExecutionChain,
+  dismissChain as dismissExecutionChain,
+  type ExecutionChain,
+  type ChainedAction,
+} from '@/services/intelligence/execution/executionChaining';
+import ExecutionChainPanel from '@/components/ExecutionChainPanel';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -172,6 +179,9 @@ export default function IntelligenceModule() {
   // Seeded by computeFocusMode on first render; user can override manually.
   const [missionsCollapsed, setMissionsCollapsed] = useState(false);
   const [taskQueueCollapsed, setTaskQueueCollapsed] = useState(false);
+
+  // R-INTELLIGENCE-EXECUTION-CHAINING-V1: active chain state.
+  const [activeChain, setActiveChain] = useState<ExecutionChain | null>(null);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -331,8 +341,17 @@ export default function IntelligenceModule() {
     const item = taskQueue.find((t) => t.id === id);
     completeOperatorQueueItem(id);
     setTaskQueue(readOperatorQueue());
-    if (item) recordTaskOutcomeEvent(item.type, 'completed');
-  }, [taskQueue]);
+    if (item) {
+      recordTaskOutcomeEvent(item.type, 'completed');
+      // R-INTELLIGENCE-EXECUTION-CHAINING-V1: generate next-step chain.
+      const ctx = {
+        ...chainContextRef.current,
+        pendingQueueCount: Math.max(0, chainContextRef.current.pendingQueueCount - 1),
+      };
+      const chain = generateExecutionChain({ source: 'task_complete', completedType: item.type }, ctx);
+      if (chain) setActiveChain(chain);
+    }
+  }, [taskQueue]); // chainContextRef is a ref — no dep needed
 
   const handleTaskDismiss = useCallback((id: string) => {
     const item = taskQueue.find((t) => t.id === id);
@@ -417,6 +436,15 @@ export default function IntelligenceModule() {
   const handleContinuityResume = useCallback((item: ContinuityItem) => {
     resumeContinuityItem(item.id);
     setDismissedContinuity(readDismissedContinuity());
+    // R-INTELLIGENCE-EXECUTION-CHAINING-V1: generate next-step chain for workflow resumption.
+    {
+      const ctx = {
+        ...chainContextRef.current,
+        continuityItemCount: Math.max(0, chainContextRef.current.continuityItemCount - 1),
+      };
+      const chain = generateExecutionChain({ source: 'continuity_resume', continuityType: item.type }, ctx);
+      if (chain) setActiveChain(chain);
+    }
     // outreach_pending with phone → WhatsApp
     if (item.type === 'outreach_pending' && item.phone) {
       const url = `https://wa.me/${item.phone.replace(/\D/g, '')}`;
@@ -662,6 +690,24 @@ export default function IntelligenceModule() {
     }),
     [operationalHealth, businessMemory.insights, strategicInsights.insights, recommendations.recommendations, continuityItems.length, pendingTaskItems.length, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // R-INTELLIGENCE-EXECUTION-CHAINING-V1: stable ref for chain context.
+  // Updated each render so chain-generating callbacks read current values
+  // without stale closure risk (anti-stale-closure pattern from CLAUDE.md).
+  const chainContextRef = useRef<import('@/services/intelligence/execution/executionChaining').ChainContext>({
+    storeState,
+    operationalHealth,
+    pendingQueueCount: pendingTaskItems.length,
+    continuityItemCount: continuityItems.length,
+    outreachCandidateCount: outreachCount,
+  });
+  chainContextRef.current = {
+    storeState,
+    operationalHealth,
+    pendingQueueCount: pendingTaskItems.length,
+    continuityItemCount: continuityItems.length,
+    outreachCandidateCount: outreachCount,
+  };
 
   // Record store state transitions so the memory layer can detect patterns.
   useEffect(() => {
@@ -1105,7 +1151,39 @@ export default function IntelligenceModule() {
     if (tab) {
       window.dispatchEvent(new CustomEvent('cellhub:navigate-tab', { detail: { tab } }));
     }
+    // R-INTELLIGENCE-EXECUTION-CHAINING-V1: generate contextual next-step chain.
+    const chain = generateExecutionChain(
+      { source: 'recommendation_action', recommendationAction: action },
+      chainContextRef.current,
+    );
+    if (chain) setActiveChain(chain);
+  }, []); // chainContextRef is a ref — stable, no dep needed
+
+  // R-INTELLIGENCE-EXECUTION-CHAINING-V1: chain action handler.
+  // Navigate to target tab if specified; chain is consumed on any action.
+  const handleChainAction = useCallback((action: ChainedAction) => {
+    if (action.navigationTarget) {
+      window.dispatchEvent(new CustomEvent('cellhub:navigate-tab', { detail: { tab: action.navigationTarget } }));
+    }
+    setActiveChain(null);
   }, []);
+
+  // Dismiss records to localStorage so the chain won't reappear for 4 hours.
+  const handleChainDismiss = useCallback(() => {
+    setActiveChain((current) => {
+      if (current) dismissExecutionChain(current.chainId);
+      return null;
+    });
+  }, []);
+
+  // Auto-expire the active chain when its TTL is reached.
+  useEffect(() => {
+    if (!activeChain) return;
+    const remaining = activeChain.expiresAt - Date.now();
+    if (remaining <= 0) { setActiveChain(null); return; }
+    const tid = window.setTimeout(() => setActiveChain(null), remaining);
+    return () => window.clearTimeout(tid);
+  }, [activeChain?.chainId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
@@ -1358,6 +1436,16 @@ export default function IntelligenceModule() {
         health={operationalHealth}
         lang={locale as 'en' | 'es' | 'pt'}
       />
+
+      {/* ── EXECUTION CHAIN ── R-INTELLIGENCE-EXECUTION-CHAINING-V1 ── */}
+      {activeChain && (
+        <ExecutionChainPanel
+          chain={activeChain}
+          lang={locale as 'en' | 'es' | 'pt'}
+          onDismiss={handleChainDismiss}
+          onAction={handleChainAction}
+        />
+      )}
 
       {/* ── COMMAND CENTER HEADER ── R-INTELLIGENCE-COMMAND-CENTER-V1 ── */}
       {(storeState.state !== 'normal' || continuityItems.length > 0 || missions.length > 0 || pendingTaskItems.length > 0) && (
