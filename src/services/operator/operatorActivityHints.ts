@@ -54,10 +54,10 @@ export type OperatorHintKind =
   | 'special_order_created'
   | 'return_processed'
   | 'appointment_booked'
-  // Companion Lite — ephemeral hints on the floating bubble.
+  // Companion — ephemeral hints on the floating bubble.
   | 'companion_approval_accepted'
   | 'companion_approval_denied'
-  | 'companion_lite_message'
+  | 'companion_message'
   // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: passive entity-open hints.
   | 'ambient_insight';
 
@@ -153,9 +153,9 @@ export interface OperatorActivityEventDetail {
     | 'approval.requested'
     | 'approval.accepted'
     | 'approval.denied'
-    // Companion Lite — ephemeral bubble hint when the mobile manager
+    // Companion — ephemeral bubble hint when the mobile manager
     // sends a message back to the store (general or per-approval).
-    | 'companion_lite.message'
+    | 'companion.message'
     | string; // forward-compat
   payload?: {
     // Generic IDs / values reused across event types. Always minimal —
@@ -683,8 +683,8 @@ export function computeHintFromEvent(
     };
   }
 
-  // ── Companion Lite bridge events ─────────────────────────────────
-  // Fired by the desktop Companion Lite UI when the mobile manager
+  // ── Companion bridge events ─────────────────────────────────
+  // Fired by the desktop Companion UI when the mobile manager
   // approves/denies an approval or sends a message. These produce
   // ephemeral hints on the FloatingOperatorBubble — no history,
   // no NotificationCenter entry. Payload is intentionally minimal:
@@ -706,10 +706,10 @@ export function computeHintFromEvent(
       severity: 'alert',
     };
   }
-  if (detail.type === 'companion_lite.message') {
+  if (detail.type === 'companion.message') {
     return {
-      kind: 'companion_lite_message',
-      i18nKey: 'operator.hint.companionLiteMessage',
+      kind: 'companion_message',
+      i18nKey: 'operator.hint.companionMessage',
       args: [payload.itemName ?? 'Manager'],
       severity: 'info',
     };

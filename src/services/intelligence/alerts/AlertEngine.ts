@@ -8,10 +8,6 @@ import {
 } from './thresholds';
 import type { Sale, InventoryItem, Repair, Customer } from '@/store/types';
 import { getDaysAgo } from '../utils/dateHelpers';
-// R-COMPANION-INTELLIGENCE-EMITTERS-V1: companion event emit on each
-// new alert. Cooldown is already applied above this layer — every
-// alert that reaches the emit loop is a real signal, never a duplicate.
-import { emitIntelligenceAlertCreated } from '@/services/companion/emitters/intelligenceEmitter';
 
 interface AlertState {
   lastFired: Record<string, Date>;
@@ -234,19 +230,6 @@ export class AlertEngine {
         newAlerts.push(this.createAlert(config, value));
         this.state.lastFired[config.id] = new Date();
       }
-    }
-
-    // R-COMPANION-INTELLIGENCE-EMITTERS-V1: emit Companion event per
-    // newly-fired alert. Runs AFTER state.lastFired mutations so the
-    // event stream reflects committed engine state. Cero changes to
-    // scoring, configs, thresholds, or the returned alert array.
-    for (const alert of newAlerts) {
-      emitIntelligenceAlertCreated({
-        alertId: alert.id,
-        severity: alert.severity,
-        kind: alert.configId,
-        insightType: alert.category,
-      });
     }
 
     return newAlerts;

@@ -352,10 +352,6 @@ export default function SettingsModule() {
     // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
     { id: 'whatsapp',    icon: '💬',  label: t('settings.nav.whatsapp') },
     { id: 'ai',          icon: '🤖',  label: t('settings.nav.ai') },
-    // R-COMPANION-DESKTOP-SETTINGS-WIRING-V1: dedicated Companion section
-    // so the bridge enable toggle is discoverable from the "enable in
-    // Settings" hint in Companion Center.
-    { id: 'companion',   icon: '📱',  label: t('settings.nav.companion') },
     { id: 'employees',   icon: '👥',  label: t('settings.nav.employees') },
     { id: 'backup',      icon: '💾',  label: t('settings.nav.backup') },
   ];
@@ -444,7 +440,6 @@ export default function SettingsModule() {
     hardware:    t('settings.nav.hardware'),
     whatsapp:    t('settings.nav.whatsapp'),
     ai:          t('settings.nav.ai'),
-    companion:   t('settings.nav.companion'),
     employees:   t('settings.nav.employees'),
     backup:      t('settings.nav.backup'),
   };
@@ -1748,167 +1743,6 @@ export default function SettingsModule() {
             <StoreManagement lang={lang} />
           )}
 
-          {/* R-COMPANION-DESKTOP-SETTINGS-WIRING-V1 — Companion transport
-              controls. Houses the bridge enable toggle, bridge URL, and
-              a status indicator. Companion Center's "Bridge transport
-              disabled — enable in Settings" hint links the user here. */}
-          {activeSection === 'companion' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-                {t('settings.companion.title')}
-              </h2>
-              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '-0.4rem', maxWidth: 560, lineHeight: 1.5 }}>
-                {t('settings.companion.desc')}
-              </p>
-
-              <div style={{
-                padding: '1rem 1.1rem',
-                background: 'rgba(99,102,241,0.06)',
-                border: '1px solid rgba(99,102,241,0.25)',
-                borderRadius: '0.75rem',
-              }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  📱 {t('settings.companion.bridge.title')}
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!(settings as unknown as { companionBridgeEnabled?: boolean }).companionBridgeEnabled}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setSettings({ companionBridgeEnabled: next } as Partial<typeof settings>);
-                      persistSettings({ companionBridgeEnabled: next } as Record<string, unknown>);
-                    }}
-                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
-                    {t('settings.companion.bridge.enabledLabel')}
-                  </span>
-                </label>
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
-                  {t('settings.companion.bridge.enabledHint')}
-                </p>
-
-                <div style={{ marginTop: '1rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.35rem' }}>
-                    {t('settings.companion.bridge.urlLabel')}
-                  </label>
-                  <input
-                    type="text"
-                    value={(settings as unknown as { companionBridgeUrl?: string }).companionBridgeUrl ?? ''}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setSettings({ companionBridgeUrl: next } as Partial<typeof settings>);
-                      persistSettings({ companionBridgeUrl: next } as Record<string, unknown>);
-                    }}
-                    placeholder="https://cellhub-companion-production.up.railway.app"
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(0,0,0,0.25)',
-                      border: '1px solid rgba(148,163,184,0.3)',
-                      borderRadius: '0.5rem',
-                      color: '#e2e8f0',
-                      fontSize: '0.85rem',
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                  <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.35rem', lineHeight: 1.45 }}>
-                    {t('settings.companion.bridge.urlHint')}
-                  </p>
-                </div>
-              </div>
-
-              {/* R-DESKTOP-LICENSE-V1-SCAFFOLD — read-only installation identity panel */}
-              {(() => {
-                const identity = getDesktopIdentity();
-                if (!identity) return null;
-                const deviceShort = identity.desktopDeviceId.slice(0, 8) + '…';
-                return (
-                  <div style={{
-                    padding: '0.9rem 1.1rem',
-                    background: 'rgba(15,23,42,0.5)',
-                    border: '1px solid rgba(148,163,184,0.18)',
-                    borderRadius: '0.75rem',
-                  }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {lang === 'es' ? 'Identidad de instalación' : 'Installation Identity'}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {[
-                        [lang === 'es' ? 'Tienda' : 'Store', identity.storeId],
-                        [lang === 'es' ? 'Dispositivo' : 'Device ID', deviceShort],
-                        [lang === 'es' ? 'Licencia' : 'License', lang === 'es' ? 'Sin restricción (dogfood)' : 'Not enforced yet'],
-                      ].map(([label, value]) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.8rem' }}>
-                          <span style={{ color: '#64748b', minWidth: 90 }}>{label}</span>
-                          <span style={{ color: '#cbd5e1', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Remote approval toggle — mirrors the one in Employees/Approvals */}
-              <div style={{
-                padding: '1rem 1.1rem',
-                background: 'rgba(99,102,241,0.06)',
-                border: '1px solid rgba(99,102,241,0.25)',
-                borderRadius: '0.75rem',
-              }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  🔐 {t('settings.approvals.remote.label')}
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', marginTop: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!settings.companionRemoteApprovalEnabled}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setSettings({ companionRemoteApprovalEnabled: next });
-                      persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
-                    }}
-                    style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
-                    {t('settings.approvals.remote.label')}
-                  </span>
-                </label>
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
-                  {t('settings.approvals.remote.desc')}
-                </p>
-                <p style={{
-                  fontSize: '0.7rem',
-                  color: '#fbbf24',
-                  marginTop: '0.35rem',
-                  lineHeight: 1.45,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.4rem',
-                }}>
-                  <span aria-hidden="true">⚠️</span>
-                  <span>{t('settings.approvals.remote.warning')}</span>
-                </p>
-              </div>
-
-              {/* Companion-Center cross-link */}
-              <div style={{
-                padding: '0.75rem 1rem',
-                background: 'rgba(148,163,184,0.06)',
-                border: '1px solid rgba(148,163,184,0.20)',
-                borderRadius: '0.5rem',
-                fontSize: '0.8rem',
-                color: '#94a3b8',
-                lineHeight: 1.5,
-              }}>
-                {t('settings.companion.openCenterHint')}
-              </div>
-            </div>
-          )}
-
           {activeSection === 'employees' && (
             <>
               {/* R-APPROVAL-PIN-V1 — global master switch for the approval-PIN feature.
@@ -1942,45 +1776,6 @@ export default function SettingsModule() {
                 <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
                   {t('settings.approvals.enabledHint')}
                 </p>
-
-                {/* R-COMPANION-REMOTE-APPROVAL-SETTINGS-V1 — live since Phase 2B.
-                    Managers can approve/deny from Companion app when enabled. */}
-                <div style={{
-                  marginTop: '0.75rem',
-                  paddingTop: '0.75rem',
-                  borderTop: '1px solid rgba(99,102,241,0.15)',
-                }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!settings.companionRemoteApprovalEnabled}
-                      onChange={(e) => {
-                        const next = e.target.checked;
-                        setSettings({ companionRemoteApprovalEnabled: next });
-                        persistSettings({ companionRemoteApprovalEnabled: next } as Record<string, unknown>);
-                      }}
-                      style={{ width: '16px', height: '16px', accentColor: '#818cf8', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>
-                      {t('settings.approvals.remote.label')}
-                    </span>
-                  </label>
-                  <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem', lineHeight: 1.5 }}>
-                    {t('settings.approvals.remote.desc')}
-                  </p>
-                  <p style={{
-                    fontSize: '0.7rem',
-                    color: '#fbbf24',
-                    marginTop: '0.35rem',
-                    lineHeight: 1.45,
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.4rem',
-                  }}>
-                    <span aria-hidden="true">⚠️</span>
-                    <span>{t('settings.approvals.remote.warning')}</span>
-                  </p>
-                </div>
               </div>
               <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
             </>

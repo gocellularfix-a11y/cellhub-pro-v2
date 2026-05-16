@@ -29,26 +29,19 @@ const EmployeesModule  = lazy(() => import('@/modules/employees/EmployeesModule'
 const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPanel'));
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
-// R-COMPANION-CENTER-V1: UI shell for the future mobile-companion app.
-const CompanionCenter = lazy(() => import('@/modules/companion/CompanionCenter'));
-// COMPANION-LITE: parallel simplified companion using REST polling. Isolated from CompanionCenter.
-const CompanionLitePage = lazy(() => import('@/modules/companionLite/CompanionLitePage'));
-// R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible runtime that owns the
-// bridge adapter lifecycle + live snapshot emit. Mounted at AppShell
-// level so the mobile keeps receiving updates regardless of which tab
-// the operator is on.
-const CompanionRuntimeMount = lazy(() => import('@/modules/companion/CompanionRuntimeMount'));
+// COMPANION: parallel simplified companion using REST polling.
+const CompanionPage = lazy(() => import('@/modules/companion/CompanionPage'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
 // R-OPERATOR-FLOATING-BUBBLE-V1: globally-mounted Intelligence shortcut.
 const FloatingOperatorBubble = lazy(() => import('@/components/operator/FloatingOperatorBubble'));
-// COMPANION-LITE: persistent badge anchored on top-right of the operator bubble.
-// Visible only when there's unattended Companion Lite activity; click navigates
-// to the right Companion Lite sub-tab and clears the count.
-const CompanionLiteBubbleBadge = lazy(() => import('@/components/companionLite/CompanionLiteBubbleBadge'));
-// COMPANION-LITE: background runtime that keeps polling even when the operator
-// is on a different sidebar tab. Without this, leaving Companion Lite silences
+// COMPANION: persistent badge anchored on top-right of the operator bubble.
+// Visible only when there's unattended Companion activity; click navigates
+// to the right Companion sub-tab and clears the count.
+const CompanionBubbleBadge = lazy(() => import('@/components/companion/CompanionBubbleBadge'));
+// COMPANION: background runtime that keeps polling even when the operator
+// is on a different sidebar tab. Without this, leaving Companion silences
 // all inbound notifications because the per-page polls unmount.
-const CompanionLiteRuntimeMount = lazy(() => import('@/components/companionLite/CompanionLiteRuntimeMount'));
+const CompanionRuntimeMount = lazy(() => import('@/components/companion/CompanionRuntimeMount'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -209,7 +202,7 @@ export default function AppShell() {
   }, [dispatch]);
 
   // Admin-only tabs — show lock screen if not in admin mode
-  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion', 'companionLite'];
+  const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
   // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (current
@@ -243,8 +236,7 @@ export default function AppShell() {
 
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
-          {activeTab === 'companion'      && (isAdminMode ? <CompanionCenter />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
-          {activeTab === 'companionLite'  && (isAdminMode ? <CompanionLitePage />       : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'companion'      && (isAdminMode ? <CompanionPage />           : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'settings'       && (isAdminMode ? <SettingsModule />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'reports'        && (!isAdminMode
             ? <AdminLockScreen onUnlock={requireAdmin} lang={lang} />
@@ -278,19 +270,12 @@ export default function AppShell() {
       <Suspense fallback={null}>
         <FloatingOperatorBubble />
       </Suspense>
-      {/* COMPANION-LITE: persistent badge on top of the bubble — click
-          routes to Companion Lite + Messages/Approvals sub-tab. */}
+      {/* COMPANION: persistent badge on top of the bubble — click
+          routes to Companion + Messages/Approvals sub-tab. */}
       <Suspense fallback={null}>
-        <CompanionLiteBubbleBadge />
+        <CompanionBubbleBadge />
       </Suspense>
-      {/* COMPANION-LITE: invisible — runs the background polling loop. */}
-      <Suspense fallback={null}>
-        <CompanionLiteRuntimeMount />
-      </Suspense>
-
-      {/* R-COMPANION-RUNTIME-GLOBAL-MOUNT-V1: invisible. Owns the
-          companion bridge adapter lifecycle + live store snapshot emit
-          so the mobile stays in sync regardless of which tab is open. */}
+      {/* COMPANION: invisible — runs the background polling loop. */}
       <Suspense fallback={null}>
         <CompanionRuntimeMount />
       </Suspense>

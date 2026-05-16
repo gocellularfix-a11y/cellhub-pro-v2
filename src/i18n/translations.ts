@@ -448,14 +448,14 @@ export const translations: TranslationDictionary = {
     pt: () => 'Enviar ao gerente para aprovação (desconto, preço, etc.)',
   },
   'inventory.approvalRequest.notPaired': {
-    en: () => 'Pair Companion Lite on your phone first to request approvals.',
-    es: () => 'Empareja Companion Lite en tu teléfono primero para pedir aprobaciones.',
-    pt: () => 'Pareie o Companion Lite no telefone primeiro para pedir aprovações.',
+    en: () => 'Pair Companion on your phone first to request approvals.',
+    es: () => 'Empareja Companion en tu teléfono primero para pedir aprobaciones.',
+    pt: () => 'Pareie o Companion no telefone primeiro para pedir aprovações.',
   },
   'inventory.approvalRequest.sent': {
-    en: () => 'Approval request sent — the manager will respond on Companion Lite.',
-    es: () => 'Solicitud enviada — el manager responderá en Companion Lite.',
-    pt: () => 'Solicitação enviada — o gerente responderá no Companion Lite.',
+    en: () => 'Approval request sent — the manager will respond on Companion.',
+    es: () => 'Solicitud enviada — el manager responderá en Companion.',
+    pt: () => 'Solicitação enviada — o gerente responderá no Companion.',
   },
   'chat.deadStock.action.bundle_item':    { en: 'Bundle with complementary products',       es: 'Agrupa con productos complementarios',        pt: 'Agrupar com produtos complementares' },
   'chat.deadStock.action.discount_item':  { en: 'Apply a clearance discount',               es: 'Aplica un descuento de liquidación',           pt: 'Aplicar desconto de liquidação' },
@@ -3615,9 +3615,6 @@ export const translations: TranslationDictionary = {
   'approval.error.selfBlocked':     { en: 'You cannot approve your own action. Ask another manager.', es: 'No puedes aprobar tu propia acción. Pide a otro gerente.', pt: 'Você não pode aprovar sua própria ação. Peça a outro gerente.' },
   'approval.toast.cancelled':       { en: 'Action cancelled — manager approval not provided.', es: 'Acción cancelada — no se obtuvo aprobación de gerente.', pt: 'Ação cancelada — aprovação do gerente não fornecida.' },
   'approval.toast.timeout':         { en: 'Approval timed out — try again.',                  es: 'Aprobación expiró — intenta de nuevo.',                 pt: 'Aprovação expirou — tente novamente.' },
-  // R-COMPANION-REMOTE-APPROVAL-UX-V1
-  'approval.error.remoteDenied':    { en: 'Manager denied this request.',                   es: 'El gerente rechazó esta solicitud.',                    pt: 'O gerente negou esta solicitação.' },
-  'approval.remote.approvedMsg':    { en: 'Approved remotely by manager',                  es: 'Aprobado remotamente por el gerente',                   pt: 'Aprovado remotamente pelo gerente' },
 
   // R-APPROVAL-PIN-V1 — Action labels (used by ApprovalPinModal subtitle)
   'approval.action.PRICE_OVERRIDE':       { en: 'Price override',          es: 'Cambio de precio',           pt: 'Alteração de preço' },
@@ -3788,7 +3785,6 @@ export const translations: TranslationDictionary = {
   'settings.nav.hardware':                 { en: 'Hardware',                    es: 'Hardware',                      pt: 'Hardware' },
   'settings.nav.whatsapp':                 { en: 'WhatsApp',                    es: 'WhatsApp',                      pt: 'WhatsApp' },
   'settings.nav.ai':                       { en: 'AI Assistant',                es: 'Asistente IA',                  pt: 'Assistente IA' },
-  'settings.nav.companion':                { en: 'Companion',                   es: 'Companion',                     pt: 'Companion' },
   'settings.nav.employees':               { en: 'Employees',                   es: 'Empleados',                     pt: 'Funcionários' },
   'settings.nav.backup':                   { en: 'Backup & Restore',            es: 'Respaldo y Restauración',       pt: 'Backup e Restauração' },
 
@@ -4859,248 +4855,8 @@ export const translations: TranslationDictionary = {
   'nav.appointments':    { en: 'Appointments',      es: 'Citas',                pt: 'Agendamentos' },
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
   'nav.companion':       { en: 'Companion',         es: 'Companion',            pt: 'Companion' },
-  'nav.companionLite':   { en: 'Companion Lite',    es: 'Companion Lite',       pt: 'Companion Lite' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
 
-  // R-COMPANION-CENTER-V1 — UI shell strings (no backend yet)
-  'companion.title':                 { en: 'Companion Center',          es: 'Centro Companion',          pt: 'Central Companion' },
-  'companion.subtitle':              { en: 'Connect CellHub Pro with the Companion mobile app.', es: 'Conecta CellHub Pro con la app móvil Companion.', pt: 'Conecte o CellHub Pro com o app móvel Companion.' },
-  'companion.statusBanner.notConnected':   { en: 'Not connected',         es: 'No conectado',            pt: 'Não conectado' },
-  'companion.statusBanner.pairing':        { en: 'Pairing pending',       es: 'Emparejamiento pendiente',pt: 'Emparelhamento pendente' },
-  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: replace misleading
-  // "Connected soon" / "Coming soon" with honest labels.
-  'companion.statusBanner.connected':      { en: 'Connected',             es: 'Conectado',               pt: 'Conectado' },
-  'companion.statusBanner.comingSoon':     { en: 'Not enabled',           es: 'No habilitado',           pt: 'Não habilitado' },
-
-  'companion.card.connect.title':      { en: 'Connect Companion App',     es: 'Conectar app Companion',  pt: 'Conectar app Companion' },
-  'companion.card.connect.body':       { en: 'Link this terminal to the mobile Companion so you can monitor and assist the store from anywhere.', es: 'Vincula esta terminal con el Companion móvil para monitorear y asistir la tienda desde cualquier lugar.', pt: 'Vincule este terminal ao Companion móvel para monitorar e assistir a loja de qualquer lugar.' },
-
-  'companion.card.pair.title':         { en: 'Pair Device via QR / PIN',  es: 'Emparejar Dispositivo (QR / PIN)', pt: 'Parear Dispositivo (QR / PIN)' },
-  'companion.card.pair.body':          { en: 'Scan a QR code from the mobile app, or enter a 6-digit pairing PIN.', es: 'Escanea un QR desde la app móvil, o ingresa un PIN de 6 dígitos.', pt: 'Escaneie um QR pelo app móvel ou insira um PIN de 6 dígitos.' },
-
-  'companion.card.approvals.title':    { en: 'Approval Requests',         es: 'Solicitudes de Aprobación',pt: 'Solicitações de Aprovação' },
-  'companion.card.approvals.body':     { en: 'Approve cashier-side actions (cancels, refunds, discounts) directly from your phone.', es: 'Aprueba acciones del cajero (cancelaciones, reembolsos, descuentos) desde el teléfono.', pt: 'Aprove ações do caixa (cancelamentos, reembolsos, descontos) direto do celular.' },
-  // R-COMPANION-APPROVAL-RUNTIME-V1 — runtime metric lines inside the card
-  'companion.card.approvals.pendingLine': {
-    en: (n: number) => `${n} pending request${n === 1 ? '' : 's'}`,
-    es: (n: number) => `${n} solicitud${n === 1 ? '' : 'es'} pendiente${n === 1 ? '' : 's'}`,
-    pt: (n: number) => `${n} solicitação${n === 1 ? '' : 'ões'} pendente${n === 1 ? '' : 's'}`,
-  },
-  'companion.card.approvals.latestApproved': { en: 'Latest: approved', es: 'Última: aprobada', pt: 'Última: aprovada' },
-  'companion.card.approvals.latestDenied':   { en: 'Latest: denied',   es: 'Última: denegada', pt: 'Última: negada' },
-
-  'companion.card.storeStatus.title':  { en: 'Store Status',              es: 'Estado de la Tienda',      pt: 'Status da Loja' },
-  'companion.card.storeStatus.body':   { en: 'See who is clocked in, live sales count and current cash drawer at a glance.', es: 'Ve quién está clockeado, ventas en vivo y caja actual de un vistazo.', pt: 'Veja quem está registrado, vendas ao vivo e caixa atual em um relance.' },
-  // R-COMPANION-STORE-STATUS-RUNTIME-V1 — runtime metric lines inside the card
-  'companion.card.storeStatus.statusOpen':    { en: 'Open',    es: 'Abierta',     pt: 'Aberta' },
-  'companion.card.storeStatus.statusClosed':  { en: 'Closed',  es: 'Cerrada',     pt: 'Fechada' },
-  'companion.card.storeStatus.statusUnknown': { en: 'Unknown', es: 'Desconocido', pt: 'Desconhecido' },
-  'companion.card.storeStatus.shiftLine': {
-    en: (n: number) => `${n} cashier${n === 1 ? '' : 's'} on shift`,
-    es: (n: number) => `${n} cajero${n === 1 ? '' : 's'} en turno`,
-    pt: (n: number) => `${n} caixa${n === 1 ? '' : 's'} em turno`,
-  },
-  'companion.card.storeStatus.ringingLine': {
-    en: (n: number) => `${n} POS ringing`,
-    es: (n: number) => `${n} POS activa${n === 1 ? '' : 's'}`,
-    pt: (n: number) => `${n} POS ativa${n === 1 ? '' : 's'}`,
-  },
-  'companion.card.storeStatus.alert.warning':  { en: 'Warning',  es: 'Advertencia', pt: 'Aviso' },
-  'companion.card.storeStatus.alert.critical': { en: 'Critical', es: 'Crítico',     pt: 'Crítico' },
-  'companion.card.storeStatus.latestEvent':    { en: 'Latest event', es: 'Último evento', pt: 'Último evento' },
-
-  // R-COMPANION-APPROVAL-HISTORY-TIMELINE-V1
-  'companion.approvals.title':                 { en: 'Approval Timeline',         es: 'Historial de Aprobaciones',     pt: 'Histórico de Aprovações' },
-  'companion.approvals.empty':                 { en: 'No approval activity this session.', es: 'Sin actividad de aprobaciones esta sesión.', pt: 'Nenhuma aprovação nesta sessão.' },
-  'companion.approvals.status.pending':        { en: 'Pending',    es: 'Pendiente',  pt: 'Pendente' },
-  'companion.approvals.status.approved':       { en: 'Approved',   es: 'Aprobado',   pt: 'Aprovado' },
-  'companion.approvals.status.denied':         { en: 'Denied',     es: 'Denegado',   pt: 'Negado' },
-  'companion.approvals.status.cancelled':      { en: 'Cancelled',  es: 'Cancelado',  pt: 'Cancelado' },
-  'companion.approvals.status.expired':        { en: 'Expired',    es: 'Expirado',   pt: 'Expirado' },
-  'companion.approvals.by':                    { en: 'by',         es: 'por',        pt: 'por' },
-  'companion.approvals.adminPin':              { en: 'Admin PIN',  es: 'PIN Admin',  pt: 'PIN Admin' },
-  'companion.approvals.action.CANCEL_LAYAWAY':       { en: 'Layaway cancel',       es: 'Cancelar apartado',         pt: 'Cancelar layaway' },
-  'companion.approvals.action.CANCEL_REPAIR':        { en: 'Repair cancel',        es: 'Cancelar reparación',       pt: 'Cancelar reparo' },
-  'companion.approvals.action.CANCEL_UNLOCK':        { en: 'Unlock cancel',        es: 'Cancelar desbloqueo',       pt: 'Cancelar desbloqueio' },
-  'companion.approvals.action.CANCEL_SPECIAL_ORDER': { en: 'Special order cancel', es: 'Cancelar orden especial',   pt: 'Cancelar pedido especial' },
-  'companion.approvals.action.PRICE_OVERRIDE':       { en: 'Price override',       es: 'Modificar precio',          pt: 'Ajuste de preço' },
-  'companion.approvals.action.DISCOUNT_OVERRIDE':    { en: 'Discount',             es: 'Descuento',                 pt: 'Desconto' },
-  'companion.approvals.action.REFUND':               { en: 'Refund',               es: 'Reembolso',                 pt: 'Reembolso' },
-  'companion.approvals.action.fallback':             { en: 'Approval',             es: 'Aprobación',                pt: 'Aprovação' },
-
-  'companion.card.messaging.title':    { en: 'Messaging',                 es: 'Mensajería',               pt: 'Mensageria' },
-  'companion.card.messaging.body':     { en: 'Send quick messages and notes to employees on shift.', es: 'Envía mensajes rápidos y notas a los empleados de turno.', pt: 'Envie mensagens rápidas e notas aos funcionários em turno.' },
-  // R-COMPANION-MESSAGING-RUNTIME-V1 — runtime metric lines inside the card
-  'companion.card.messaging.unreadLine': {
-    en: (n: number) => `${n} unread message${n === 1 ? '' : 's'}`,
-    es: (n: number) => `${n} mensaje${n === 1 ? '' : 's'} sin leer`,
-    pt: (n: number) => `${n} mensage${n === 1 ? 'm' : 'ns'} não lida${n === 1 ? '' : 's'}`,
-  },
-  'companion.card.messaging.latestSent':     { en: 'Latest: sent',     es: 'Último: enviado',  pt: 'Último: enviado' },
-  'companion.card.messaging.latestReceived': { en: 'Latest: received', es: 'Último: recibido', pt: 'Último: recebido' },
-  'companion.card.messaging.threadsLine': {
-    en: (n: number) => `${n} active thread${n === 1 ? '' : 's'}`,
-    es: (n: number) => `${n} conversación${n === 1 ? '' : 'es'} activa${n === 1 ? '' : 's'}`,
-    pt: (n: number) => `${n} conversa${n === 1 ? '' : 's'} ativa${n === 1 ? '' : 's'}`,
-  },
-
-  // R-COMPANION-NOTIFICATION-INFRA-V1
-  'companion.notifications.title':       { en: 'Notification Center',      es: 'Centro de Notificaciones',    pt: 'Central de Notificações' },
-  'companion.notifications.empty':       { en: 'No notifications.',         es: 'Sin notificaciones.',         pt: 'Sem notificações.' },
-  'companion.notifications.markAllRead': { en: 'Mark all read',             es: 'Marcar todo como leído',      pt: 'Marcar tudo como lido' },
-  'companion.notifications.clearRead':   { en: 'Clear read',                es: 'Limpiar leídos',              pt: 'Limpar lidos' },
-  'companion.notifications.ack':         { en: 'Read',                      es: 'Leído',                       pt: 'Lido' },
-  'companion.notifications.priority.info':       { en: 'Info',        es: 'Info',       pt: 'Info' },
-  'companion.notifications.priority.warning':    { en: 'Warning',     es: 'Alerta',     pt: 'Atenção' },
-  'companion.notifications.priority.critical':   { en: 'Critical',    es: 'Crítico',    pt: 'Crítico' },
-  'companion.notifications.priority.opportunity':{ en: 'Opportunity', es: 'Oportunidad',pt: 'Oportunidade' },
-  'companion.notifications.type.approval':     { en: 'Approval',      es: 'Aprobación', pt: 'Aprovação' },
-  'companion.notifications.type.message':      { en: 'Message',       es: 'Mensaje',    pt: 'Mensagem' },
-  'companion.notifications.type.intelligence': { en: 'Intelligence',  es: 'Inteligencia',pt: 'Inteligência' },
-  'companion.notifications.type.store_status': { en: 'Store',         es: 'Tienda',     pt: 'Loja' },
-  'companion.notifications.type.repair':       { en: 'Repair',        es: 'Reparación', pt: 'Reparo' },
-  'companion.notifications.type.inventory':    { en: 'Inventory',     es: 'Inventario', pt: 'Inventário' },
-  'companion.notifications.type.operations':   { en: 'Operations',    es: 'Operaciones',pt: 'Operações' },
-  'companion.notifications.unreadBadge': {
-    en: (n: number) => `${n} new`,
-    es: (n: number) => `${n} nueva${n === 1 ? '' : 's'}`,
-    pt: (n: number) => `${n} nova${n === 1 ? '' : 's'}`,
-  },
-
-  // R-COMPANION-INTELLIGENCE-ACTIONS-LIVE-V1
-  'companion.intelligence.title':              { en: 'Intelligence Actions',              es: 'Acciones de Inteligencia',       pt: 'Ações de Inteligência' },
-  'companion.intelligence.empty':              { en: 'No active intelligence alerts.',    es: 'Sin alertas de inteligencia activas.', pt: 'Sem alertas de inteligência ativos.' },
-  'companion.intelligence.ack':                { en: 'Ack',                               es: 'OK',                             pt: 'OK' },
-  'companion.intelligence.createMsg':          { en: 'Create message',                    es: 'Crear mensaje',                  pt: 'Criar mensagem' },
-  'companion.intelligence.priority.info':      { en: 'Info',                              es: 'Info',                           pt: 'Info' },
-  'companion.intelligence.priority.warning':   { en: 'Warning',                           es: 'Alerta',                         pt: 'Atenção' },
-  'companion.intelligence.priority.critical':  { en: 'Critical',                          es: 'Crítico',                        pt: 'Crítico' },
-  'companion.intelligence.priority.opportunity':{ en: 'Opportunity',                      es: 'Oportunidad',                    pt: 'Oportunidade' },
-  'companion.intelligence.acknowledged':       { en: 'Acknowledged',                      es: 'Reconocido',                     pt: 'Reconhecido' },
-
-  // R-COMPANION-MESSAGING-LIVE-V1: operational messaging panel
-  'companion.messaging.panelTitle':      { en: 'Operations Dispatch', es: 'Despacho de Operaciones', pt: 'Despacho Operacional' },
-  'companion.messaging.unreadBadge': {
-    en: (n: number) => `${n} unread`,
-    es: (n: number) => `${n} sin leer`,
-    pt: (n: number) => `${n} não lida${n === 1 ? '' : 's'}`,
-  },
-  'companion.messaging.empty':           { en: 'No messages this session.', es: 'Sin mensajes esta sesión.', pt: 'Sem mensagens nesta sessão.' },
-  'companion.messaging.placeholder':     { en: 'Type an operational message…', es: 'Escribe un mensaje operacional…', pt: 'Digite uma mensagem operacional…' },
-  'companion.messaging.placeholderOff':  { en: 'Connect bridge to send', es: 'Conecta el bridge para enviar', pt: 'Conecte o bridge para enviar' },
-  'companion.messaging.send':            { en: 'Send', es: 'Enviar', pt: 'Enviar' },
-  'companion.messaging.ack':             { en: 'Ack', es: 'OK', pt: 'OK' },
-  'companion.messaging.you':             { en: 'You', es: 'Tú', pt: 'Você' },
-  'companion.messaging.manager':         { en: 'Manager', es: 'Gerente', pt: 'Gerente' },
-  'companion.messaging.categoryLabel':   { en: 'Category', es: 'Categoría', pt: 'Categoria' },
-  'companion.messaging.cat.approval':    { en: 'Approval', es: 'Aprobación', pt: 'Aprovação' },
-  'companion.messaging.cat.repair':      { en: 'Repair', es: 'Reparación', pt: 'Reparação' },
-  'companion.messaging.cat.customer':    { en: 'Customer', es: 'Cliente', pt: 'Cliente' },
-  'companion.messaging.cat.inventory':   { en: 'Inventory', es: 'Inventario', pt: 'Inventário' },
-  'companion.messaging.cat.operations':  { en: 'Operations', es: 'Operaciones', pt: 'Operações' },
-  'companion.messaging.cat.intelligence':{ en: 'Intelligence', es: 'Inteligencia', pt: 'Inteligência' },
-
-  'companion.card.health.title':       { en: 'Connection Health',         es: 'Estado de Conexión',       pt: 'Saúde da Conexão' },
-  'companion.card.health.body':        { en: 'Latency, last sync time and offline-queue indicator for the paired device.', es: 'Latencia, última sincronización e indicador de cola offline del dispositivo emparejado.', pt: 'Latência, última sincronização e indicador de fila offline do dispositivo pareado.' },
-
-  // R-COMPANION-PAIRING-MOCK-V1
-  'companion.card.pair.startButton': { en: 'Start Pairing',          es: 'Iniciar Emparejamiento',  pt: 'Iniciar Pareamento' },
-  'companion.card.pair.repairButton':{ en: 'Pair another device',    es: 'Emparejar otro',          pt: 'Parear outro' },
-  'companion.pair.modalTitle':       { en: 'Connect Your Phone',     es: 'Conectar tu teléfono',           pt: 'Conectar seu telefone' },
-  'companion.pair.qrCaption':        { en: 'Scan with the Companion app', es: 'Escanea con la app Companion', pt: 'Escaneie com o app Companion' },
-  'companion.pair.expiresIn':        { en: 'Expires in',              es: 'Expira en',                pt: 'Expira em' },
-  'companion.pair.pinLabel':         { en: 'Or enter this 6-digit code', es: 'O ingresa este código de 6 dígitos', pt: 'Ou insira este código de 6 dígitos' },
-  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: honest QR-scan instruction.
-  'companion.pair.instructions':     { en: 'Open CellHub Companion on your phone and scan this QR code.', es: 'Abre CellHub Companion en tu teléfono y escanea este código QR.', pt: 'Abra o CellHub Companion no celular e escaneie este QR code.' },
-  // Real pairing-status labels surfaced inside the modal.
-  'companion.pair.status.waiting':           { en: 'Waiting for phone',           es: 'Esperando teléfono',          pt: 'Aguardando telefone' },
-  'companion.pair.status.received':          { en: 'Pairing request received',    es: 'Solicitud de emparejamiento recibida', pt: 'Solicitação de pareamento recebida' },
-  'companion.pair.status.connected':         { en: 'Connected',                   es: 'Conectado',                   pt: 'Conectado' },
-  'companion.pair.status.expired':           { en: 'Pairing code expired',        es: 'Código de emparejamiento expirado', pt: 'Código de pareamento expirado' },
-  'companion.pair.status.bridgeUnavailable': { en: 'Bridge unavailable — check Settings', es: 'Bridge no disponible — revisa Ajustes', pt: 'Bridge indisponível — verifique as Configurações' },
-  'companion.pair.status.offerFailed':       { en: 'Bridge rejected the pairing offer', es: 'El bridge rechazó la oferta de emparejamiento', pt: 'O bridge rejeitou a oferta de pareamento' },
-  'companion.pair.bridge.offerFailedHint':   { en: 'The bridge server returned an error. Close this modal, verify Bridge URL and Settings, and try again.', es: 'El servidor del bridge devolvió un error. Cierra este modal, verifica la URL del Bridge y los Ajustes, e inténtalo de nuevo.', pt: 'O servidor do bridge retornou um erro. Feche este modal, verifique a URL do Bridge e as Configurações, e tente novamente.' },
-  'companion.pair.phase.waiting':    { en: 'Waiting for device…',    es: 'Esperando dispositivo…',  pt: 'Aguardando dispositivo…' },
-  'companion.pair.phase.pending':    { en: 'Pairing pending…',       es: 'Emparejamiento pendiente…', pt: 'Pareamento pendente…' },
-  'companion.pair.phase.connected':  { en: 'Connected!',             es: '¡Conectado!',             pt: 'Conectado!' },
-  'companion.pair.cancel':           { en: 'Cancel',                 es: 'Cancelar',                pt: 'Cancelar' },
-  'companion.pair.mockConnect':      { en: 'Mock connect (dev)',     es: 'Conectar mock (dev)',     pt: 'Conectar mock (dev)' },
-
-  'companion.device.sectionTitle':   { en: 'Paired device',          es: 'Dispositivo emparejado',  pt: 'Dispositivo pareado' },
-  'companion.device.platform.iphone':{ en: 'iPhone',                 es: 'iPhone',                  pt: 'iPhone' },
-  'companion.device.platform.ios':   { en: 'iPhone',                 es: 'iPhone',                  pt: 'iPhone' },
-  'companion.device.platform.android':{ en: 'Android',               es: 'Android',                 pt: 'Android' },
-  'companion.device.platform.web':   { en: 'Web',                    es: 'Web',                     pt: 'Web' },
-  'companion.device.platform.unknown':{ en: 'Device',                es: 'Dispositivo',             pt: 'Dispositivo' },
-  'companion.device.lastConnected':  { en: 'Last connected',         es: 'Última conexión',         pt: 'Última conexão' },
-  'companion.device.justNow':        { en: 'just now',               es: 'hace un momento',         pt: 'agora mesmo' },
-  // R-COMPANION-DESKTOP-PAIRING-FINAL-POLISH-V1: paired-device card labels.
-  'companion.device.lastSeen':       { en: 'Last seen',              es: 'Visto por última vez',    pt: 'Visto por último' },
-  'companion.device.seconds':        { en: 's ago',                  es: 's atrás',                 pt: 's atrás' },
-  'companion.device.minutes':        { en: 'm ago',                  es: 'min atrás',               pt: 'min atrás' },
-  'companion.device.hours':          { en: 'h ago',                  es: 'h atrás',                 pt: 'h atrás' },
-  'companion.device.status.connected':    { en: 'Connected',         es: 'Conectado',               pt: 'Conectado' },
-  'companion.device.status.disconnected': { en: 'Disconnected',      es: 'Desconectado',            pt: 'Desconectado' },
-  'companion.device.health.good':    { en: 'Healthy',                es: 'Saludable',               pt: 'Saudável' },
-  'companion.device.disconnect':     { en: 'Disconnect',             es: 'Desconectar',             pt: 'Desconectar' },
-
-  // R-COMPANION-EVENT-LAYER-V1 — dev debug panel
-  'companion.debug.title':           { en: 'Connection Info',         es: 'Info de conexión',         pt: 'Info de conexão' },
-  // R-COMPANION-CENTER-UX-REDESIGN — top-level collapsible diagnostics
-  'companion.diagnostics.title':     { en: 'Connection Details',      es: 'Detalles de conexión',     pt: 'Detalhes de conexão' },
-  'companion.debug.connected':       { en: 'Store link',              es: 'Enlace de tienda',         pt: 'Link da loja' },
-  'companion.debug.lastEvent':       { en: 'Last signal',             es: 'Última señal',             pt: 'Último sinal' },
-  'companion.debug.queueSize':       { en: 'Queued',                  es: 'En cola',                  pt: 'Na fila' },
-  'companion.debug.toggleConnection':{ en: 'Reconnect',               es: 'Reconectar',               pt: 'Reconectar' },
-  'companion.debug.simulateEvent':   { en: 'Test signal',             es: 'Señal de prueba',          pt: 'Sinal de teste' },
-  'companion.debug.mockPair':        { en: 'Simulate Device',         es: 'Simular dispositivo',      pt: 'Simular dispositivo' },
-  'companion.debug.mockPairHint':    { en: 'Bypasses the real bridge claim flow. For UI development only — does NOT pair a real phone.', es: 'Salta el flujo real de emparejamiento del bridge. Solo para desarrollo de UI — NO empareja un teléfono real.', pt: 'Pula o fluxo real de pareamento do bridge. Apenas para desenvolvimento de UI — NÃO pareia um telefone real.' },
-  'companion.debug.noEvents':        { en: 'no events yet',           es: 'sin eventos aún',          pt: 'sem eventos ainda' },
-  'companion.debug.yes':             { en: 'yes',                     es: 'sí',                       pt: 'sim' },
-  'companion.debug.no':              { en: 'no',                      es: 'no',                       pt: 'não' },
-
-  // R-COMPANION-RUNTIME-TEST-PANEL-V1
-  'companion.inbox.title':           { en: 'Pending Actions',         es: 'Acciones pendientes',       pt: 'Ações pendentes' },
-  'companion.inbox.pending':         { en: 'Pending',                 es: 'Pendientes',                pt: 'Pendentes' },
-  'companion.inbox.handled':         { en: 'Handled',                 es: 'Procesadas',                pt: 'Processadas' },
-  'companion.inbox.submitApprove':   { en: '+ Approve',               es: '+ Aprobar',                 pt: '+ Aprovar' },
-  'companion.inbox.submitDeny':      { en: '+ Deny',                  es: '+ Denegar',                 pt: '+ Negar' },
-  'companion.inbox.submitMessage':   { en: '+ Message',               es: '+ Mensaje',                 pt: '+ Mensagem' },
-  'companion.inbox.submitAck':       { en: '+ Acknowledge',           es: '+ Reconocer',               pt: '+ Reconhecer' },
-  'companion.inbox.processPending':  { en: 'Process All',             es: 'Procesar todo',             pt: 'Processar tudo' },
-  'companion.inbox.clearHandled':    { en: 'Clear Done',              es: 'Limpiar hechas',            pt: 'Limpar feitas' },
-
-  // R-COMPANION-BRIDGE-SETTINGS-V1 — Settings → Companion section copy
-  'settings.companion.title':              { en: 'Companion',                                                                es: 'Companion',                                                                pt: 'Companion' },
-  'settings.companion.desc':               { en: 'Configure the Companion mobile bridge.',                                   es: 'Configura el puente móvil de Companion.',                                   pt: 'Configure a ponte móvel do Companion.' },
-  'settings.companion.bridge.title':       { en: 'Mobile Connection',                                                        es: 'Conexión móvil',                                                            pt: 'Conexão móvel' },
-  'settings.companion.bridge.enabledLabel':{ en: 'Enable Companion mobile connection',                                       es: 'Habilitar conexión móvil Companion',                                        pt: 'Ativar conexão móvel do Companion' },
-  'settings.companion.bridge.enabledHint': { en: 'When enabled, this terminal connects to the Companion bridge so approvals, messaging, and store status flow to/from the mobile app.', es: 'Cuando está habilitado, esta terminal se conecta al bridge de Companion para enviar y recibir aprobaciones, mensajería y estado de la tienda con la app móvil.', pt: 'Quando ativado, este terminal se conecta ao bridge do Companion para sincronizar aprovações, mensagens e status da loja com o app móvel.' },
-  'settings.companion.bridge.urlLabel':    { en: 'Bridge URL (optional override)',                                           es: 'URL del Bridge (anulación opcional)',                                       pt: 'URL do Bridge (substituição opcional)' },
-  'settings.companion.bridge.urlHint':     { en: 'Leave blank to use the default bridge URL. Override only if pointing to a custom bridge server.', es: 'Déjalo vacío para usar la URL por defecto. Solo anula si apuntas a un servidor de bridge personalizado.', pt: 'Deixe em branco para usar a URL padrão. Substitua apenas se estiver apontando para um servidor de bridge personalizado.' },
-  'settings.companion.openCenterHint':     { en: 'Pairing, device status, and connection diagnostics live in Companion Center.', es: 'El emparejamiento, el estado del dispositivo y los diagnósticos de conexión están en Centro Companion.', pt: 'O pareamento, status do dispositivo e diagnósticos de conexão ficam em Central Companion.' },
-
-  // R-COMPANION-BRIDGE-WIRE-V1 — outbound bridge transport copy
-  'companion.bridge.disabled':       { en: 'Mobile connection disabled — enable in Settings', es: 'Conexión móvil deshabilitada — habilítala en Ajustes', pt: 'Conexão móvel desativada — ative em Configurações' },
-  'companion.bridge.connecting':     { en: 'Connecting to Companion bridge…',                 es: 'Conectando al bridge Companion…',                              pt: 'Conectando ao bridge Companion…' },
-  'companion.bridge.connected':      { en: 'Companion bridge live',                            es: 'Bridge Companion en línea',                                    pt: 'Bridge Companion ativo' },
-  'companion.bridge.rejected':       { en: 'Bridge rejected this device — check auth',         es: 'El bridge rechazó este dispositivo — revisa la autenticación', pt: 'Bridge rejeitou este dispositivo — verifique a autenticação' },
-
-  // R-COMPANION-REMOTE-APPROVAL-AUTHORITY-V1 — Settings toggle copy.
-  // Plumbing only; setting is read by future Phase 2 wiring.
-  'settings.approvals.remote.label':       { en: 'Allow remote approvals from Companion',                                              es: 'Permitir aprobaciones remotas desde Companion',                                                     pt: 'Permitir aprovações remotas pelo Companion' },
-  'settings.approvals.remote.desc':        { en: 'Managers can approve or deny protected actions from the Companion app.',          es: 'Los gerentes pueden aprobar o rechazar acciones protegidas desde la app Companion.',                  pt: 'Os gerentes podem aprovar ou negar ações protegidas pelo app Companion.' },
-  'settings.approvals.remote.warning':     { en: 'Local PIN remains available. Only enable this for trusted paired devices.',       es: 'El PIN local sigue disponible. Actívalo solo para dispositivos emparejados de confianza.',            pt: 'O PIN local continua disponível. Ative apenas para dispositivos pareados de confiança.' },
-
-  // R-COMPANION-BRIDGE-STATUS-BADGE-V1 — short pill labels per adapter state
-  'companion.bridge.status.label':         { en: 'Bridge',         es: 'Bridge',         pt: 'Bridge' },
-  'companion.bridge.status.disabled':      { en: 'Disabled',       es: 'Deshabilitado',  pt: 'Desativado' },
-  'companion.bridge.status.idle':          { en: 'Offline',             es: 'Desconectado',       pt: 'Offline' },
-  'companion.bridge.status.connecting':    { en: 'Connecting…',         es: 'Conectando…',        pt: 'Conectando…' },
-  'companion.bridge.status.connected':     { en: 'Connected',           es: 'Conectado',          pt: 'Conectado' },
-  'companion.bridge.status.reconnecting':  { en: 'Reconnecting…',       es: 'Reconectando…',      pt: 'Reconectando…' },
-  'companion.bridge.status.disconnected':  { en: 'Offline',             es: 'Desconectado',       pt: 'Offline' },
-  'companion.bridge.status.rejected':      { en: 'Connection Failed',   es: 'Error de conexión',  pt: 'Falha de conexão' },
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
@@ -5321,7 +5077,7 @@ export const translations: TranslationDictionary = {
     es: () => `Cita agendada.`,
     pt: () => `Agendamento criado.`,
   },
-  // Companion Lite — ephemeral bubble hints.
+  // Companion — ephemeral bubble hints.
   'operator.hint.companionApprovalAccepted': {
     en: (item: string) => item ? `Manager approved: ${item}` : `Manager approved an approval.`,
     es: (item: string) => item ? `Manager aprobó: ${item}` : `Manager aprobó la solicitud.`,
@@ -5332,7 +5088,7 @@ export const translations: TranslationDictionary = {
     es: (item: string) => item ? `Manager denegó: ${item}` : `Manager denegó la solicitud.`,
     pt: (item: string) => item ? `Manager negou: ${item}` : `Manager negou a solicitação.`,
   },
-  'operator.hint.companionLiteMessage': {
+  'operator.hint.companionMessage': {
     en: (sender: string) => `New message from ${sender}`,
     es: (sender: string) => `Nuevo mensaje de ${sender}`,
     pt: (sender: string) => `Nova mensagem de ${sender}`,

@@ -21,16 +21,15 @@ const MODULE_PALETTE: Record<string, { bg: string; border: string; label: string
   intelligence:   { bg: 'linear-gradient(145deg, #081830, #04101e)', border: '#0a2a50', label: '#38bdf8' },
   reports:        { bg: 'linear-gradient(145deg, #301408, #1e0c04)', border: '#603010', label: '#fb923c' },
   purchaseOrders: { bg: 'linear-gradient(145deg, #0e2050, #081530)', border: '#1a3880', label: '#60a5fa' },
-  companion:      { bg: 'linear-gradient(145deg, #141c28, #0c1218)', border: '#202c3e', label: '#94a3b8' },
-  companionLite:  { bg: 'linear-gradient(145deg, #082030, #04101c)', border: '#0a3050', label: '#38bdf8' },
+  companion:      { bg: 'linear-gradient(145deg, #082030, #04101c)', border: '#0a3050', label: '#38bdf8' },
   employees:      { bg: 'linear-gradient(145deg, #2a0a18, #180610)', border: '#501030', label: '#fb7185' },
   settings:       { bg: 'linear-gradient(145deg, #2a0a0a, #180606)', border: '#501010', label: '#f87171' },
 };
 const MODULE_PALETTE_FALLBACK = { bg: 'linear-gradient(145deg, #141c28, #0c1218)', border: '#202c3e', label: '#94a3b8' };
 
 // R-SIDEBAR-QUICKACTIONS-STYLE: hover styles live in a single injected
-// stylesheet (same idempotent pattern as FloatingOperatorBubble +
-// CompanionCenter). Inline style stays the source of truth for the
+// stylesheet (same idempotent pattern as FloatingOperatorBubble).
+// Inline style stays the source of truth for the
 // per-module gradient + active outline; CSS only owns hover.
 const SIDEBAR_STYLE_ID = 'cellhub-sidebar-module-styles';
 function ensureSidebarModuleStyles(): void {

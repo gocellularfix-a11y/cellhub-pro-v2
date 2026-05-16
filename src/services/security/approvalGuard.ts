@@ -22,13 +22,6 @@ import {
 } from './permissions';
 import { verifyAdminPin, verifyApprovalPin } from './pin';
 import { appendApprovalEvent } from '@/services/approvalLog';
-// R-COMPANION-APPROVAL-EMITTERS-V1 — desktop-side companion events.
-// Cero networking; the emitter writes to the in-memory bus only.
-import {
-  emitApprovalApproved,
-  emitApprovalCreated,
-  emitApprovalDenied,
-} from '@/services/companion/emitters/approvalEmitter';
 import { generateId } from '@/utils/dates';
 
 // ── Public types ──────────────────────────────────────────
@@ -122,19 +115,7 @@ export async function requestApproval(
     return { approved: true, approvedByEmployeeId: '', reason: 'not_required' };
   }
 
-  // R-COMPANION-APPROVAL-EMITTERS-V1: stable id reused across every
-  // Companion event for THIS guard invocation. Different invocations
-  // (e.g. the hook's invalid-PIN retry loop) get distinct ids — by
-  // design, since each attempt is a separate request from the system's
-  // perspective.
   const approvalId = generateId();
-  emitApprovalCreated({
-    approvalId,
-    actionType: request.actionType,
-    requestedByEmployeeId: request.requestedByEmployeeId,
-    affectedAmount: request.affectedAmount,
-    reason: request.reason,
-  });
 
   const response = await prompter(request, approvalId);
 
@@ -152,12 +133,6 @@ export async function requestApproval(
       status: 'approved',
       entityId: request.entityId,
     });
-    emitApprovalApproved({
-      approvalId,
-      actionType: request.actionType,
-      requestedByEmployeeId: request.requestedByEmployeeId,
-      approvedByEmployeeId: managerId,
-    });
     return { approved: true, approvedByEmployeeId: managerId };
   }
 
@@ -173,12 +148,6 @@ export async function requestApproval(
       category: categoryFor(request.actionType),
       status: 'denied',
       entityId: request.entityId,
-    });
-    emitApprovalDenied({
-      approvalId,
-      actionType: request.actionType,
-      requestedByEmployeeId: request.requestedByEmployeeId,
-      reason,
     });
     return { approved: false, approvedByEmployeeId: '', reason };
   }
@@ -202,12 +171,6 @@ export async function requestApproval(
         status: 'denied',
         entityId: request.entityId,
       });
-      emitApprovalDenied({
-        approvalId,
-        actionType: request.actionType,
-        requestedByEmployeeId: request.requestedByEmployeeId,
-        reason: 'self_approval_blocked',
-      });
       return { approved: false, approvedByEmployeeId: '', reason: 'self_approval_blocked' };
     }
     logger({
@@ -217,12 +180,6 @@ export async function requestApproval(
       category: categoryFor(request.actionType),
       status: 'approved',
       entityId: request.entityId,
-    });
-    emitApprovalApproved({
-      approvalId,
-      actionType: request.actionType,
-      requestedByEmployeeId: request.requestedByEmployeeId,
-      approvedByEmployeeId: matchedEmpId,
     });
     return { approved: true, approvedByEmployeeId: matchedEmpId };
   }
@@ -237,12 +194,6 @@ export async function requestApproval(
       status: 'approved',
       entityId: request.entityId,
     });
-    emitApprovalApproved({
-      approvalId,
-      actionType: request.actionType,
-      requestedByEmployeeId: request.requestedByEmployeeId,
-      approvedByEmployeeId: ADMIN_APPROVER_ID,
-    });
     return { approved: true, approvedByEmployeeId: ADMIN_APPROVER_ID };
   }
 
@@ -254,12 +205,6 @@ export async function requestApproval(
     category: categoryFor(request.actionType),
     status: 'denied',
     entityId: request.entityId,
-  });
-  emitApprovalDenied({
-    approvalId,
-    actionType: request.actionType,
-    requestedByEmployeeId: request.requestedByEmployeeId,
-    reason: 'invalid_pin',
   });
   return { approved: false, approvedByEmployeeId: '', reason: 'invalid_pin' };
 }
