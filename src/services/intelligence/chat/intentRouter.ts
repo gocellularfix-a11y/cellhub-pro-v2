@@ -75,6 +75,8 @@ export type IntentId =
   | 'execution_queue'
   // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: pre-shift operational briefing
   | 'morning_digest'
+  // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: cross-system operational condition inference
+  | 'operational_reasoning'
   // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
@@ -845,6 +847,34 @@ const MORNING_DIGEST_KEYWORDS = [
   'resumo diário', 'o que focar hoje', 'resumo da manhã',
 ];
 
+// R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: what is really happening across the business?
+// Anchored on "what's really going on" / "operational situation" phrases to avoid
+// collision with single-domain intents (proactive_operations, trend_direction).
+const OPERATIONAL_REASONING_KEYWORDS = [
+  // EN
+  'what is really going on', "what's really going on", 'what is happening in the store',
+  'operational situation', 'cross-system analysis', 'cross system analysis',
+  'what is the store condition', 'current business condition', 'business situation',
+  'why is this happening', 'what is causing this', 'root operational issue',
+  'what is wrong with the store', "what's wrong with the store", 'store diagnosis',
+  'big picture', 'overall situation', 'overall business health', 'store intelligence',
+  'what does the data say', 'what are the signals', 'correlate signals',
+  'systemic issue', 'what pattern', 'what patterns do you see',
+  // ES
+  'qué está pasando realmente', 'que esta pasando realmente',
+  'qué está pasando en la tienda', 'que esta pasando en la tienda',
+  'situación operativa', 'situacion operativa',
+  'cuál es el problema real', 'cual es el problema real',
+  'qué señales hay', 'que señales hay', 'análisis cruzado', 'analisis cruzado',
+  'diagnóstico de la tienda', 'diagnostico de la tienda',
+  'qué está fallando', 'que esta fallando', 'panorama general',
+  'qué dicen los datos', 'que dicen los datos',
+  // PT
+  'o que está realmente acontecendo', 'situação operacional', 'situacao operacional',
+  'qual é o problema real', 'diagnóstico da loja', 'diagnostico da loja',
+  'que padrões você vê', 'visão geral', 'o que os dados dizem',
+];
+
 // R-INTELLIGENCE-TREND-DIRECTION-V1: is the store improving, declining, or stable?
 const TREND_DIRECTION_KEYWORDS = [
   // EN
@@ -1215,6 +1245,10 @@ export function classifyIntent(
     // for product-anchored phrases like "what to promote" / "high margin".
     { id: 'proactive_opportunities', score: scoreKeywords(query, PROACTIVE_OPPORTUNITIES_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
+    // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: listed BEFORE proactive_operations
+    // so "what's really going on" / "store diagnosis" routes to cross-system
+    // reasoning rather than the single-domain action list.
+    { id: 'operational_reasoning', score: scoreKeywords(query, OPERATIONAL_REASONING_KEYWORDS) },
     // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: listed BEFORE trend_direction so
     // "what should I do now" routes to the action list, not the trend report.
     { id: 'proactive_operations', score: scoreKeywords(query, PROACTIVE_OPERATIONS_KEYWORDS) },

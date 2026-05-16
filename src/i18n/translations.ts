@@ -6939,4 +6939,45 @@ export const translations: TranslationDictionary = {
     es: 'Enfoque recomendado',
     pt: 'Foco recomendado',
   },
+  // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1
+  'chat.reasoning.header': {
+    en: '🔍 Cross-system operational analysis:',
+    es: '🔍 Análisis operativo cruzado:',
+    pt: '🔍 Análise operacional cruzada:',
+  },
+  'chat.reasoning.empty': {
+    en: 'No significant operational conditions detected. Store appears healthy.',
+    es: 'No se detectaron condiciones operativas significativas. La tienda parece estar bien.',
+    pt: 'Nenhuma condição operacional significativa detectada. A loja parece estar bem.',
+  },
+  'chat.reasoning.condition.low_foot_traffic': {
+    en: 'Low foot traffic',
+    es: 'Bajo tráfico',
+    pt: 'Baixo tráfego',
+  },
+  'chat.reasoning.condition.followup_breakdown': {
+    en: 'Follow-up pipeline breakdown',
+    es: 'Descomposición del pipeline de seguimiento',
+    pt: 'Falha no pipeline de acompanhamento',
+  },
+  'chat.reasoning.condition.inventory_pressure': {
+    en: 'Inventory pressure',
+    es: 'Presión de inventario',
+    pt: 'Pressão de estoque',
+  },
+  'chat.reasoning.condition.operator_overload': {
+    en: 'Operator overload',
+    es: 'Sobrecarga del operador',
+    pt: 'Sobrecarga do operador',
+  },
+  'chat.reasoning.condition.revenue_focus_imbalance': {
+    en: 'Revenue focus imbalance',
+    es: 'Desequilibrio en el enfoque de ingresos',
+    pt: 'Desequilíbrio no foco de receita',
+  },
+  'chat.reasoning.condition.healthy_operation': {
+    en: 'Healthy operation',
+    es: 'Operación saludable',
+    pt: 'Operação saudável',
+  },
 };

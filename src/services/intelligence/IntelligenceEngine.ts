@@ -22,6 +22,8 @@ import { generateLiveAssistSuggestion, type LiveAssistEvalContext } from './live
 import type { LiveAssistSuggestion, LiveAssistContext } from './live/types';
 import { computeAttentionSnapshot } from './attention/attentionEngine';
 import type { AttentionSnapshot } from './attention/types';
+import { generateOperationalReasoningReport, type ReasoningEvalContext } from './reasoning/crossSystemEngine';
+import type { OperationalReasoningReport } from './reasoning/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -169,6 +171,8 @@ export class IntelligenceEngine {
   private cachedExecutionReport?: ExecutionReport;
   // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: morning digest cache.
   private cachedMorningDigest?: MorningDigest;
+  // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: cross-system operational reasoning cache.
+  private cachedReasoningReport?: OperationalReasoningReport;
 
   // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
   // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
@@ -730,6 +734,7 @@ export class IntelligenceEngine {
     this.cachedProactiveReport = undefined;
     this.cachedExecutionReport = undefined;
     this.cachedMorningDigest = undefined;
+    this.cachedReasoningReport = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -754,6 +759,7 @@ export class IntelligenceEngine {
     this.cachedProactiveReport = undefined;
     this.cachedExecutionReport = undefined;
     this.cachedMorningDigest = undefined;
+    this.cachedReasoningReport = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -1031,6 +1037,16 @@ export class IntelligenceEngine {
       this.config.lang,
     );
     this.cachedMorningDigest = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: correlates signals across modules
+  // to infer what is actually happening in the business. Memoized — same lifecycle
+  // as other per-getter caches. Engine satisfies ReasoningEvalContext structurally.
+  getOperationalReasoningReport(): OperationalReasoningReport {
+    if (this.cachedReasoningReport) return this.cachedReasoningReport;
+    const result = generateOperationalReasoningReport(this as unknown as ReasoningEvalContext);
+    this.cachedReasoningReport = result;
     return result;
   }
 

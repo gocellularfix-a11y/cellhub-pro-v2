@@ -304,6 +304,10 @@ export function handleIntent(
     case 'morning_digest':
       return handleMorningDigest(engine, lang);
 
+    // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1
+    case 'operational_reasoning':
+      return handleOperationalReasoning(engine, lang);
+
     // R-INTELLIGENCE-TREND-DIRECTION-V1
     case 'trend_direction':
       return handleTrendDirection(engine, lang);
@@ -3873,6 +3877,59 @@ function handleMorningDigest(engine: IntelligenceEngine, lang: Lang3): ChatRespo
   if (digest.recommendedFocus) {
     lines.push(`💡 **${t('chat.digest.focus')}:**`);
     lines.push(digest.recommendedFocus);
+  }
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Operational reasoning ─────────────────────────────────────────────────────
+// R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1
+function handleOperationalReasoning(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t  = tChat(lang);
+  const es = lang === 'es';
+  const report = engine.getOperationalReasoningReport();
+
+  if (!report.topCondition) {
+    return { kind: 'answer', text: t('chat.reasoning.empty') };
+  }
+
+  const top = report.topCondition;
+
+  const COND_ICON: Record<string, string> = {
+    low_foot_traffic:        '📉',
+    followup_breakdown:      '📋',
+    inventory_pressure:      '📦',
+    operator_overload:       '⚡',
+    revenue_focus_imbalance: '💰',
+    healthy_operation:       '✅',
+  };
+
+  const lines: string[] = [t('chat.reasoning.header'), ''];
+
+  const icon      = COND_ICON[top.condition] ?? '🔍';
+  const pct       = Math.round(top.confidence * 100);
+  const condLabel = t(`chat.reasoning.condition.${top.condition}`);
+  const confLabel = es ? 'confianza' : 'confidence';
+  lines.push(`${icon} **${condLabel}** (${pct}% ${confLabel})`);
+  lines.push('');
+  lines.push(top.recommendation);
+
+  if (top.signals.length > 0) {
+    lines.push('');
+    lines.push(es ? '**Señales detectadas:**' : '**Signals detected:**');
+    for (const s of top.signals.slice(0, 4)) {
+      lines.push(`• ${s.description}`);
+    }
+  }
+
+  if (report.allConditions.length > 1) {
+    const extra = report.allConditions.length - 1;
+    lines.push('');
+    lines.push(
+      es
+        ? `*${extra} condición${extra === 1 ? '' : 'es'} adicional${extra === 1 ? '' : 'es'} detectada${extra === 1 ? '' : 's'}.*`
+        : `*${extra} additional condition${extra === 1 ? '' : 's'} detected.*`,
+    );
   }
 
   return { kind: 'answer', text: lines.join('\n').trim() };
