@@ -47,8 +47,16 @@ import {
   readOperatorQueue,
   completeOperatorQueueItem,
   dismissOperatorQueueItem,
+  addOperatorQueueItem,
 } from '@/services/intelligence/operatorQueue/operatorQueue';
-import type { OperatorQueueItem } from '@/services/intelligence/operatorQueue/operatorQueue';
+import type { OperatorQueueItem, OperatorTaskType } from '@/services/intelligence/operatorQueue/operatorQueue';
+import { getOutcomeAdjustment } from '@/services/intelligence/operatorQueue/outcomeLearning';
+import {
+  generateProactiveMissions,
+  readDismissedMissions,
+  dismissMission as dismissProactiveMission,
+} from '@/services/intelligence/proactive/proactiveMissions';
+import type { ProactiveMission } from '@/services/intelligence/proactive/proactiveMissions';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -102,6 +110,9 @@ export default function IntelligenceModule() {
   // R-INTELLIGENCE-OPERATOR-QUEUE-V1: operator task queue state
   const [taskQueue, setTaskQueue] = useState<OperatorQueueItem[]>(() => readOperatorQueue());
   const [showAllTaskQueue, setShowAllTaskQueue] = useState(false);
+
+  // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: dismissed mission tracking.
+  const [dismissedMissions, setDismissedMissions] = useState<Record<string, number>>(() => readDismissedMissions());
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -288,6 +299,52 @@ export default function IntelligenceModule() {
     }
   }, []);
 
+  // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: mission action handlers
+  const handleMissionDismiss = useCallback((missionId: string) => {
+    dismissProactiveMission(missionId);
+    setDismissedMissions(readDismissedMissions());
+  }, []);
+
+  const handleMissionAddToQueue = useCallback((mission: ProactiveMission) => {
+    const { scoreAdjustment, confidenceLabel } = getOutcomeAdjustment(mission.type as OperatorTaskType);
+    const finalScore = Math.max(0, Math.min(100, mission.priorityScore + scoreAdjustment));
+    addOperatorQueueItem({
+      type: mission.type as OperatorTaskType,
+      customerName: mission.customerName || '',
+      phone: mission.phone || '',
+      relatedEntityId: mission.relatedEntityId,
+      summary: mission.title,
+      suggestedMessage: mission.suggestedMessage || '',
+      priorityScore: finalScore,
+      urgencyLevel: mission.urgencyLevel,
+      impactReason: mission.reason,
+      confidenceLabel,
+    });
+    setTaskQueue(readOperatorQueue());
+    window.dispatchEvent(new CustomEvent('cellhub:operator-queue-updated'));
+  }, []);
+
+  const handleMissionWhatsApp = useCallback((mission: ProactiveMission) => {
+    if (!mission.phone) return;
+    const url = `https://wa.me/${mission.phone.replace(/\D/g, '')}?text=${encodeURIComponent(mission.suggestedMessage || '')}`;
+    window.open(url, '_blank');
+  }, []);
+
+  const handleMissionCopyMessage = useCallback((mission: ProactiveMission) => {
+    if (!mission.suggestedMessage) return;
+    navigator.clipboard?.writeText(mission.suggestedMessage).catch(() => {});
+  }, []);
+
+  const handleMissionView = useCallback((mission: ProactiveMission) => {
+    if (!mission.relatedEntityId) return;
+    const isRepair = mission.type === 'repair_follow_up' || mission.type === 'repair_escalate';
+    if (isRepair) {
+      window.dispatchEvent(new CustomEvent('cellhub:open-repair', { detail: { repairId: mission.relatedEntityId } }));
+    } else {
+      window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: mission.relatedEntityId } }));
+    }
+  }, []);
+
   // Derived pending list — scoreMap fed into sort comparator.
   const pendingQueueItems = useMemo(
     () => getPendingItems(queueItems, feedbackScoreMap),
@@ -319,6 +376,13 @@ export default function IntelligenceModule() {
   const result: EngineResult = useMemo(
     () => perfTime('intel.module.engine.analyze', () => engine.analyze()),
     [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, refreshKey],
+  );
+
+  // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: deterministic mission generation.
+  // Placed after `result` so it re-runs whenever analyze() produces new data.
+  const missions = useMemo(
+    () => generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang),
+    [engine, result, pendingTaskItems, dismissedMissions, engineLang], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // ── Engine-derived data ──────────────────────────────────
@@ -1006,7 +1070,31 @@ export default function IntelligenceModule() {
         )}
       </div>
 
-      {/* ── 4. OPERATOR TASK QUEUE ── */}
+      {/* ── 4. TODAY'S MISSIONS ── */}
+      {missions.length > 0 && (
+        <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
+          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+            🎯 {locale === 'es' ? 'Misiones de hoy' : locale === 'pt' ? 'Missões de hoje' : "Today's Missions"}
+            <span className="ml-2 text-[11px] font-normal text-slate-400">({missions.length})</span>
+          </p>
+          <div className="flex flex-col gap-2">
+            {missions.map((mission) => (
+              <MissionCard
+                key={mission.id}
+                mission={mission}
+                lang={locale as 'en' | 'es' | 'pt'}
+                onAddToQueue={handleMissionAddToQueue}
+                onDismiss={handleMissionDismiss}
+                onCopyMessage={handleMissionCopyMessage}
+                onWhatsApp={handleMissionWhatsApp}
+                onView={handleMissionView}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 5. OPERATOR TASK QUEUE ── */}
       {pendingTaskItems.length > 0 && (
         <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
           <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
@@ -1038,7 +1126,7 @@ export default function IntelligenceModule() {
         </div>
       )}
 
-      {/* ── 5. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      {/* ── 6. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
       <div className="grid grid-cols-12 gap-3">
 
         {/* Promote Inventory */}
@@ -1760,6 +1848,85 @@ function QueueCard({
         >
           👎
         </button>
+      </div>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: compact mission card.
+const MISSION_TYPE_LABEL: Record<string, { en: string; es: string; pt: string }> = {
+  recover_customer: { en: 'Re-engage',   es: 'Reconectar',   pt: 'Reconectar'  },
+  vip_outreach:     { en: 'VIP',         es: 'VIP',           pt: 'VIP'         },
+  repair_follow_up: { en: 'Follow-up',   es: 'Seguimiento',   pt: 'Acompanhar'  },
+  repair_escalate:  { en: 'Escalate',    es: 'Escalar',       pt: 'Escalar'     },
+};
+
+function MissionCard({
+  mission, lang, onAddToQueue, onDismiss, onCopyMessage, onWhatsApp, onView,
+}: {
+  mission: ProactiveMission;
+  lang: 'en' | 'es' | 'pt';
+  onAddToQueue:  (m: ProactiveMission) => void;
+  onDismiss:     (id: string) => void;
+  onCopyMessage: (m: ProactiveMission) => void;
+  onWhatsApp:    (m: ProactiveMission) => void;
+  onView:        (m: ProactiveMission) => void;
+}) {
+  const typeLabel = (MISSION_TYPE_LABEL[mission.type] ?? { en: mission.type, es: mission.type, pt: mission.type })[lang];
+  const urgency = URGENCY_STYLE[mission.urgencyLevel] ?? null;
+
+  return (
+    <div className="rounded border p-2.5" style={{ background: '#0A1628', borderColor: urgency?.border ?? '#1E3A5F' }}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ background: '#1E3A5F', color: '#60A5FA' }}>
+            {typeLabel}
+          </span>
+          {urgency && (
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+              style={{ background: urgency.bg, color: urgency.text, border: `1px solid ${urgency.border}` }}>
+              {urgency.label[lang]}
+            </span>
+          )}
+          <span className="text-[11px] font-semibold text-slate-200 truncate">{mission.title}</span>
+        </div>
+        <button
+          onClick={() => onDismiss(mission.id)}
+          className="text-[11px] text-slate-600 hover:text-slate-400 transition shrink-0 leading-none"
+          title={lang === 'es' ? 'Descartar 24h' : lang === 'pt' ? 'Descartar 24h' : 'Dismiss 24h'}
+        >
+          ✕
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-500 mb-2">{mission.reason}</p>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={() => onAddToQueue(mission)}
+          className="px-2 py-0.5 text-[10px] font-semibold rounded transition"
+          style={{ background: '#6366F122', color: '#818CF8', border: '1px solid #6366F144' }}>
+          + {lang === 'es' ? 'Cola' : lang === 'pt' ? 'Fila' : 'Queue'}
+        </button>
+        {mission.phone && (
+          <button onClick={() => onWhatsApp(mission)}
+            className="px-2 py-0.5 text-[10px] font-semibold rounded transition"
+            style={{ background: '#25D36622', color: '#25D366', border: '1px solid #25D36644' }}>
+            WA
+          </button>
+        )}
+        {mission.suggestedMessage && (
+          <button onClick={() => onCopyMessage(mission)}
+            className="px-2 py-0.5 text-[10px] rounded transition"
+            style={{ background: '#8B5CF622', color: '#A78BFA', border: '1px solid #8B5CF644' }}>
+            {lang === 'es' ? 'Copiar' : lang === 'pt' ? 'Copiar' : 'Copy'}
+          </button>
+        )}
+        {mission.relatedEntityId && (
+          <button onClick={() => onView(mission)}
+            className="px-2 py-0.5 text-[10px] rounded transition"
+            style={{ background: '#37415155', color: '#9CA3AF', border: '1px solid #37415188' }}>
+            ↗ {lang === 'es' ? 'Ver' : lang === 'pt' ? 'Ver' : 'View'}
+          </button>
+        )}
       </div>
     </div>
   );
