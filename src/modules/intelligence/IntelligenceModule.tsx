@@ -62,6 +62,14 @@ import {
   type StoreStateResult,
   type StoreStateType,
 } from '@/services/intelligence/storeState/storeStateEngine';
+import {
+  generateContinuityItems,
+  readDismissedContinuity,
+  dismissContinuityItem,
+  resumeContinuityItem,
+  type ContinuityItem,
+} from '@/services/intelligence/continuity/continuityEngine';
+import ContinuityPanel from '@/components/ContinuityPanel';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -119,6 +127,9 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: dismissed mission tracking.
   const [dismissedMissions, setDismissedMissions] = useState<Record<string, number>>(() => readDismissedMissions());
+
+  // R-INTELLIGENCE-CONTINUITY-V1: dismissed continuity item tracking.
+  const [dismissedContinuity, setDismissedContinuity] = useState<Record<string, number>>(() => readDismissedContinuity());
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -351,6 +362,31 @@ export default function IntelligenceModule() {
     }
   }, []);
 
+  // R-INTELLIGENCE-CONTINUITY-V1: continuity action handlers
+  const handleContinuityDismiss = useCallback((id: string) => {
+    dismissContinuityItem(id);
+    setDismissedContinuity(readDismissedContinuity());
+  }, []);
+
+  const handleContinuityResume = useCallback((item: ContinuityItem) => {
+    resumeContinuityItem(item.id);
+    setDismissedContinuity(readDismissedContinuity());
+    // outreach_pending with phone → WhatsApp
+    if (item.type === 'outreach_pending' && item.phone) {
+      const url = `https://wa.me/${item.phone.replace(/\D/g, '')}`;
+      window.open(url, '_blank');
+      return;
+    }
+    // Navigate via existing event infrastructure
+    if (item.openEventType) {
+      window.dispatchEvent(new CustomEvent(item.openEventType, { detail: item.openEventDetail ?? {} }));
+      return;
+    }
+    if (item.navigateTo) {
+      window.dispatchEvent(new CustomEvent('cellhub:navigate-tab', { detail: { tab: item.navigateTo } }));
+    }
+  }, []);
+
   // Derived pending list — scoreMap fed into sort comparator.
   const pendingQueueItems = useMemo(
     () => getPendingItems(queueItems, feedbackScoreMap),
@@ -459,6 +495,17 @@ export default function IntelligenceModule() {
   const missions = useMemo(
     () => generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang, Date.now(), storeState.state),
     [engine, result, pendingTaskItems, dismissedMissions, engineLang, storeState.state], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-CONTINUITY-V1: deterministic continuity item generation.
+  const continuityItems = useMemo(
+    () => generateContinuityItems({
+      repairs: repairs as Parameters<typeof generateContinuityItems>[0]['repairs'],
+      managerQueueItems: queueItems,
+      operatorQueueItems: taskQueue,
+      dismissedIds: dismissedContinuity,
+    }),
+    [repairs, queueItems, taskQueue, dismissedContinuity, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const topInsight = useMemo(() => {
@@ -1093,6 +1140,16 @@ export default function IntelligenceModule() {
       {/* ── STORE STATE BANNER ── R-INTELLIGENCE-STORE-STATE-V1 ── */}
       {storeState.state !== 'normal' && (
         <StoreBanner state={storeState} lang={locale as 'en' | 'es' | 'pt'} />
+      )}
+
+      {/* ── CONTINUITY PANEL ── R-INTELLIGENCE-CONTINUITY-V1 ── */}
+      {continuityItems.length > 0 && (
+        <ContinuityPanel
+          items={continuityItems}
+          lang={locale as 'en' | 'es' | 'pt'}
+          onResume={handleContinuityResume}
+          onDismiss={handleContinuityDismiss}
+        />
       )}
 
       {/* ── 4. TODAY'S MISSIONS ── */}

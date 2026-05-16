@@ -39,6 +39,7 @@ import { addLayawayPayment } from '@/services/layaway/payments';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
+import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 
 // Case-insensitive category predicates — single source of truth so bundle
 // suggestion, search icon, and category filter all agree on what counts as
@@ -370,6 +371,10 @@ export default function POSModule() {
           },
         }));
       } catch { /* env without CustomEvent */ }
+
+      // R-INTELLIGENCE-CONTINUITY-V1: sale completed — clear any interrupted
+      // workflow tracking for the phone_payment portal flow.
+      try { clearWorkflowTrack('phone_payment_portal'); } catch { /* non-critical */ }
 
       // R-INTELLIGENCE-PAYMENT-VERIFY-V1: after phone_payment checkout,
       // schedule a 2-min nudge to remind cashier to confirm carrier portal.
@@ -856,6 +861,18 @@ export default function POSModule() {
     );
 
     if (hasExternalPortal) {
+      // R-INTELLIGENCE-CONTINUITY-V1: track workflow start so continuity
+      // engine can surface a reminder if the flow is abandoned mid-checkout.
+      const portalCarrier = cart.find((i) => i.category === 'phone_payment' && (i as any).carrier)
+        ? String((cart.find((i) => i.category === 'phone_payment') as any)?.carrier || 'Carrier')
+        : 'Carrier';
+      try {
+        trackWorkflowStart('phone_payment_portal', {
+          title: 'Phone Payment Portal',
+          summary: `${portalCarrier} — checkout not completed`,
+          navigateTo: 'pos',
+        });
+      } catch { /* non-critical */ }
       setShowPayment(true);
       return;
     }
@@ -920,6 +937,8 @@ export default function POSModule() {
     setDiscount({ amount: 0, type: 'percent', reason: '' });
     setSelectedCustomer(null);
     setShowClearConfirm(false);
+    // R-INTELLIGENCE-CONTINUITY-V1: cart abandoned — clear workflow tracking.
+    try { clearWorkflowTrack('phone_payment_portal'); } catch { /* non-critical */ }
     toast(t('pos.cartCleared'), 'info');
   }, [setCart, toast, lang]);
 

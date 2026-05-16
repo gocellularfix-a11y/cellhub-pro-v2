@@ -187,17 +187,25 @@ export default function AppShell() {
       nav('intelligence');
     };
 
+    // R-INTELLIGENCE-CONTINUITY-V1: generic tab navigation for continuity resume.
+    const onNavigateTab = (e: Event) => {
+      const { tab } = (e as CustomEvent<{ tab?: string }>).detail ?? {};
+      if (tab) nav(tab);
+    };
+
     window.addEventListener('cellhub:open-repair',         onOpenRepair);
     window.addEventListener('cellhub:open-customer',       onOpenCustomer);
     window.addEventListener('cellhub:open-layaway',        onOpenLayaway);
     window.addEventListener('cellhub:open-inventory-item', onOpenInventory);
     window.addEventListener('cellhub:open-manager-review', onManagerReview);
+    window.addEventListener('cellhub:navigate-tab',        onNavigateTab);
     return () => {
       window.removeEventListener('cellhub:open-repair',         onOpenRepair);
       window.removeEventListener('cellhub:open-customer',       onOpenCustomer);
       window.removeEventListener('cellhub:open-layaway',        onOpenLayaway);
       window.removeEventListener('cellhub:open-inventory-item', onOpenInventory);
       window.removeEventListener('cellhub:open-manager-review', onManagerReview);
+      window.removeEventListener('cellhub:navigate-tab',        onNavigateTab);
     };
   }, [dispatch]);
 
