@@ -71,6 +71,10 @@ export type IntentId =
   | 'trend_direction'
   // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: ranked operator action list
   | 'proactive_operations'
+  // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1: execution-ready message queue
+  | 'execution_queue'
+  // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: pre-shift operational briefing
+  | 'morning_digest'
   // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
@@ -805,6 +809,42 @@ const PROACTIVE_OPERATIONS_KEYWORDS = [
   'próximos passos', 'proximos passos',
 ];
 
+// R-INTELLIGENCE-AUTOMATED-EXECUTION-V1: "prepare outreach" / "who should I message" —
+// builds execution-ready draft messages without auto-sending.
+const EXECUTION_QUEUE_KEYWORDS = [
+  // EN
+  'prepare followups', 'prepare messages', 'build outreach queue', 'who should i message',
+  'draft messages', 'execution queue', 'message queue', 'outreach queue',
+  'prepare outreach', 'ready to send', 'who to message', 'message drafts',
+  'contact list', 'send reminders', 'follow up queue', 'execution report',
+  // ES
+  'preparar mensajes', 'construir cola de contacto', 'a quién debo enviar mensajes',
+  'a quien debo enviar mensajes', 'mensajes listos', 'cola de mensajes',
+  'preparar seguimientos', 'cola de ejecución', 'cola de ejecucion',
+  'mensajes para enviar', 'lista de contactos', 'enviar recordatorios',
+  // PT
+  'preparar mensagens', 'fila de execução', 'fila de execucao', 'quem devo mensagem',
+  'mensagens prontas', 'fila de contatos', 'enviar lembretes', 'preparar follow-up',
+];
+
+// R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: pre-shift operational briefing.
+// Anchored on morning/start-of-day phrases to avoid collisions with proactive_operations.
+const MORNING_DIGEST_KEYWORDS = [
+  // EN
+  'morning digest', 'morning briefing', 'store briefing', 'start of day',
+  'what should i focus on this morning', 'daily digest', 'morning report',
+  'morning summary', 'start of shift', 'beginning of day', 'open store',
+  'what happened overnight', 'pre-shift', 'before i start',
+  // ES
+  'resumen matutino', 'resumen de la mañana', 'briefing matutino',
+  'inicio del día', 'inicio de turno', 'resumen diario',
+  'qué debo atender esta mañana', 'que debo atender esta mañana',
+  'resumen de hoy', 'antes de empezar', 'al abrir la tienda',
+  // PT
+  'resumo matinal', 'briefing matinal', 'início do dia',
+  'resumo diário', 'o que focar hoje', 'resumo da manhã',
+];
+
 // R-INTELLIGENCE-TREND-DIRECTION-V1: is the store improving, declining, or stable?
 const TREND_DIRECTION_KEYWORDS = [
   // EN
@@ -1178,6 +1218,12 @@ export function classifyIntent(
     // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: listed BEFORE trend_direction so
     // "what should I do now" routes to the action list, not the trend report.
     { id: 'proactive_operations', score: scoreKeywords(query, PROACTIVE_OPERATIONS_KEYWORDS) },
+    // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1: listed after proactive_operations;
+    // "prepare messages" / "build outreach queue" are more specific phrases.
+    { id: 'execution_queue', score: scoreKeywords(query, EXECUTION_QUEUE_KEYWORDS) },
+    // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: listed before proactive_operations
+    // in scoring so "morning briefing" routes here instead of the action list.
+    { id: 'morning_digest', score: scoreKeywords(query, MORNING_DIGEST_KEYWORDS) },
     // R-INTELLIGENCE-TREND-DIRECTION-V1: listed BEFORE root_cause so "sales
     // trend" / "tendencia de ventas" routes to the direction report, not the
     // revenue-decline root cause (which overlaps on 'sales decline').

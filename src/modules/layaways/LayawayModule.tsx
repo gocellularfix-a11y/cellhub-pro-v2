@@ -52,7 +52,9 @@ import { useApprovalGate } from '@/hooks/useApprovalGate';
 import {
   calculateLayawayTotals,
   normalizeLayawayPayments,
+  addLayawayPayment,
 } from '@/services/layaway/payments';
+import LayawayPaymentModal from './LayawayPaymentModal';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
@@ -656,6 +658,140 @@ export default function LayawayModule() {
     setDepositTarget(null);
     toast(t('layaway.paymentAddedToCart', formatCurrency(paymentCents)), 'info');
   }, [t, toast, consolidateCartForLayaway, dispatch]);
+
+  // R-LAYAWAY-DIRECT-PAYMENT-V1: record a partial or full payment directly
+  // without routing through the POS cart. Mirrors POSModule §4d logic but
+  // applies it immediately in the Layaway module so the balance updates on
+  // the spot. Creates a Sale record so the payment appears in the cash report.
+  const handleDirectPayment = useCallback((
+    layaway: Layaway,
+    amountCents: number,
+    method: string,
+    note: string,
+  ) => {
+    if (amountCents <= 0) return;
+
+    // Anti-stale-closure: read fresh layaway from ref
+    const fresh = layawaysRef.current.find(x => x.id === layaway.id);
+    if (!fresh) return;
+
+    // H2 guard: abort if cancelled or forfeited since modal opened
+    const freshStatus = String((fresh as any).status || '').toLowerCase();
+    if (freshStatus === 'cancelled' || freshStatus === 'forfeited' || freshStatus === 'completed') {
+      toast(lang === 'es' ? 'Apartado ya no está activo.' : 'Layaway is no longer active.', 'error');
+      setDepositTarget(null);
+      return;
+    }
+
+    // Append payment record (uses same helper as POSModule §4d)
+    let withPayment: Layaway;
+    try {
+      withPayment = addLayawayPayment(fresh, {
+        amountCents,
+        method: method as import('@/store/types').PaymentMethod,
+        employeeId: currentEmployee?.id,
+        note: note || undefined,
+      });
+    } catch {
+      toast(lang === 'es' ? 'Error al registrar el pago.' : 'Error recording payment.', 'error');
+      return;
+    }
+
+    // Reconcile aggregates — must derive from payments[] sum (same invariant as §4d)
+    const newPaid = Array.isArray(withPayment.payments)
+      ? withPayment.payments.reduce((s, p) => s + (p.amount || 0), 0)
+      : (fresh.paidAmount || 0) + amountCents;
+    const newBalance = Math.max(0, (fresh.totalPrice || 0) - newPaid);
+    const isNowComplete = newBalance === 0;
+
+    const now = new Date().toISOString();
+    const finalLayaway: Layaway = {
+      ...withPayment,
+      // Lock depositMethod on first payment only (refund-to-original-method policy)
+      ...(!fresh.depositMethod ? { depositMethod: method } : {}),
+      paidAmount: newPaid,
+      balance: newBalance,
+      status: isNowComplete ? 'completed' : fresh.status,
+      updatedAt: now,
+    };
+
+    // Persist layaway — FULL spread (CLAUDE.md critical rule)
+    persist.layaway(finalLayaway.id, finalLayaway as unknown as Record<string, unknown>);
+
+    // Update state + ref (matches the pattern used by handleCancel / handleSave)
+    const nextLayaways = layawaysRef.current.map(x => x.id === finalLayaway.id ? finalLayaway : x);
+    layawaysRef.current = nextLayaways;
+    setLayaways(nextLayaways);
+
+    // Create a Sale record so the payment shows in the cash / daily report.
+    // Structure mirrors what POSModule §4d produces for a layaway cart item.
+    const isTaxable = !!(fresh as any).taxable;
+    const lTaxRate = isTaxable ? taxRate : 0;
+    const split = reverseTaxFromPayment(amountCents, lTaxRate, isTaxable);
+    const baseCents = split.baseCents;
+    const taxCents  = split.taxCents;
+    const itemDesc  = (fresh as any).itemDescription || fresh.items?.[0]?.name || (lang === 'es' ? 'Artículo' : 'Item');
+    const ticketNum = (fresh as any).ticketNumber || fresh.id.slice(-6).toUpperCase();
+
+    const saleId = generateId();
+    const paymentSale: import('@/store/types').Sale = {
+      id: saleId,
+      storeId: currentStoreId,
+      invoiceNumber: `LPAY-${ticketNum}`,
+      customerId: (fresh as any).customerId,
+      customerName: fresh.customerName,
+      customerPhone: fresh.customerPhone,
+      items: [{
+        id: generateId(),
+        name: `${itemDesc} — ${ticketNum}`,
+        category: 'service',
+        price: baseCents,
+        qty: 1,
+        taxable: isTaxable,
+        cbeEligible: false,
+        layawayId: fresh.id,
+      }],
+      subtotal: baseCents,
+      taxAmount: taxCents,
+      cbeTotal: 0,
+      total: amountCents,
+      paymentMethod: method as import('@/store/types').PaymentMethod,
+      status: 'completed',
+      employeeId: currentEmployee?.id,
+      employeeName: currentEmployee?.name || '',
+      notes: note || undefined,
+      createdAt: now,
+    };
+
+    persist.sale(saleId, paymentSale as unknown as Record<string, unknown>);
+    const nextSales = [...salesRef.current, paymentSale];
+    salesRef.current = nextSales;
+    setSales(nextSales);
+
+    setDepositTarget(null);
+
+    const paidFmt = formatCurrency(amountCents);
+    if (isNowComplete) {
+      toast(
+        lang === 'es'
+          ? `✅ Pago de ${paidFmt} registrado — ¡Apartado completado!`
+          : `✅ Payment of ${paidFmt} recorded — Layaway paid off!`,
+        'success',
+      );
+    } else {
+      const remaining = formatCurrency(newBalance);
+      toast(
+        lang === 'es'
+          ? `💰 Pago de ${paidFmt} registrado. Saldo restante: ${remaining}`
+          : `💰 Payment of ${paidFmt} recorded. Remaining balance: ${remaining}`,
+        'success',
+      );
+    }
+  }, [
+    lang, taxRate, currentEmployee, currentStoreId,
+    layawaysRef, setLayaways, salesRef, setSales,
+    toast,
+  ]);
 
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
@@ -1559,28 +1695,17 @@ export default function LayawayModule() {
         </div>
       )}
 
-      {/* COLLECT BALANCE MODAL */}
-      {depositTarget && (() => {
-        // Round 14 fix: fall back to totalPrice when items[0].price is 0 or missing (Round 13 ?? only covered null/undefined)
-        // Round 15 C1: DepositModal adds tax on top of itemPrice. totalPrice is tax-inclusive,
-        // so subtract taxAmount when falling back to avoid double-counting tax in the display.
-        const firstItemPrice = depositTarget.items?.[0]?.price ?? 0;
-        const totalPreTax = Math.max(0, (depositTarget.totalPrice || 0) - ((depositTarget as any).taxAmount || 0));
-        return (
-        <DepositModal
-          title={t('layaway.collectTitle', (depositTarget as any).ticketNumber || '')}
-          itemLabel={(depositTarget as any).itemDescription || depositTarget.items?.[0]?.name || t('layaway.cartItemName')}
-          itemPrice={(firstItemPrice > 0 ? firstItemPrice : totalPreTax) / 100}
-          taxRate={taxRate}
-          taxable={(depositTarget as any).taxable || false}
-          existingDeposit={(depositTarget.paidAmount || 0) / 100}
-          mode="balance"
+      {/* COLLECT BALANCE MODAL — R-LAYAWAY-DIRECT-PAYMENT-V1 */}
+      {depositTarget && (
+        <LayawayPaymentModal
+          layaway={depositTarget}
           lang={lang}
           onClose={() => setDepositTarget(null)}
-          onConfirm={({ depositAmt: payAmt }) => handleCollectConfirm(depositTarget, payAmt)}
+          onConfirm={(amountCents, method, note) =>
+            handleDirectPayment(depositTarget, amountCents, method, note)
+          }
         />
-        );
-      })()}
+      )}
 
       {cancelTarget && (
         <CancelLayawayModal

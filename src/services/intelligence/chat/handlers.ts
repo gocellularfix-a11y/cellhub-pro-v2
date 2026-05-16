@@ -296,6 +296,14 @@ export function handleIntent(
     case 'proactive_operations':
       return handleProactiveOperations(engine, lang);
 
+    // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1
+    case 'execution_queue':
+      return handlePreparedExecutions(engine, lang);
+
+    // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1
+    case 'morning_digest':
+      return handleMorningDigest(engine, lang);
+
     // R-INTELLIGENCE-TREND-DIRECTION-V1
     case 'trend_direction':
       return handleTrendDirection(engine, lang);
@@ -3774,6 +3782,98 @@ function handleTrendDirection(engine: IntelligenceEngine, lang: Lang3): ChatResp
   }
 
   lines.push(`💡 ${t('chat.trend.nextStep')}`);
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Prepared executions ────────────────────────────────────────────────────────
+// R-INTELLIGENCE-AUTOMATED-EXECUTION-V1
+// V1: prepares draft messages only — NO auto-send, NO automated outreach.
+function handlePreparedExecutions(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = engine.getExecutionReport();
+
+  if (report.executions.length === 0) {
+    return { kind: 'answer', text: t('chat.execution.empty') };
+  }
+
+  const es = lang === 'es';
+  const PRIORITY_ICON: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡' };
+  const CAT_ICON: Record<string, string> = {
+    repair_followup: '🔧',
+    collection: '💰',
+    vip_recovery: '⭐',
+    approval_review: '✅',
+    inventory_order: '📦',
+  };
+
+  const lines: string[] = [t('chat.execution.header'), ''];
+
+  for (const exec of report.executions.slice(0, 5)) {
+    const icon = PRIORITY_ICON[exec.priority] ?? '•';
+    const cat = CAT_ICON[exec.category] ?? '•';
+    const impact = exec.estimatedImpactCents
+      ? ` — $${(exec.estimatedImpactCents / 100).toFixed(0)} ${es ? 'recuperable' : 'recoverable'}`
+      : '';
+    lines.push(`${icon}${cat} **${exec.customerName ?? exec.category}**${impact}`);
+    lines.push(`   ${exec.draftMessage}`);
+    lines.push('');
+  }
+
+  if (report.topExecution) {
+    lines.push(`💬 **${t('chat.execution.topDraft')}:**`);
+    lines.push(report.topExecution.draftMessage);
+  }
+
+  const disclaimer = es
+    ? '⚠️ *Los mensajes son borradores — el operador los envía manualmente.*'
+    : '⚠️ *Messages are drafts — operator sends manually.*';
+  lines.push('');
+  lines.push(disclaimer);
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Morning operator digest ───────────────────────────────────────────────────
+// R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1
+function handleMorningDigest(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const digest = engine.getMorningDigest();
+
+  if (digest.sections.length === 0) {
+    return {
+      kind: 'answer',
+      text: `${t('chat.digest.header')}\n\n${t('chat.digest.empty')}`,
+    };
+  }
+
+  const es = lang === 'es';
+  const PRIORITY_ICON: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡' };
+  const lines: string[] = [t('chat.digest.header'), ''];
+
+  for (const section of digest.sections) {
+    const pIcon = PRIORITY_ICON[section.priority] ?? '•';
+    lines.push(`${pIcon} **${section.title}**`);
+    for (const line of section.lines.slice(0, 2)) {
+      lines.push(`  ${line}`);
+    }
+    lines.push('');
+  }
+
+  if (digest.estimatedRecoverableCents && digest.estimatedRecoverableCents > 0) {
+    const amt = `$${(digest.estimatedRecoverableCents / 100).toFixed(0)}`;
+    lines.push(
+      es
+        ? `💵 ${amt} potencialmente recuperable hoy.`
+        : `💵 ${amt} potentially recoverable today.`,
+    );
+    lines.push('');
+  }
+
+  if (digest.recommendedFocus) {
+    lines.push(`💡 **${t('chat.digest.focus')}:**`);
+    lines.push(digest.recommendedFocus);
+  }
 
   return { kind: 'answer', text: lines.join('\n').trim() };
 }

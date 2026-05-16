@@ -14,6 +14,10 @@ import {
 import { evaluatePendingOutcomes, type OutcomeEvalContext } from './outcomes/outcomeEngine';
 import { generateProactiveOperationsReport, type ProactiveEvalContext } from './proactive/proactiveEngine';
 import type { ProactiveOperationsReport } from './proactive/types';
+import { generatePreparedExecutions, type ExecutionEvalContext } from './execution/executionEngine';
+import type { ExecutionReport } from './execution/types';
+import { generateMorningDigest, type DigestEvalContext } from './digest/morningDigest';
+import type { MorningDigest } from './digest/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -157,6 +161,10 @@ export class IntelligenceEngine {
   private cachedTrendReport?: TrendDirectionReport;
   // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: proactive report cache.
   private cachedProactiveReport?: ProactiveOperationsReport;
+  // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1: execution preparation report cache.
+  private cachedExecutionReport?: ExecutionReport;
+  // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: morning digest cache.
+  private cachedMorningDigest?: MorningDigest;
 
   // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
   // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
@@ -716,6 +724,8 @@ export class IntelligenceEngine {
     this.cachedBaseline = undefined;
     this.cachedTrendReport = undefined;
     this.cachedProactiveReport = undefined;
+    this.cachedExecutionReport = undefined;
+    this.cachedMorningDigest = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -738,6 +748,8 @@ export class IntelligenceEngine {
     this.cachedBaseline = undefined;
     this.cachedTrendReport = undefined;
     this.cachedProactiveReport = undefined;
+    this.cachedExecutionReport = undefined;
+    this.cachedMorningDigest = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -987,6 +999,34 @@ export class IntelligenceEngine {
       this.config.lang,
     );
     this.cachedProactiveReport = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1: ranked list of execution-ready
+  // actions with pre-built draft messages. Derives from the proactive report
+  // (no duplicate scanning). Memoized — same lifecycle as proactiveReport.
+  // Engine satisfies ExecutionEvalContext structurally (no direct type import).
+  getExecutionReport(): ExecutionReport {
+    if (this.cachedExecutionReport) return this.cachedExecutionReport;
+    const result = generatePreparedExecutions(
+      this as unknown as ExecutionEvalContext,
+      this.config.lang,
+    );
+    this.cachedExecutionReport = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1: pre-shift operational briefing.
+  // Aggregates proactive, execution, trend, workflow, and queue signals into a
+  // time-of-day-ordered digest. Memoized — same lifecycle as other per-getter caches.
+  // Engine satisfies DigestEvalContext structurally (no direct type import).
+  getMorningDigest(): MorningDigest {
+    if (this.cachedMorningDigest) return this.cachedMorningDigest;
+    const result = generateMorningDigest(
+      this as unknown as DigestEvalContext,
+      this.config.lang,
+    );
+    this.cachedMorningDigest = result;
     return result;
   }
 

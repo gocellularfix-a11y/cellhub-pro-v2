@@ -3780,6 +3780,7 @@ export const translations: TranslationDictionary = {
   'settings.appearance.tiles.desc':        { en: 'Colorful module-grid sidebar. Each module is a saturated tile. Current default.', es: 'Sidebar con botones coloridos por módulo. Cada módulo es una baldosa saturada. Por defecto actual.', pt: 'Barra lateral colorida com cada módulo como bloco saturado. Padrão atual.' },
   'settings.appearance.list.desc':         { en: 'Classic vertical list. Compact, calm, scannable. Original pre-redesign look.', es: 'Lista vertical clásica. Compacta, tranquila, fácil de escanear. Look original antes del rediseño.', pt: 'Lista vertical clássica. Compacta e fácil de varrer. Visual original.' },
   'settings.appearance.boldBlocks.desc':   { en: 'Light background with saturated color blocks for each stat. Apple Numbers feel.', es: 'Fondo claro con bloques de color saturado para cada métrica. Estilo Apple Numbers.', pt: 'Fundo claro com blocos de cor saturada para cada métrica. Estilo Apple Numbers.' },
+  'settings.appearance.colorTheme':        { en: 'Color theme',                 es: 'Tema de color',                 pt: 'Tema de cor' },
   'settings.nav.multistore':               { en: 'Multi-Store',                 es: 'Multi-Tienda',                  pt: 'Multi-Loja' },
   'settings.nav.taxes':                    { en: 'Tax Rates & Fees',            es: 'Tasas e Impuestos',             pt: 'Taxas e Impostos' },
   'settings.nav.commissions':              { en: 'Commission Income',           es: 'Ingresos por Comisión',         pt: 'Renda de Comissões' },
@@ -6905,4 +6906,36 @@ export const translations: TranslationDictionary = {
   'outcome.category.vip_returned':         { en: 'VIP Customer Returned', es: 'Cliente VIP regresó',       pt: 'Cliente VIP retornou' },
   'outcome.category.inventory_recovered':  { en: 'Stock Replenished',     es: 'Stock repuesto',            pt: 'Estoque reposto' },
   'outcome.category.approval_completed':   { en: 'Approval Completed',    es: 'Aprobación completada',     pt: 'Aprovação concluída' },
+  // R-INTELLIGENCE-AUTOMATED-EXECUTION-V1 — execution queue chat keys
+  'chat.execution.header': {
+    en: '📋 Execution queue — ready to send:',
+    es: '📋 Cola de ejecución — listos para enviar:',
+    pt: '📋 Fila de execução — prontos para enviar:',
+  },
+  'chat.execution.empty': {
+    en: 'No actions ready to prepare right now. Check back after new activity.',
+    es: 'No hay acciones listas para preparar ahora. Revisa después de nueva actividad.',
+    pt: 'Sem ações prontas para preparar agora. Verifique após nova atividade.',
+  },
+  'chat.execution.topDraft': {
+    en: 'Top draft message',
+    es: 'Mensaje borrador principal',
+    pt: 'Mensagem de rascunho principal',
+  },
+  // R-INTELLIGENCE-MORNING-OPERATOR-DIGEST-V1
+  'chat.digest.header': {
+    en: '🌅 Morning Operator Digest',
+    es: '🌅 Resumen Matutino de Operaciones',
+    pt: '🌅 Resumo Matutino de Operações',
+  },
+  'chat.digest.empty': {
+    en: 'No issues detected. Store is running well — good day to get ahead.',
+    es: 'Sin problemas detectados. La tienda está operando bien.',
+    pt: 'Sem problemas detectados. A loja está funcionando bem.',
+  },
+  'chat.digest.focus': {
+    en: 'Recommended focus',
+    es: 'Enfoque recomendado',
+    pt: 'Foco recomendado',
+  },
 };
