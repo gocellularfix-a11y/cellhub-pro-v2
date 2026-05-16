@@ -13,6 +13,7 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { OperatorQueueItem, OperatorTaskType, UrgencyLevel } from '../operatorQueue/operatorQueue';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
+import { type StoreStateType, getMissionBoost } from '../storeState/storeStateEngine';
 import {
   scoreRecoverCustomer,
   scoreVipOutreach,
@@ -308,6 +309,7 @@ export function generateProactiveMissions(
   dismissedIds: Record<string, number>,
   lang: 'en' | 'es' | 'pt',
   now = Date.now(),
+  storeState: StoreStateType = 'normal',
 ): ProactiveMission[] {
   // Blocked = same type:entityId already in pending queue.
   const blocked = new Set(
@@ -350,7 +352,17 @@ export function generateProactiveMissions(
   const escalate = buildEscalate(engine, isBlocked, usedRepairIds, lang, now);
   if (escalate) candidates.push(escalate);
 
-  return candidates
+  // R-INTELLIGENCE-STORE-STATE-V1: apply state-based boost before sort.
+  // Boost is secondary — capped at ±15 so base scoring always dominates.
+  const BOOST_CAP = 15;
+  const withBoost = candidates.map((m) => {
+    const boost = Math.max(-BOOST_CAP, Math.min(BOOST_CAP, getMissionBoost(storeState, m.type as Parameters<typeof getMissionBoost>[1])));
+    return boost !== 0
+      ? { ...m, priorityScore: Math.max(0, Math.min(100, m.priorityScore + boost)) }
+      : m;
+  });
+
+  return withBoost
     .sort((a, b) => b.priorityScore - a.priorityScore)
     .slice(0, 3);
 }

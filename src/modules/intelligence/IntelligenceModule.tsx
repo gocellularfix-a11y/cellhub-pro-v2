@@ -57,6 +57,11 @@ import {
   dismissMission as dismissProactiveMission,
 } from '@/services/intelligence/proactive/proactiveMissions';
 import type { ProactiveMission } from '@/services/intelligence/proactive/proactiveMissions';
+import {
+  detectStoreState,
+  type StoreStateResult,
+  type StoreStateType,
+} from '@/services/intelligence/storeState/storeStateEngine';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -379,13 +384,6 @@ export default function IntelligenceModule() {
     [engine, sales, customers, inventory, repairs, specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, refreshKey],
   );
 
-  // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: deterministic mission generation.
-  // Placed after `result` so it re-runs whenever analyze() produces new data.
-  const missions = useMemo(
-    () => generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang),
-    [engine, result, pendingTaskItems, dismissedMissions, engineLang], // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
   // ── Engine-derived data ──────────────────────────────────
   // R-OPERATOR-STABILIZATION-AUDIT-V1: include `result` in deps so these
   // getters invalidate when analyze() reruns (engine internals refreshed).
@@ -441,6 +439,27 @@ export default function IntelligenceModule() {
     try { return engine.buildOutreachQueueItems().length; }
     catch { return 0; }
   }), [engine, result]);
+
+  // R-INTELLIGENCE-STORE-STATE-V1: deterministic operational state detection.
+  // Must be after outreachCount to avoid TS2448 use-before-declaration.
+  const storeState: StoreStateResult = useMemo(() => {
+    try {
+      return detectStoreState({
+        sales: sales as Parameters<typeof detectStoreState>[0]['sales'],
+        repairs: repairs as Parameters<typeof detectStoreState>[0]['repairs'],
+        layaways: layaways as Parameters<typeof detectStoreState>[0]['layaways'],
+        outreachCandidateCount: outreachCount,
+      });
+    } catch {
+      return { state: 'normal' as StoreStateType, confidence: 100, reason: '', detectedAt: Date.now(), recommendedFocus: 'balanced' as const };
+    }
+  }, [sales, repairs, layaways, outreachCount, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: deterministic mission generation.
+  const missions = useMemo(
+    () => generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang, Date.now(), storeState.state),
+    [engine, result, pendingTaskItems, dismissedMissions, engineLang, storeState.state], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
@@ -1070,6 +1089,11 @@ export default function IntelligenceModule() {
           </>
         )}
       </div>
+
+      {/* ── STORE STATE BANNER ── R-INTELLIGENCE-STORE-STATE-V1 ── */}
+      {storeState.state !== 'normal' && (
+        <StoreBanner state={storeState} lang={locale as 'en' | 'es' | 'pt'} />
+      )}
 
       {/* ── 4. TODAY'S MISSIONS ── */}
       {missions.length > 0 && (
@@ -1865,6 +1889,88 @@ const MISSION_TYPE_LABEL: Record<string, { en: string; es: string; pt: string }>
   repair_follow_up: { en: 'Follow-up',   es: 'Seguimiento',   pt: 'Acompanhar'  },
   repair_escalate:  { en: 'Escalate',    es: 'Escalar',       pt: 'Escalar'     },
 };
+
+// ── Store State Banner ─────────────────────────────────────
+// R-INTELLIGENCE-STORE-STATE-V1: compact non-intrusive banner above missions.
+
+const STATE_CONFIG: Record<string, {
+  color: string;
+  bg: string;
+  border: string;
+  icon: string;
+  label: { en: string; es: string; pt: string };
+  focus: { en: string; es: string; pt: string };
+}> = {
+  slow_day: {
+    color: '#93C5FD', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.25)',
+    icon: '🌙',
+    label:  { en: 'Slow Day',         es: 'Día lento',         pt: 'Dia lento'       },
+    focus:  { en: 'focus on customer outreach', es: 'enfócate en contactar clientes', pt: 'foque em contato com clientes' },
+  },
+  rush_mode: {
+    color: '#FCA5A5', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.25)',
+    icon: '⚡',
+    label:  { en: 'Rush Mode',        es: 'Modo rush',         pt: 'Modo rush'       },
+    focus:  { en: 'prioritize fast operational actions', es: 'prioriza acciones rápidas', pt: 'priorize ações rápidas' },
+  },
+  repair_overload: {
+    color: '#FCD34D', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)',
+    icon: '🔧',
+    label:  { en: 'Repair Overload',  es: 'Sobrecarga de reparaciones', pt: 'Sobrecarga de reparos' },
+    focus:  { en: 'prioritize repair management', es: 'prioriza el manejo de reparaciones', pt: 'priorize gerenciamento de reparos' },
+  },
+  collection_mode: {
+    color: '#C4B5FD', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.25)',
+    icon: '💰',
+    label:  { en: 'Collection Mode',  es: 'Modo cobro',        pt: 'Modo cobrança'   },
+    focus:  { en: 'focus on payment recovery', es: 'enfócate en cobrar saldos', pt: 'foque em recuperação de pagamentos' },
+  },
+  opportunity_window: {
+    color: '#6EE7B7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.25)',
+    icon: '🌟',
+    label:  { en: 'Opportunity Window', es: 'Ventana de oportunidad', pt: 'Janela de oportunidade' },
+    focus:  { en: 'focus on VIP outreach', es: 'enfócate en clientes VIP', pt: 'foque em contato VIP' },
+  },
+};
+
+function StoreBanner({ state, lang }: { state: StoreStateResult; lang: 'en' | 'es' | 'pt' }) {
+  const cfg = STATE_CONFIG[state.state];
+  if (!cfg) return null;
+  const l = lang === 'pt' ? 'pt' : lang === 'es' ? 'es' : 'en';
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '7px 12px',
+      borderRadius: 8,
+      background: cfg.bg,
+      border: `1px solid ${cfg.border}`,
+    }}>
+      <span style={{ fontSize: 14 }}>{cfg.icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ color: cfg.color, fontWeight: 700, fontSize: 12 }}>
+          {cfg.label[l]}
+        </span>
+        <span style={{ color: '#9CA3AF', fontSize: 11, marginLeft: 4 }}>
+          — {cfg.focus[l]}
+        </span>
+      </div>
+      <span style={{
+        fontSize: 10,
+        color: '#6B7280',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid #374151',
+        borderRadius: 4,
+        padding: '1px 5px',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+      }}>
+        {state.confidence}%
+      </span>
+    </div>
+  );
+}
 
 function MissionCard({
   mission, lang, onAddToQueue, onDismiss, onCopyMessage, onWhatsApp, onView,
