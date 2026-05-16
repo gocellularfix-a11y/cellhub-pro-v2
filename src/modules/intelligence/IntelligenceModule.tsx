@@ -43,6 +43,8 @@ import { buildWhatsAppUrl } from '@/services/whatsapp';
 // when perfDebug is off (which is always, in production).
 import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/perfDebug';
 import IntelligenceChat from './IntelligenceChat';
+import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
+import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { useTranslation } from '@/i18n';
@@ -620,6 +622,93 @@ export default function IntelligenceModule() {
     }
   }, []);
 
+  // R-INTELLIGENCE-LIVE-OPERATING-ASSISTANT-V1 ──────────────────────────────
+  const lastInteractionAtRef = useRef(Date.now());
+  const [liveSuggestion, setLiveSuggestion] = useState<LiveAssistSuggestion | null>(null);
+
+  // Computed once per mount: is this the first time Intelligence is opened today?
+  const isFirstOpenTodayRef = useRef<boolean | null>(null);
+  if (isFirstOpenTodayRef.current === null) {
+    const key = `cellhub:intelligenceOpenToday:${new Date().toISOString().slice(0, 10)}`;
+    try {
+      isFirstOpenTodayRef.current = !localStorage.getItem(key);
+      if (isFirstOpenTodayRef.current) localStorage.setItem(key, '1');
+    } catch {
+      isFirstOpenTodayRef.current = false;
+    }
+  }
+  const isFirstOpenToday = isFirstOpenTodayRef.current ?? false;
+
+  // Track idle time via document events.
+  useEffect(() => {
+    const update = () => { lastInteractionAtRef.current = Date.now(); };
+    document.addEventListener('mousemove', update, { passive: true });
+    document.addEventListener('keydown',   update, { passive: true });
+    document.addEventListener('click',     update, { passive: true });
+    return () => {
+      document.removeEventListener('mousemove', update);
+      document.removeEventListener('keydown',   update);
+      document.removeEventListener('click',     update);
+    };
+  }, []);
+
+  // Poll for live assist suggestion every 2 minutes (also fires on mount).
+  useEffect(() => {
+    const check = () => {
+      const context: LiveAssistContext = {
+        idleMs:           Date.now() - lastInteractionAtRef.current,
+        modalOpen:        false,
+        isFirstOpenToday,
+      };
+      setLiveSuggestion(engine.getLiveAssistSuggestion(context));
+    };
+    check();
+    const id = window.setInterval(check, 2 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [engine, isFirstOpenToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLiveAction = useCallback((s: LiveAssistSuggestion) => {
+    setLiveSuggestion(null);
+    switch (s.action.type) {
+      case 'open_manager_queue':
+        queueSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      case 'open_execution_queue':
+        fireChat('execution queue');
+        break;
+      case 'open_morning_digest':
+        fireChat('morning digest');
+        break;
+      case 'open_entity':
+        if (s.action.entityType && s.action.entityId) {
+          const evtMap: Record<string, string> = {
+            repair:    'cellhub:open-repair',
+            customer:  'cellhub:open-customer',
+            layaway:   'cellhub:open-layaway',
+            inventory: 'cellhub:open-inventory-item',
+          };
+          const keyMap: Record<string, string> = {
+            repair: 'repairId', customer: 'customerId', layaway: 'layawayId', inventory: 'itemId',
+          };
+          const evtName = evtMap[s.action.entityType];
+          const detailKey = keyMap[s.action.entityType];
+          if (evtName && detailKey) {
+            window.dispatchEvent(new CustomEvent(evtName, { detail: { [detailKey]: s.action.entityId } }));
+          }
+        }
+        break;
+      case 'open_intelligence':
+      default:
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+    }
+  }, [fireChat]);
+
+  const handleLiveDismiss = useCallback((_s: LiveAssistSuggestion) => {
+    setLiveSuggestion(null);
+  }, []);
+  // ── end live assist ──────────────────────────────────────────────────────────
+
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
 
@@ -1174,6 +1263,14 @@ export default function IntelligenceModule() {
           🔄 {t('intelligence.refresh')}
         </button>
       </div>
+
+      {/* ── LIVE OPERATOR BUBBLE ─────────────────────────────────────────────── */}
+      <FloatingOperatorBubble
+        suggestion={liveSuggestion}
+        lang={locale as 'en' | 'es' | 'pt'}
+        onAction={handleLiveAction}
+        onDismiss={handleLiveDismiss}
+      />
     </div>
   );
 }

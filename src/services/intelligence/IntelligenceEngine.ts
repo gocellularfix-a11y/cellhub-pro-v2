@@ -18,6 +18,8 @@ import { generatePreparedExecutions, type ExecutionEvalContext } from './executi
 import type { ExecutionReport } from './execution/types';
 import { generateMorningDigest, type DigestEvalContext } from './digest/morningDigest';
 import type { MorningDigest } from './digest/types';
+import { generateLiveAssistSuggestion, type LiveAssistEvalContext } from './live/liveOperatingAssistant';
+import type { LiveAssistSuggestion, LiveAssistContext } from './live/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -1224,5 +1226,19 @@ export class IntelligenceEngine {
     // calls within this data snapshot return O(1).
     this.cachedCustomerHistory!.set(customerId, summary);
     return summary;
+  }
+
+  // R-INTELLIGENCE-LIVE-OPERATING-ASSISTANT-V1: evaluate real-time operational
+  // windows and return the highest-priority suggestion for the operator.
+  // Not cached — result depends on LiveAssistContext (idle time, modal state)
+  // which changes independently of store data. Cooldowns are managed in
+  // liveOperatingAssistant.ts via localStorage.
+  // Engine satisfies LiveAssistEvalContext structurally (no direct type import).
+  getLiveAssistSuggestion(context: LiveAssistContext): LiveAssistSuggestion | null {
+    return generateLiveAssistSuggestion(
+      this as unknown as LiveAssistEvalContext,
+      context,
+      this.config.lang,
+    );
   }
 }
