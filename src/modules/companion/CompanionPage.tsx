@@ -27,8 +27,9 @@ import {
 import ApprovalsPanel from './ApprovalsPanel';
 import MessagesPanel from './MessagesPanel';
 import StatusPanel from './StatusPanel';
+import IntelligenceStatusPanel from './IntelligenceStatusPanel';
 
-type Tab = 'status' | 'approvals' | 'messages';
+type Tab = 'status' | 'approvals' | 'messages' | 'intelligence';
 type PairingPhase = 'idle' | 'starting' | 'waiting' | 'claimed' | 'expired' | 'error';
 
 const DEFAULT_BRIDGE_URL = 'https://cellhub-companion-production.up.railway.app';
@@ -252,15 +253,18 @@ function PairedShell({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-        {(['status', 'approvals', 'messages'] as Tab[]).map(t => (
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {(['status', 'approvals', 'messages', 'intelligence'] as Tab[]).map(t => (
           <button
             key={t}
             type="button"
             onClick={() => onTab(t)}
             style={tabButtonStyle(t === tab)}
           >
-            {t === 'status' ? '🏪 Status' : t === 'approvals' ? '✅ Approvals' : '💬 Messages'}
+            {t === 'status'       ? '🏪 Status'
+            : t === 'approvals'  ? '✅ Approvals'
+            : t === 'messages'   ? '💬 Messages'
+            :                      '📡 Intelligence'}
           </button>
         ))}
       </div>
@@ -270,9 +274,10 @@ function PairedShell({
           {' · since '}
           {new Date(session.pairedAt).toLocaleTimeString()}
         </div>
-        {tab === 'status' && <StatusPanel session={session} />}
-        {tab === 'approvals' && <ApprovalsPanel session={session} />}
-        {tab === 'messages' && <MessagesPanel session={session} />}
+        {tab === 'status'       && <StatusPanel session={session} />}
+        {tab === 'approvals'    && <ApprovalsPanel session={session} />}
+        {tab === 'messages'     && <MessagesPanel session={session} />}
+        {tab === 'intelligence' && <IntelligenceStatusPanel />}
       </div>
     </>
   );
