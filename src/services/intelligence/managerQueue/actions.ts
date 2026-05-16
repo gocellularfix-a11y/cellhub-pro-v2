@@ -63,6 +63,10 @@ export interface NewQueueItemInput {
   entityId?: string;
   recommendedAction?: string;
   notes?: string;
+  // R-INTELLIGENCE-AUTONOMOUS-FLOWS-V1: optional workflow link.
+  // Callers create/ensure a workflow via ensureOperationalWorkflow() first,
+  // then pass the returned id here to link item ↔ workflow.
+  workflowId?: string;
 }
 
 export function addManagerQueueItem(input: NewQueueItemInput): ManagerQueueItem {
@@ -108,6 +112,7 @@ export function addManagerQueueItem(input: NewQueueItemInput): ManagerQueueItem 
     entityId: input.entityId,
     recommendedAction: input.recommendedAction,
     notes: input.notes,
+    workflowId: input.workflowId,
     occurrenceCount: 1,
     createdAt: now,
     updatedAt: now,
@@ -138,6 +143,27 @@ function setStatus(id: string, status: QueueItemStatus, notes?: string): void {
 export function approveQueueItem(id: string, notes?: string): void  { setStatus(id, 'approved',  notes); }
 export function dismissQueueItem(id: string, notes?: string): void  { setStatus(id, 'dismissed', notes); }
 export function resolveQueueItem(id: string, notes?: string): void  { setStatus(id, 'resolved',  notes); }
+
+// R-INTELLIGENCE-AUTO-RESOLUTION-V1: silent system-driven resolution.
+// Appends an auto-note to the item's notes history so the operator can
+// see WHY it was resolved without any popup or notification.
+export function autoResolveQueueItem(id: string, reason: string): void {
+  const items = readQueue();
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  const existing = items[idx];
+  const autoNote = `Auto-resolved: ${reason}`;
+  const notes = existing.notes ? `${existing.notes}\n${autoNote}` : autoNote;
+  const now = Date.now();
+  items[idx] = {
+    ...existing,
+    status: 'resolved',
+    updatedAt: now,
+    resolvedAt: now,
+    notes,
+  };
+  writeQueue(items);
+}
 
 // R-INTELLIGENCE-FEEDBACK-LOOP-V1: snooze — hides item from pending view
 // for durationMs (default 1 hour). Item reappears automatically when

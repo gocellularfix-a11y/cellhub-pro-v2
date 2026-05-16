@@ -67,6 +67,10 @@ export type IntentId =
   | 'customer_churn_root_cause'
   | 'help'
   | 'data_query'
+  // R-INTELLIGENCE-TREND-DIRECTION-V1: is the store improving/declining/stable?
+  | 'trend_direction'
+  // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: ranked operator action list
+  | 'proactive_operations'
   // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
@@ -780,6 +784,45 @@ const DATA_QUERY_KEYWORDS = [
   'pontos',
 ];
 
+// R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: "what should I do now" — surfaces the
+// highest-ROI operational actions ranked by recovery potential and confidence.
+// Anchored multi-word phrases to avoid collision with single-word intents.
+const PROACTIVE_OPERATIONS_KEYWORDS = [
+  // EN
+  'what should i do now', 'best next action', 'top priorities', 'best opportunity',
+  'proactive report', 'operational guidance', 'highest roi', 'what matters most',
+  'what to prioritize', 'who should i contact', 'next steps for the store',
+  // ES
+  'qué debo hacer ahora', 'que debo hacer ahora', 'mejor siguiente acción',
+  'mejor siguiente accion', 'prioridades principales', 'mejor oportunidad',
+  'guía operacional', 'guia operacional', 'mayor retorno',
+  'qué importa más', 'que importa mas', 'a quién debo contactar',
+  'a quien debo contactar', 'próximos pasos', 'proximos pasos',
+  // PT
+  'o que devo fazer agora', 'melhor próxima ação', 'melhor proxima acao',
+  'principais prioridades', 'melhor oportunidade', 'relatório proativo',
+  'relatorio proativo', 'maior retorno', 'o que é mais importante',
+  'próximos passos', 'proximos passos',
+];
+
+// R-INTELLIGENCE-TREND-DIRECTION-V1: is the store improving, declining, or stable?
+const TREND_DIRECTION_KEYWORDS = [
+  // EN
+  'sales trend', 'trend report', 'is business improving', 'is business slowing',
+  'is business slowing down', 'how are we trending', 'trending up', 'trending down',
+  'are we growing', 'are we declining', 'business trend', 'revenue trend',
+  // ES
+  'tendencia de ventas', 'reporte de tendencia', 'el negocio está mejorando',
+  'el negocio esta mejorando', 'estamos mejorando', 'estamos creciendo',
+  'estamos decayendo', 'cómo vamos esta semana', 'como vamos esta semana',
+  'tendencia del negocio', 'tendencia de ingresos',
+  // PT
+  'tendência de vendas', 'tendencia de vendas', 'relatorio de tendencia',
+  'o negócio está melhorando', 'o negocio esta melhorando',
+  'estamos crescendo', 'estamos declinando',
+  'como estamos tendendo', 'tendência do negócio', 'tendencia do negocio',
+];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -1132,6 +1175,13 @@ export function classifyIntent(
     // for product-anchored phrases like "what to promote" / "high margin".
     { id: 'proactive_opportunities', score: scoreKeywords(query, PROACTIVE_OPPORTUNITIES_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
+    // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: listed BEFORE trend_direction so
+    // "what should I do now" routes to the action list, not the trend report.
+    { id: 'proactive_operations', score: scoreKeywords(query, PROACTIVE_OPERATIONS_KEYWORDS) },
+    // R-INTELLIGENCE-TREND-DIRECTION-V1: listed BEFORE root_cause so "sales
+    // trend" / "tendencia de ventas" routes to the direction report, not the
+    // revenue-decline root cause (which overlaps on 'sales decline').
+    { id: 'trend_direction', score: scoreKeywords(query, TREND_DIRECTION_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
     { id: 'dead_stock_root_cause', score: scoreKeywords(query, DEAD_STOCK_ROOT_CAUSE_KEYWORDS) },

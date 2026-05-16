@@ -66,3 +66,19 @@ export function addFeedbackEvent(
   };
   write([...read(), event]);
 }
+
+// R-INTELLIGENCE-OUTCOME-TRACKING-V1: outcome-driven feedback event.
+// Maps outcome status to the canonical feedback type used by the scoring system.
+export function recordOutcomeFeedback(params: {
+  queueItemId?: string;
+  workflowId: string;
+  fingerprint?: string;
+  status: 'successful' | 'failed';
+}): void {
+  const type: IntelligenceFeedbackType = params.status === 'successful' ? 'resolved' : 'not_useful';
+  addFeedbackEvent({
+    queueItemId: params.queueItemId ?? `outcome-${params.workflowId}`,
+    fingerprint: params.fingerprint,
+    type,
+  });
+}

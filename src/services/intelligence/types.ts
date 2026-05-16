@@ -158,11 +158,63 @@ export interface CacheEntry<T> {
 // R-INTEL-2-MISSED: aggregate missed-revenue signals for the
 // "what is hurting my profit?" chat intent and future dashboard card.
 export interface MissedRevenueReport {
-  slowDayLossCents: number;       // weekly revenue gap: best DOW minus slowest DOW
+  slowDayLossCents: number;       // per-occurrence gap: slowest DOW vs store daily average (0 if <15% below)
   slowestDayName: string;         // English name of the slowest day of week
-  slowHourLossCents: number;      // daily sum of off-peak gaps vs peak hour
+  slowHourLossCents: number;      // per-day revenue gap: active hours > 20% below median active-hour avg
   deadStockLockedCents: number;   // capital tied up in dead inventory (cost basis)
   opportunityCostCents: number;   // 2%/month holding cost on dead stock
+}
+
+// R-INTELLIGENCE-TREND-DIRECTION-V1: direction of store performance over time.
+// Produced by computeTrendDirectionReport() in trends/trendDirection.ts.
+// Pure deterministic comparison — no ML, no AI APIs.
+export type TrendDirection =
+  | 'improving'
+  | 'declining'
+  | 'stable'
+  | 'recovering'
+  | 'worsening';
+
+export interface TrendSignal {
+  id: string;
+  category:
+    | 'sales'
+    | 'repairs'
+    | 'accessories'
+    | 'inventory'
+    | 'customers'
+    | 'collections';
+  direction: TrendDirection;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  explanation: string;
+  recommendedAction?: string;
+  currentValue: number;
+  previousValue: number;
+  changePercent: number;
+  detectedAt: number;
+}
+
+export interface TrendDirectionReport {
+  generatedAt: number;
+  signals: TrendSignal[];
+  summary: string;
+}
+
+// R-INTELLIGENCE-CONTEXTUAL-BASELINE-ENGINE-V1: store-aware operational baseline.
+// Produced by computeContextualBaseline() — pure deterministic aggregation over
+// last 30 days of sales. All revenue fields are in cents.
+// Future extension points: seasonal normalization, holiday-aware baseline,
+// weather-aware traffic, store growth trend, multi-store benchmarking.
+export interface ContextualBaseline {
+  dailyAverage: number;                    // avg revenue per trading day (last 30d)
+  weekdayAverage: Record<string, number>;  // DOW name → avg revenue per occurrence
+  hourlyAverage: Record<number, number>;   // hour (0-23) → avg revenue per trading day
+  rolling7dAverage: number;               // avg revenue per calendar day (last 7d)
+  rolling30dAverage: number;              // avg revenue per calendar day (last 30d)
+  expectedRangeLow: number;              // lower bound of normal daily revenue (mean - 1σ)
+  expectedRangeHigh: number;             // upper bound of normal daily revenue (mean + 1σ)
+  volatilityScore: number;               // 0-1: coefficient of variation; higher = more volatile
 }
 
 // R-INTEL-2-CONTACT: per-customer next-visit prediction for the

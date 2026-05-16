@@ -129,36 +129,110 @@ export class SalesAnalyzer {
     return hourly;
   }
 
-  // R-INTEL-2-MISSED: weekly revenue gap — compares the slowest DOW against
-  // the best DOW over the last 30 days. The gap is the per-week opportunity.
+  // R-INTELLIGENCE-CONTEXTUAL-BASELINE-ENGINE-V1: per-occurrence DOW gap vs
+  // store daily average. Replaces the former best-vs-slowest 30d accumulation
+  // which produced inflated, unrealistic figures. Only fires when slowest DOW
+  // is >= 15% below the store's own trading-day average.
   getMissedRevenueByDay(): { slowDayLossCents: number; slowestDayName: string } {
-    const days = this.getSlowestDays(); // sorted ASC by revenue; uses EN names by default
-    if (days.length < 2) return { slowDayLossCents: 0, slowestDayName: '' };
-    const slowest = days[0];
-    const best = days[days.length - 1];
-    // Re-derive English name regardless of analyzer lang (stored data = English DOW)
-    const DAY_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const DAY_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const esIdx = DAY_ES.indexOf(slowest.day);
-    const slowestDayName = esIdx >= 0 ? DAY_EN[esIdx] : slowest.day;
+    const DAY_EN    = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const cutoffMs  = getDaysAgo(30).getTime();
+
+    const dowTotals: number[]      = new Array(7).fill(0);
+    const dowDates:  Set<string>[] = Array.from({ length: 7 }, () => new Set<string>());
+    const tradingDays              = new Set<string>();
+
+    for (const s of this.sales) {
+      const ts = new Date(s.createdAt as string).getTime();
+      if (!ts || ts < cutoffMs) continue;
+      if (String((s as { status?: string }).status || '').toLowerCase() === 'voided') continue;
+      const d       = new Date(ts);
+      const dateKey = d.toISOString().slice(0, 10);
+      const dow     = d.getDay();
+      dowTotals[dow] += s.total || 0;
+      dowDates[dow].add(dateKey);
+      tradingDays.add(dateKey);
+    }
+
+    if (tradingDays.size < 7) return { slowDayLossCents: 0, slowestDayName: '' };
+
+    // Per-occurrence avg requires ≥2 dates per DOW for a stable estimate
+    const dowAvg: (number | null)[] = new Array(7).fill(null);
+    for (let d = 0; d < 7; d++) {
+      const occ = dowDates[d].size;
+      if (occ >= 2) dowAvg[d] = dowTotals[d] / occ;
+    }
+
+    const totalRev       = dowTotals.reduce((a, b) => a + b, 0);
+    const storeAvgPerDay = totalRev / tradingDays.size;
+    if (storeAvgPerDay <= 0) return { slowDayLossCents: 0, slowestDayName: '' };
+
+    // Find DOW with the lowest per-occurrence avg that is >= 15% below store average
+    let slowestDow = -1;
+    let slowestAvg = Infinity;
+    for (let d = 0; d < 7; d++) {
+      const avg = dowAvg[d];
+      if (avg === null) continue;
+      const deviationFrac = (storeAvgPerDay - avg) / storeAvgPerDay;
+      if (deviationFrac >= 0.15 && avg < slowestAvg) {
+        slowestAvg = avg;
+        slowestDow = d;
+      }
+    }
+
+    if (slowestDow < 0) return { slowDayLossCents: 0, slowestDayName: '' };
+
     return {
-      slowDayLossCents: Math.max(0, best.revenue - slowest.revenue),
-      slowestDayName,
+      slowDayLossCents: Math.round(storeAvgPerDay - slowestAvg),
+      slowestDayName:   DAY_EN[slowestDow],
     };
   }
 
-  // R-INTEL-2-MISSED: daily off-peak gap — sum of (peakHour - eachActiveHour)
-  // for the last 30 days. Hours with zero revenue are excluded (assumed closed).
+  // R-INTELLIGENCE-CONTEXTUAL-BASELINE-ENGINE-V1: per-day revenue gap for
+  // active hours that are > 20% below the median active-hour daily average.
+  // Replaces the former peak-vs-all-hours 30d accumulation which produced
+  // inflated figures (e.g. $29k) by comparing everything against peak.
   getMissedRevenueByHour(): { slowHourLossCents: number } {
-    const hourly = this.getHourlyHeatmap();
-    const activeRevenues = Object.values(hourly).filter(rev => rev > 0);
-    if (activeRevenues.length === 0) return { slowHourLossCents: 0 };
-    const peakHourRevenue = Math.max(...activeRevenues);
-    const slowHourLossCents = activeRevenues.reduce(
-      (sum, rev) => sum + (peakHourRevenue - rev),
-      0,
-    );
-    return { slowHourLossCents };
+    const cutoffMs  = getDaysAgo(30).getTime();
+    const tradingDays   = new Set<string>();
+    const hourlyTotals  = new Array(24).fill(0) as number[];
+
+    for (const s of this.sales) {
+      const ts = new Date(s.createdAt as string).getTime();
+      if (!ts || ts < cutoffMs) continue;
+      if (String((s as { status?: string }).status || '').toLowerCase() === 'voided') continue;
+      const d = new Date(ts);
+      tradingDays.add(d.toISOString().slice(0, 10));
+      hourlyTotals[d.getHours()] += s.total || 0;
+    }
+
+    const days = tradingDays.size;
+    if (days < 3) return { slowHourLossCents: 0 };
+
+    // Per-day average per hour (not 30d total)
+    const hourlyAvg = hourlyTotals.map(t => t / days);
+
+    // Active hours: those with a meaningful per-day average
+    const activeAvgs = hourlyAvg.filter(v => v > 0);
+    if (activeAvgs.length < 2) return { slowHourLossCents: 0 };
+
+    // Median of active-hour averages — robust against a single peak-hour outlier
+    const sorted = [...activeAvgs].sort((a, b) => a - b);
+    const mid    = Math.floor(sorted.length / 2);
+    const medianAvg = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+
+    if (medianAvg <= 0) return { slowHourLossCents: 0 };
+
+    // Sum deviations only for hours > 20% below the median (meaningful signal)
+    let gapSum = 0;
+    for (const v of activeAvgs) {
+      if (v < medianAvg * 0.8) gapSum += medianAvg * 0.8 - v;
+    }
+
+    // Cap at 1× daily total so a single extreme outlier doesn't inflate the result
+    const dailyTotal = activeAvgs.reduce((a, b) => a + b, 0);
+    return { slowHourLossCents: Math.round(Math.min(gapSum, dailyTotal)) };
   }
 
   // R-INTEL-SMARTER-F1: per-SKU demand forecasting via linear regression

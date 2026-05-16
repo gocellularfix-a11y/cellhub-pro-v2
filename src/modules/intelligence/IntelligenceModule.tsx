@@ -16,6 +16,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
 // R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1
 import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem, snoozeQueueItem } from '@/services/intelligence/managerQueue/actions';
+import { advanceWorkflowStep } from '@/services/intelligence/workflows/flowEngine';
 import { getPendingItems, getQueueSummary } from '@/services/intelligence/managerQueue/selectors';
 import type { ManagerQueueItem, QueueItemSeverity } from '@/services/intelligence/managerQueue/types';
 import { addFeedbackEvent, getFeedbackEvents } from '@/services/intelligence/feedback/store';
@@ -166,6 +167,15 @@ export default function IntelligenceModule() {
     return () => window.removeEventListener('cellhub:open-manager-review', reloadQueue);
   }, [reloadQueue]);
 
+  // R-INTELLIGENCE-AUTO-RESOLUTION-V1: silently resolve queue items whose
+  // underlying operational issue has cleared. Runs after each data update —
+  // no notifications, no popups. reloadQueue() fires only when items actually
+  // changed (count > 0) to avoid a spurious state update on every render.
+  useEffect(() => {
+    const resolved = engine.runAutoResolution();
+    if (resolved > 0) reloadQueue();
+  }, [engine, sales, repairs, layaways, inventory, reloadQueue]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // R-INTELLIGENCE-FEEDBACK-LOOP-V1: scoreMap rebuilt whenever feedback changes.
   // O(n) over feedback events — fast for < 1000 entries.
   const feedbackScoreMap = useMemo(() => buildScoreMap(getFeedbackEvents()), [feedbackVersion]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,6 +189,9 @@ export default function IntelligenceModule() {
   // Queue action callbacks — all accept full item (fingerprint needed for feedback).
   const handleQueueApprove = useCallback((item: ManagerQueueItem) => {
     approveQueueItem(item.id);
+    // R-INTELLIGENCE-AUTONOMOUS-FLOWS-V1: advancing the queue item = operator
+    // acted on the recommendation → advance the workflow to the next step.
+    if (item.workflowId) advanceWorkflowStep(item.workflowId);
     writeFeedback(item, 'useful');   // auto-signal: approved = useful
     setQueueItems(getQueue());
   }, [writeFeedback]);

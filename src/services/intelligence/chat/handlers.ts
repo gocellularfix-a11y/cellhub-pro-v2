@@ -292,6 +292,14 @@ export function handleIntent(
     case 'product_opportunities':
       return handleProductOpportunities(engine, lang);
 
+    // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1
+    case 'proactive_operations':
+      return handleProactiveOperations(engine, lang);
+
+    // R-INTELLIGENCE-TREND-DIRECTION-V1
+    case 'trend_direction':
+      return handleTrendDirection(engine, lang);
+
     case 'root_cause':
       return handleRootCause(engine, lang);
 
@@ -3702,6 +3710,70 @@ function handleManagerQueue(lang: Lang3): ChatResponse {
   if (pending.length > 3) {
     lines.push(t('mq.chat.more', pending.length - 3));
   }
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Proactive operations ──────────────────────────────────────────────────────
+// R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1
+function handleProactiveOperations(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = engine.getProactiveReport();
+
+  if (report.actions.length === 0) {
+    return { kind: 'answer', text: t('chat.proactive.empty') };
+  }
+
+  const es = lang === 'es';
+  const PRIORITY_ICON: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡' };
+  const lines: string[] = [t('chat.proactive.header'), ''];
+
+  for (const action of report.actions.slice(0, 5)) {
+    const icon = PRIORITY_ICON[action.priority] ?? '•';
+    const impact = action.estimatedImpactCents
+      ? ` (${es ? 'recuperable' : 'recoverable'}: $${(action.estimatedImpactCents / 100).toFixed(0)})`
+      : '';
+    lines.push(`${icon} ${action.title}${impact}`);
+  }
+
+  if (report.topAction) {
+    lines.push('');
+    lines.push(`💡 **${t('chat.proactive.bestNext')}:**`);
+    lines.push(report.topAction.recommendedAction);
+  }
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Trend direction ─────────────────────────────────────────────────────────
+// R-INTELLIGENCE-TREND-DIRECTION-V1
+function handleTrendDirection(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = engine.getTrendDirectionReport();
+
+  if (report.signals.length === 0) {
+    return { kind: 'answer', text: t('chat.trend.empty') };
+  }
+
+  const dirIcon: Record<string, string> = {
+    improving: '📈', declining: '📉', stable: '➡️', recovering: '🔄', worsening: '⚠️',
+  };
+  const sevIcon: Record<string, string> = {
+    low: '', medium: '🟡 ', high: '🟠 ', critical: '🔴 ',
+  };
+
+  const lines: string[] = [t('chat.trend.header'), ''];
+
+  for (const sig of report.signals) {
+    const icon = dirIcon[sig.direction] ?? '';
+    const sev = sevIcon[sig.severity] ?? '';
+    lines.push(`${sev}${icon} **${sig.title}**`);
+    lines.push(sig.explanation);
+    if (sig.recommendedAction) lines.push(`→ ${sig.recommendedAction}`);
+    lines.push('');
+  }
+
+  lines.push(`💡 ${t('chat.trend.nextStep')}`);
 
   return { kind: 'answer', text: lines.join('\n').trim() };
 }

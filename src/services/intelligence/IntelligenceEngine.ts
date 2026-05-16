@@ -1,6 +1,19 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
 import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment } from '@/store/types';
-import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult } from './types';
+import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
+import { computeContextualBaseline } from './baseline/contextualBaseline';
+import { computeTrendDirectionReport } from './trends/trendDirection';
+import { evaluateQueueAutoResolution } from './autoResolution/resolutionRules';
+import { getQueue, autoResolveQueueItem } from './managerQueue/actions';
+import {
+  ensureOperationalWorkflow,
+  autoCompleteWorkflow,
+  type EnsureWorkflowParams,
+  type OperationalWorkflow,
+} from './workflows/flowEngine';
+import { evaluatePendingOutcomes, type OutcomeEvalContext } from './outcomes/outcomeEngine';
+import { generateProactiveOperationsReport, type ProactiveEvalContext } from './proactive/proactiveEngine';
+import type { ProactiveOperationsReport } from './proactive/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -138,6 +151,12 @@ export class IntelligenceEngine {
   private cachedReorderRecs?: ReorderRecommendation[];
   private cachedMissedRev?: MissedRevenueReport;
   private cachedProductOpps?: Map<number, ProductOpportunity[]>;
+  // R-INTELLIGENCE-CONTEXTUAL-BASELINE-ENGINE-V1: store-aware baseline cache.
+  private cachedBaseline?: ContextualBaseline;
+  // R-INTELLIGENCE-TREND-DIRECTION-V1: trend direction report cache.
+  private cachedTrendReport?: TrendDirectionReport;
+  // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: proactive report cache.
+  private cachedProactiveReport?: ProactiveOperationsReport;
 
   // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
   // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
@@ -694,6 +713,9 @@ export class IntelligenceEngine {
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
     this.cachedCustomerHistory = undefined;
+    this.cachedBaseline = undefined;
+    this.cachedTrendReport = undefined;
+    this.cachedProactiveReport = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -713,6 +735,9 @@ export class IntelligenceEngine {
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
     this.cachedCustomerHistory = undefined;
+    this.cachedBaseline = undefined;
+    this.cachedTrendReport = undefined;
+    this.cachedProactiveReport = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -898,6 +923,78 @@ export class IntelligenceEngine {
     const result: MissedRevenueReport = { slowDayLossCents, slowestDayName, slowHourLossCents, deadStockLockedCents, opportunityCostCents };
     this.cachedMissedRev = result;
     return result;
+  }
+
+  // R-INTELLIGENCE-CONTEXTUAL-BASELINE-ENGINE-V1: store-aware operational
+  // baseline computed over the last 30 days of sales. Memoized — same
+  // cache lifecycle as cachedMissedRev (cleared on updateData/invalidateCache).
+  getContextualBaseline(): ContextualBaseline {
+    if (this.cachedBaseline) return this.cachedBaseline;
+    const result = computeContextualBaseline(this.sales);
+    this.cachedBaseline = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-TREND-DIRECTION-V1: detect whether the store is improving,
+  // declining, stable, recovering, or worsening over the last 7 days.
+  // Memoized — same lifecycle as cachedBaseline.
+  getTrendDirectionReport(): TrendDirectionReport {
+    if (this.cachedTrendReport) return this.cachedTrendReport;
+    const result = computeTrendDirectionReport(this.sales, this.getContextualBaseline());
+    this.cachedTrendReport = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-AUTO-RESOLUTION-V1: scan all pending queue items and
+  // silently resolve any whose underlying operational issue has cleared.
+  // R-INTELLIGENCE-AUTONOMOUS-FLOWS-V1: also auto-completes any linked workflow.
+  // R-INTELLIGENCE-OUTCOME-TRACKING-V1: also evaluates pending outcomes.
+  // O(n) over pending items (expected < 200). Called by IntelligenceModule
+  // after each data update — returns count of newly resolved items so the
+  // caller can decide whether to reload queue state.
+  runAutoResolution(): number {
+    const pending = getQueue().filter(i => i.status === 'pending');
+    let count = 0;
+    for (const item of pending) {
+      const result = evaluateQueueAutoResolution(item, this);
+      if (result.resolved && result.reason) {
+        autoResolveQueueItem(item.id, result.reason);
+        if (item.workflowId) {
+          autoCompleteWorkflow(item.workflowId, result.reason);
+        }
+        count++;
+      }
+    }
+    this.runOutcomeEvaluation();
+    return count;
+  }
+
+  // R-INTELLIGENCE-OUTCOME-TRACKING-V1: evaluate all pending outcomes against
+  // current entity state. Silent — no popups, no queue writes. Returns count
+  // of newly resolved outcomes. Engine satisfies OutcomeEvalContext structurally.
+  runOutcomeEvaluation(): number {
+    return evaluatePendingOutcomes(this as unknown as OutcomeEvalContext);
+  }
+
+  // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1: ranked list of the highest-ROI
+  // operational actions the operator should take right now. Memoized — same
+  // cache lifecycle as other per-getter caches (cleared on updateData/invalidateCache).
+  // Engine satisfies ProactiveEvalContext structurally (no direct type import).
+  getProactiveReport(): ProactiveOperationsReport {
+    if (this.cachedProactiveReport) return this.cachedProactiveReport;
+    const result = generateProactiveOperationsReport(
+      this as unknown as ProactiveEvalContext,
+      this.config.lang,
+    );
+    this.cachedProactiveReport = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-AUTONOMOUS-FLOWS-V1: thin wrapper so callers (Companion,
+  // chat handlers, future automation) can ensure/create workflows without
+  // importing the flow engine directly. Returns the existing or new workflow.
+  ensureWorkflow(params: EnsureWorkflowParams): OperationalWorkflow {
+    return ensureOperationalWorkflow(params);
   }
 
   // R-INTEL-2-PRODUCT: margin + velocity + return-rate opportunity classification.

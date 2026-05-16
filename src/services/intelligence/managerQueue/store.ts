@@ -1,6 +1,10 @@
-// R-INTELLIGENCE-MANAGER-QUEUE-V1
+// R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-AUTO-RESOLUTION-V1
 // localStorage-backed manager queue persistence layer.
 // Full-replace writes: read → mutate → write. No partial saves.
+//
+// Auto-resolved items flow through the same writeQueue() path as manually
+// resolved ones — they land in the `terminal` bucket and are capped at
+// MAX_RESOLVED. No separate storage needed; history is preserved in notes.
 
 import type { ManagerQueueItem } from './types';
 
