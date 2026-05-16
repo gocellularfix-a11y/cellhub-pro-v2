@@ -38,6 +38,7 @@ import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { addLayawayPayment } from '@/services/layaway/payments';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
+import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 
 // Case-insensitive category predicates — single source of truth so bundle
 // suggestion, search icon, and category filter all agree on what counts as
@@ -369,6 +370,23 @@ export default function POSModule() {
           },
         }));
       } catch { /* env without CustomEvent */ }
+
+      // R-INTELLIGENCE-PAYMENT-VERIFY-V1: after phone_payment checkout,
+      // schedule a 2-min nudge to remind cashier to confirm carrier portal.
+      try {
+        const phoneItems = sale.items.filter((i) => i.category === 'phone_payment');
+        if (phoneItems.length > 0) {
+          const carrier = String((phoneItems[0] as any).carrier || '').trim() || 'Carrier';
+          const amountCents = phoneItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
+          addVerification({
+            saleId: sale.id,
+            customerName: sale.customerName || selectedCustomer?.name || '',
+            carrier,
+            amountCents,
+          });
+          window.dispatchEvent(new CustomEvent('cellhub:payment-verify-nudge'));
+        }
+      } catch { /* non-critical */ }
 
       // 2. Deduct inventory (using ref)
       const updatedInventory = [...inventoryRef.current];

@@ -59,6 +59,7 @@ import {
 import type { ProactiveMission } from '@/services/intelligence/proactive/proactiveMissions';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
+import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
 import { recordAttentionSignal } from '@/services/intelligence/attention/store';
 import { formatCurrency } from '@/utils/currency';
@@ -1483,6 +1484,10 @@ export default function IntelligenceModule() {
         onAction={handleLiveAction}
         onDismiss={handleLiveDismiss}
       />
+
+      {/* ── PAYMENT VERIFICATION NUDGE ──────────────────────────────────────── */}
+      {/* R-INTELLIGENCE-PAYMENT-VERIFY-V1: 2-min delayed reminder card */}
+      <PaymentVerificationNudge lang={locale as 'en' | 'es' | 'pt'} />
     </div>
   );
 }
