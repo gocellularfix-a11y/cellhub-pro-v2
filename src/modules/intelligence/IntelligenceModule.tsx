@@ -86,6 +86,11 @@ import {
   type BusinessMemoryResult,
 } from '@/services/intelligence/memory/businessMemory';
 import BusinessMemorySection from '@/components/BusinessMemorySection';
+import {
+  generateStrategicInsights,
+  type StrategicOperatorResult,
+} from '@/services/intelligence/strategy/strategicOperator';
+import StrategicInsightsSection from '@/components/StrategicInsightsSection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -577,6 +582,20 @@ export default function IntelligenceModule() {
   const businessMemory: BusinessMemoryResult = useMemo(
     () => generateBusinessMemory(),
     [refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-STRATEGIC-OPERATOR-V1: deterministic strategic observations.
+  const strategicInsights: StrategicOperatorResult = useMemo(
+    () => generateStrategicInsights({
+      storeState,
+      businessMemoryInsights: businessMemory.insights,
+      repairs: repairs as Parameters<typeof generateStrategicInsights>[0]['repairs'],
+      layaways: layaways as Parameters<typeof generateStrategicInsights>[0]['layaways'],
+      missions: missions as Parameters<typeof generateStrategicInsights>[0]['missions'],
+      continuityItems: continuityItems as Parameters<typeof generateStrategicInsights>[0]['continuityItems'],
+      outreachCandidateCount: outreachCount,
+    }),
+    [storeState, businessMemory.insights, repairs, layaways, missions, continuityItems, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Record store state transitions so the memory layer can detect patterns.
@@ -1227,6 +1246,14 @@ export default function IntelligenceModule() {
       {businessMemory.insights.length > 0 && (
         <BusinessMemorySection
           insights={businessMemory.insights}
+          lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
+
+      {/* ── STRATEGIC INSIGHTS ── R-INTELLIGENCE-STRATEGIC-OPERATOR-V1 ── */}
+      {strategicInsights.insights.length > 0 && (
+        <StrategicInsightsSection
+          insights={strategicInsights.insights}
           lang={locale as 'en' | 'es' | 'pt'}
         />
       )}
