@@ -22,6 +22,8 @@ export type OperatorTaskType =
   | 'repair_escalate'
   | 'repair_waiting';
 
+export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
+
 export interface OperatorQueueItem {
   id: string;
   createdAt: number;          // epoch ms
@@ -34,6 +36,10 @@ export interface OperatorQueueItem {
   status: 'pending' | 'completed' | 'dismissed';
   completedAt?: number;
   dismissedAt?: number;
+  // R-INTELLIGENCE-PRIORITY-ENGINE-V1: scoring metadata stamped at creation.
+  priorityScore?: number;
+  urgencyLevel?: UrgencyLevel;
+  impactReason?: string;
 }
 
 export interface OperatorTaskOutcome {

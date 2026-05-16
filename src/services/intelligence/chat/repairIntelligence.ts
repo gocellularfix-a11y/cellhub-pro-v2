@@ -11,6 +11,7 @@ import type { IntentMatch } from './intentRouter';
 import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
 import { tChat } from './handlers';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
+import { scoreRepairFollowUp, scoreRepairEscalate } from '../operatorQueue/priorityScoring';
 
 function findActiveRepairByName(engine: IntelligenceEngine, nameFragment: string) {
   const nameLower = nameFragment.toLowerCase();
@@ -119,6 +120,10 @@ export function handleRepairFollowUp(
       entityId: repair.id,
       executable: true,
       executionTarget: 'add_to_operator_queue',
+      priorityMeta: scoreRepairFollowUp({
+        daysInRepair: days,
+        repairValueCents: (repair as any).estimatedCost || (repair as any).price || 0,
+      }),
     },
   });
 
@@ -218,6 +223,10 @@ export function handleRepairEscalate(
       entityId: repair.id,
       executable: true,
       executionTarget: 'add_to_operator_queue',
+      priorityMeta: scoreRepairEscalate({
+        daysInRepair: days,
+        repairValueCents: (repair as any).estimatedCost || (repair as any).price || 0,
+      }),
     },
   });
 

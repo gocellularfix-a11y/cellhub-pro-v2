@@ -10,6 +10,7 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch } from './intentRouter';
 import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
 import { tChat, COP } from './handlers';
+import { scoreRecoverCustomer, scoreVipOutreach } from '../operatorQueue/priorityScoring';
 
 export function handleRecoverCustomer(
   match: IntentMatch,
@@ -111,6 +112,11 @@ export function handleRecoverCustomer(
       entityId: customerId ?? undefined,
       executable: true,
       executionTarget: 'add_to_operator_queue',
+      priorityMeta: scoreRecoverCustomer({
+        daysInactive: days,
+        grossRevenueCents: h.grossRevenue,
+        visitCount: h.visitCount,
+      }),
     },
   });
 
@@ -142,6 +148,9 @@ export function handleVipOutreach(
 
   const customer = h.customer;
   const firstName = customer.name.split(' ')[0] || customer.name;
+  const daysSinceLastVisit = h.lastVisit
+    ? Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000))
+    : 999;
   const message = t('chat.vipOutreach.message', firstName);
 
   const lines = [
@@ -209,6 +218,11 @@ export function handleVipOutreach(
       entityId: customerId ?? undefined,
       executable: true,
       executionTarget: 'add_to_operator_queue',
+      priorityMeta: scoreVipOutreach({
+        grossRevenueCents: h.grossRevenue,
+        visitCount: h.visitCount,
+        daysSinceLastVisit,
+      }),
     },
   });
 

@@ -302,7 +302,13 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-OPERATOR-QUEUE-V1: derived task queue lists
   const TASK_QUEUE_PREVIEW = 5;
-  const pendingTaskItems = useMemo(() => taskQueue.filter((i) => i.status === 'pending'), [taskQueue]);
+  const pendingTaskItems = useMemo(
+    () => taskQueue
+      .filter((i) => i.status === 'pending')
+      .slice()
+      .sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0)),
+    [taskQueue],
+  );
   const visibleTaskItems = showAllTaskQueue ? pendingTaskItems : pendingTaskItems.slice(0, TASK_QUEUE_PREVIEW);
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
@@ -1759,6 +1765,14 @@ function QueueCard({
   );
 }
 
+// R-INTELLIGENCE-PRIORITY-ENGINE-V1: urgency badge style map.
+const URGENCY_STYLE: Record<string, { bg: string; text: string; border: string; label: { en: string; es: string; pt: string } }> = {
+  critical: { bg: '#EF444422', text: '#EF4444', border: '#EF444444', label: { en: 'Critical', es: 'Crítico', pt: 'Crítico' } },
+  high:     { bg: '#F59E0B22', text: '#F59E0B', border: '#F59E0B44', label: { en: 'High',     es: 'Alto',    pt: 'Alto'    } },
+  medium:   { bg: '#6366F122', text: '#818CF8', border: '#6366F144', label: { en: 'Medium',   es: 'Medio',   pt: 'Médio'   } },
+  low:      { bg: '#6B728022', text: '#9CA3AF', border: '#37415155', label: { en: 'Low',      es: 'Bajo',    pt: 'Baixo'   } },
+};
+
 // R-INTELLIGENCE-OPERATOR-QUEUE-V1: compact card for operator task queue items.
 const TASK_TYPE_LABEL: Record<string, { en: string; es: string; pt: string }> = {
   recover_customer:  { en: 'Re-engage',   es: 'Reconectar',   pt: 'Reconectar' },
@@ -1782,21 +1796,33 @@ function OperatorTaskCard({
 }) {
   const typeLabel = (TASK_TYPE_LABEL[item.type] ?? { en: item.type, es: item.type, pt: item.type })[lang];
   const age = relativeTime(item.createdAt);
+  const urgency = item.urgencyLevel ? (URGENCY_STYLE[item.urgencyLevel] ?? null) : null;
 
   return (
-    <div className="rounded border p-2.5" style={{ background: '#0D1B2A', borderColor: '#1E3A5F' }}>
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
+    <div className="rounded border p-2.5" style={{ background: '#0D1B2A', borderColor: urgency?.border ?? '#1E3A5F' }}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
           <span
             className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
             style={{ background: '#1E3A5F', color: '#60A5FA' }}
           >
             {typeLabel}
           </span>
+          {urgency && (
+            <span
+              className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+              style={{ background: urgency.bg, color: urgency.text, border: `1px solid ${urgency.border}` }}
+            >
+              {urgency.label[lang]}
+            </span>
+          )}
           <span className="text-[11px] font-semibold text-slate-200 truncate">{item.summary}</span>
         </div>
         <span className="text-[10px] text-slate-500 shrink-0">{age}</span>
       </div>
+      {item.impactReason && (
+        <p className="text-[10px] text-slate-500 mb-1">{item.impactReason}</p>
+      )}
       {item.suggestedMessage && (
         <p className="text-[11px] text-slate-400 italic mb-2 line-clamp-2">{item.suggestedMessage}</p>
       )}

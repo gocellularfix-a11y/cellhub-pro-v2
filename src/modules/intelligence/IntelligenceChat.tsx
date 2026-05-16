@@ -509,7 +509,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     // R-INTELLIGENCE-OPERATOR-QUEUE-V1: add to operator task queue — handled here, not in executor.
     if (action.payload?.executionTarget === 'add_to_operator_queue') {
-      const { customerName = '', customerPhone, entityId, customMessage = '', queueType, queueSummary } = action.payload;
+      const { customerName = '', customerPhone, entityId, customMessage = '', queueType, queueSummary, priorityMeta } = action.payload;
       addOperatorQueueItem({
         type: (queueType as OperatorTaskType) || 'recover_customer',
         customerName,
@@ -517,6 +517,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         relatedEntityId: entityId,
         summary: queueSummary || customerName,
         suggestedMessage: customMessage,
+        priorityScore: priorityMeta?.priorityScore,
+        urgencyLevel: priorityMeta?.urgencyLevel,
+        impactReason: priorityMeta?.impactReason,
       });
       window.dispatchEvent(new CustomEvent('cellhub:operator-queue-updated'));
       setFeedbackForAction(action.id, lang === 'es' ? '✓ Agregado a la cola' : '✓ Added to queue');

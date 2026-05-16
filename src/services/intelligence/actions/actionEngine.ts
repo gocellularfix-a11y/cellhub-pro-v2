@@ -32,6 +32,12 @@ export interface ActionPayload {
   // R-INTELLIGENCE-OPERATOR-QUEUE-V1: metadata for queue item creation.
   queueType?: string;     // OperatorTaskType value
   queueSummary?: string;  // short plain-text summary for the queue card
+  // R-INTELLIGENCE-PRIORITY-ENGINE-V1: scoring metadata stamped by chat handlers.
+  priorityMeta?: {
+    priorityScore: number;
+    urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
+    impactReason: string;
+  };
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: entity reference for navigation targets
   entityId?: string;
   executable: boolean;
