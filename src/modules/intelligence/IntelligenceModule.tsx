@@ -79,6 +79,13 @@ import {
   computeFocusMode,
   type FocusModeResult,
 } from '@/services/intelligence/focus/operatorFocusMode';
+import {
+  generateBusinessMemory,
+  recordStoreStateEvent,
+  recordTaskOutcomeEvent,
+  type BusinessMemoryResult,
+} from '@/services/intelligence/memory/businessMemory';
+import BusinessMemorySection from '@/components/BusinessMemorySection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -300,14 +307,18 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-OPERATOR-QUEUE-V1: task queue action handlers
   const handleTaskComplete = useCallback((id: string) => {
+    const item = taskQueue.find((t) => t.id === id);
     completeOperatorQueueItem(id);
     setTaskQueue(readOperatorQueue());
-  }, []);
+    if (item) recordTaskOutcomeEvent(item.type, 'completed');
+  }, [taskQueue]);
 
   const handleTaskDismiss = useCallback((id: string) => {
+    const item = taskQueue.find((t) => t.id === id);
     dismissOperatorQueueItem(id);
     setTaskQueue(readOperatorQueue());
-  }, []);
+    if (item) recordTaskOutcomeEvent(item.type, 'dismissed');
+  }, [taskQueue]);
 
   const handleTaskWhatsApp = useCallback((item: OperatorQueueItem) => {
     if (!item.phone) return;
@@ -561,6 +572,19 @@ export default function IntelligenceModule() {
       : briefing.items,
     [briefing.items, focusMode.suppressedSections],
   );
+
+  // R-INTELLIGENCE-BUSINESS-MEMORY-V1: longitudinal pattern memory.
+  const businessMemory: BusinessMemoryResult = useMemo(
+    () => generateBusinessMemory(),
+    [refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Record store state transitions so the memory layer can detect patterns.
+  useEffect(() => {
+    if (storeState.state !== 'normal') {
+      recordStoreStateEvent(storeState.state);
+    }
+  }, [storeState.state]);
 
   const topInsight = useMemo(() => {
     const localDay = DAY_LOCAL[locale]?.[missedRev.slowestDayName] ?? missedRev.slowestDayName;
@@ -1195,6 +1219,14 @@ export default function IntelligenceModule() {
       {visibleBriefingItems.length > 0 && (
         <DailyBriefingSection
           items={visibleBriefingItems}
+          lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
+
+      {/* ── BUSINESS MEMORY ── R-INTELLIGENCE-BUSINESS-MEMORY-V1 ── */}
+      {businessMemory.insights.length > 0 && (
+        <BusinessMemorySection
+          insights={businessMemory.insights}
           lang={locale as 'en' | 'es' | 'pt'}
         />
       )}
