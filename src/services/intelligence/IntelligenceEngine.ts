@@ -20,6 +20,8 @@ import { generateMorningDigest, type DigestEvalContext } from './digest/morningD
 import type { MorningDigest } from './digest/types';
 import { generateLiveAssistSuggestion, type LiveAssistEvalContext } from './live/liveOperatingAssistant';
 import type { LiveAssistSuggestion, LiveAssistContext } from './live/types';
+import { computeAttentionSnapshot } from './attention/attentionEngine';
+import type { AttentionSnapshot } from './attention/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -1226,6 +1228,13 @@ export class IntelligenceEngine {
     // calls within this data snapshot return O(1).
     this.cachedCustomerHistory!.set(customerId, summary);
     return summary;
+  }
+
+  // R-INTELLIGENCE-ATTENTION-MODEL-V1: current operator attention state derived
+  // from local behavioral signals (dismissals, actions, checkout bursts, queue depth).
+  // Thin wrapper — computeAttentionSnapshot reads from localStorage directly.
+  getAttentionSnapshot(): AttentionSnapshot {
+    return computeAttentionSnapshot();
   }
 
   // R-INTELLIGENCE-LIVE-OPERATING-ASSISTANT-V1: evaluate real-time operational

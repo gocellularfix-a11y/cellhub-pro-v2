@@ -9,6 +9,9 @@ import { getStaleWorkflows } from '../workflows/store';
 import type { ExecutionReport } from '../execution/types';
 import type { TrendDirectionReport } from '../types';
 import type { ProactiveOperationsReport } from '../proactive/types';
+import { computeAttentionSnapshot, shouldInterruptOperator, getCooldownMultiplier } from '../attention/attentionEngine';
+import { recordAttentionSignal, getTriggerDismissalCount } from '../attention/store';
+import type { AttentionSnapshot } from '../attention/types';
 
 export interface LiveAssistEvalContext {
   getExecutionReport(): ExecutionReport;
@@ -19,8 +22,33 @@ export interface LiveAssistEvalContext {
 // ── Cooldown management ───────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'cellhub:liveAssistCooldowns:v1';
-const COOLDOWN_ID_MS      = 30 * 60 * 1000;  // 30 min per suggestion id
-const COOLDOWN_TRIGGER_MS = 10 * 60 * 1000;  // 10 min per trigger type
+const COOLDOWN_ID_MS      = 30 * 60 * 1000;  // 30 min per suggestion id (base)
+const COOLDOWN_TRIGGER_MS = 10 * 60 * 1000;  // 10 min per trigger type (base)
+
+// ── Attention snapshot cache (5s TTL) ─────────────────────────────────────────
+// Shared across all isOnCooldown() calls within a single generateLiveAssistSuggestion
+// execution so we don't read localStorage once per eval function.
+let _cachedSnapshot: AttentionSnapshot | null = null;
+let _snapshotCachedAt = 0;
+const SNAPSHOT_TTL_MS = 5_000;
+
+function getCachedSnapshot(): AttentionSnapshot {
+  const now = Date.now();
+  if (_cachedSnapshot && now - _snapshotCachedAt < SNAPSHOT_TTL_MS) return _cachedSnapshot;
+  _cachedSnapshot = computeAttentionSnapshot();
+  _snapshotCachedAt = now;
+  return _cachedSnapshot;
+}
+
+// Dismissal learning: multiply cooldowns by how many times this trigger was recently dismissed.
+function getTriggerDismissalMultiplier(trigger: LiveAssistTrigger): number {
+  const count = getTriggerDismissalCount(trigger, 60 * 60 * 1000); // last hour
+  if (count >= 4) return 4.0;
+  if (count >= 3) return 3.0;
+  if (count >= 2) return 2.0;
+  if (count >= 1) return 1.5;
+  return 1.0;
+}
 
 interface CooldownStore {
   byId:      Record<string, number>;
@@ -42,7 +70,12 @@ function readCooldowns(): CooldownStore {
 }
 
 // Called by FloatingOperatorBubble on action or dismiss.
-export function writeCooldown(id: string, trigger: LiveAssistTrigger): void {
+// Also records a bubble_dismissed attention signal for adaptive learning.
+export function writeCooldown(
+  id: string,
+  trigger: LiveAssistTrigger,
+  signalType: 'bubble_dismissed' | 'suggestion_accepted' = 'bubble_dismissed',
+): void {
   try {
     const store = readCooldowns();
     const now = Date.now();
@@ -50,6 +83,9 @@ export function writeCooldown(id: string, trigger: LiveAssistTrigger): void {
     store.byTrigger[trigger] = now;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch { /* localStorage unavailable */ }
+  recordAttentionSignal(signalType, { trigger });
+  // Invalidate snapshot cache so next call reflects the new signal immediately.
+  _cachedSnapshot = null;
 }
 
 function isOnCooldown(
@@ -58,14 +94,20 @@ function isOnCooldown(
   priority: 'critical' | 'high' | 'medium',
 ): boolean {
   const store = readCooldowns();
-  const now = Date.now();
+  const now   = Date.now();
 
-  if (now - (store.byId[id] ?? 0) < COOLDOWN_ID_MS) return true;
+  // Adaptive multiplier: attention state × dismissal learning
+  const snapshot        = getCachedSnapshot();
+  const attentionMult   = getCooldownMultiplier(snapshot.state);
+  const dismissalMult   = getTriggerDismissalMultiplier(trigger);
+  const totalMult       = attentionMult * dismissalMult;
+
+  if (now - (store.byId[id] ?? 0) < COOLDOWN_ID_MS * totalMult) return true;
 
   // Critical bypasses trigger cooldown — always surfaces.
   if (priority === 'critical') return false;
 
-  return now - (store.byTrigger[trigger] ?? 0) < COOLDOWN_TRIGGER_MS;
+  return now - (store.byTrigger[trigger] ?? 0) < COOLDOWN_TRIGGER_MS * totalMult;
 }
 
 function todayKey(): string {
@@ -218,13 +260,29 @@ export function generateLiveAssistSuggestion(
 ): LiveAssistSuggestion | null {
   if (context.modalOpen) return null;
 
-  return (
-    evalCriticalQueue(lang)          ??
-    evalStalledWorkflow(lang)        ??
-    evalExecutionReady(ctx, lang)    ??
-    evalTrendWarning(ctx, lang)      ??
-    evalIdleWindow(context, lang)    ??
-    evalMorningOpen(context, lang)   ??
+  // Refresh snapshot cache before evaluating triggers — all isOnCooldown()
+  // calls within this execution will reuse this 5s-cached snapshot.
+  _cachedSnapshot = null;
+
+  const candidate = (
+    evalCriticalQueue(lang)        ??
+    evalStalledWorkflow(lang)      ??
+    evalExecutionReady(ctx, lang)  ??
+    evalTrendWarning(ctx, lang)    ??
+    evalIdleWindow(context, lang)  ??
+    evalMorningOpen(context, lang) ??
     null
   );
+  if (!candidate) return null;
+
+  // Attention gate: should we interrupt the operator right now?
+  const snapshot = getCachedSnapshot();
+  const decision = shouldInterruptOperator(snapshot, candidate.priority);
+  if (!decision.allowSuggestion) return null;
+
+  // Priority ceiling: downgrade if candidate priority exceeds what's allowed.
+  const rank = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+  if (rank[candidate.priority] > rank[decision.maxPriorityAllowed]) return null;
+
+  return candidate;
 }

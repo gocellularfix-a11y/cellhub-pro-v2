@@ -45,6 +45,7 @@ import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/p
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
+import { recordAttentionSignal } from '@/services/intelligence/attention/store';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { useTranslation } from '@/i18n';
@@ -655,8 +656,16 @@ export default function IntelligenceModule() {
   // Poll for live assist suggestion every 2 minutes (also fires on mount).
   useEffect(() => {
     const check = () => {
+      const idleMs = Date.now() - lastInteractionAtRef.current;
+
+      // R-INTELLIGENCE-ATTENTION-MODEL-V1: record checkout_burst when operator
+      // has been actively interacting — proxy for a busy/checkout period.
+      if (idleMs < 60_000) {
+        recordAttentionSignal('checkout_burst');
+      }
+
       const context: LiveAssistContext = {
-        idleMs:           Date.now() - lastInteractionAtRef.current,
+        idleMs,
         modalOpen:        false,
         isFirstOpenToday,
       };

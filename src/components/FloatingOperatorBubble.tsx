@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LiveAssistSuggestion } from '@/services/intelligence/live/types';
 import { writeCooldown } from '@/services/intelligence/live/liveOperatingAssistant';
+import { recordAttentionSignal } from '@/services/intelligence/attention/store';
 
 const PRIORITY_STYLE: Record<string, { border: string; badge: string; text: string }> = {
   critical: { border: '#EF4444', badge: '#EF444422', text: '#FCA5A5' },
@@ -34,7 +35,11 @@ export default function FloatingOperatorBubble({ suggestion, lang, onAction, onD
     setVisible(true);
 
     window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => setVisible(false), AUTO_HIDE_MS);
+    timerRef.current = window.setTimeout(() => {
+      // Suggestion auto-hid without operator action — record as ignored.
+      recordAttentionSignal('suggestion_ignored', { trigger: suggestion.trigger });
+      setVisible(false);
+    }, AUTO_HIDE_MS);
 
     return () => window.clearTimeout(timerRef.current);
   }, [suggestion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -47,7 +52,7 @@ export default function FloatingOperatorBubble({ suggestion, lang, onAction, onD
   const dismissLabel = es ? 'Cerrar' : 'Dismiss';
 
   function handleAction() {
-    writeCooldown(shown!.id, shown!.trigger);
+    writeCooldown(shown!.id, shown!.trigger, 'suggestion_accepted');
     setVisible(false);
     onAction(shown!);
   }

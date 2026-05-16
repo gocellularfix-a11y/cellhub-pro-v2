@@ -3,6 +3,7 @@
 // No ML, no server, no sync — pure deterministic local state.
 
 import type { IntelligenceFeedbackEvent, IntelligenceFeedbackType } from './types';
+import { recordAttentionSignal } from '../attention/store';
 
 const FEEDBACK_KEY = 'cellhub:intelligenceFeedback:v1';
 const MAX_EVENTS   = 1000;
@@ -65,6 +66,14 @@ export function addFeedbackEvent(
     createdAt: Date.now(),
   };
   write([...read(), event]);
+
+  // R-INTELLIGENCE-ATTENTION-MODEL-V1: cross-signal so the attention engine
+  // learns from manager queue feedback, not just bubble interactions.
+  if (input.type === 'useful' || input.type === 'resolved') {
+    recordAttentionSignal('suggestion_accepted');
+  } else if (input.type === 'not_useful' || input.type === 'snoozed') {
+    recordAttentionSignal('bubble_dismissed');
+  }
 }
 
 // R-INTELLIGENCE-OUTCOME-TRACKING-V1: outcome-driven feedback event.
