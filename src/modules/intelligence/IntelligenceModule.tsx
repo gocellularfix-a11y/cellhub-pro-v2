@@ -97,6 +97,11 @@ import {
   type RecommendationAction,
 } from '@/services/intelligence/recommendations/operatorRecommendations';
 import RecommendedActionsSection from '@/components/RecommendedActionsSection';
+import {
+  generateOperationalHealth,
+  type OperationalHealthResult,
+} from '@/services/intelligence/health/operationalHealth';
+import OperationalHealthSection from '@/components/OperationalHealthSection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -619,6 +624,24 @@ export default function IntelligenceModule() {
       layaways: layaways as Parameters<typeof generateRecommendations>[0]['layaways'],
     }),
     [storeState, focusMode, strategicInsights.insights, businessMemory.insights, continuityItems, missions, pendingTaskItems.length, outreachCount, repairs, layaways, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-OPERATIONAL-HEALTH-V1: deterministic health scoring.
+  const operationalHealth: OperationalHealthResult = useMemo(
+    () => generateOperationalHealth({
+      storeState,
+      businessMemoryInsights: businessMemory.insights,
+      strategicInsights: strategicInsights.insights,
+      recommendations: recommendations.recommendations,
+      repairs: repairs as Parameters<typeof generateOperationalHealth>[0]['repairs'],
+      layaways: layaways as Parameters<typeof generateOperationalHealth>[0]['layaways'],
+      managerQueueItems: queueItems as Parameters<typeof generateOperationalHealth>[0]['managerQueueItems'],
+      continuityItems: continuityItems as Parameters<typeof generateOperationalHealth>[0]['continuityItems'],
+      missions: missions as Parameters<typeof generateOperationalHealth>[0]['missions'],
+      pendingQueueCount: pendingTaskItems.length,
+      outreachCandidateCount: outreachCount,
+    }),
+    [storeState, businessMemory.insights, strategicInsights.insights, recommendations.recommendations, repairs, layaways, queueItems, continuityItems, missions, pendingTaskItems.length, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Record store state transitions so the memory layer can detect patterns.
@@ -1302,6 +1325,12 @@ export default function IntelligenceModule() {
           onAction={handleRecommendationAction}
         />
       )}
+
+      {/* ── OPERATIONAL HEALTH ── R-INTELLIGENCE-OPERATIONAL-HEALTH-V1 ── */}
+      <OperationalHealthSection
+        health={operationalHealth}
+        lang={locale as 'en' | 'es' | 'pt'}
+      />
 
       {/* ── COMMAND CENTER HEADER ── R-INTELLIGENCE-COMMAND-CENTER-V1 ── */}
       {(storeState.state !== 'normal' || continuityItems.length > 0 || missions.length > 0 || pendingTaskItems.length > 0) && (
