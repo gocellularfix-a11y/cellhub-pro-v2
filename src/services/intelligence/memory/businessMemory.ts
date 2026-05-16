@@ -88,6 +88,11 @@ function purgeOld(store: BusinessMemoryStore, now: number): BusinessMemoryStore 
   return { ...store, storeStateEvents, taskOutcomeEvents };
 }
 
+// Expose raw store for week-over-week analysis in weeklyOperatorReview.
+export function readBusinessMemoryStore(): BusinessMemoryStore {
+  return read();
+}
+
 // ── Event recording ────────────────────────────────────────
 
 export function recordStoreStateEvent(state: StoreStateType, now = Date.now()): void {
