@@ -308,6 +308,10 @@ export function handleIntent(
     case 'operational_reasoning':
       return handleOperationalReasoning(engine, lang);
 
+    // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1
+    case 'decision_recommendation':
+      return handleDecisionRecommendation(engine, lang);
+
     // R-INTELLIGENCE-TREND-DIRECTION-V1
     case 'trend_direction':
       return handleTrendDirection(engine, lang);
@@ -3929,6 +3933,49 @@ function handleOperationalReasoning(engine: IntelligenceEngine, lang: Lang3): Ch
       es
         ? `*${extra} condición${extra === 1 ? '' : 'es'} adicional${extra === 1 ? '' : 'es'} detectada${extra === 1 ? '' : 's'}.*`
         : `*${extra} additional condition${extra === 1 ? '' : 's'} detected.*`,
+    );
+  }
+
+  return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// ── Decision recommendation ───────────────────────────────────────────────────
+// R-INTELLIGENCE-DECISION-RECOMMENDATION-V1
+function handleDecisionRecommendation(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t  = tChat(lang);
+  const es = lang === 'es';
+  const report = engine.getDecisionRecommendationReport();
+
+  if (!report.topRecommendation) {
+    return { kind: 'answer', text: t('chat.decision.empty') };
+  }
+
+  const top = report.topRecommendation;
+  const lines: string[] = [t('chat.decision.header'), ''];
+
+  lines.push(`**${top.title}**`);
+  lines.push('');
+  lines.push(`• ${top.recommendedMove}`);
+
+  if (top.reasoning) {
+    lines.push('');
+    lines.push(es ? `**Razón:**` : `**Reason:**`);
+    lines.push(top.reasoning);
+  }
+
+  if (top.expectedBenefit) {
+    lines.push('');
+    lines.push(es ? `**Beneficio esperado:**` : `**Expected benefit:**`);
+    lines.push(top.expectedBenefit);
+  }
+
+  if (report.recommendations.length > 1) {
+    lines.push('');
+    const second = report.recommendations[1];
+    lines.push(
+      es
+        ? `*También considera: ${second.title}.*`
+        : `*Also consider: ${second.title}.*`,
     );
   }
 

@@ -77,6 +77,8 @@ export type IntentId =
   | 'morning_digest'
   // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: cross-system operational condition inference
   | 'operational_reasoning'
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: strategic decision recommendation
+  | 'decision_recommendation'
   // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic open-ended fallback
   // for queries that don't trigger any keyword bank. Builds an answer
   // from existing engine data (no external AI). 'unknown' kept in the
@@ -875,6 +877,33 @@ const OPERATIONAL_REASONING_KEYWORDS = [
   'que padrões você vê', 'visão geral', 'o que os dados dizem',
 ];
 
+// R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: what is the best move right now?
+// Anchored on "best move" / "what should I do" / "decision" phrases — more
+// action-oriented than operational_reasoning ("what's going on") and more
+// strategic than proactive_operations ("what to prioritize").
+const DECISION_RECOMMENDATION_KEYWORDS = [
+  // EN
+  'best move', 'best move right now', 'what is the best move',
+  'what should i do', 'what should we do', 'what should i focus on next',
+  'what decision should i make', 'strategic recommendation',
+  'best business decision', 'best decision', 'what do you recommend',
+  'what is your recommendation', 'give me a recommendation',
+  'what should i do next', 'what action should i take', 'top recommendation',
+  'recommend an action', 'what is the smartest move', 'smartest move',
+  'highest impact action', 'what will make the most impact',
+  // ES
+  'mejor movimiento', 'cuál es el mejor movimiento', 'cual es el mejor movimiento',
+  'qué debo hacer', 'que debo hacer', 'qué me recomiendas', 'que me recomiendas',
+  'recomendación estratégica', 'recomendacion estrategica',
+  'mejor decisión', 'mejor decision', 'cuál es la mejor decisión',
+  'cual es la mejor decision', 'qué acción tomar', 'que accion tomar',
+  'en qué enfocarse', 'en que enfocarse', 'acción de mayor impacto',
+  // PT
+  'melhor movimento', 'qual é o melhor movimento', 'qual a melhor decisão',
+  'o que devo fazer', 'recomendação estratégica', 'recomendacao estrategica',
+  'melhor ação', 'qual ação tomar', 'maior impacto',
+];
+
 // R-INTELLIGENCE-TREND-DIRECTION-V1: is the store improving, declining, or stable?
 const TREND_DIRECTION_KEYWORDS = [
   // EN
@@ -1245,6 +1274,10 @@ export function classifyIntent(
     // for product-anchored phrases like "what to promote" / "high margin".
     { id: 'proactive_opportunities', score: scoreKeywords(query, PROACTIVE_OPPORTUNITIES_KEYWORDS) },
     { id: 'product_opportunities', score: scoreKeywords(query, PRODUCT_OPPORTUNITY_KEYWORDS) },
+    // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: listed BEFORE operational_reasoning
+    // so "best move" / "what should I do" phrases route to the decision layer
+    // rather than the condition-detection layer.
+    { id: 'decision_recommendation', score: scoreKeywords(query, DECISION_RECOMMENDATION_KEYWORDS) },
     // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: listed BEFORE proactive_operations
     // so "what's really going on" / "store diagnosis" routes to cross-system
     // reasoning rather than the single-domain action list.

@@ -6980,4 +6980,15 @@ export const translations: TranslationDictionary = {
     es: 'Operación saludable',
     pt: 'Operação saudável',
   },
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1
+  'chat.decision.header': {
+    en: '🎯 Best move right now:',
+    es: '🎯 Mejor movimiento ahora:',
+    pt: '🎯 Melhor ação agora:',
+  },
+  'chat.decision.empty': {
+    en: 'No clear recommendation at this time — store appears to be running normally.',
+    es: 'Sin recomendación clara en este momento — la tienda parece estar funcionando bien.',
+    pt: 'Sem recomendação clara no momento — a loja parece estar funcionando normalmente.',
+  },
 };

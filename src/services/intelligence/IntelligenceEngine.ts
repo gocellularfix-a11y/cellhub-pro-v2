@@ -24,6 +24,8 @@ import { computeAttentionSnapshot } from './attention/attentionEngine';
 import type { AttentionSnapshot } from './attention/types';
 import { generateOperationalReasoningReport, type ReasoningEvalContext } from './reasoning/crossSystemEngine';
 import type { OperationalReasoningReport } from './reasoning/types';
+import { generateDecisionRecommendationReport, type DecisionEvalContext } from './decisions/decisionEngine';
+import type { DecisionRecommendationReport } from './decisions/types';
 import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
@@ -173,6 +175,8 @@ export class IntelligenceEngine {
   private cachedMorningDigest?: MorningDigest;
   // R-INTELLIGENCE-CROSS-SYSTEM-REASONING-V1: cross-system operational reasoning cache.
   private cachedReasoningReport?: OperationalReasoningReport;
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: strategic decision recommendation cache.
+  private cachedDecisionReport?: DecisionRecommendationReport;
 
   // R-INTEL-CUSTOMER-INDEX-V1: per-customer history cache. Without this,
   // `buildOutreachQueueItems` calls `getCustomerHistory(cs.customerId)` for
@@ -735,6 +739,7 @@ export class IntelligenceEngine {
     this.cachedExecutionReport = undefined;
     this.cachedMorningDigest = undefined;
     this.cachedReasoningReport = undefined;
+    this.cachedDecisionReport = undefined;
   }
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: explicit cache-invalidation knob for
@@ -760,6 +765,7 @@ export class IntelligenceEngine {
     this.cachedExecutionReport = undefined;
     this.cachedMorningDigest = undefined;
     this.cachedReasoningReport = undefined;
+    this.cachedDecisionReport = undefined;
   }
 
   // R-INTEL-AUTO-ACTION-QUEUE: deterministic top-3 outreach candidates,
@@ -1047,6 +1053,16 @@ export class IntelligenceEngine {
     if (this.cachedReasoningReport) return this.cachedReasoningReport;
     const result = generateOperationalReasoningReport(this as unknown as ReasoningEvalContext);
     this.cachedReasoningReport = result;
+    return result;
+  }
+
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: translates operational conditions
+  // into best strategic move for the operator. Memoized — same lifecycle as other
+  // per-getter caches. Engine satisfies DecisionEvalContext structurally.
+  getDecisionRecommendationReport(): DecisionRecommendationReport {
+    if (this.cachedDecisionReport) return this.cachedDecisionReport;
+    const result = generateDecisionRecommendationReport(this as unknown as DecisionEvalContext);
+    this.cachedDecisionReport = result;
     return result;
   }
 
