@@ -6755,4 +6755,126 @@ export const translations: TranslationDictionary = {
     es: 'Sin recomendación clara en este momento — la tienda parece estar funcionando bien.',
     pt: 'Sem recomendação clara no momento — a loja parece estar funcionando normalmente.',
   },
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: shared action button labels
+  'chat.actions.copyMessage':  { en: 'Copy Message', es: 'Copiar Mensaje', pt: 'Copiar Mensagem' },
+  'chat.actions.viewCustomer': { en: 'View Customer', es: 'Ver Cliente', pt: 'Ver Cliente' },
+  'chat.actions.viewRepair':   { en: 'View Repair', es: 'Ver Reparación', pt: 'Ver Reparo' },
+  'chat.actions.openWhatsApp': {
+    en: (firstName: string) => `WhatsApp ${firstName}`,
+    es: (firstName: string) => `WhatsApp ${firstName}`,
+    pt: (firstName: string) => `WhatsApp ${firstName}`,
+  },
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
+  'chat.recoverCustomer.noCustomer': {
+    en: 'No inactive customers found with contact info.',
+    es: 'No se encontraron clientes inactivos con información de contacto.',
+    pt: 'Nenhum cliente inativo encontrado com informações de contato.',
+  },
+  'chat.recoverCustomer.header': {
+    en: (name: string, days: string, spend: string) =>
+      `**Recovery target: ${name}** — ${days} days since last visit · ${spend} lifetime spend`,
+    es: (name: string, days: string, spend: string) =>
+      `**Cliente a recuperar: ${name}** — ${days} días desde última visita · ${spend} gasto total`,
+    pt: (name: string, days: string, spend: string) =>
+      `**Cliente para recuperar: ${name}** — ${days} dias desde última visita · ${spend} gasto total`,
+  },
+  'chat.recoverCustomer.messageDraft': {
+    en: '**Draft WhatsApp message:**',
+    es: '**Borrador de mensaje WhatsApp:**',
+    pt: '**Rascunho de mensagem WhatsApp:**',
+  },
+  'chat.recoverCustomer.message': {
+    en: (firstName: string) =>
+      `Hi ${firstName}! It's been a while since we last saw you at Go Cellular. We miss you! Stop by anytime — we have great deals and are always here to help with your phone needs. 😊`,
+    es: (firstName: string) =>
+      `¡Hola ${firstName}! Hace tiempo que no te vemos por Go Cellular. ¡Te extrañamos! Pásate cuando puedas — tenemos buenas ofertas y siempre estamos aquí para ayudarte con tu teléfono. 😊`,
+    pt: (firstName: string) =>
+      `Olá ${firstName}! Faz um tempo que não te vemos na Go Cellular. Sentimos sua falta! Passe quando puder — temos ótimas ofertas e estamos sempre aqui para ajudar com seu celular. 😊`,
+  },
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: vip_outreach intent
+  'chat.vipOutreach.noCustomer': {
+    en: 'No VIP customers found.',
+    es: 'No se encontraron clientes VIP.',
+    pt: 'Nenhum cliente VIP encontrado.',
+  },
+  'chat.vipOutreach.header': {
+    en: (name: string, visits: string, spend: string) =>
+      `**VIP target: ${name}** — ${visits} visits · ${spend} lifetime spend`,
+    es: (name: string, visits: string, spend: string) =>
+      `**VIP: ${name}** — ${visits} visitas · ${spend} gasto total`,
+    pt: (name: string, visits: string, spend: string) =>
+      `**VIP: ${name}** — ${visits} visitas · ${spend} gasto total`,
+  },
+  'chat.vipOutreach.messageDraft': {
+    en: '**Draft WhatsApp message:**',
+    es: '**Borrador de mensaje WhatsApp:**',
+    pt: '**Rascunho de mensagem WhatsApp:**',
+  },
+  'chat.vipOutreach.message': {
+    en: (firstName: string) =>
+      `Hi ${firstName}! We truly value your loyalty at Go Cellular. As one of our best customers, you deserve the best — stop by this week for an exclusive deal just for you. We appreciate your support! 🌟`,
+    es: (firstName: string) =>
+      `¡Hola ${firstName}! En Go Cellular valoramos mucho tu fidelidad. Como uno de nuestros mejores clientes, mereces lo mejor — pásate esta semana para una oferta exclusiva solo para ti. ¡Gracias por tu apoyo! 🌟`,
+    pt: (firstName: string) =>
+      `Olá ${firstName}! Na Go Cellular valorizamos muito sua fidelidade. Como um dos nossos melhores clientes, você merece o melhor — venha esta semana para uma oferta exclusiva só para você. Obrigado pelo seu apoio! 🌟`,
+  },
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: repair_follow_up intent
+  'chat.repairFollowUp.noRepair': {
+    en: 'No active repair found for this customer.',
+    es: 'No se encontró reparación activa para este cliente.',
+    pt: 'Nenhum reparo ativo encontrado para este cliente.',
+  },
+  'chat.repairFollowUp.header': {
+    en: (name: string, device: string, days: string) =>
+      `**Follow-up: ${name}** — ${device} · ${days} days in queue`,
+    es: (name: string, device: string, days: string) =>
+      `**Seguimiento: ${name}** — ${device} · ${days} días en cola`,
+    pt: (name: string, device: string, days: string) =>
+      `**Acompanhamento: ${name}** — ${device} · ${days} dias na fila`,
+  },
+  'chat.repairFollowUp.messageDraft': {
+    en: '**Draft WhatsApp message:**',
+    es: '**Borrador de mensaje WhatsApp:**',
+    pt: '**Rascunho de mensagem WhatsApp:**',
+  },
+  'chat.repairFollowUp.message': {
+    en: (firstName: string, device: string) =>
+      `Hi ${firstName}! Quick update on your ${device} repair at Go Cellular — our technician is working on it and we'll notify you as soon as it's ready. Thanks for your patience! 🔧`,
+    es: (firstName: string, device: string) =>
+      `¡Hola ${firstName}! Actualización sobre la reparación de tu ${device} en Go Cellular — nuestro técnico está trabajando en ello y te avisaremos en cuanto esté listo. ¡Gracias por tu paciencia! 🔧`,
+    pt: (firstName: string, device: string) =>
+      `Olá ${firstName}! Atualização sobre o reparo do seu ${device} na Go Cellular — nosso técnico está trabalhando nisso e te avisaremos assim que estiver pronto. Obrigado pela paciência! 🔧`,
+  },
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: repair_escalate intent
+  'chat.repairEscalate.noRepair': {
+    en: 'No active repair found to escalate.',
+    es: 'No se encontró reparación activa para escalar.',
+    pt: 'Nenhum reparo ativo encontrado para escalar.',
+  },
+  'chat.repairEscalate.header': {
+    en: (name: string, device: string, days: string, status: string) =>
+      `**⚡ Escalation: ${name}** — ${device} · ${days} days · Status: ${status}`,
+    es: (name: string, device: string, days: string, status: string) =>
+      `**⚡ Escalación: ${name}** — ${device} · ${days} días · Estado: ${status}`,
+    pt: (name: string, device: string, days: string, status: string) =>
+      `**⚡ Escalonamento: ${name}** — ${device} · ${days} dias · Status: ${status}`,
+  },
+  'chat.repairEscalate.messageDraft': {
+    en: '**Draft apology message:**',
+    es: '**Borrador de mensaje de disculpa:**',
+    pt: '**Rascunho de mensagem de desculpas:**',
+  },
+  'chat.repairEscalate.message': {
+    en: (firstName: string, device: string) =>
+      `Hi ${firstName}, we sincerely apologize for the delay on your ${device} repair at Go Cellular. We're prioritizing it right now and will have an update for you very shortly. Thank you for your patience and understanding. 🙏`,
+    es: (firstName: string, device: string) =>
+      `Hola ${firstName}, nos disculpamos sinceramente por la demora en la reparación de tu ${device} en Go Cellular. Lo estamos priorizando ahora mismo y te daremos una actualización muy pronto. Gracias por tu paciencia y comprensión. 🙏`,
+    pt: (firstName: string, device: string) =>
+      `Olá ${firstName}, pedimos sinceras desculpas pelo atraso no reparo do seu ${device} na Go Cellular. Estamos priorizando agora mesmo e teremos uma atualização para você em breve. Obrigado pela paciência e compreensão. 🙏`,
+  },
 };

@@ -491,6 +491,20 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       fireQuery(action.triggerQuery);
       return;
     }
+    // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: clipboard copy — handled here so
+    // browser API stays out of the pure executor.
+    if (action.payload?.executionTarget === 'copy_to_clipboard') {
+      const text = action.payload.customMessage || '';
+      if (text && typeof navigator !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(
+          () => setFeedbackForAction(action.id, lang === 'es' ? '¡Copiado!' : 'Copied!'),
+          () => setFeedbackForAction(action.id, lang === 'es' ? 'Error al copiar' : 'Copy failed'),
+        );
+      } else {
+        setFeedbackForAction(action.id, lang === 'es' ? '¡Copiado!' : 'Copied!');
+      }
+      return;
+    }
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
       // R-INTELLIGENCE-ACTION-UX-STABILITY-V1: bilingual safe feedback — no crash, auto-clears in 5s

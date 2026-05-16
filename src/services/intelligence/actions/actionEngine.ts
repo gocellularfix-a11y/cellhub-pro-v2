@@ -44,6 +44,9 @@ export interface ActionPayload {
     | 'open_layaway'
     | 'open_inventory'
     | 'queue_manager_review'
+    // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: browser clipboard copy.
+    // Handled client-side before executeActionPayload — executor never sees it.
+    | 'copy_to_clipboard'
     | 'none';
 }
 

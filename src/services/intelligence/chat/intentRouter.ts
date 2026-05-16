@@ -91,6 +91,11 @@ export type IntentId =
   | 'active_context_query'
   // R-INTELLIGENCE-MANAGER-QUEUE-V1
   | 'manager_queue'
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intents
+  | 'recover_customer'
+  | 'vip_outreach'
+  | 'repair_follow_up'
+  | 'repair_escalate'
   | 'fallback_question'
   | 'unknown';
 
@@ -927,6 +932,51 @@ const HELP_KEYWORDS = [
   'comandos', 'commands',
 ];
 
+// R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intents.
+const RECOVER_CUSTOMER_KEYWORDS = [
+  // EN
+  'recover customer', 'win back', 'lost customer', 'inactive customer', 'help recover',
+  're-engage', 'bring back customer', 'lapsed customer', 'hasn\'t visited',
+  // ES
+  'recuperar cliente', 'cliente perdido', 'cliente inactivo', 'reconectar cliente',
+  'traer de vuelta', 'cliente ausente',
+  // PT
+  'recuperar cliente', 'cliente inativo', 'trazer de volta',
+];
+
+const VIP_OUTREACH_KEYWORDS = [
+  // EN
+  'vip outreach', 'vip strategy', 'vip customer', 'loyalty outreach', 'vip message',
+  'create vip', 'vip appreciation', 'outreach vip', 'best customer outreach',
+  // ES
+  'alcance vip', 'estrategia vip', 'cliente vip', 'fidelización', 'mensaje vip',
+  'crear estrategia vip',
+  // PT
+  'alcance vip', 'estratégia vip', 'cliente vip', 'fidelização',
+];
+
+const REPAIR_FOLLOW_UP_KEYWORDS = [
+  // EN
+  'follow up repair', 'follow up delayed', 'delayed repair', 'repair follow up',
+  'repair followup', 'repair update message', 'follow up for repair', 'check in repair',
+  // ES
+  'seguimiento reparación', 'seguimiento de reparación', 'reparación retrasada',
+  'actualización reparación', 'avisar reparación', 'dar seguimiento reparación',
+  // PT
+  'acompanhar reparo', 'reparo atrasado', 'seguimento reparo',
+];
+
+const REPAIR_ESCALATE_KEYWORDS = [
+  // EN
+  'escalate repair', 'overdue repair', 'repair overdue', 'escalate overdue',
+  'repair escalation', 'urgent repair escalation',
+  // ES
+  'escalar reparación', 'reparación vencida', 'escalar reparación vencida',
+  'escalación reparación',
+  // PT
+  'escalar reparo', 'reparo vencido', 'escalar reparo atrasado',
+];
+
 // Strip punctuation + lowercase for matching.
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1221,6 +1271,12 @@ export function classifyIntent(
     // "phone payments today", etc.) don't get swallowed by name lookup or
     // the generic 30-day sales summary.
     { id: 'data_query', score: scoreKeywords(query, DATA_QUERY_KEYWORDS) },
+    // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: listed BEFORE customer_history so
+    // "recover customer Juan" routes to the specific outreach intent, not name lookup.
+    { id: 'recover_customer', score: scoreKeywords(query, RECOVER_CUSTOMER_KEYWORDS) },
+    { id: 'vip_outreach',     score: scoreKeywords(query, VIP_OUTREACH_KEYWORDS) },
+    { id: 'repair_follow_up', score: scoreKeywords(query, REPAIR_FOLLOW_UP_KEYWORDS) },
+    { id: 'repair_escalate',  score: scoreKeywords(query, REPAIR_ESCALATE_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks
     // for today. Listed ABOVE daily_operator_brief + daily_brief so the
@@ -1355,6 +1411,7 @@ export function classifyIntent(
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
       DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
+      RECOVER_CUSTOMER_KEYWORDS, VIP_OUTREACH_KEYWORDS, REPAIR_FOLLOW_UP_KEYWORDS, REPAIR_ESCALATE_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {
@@ -1383,9 +1440,44 @@ export function classifyIntent(
       ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
       DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
+      RECOVER_CUSTOMER_KEYWORDS, VIP_OUTREACH_KEYWORDS, REPAIR_FOLLOW_UP_KEYWORDS, REPAIR_ESCALATE_KEYWORDS,
     ];
     const productFragment = extractName(query, allBanks);
     if (productFragment) result.extractedProduct = productFragment;
+  }
+
+  // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: extract name for outreach + repair intents.
+  // Customer intents also do fuzzy customer lookup; repair intents use extractedName
+  // to search repairs in the handler.
+  if (
+    winner.id === 'recover_customer' ||
+    winner.id === 'vip_outreach' ||
+    winner.id === 'repair_follow_up' ||
+    winner.id === 'repair_escalate'
+  ) {
+    const allBanks = [
+      BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, DAILY_REVENUE_MISSIONS_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, DEAL_PIPELINE_KEYWORDS, MARK_DEAL_STAGE_KEYWORDS, CLOSE_TODAY_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
+      INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
+      REPAIRS_KEYWORDS, REPAIRS_READY_KEYWORDS, HEALTH_KEYWORDS, FORECAST_KEYWORDS,
+      ANOMALY_KEYWORDS, WHO_TO_CONTACT_KEYWORDS, WHO_TO_CONTACT_TODAY_KEYWORDS, MARKETING_KEYWORDS, PRODUCT_PUSH_KEYWORDS, WHAT_HURTING_PROFIT_KEYWORDS,
+      PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
+      DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
+      RECOVER_CUSTOMER_KEYWORDS, VIP_OUTREACH_KEYWORDS, REPAIR_FOLLOW_UP_KEYWORDS, REPAIR_ESCALATE_KEYWORDS,
+    ];
+    const nameFragment = extractName(query, allBanks);
+    if (nameFragment) {
+      result.extractedName = nameFragment;
+      if (winner.id === 'recover_customer' || winner.id === 'vip_outreach') {
+        const matches = customers
+          .filter((c) => matchesSearch(nameFragment, c.name, c.phone, (c as { customerNumber?: string }).customerNumber))
+          .slice(0, 5);
+        if (matches.length === 1) {
+          result.matchedCustomer = matches[0];
+        } else if (matches.length > 1) {
+          result.candidateCustomers = matches;
+        }
+      }
+    }
   }
 
   return result;

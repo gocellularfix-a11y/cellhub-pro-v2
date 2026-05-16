@@ -44,6 +44,9 @@ import type { DealStage } from '../automation/automationQueue';
 // any change to its own import path.
 import { handleProductPush, handleProductOpportunities } from './productPromotion';
 export { runProductPush } from './productPromotion';
+// R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intelligence
+import { handleRecoverCustomer, handleVipOutreach } from './customerOutreach';
+import { handleRepairFollowUp, handleRepairEscalate } from './repairIntelligence';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
@@ -351,6 +354,19 @@ export function handleIntent(
     // R-INTELLIGENCE-MANAGER-QUEUE-V1
     case 'manager_queue':
       return handleManagerQueue(lang);
+
+    // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intents
+    case 'recover_customer':
+      return handleRecoverCustomer(match, engine, lang);
+
+    case 'vip_outreach':
+      return handleVipOutreach(match, engine, lang);
+
+    case 'repair_follow_up':
+      return handleRepairFollowUp(match, engine, lang);
+
+    case 'repair_escalate':
+      return handleRepairEscalate(match, engine, lang);
 
     case 'fallback_question':
       return handleFallbackQuestion(match, engine, lang);
