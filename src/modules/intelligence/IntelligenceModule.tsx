@@ -1137,6 +1137,17 @@ export default function IntelligenceModule() {
         )}
       </div>
 
+      {/* ── COMMAND CENTER HEADER ── R-INTELLIGENCE-COMMAND-CENTER-V1 ── */}
+      {(storeState.state !== 'normal' || continuityItems.length > 0 || missions.length > 0 || pendingTaskItems.length > 0) && (
+        <CommandCenterHeader
+          storeState={storeState}
+          continuityCount={continuityItems.length}
+          missionCount={missions.length}
+          queueCount={pendingTaskItems.length}
+          lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
+
       {/* ── STORE STATE BANNER ── R-INTELLIGENCE-STORE-STATE-V1 ── */}
       {storeState.state !== 'normal' && (
         <StoreBanner state={storeState} lang={locale as 'en' | 'es' | 'pt'} />
@@ -2025,6 +2036,108 @@ function StoreBanner({ state, lang }: { state: StoreStateResult; lang: 'en' | 'e
       }}>
         {state.confidence}%
       </span>
+    </div>
+  );
+}
+
+// ── Command Center Header ──────────────────────────────────
+// R-INTELLIGENCE-COMMAND-CENTER-V1: one-sentence operational
+// summary above the command flow sections. Uses only existing
+// computed data — no new calculations.
+
+const CC_FOCUS: Record<string, Record<string, string>> = {
+  balanced:          { en: 'balanced operations',    es: 'operación equilibrada',      pt: 'operação equilibrada' },
+  customer_outreach: { en: 'customer outreach',      es: 'contacto con clientes',      pt: 'contato com clientes' },
+  fast_operational:  { en: 'fast operations',        es: 'acciones rápidas',           pt: 'ações rápidas' },
+  repair_management: { en: 'repair management',      es: 'manejo de reparaciones',     pt: 'gerenciamento de reparos' },
+  payment_recovery:  { en: 'payment recovery',       es: 'cobro de pagos',             pt: 'recuperação de pagamentos' },
+  vip_outreach:      { en: 'VIP outreach',           es: 'contacto VIP',               pt: 'contato VIP' },
+};
+
+const CC_STATE: Record<string, Record<string, string>> = {
+  normal:            { en: 'Operations normal',        es: 'Operaciones normales',         pt: 'Operações normais' },
+  slow_day:          { en: 'Slow day detected',        es: 'Día lento detectado',           pt: 'Dia lento detectado' },
+  rush_mode:         { en: 'Rush mode active',         es: 'Modo rush activo',              pt: 'Modo rush ativo' },
+  repair_overload:   { en: 'Repair overload',          es: 'Sobrecarga de reparaciones',    pt: 'Sobrecarga de reparos' },
+  collection_mode:   { en: 'Collection mode',          es: 'Modo cobro',                    pt: 'Modo cobrança' },
+  opportunity_window:{ en: 'Opportunity window',       es: 'Ventana de oportunidad',         pt: 'Janela de oportunidade' },
+};
+
+function CommandCenterHeader({
+  storeState, continuityCount, missionCount, queueCount, lang,
+}: {
+  storeState: StoreStateResult;
+  continuityCount: number;
+  missionCount: number;
+  queueCount: number;
+  lang: 'en' | 'es' | 'pt';
+}) {
+  const l = lang === 'pt' ? 'pt' : lang === 'es' ? 'es' : 'en';
+  const stateLabel = CC_STATE[storeState.state]?.[l] ?? storeState.state;
+  const focusLabel = CC_FOCUS[storeState.recommendedFocus]?.[l] ?? storeState.recommendedFocus;
+
+  // Build counts phrase (only non-zero counts included)
+  const parts: string[] = [];
+  if (lang === 'es') {
+    if (continuityCount > 0) parts.push(`${continuityCount} pendiente${continuityCount !== 1 ? 's' : ''}`);
+    if (missionCount > 0)    parts.push(`${missionCount} ${missionCount !== 1 ? 'misiones' : 'misión'}`);
+    if (queueCount > 0)      parts.push(`${queueCount} en cola`);
+  } else if (lang === 'pt') {
+    if (continuityCount > 0) parts.push(`${continuityCount} pendência${continuityCount !== 1 ? 's' : ''}`);
+    if (missionCount > 0)    parts.push(`${missionCount} ${missionCount !== 1 ? 'missões' : 'missão'}`);
+    if (queueCount > 0)      parts.push(`${queueCount} na fila`);
+  } else {
+    if (continuityCount > 0) parts.push(`${continuityCount} pending`);
+    if (missionCount > 0)    parts.push(`${missionCount} mission${missionCount !== 1 ? 's' : ''}`);
+    if (queueCount > 0)      parts.push(`${queueCount} queued`);
+  }
+
+  const countsStr = parts.join(', ');
+  const focusPrefix = lang === 'es' ? 'Enfoque' : lang === 'pt' ? 'Foco' : 'Focus';
+  const showFocus = storeState.recommendedFocus !== 'balanced' || storeState.state !== 'normal';
+
+  let sentence = stateLabel;
+  if (countsStr) sentence += ` — ${countsStr}`;
+  if (showFocus) sentence += `. ${focusPrefix}: ${focusLabel}.`;
+
+  const headerLabel = lang === 'es' ? 'Centro de Operaciones' : lang === 'pt' ? 'Central de Operações' : 'Command Center';
+  const stateColor = STATE_CONFIG[storeState.state]?.color ?? '#9CA3AF';
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '8px 12px',
+      borderRadius: 8,
+      background: 'rgba(255,255,255,0.02)',
+      border: '1px solid #1E293B',
+    }}>
+      <span style={{ fontSize: 13, flexShrink: 0 }}>🎛️</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginRight: 8 }}>
+          {headerLabel}
+        </span>
+        <span style={{ fontSize: 12, color: '#D1D5DB' }}>{sentence}</span>
+      </div>
+      {/* Glanceable count chips — only rendered for non-zero values */}
+      <div style={{ display: 'flex', gap: 3, flexShrink: 0, alignItems: 'center' }}>
+        {continuityCount > 0 && (
+          <span style={{ fontSize: 10, color: '#C4B5FD', background: 'rgba(196,181,253,0.08)', border: '1px solid rgba(196,181,253,0.18)', borderRadius: 4, padding: '1px 5px' }}>
+            ↩️ {continuityCount}
+          </span>
+        )}
+        {missionCount > 0 && (
+          <span style={{ fontSize: 10, color: stateColor, background: 'rgba(255,255,255,0.04)', border: `1px solid ${stateColor}30`, borderRadius: 4, padding: '1px 5px' }}>
+            🎯 {missionCount}
+          </span>
+        )}
+        {queueCount > 0 && (
+          <span style={{ fontSize: 10, color: '#818CF8', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 4, padding: '1px 5px' }}>
+            📋 {queueCount}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
