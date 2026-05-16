@@ -114,6 +114,10 @@ import {
   type ChainedAction,
 } from '@/services/intelligence/execution/executionChaining';
 import ExecutionChainPanel from '@/components/ExecutionChainPanel';
+import {
+  computeRoleRouting,
+  type RoleRoutingResult,
+} from '@/services/intelligence/routing/roleIntelligenceRouting';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -148,6 +152,8 @@ export default function IntelligenceModule() {
     // defaultCommissionRate. Engine uses them inside getCustomerHistory
     // to translate phone_payment items into their real economic cost.
     settings,
+    // R-INTELLIGENCE-ROLE-ROUTING-V1: current operator for role-aware routing.
+    currentEmployee,
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
@@ -182,6 +188,12 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-EXECUTION-CHAINING-V1: active chain state.
   const [activeChain, setActiveChain] = useState<ExecutionChain | null>(null);
+
+  // R-INTELLIGENCE-ROLE-ROUTING-V1: role-driven section collapse defaults.
+  // Seeded by roleRouting on role change; user can expand manually.
+  const [weeklyReviewCollapsed, setWeeklyReviewCollapsed] = useState(false);
+  const [strategicInsightsCollapsed, setStrategicInsightsCollapsed] = useState(false);
+  const [businessMemoryCollapsed, setBusinessMemoryCollapsed] = useState(false);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -690,6 +702,21 @@ export default function IntelligenceModule() {
     }),
     [operationalHealth, businessMemory.insights, strategicInsights.insights, recommendations.recommendations, continuityItems.length, pendingTaskItems.length, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // R-INTELLIGENCE-ROLE-ROUTING-V1: deterministic role-aware routing.
+  const roleRouting: RoleRoutingResult = useMemo(
+    () => computeRoleRouting(currentEmployee as { role: string } | null),
+    [currentEmployee?.role], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Sync role-driven collapse defaults when role changes.
+  // User manual expansions are preserved across focus-mode changes;
+  // only a role switch resets defaults.
+  useEffect(() => {
+    setWeeklyReviewCollapsed(roleRouting.weeklyReviewDefaultCollapsed);
+    setStrategicInsightsCollapsed(roleRouting.strategicInsightsDefaultCollapsed);
+    setBusinessMemoryCollapsed(roleRouting.businessMemoryDefaultCollapsed);
+  }, [roleRouting.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-INTELLIGENCE-EXECUTION-CHAINING-V1: stable ref for chain context.
   // Updated each render so chain-generating callbacks read current values
@@ -1392,10 +1419,22 @@ export default function IntelligenceModule() {
 
       {/* ── WEEKLY REVIEW ── R-INTELLIGENCE-WEEKLY-REVIEW-V1 ── */}
       {weeklyReview.reviewItems.length > 0 && (
-        <WeeklyReviewSection
-          review={weeklyReview}
-          lang={locale as 'en' | 'es' | 'pt'}
-        />
+        weeklyReviewCollapsed ? (
+          <CollapsedSectionPill
+            icon="📅"
+            label={locale === 'es' ? 'Resumen Semanal' : locale === 'pt' ? 'Revisão Semanal' : 'Weekly Review'}
+            count={weeklyReview.reviewItems.length}
+            onExpand={() => setWeeklyReviewCollapsed(false)}
+          />
+        ) : (
+          <div>
+            <SectionCollapseRow onCollapse={() => setWeeklyReviewCollapsed(true)} />
+            <WeeklyReviewSection
+              review={weeklyReview}
+              lang={locale as 'en' | 'es' | 'pt'}
+            />
+          </div>
+        )
       )}
 
       {/* ── DAILY BRIEFING ── R-INTELLIGENCE-DAILY-BRIEFING-V1 ── */}
@@ -1408,18 +1447,42 @@ export default function IntelligenceModule() {
 
       {/* ── BUSINESS MEMORY ── R-INTELLIGENCE-BUSINESS-MEMORY-V1 ── */}
       {businessMemory.insights.length > 0 && (
-        <BusinessMemorySection
-          insights={businessMemory.insights}
-          lang={locale as 'en' | 'es' | 'pt'}
-        />
+        businessMemoryCollapsed ? (
+          <CollapsedSectionPill
+            icon="🧠"
+            label={locale === 'es' ? 'Patrones de Negocio' : locale === 'pt' ? 'Padrões do Negócio' : 'Business Patterns'}
+            count={businessMemory.insights.length}
+            onExpand={() => setBusinessMemoryCollapsed(false)}
+          />
+        ) : (
+          <div>
+            <SectionCollapseRow onCollapse={() => setBusinessMemoryCollapsed(true)} />
+            <BusinessMemorySection
+              insights={businessMemory.insights}
+              lang={locale as 'en' | 'es' | 'pt'}
+            />
+          </div>
+        )
       )}
 
       {/* ── STRATEGIC INSIGHTS ── R-INTELLIGENCE-STRATEGIC-OPERATOR-V1 ── */}
       {strategicInsights.insights.length > 0 && (
-        <StrategicInsightsSection
-          insights={strategicInsights.insights}
-          lang={locale as 'en' | 'es' | 'pt'}
-        />
+        strategicInsightsCollapsed ? (
+          <CollapsedSectionPill
+            icon="📡"
+            label={locale === 'es' ? 'Perspectivas Estratégicas' : locale === 'pt' ? 'Perspectivas Estratégicas' : 'Strategic Insights'}
+            count={strategicInsights.insights.length}
+            onExpand={() => setStrategicInsightsCollapsed(false)}
+          />
+        ) : (
+          <div>
+            <SectionCollapseRow onCollapse={() => setStrategicInsightsCollapsed(true)} />
+            <StrategicInsightsSection
+              insights={strategicInsights.insights}
+              lang={locale as 'en' | 'es' | 'pt'}
+            />
+          </div>
+        )
       )}
 
       {/* ── RECOMMENDED ACTIONS ── R-INTELLIGENCE-DECISION-RECOMMENDATION-V1 ── */}
@@ -1458,8 +1521,11 @@ export default function IntelligenceModule() {
         />
       )}
 
-      {/* ── FOCUS MODE INDICATOR ── R-INTELLIGENCE-FOCUS-MODE-V1 ── */}
-      <FocusModeIndicator focusMode={focusMode} lang={locale} />
+      {/* ── FOCUS MODE INDICATOR + ROLE BADGE ── R-INTELLIGENCE-FOCUS-MODE-V1 / ROLE-ROUTING-V1 ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <FocusModeIndicator focusMode={focusMode} lang={locale} />
+        <RoleBadge role={roleRouting.role} lang={locale} />
+      </div>
 
       {/* ── STORE STATE BANNER ── R-INTELLIGENCE-STORE-STATE-V1 ── */}
       {storeState.state !== 'normal' && (
@@ -2732,6 +2798,106 @@ function OperatorTaskCard({
           {lang === 'es' ? 'Descartar' : lang === 'pt' ? 'Descartar' : 'Dismiss'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-ROLE-ROUTING-V1: compact collapsed section pill.
+// Shows when a section is role-suppressed. One click expands it.
+function CollapsedSectionPill({
+  icon, label, count, onExpand,
+}: {
+  icon: string;
+  label: string;
+  count: number;
+  onExpand: () => void;
+}) {
+  return (
+    <button
+      onClick={onExpand}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        width: '100%',
+        background: '#111827',
+        border: '1px solid #1F2937',
+        borderRadius: 6,
+        padding: '5px 10px',
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      <span style={{ fontSize: 11, color: '#4B5563' }}>{icon}</span>
+      <span style={{ fontSize: 10, fontWeight: 600, color: '#4B5563', flex: 1 }}>{label}</span>
+      <span style={{
+        fontSize: 9,
+        color: '#374151',
+        background: '#1F2937',
+        borderRadius: 3,
+        padding: '1px 5px',
+        fontWeight: 700,
+      }}>
+        {count}
+      </span>
+      <span style={{ fontSize: 10, color: '#374151' }}>▶</span>
+    </button>
+  );
+}
+
+// R-INTELLIGENCE-ROLE-ROUTING-V1: inline collapse row above expanded suppressed sections.
+function SectionCollapseRow({ onCollapse }: { onCollapse: () => void }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+      <button
+        onClick={onCollapse}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 9,
+          color: '#374151',
+          padding: '0 2px',
+          fontWeight: 600,
+          letterSpacing: '0.03em',
+        }}
+      >
+        ▼ collapse
+      </button>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-ROLE-ROUTING-V1: compact role badge chip.
+// Only visible for non-owner roles; owner is the default solo-operator mode.
+function RoleBadge({ role, lang }: { role: import('@/services/intelligence/routing/roleIntelligenceRouting').OperatorRole; lang: string }) {
+  if (role === 'owner') return null;
+
+  const ROLE_LABEL: Record<string, Record<string, string>> = {
+    employee: { en: 'Employee View', es: 'Vista Empleado', pt: 'Vista Funcionário' },
+    manager:  { en: 'Manager View',  es: 'Vista Gerente',  pt: 'Vista Gerente'     },
+  };
+  const l = lang === 'pt' ? 'pt' : lang === 'es' ? 'es' : 'en';
+  const label = ROLE_LABEL[role]?.[l] ?? '';
+
+  const ROLE_COLOR: Record<string, string> = {
+    employee: '#6B7280',
+    manager:  '#8B5CF6',
+  };
+  const color = ROLE_COLOR[role] ?? '#6B7280';
+
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '3px 8px',
+      borderRadius: 6,
+      background: `${color}10`,
+      border: `1px solid ${color}28`,
+    }}>
+      <span style={{ fontSize: 9, color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
     </div>
   );
 }
