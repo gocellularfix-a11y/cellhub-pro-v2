@@ -91,6 +91,12 @@ import {
   type StrategicOperatorResult,
 } from '@/services/intelligence/strategy/strategicOperator';
 import StrategicInsightsSection from '@/components/StrategicInsightsSection';
+import {
+  generateRecommendations,
+  type RecommendationResult,
+  type RecommendationAction,
+} from '@/services/intelligence/recommendations/operatorRecommendations';
+import RecommendedActionsSection from '@/components/RecommendedActionsSection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -598,6 +604,23 @@ export default function IntelligenceModule() {
     [storeState, businessMemory.insights, repairs, layaways, missions, continuityItems, outreachCount, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: actionable recommendations.
+  const recommendations: RecommendationResult = useMemo(
+    () => generateRecommendations({
+      storeState,
+      focusMode,
+      strategicInsights: strategicInsights.insights,
+      businessMemoryInsights: businessMemory.insights,
+      continuityItems: continuityItems as Parameters<typeof generateRecommendations>[0]['continuityItems'],
+      missions: missions as Parameters<typeof generateRecommendations>[0]['missions'],
+      pendingQueueCount: pendingTaskItems.length,
+      outreachCandidateCount: outreachCount,
+      repairs: repairs as Parameters<typeof generateRecommendations>[0]['repairs'],
+      layaways: layaways as Parameters<typeof generateRecommendations>[0]['layaways'],
+    }),
+    [storeState, focusMode, strategicInsights.insights, businessMemory.insights, continuityItems, missions, pendingTaskItems.length, outreachCount, repairs, layaways, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Record store state transitions so the memory layer can detect patterns.
   useEffect(() => {
     if (storeState.state !== 'normal') {
@@ -1029,6 +1052,19 @@ export default function IntelligenceModule() {
   }, []);
   // ── end live assist ──────────────────────────────────────────────────────────
 
+  // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: recommendation action shortcuts.
+  // Navigates to external tabs; same-page targets (missions/queue) have no button shown.
+  const handleRecommendationAction = useCallback((action: RecommendationAction) => {
+    const tabMap: Record<string, string> = {
+      open_repairs: 'repairs',
+      open_customers: 'customers',
+    };
+    const tab = tabMap[action];
+    if (tab) {
+      window.dispatchEvent(new CustomEvent('cellhub:navigate-tab', { detail: { tab } }));
+    }
+  }, []);
+
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
 
@@ -1255,6 +1291,15 @@ export default function IntelligenceModule() {
         <StrategicInsightsSection
           insights={strategicInsights.insights}
           lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
+
+      {/* ── RECOMMENDED ACTIONS ── R-INTELLIGENCE-DECISION-RECOMMENDATION-V1 ── */}
+      {recommendations.recommendations.length > 0 && (
+        <RecommendedActionsSection
+          recommendations={recommendations.recommendations}
+          lang={locale as 'en' | 'es' | 'pt'}
+          onAction={handleRecommendationAction}
         />
       )}
 
