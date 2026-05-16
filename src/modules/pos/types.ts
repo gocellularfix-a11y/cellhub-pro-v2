@@ -114,6 +114,9 @@ export function calculateCartTotals(
       // settings.mobileSurcharge is in DOLLARS (e.g. 0.41), convert to cents.
       utilityTax += toIntCents(itemTotal * (settings.utilityUsersTax || 0.055));
       mobileSurcharge += toIntCents((settings.mobileSurcharge || 0.41) * 100 * item.qty);
+    } else if (item.category === 'sim' || item.category === 'activation') {
+      // SIM cards and activation fees: no taxes of any kind — business rule,
+      // regardless of the taxable flag on the inventory record.
     } else if (item.taxable) {
       taxableAmount += itemTotal;
     }
