@@ -70,6 +70,11 @@ import {
   type ContinuityItem,
 } from '@/services/intelligence/continuity/continuityEngine';
 import ContinuityPanel from '@/components/ContinuityPanel';
+import {
+  generateDailyBriefing,
+  type DailyBriefingResult,
+} from '@/services/intelligence/briefing/dailyBriefing';
+import DailyBriefingSection from '@/components/DailyBriefingSection';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
@@ -506,6 +511,22 @@ export default function IntelligenceModule() {
       dismissedIds: dismissedContinuity,
     }),
     [repairs, queueItems, taskQueue, dismissedContinuity, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // R-INTELLIGENCE-DAILY-BRIEFING-V1: compact operational briefing.
+  const briefing: DailyBriefingResult = useMemo(
+    () => generateDailyBriefing({
+      storeState,
+      repairs: repairs as Parameters<typeof generateDailyBriefing>[0]['repairs'],
+      layaways: layaways as Parameters<typeof generateDailyBriefing>[0]['layaways'],
+      sales: sales as Parameters<typeof generateDailyBriefing>[0]['sales'],
+      missions,
+      continuityItems,
+      pendingQueueTasks: pendingTaskItems,
+      managerQueueItems: queueItems,
+      lang: engineLang,
+    }),
+    [storeState, repairs, layaways, sales, missions, continuityItems, pendingTaskItems, queueItems, engineLang, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const topInsight = useMemo(() => {
@@ -1136,6 +1157,14 @@ export default function IntelligenceModule() {
           </>
         )}
       </div>
+
+      {/* ── DAILY BRIEFING ── R-INTELLIGENCE-DAILY-BRIEFING-V1 ── */}
+      {briefing.items.length > 0 && (
+        <DailyBriefingSection
+          items={briefing.items}
+          lang={locale as 'en' | 'es' | 'pt'}
+        />
+      )}
 
       {/* ── COMMAND CENTER HEADER ── R-INTELLIGENCE-COMMAND-CENTER-V1 ── */}
       {(storeState.state !== 'normal' || continuityItems.length > 0 || missions.length > 0 || pendingTaskItems.length > 0) && (
