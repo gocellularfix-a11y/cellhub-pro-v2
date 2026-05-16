@@ -1701,8 +1701,8 @@ export default function LayawayModule() {
           layaway={depositTarget}
           lang={lang}
           onClose={() => setDepositTarget(null)}
-          onConfirm={(amountCents, method, note) =>
-            handleDirectPayment(depositTarget, amountCents, method, note)
+          onConfirm={(amountCents) =>
+            handleCollectConfirm(depositTarget, amountCents / 100)
           }
         />
       )}
