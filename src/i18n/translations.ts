@@ -6877,4 +6877,86 @@ export const translations: TranslationDictionary = {
     pt: (firstName: string, device: string) =>
       `Olá ${firstName}, pedimos sinceras desculpas pelo atraso no reparo do seu ${device} na Go Cellular. Estamos priorizando agora mesmo e teremos uma atualização para você em breve. Obrigado pela paciência e compreensão. 🙏`,
   },
+
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: operator queue UI labels
+  'oq.addToQueue': {
+    en: 'Add to Queue',
+    es: 'Agregar a Cola',
+    pt: 'Adicionar à Fila',
+  },
+  'oq.title': {
+    en: 'Operator Task Queue',
+    es: 'Cola de Tareas',
+    pt: 'Fila de Tarefas',
+  },
+  'oq.empty': {
+    en: 'No pending tasks.',
+    es: 'Sin tareas pendientes.',
+    pt: 'Sem tarefas pendentes.',
+  },
+  'oq.complete': {
+    en: 'Complete',
+    es: 'Completar',
+    pt: 'Concluir',
+  },
+  'oq.dismiss': {
+    en: 'Dismiss',
+    es: 'Descartar',
+    pt: 'Descartar',
+  },
+  'oq.copyMessage': {
+    en: 'Copy Message',
+    es: 'Copiar Mensaje',
+    pt: 'Copiar Mensagem',
+  },
+  'oq.openWhatsApp': {
+    en: 'WhatsApp',
+    es: 'WhatsApp',
+    pt: 'WhatsApp',
+  },
+  'oq.viewEntity': {
+    en: 'View',
+    es: 'Ver',
+    pt: 'Ver',
+  },
+  'oq.showAll': {
+    en: 'Show all',
+    es: 'Ver todos',
+    pt: 'Ver todos',
+  },
+  'oq.showLess': {
+    en: 'Show less',
+    es: 'Ver menos',
+    pt: 'Ver menos',
+  },
+  'oq.taskTypes.recover_customer': {
+    en: 'Re-engage',
+    es: 'Reconectar',
+    pt: 'Reconectar',
+  },
+  'oq.taskTypes.vip_outreach': {
+    en: 'VIP',
+    es: 'VIP',
+    pt: 'VIP',
+  },
+  'oq.taskTypes.product_promotion': {
+    en: 'Promo',
+    es: 'Promo',
+    pt: 'Promo',
+  },
+  'oq.taskTypes.repair_follow_up': {
+    en: 'Follow-up',
+    es: 'Seguimiento',
+    pt: 'Acompanhar',
+  },
+  'oq.taskTypes.repair_escalate': {
+    en: 'Escalate',
+    es: 'Escalar',
+    pt: 'Escalar',
+  },
+  'oq.taskTypes.repair_waiting': {
+    en: 'Waiting',
+    es: 'En espera',
+    pt: 'Aguardando',
+  },
 };

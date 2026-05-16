@@ -97,6 +97,23 @@ export function handleRecoverCustomer(
     },
   });
 
+  actions.push({
+    id: `rc-queue-${customerId}-${now}`,
+    label: t('oq.addToQueue'),
+    payload: {
+      type: 'whatsapp',
+      queueType: 'recover_customer',
+      queueSummary: `${customer.name} — ${days}d inactive · ${COP(h.grossRevenue)} spend`,
+      customMessage: message,
+      customerId: customerId ?? undefined,
+      customerName: customer.name,
+      customerPhone: customer.phone ?? undefined,
+      entityId: customerId ?? undefined,
+      executable: true,
+      executionTarget: 'add_to_operator_queue',
+    },
+  });
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
@@ -175,6 +192,23 @@ export function handleVipOutreach(
       customerName: customer.name,
       executable: true,
       executionTarget: 'open_customer',
+    },
+  });
+
+  actions.push({
+    id: `vo-queue-${customerId}-${now}`,
+    label: t('oq.addToQueue'),
+    payload: {
+      type: 'whatsapp',
+      queueType: 'vip_outreach',
+      queueSummary: `${customer.name} — ${h.visitCount} visits · ${COP(h.grossRevenue)} spend`,
+      customMessage: message,
+      customerId: customerId ?? undefined,
+      customerName: customer.name,
+      customerPhone: customer.phone ?? undefined,
+      entityId: customerId ?? undefined,
+      executable: true,
+      executionTarget: 'add_to_operator_queue',
     },
   });
 

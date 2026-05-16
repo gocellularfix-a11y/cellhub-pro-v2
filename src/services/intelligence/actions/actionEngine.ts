@@ -29,6 +29,9 @@ export interface ActionPayload {
   strategy?: 'targeted_whatsapp' | 'broad_campaign' | 'in_store' | 'status_post';
   recommendedChannel?: 'whatsapp' | 'whatsapp_status' | 'in_store' | 'marketplace';
   preparedMessage?: string;
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: metadata for queue item creation.
+  queueType?: string;     // OperatorTaskType value
+  queueSummary?: string;  // short plain-text summary for the queue card
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: entity reference for navigation targets
   entityId?: string;
   executable: boolean;
@@ -47,6 +50,9 @@ export interface ActionPayload {
     // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: browser clipboard copy.
     // Handled client-side before executeActionPayload — executor never sees it.
     | 'copy_to_clipboard'
+    // R-INTELLIGENCE-OPERATOR-QUEUE-V1: operator manually queues a task.
+    // Handled client-side in IntelligenceChat — executor never sees it.
+    | 'add_to_operator_queue'
     | 'none';
 }
 

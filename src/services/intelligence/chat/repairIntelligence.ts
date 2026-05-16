@@ -105,6 +105,23 @@ export function handleRepairFollowUp(
     },
   });
 
+  actions.push({
+    id: `rfu-queue-${repair.id}-${now}`,
+    label: t('oq.addToQueue'),
+    payload: {
+      type: 'whatsapp',
+      queueType: 'repair_follow_up',
+      queueSummary: `${repair.customerName} — ${deviceLabel} · ${days}d`,
+      customMessage: message,
+      customerId: repair.customerId,
+      customerName: repair.customerName,
+      customerPhone: repair.customerPhone ?? undefined,
+      entityId: repair.id,
+      executable: true,
+      executionTarget: 'add_to_operator_queue',
+    },
+  });
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
@@ -184,6 +201,23 @@ export function handleRepairEscalate(
       customerName: repair.customerName,
       executable: true,
       executionTarget: 'open_repair',
+    },
+  });
+
+  actions.push({
+    id: `re-queue-${repair.id}-${now}`,
+    label: t('oq.addToQueue'),
+    payload: {
+      type: 'whatsapp',
+      queueType: 'repair_escalate',
+      queueSummary: `${repair.customerName} — ${deviceLabel} · ${days}d · ${repair.status}`,
+      customMessage: message,
+      customerId: repair.customerId,
+      customerName: repair.customerName,
+      customerPhone: repair.customerPhone ?? undefined,
+      entityId: repair.id,
+      executable: true,
+      executionTarget: 'add_to_operator_queue',
     },
   });
 

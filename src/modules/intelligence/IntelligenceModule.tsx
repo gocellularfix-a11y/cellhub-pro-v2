@@ -43,6 +43,12 @@ import { buildWhatsAppUrl } from '@/services/whatsapp';
 // when perfDebug is off (which is always, in production).
 import { perfLog, perfTime, INTEL_PERF_ENABLED } from '@/services/intelligence/perfDebug';
 import { consumePendingPromoteProduct, consumePendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
+import {
+  readOperatorQueue,
+  completeOperatorQueueItem,
+  dismissOperatorQueueItem,
+} from '@/services/intelligence/operatorQueue/operatorQueue';
+import type { OperatorQueueItem } from '@/services/intelligence/operatorQueue/operatorQueue';
 import IntelligenceChat from './IntelligenceChat';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -92,6 +98,10 @@ export default function IntelligenceModule() {
   const queueSectionRef = useRef<HTMLDivElement>(null);
   // feedbackVersion bumps whenever feedback is written — triggers scoreMap recompute.
   const [feedbackVersion, setFeedbackVersion] = useState(0);
+
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: operator task queue state
+  const [taskQueue, setTaskQueue] = useState<OperatorQueueItem[]>(() => readOperatorQueue());
+  const [showAllTaskQueue, setShowAllTaskQueue] = useState(false);
 
   // Promote Inventory state
   const [productSearch, setProductSearch] = useState('');
@@ -165,11 +175,18 @@ export default function IntelligenceModule() {
 
   // R-INTELLIGENCE-MANAGER-QUEUE-V1: reload queue when a new item is pushed.
   const reloadQueue = useCallback(() => { setQueueItems(getQueue()); }, []);
+  const reloadTaskQueue = useCallback(() => { setTaskQueue(readOperatorQueue()); }, []);
 
   useEffect(() => {
     window.addEventListener('cellhub:open-manager-review', reloadQueue);
     return () => window.removeEventListener('cellhub:open-manager-review', reloadQueue);
   }, [reloadQueue]);
+
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: refresh task queue when IntelligenceChat adds an item.
+  useEffect(() => {
+    window.addEventListener('cellhub:operator-queue-updated', reloadTaskQueue);
+    return () => window.removeEventListener('cellhub:operator-queue-updated', reloadTaskQueue);
+  }, [reloadTaskQueue]);
 
   // R-INTELLIGENCE-AUTO-RESOLUTION-V1: silently resolve queue items whose
   // underlying operational issue has cleared. Runs after each data update —
@@ -239,6 +256,38 @@ export default function IntelligenceModule() {
     setQueueItems(getQueue());
   }, [writeFeedback]);
 
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: task queue action handlers
+  const handleTaskComplete = useCallback((id: string) => {
+    completeOperatorQueueItem(id);
+    setTaskQueue(readOperatorQueue());
+  }, []);
+
+  const handleTaskDismiss = useCallback((id: string) => {
+    dismissOperatorQueueItem(id);
+    setTaskQueue(readOperatorQueue());
+  }, []);
+
+  const handleTaskWhatsApp = useCallback((item: OperatorQueueItem) => {
+    if (!item.phone) return;
+    const url = `https://wa.me/${item.phone.replace(/\D/g, '')}?text=${encodeURIComponent(item.suggestedMessage)}`;
+    window.open(url, '_blank');
+  }, []);
+
+  const handleTaskCopyMessage = useCallback((item: OperatorQueueItem) => {
+    if (!item.suggestedMessage) return;
+    navigator.clipboard?.writeText(item.suggestedMessage).catch(() => {});
+  }, []);
+
+  const handleTaskView = useCallback((item: OperatorQueueItem) => {
+    if (!item.relatedEntityId) return;
+    const isRepair = item.type === 'repair_follow_up' || item.type === 'repair_escalate' || item.type === 'repair_waiting';
+    if (isRepair) {
+      window.dispatchEvent(new CustomEvent('cellhub:open-repair', { detail: { repairId: item.relatedEntityId } }));
+    } else {
+      window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: item.relatedEntityId } }));
+    }
+  }, []);
+
   // Derived pending list — scoreMap fed into sort comparator.
   const pendingQueueItems = useMemo(
     () => getPendingItems(queueItems, feedbackScoreMap),
@@ -250,6 +299,11 @@ export default function IntelligenceModule() {
   );
   const QUEUE_PREVIEW = 5;
   const visibleQueueItems = showAllQueue ? pendingQueueItems : pendingQueueItems.slice(0, QUEUE_PREVIEW);
+
+  // R-INTELLIGENCE-OPERATOR-QUEUE-V1: derived task queue lists
+  const TASK_QUEUE_PREVIEW = 5;
+  const pendingTaskItems = useMemo(() => taskQueue.filter((i) => i.status === 'pending'), [taskQueue]);
+  const visibleTaskItems = showAllTaskQueue ? pendingTaskItems : pendingTaskItems.slice(0, TASK_QUEUE_PREVIEW);
 
   // R-OPERATOR-STABILIZATION-AUDIT-V1: deps now include the full set of
   // collections updateData() propagates (added expenses/employees/appointments)
@@ -946,7 +1000,39 @@ export default function IntelligenceModule() {
         )}
       </div>
 
-      {/* ── 4. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      {/* ── 4. OPERATOR TASK QUEUE ── */}
+      {pendingTaskItems.length > 0 && (
+        <div className="rounded-lg border p-3" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
+          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+            {t('oq.title')}
+            <span className="ml-2 text-[11px] font-normal text-slate-400">({pendingTaskItems.length})</span>
+          </p>
+          <div className="flex flex-col gap-2">
+            {visibleTaskItems.map((item) => (
+              <OperatorTaskCard
+                key={item.id}
+                item={item}
+                lang={locale as 'en' | 'es' | 'pt'}
+                onComplete={handleTaskComplete}
+                onDismiss={handleTaskDismiss}
+                onWhatsApp={handleTaskWhatsApp}
+                onCopyMessage={handleTaskCopyMessage}
+                onView={handleTaskView}
+              />
+            ))}
+          </div>
+          {pendingTaskItems.length > TASK_QUEUE_PREVIEW && (
+            <button
+              onClick={() => setShowAllTaskQueue((v) => !v)}
+              className="mt-2 text-[11px] text-slate-400 hover:text-slate-300 transition"
+            >
+              {showAllTaskQueue ? t('oq.showLess') : t('oq.showAll')}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── 5. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
       <div className="grid grid-cols-12 gap-3">
 
         {/* Promote Inventory */}
@@ -1667,6 +1753,94 @@ function QueueCard({
           title={L.notUseful}
         >
           👎
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// R-INTELLIGENCE-OPERATOR-QUEUE-V1: compact card for operator task queue items.
+const TASK_TYPE_LABEL: Record<string, { en: string; es: string; pt: string }> = {
+  recover_customer:  { en: 'Re-engage',   es: 'Reconectar',   pt: 'Reconectar' },
+  vip_outreach:      { en: 'VIP',          es: 'VIP',           pt: 'VIP' },
+  product_promotion: { en: 'Promo',        es: 'Promo',         pt: 'Promo' },
+  repair_follow_up:  { en: 'Follow-up',    es: 'Seguimiento',   pt: 'Acompanhar' },
+  repair_escalate:   { en: 'Escalate',     es: 'Escalar',       pt: 'Escalar' },
+  repair_waiting:    { en: 'Waiting',      es: 'En espera',     pt: 'Aguardando' },
+};
+
+function OperatorTaskCard({
+  item, lang, onComplete, onDismiss, onWhatsApp, onCopyMessage, onView,
+}: {
+  item: OperatorQueueItem;
+  lang: 'en' | 'es' | 'pt';
+  onComplete:     (id: string) => void;
+  onDismiss:      (id: string) => void;
+  onWhatsApp:     (item: OperatorQueueItem) => void;
+  onCopyMessage:  (item: OperatorQueueItem) => void;
+  onView:         (item: OperatorQueueItem) => void;
+}) {
+  const typeLabel = (TASK_TYPE_LABEL[item.type] ?? { en: item.type, es: item.type, pt: item.type })[lang];
+  const age = relativeTime(item.createdAt);
+
+  return (
+    <div className="rounded border p-2.5" style={{ background: '#0D1B2A', borderColor: '#1E3A5F' }}>
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ background: '#1E3A5F', color: '#60A5FA' }}
+          >
+            {typeLabel}
+          </span>
+          <span className="text-[11px] font-semibold text-slate-200 truncate">{item.summary}</span>
+        </div>
+        <span className="text-[10px] text-slate-500 shrink-0">{age}</span>
+      </div>
+      {item.suggestedMessage && (
+        <p className="text-[11px] text-slate-400 italic mb-2 line-clamp-2">{item.suggestedMessage}</p>
+      )}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={() => onComplete(item.id)}
+          className="px-2 py-0.5 text-[10px] font-semibold rounded transition"
+          style={{ background: '#10B98122', color: '#10B981', border: '1px solid #10B98144' }}
+        >
+          ✓ {lang === 'es' ? 'Completar' : lang === 'pt' ? 'Concluir' : 'Complete'}
+        </button>
+        {item.phone && (
+          <button
+            onClick={() => onWhatsApp(item)}
+            className="px-2 py-0.5 text-[10px] font-semibold rounded transition"
+            style={{ background: '#25D36622', color: '#25D366', border: '1px solid #25D36644' }}
+          >
+            WA
+          </button>
+        )}
+        {item.suggestedMessage && (
+          <button
+            onClick={() => onCopyMessage(item)}
+            className="px-2 py-0.5 text-[10px] rounded transition"
+            style={{ background: '#6366F122', color: '#818CF8', border: '1px solid #6366F144' }}
+          >
+            {lang === 'es' ? 'Copiar' : lang === 'pt' ? 'Copiar' : 'Copy'}
+          </button>
+        )}
+        {item.relatedEntityId && (
+          <button
+            onClick={() => onView(item)}
+            className="px-2 py-0.5 text-[10px] rounded transition"
+            style={{ background: '#8B5CF622', color: '#A78BFA', border: '1px solid #8B5CF644' }}
+          >
+            ↗ {lang === 'es' ? 'Ver' : lang === 'pt' ? 'Ver' : 'View'}
+          </button>
+        )}
+        <button
+          onClick={() => onDismiss(item.id)}
+          className="px-2 py-0.5 text-[10px] rounded transition"
+          style={{ background: '#37415155', color: '#9CA3AF', border: '1px solid #37415188' }}
+        >
+          {lang === 'es' ? 'Descartar' : lang === 'pt' ? 'Descartar' : 'Dismiss'}
         </button>
       </div>
     </div>

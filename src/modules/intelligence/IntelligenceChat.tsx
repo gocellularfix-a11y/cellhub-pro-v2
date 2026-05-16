@@ -30,6 +30,8 @@ import {
 } from '@/services/intelligence/automation/automationQueue';
 import type { AutomationQueueItem, AutomationOutcome, DealOutcome } from '@/services/intelligence/automation/automationQueue';
 import { scoreAutomationItem } from '@/services/intelligence/automation/automationPriority';
+import { addOperatorQueueItem } from '@/services/intelligence/operatorQueue/operatorQueue';
+import type { OperatorTaskType } from '@/services/intelligence/operatorQueue/operatorQueue';
 import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
@@ -503,6 +505,21 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       } else {
         setFeedbackForAction(action.id, lang === 'es' ? '¡Copiado!' : 'Copied!');
       }
+      return;
+    }
+    // R-INTELLIGENCE-OPERATOR-QUEUE-V1: add to operator task queue — handled here, not in executor.
+    if (action.payload?.executionTarget === 'add_to_operator_queue') {
+      const { customerName = '', customerPhone, entityId, customMessage = '', queueType, queueSummary } = action.payload;
+      addOperatorQueueItem({
+        type: (queueType as OperatorTaskType) || 'recover_customer',
+        customerName,
+        phone: customerPhone || '',
+        relatedEntityId: entityId,
+        summary: queueSummary || customerName,
+        suggestedMessage: customMessage,
+      });
+      window.dispatchEvent(new CustomEvent('cellhub:operator-queue-updated'));
+      setFeedbackForAction(action.id, lang === 'es' ? '✓ Agregado a la cola' : '✓ Added to queue');
       return;
     }
     const result = executeActionPayload(action.payload);
