@@ -20,6 +20,7 @@ import {
   DASHBOARD_THEMES,
   type DashboardTheme,
 } from '@/theme/dashboardTheme';
+import { useTheme, THEMES } from '@/theme';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
 import FirebaseSetupModal from './FirebaseSetupModal';
@@ -431,6 +432,7 @@ export default function SettingsModule() {
     );
   }, [settings.detectedPrinters, setSettings, toast, t]);
 
+  const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('store');
 
   const sectionLabels: Record<string, string> = {
@@ -785,6 +787,55 @@ export default function SettingsModule() {
                 <p className="text-sm text-slate-400 mb-4">
                   {t('settings.appearance.subtitle')}
                 </p>
+
+                {/* Color theme selector — dark / original / bold-light */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.6rem' }}>
+                    {t('settings.appearance.colorTheme')}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    {THEMES.map((th) => {
+                      const isActive = theme === th.id;
+                      const label = locale === 'es' ? th.labelEs : locale === 'pt' ? th.labelPt : th.label;
+                      return (
+                        <button
+                          key={th.id}
+                          type="button"
+                          onClick={() => setTheme(th.id)}
+                          style={{
+                            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                            gap: '0.5rem', padding: '0.65rem 0.5rem', borderRadius: '0.75rem',
+                            cursor: 'pointer', border: 'none',
+                            background: isActive ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.04)',
+                            outline: isActive ? '1px solid rgba(167,139,250,0.50)' : '1px solid rgba(255,255,255,0.06)',
+                            transition: 'all 0.18s',
+                          }}
+                        >
+                          <div style={{
+                            width: 36, height: 36, borderRadius: '50%',
+                            background: th.preview,
+                            border: isActive ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.15)',
+                            boxShadow: isActive ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none',
+                          }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: isActive ? 700 : 500, color: isActive ? '#c4b5fd' : '#94a3b8' }}>
+                            {label}
+                          </span>
+                          {isActive && (
+                            <span style={{
+                              fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em',
+                              padding: '1px 6px', borderRadius: 999,
+                              background: 'rgba(167,139,250,0.20)', color: '#c4b5fd',
+                              border: '1px solid rgba(167,139,250,0.40)',
+                            }}>
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                   {DASHBOARD_THEMES.map((key) => {
                     const isActive = currentTheme === key;

@@ -9,7 +9,7 @@ import { DEFAULT_THEME, THEME_STORAGE_KEY, type ThemeId } from './themes';
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
-    return saved && ['dark', 'light', 'ocean', 'sunset'].includes(saved)
+    return saved && ['dark', 'original', 'bold-light'].includes(saved)
       ? saved
       : DEFAULT_THEME;
   });
@@ -25,7 +25,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export function useTheme() {
   const [theme, setTheme] = useState<ThemeId>(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
-    return saved && ['dark', 'light', 'ocean', 'sunset'].includes(saved)
+    return saved && ['dark', 'original', 'bold-light'].includes(saved)
       ? saved
       : DEFAULT_THEME;
   });

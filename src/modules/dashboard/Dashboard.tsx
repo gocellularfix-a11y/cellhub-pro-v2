@@ -40,7 +40,7 @@ function isSaleCountable(s: { status?: string }): boolean {
 // ── Stat Card Icon ────────────────────────────────────────
 function StatIcon({ icon, color }: { icon: string; color: string }) {
   return (
-    <div style={{
+    <div className="stat-icon-circle" style={{
       position: 'absolute', top: '1rem', right: '1rem',
       width: '40px', height: '40px', borderRadius: '50%',
       background: color, display: 'flex', alignItems: 'center',
@@ -487,7 +487,7 @@ export default function Dashboard() {
 
       {/* ── Stat Cards — 6 cards with icons ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('reports')}>
+        <div className="stat-card" data-kpi="green" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('reports')}>
           <StatIcon icon="💲" color="rgba(34, 197, 94, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
             {t('todaysSales')}
@@ -500,7 +500,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" title={todayReturnsCents > 0
+        <div className="stat-card" data-kpi="teal" title={todayReturnsCents > 0
           ? t('dashboard.refundsTooltip', formatCurrency(todayReturnsCents))
           : undefined}>
           <StatIcon icon="📈" color="rgba(34, 197, 94, 0.2)" />
@@ -521,7 +521,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
+        <div className="stat-card" data-kpi="orange" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
           <StatIcon icon="🔧" color="rgba(249, 115, 22, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
             {t('activeRepairs')}
@@ -534,7 +534,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('inventory')}>
+        <div className="stat-card" data-kpi="red" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('inventory')}>
           <StatIcon icon="⚠️" color="rgba(239, 68, 68, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
             {t('lowStock')}
@@ -547,7 +547,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('customers')}>
+        <div className="stat-card" data-kpi="pink" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('customers')}>
           <StatIcon icon="👥" color="rgba(236, 72, 153, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
             {t('totalCustomers')}
@@ -560,7 +560,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('unlocks')}>
+        <div className="stat-card" data-kpi="violet" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('unlocks')}>
           <StatIcon icon="🔓" color="rgba(139, 92, 246, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
             {t('activeUnlocks')}

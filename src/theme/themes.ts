@@ -1,4 +1,4 @@
-export type ThemeId = 'dark' | 'light' | 'ocean' | 'sunset';
+export type ThemeId = 'dark' | 'original' | 'bold-light';
 
 export interface ThemeOption {
   id: ThemeId;
@@ -9,10 +9,9 @@ export interface ThemeOption {
 }
 
 export const THEMES: ThemeOption[] = [
-  { id: 'dark',   label: 'Dark',   labelEs: 'Oscuro',   labelPt: 'Escuro',     preview: '#0f172a' },
-  { id: 'light',  label: 'Light',  labelEs: 'Claro',    labelPt: 'Claro',      preview: '#f8fafc' },
-  { id: 'ocean',  label: 'Ocean',  labelEs: 'Océano',   labelPt: 'Oceano',     preview: '#0c1929' },
-  { id: 'sunset', label: 'Sunset', labelEs: 'Atardecer', labelPt: 'Pôr do Sol', preview: '#1a0a0a' },
+  { id: 'dark',       label: 'Dark',       labelEs: 'Oscuro',    labelPt: 'Escuro',    preview: '#0f172a' },
+  { id: 'original',   label: 'Original',   labelEs: 'Original',  labelPt: 'Original',  preview: '#2a1f5f' },
+  { id: 'bold-light', label: 'Bold Light', labelEs: 'Claro Bold', labelPt: 'Claro Bold', preview: '#F4F5F7' },
 ];
 
 export const DEFAULT_THEME: ThemeId = 'dark';

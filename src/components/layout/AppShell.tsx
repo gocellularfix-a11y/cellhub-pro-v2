@@ -10,6 +10,7 @@ import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
 import { useLicense } from '@/contexts/LicenseContext';
 import { readDashboardTheme } from '@/theme/dashboardTheme';
+import { useTheme } from '@/theme';
 
 // ── Lazy-load all modules ─────────────────────────────────
 const Dashboard        = lazy(() => import('@/modules/dashboard/Dashboard'));
@@ -83,6 +84,7 @@ export default function AppShell() {
   const { state, dispatch } = useApp();
   const { activeTab, isAdminMode, lang, settings, customers } = state;
   const { features } = useLicense();
+  const { theme } = useTheme();
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {
@@ -212,16 +214,17 @@ export default function AppShell() {
 
   // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (current
   // production) is the default; 'list' restores the pre-redesign sidebar.
-  // 'bold-blocks' currently uses the same Sidebar — the dashboard body
-  // variant lands in a follow-up phase. Stored in settings.dashboardTheme.
+  // Color theme drives sidebar selection: 'original' and 'bold-light' always
+  // use SidebarList; 'dark' uses dashboardTheme setting (tiles or list).
   const dashboardTheme = readDashboardTheme(state.settings);
+  const usesListSidebar = theme === 'original' || theme === 'bold-light' || dashboardTheme === 'list';
 
   return (
     <div className={`flex h-screen max-h-screen overflow-hidden theme-${dashboardTheme}`}>
       {/* r-pkg-a2: auto-update banner — renders at top of screen when
           an update is available. No-op in browser (non-Electron). */}
       <AutoUpdateNotifier />
-      {dashboardTheme === 'list' ? <SidebarList /> : <Sidebar />}
+      {usesListSidebar ? <SidebarList /> : <Sidebar />}
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden h-screen p-6">
         <Suspense fallback={<LoadingSpinner message="Loading module…" />}>
