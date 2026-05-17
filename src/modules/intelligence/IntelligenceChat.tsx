@@ -13,7 +13,7 @@ import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
 import type { OperationalContext } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
-import type { ChatActionUI, PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+import type { ChatActionUI, PanelCampaignDraft, WorkflowSection } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 import {
   createAutomationItem,
@@ -71,6 +71,7 @@ interface ChatMessage {
   timestamp: Date;
   kind?: 'answer' | 'disambiguation' | 'error' | 'help';
   actions?: ChatActionUI[];
+  workflowSections?: WorkflowSection[];
 }
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
@@ -474,6 +475,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       timestamp: new Date(),
       kind: response.kind,
       actions: response.actions,
+      workflowSections: response.workflowSections,
     };
 
     clearActionFeedback();
@@ -1103,6 +1105,7 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
           content={msg.content}
           kind={msg.kind}
           actions={msg.actions}
+          workflowSections={msg.workflowSections}
           onAction={onAction}
           feedbackById={feedbackById}
           lang={lang}

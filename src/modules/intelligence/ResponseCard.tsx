@@ -1,7 +1,7 @@
 // ResponseCard — Phase 2 operational response renderer.
 // Transforms plain chat responses into structured execution cards.
 // Presentation-only: all action routing stays in IntelligenceChat.
-import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
+import type { ChatActionUI, WorkflowSection } from '@/services/intelligence/chat/handlers';
 
 // ── keyframe injection (once per app) ────────────────────────
 const KF_ID = 'cellhub-response-card-kf';
@@ -58,6 +58,7 @@ export interface ResponseCardProps {
   content: string;
   kind?: 'answer' | 'disambiguation' | 'error' | 'help';
   actions?: ChatActionUI[];
+  workflowSections?: WorkflowSection[];
   onAction: (action: ChatActionUI) => void;
   feedbackById: Record<string, { message: string; ts: number }>;
   lang: string;
@@ -67,6 +68,7 @@ export default function ResponseCard({
   content,
   kind,
   actions,
+  workflowSections,
   onAction,
   feedbackById,
   lang,
@@ -145,6 +147,15 @@ export default function ResponseCard({
           </div>
         ))}
       </div>
+
+      {/* ── Workflow Sections ── */}
+      {workflowSections && workflowSections.length > 0 && (
+        <div style={{ borderTop: '1px solid #1A2332', padding: '8px 14px 10px' }}>
+          {workflowSections.map((section, si) => (
+            <WorkflowSectionBlock key={si} section={section} />
+          ))}
+        </div>
+      )}
 
       {/* ── Actions ── */}
       {(primaryExec.length + secondaryExec.length + chipActions.length) > 0 && (
@@ -294,6 +305,64 @@ function ChipButton({
       {feedback?.message && (
         <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280' }}>
           {feedback.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Workflow section block ────────────────────────────────────
+function WorkflowSectionBlock({ section }: { section: WorkflowSection }) {
+  const accent = section.accent ?? '#6B7280';
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+        {section.icon && <span style={{ fontSize: 11, lineHeight: 1 }}>{section.icon}</span>}
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: accent,
+          letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+        }}>
+          {section.title}
+        </span>
+      </div>
+      {section.rows?.map((row, ri) => (
+        <div key={ri} style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          padding: '5px 8px',
+          borderRadius: 5,
+          background: ri % 2 === 0 ? '#0B1220' : 'transparent',
+          marginBottom: 2,
+        }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12, color: '#CBD5E1', fontWeight: 500, lineHeight: '1.3' }}>
+              {row.label}
+            </div>
+            {row.meta && (
+              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1, lineHeight: '1.3' }}>
+                {row.meta}
+              </div>
+            )}
+          </div>
+          {row.badge && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+              padding: '2px 6px', borderRadius: 99,
+              background: `${row.badgeAccent ?? '#6B7280'}22`,
+              color: row.badgeAccent ?? '#6B7280',
+              border: `1px solid ${row.badgeAccent ?? '#6B7280'}44`,
+              flexShrink: 0, marginLeft: 8, marginTop: 2,
+              whiteSpace: 'nowrap' as const,
+            }}>
+              {row.badge}
+            </span>
+          )}
+        </div>
+      ))}
+      {section.summary && (
+        <div style={{ fontSize: 11, color: '#64748B', marginTop: 5, paddingLeft: 4 }}>
+          {section.summary}
         </div>
       )}
     </div>

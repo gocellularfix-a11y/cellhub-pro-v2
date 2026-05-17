@@ -161,19 +161,28 @@ export interface PanelCampaignDraft {
   }>;
 }
 
+export interface WorkflowRow {
+  label: string;
+  meta?: string;
+  badge?: string;
+  badgeAccent?: string;
+}
+
+export interface WorkflowSection {
+  title: string;
+  icon?: string;
+  rows?: WorkflowRow[];
+  accent?: string;
+  summary?: string;
+}
+
 export interface ChatResponse {
   text: string;
   kind: 'answer' | 'disambiguation' | 'error' | 'help';
   actions?: ChatActionUI[];
-  // R-INTELLIGENCE-CONTEXT-MEMORY-V1: optional hint that this response
-  // established an actionable entity worth remembering for the NEXT
-  // user turn (e.g., the product the owner just asked about). The chat
-  // shell stamps a timestamp and stores at depth-1; handlers stay
-  // clock-agnostic. Pure data; no behavior change for existing callers.
   establishesContext?: { type: OperationalContext['type']; value: string };
-  // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: optional draft for the Promote
-  // Inventory panel widget. Set by handleProductPush / runProductPush.
   panelCampaign?: PanelCampaignDraft;
+  workflowSections?: WorkflowSection[];
 }
 
 export function handleIntent(
@@ -2638,11 +2647,20 @@ function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     });
   }
 
+  const workflowRows: WorkflowRow[] = top.map((p, i) => ({
+    label: `${i + 1}. ${p.name}`,
+    meta: `${lang === 'es' ? 'Atrasado' : lang === 'pt' ? 'Atrasado' : 'Overdue'} ${p.overdueByDays}${lang === 'es' ? 'd' : lang === 'pt' ? 'd' : 'd'}`,
+    badge: p.overdueByDays >= 14 ? (lang === 'es' ? 'URGENTE' : 'URGENT') : undefined,
+    badgeAccent: '#EF4444',
+  }));
+
   const body = `${t('chat.contact.header', predictions.length)}\n\n${lines.join('\n\n')}`;
   const text = remaining > 0 ? `${body}\n\n${t('chat.contact.remaining', remaining)}` : body;
+  const sectionTitle = lang === 'es' ? 'Prioridad de contacto' : lang === 'pt' ? 'Prioridade de contato' : 'Contact Priority';
+  const workflowSections: WorkflowSection[] = [{ title: sectionTitle, icon: '📞', accent: '#3B82F6', rows: workflowRows }];
   return actions.length > 0
-    ? { kind: 'answer', text, actions }
-    : { kind: 'answer', text };
+    ? { kind: 'answer', text, actions, workflowSections }
+    : { kind: 'answer', text, workflowSections };
 }
 
 // ── Who to contact today (R-INTEL-WHO-TO-CONTACT-TODAY) ────
@@ -2756,9 +2774,24 @@ function handleWhoToContactToday(engine: IntelligenceEngine, lang: Lang3): ChatR
     return `• ${c.name} · ${c.phone} · ${COP(c.grossRevenue)} total\n  ${reason}\n  ${action}`;
   });
 
+  const contactWorkflowRows: WorkflowRow[] = top.map((c, i) => {
+    const highSpender = c.grossRevenue >= highSpenderThreshold && c.grossRevenue > 0;
+    const badge = highSpender ? 'VIP'
+      : c.daysSinceLastVisit >= 30 ? (lang === 'es' ? 'INACTIVO' : lang === 'pt' ? 'INATIVO' : 'OVERDUE')
+      : undefined;
+    return {
+      label: `${i + 1}. ${c.name}`,
+      meta: `${COP(c.grossRevenue)} · ${c.daysSinceLastVisit}${lang === 'es' ? 'd sin visita' : lang === 'pt' ? 'd sem visita' : 'd inactive'}`,
+      badge,
+      badgeAccent: badge === 'VIP' ? '#8B5CF6' : '#EF4444',
+    };
+  });
+  const contactSectionTitle = lang === 'es' ? 'Prioridad de contacto' : lang === 'pt' ? 'Prioridade de contato' : 'Contact Priority';
+
   return {
     kind: 'answer',
     text: `${t('chat.whoToContact.header')}\n\n${lines.join('\n\n')}`,
+    workflowSections: [{ title: contactSectionTitle, icon: '📞', accent: '#3B82F6', rows: contactWorkflowRows }],
   };
 }
 
