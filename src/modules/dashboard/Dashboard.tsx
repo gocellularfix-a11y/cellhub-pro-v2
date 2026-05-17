@@ -19,6 +19,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { loadLocal } from '@/services/storage';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
+import { STATUS_LABELS, PAYMENT_LABELS } from '@/i18n/statusMap';
 import { normalizeCarrier } from '@/utils/normalize';
 // R-DASHBOARD-PROFIT-RECONCILE-V1: reuse Reports' pseudo-item detection
 // + proportional-cost helpers so the Dashboard's profit pipeline applies
@@ -64,6 +65,8 @@ export default function Dashboard() {
     setActiveTab,
   } = useApp();
   const { t } = useTranslation();
+  const statusLabels = STATUS_LABELS(t);
+  const paymentLabels = PAYMENT_LABELS(t);
 
   // r-global-search: local `search` state and the 8 match useMemos + goTo
   // navigator + dropdown JSX were all extracted to GlobalSearchBar.tsx.
@@ -766,7 +769,7 @@ export default function Dashboard() {
                       if (s === REPAIR_STATUS.IN_PROGRESS) return 'badge-warning';
                       return 'badge-info';
                     })()}`}>
-                      {repair.status}
+                      {statusLabels[normalizeRepairStatus(repair.status) as keyof typeof statusLabels] ?? repair.status}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
@@ -806,7 +809,7 @@ export default function Dashboard() {
                         background: 'rgba(34,197,94,0.2)', color: '#4ade80',
                       } : undefined}
                     >
-                      {sale.paymentMethod?.toUpperCase()}
+                      {paymentLabels[(sale.paymentMethod ?? '').toLowerCase() as keyof typeof paymentLabels] ?? sale.paymentMethod?.toUpperCase()}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>

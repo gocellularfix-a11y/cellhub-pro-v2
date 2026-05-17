@@ -6,6 +6,7 @@ import { formatCurrency } from '@/utils/currency';
 import { formatDate } from '@/utils/dates';
 import { forwardRef, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
+import { STATUS_LABELS } from '@/i18n/statusMap';
 
 interface TicketCardProps {
   ticketNumber: string;
@@ -79,6 +80,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   onEscalate,
 }, ref) {
   const { t } = useTranslation();
+  const statusLabels = STATUS_LABELS(t);
   const PRIORITY_LABELS: Record<string, string> = {
     Normal: t('priority.normal'),
     normal: t('priority.normal'),
@@ -105,7 +107,7 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm font-bold text-brand-400">{ticketNumber}</span>
-            <span className={`badge ${statusBadgeClass}`}>{status}</span>
+            <span className={`badge ${statusBadgeClass}`}>{statusLabels[status as keyof typeof statusLabels] ?? status}</span>
             {priority && priority !== 'Normal' && priority !== 'normal' && (
               <span className={`badge ${
                 priority === 'urgent' || priority === 'Urgent' ? 'badge-danger' :

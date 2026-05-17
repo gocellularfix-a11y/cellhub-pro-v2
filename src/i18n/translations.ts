@@ -5218,10 +5218,17 @@ export const translations: TranslationDictionary = {
   'status.inProgress':    { en: 'In Progress',    es: 'En Progreso',          pt: 'Em Progresso' },
   'status.waitingParts':  { en: 'Waiting Parts',  es: 'Esperando Piezas',     pt: 'Aguardando Peças' },
   'status.ready':         { en: 'Ready',          es: 'Listo',                pt: 'Pronto' },
+  'status.pickedUp':      { en: 'Picked Up',      es: 'Entregado',            pt: 'Retirado' },
+  'status.diagnosing':    { en: 'Diagnosing',     es: 'Diagnosticando',       pt: 'Diagnosticando' },
   'status.completed':     { en: 'Completed',      es: 'Completado',           pt: 'Concluído' },
   'status.cancelled':     { en: 'Cancelled',      es: 'Cancelado',            pt: 'Cancelado' },
   'status.refundPending': { en: 'Refund Pending', es: 'Reembolso Pendiente',  pt: 'Reembolso Pendente' },
   'status.refunded':      { en: 'Refunded',       es: 'Reembolsado',          pt: 'Reembolsado' },
+  'payment.cash':         { en: 'Cash',           es: 'Efectivo',             pt: 'Dinheiro' },
+  'payment.card':         { en: 'Card',           es: 'Tarjeta',              pt: 'Cartão' },
+  'payment.financed':     { en: 'Financed',       es: 'Financiado',           pt: 'Financiado' },
+  'payment.transfer':     { en: 'Transfer',       es: 'Transferencia',        pt: 'Transferência' },
+  'payment.split':        { en: 'Split',          es: 'Mixto',                pt: 'Misto' },
 
   // ── Condition labels (inventory) ─────────────────────────
   'condition.new':          { en: 'New',          es: 'Nuevo',          pt: 'Novo' },
