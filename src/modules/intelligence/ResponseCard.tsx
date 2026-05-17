@@ -1,6 +1,7 @@
 // ResponseCard — Phase 2 operational response renderer.
 // Transforms plain chat responses into structured execution cards.
 // Presentation-only: all action routing stays in IntelligenceChat.
+import { memo } from 'react';
 import type { ChatActionUI, WorkflowSection } from '@/services/intelligence/chat/handlers';
 
 // ── keyframe injection (once per app) ────────────────────────
@@ -59,7 +60,7 @@ export interface ResponseCardProps {
   lang: string;
 }
 
-export default function ResponseCard({
+function ResponseCard({
   content,
   kind,
   actions,
@@ -169,6 +170,8 @@ export default function ResponseCard({
     </div>
   );
 }
+
+export default memo(ResponseCard);
 
 // ── Exec button ───────────────────────────────────────────────
 function ExecButton({

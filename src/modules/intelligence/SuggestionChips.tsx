@@ -2,6 +2,7 @@
 // Surfaces live store signals as compact, clickable entry points.
 // All chip clicks fire existing natural-language queries through
 // the same fireQuery pipeline — no new handlers created.
+import { memo } from 'react';
 import { formatCurrency } from '@/utils/currency';
 
 export interface ChipData {
@@ -155,11 +156,11 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
     }
   }
 
-  return signals;
+  return signals.slice(0, 4);
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function SuggestionChips({
+function SuggestionChips({
   chipData,
   onFireChat,
   locale,
@@ -192,6 +193,8 @@ export default function SuggestionChips({
     </div>
   );
 }
+
+export default memo(SuggestionChips);
 
 // ── Row chip: compact horizontal card ────────────────────────
 function RowChip({ signal, onClick }: { signal: ChipSignal; onClick: () => void }) {

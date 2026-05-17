@@ -972,7 +972,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
               : 'Ask about customers, repairs, inventory, taxes, or profit…'
             }
-            className='focus:border-blue-500/50'
+            className='focus:border-slate-500/50'
             style={{
               flex: 1,
               background: '#0B1220',
@@ -982,22 +982,21 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               fontSize: 13,
               border: '1px solid #1F2937',
               outline: 'none',
-              transform: 'translateZ(0)',
+              minWidth: 0,
             }}
           />
           <button
             type='submit'
             disabled={!input.trim()}
             style={{
-              padding: '11px 16px',
+              padding: '10px 15px',
               borderRadius: 8,
-              background: input.trim() ? '#1D4ED8' : '#1F2937',
-              color: input.trim() ? '#fff' : '#4B5563',
-              fontSize: 16,
-              fontWeight: 600,
-              border: 'none',
+              background: input.trim() ? '#1E3A6E' : '#141E2E',
+              color: input.trim() ? '#93C5FD' : '#374151',
+              fontSize: 15,
+              border: input.trim() ? '1px solid #1D4ED844' : '1px solid #1A2332',
               cursor: input.trim() ? 'pointer' : 'not-allowed',
-              transition: 'background 0.15s',
+              transition: 'background 0.12s, color 0.12s',
               flexShrink: 0,
             }}
           >

@@ -2,6 +2,7 @@
 // Surfaces live "still active" operational signals between the chip row
 // and the message list. Derived purely from chipData — no new props.
 // Only visible when messages exist (empty state shows OperatorWelcome instead).
+import { memo } from 'react';
 import type { ChipData } from './SuggestionChips';
 import { formatCurrency } from '@/utils/currency';
 
@@ -79,7 +80,7 @@ interface OperatorContinuityBarProps {
   locale: string;
 }
 
-export default function OperatorContinuityBar({ chipData, onFireChat, locale }: OperatorContinuityBarProps) {
+function OperatorContinuityBar({ chipData, onFireChat, locale }: OperatorContinuityBarProps) {
   const signals = buildActiveSignals(chipData, locale);
   if (signals.length === 0) return null;
 
@@ -127,3 +128,5 @@ export default function OperatorContinuityBar({ chipData, onFireChat, locale }: 
     </div>
   );
 }
+
+export default memo(OperatorContinuityBar);
