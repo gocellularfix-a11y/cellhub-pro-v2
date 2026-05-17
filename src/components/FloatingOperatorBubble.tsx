@@ -47,9 +47,8 @@ export default function FloatingOperatorBubble({ suggestion, lang, onAction, onD
   if (!visible || !shown) return null;
 
   const style = PRIORITY_STYLE[shown.priority] ?? PRIORITY_STYLE.medium;
-  const es = lang === 'es';
-  const viewLabel    = es ? 'Ver'    : 'View';
-  const dismissLabel = es ? 'Cerrar' : 'Dismiss';
+  const viewLabel    = lang === 'es' || lang === 'pt' ? 'Ver'    : 'View';
+  const dismissLabel = lang === 'es' ? 'Cerrar' : lang === 'pt' ? 'Fechar' : 'Dismiss';
 
   function handleAction() {
     writeCooldown(shown!.id, shown!.trigger, 'suggestion_accepted');

@@ -804,7 +804,7 @@ export default function FloatingOperatorBubble() {
   // Override the badge preview text.
   // Priority: carrier payment > strategy > rhythm mode > temporal trend > normal rotation.
   const effectivePreviewText = (pendingExternalPayment && returnDetected)
-    ? (locale === 'es' ? 'Confirmar pago del carrier' : 'Confirm carrier payment')
+    ? t('operator.workflow.carrierPayment')
     : (!liveCtx.activeCustomer && isStrategyActionable(opHealth.strategy))
       ? getStrategyLabel(opHealth.strategy.type)
       : (!liveCtx.activeCustomer && isRhythmActionable(opHealth.storeRhythm))
@@ -1203,12 +1203,14 @@ export default function FloatingOperatorBubble() {
             const totalLines = typeof meta.totalLines === 'number' ? meta.totalLines : undefined;
             const multiLine = typeof lineIndex === 'number' && typeof totalLines === 'number' && totalLines > 1;
 
-            const headerLabel = locale === 'es' ? 'Retomar flujo de pago' : (resumeCtx?.resumeLabel ?? 'Resume payment workflow');
+            const headerLabel = resumeCtx?.resumeLabel ?? t('operator.workflow.resumePayment');
             const descLine1 = locale === 'es'
               ? `Cobrabas pago${carrier ? ` de ${carrier}` : ''}${phone ? ` para ${phone}` : ''}`
-              : (resumeCtx?.resumeDescription ?? 'External payment pending');
+              : locale === 'pt'
+                ? `Pagamento pendente${carrier ? ` de ${carrier}` : ''}${phone ? ` para ${phone}` : ''}`
+                : (resumeCtx?.resumeDescription ?? t('operator.workflow.externalPending'));
             const descLine2 = multiLine
-              ? (locale === 'es' ? `Línea ${(lineIndex as number) + 1} de ${totalLines}` : `Line ${(lineIndex as number) + 1} of ${totalLines}`)
+              ? (t as (k: string, ...a: any[]) => string)('operator.workflow.lineOf', (lineIndex as number) + 1, totalLines)
               : null;
 
             return (
@@ -1232,9 +1234,7 @@ export default function FloatingOperatorBubble() {
                     </div>
                   )}
                   <div style={{ fontSize: '0.78rem', color: '#a5b4fc', marginTop: '0.15rem' }}>
-                    {locale === 'es'
-                      ? '¿Completaste el pago en el portal del carrier?'
-                      : 'Did you complete the payment on the carrier website?'}
+                    {t('operator.workflow.carrierQuestion')}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.05rem' }}>
@@ -1255,7 +1255,7 @@ export default function FloatingOperatorBubble() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {locale === 'es' ? '↩ Retomar' : '↩ Resume'}
+                    {t('operator.workflow.resume')}
                   </button>
                   {/* Mark Paid — safe PhonePaymentModal event path */}
                   <button
@@ -1274,7 +1274,7 @@ export default function FloatingOperatorBubble() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {locale === 'es' ? '✓ Pagado · Sig' : '✓ Mark Paid & Next'}
+                    {t('operator.workflow.markPaid')}
                   </button>
                   {/* Still Processing — keep pending, dismiss card */}
                   <button
@@ -1293,7 +1293,7 @@ export default function FloatingOperatorBubble() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {locale === 'es' ? '⏳ En proceso' : '⏳ Still Processing'}
+                    {t('operator.workflow.stillProcessing')}
                   </button>
                   {/* Cancel — remove workflow from queue */}
                   <button
@@ -1514,7 +1514,7 @@ export default function FloatingOperatorBubble() {
             }}>
               <span style={{ color: '#86efac', fontSize: '0.9rem', flexShrink: 0 }}>✓</span>
               <span style={{ fontSize: '0.82rem', color: '#86efac', fontWeight: 600 }}>
-                {locale === 'es' ? 'Secuencia completada' : 'Sequence complete'}
+                {t('operator.sequence.complete')}
               </span>
             </div>
           )}
@@ -1538,10 +1538,10 @@ export default function FloatingOperatorBubble() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {locale === 'es' ? 'Secuencia guiada' : 'Guided Sequence'}
+                    {t('operator.sequence.guided')}
                   </div>
                   <div style={{ fontSize: '0.68rem', color: '#475569' }}>
-                    {locale === 'es' ? `Paso ${completed + 1} de ${total}` : `Step ${completed + 1} of ${total}`}
+                    {(t as (k: string, ...a: any[]) => string)('operator.sequence.stepOf', completed + 1, total)}
                   </div>
                 </div>
                 <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#e2e8f0' }}>{displayedChain.title}</div>
@@ -1578,7 +1578,7 @@ export default function FloatingOperatorBubble() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ width: 7, height: 7, borderRadius: '50%', border: '1px solid #334155', flexShrink: 0 }} />
                     <span style={{ fontSize: '0.73rem', color: '#334155' }}>
-                      {locale === 'es' ? 'Siguiente: ' : 'Next: '}{nextStep.label}
+                      {t('operator.sequence.next')}{nextStep.label}
                     </span>
                   </div>
                 )}
@@ -1589,7 +1589,7 @@ export default function FloatingOperatorBubble() {
                     onClick={() => handleChainStepSkip(currentStep)}
                     style={{ fontSize: '0.68rem', color: '#334155', background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
                   >
-                    {locale === 'es' ? 'Saltar paso →' : 'Skip step →'}
+                    {t('operator.sequence.skip')}
                   </button>
                 </div>
               </div>
@@ -1627,7 +1627,7 @@ export default function FloatingOperatorBubble() {
                           type="button"
                           onClick={() => { dispatch({ type: 'SET_ACTIVE_TAB', payload: s.actionTab! }); setIsOverlayOpen(false); }}
                           style={{ flexShrink: 0, fontSize: '0.68rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.15rem', lineHeight: 1 }}
-                          title="Go there"
+                          title={t('operator.action.goThere')}
                         >
                           →
                         </button>
@@ -1654,7 +1654,7 @@ export default function FloatingOperatorBubble() {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {isFlashed ? '✓ Opened' : a.label}
+                            {isFlashed ? t('operator.action.opened') : a.label}
                           </button>
                         ))}
                       </div>

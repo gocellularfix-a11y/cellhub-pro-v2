@@ -253,7 +253,7 @@ export default function Cart({
       <button
         onClick={onSelectCustomer}
         style={{
-          margin: '0.625rem 1rem 0.375rem',
+          margin: '0.375rem 1rem 0.25rem',
           padding: '0.5rem 0.75rem',
           borderRadius: '0.625rem',
           border: selectedCustomer
@@ -315,9 +315,9 @@ export default function Cart({
       </button>
 
       {/* Items */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 py-1.5 space-y-1.5">
         {cart.map((item) => (
-          <div key={item.id} className="rounded-lg bg-white/5 p-3">
+          <div key={item.id} className="rounded-lg bg-white/5 p-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white font-medium truncate">{item.name}</p>
@@ -350,7 +350,7 @@ export default function Cart({
               </button>
             </div>
 
-            <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center justify-between mt-1.5">
               {/* Qty controls + line-discount button */}
               <div className="flex items-center gap-2">
                 <button
@@ -415,7 +415,7 @@ export default function Cart({
               value={item.notes || ''}
               onChange={(e) => updateNotes(item.id, e.target.value)}
               placeholder={t('addNote')}
-              className="mt-2 w-full bg-transparent border-b border-white/10 text-xs text-slate-400
+              className="mt-1.5 w-full bg-transparent border-b border-white/10 text-xs text-slate-400
                          placeholder-slate-600 focus:outline-none focus:border-brand-500 py-1"
             />
 
@@ -424,7 +424,7 @@ export default function Cart({
                 is hidden when the global cbeFeeEnabled is off — otherwise
                 clicking it would do nothing (calc gates on the global flag
                 in pos/types.ts:124). Screen Fee has no global gate. */}
-            <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem' }}>
               {settings.cbeFeeEnabled && (
                 <button
                   type="button"
@@ -500,7 +500,7 @@ export default function Cart({
       </div>
 
       {/* Totals */}
-      <div className="px-4 py-2 border-t border-white/10 space-y-1 text-sm">
+      <div className="px-3 py-1.5 border-t border-white/10 space-y-1 text-sm">
         <div className="flex justify-between text-slate-400">
           <span>{t('subtotal')}</span>
           <span>{formatCurrency(totals.subtotal)}</span>
@@ -554,7 +554,7 @@ export default function Cart({
       </div>
 
       {/* Payment Method */}
-      <div className="px-4 py-2 border-t border-white/10 space-y-2">
+      <div className="px-3 py-1.5 border-t border-white/10 space-y-1.5">
         <div className="grid grid-cols-4 gap-1">
           {['Cash', 'Card', 'Split', 'Store Credit'].map((method) => {
             const isStoreCredit = method === 'Store Credit';
@@ -888,7 +888,7 @@ export default function Cart({
       </div>
 
       {/* Checkout button */}
-      <div className="px-4 py-2.5 border-t border-white/10">
+      <div className="px-4 py-2 border-t border-white/10">
         <button
           onClick={onCheckout}
           className="btn btn-success w-full text-base py-2"

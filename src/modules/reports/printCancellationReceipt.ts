@@ -43,14 +43,14 @@ export function buildCancellationReceiptHtml(
   const storeAddr = escHtml((settings as any).storeAddress || '');
   const storePhone = escHtml((settings as any).storePhone || '');
 
-  const methodLabels: Record<string, { en: string; es: string }> = {
-    store_credit: { en: 'STORE CREDIT', es: 'CRÉDITO DE TIENDA' },
-    cash:         { en: 'CASH REFUND',  es: 'REEMBOLSO EFECTIVO' },
-    forfeit:      { en: 'FORFEITED',    es: 'RETENIDO' },
-    unknown:      { en: 'UNKNOWN',      es: 'DESCONOCIDO' },
+  const methodLabels: Record<string, { en: string; es: string; pt: string }> = {
+    store_credit: { en: 'STORE CREDIT',    es: 'CRÉDITO DE TIENDA',    pt: 'CRÉDITO DE LOJA' },
+    cash:         { en: 'CASH REFUND',     es: 'REEMBOLSO EFECTIVO',   pt: 'REEMBOLSO DINHEIRO' },
+    forfeit:      { en: 'FORFEITED',       es: 'RETENIDO',             pt: 'RETIDO' },
+    unknown:      { en: 'UNKNOWN',         es: 'DESCONOCIDO',          pt: 'DESCONHECIDO' },
   };
   const methodLabel = methodLabels[row.refundMethod] || methodLabels.unknown;
-  const methodText = locale === 'es' ? methodLabel.es : methodLabel.en;
+  const methodText = locale === 'es' ? methodLabel.es : locale === 'pt' ? methodLabel.pt : methodLabel.en;
 
   const typeDisplayEn: Record<string, string> = {
     special_order: 'Special Order',
@@ -62,9 +62,18 @@ export function buildCancellationReceiptHtml(
     repair: 'Reparación',
     unlock: 'Desbloqueo',
   };
-  const typeDisplay = locale === 'es' ? typeDisplayEs[row.type] || row.typeLabel : typeDisplayEn[row.type] || row.typeLabel;
+  const typeDisplayPt: Record<string, string> = {
+    special_order: 'Pedido Especial',
+    repair: 'Reparo',
+    unlock: 'Desbloqueio',
+  };
+  const typeDisplay = locale === 'es'
+    ? typeDisplayEs[row.type] || row.typeLabel
+    : locale === 'pt'
+      ? typeDisplayPt[row.type] || row.typeLabel
+      : typeDisplayEn[row.type] || row.typeLabel;
 
-  const dateStr = new Date(row.cancelledAt).toLocaleString(locale === 'es' ? 'es-MX' : 'en-US', {
+  const dateStr = new Date(row.cancelledAt).toLocaleString(locale === 'es' ? 'es-MX' : locale === 'pt' ? 'pt-BR' : 'en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });

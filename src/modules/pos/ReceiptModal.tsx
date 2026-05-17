@@ -623,6 +623,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
  *  offline). Fall back to the external URL if qrSvg is empty. */
 export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: string, qrSvg?: string, barcodeSvg?: string, paperSize?: string): string {
   const es = lang === 'es';
+  const pt = lang === 'pt';
   const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
   // R-RECEIPT-DISCOUNT-LINE: derive discount locally without touching Sale.
   // Sale.subtotal is pre-discount; subtotalAfterDiscount is the post value
@@ -699,7 +700,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   // 80mm thermal roll: no fixed height (continuous), narrower barcode column
   const pageStyle = is80mm
     ? `@page { size: 80mm auto; margin: 0; }
-  html, body { width: 80mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+  html, body { width: 80mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }
   body { padding: 2mm 4mm; box-sizing: border-box; }`
     : `@page { size: 4in 6in; margin: 0; }
   html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
@@ -743,8 +744,8 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       <td style="font-size:11px">${formatDate(sale.createdAt)}</td>
       <td style="text-align:right;font-size:12px;font-weight:900">${escHtml(sale.invoiceNumber)}</td>
     </tr>
-    ${sale.customerName ? `<tr><td colspan="2" style="font-size:11px">${es ? 'Cliente' : 'Customer'}: <strong>${escHtml(sale.customerName)}</strong>${sale.customerPhone ? ` · ${escHtml(sale.customerPhone)}` : ''}</td></tr>` : ''}
-    ${sale.employeeName ? `<tr><td colspan="2" style="font-size:10px">${es ? 'Cajero' : 'Cashier'}: ${escHtml(sale.employeeName)}</td></tr>` : ''}
+    ${sale.customerName ? `<tr><td colspan="2" style="font-size:11px">${es || pt ? 'Cliente' : 'Customer'}: <strong>${escHtml(sale.customerName)}</strong>${sale.customerPhone ? ` · ${escHtml(sale.customerPhone)}` : ''}</td></tr>` : ''}
+    ${sale.employeeName ? `<tr><td colspan="2" style="font-size:10px">${es ? 'Cajero' : pt ? 'Caixa' : 'Cashier'}: ${escHtml(sale.employeeName)}</td></tr>` : ''}
   </table>
   <div class="sep"></div>
 
@@ -773,36 +774,36 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       }
       const totalSaved = discountAmount + lineSavingsTotal;
       return totalSaved > 0
-        ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : 'Saved'}: ${fmt(totalSaved)}</td></tr>`
+        ? `<tr><td colspan="2" style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : pt ? 'Economizado' : 'Saved'}: ${fmt(totalSaved)}</td></tr>`
         : '';
     })()}
     ${(sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined) ? `
-      ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
-      ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}
-      ${(sale.mobileSurcharge || 0) > 0 ? `<tr><td>${es ? 'Cargo de Movilidad CDTFA' : 'CDTFA Mobility Fee'}:</td><td style="text-align:right">${fmt(sale.mobileSurcharge!)}</td></tr>` : ''}
-    ` : `${(sale.taxAmount || 0) > 0 ? `<tr><td>${es ? 'Impuesto' : 'Tax'}:</td><td style="text-align:right">${fmt(sale.taxAmount)}</td></tr>` : ''}`}
-    ${(sale.cbeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota CBE:' : 'CBE Fee:'}</td><td style="text-align:right">${fmt(sale.cbeTotal!)}</td></tr>` : ''}
-    ${(sale.screenFeeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota Pantalla:' : 'Screen Fee:'}</td><td style="text-align:right">${fmt(sale.screenFeeTotal!)}</td></tr>` : ''}
+      ${(sale.salesTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Venta' : pt ? 'Imposto de Venda' : 'Sales Tax'}:</td><td style="text-align:right">${fmt(sale.salesTax!)}</td></tr>` : ''}
+      ${(sale.utilityTax || 0) > 0 ? `<tr><td>${es ? 'Impuesto de Servicios' : pt ? 'Imposto de Serviços' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):</td><td style="text-align:right">${fmt(sale.utilityTax!)}</td></tr>` : ''}
+      ${(sale.mobileSurcharge || 0) > 0 ? `<tr><td>${es ? 'Cargo de Movilidad CDTFA' : pt ? 'Taxa de Mobilidade CDTFA' : 'CDTFA Mobility Fee'}:</td><td style="text-align:right">${fmt(sale.mobileSurcharge!)}</td></tr>` : ''}
+    ` : `${(sale.taxAmount || 0) > 0 ? `<tr><td>${es ? 'Impuesto' : pt ? 'Imposto' : 'Tax'}:</td><td style="text-align:right">${fmt(sale.taxAmount)}</td></tr>` : ''}`}
+    ${(sale.cbeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota CBE:' : pt ? 'Taxa CBE:' : 'CBE Fee:'}</td><td style="text-align:right">${fmt(sale.cbeTotal!)}</td></tr>` : ''}
+    ${(sale.screenFeeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota Pantalla:' : pt ? 'Taxa Tela:' : 'Screen Fee:'}</td><td style="text-align:right">${fmt(sale.screenFeeTotal!)}</td></tr>` : ''}
     <tr style="border-top:1px solid #000">
       <td style="font-size:14px;font-weight:900;padding-top:4px">TOTAL:</td>
       <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px">${fmt(sale.total)}</td>
     </tr>
-    <tr><td style="font-size:12px;font-weight:600">${es ? 'Pago' : 'Payment'}:</td><td style="text-align:right;font-size:12px;font-weight:900">${escHtml(sale.paymentMethod)}</td></tr>
+    <tr><td style="font-size:12px;font-weight:600">${es ? 'Pago' : pt ? 'Pagamento' : 'Payment'}:</td><td style="text-align:right;font-size:12px;font-weight:900">${escHtml(sale.paymentMethod)}</td></tr>
     ${sale.cashReceived ? `
-      <tr><td>${es ? 'Efectivo' : 'Cash'}:</td><td style="text-align:right">${fmt(sale.cashReceived)}</td></tr>
-      <tr><td style="font-weight:900">${es ? 'Cambio' : 'Change'}:</td><td style="text-align:right;font-weight:900">${fmt(sale.changeDue || 0)}</td></tr>
+      <tr><td>${es ? 'Efectivo' : pt ? 'Dinheiro' : 'Cash'}:</td><td style="text-align:right">${fmt(sale.cashReceived)}</td></tr>
+      <tr><td style="font-weight:900">${es ? 'Cambio' : pt ? 'Troco' : 'Change'}:</td><td style="text-align:right;font-weight:900">${fmt(sale.changeDue || 0)}</td></tr>
     ` : ''}
   </table>
   <div class="sep"></div>
 
   <!-- Footer -->
   <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
-    ${settings.receiptFooter ? escHtml(settings.receiptFooter) : (es ? '¡Gracias por su compra!' : 'Thank you for your purchase!')}
+    ${settings.receiptFooter ? escHtml(settings.receiptFooter) : (es ? '¡Gracias por su compra!' : pt ? 'Obrigado pela sua compra!' : 'Thank you for your purchase!')}
     ${settings.warrantyText ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.warrantyText)}</div>` : ''}
     ${settings.returnPolicy ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.returnPolicy)}</div>` : ''}
     ${settings.showReviewQr && settings.googleReviewUrl ? `
     <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
-      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${es ? '¡Déjanos tu reseña!' : 'Leave us a review!'}</div>
+      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>
       ${qrSvg
         ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
         : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}

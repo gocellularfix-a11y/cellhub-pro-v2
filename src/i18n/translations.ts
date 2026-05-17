@@ -4915,7 +4915,47 @@ export const translations: TranslationDictionary = {
 
   // R-OPERATOR-FLOATING-BUBBLE-V1 — global Intelligence shortcut bubble
   'operator.bubble.openTooltip':  { en: 'Open Operator (Intelligence)',  es: 'Abrir Operador (Inteligencia)', pt: 'Abrir Operador (Inteligência)' },
-  'operator.bubble.closeTooltip': { en: 'Close Operator',                es: 'Cerrar Operador',                pt: 'Fechar Operador' },
+  'operator.bubble.closeTooltip':   { en: 'Close Operator',                es: 'Cerrar Operador',                pt: 'Fechar Operador' },
+  'operator.bubble.action.view':    { en: 'View',    es: 'Ver',    pt: 'Ver' },
+  'operator.bubble.action.dismiss': { en: 'Dismiss', es: 'Cerrar', pt: 'Fechar' },
+
+  // Workflow continuity
+  'operator.workflow.carrierPayment':  { en: 'Confirm carrier payment',   es: 'Confirmar pago del carrier',           pt: 'Confirmar pagamento da operadora' },
+  'operator.workflow.resumePayment':   { en: 'Resume payment workflow',   es: 'Retomar flujo de pago',                pt: 'Retomar fluxo de pagamento' },
+  'operator.workflow.externalPending': { en: 'External payment pending',  es: 'Pago externo pendiente',               pt: 'Pagamento externo pendente' },
+  'operator.workflow.carrierQuestion': { en: 'Did you complete the payment on the carrier website?', es: '¿Completaste el pago en el portal del carrier?', pt: 'Você concluiu o pagamento no portal da operadora?' },
+  'operator.workflow.resume':          { en: '↩ Resume',           es: '↩ Retomar',      pt: '↩ Retomar' },
+  'operator.workflow.markPaid':        { en: '✓ Mark Paid & Next', es: '✓ Pagado · Sig', pt: '✓ Pago · Próx' },
+  'operator.workflow.stillProcessing': { en: '⏳ Still Processing', es: '⏳ En proceso',   pt: '⏳ Em processamento' },
+  'operator.workflow.lineOf': {
+    en: (line: number, total: number) => `Line ${line} of ${total}`,
+    es: (line: number, total: number) => `Línea ${line} de ${total}`,
+    pt: (line: number, total: number) => `Linha ${line} de ${total}`,
+  },
+
+  // Guided sequence
+  'operator.sequence.complete': { en: 'Sequence complete', es: 'Secuencia completada', pt: 'Sequência concluída' },
+  'operator.sequence.guided':   { en: 'Guided Sequence',   es: 'Secuencia guiada',     pt: 'Sequência guiada' },
+  'operator.sequence.next':     { en: 'Next: ',            es: 'Siguiente: ',          pt: 'Próximo: ' },
+  'operator.sequence.skip':     { en: 'Skip step →',       es: 'Saltar paso →',        pt: 'Pular passo →' },
+  'operator.sequence.stepOf': {
+    en: (step: number, total: number) => `Step ${step} of ${total}`,
+    es: (step: number, total: number) => `Paso ${step} de ${total}`,
+    pt: (step: number, total: number) => `Passo ${step} de ${total}`,
+  },
+
+  // Action feedback
+  'operator.action.goThere': { en: 'Go there',  es: 'Ir ahí',    pt: 'Ir lá' },
+  'operator.action.opened':  { en: '✓ Opened',  es: '✓ Abierto', pt: '✓ Aberto' },
+
+  // Companion badge accessibility
+  'companion.badge.item':  { en: 'item',  es: 'elemento', pt: 'item' },
+  'companion.badge.items': { en: 'items', es: 'elementos', pt: 'itens' },
+  'companion.badge.label': {
+    en: (count: number, word: string) => `${count} new Companion ${word} — click to open`,
+    es: (count: number, word: string) => `${count} nuevo${count === 1 ? '' : 's'} ${word} de Companion — clic para abrir`,
+    pt: (count: number, word: string) => `${count} novo${count === 1 ? '' : 's'} ${word} do Companion — clique para abrir`,
+  },
 
   // R-OPERATOR-FLOATING-BUBBLE-AWARE-V1 / R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2
   // Overlay copy. (Key prefix kept as `operator.menu.*` for stable history.)

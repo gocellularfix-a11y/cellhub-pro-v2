@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import {
   navigateToCompanion,
   subscribe as subscribePending,
@@ -77,6 +78,7 @@ function ensureKeyframes(): void {
 
 export default function CompanionBubbleBadge() {
   const { setActiveTab } = useApp();
+  const { t } = useTranslation();
   const [count, setCount] = useState(0);
   const [pos, setPos] = useState<Position>(() => readBubblePosition());
 
@@ -123,13 +125,15 @@ export default function CompanionBubbleBadge() {
   };
 
   const label = count > 9 ? '9+' : String(count);
+  const itemWord = t(count === 1 ? 'companion.badge.item' : 'companion.badge.items');
+  const badgeLabel = (t as (k: string, ...a: any[]) => string)('companion.badge.label', count, itemWord);
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      aria-label={`${count} new Companion ${count === 1 ? 'item' : 'items'}`}
-      title={`${count} new Companion ${count === 1 ? 'item' : 'items'} — click to open`}
+      aria-label={badgeLabel}
+      title={badgeLabel}
       style={{
         position: 'fixed',
         left,
