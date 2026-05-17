@@ -637,7 +637,7 @@ export default function IntelligenceModule() {
   // R-INTELLIGENCE-BUSINESS-MEMORY-V1: longitudinal pattern memory.
   const businessMemory: BusinessMemoryResult = useMemo(
     () => generateBusinessMemory(),
-    [refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
+    [refreshKey, storeState.state], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // R-INTELLIGENCE-STRATEGIC-OPERATOR-V1: deterministic strategic observations.

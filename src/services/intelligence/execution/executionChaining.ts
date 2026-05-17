@@ -80,6 +80,8 @@ function writeDismissed(data: Record<string, number>): void {
   try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(data)); } catch {}
 }
 
+const MAX_DISMISSED = 50;
+
 export function dismissChain(chainId: string): void {
   const now = Date.now();
   const data = readDismissed();
@@ -87,7 +89,9 @@ export function dismissChain(chainId: string): void {
     if (now - data[k] > DISMISS_TTL_MS) delete data[k];
   }
   data[chainId] = now;
-  writeDismissed(data);
+  // Cap at MAX_DISMISSED newest entries to prevent unbounded growth.
+  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, MAX_DISMISSED);
+  writeDismissed(Object.fromEntries(entries));
 }
 
 function isDismissed(id: string, now: number): boolean {
