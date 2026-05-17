@@ -525,6 +525,60 @@ export default function IntelligenceModule() {
     Math.max(missedRev.slowDayLossCents, missedRev.slowHourLossCents, missedRev.deadStockLockedCents),
   [missedRev]);
 
+  const yesterdayRevenue = useMemo(() => {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yStart = new Date(y); yStart.setHours(0, 0, 0, 0);
+    const yEnd   = new Date(y); yEnd.setHours(23, 59, 59, 999);
+    return sales
+      .filter(s => {
+        const t = new Date((s as any).createdAt).getTime();
+        return t >= yStart.getTime() && t <= yEnd.getTime() && (s as any).status !== 'voided';
+      })
+      .reduce((sum, s) => sum + ((s as any).total || 0), 0);
+  }, [sales]);
+
+  const activeCustomers30d = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const ids = new Set<string>();
+    for (const s of sales) {
+      if ((s as any).status !== 'voided' && new Date((s as any).createdAt).getTime() >= cutoff) {
+        if ((s as any).customerId) ids.add((s as any).customerId);
+      }
+    }
+    for (const r of repairs) {
+      if (new Date((r as any).createdAt).getTime() >= cutoff) {
+        if ((r as any).customerId) ids.add((r as any).customerId);
+      }
+    }
+    return ids.size;
+  }, [sales, repairs]);
+
+  const repairsInProgress = useMemo(() =>
+    repairs.filter(r => !['completed', 'picked_up', 'cancelled', 'refunded'].includes(String((r as any).status || '').toLowerCase())).length,
+  [repairs]);
+
+  const layawaysActive = useMemo(() =>
+    layaways.filter(l => !['completed', 'cancelled', 'picked_up'].includes(String((l as any).status || '').toLowerCase())).length,
+  [layaways]);
+
+  const unlocksActive = useMemo(() =>
+    unlocks.filter(u => !['completed', 'cancelled', 'delivered'].includes(String((u as any).status || '').toLowerCase())).length,
+  [unlocks]);
+
+  const specialOrdersActive = useMemo(() =>
+    specialOrders.filter(o => !['completed', 'cancelled', 'delivered', 'picked_up'].includes(String((o as any).status || '').toLowerCase())).length,
+  [specialOrders]);
+
+  const hourlySales = useMemo(() => {
+    const buckets = new Array(24).fill(0) as number[];
+    for (const s of todaySales) {
+      const h = new Date((s as any).createdAt).getHours();
+      buckets[h] += (s as any).total || 0;
+    }
+    return buckets;
+  }, [todaySales]);
+
   // R-INTELLIGENCE-LIVE-OPERATOR-CARDS-V1: lightweight derived stats for
   // the 6 operator cards. Pure useMemo over already-in-scope state — no
   // new effects, no polling, no background. Same threshold logic the
@@ -1248,6 +1302,13 @@ export default function IntelligenceModule() {
         staleRecoverable={staleRepairStats.recoverable}
         deadStockLocked={missedRev.deadStockLockedCents}
         biggestLeak={biggestLeak}
+        yesterdayRevenue={yesterdayRevenue}
+        activeCustomers30d={activeCustomers30d}
+        repairsInProgress={repairsInProgress}
+        layawaysActive={layawaysActive}
+        unlocksActive={unlocksActive}
+        specialOrdersActive={specialOrdersActive}
+        hourlySales={hourlySales}
       />
 
       {showLegacySections && (<>
