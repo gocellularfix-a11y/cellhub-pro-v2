@@ -15,6 +15,7 @@ export interface OperatorChatShellProps {
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
   compact?: boolean;
+  hideInput?: boolean;
 }
 
 export default function OperatorChatShell({
@@ -26,6 +27,7 @@ export default function OperatorChatShell({
   onPanelCampaign,
   chipData,
   compact,
+  hideInput,
 }: OperatorChatShellProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: compact ? 0 : 'calc(100vh - 7rem)', flex: compact ? 1 : undefined, overflow: 'hidden' }}>
@@ -38,6 +40,7 @@ export default function OperatorChatShell({
         onPanelCampaign={onPanelCampaign}
         chipData={chipData}
         compact={compact}
+        hideInput={hideInput}
       />
     </div>
   );

@@ -1226,7 +1226,7 @@ export default function IntelligenceModule() {
   return (
     <div style={{ background: PAGE_BG, height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-      {/* ── OPERATOR COMMAND CENTER — Option 2 layout ── */}
+      {/* ── OPERATOR COMMAND CENTER — 3-column layout ── */}
       <SimpleOperatorView
         engine={engine}
         customers={customers}
@@ -1242,6 +1242,12 @@ export default function IntelligenceModule() {
           biggestLeakCents: biggestLeak,
           deadStockLockedCents: missedRev.deadStockLockedCents,
         }}
+        todayRevenue={todayRevenue}
+        todaySalesCount={todaySales.length}
+        totalAlerts={totalAlerts}
+        staleRecoverable={staleRepairStats.recoverable}
+        deadStockLocked={missedRev.deadStockLockedCents}
+        biggestLeak={biggestLeak}
       />
 
       {showLegacySections && (<>

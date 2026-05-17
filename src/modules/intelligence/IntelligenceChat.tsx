@@ -65,6 +65,7 @@ interface Props {
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
   compact?: boolean;
+  hideInput?: boolean;
 }
 
 interface ChatMessage {
@@ -79,7 +80,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact, hideInput }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -822,9 +823,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       >
         {compact ? (
           messages.length === 0 ? (
-            <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
+            hideInput
+              ? <RightColumnWelcome locale={locale} />
+              : <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
           ) : (
-            <div style={{ maxWidth: 620, margin: '0 auto', padding: '20px 28px 12px' }}>
+            <div style={{ padding: '16px 18px 12px' }}>
               {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)}
             </div>
           )
@@ -972,7 +975,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
       {/* Command bar */}
       {compact ? (
-        <div style={{ padding: '12px 28px 24px', background: '#080F1E', borderTop: messages.length > 0 ? '1px solid #0D1420' : 'none', flexShrink: 0 }}>
+        !hideInput && <div style={{ padding: '12px 28px 24px', background: '#080F1E', borderTop: messages.length > 0 ? '1px solid #0D1420' : 'none', flexShrink: 0 }}>
           {messages.length > 0 && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button
@@ -1252,6 +1255,23 @@ function OperatorWelcome({ locale, chipData, onSuggestion }: {
       {chipData
         ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" />
         : <QuickActionGrid onQuickAction={onSuggestion} />}
+    </div>
+  );
+}
+
+// ── Right-column idle state when input lives in center ───────
+function RightColumnWelcome({ locale }: { locale: string }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '100%', padding: '32px 24px', textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 28, marginBottom: 16, opacity: 0.35 }}>💬</div>
+      <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: 0 }}>
+        {locale === 'es'
+          ? 'Selecciona una acción o escribe una pregunta para comenzar.'
+          : 'Select an action or ask a question to get started.'}
+      </p>
     </div>
   );
 }
