@@ -37,6 +37,8 @@ import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import ResponseCard from './ResponseCard';
 import SuggestionChips, { type ChipData } from './SuggestionChips';
+import OperatorContinuityBar from './OperatorContinuityBar';
+import { getPendingResumeContexts } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -805,6 +807,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         )}
       </div>
 
+      {/* Continuity bar — only visible when conversation is active */}
+      {messages.length > 0 && chipData && (
+        <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} />
+      )}
+
       {/* Messages — centered conversation column for premium readability */}
       <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-5">
         <div className="max-w-3xl mx-auto space-y-3">
@@ -1128,6 +1135,9 @@ function OperatorWelcome({ locale, chipData, onSuggestion }: {
   chipData?: ChipData;
   onSuggestion: (text: string) => void;
 }) {
+  const pendingWorkflows = getPendingResumeContexts();
+  const resumeLabel = locale === 'es' ? 'RETOMAR' : locale === 'pt' ? 'RETOMAR' : 'RESUME';
+
   return (
     <div style={{ padding: '16px 4px' }}>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -1143,6 +1153,43 @@ function OperatorWelcome({ locale, chipData, onSuggestion }: {
            : 'Ask about customers, repairs, taxes, inventory, profit, and workflows.'}
         </p>
       </div>
+
+      {pendingWorkflows.length > 0 && (
+        <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {pendingWorkflows.slice(0, 2).map((wf) => (
+            <div key={wf.workflowId} style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '7px 11px',
+              borderRadius: 7,
+              border: '1px solid #F59E0B33',
+              background: '#F59E0B0D',
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', letterSpacing: '0.07em' }}>
+                  {resumeLabel}
+                </div>
+                <div style={{ fontSize: 12, color: '#CBD5E1', marginTop: 1, lineHeight: '1.3' }}>
+                  {wf.resumeDescription}
+                </div>
+              </div>
+              <button
+                onClick={() => onSuggestion(wf.resumeLabel)}
+                style={{
+                  marginLeft: 10, flexShrink: 0,
+                  fontSize: 11, padding: '4px 10px', borderRadius: 5,
+                  background: '#F59E0B18', border: '1px solid #F59E0B44',
+                  color: '#F59E0B', cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                }}
+              >
+                {wf.resumeLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {chipData
         ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" />
         : <QuickActionGrid onQuickAction={onSuggestion} />}

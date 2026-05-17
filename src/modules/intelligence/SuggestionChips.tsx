@@ -37,12 +37,12 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
   if (d.outreachCount >= 2) {
     signals.push({
       icon: '📞',
-      title: es ? `${d.outreachCount} clientes para contactar`
-           : pt ? `${d.outreachCount} clientes para contatar`
-           :       `${d.outreachCount} customers worth contacting`,
-      subtitle: es ? 'Outreach WhatsApp listo'
-              : pt ? 'Outreach WhatsApp pronto'
-              :      'WhatsApp outreach ready',
+      title: es ? `${d.outreachCount} clientes sin contactar`
+           : pt ? `${d.outreachCount} clientes sem contato`
+           :       `${d.outreachCount} customers pending outreach`,
+      subtitle: es ? 'Seguimiento pendiente hoy'
+              : pt ? 'Acompanhamento pendente hoje'
+              :      'Follow-up still pending',
       accent: '#3B82F6',
       query: es ? 'quién debo contactar hoy'
            : pt ? 'quem devo contatar hoje'
@@ -53,12 +53,12 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
   if (d.staleRepairCount > 0) {
     signals.push({
       icon: '⏱️',
-      title: es ? `${d.staleRepairCount} reparaciones retrasadas`
-           : pt ? `${d.staleRepairCount} reparos atrasados`
-           :       `${d.staleRepairCount} repairs delayed`,
-      subtitle: es ? 'Pasaron su fecha estimada'
-              : pt ? 'Passaram da data estimada'
-              :      'Past expected pickup date',
+      title: es ? `${d.staleRepairCount} reparaciones sin recoger`
+           : pt ? `${d.staleRepairCount} reparos sem retirada`
+           :       `${d.staleRepairCount} repairs still uncollected`,
+      subtitle: es ? 'Siguen esperando al cliente'
+              : pt ? 'Ainda esperando o cliente'
+              :      'Still waiting for customer',
       accent: '#F59E0B',
       query: es ? 'qué reparaciones están retrasadas'
            : pt ? 'quais reparos estão atrasados'
@@ -70,9 +70,9 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
       title: es ? `${d.repairsPending} reparaciones listas`
            : pt ? `${d.repairsPending} reparos prontos`
            :       `${d.repairsPending} repairs ready for pickup`,
-      subtitle: es ? 'Clientes esperando'
-              : pt ? 'Clientes aguardando'
-              :      'Customers waiting for pickup',
+      subtitle: es ? 'Pendiente notificar a clientes'
+              : pt ? 'Pendente notificar clientes'
+              :      'Customers not yet notified',
       accent: '#10B981',
       query: es ? 'reparaciones listas para entrega'
            : pt ? 'reparos prontos para retirada'
@@ -99,10 +99,10 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
   if (d.biggestLeakCents > 0) {
     signals.push({
       icon: '💸',
-      title: es ? 'Pérdida de ganancia detectada'
-           : pt ? 'Vazamento de lucro detectado'
-           :      'Profit leak detected',
-      subtitle: `${formatCurrency(d.biggestLeakCents)} ${es ? 'en riesgo' : pt ? 'em risco' : 'at risk'}`,
+      title: es ? 'Fuga de ganancia activa'
+           : pt ? 'Vazamento de lucro ativo'
+           :      'Profit leak still active',
+      subtitle: `${formatCurrency(d.biggestLeakCents)} ${es ? 'aún en riesgo' : pt ? 'ainda em risco' : 'still at risk'}`,
       accent: '#EF4444',
       query: es ? 'qué está afectando mi ganancia'
            : pt ? 'o que está prejudicando meu lucro'
@@ -113,10 +113,10 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
   if (d.deadStockLockedCents > 0) {
     signals.push({
       icon: '📦',
-      title: es ? 'Stock muerto inactivo'
-           : pt ? 'Estoque parado'
-           :      'Dead stock locked',
-      subtitle: `${formatCurrency(d.deadStockLockedCents)} ${es ? 'inactivo' : pt ? 'parado' : 'idle'}`,
+      title: es ? 'Dinero bloqueado en stock'
+           : pt ? 'Dinheiro preso em estoque'
+           :      'Cash locked in dead stock',
+      subtitle: `${formatCurrency(d.deadStockLockedCents)} ${es ? 'aún inactivo' : pt ? 'ainda parado' : 'still idle'}`,
       accent: '#6366F1',
       query: es ? 'dónde está estancado el dinero'
            : pt ? 'onde o dinheiro está preso'
