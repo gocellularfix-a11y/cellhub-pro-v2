@@ -783,49 +783,64 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const clearChat = () => setMessages([]);
 
   return (
-    // R-INTELLIGENCE-INTERFACE-ORGANIZATION-V1: chat panel sized to feel like
-    // the dominant workspace surface (was 400-600px). The conversation
-    // column inside is constrained via max-w-3xl mx-auto so messages/input
-    // read like a focused operator dialog, not an edge-to-edge log viewer.
-    <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={compact ? { flex: 1, minHeight: 0 } : { minHeight: '560px', maxHeight: '760px' }}>
-      {/* Header — Phase 3 operator header */}
-      <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(31,41,55,0.8)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: chipData ? 8 : 0 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.02em' }}>
-            ⚡ {t('intelligence.askYourShop')}
-          </span>
-          {messages.length > 0 && (
-            <button
-              onClick={clearChat}
-              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, background: 'transparent', border: '1px solid #1F2937', color: '#6B7280', cursor: 'pointer' }}
-            >
-              {t('intelligence.clear')}
-            </button>
+    <div
+      className={compact ? 'overflow-hidden flex flex-col' : 'bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col'}
+      style={compact ? { flex: 1, minHeight: 0, background: '#080F1E' } : { minHeight: '560px', maxHeight: '760px' }}
+    >
+      {/* Header — full mode only */}
+      {!compact && (
+        <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(31,41,55,0.8)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: chipData ? 8 : 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.02em' }}>
+              ⚡ {t('intelligence.askYourShop')}
+            </span>
+            {messages.length > 0 && (
+              <button
+                onClick={clearChat}
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, background: 'transparent', border: '1px solid #1F2937', color: '#6B7280', cursor: 'pointer' }}
+              >
+                {t('intelligence.clear')}
+              </button>
+            )}
+          </div>
+          {chipData && (
+            <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' />
           )}
         </div>
-        {!compact && chipData && (
-          <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' />
-        )}
-      </div>
+      )}
 
-      {/* Continuity bar — only in full mode */}
+      {/* Continuity bar — full mode only */}
       {!compact && messages.length > 0 && chipData && (
         <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} />
       )}
 
-      {/* Messages — centered conversation column for premium readability */}
-      <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="max-w-3xl mx-auto space-y-3">
-          {messages.length === 0 ? (
-            <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
+      {/* Messages */}
+      <div
+        ref={messageListRef}
+        className={compact ? '' : 'flex-1 overflow-y-auto px-4 py-5'}
+        style={compact ? { flex: 1, overflowY: 'auto' } : undefined}
+      >
+        {compact ? (
+          messages.length === 0 ? (
+            <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
           ) : (
-            messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
-          )}
-        </div>
+            <div style={{ maxWidth: 620, margin: '0 auto', padding: '20px 28px 12px' }}>
+              {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)}
+            </div>
+          )
+        ) : (
+          <div className="max-w-3xl mx-auto space-y-3">
+            {messages.length === 0 ? (
+              <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
+            ) : (
+              messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Automation Queue */}
-      {automationQueue.length > 0 && (
+      {/* Automation Queue — full mode only */}
+      {!compact && automationQueue.length > 0 && (
         <div className="border-t border-surface-700 px-3 py-2 shrink-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-slate-400">{t('chat.queue.header')}</span>
@@ -955,56 +970,90 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         </div>
       )}
 
-      {/* Command bar — Phase 3 premium command center */}
-      <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.09em' }}>
-            {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
-          </span>
+      {/* Command bar */}
+      {compact ? (
+        <div style={{ padding: '12px 28px 24px', background: '#080F1E', borderTop: messages.length > 0 ? '1px solid #0D1420' : 'none', flexShrink: 0 }}>
+          {messages.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <button
+                onClick={clearChat}
+                style={{ fontSize: 11, color: '#4B5563', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                {locale === 'es' ? 'Limpiar' : 'Clear'}
+              </button>
+            </div>
+          )}
+          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center', maxWidth: 620, margin: '0 auto' }}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={locale === 'es' ? 'Pregunta lo que sea…' : 'Ask anything…'}
+              style={{
+                flex: 1, background: '#0D1625', color: '#E2E8F0',
+                borderRadius: 12, padding: '14px 18px', fontSize: 14,
+                border: '1px solid #1A2535', outline: 'none', minWidth: 0,
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              style={{
+                padding: '14px 20px', borderRadius: 12, fontSize: 18,
+                background: input.trim() ? '#1E3A6E' : '#0D1625',
+                color: input.trim() ? '#93C5FD' : '#2D3A4A',
+                border: `1px solid ${input.trim() ? '#2D4E8A' : '#1A2535'}`,
+                cursor: input.trim() ? 'pointer' : 'not-allowed',
+                flexShrink: 0, transition: 'all 0.12s',
+              }}
+            >
+              →
+            </button>
+          </form>
         </div>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
-          <input
-            type='text'
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias…'
-              : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
-              : 'Ask about customers, repairs, inventory, taxes, or profit…'
-            }
-            className='focus:border-slate-500/50'
-            style={{
-              flex: 1,
-              background: '#0B1220',
-              color: '#E2E8F0',
-              borderRadius: 8,
-              padding: '11px 15px',
-              fontSize: 13,
-              border: '1px solid #1F2937',
-              outline: 'none',
-              minWidth: 0,
-            }}
-          />
-          <button
-            type='submit'
-            disabled={!input.trim()}
-            style={{
-              padding: '10px 15px',
-              borderRadius: 8,
-              background: input.trim() ? '#1E3A6E' : '#141E2E',
-              color: input.trim() ? '#93C5FD' : '#374151',
-              fontSize: 15,
-              border: input.trim() ? '1px solid #1D4ED844' : '1px solid #1A2332',
-              cursor: input.trim() ? 'pointer' : 'not-allowed',
-              transition: 'background 0.12s, color 0.12s',
-              flexShrink: 0,
-            }}
-          >
-            ⏎
-          </button>
-        </form>
-      </div>
+      ) : (
+        <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.09em' }}>
+              {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
+            </span>
+          </div>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
+            <input
+              type='text'
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias…'
+                : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
+                : 'Ask about customers, repairs, inventory, taxes, or profit…'
+              }
+              className='focus:border-slate-500/50'
+              style={{
+                flex: 1, background: '#0B1220', color: '#E2E8F0',
+                borderRadius: 8, padding: '11px 15px', fontSize: 13,
+                border: '1px solid #1F2937', outline: 'none', minWidth: 0,
+              }}
+            />
+            <button
+              type='submit'
+              disabled={!input.trim()}
+              style={{
+                padding: '10px 15px', borderRadius: 8,
+                background: input.trim() ? '#1E3A6E' : '#141E2E',
+                color: input.trim() ? '#93C5FD' : '#374151',
+                fontSize: 15,
+                border: input.trim() ? '1px solid #1D4ED844' : '1px solid #1A2332',
+                cursor: input.trim() ? 'pointer' : 'not-allowed',
+                transition: 'background 0.12s, color 0.12s', flexShrink: 0,
+              }}
+            >
+              ⏎
+            </button>
+          </form>
+        </div>
+      )}
 
       <Modal
         open={!!pendingWaAction}
@@ -1203,6 +1252,96 @@ function OperatorWelcome({ locale, chipData, onSuggestion }: {
       {chipData
         ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" />
         : <QuickActionGrid onQuickAction={onSuggestion} />}
+    </div>
+  );
+}
+
+// ── Option-2 welcome: large action cards for compact/command-center mode ──
+function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
+  locale: string;
+  chipData?: ChipData;
+  onSuggestion: (text: string) => void;
+}) {
+  const hour = new Date().getHours();
+  const es = locale === 'es';
+  const greeting = es
+    ? (hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches')
+    : (hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
+  const greetingEmoji = hour < 12 ? '🌅' : hour < 18 ? '☀️' : '🌙';
+
+  const cards = [
+    {
+      icon: '💰',
+      title: es ? 'Cobrar pagos' : 'Collect Payments',
+      subtitle: chipData && chipData.staleRepairCount > 0
+        ? `${chipData.staleRepairCount} ${es ? 'reparaciones sin recoger' : 'repairs uncollected'}`
+        : es ? 'Revisar balances pendientes' : 'Check outstanding balances',
+      accent: '#F59E0B',
+      query: es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
+    },
+    {
+      icon: '🚀',
+      title: es ? 'Promover productos' : 'Promote a Product',
+      subtitle: chipData && chipData.productOppsCount > 0
+        ? `${chipData.productOppsCount} ${es ? 'productos para promover' : 'items to promote'}`
+        : es ? 'Ver oportunidades de venta' : 'See selling opportunities',
+      accent: '#8B5CF6',
+      query: es ? 'qué productos debo promover hoy' : 'what products should I promote today',
+    },
+    {
+      icon: '✅',
+      title: es ? 'Reparaciones listas' : 'Repairs Ready',
+      subtitle: chipData && chipData.repairsPending > 0
+        ? `${chipData.repairsPending} ${es ? 'listas para entrega' : 'ready for pickup'}`
+        : es ? 'Todo al día' : 'All caught up',
+      accent: '#10B981',
+      query: es ? 'reparaciones listas para entrega' : 'repairs ready for pickup',
+    },
+    {
+      icon: '📞',
+      title: es ? 'Contactar clientes' : 'Contact Customers',
+      subtitle: chipData && chipData.outreachCount >= 2
+        ? `${chipData.outreachCount} ${es ? 'pendientes de contacto' : 'pending outreach'}`
+        : es ? 'Lista de WhatsApp' : 'WhatsApp outreach list',
+      accent: '#3B82F6',
+      query: es ? 'quién debo contactar hoy' : 'who should I contact today',
+    },
+  ];
+
+  return (
+    <div style={{ padding: '52px 28px 32px', maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ marginBottom: 40 }}>
+        <h2 style={{ fontSize: 28, fontWeight: 700, color: '#F1F5F9', margin: '0 0 10px', lineHeight: 1.2 }}>
+          {greeting} {greetingEmoji}
+        </h2>
+        <p style={{ fontSize: 16, color: '#6B7280', margin: 0 }}>
+          {es ? '¿Qué quieres manejar?' : 'What would you like to handle?'}
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {cards.map((card) => (
+          <button
+            key={card.query}
+            onClick={() => onSuggestion(card.query)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+              gap: 12, padding: '22px', borderRadius: 14, textAlign: 'left',
+              background: '#0D1625', border: `1px solid ${card.accent}22`,
+              cursor: 'pointer', transition: 'background 0.12s',
+            }}
+          >
+            <span style={{ fontSize: 30, lineHeight: 1 }}>{card.icon}</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: card.accent, marginBottom: 5, lineHeight: 1.2 }}>
+                {card.title}
+              </div>
+              <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.4 }}>
+                {card.subtitle}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

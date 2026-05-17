@@ -1224,51 +1224,9 @@ export default function IntelligenceModule() {
   const showLegacySections = false;
 
   return (
-    <div style={{ background: PAGE_BG, minHeight: '100%', display: 'flex', flexDirection: 'column', padding: '12px 12px 0', gap: 10 }}>
+    <div style={{ background: PAGE_BG, height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-      {/* ── 1. TOP OPERATOR SUMMARY ─────────────────────────── */}
-      <div
-        className="rounded-lg border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 justify-between"
-        style={{ background: CARD_BG, borderColor: CARD_BORDER }}
-      >
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <span className="text-[10px] font-semibold text-slate-500 tracking-widest">
-            {t('intelligence.console.todayLabel')}
-          </span>
-          <span className="text-base font-bold text-emerald-400">
-            {formatCurrency(todayRevenue)} <span className="text-xs font-normal text-slate-500">{t('intelligence.console.salesAbbr')}</span>
-          </span>
-          <span className="text-sm text-slate-300">
-            {todaySales.length} <span className="text-xs text-slate-500">{t('intelligence.console.ordersAbbr')}</span>
-          </span>
-          <span className={`text-sm ${totalAlerts > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-            {totalAlerts} <span className="text-xs text-slate-500">{t('intelligence.console.alertsAbbr')}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">{t('intelligence.console.biggestOpportunity')}</span>
-          <span className="text-xs font-medium text-purple-300">
-            {productOpps.length > 0
-              ? t(
-                  'intelligence.console.opportunitiesFound',
-                  productOpps.length,
-                  formatCurrency(productOpps.reduce((s, o) => s + o.impactCents, 0)),
-                )
-              : (biggestLeak > 0 ? topInsight : t('intelligence.dash.noneYet'))
-            }
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ConsoleBtn label={t('intelligence.console.collectPayments')} accent="#10B981"
-            onClick={() => fireChipKey('intelligence.console.queryContactToday')} />
-          <ConsoleBtn label={t('intelligence.console.promoteProduct')} accent="#8B5CF6"
-            onClick={focusPromote} />
-          <ConsoleBtn label={t('intelligence.console.contactCustomers')} accent="#3B82F6"
-            onClick={() => fireChipKey('intelligence.console.queryContactToday')} />
-        </div>
-      </div>
-
-      {/* ── 2. OPERATOR SHELL — Phase 7 simplified layout ── */}
+      {/* ── OPERATOR COMMAND CENTER — Option 2 layout ── */}
       <SimpleOperatorView
         engine={engine}
         customers={customers}
@@ -1284,9 +1242,6 @@ export default function IntelligenceModule() {
           biggestLeakCents: biggestLeak,
           deadStockLockedCents: missedRev.deadStockLockedCents,
         }}
-        todayRevenue={todayRevenue}
-        todaySalesCount={todaySales.length}
-        onFireChat={fireChat}
       />
 
       {showLegacySections && (<>
