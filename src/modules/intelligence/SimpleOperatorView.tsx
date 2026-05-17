@@ -144,7 +144,7 @@ function MissionCard({ icon, title, subtitle, accent, onClick }: {
       onMouseLeave={() => setHov(false)}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-        gap: 12, padding: '24px 22px', borderRadius: 12, textAlign: 'left',
+        gap: 10, padding: '22px 20px', borderRadius: 12, textAlign: 'left',
         background: hov ? BG_HOVER : BG_CARD,
         border: `1px solid ${hov ? accent + '28' : BORDER}`,
         borderLeft: `2px solid ${hov ? accent : accent + '88'}`,
@@ -153,7 +153,7 @@ function MissionCard({ icon, title, subtitle, accent, onClick }: {
         minHeight: 0,
       }}
     >
-      <span style={{ fontSize: 26, lineHeight: 1 }}>{icon}</span>
+      <span style={{ fontSize: 24, lineHeight: 1 }}>{icon}</span>
       <div style={{ minWidth: 0 }}>
         <div style={{
           fontSize: 15, fontWeight: 600, lineHeight: 1.25, marginBottom: 5,
@@ -282,7 +282,7 @@ export default function SimpleOperatorView({
         background: BG_LEFT,
         borderRight: `1px solid ${BORDER}`,
         display: 'flex', flexDirection: 'column',
-        padding: '22px 18px 20px', overflow: 'hidden',
+        padding: '22px 18px 20px', overflowY: 'auto',
       }}>
 
         {/* Branding */}
@@ -352,7 +352,7 @@ export default function SimpleOperatorView({
         <div style={{ height: 1, background: '#0D1826', margin: '14px 0', flexShrink: 0 }} />
 
         {/* HOURLY CHART */}
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 90, display: 'flex', flexDirection: 'column' }}>
           <SectionLabel text={es ? 'VENTAS POR HORA' : 'SALES BY HOUR'} />
           <div style={{ flex: 1, minHeight: 0 }}>
             <HourlyChart hourlySales={hourlySales} />
@@ -372,8 +372,8 @@ export default function SimpleOperatorView({
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '1fr 1fr',
-          gap: 14, flex: 1, minHeight: 0,
+          gridTemplateRows: 'minmax(130px, 200px) minmax(130px, 200px)',
+          gap: 14,
         }}>
           {missions.map((m) => (
             <MissionCard
