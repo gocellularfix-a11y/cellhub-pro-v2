@@ -9,72 +9,81 @@ import { formatCurrency } from '@/utils/currency';
 import { useTranslation } from '@/i18n';
 import OperatorChatShell from './OperatorChatShell';
 
-// ── Design tokens ─────────────────────────────────────────────
-const BG_LEFT    = '#060C16';
-const BG_MAIN    = '#080F1E';
-const BG_CARD    = '#0B1523';
-const BG_HOVER   = '#0F1E35';
-const BORDER     = '#0E1A2B';
-const TEXT_DIM   = '#2D3D52';
-const TEXT_MUTED = '#4B5E72';
+// ── Design tokens (mockup-exact) ──────────────────────────────
+const BG_LEFT    = '#121821';
+const BG_MAIN    = '#0f141b';
+const BG_CARD    = '#171f2a';
+const BORDER     = '#1d2633';
+const TEXT_PRIMARY = '#f3f4f6';
+const TEXT_MUTED   = '#8b98a7';
+const TEXT_DIM     = '#6b7280';
 
 // ── Shared sub-components ─────────────────────────────────────
 
-function SectionLabel({ text }: { text: string }) {
+function SectionTitle({ text }: { text: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 11 }}>
-      <div style={{ width: 2, height: 10, borderRadius: 2, background: '#1A2B3C', flexShrink: 0 }} />
-      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.14em' }}>
-        {text}
-      </span>
+    <div style={{
+      fontSize: 11, fontWeight: 600, letterSpacing: '.08em',
+      textTransform: 'uppercase', color: TEXT_DIM, marginBottom: 14,
+    }}>
+      {text}
     </div>
   );
 }
 
 // ── Left panel sub-components ──────────────────────────────────
 
-function RetentionRing({ pct }: { pct: number }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  const R = 18;
-  const circumference = 2 * Math.PI * R;
-  const offset = circumference * (1 - pct / 100);
+function RetentionRing({ pct, active, total }: { pct: number; active: number; total: number }) {
+  const deg = Math.round(pct / 100 * 360);
   return (
-    <div style={{ position: 'relative', width: 48, height: 48, flexShrink: 0 }}>
-      <svg width="48" height="48" viewBox="0 0 48 48" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="24" cy="24" r={R} fill="none" stroke="#0D1826" strokeWidth={4} />
-        <circle
-          cx="24" cy="24" r={R} fill="none"
-          stroke="#3B82F6" strokeWidth={4} strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={mounted ? offset : circumference}
-          style={{ transition: 'stroke-dashoffset 1s ease-out' }}
-        />
-      </svg>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
       <div style={{
-        position: 'absolute', inset: 0,
+        width: 62, height: 62, borderRadius: '50%', flexShrink: 0,
+        background: `conic-gradient(#3b82f6 0deg ${deg}deg, #1f2937 ${deg}deg 360deg)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 700, color: '#3B82F6',
       }}>
-        {pct}%
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%',
+          background: BG_LEFT,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#93c5fd', fontSize: 13, fontWeight: 700,
+        }}>
+          {pct}%
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY, lineHeight: 1, marginBottom: 4 }}>
+          {active} <span style={{ fontSize: 14, color: TEXT_MUTED }}>/ {total}</span>
+        </div>
+        <div style={{ fontSize: 12, color: TEXT_MUTED, lineHeight: 1.5 }}>
+          Customers returned<br />during the last 30 days
+        </div>
       </div>
     </div>
   );
 }
 
-function ServiceTile({ count, label, color }: { count: number; label: string; color: string }) {
+interface ServiceCardProps {
+  count: number;
+  label: string;
+  countColor: string;
+  borderColor: string;
+}
+function ServiceCard({ count, label, countColor, borderColor }: ServiceCardProps) {
   return (
     <div style={{
-      background: BG_CARD, border: `1px solid ${BORDER}`,
-      borderRadius: 8, padding: '10px 10px 9px',
-      display: 'flex', flexDirection: 'column', gap: 5,
+      background: BG_CARD, borderRadius: 16, padding: '16px 14px',
+      border: `1px solid ${borderColor}`,
     }}>
-      <span style={{ fontSize: 20, fontWeight: 700, color, letterSpacing: '-0.02em', lineHeight: 1 }}>
+      <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1, marginBottom: 8, color: countColor }}>
         {count}
-      </span>
-      <span style={{ fontSize: 9, fontWeight: 600, color: TEXT_DIM, letterSpacing: '0.06em' }}>
+      </div>
+      <div style={{
+        fontSize: 11, fontWeight: 600, letterSpacing: '.06em',
+        textTransform: 'uppercase', color: TEXT_MUTED,
+      }}>
         {label}
-      </span>
+      </div>
     </div>
   );
 }
@@ -87,43 +96,37 @@ function HourlyChart({ hourlySales }: { hourlySales: number[] }) {
   }, []);
 
   const now = new Date().getHours();
-  const displayHours = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+  const displayHours = [9, 10, 11, 12, 13, 14, 15, 16];
   const maxAmount = Math.max(...displayHours.map(h => hourlySales[h] ?? 0), 1);
 
   const labelFor = (h: number) => {
     if (h === 9) return '9a';
-    if (h === 17) return '5p';
     if (h === 12) return '12';
     return h < 12 ? String(h) : String(h - 12);
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: '100%', paddingBottom: 18, position: 'relative' }}>
-      <div style={{
-        position: 'absolute', left: 0, right: 0, top: 0, bottom: 18,
-        background: 'repeating-linear-gradient(to bottom, transparent, transparent calc(50% - 1px), #0D1826 calc(50% - 1px), #0D1826 50%)',
-        pointerEvents: 'none',
-      }} />
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: '100%' }}>
       {displayHours.map((h, i) => {
         const amount = hourlySales[h] ?? 0;
         const isFuture = h > now;
         const isCurrent = h === now;
-        const pct = isFuture ? 4 : Math.max(amount / maxAmount * 100, 0);
+        const pct = isFuture ? 4 : Math.max(amount / maxAmount * 100, 8);
         return (
-          <div key={h} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', position: 'relative', gap: 3 }}>
+          <div key={h} style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 8,
+          }}>
             <div style={{
               width: '100%',
               height: animated ? `${pct}%` : '0%',
-              borderRadius: '2px 2px 0 0',
-              background: isCurrent ? '#1E4A8A' : '#1A3560',
-              borderTop: `1px solid ${isCurrent ? '#3B82F6' : '#2D5090'}`,
-              boxShadow: isCurrent ? '0 0 5px #3B82F635' : 'none',
-              opacity: isFuture ? 0.25 : 1,
+              borderRadius: '8px 8px 0 0',
+              background: isCurrent ? '#3b82f6' : '#243244',
+              opacity: isFuture ? 0.35 : 1,
               transition: `height 0.5s ease-out ${i * 40}ms`,
+              minHeight: 10,
             }} />
-            <span style={{ fontSize: 8, color: TEXT_DIM, position: 'absolute', bottom: 0, whiteSpace: 'nowrap' }}>
-              {labelFor(h)}
-            </span>
+            <span style={{ fontSize: 11, color: TEXT_DIM }}>{labelFor(h)}</span>
           </div>
         );
       })}
@@ -133,9 +136,15 @@ function HourlyChart({ hourlySales }: { hourlySales: number[] }) {
 
 // ── Center panel sub-components ───────────────────────────────
 
-function MissionCard({ icon, title, subtitle, accent, onClick }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void;
-}) {
+interface ActionCardProps {
+  icon: string;
+  title: string;
+  subtitle: string;
+  borderColor: string;
+  iconBg: string;
+  onClick: () => void;
+}
+function ActionCard({ icon, title, subtitle, borderColor, iconBg, onClick }: ActionCardProps) {
   const [hov, setHov] = useState(false);
   return (
     <button
@@ -143,28 +152,29 @@ function MissionCard({ icon, title, subtitle, accent, onClick }: {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-        gap: 10, padding: '22px 20px', borderRadius: 12, textAlign: 'left',
-        background: hov ? BG_HOVER : BG_CARD,
-        border: `1px solid ${hov ? accent + '28' : BORDER}`,
-        borderLeft: `2px solid ${hov ? accent : accent + '88'}`,
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        padding: 24, borderRadius: 22, textAlign: 'left',
+        background: hov ? '#1c2535' : BG_CARD,
+        border: `1px solid ${borderColor}`,
         cursor: 'pointer',
-        transition: 'background 0.15s, border-color 0.15s',
+        transition: 'background 0.15s',
         minHeight: 0,
       }}
     >
-      <span style={{ fontSize: 24, lineHeight: 1 }}>{icon}</span>
-      <div style={{ minWidth: 0 }}>
+      <div>
         <div style={{
-          fontSize: 15, fontWeight: 600, lineHeight: 1.25, marginBottom: 5,
-          color: hov ? accent : accent + 'CC',
-          transition: 'color 0.15s',
+          width: 56, height: 56, borderRadius: 16, background: iconBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 26, marginBottom: 18,
         }}>
+          {icon}
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 8 }}>
           {title}
         </div>
-        <div style={{ fontSize: 12, color: hov ? TEXT_MUTED : TEXT_DIM, lineHeight: 1.5, transition: 'color 0.15s' }}>
-          {subtitle}
-        </div>
+      </div>
+      <div style={{ fontSize: 14, color: TEXT_MUTED, lineHeight: 1.6 }}>
+        {subtitle}
       </div>
     </button>
   );
@@ -234,41 +244,45 @@ export default function SimpleOperatorView({
     ? Math.round(activeCustomers30d / customers.length * 100)
     : 0;
 
-  const missions = [
+  const actions = [
     {
       icon: '💰',
       title: es ? 'Cobrar Pagos' : 'Collect Payments',
       subtitle: chipData.staleRepairCount > 0
-        ? `${chipData.staleRepairCount} ${es ? 'sin recoger' : 'uncollected'}`
+        ? `${chipData.staleRepairCount} ${es ? 'clientes sin recoger' : 'customers waiting for payment'}`
         : staleRecoverable > 0 ? formatCurrency(staleRecoverable) : es ? 'Sin pendientes' : 'Up to date',
-      accent: '#E59E0A',
+      borderColor: '#3a3218',
+      iconBg: '#3a3218',
       query: es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
     },
     {
-      icon: '🚀',
-      title: es ? 'Promover Producto' : 'Promote a Product',
+      icon: '📦',
+      title: es ? 'Promover Producto' : 'Promote Product',
       subtitle: chipData.productOppsCount > 0
-        ? `${chipData.productOppsCount} ${es ? 'oportunidades' : 'opportunities'}`
-        : es ? 'Ver catálogo' : 'View catalog',
-      accent: '#8B5CF6',
+        ? `${chipData.productOppsCount} ${es ? 'oportunidades disponibles' : 'suggested upsell opportunities available'}`
+        : es ? 'Ver catálogo' : 'Suggested upsell opportunities available',
+      borderColor: '#312444',
+      iconBg: '#312444',
       query: es ? 'qué productos debo promover hoy' : 'what products should I promote today',
     },
     {
-      icon: '✅',
+      icon: '🔧',
       title: es ? 'Reparaciones Listas' : 'Repairs Ready',
       subtitle: chipData.repairsPending > 0
-        ? `${chipData.repairsPending} ${es ? 'para entrega' : 'ready for pickup'}`
+        ? `${chipData.repairsPending} ${es ? 'esperando recoger' : 'repairs have been waiting for pickup'}`
         : es ? 'Todo al día' : 'All caught up',
-      accent: '#10B981',
+      borderColor: '#17352a',
+      iconBg: '#17352a',
       query: es ? 'reparaciones listas para entrega' : 'repairs ready for pickup',
     },
     {
-      icon: '📞',
+      icon: '📲',
       title: es ? 'Contactar Clientes' : 'Contact Customers',
       subtitle: chipData.outreachCount >= 2
         ? `${chipData.outreachCount} ${es ? 'pendientes' : 'pending'}`
-        : es ? 'Lista WhatsApp' : 'WhatsApp list',
-      accent: '#3B82F6',
+        : es ? 'Seguimiento clientes inactivos' : 'Follow up with inactive or high-value customers',
+      borderColor: '#1c3147',
+      iconBg: '#1c3147',
       query: es ? 'quién debo contactar hoy' : 'who should I contact today',
     },
   ];
@@ -278,82 +292,74 @@ export default function SimpleOperatorView({
 
       {/* ── LEFT: Store Pulse ──────────────────────────────────── */}
       <div style={{
-        width: 210, flexShrink: 0,
+        width: 290, flexShrink: 0,
         background: BG_LEFT,
         borderRight: `1px solid ${BORDER}`,
         display: 'flex', flexDirection: 'column',
-        padding: '22px 18px 20px', overflowY: 'auto',
+        padding: '24px 22px', overflowY: 'auto',
       }}>
 
         {/* Branding */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 18, borderBottom: `1px solid ${BORDER}`, marginBottom: 18, flexShrink: 0 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#1E3A6E', flexShrink: 0 }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#2A4A72', letterSpacing: '0.04em' }}>
-            CellHub Intelligence
-          </span>
+        <div style={{
+          paddingBottom: 20,
+          borderBottom: `1px solid ${BORDER}`,
+          marginBottom: 24,
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
+            CellHub
+          </div>
+          <div style={{ fontSize: 13, color: '#7b8794' }}>
+            {es ? 'Resumen de tu tienda' : 'Store intelligence overview'}
+          </div>
         </div>
 
         {/* TODAY */}
-        <div style={{ flexShrink: 0 }}>
-          <SectionLabel text={es ? 'HOY' : 'TODAY'} />
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#34D399', letterSpacing: '-0.02em', lineHeight: 1, marginBottom: 7 }}>
+        <div style={{ marginBottom: 26, flexShrink: 0 }}>
+          <SectionTitle text={es ? 'Hoy' : 'Today'} />
+          <div style={{
+            fontSize: 40, fontWeight: 700, lineHeight: 1,
+            color: '#34d399', marginBottom: 10,
+          }}>
             {formatCurrency(todayRevenue)}
           </div>
-          <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {revPct !== null && (
-              <span style={{
-                fontSize: 10, fontWeight: 600,
-                padding: '2px 7px', borderRadius: 4,
-                color: revPct >= 0 ? '#34D399' : '#EF4444',
-                background: revPct >= 0 ? '#34D39912' : '#EF444412',
-                border: `1px solid ${revPct >= 0 ? '#34D39922' : '#EF444422'}`,
+              <div style={{
+                background: revPct >= 0 ? '#17352a' : '#3b1a1a',
+                color: revPct >= 0 ? '#34d399' : '#f87171',
+                borderRadius: 999, padding: '5px 10px',
+                fontSize: 12, fontWeight: 600,
               }}>
                 {revPct >= 0 ? '↑' : '↓'} {Math.abs(revPct)}%
-              </span>
+              </div>
             )}
-            <span style={{ fontSize: 11, color: TEXT_MUTED }}>
+            <div style={{ fontSize: 13, color: TEXT_MUTED }}>
               {todaySalesCount} {es ? 'transacciones' : 'transactions'}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ height: 1, background: '#0D1826', margin: '14px 0', flexShrink: 0 }} />
-
-        {/* RETURNING CUSTOMERS */}
-        <div style={{ flexShrink: 0 }}>
-          <SectionLabel text={es ? 'CLIENTES QUE REGRESAN' : 'RETURNING CUSTOMERS'} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <RetentionRing pct={retentionPct} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#64748B', lineHeight: 1, letterSpacing: '-0.01em' }}>
-                {activeCustomers30d}{' '}
-                <span style={{ fontSize: 13, color: TEXT_MUTED }}>/ {customers.length}</span>
-              </div>
-              <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 3, lineHeight: 1.5 }}>
-                {es ? 'regresaron últimos 30 días' : 'returned last 30 days'}
-              </div>
             </div>
           </div>
         </div>
 
-        <div style={{ height: 1, background: '#0D1826', margin: '14px 0', flexShrink: 0 }} />
+        {/* RETURNING CUSTOMERS */}
+        <div style={{ marginBottom: 26, flexShrink: 0 }}>
+          <SectionTitle text={es ? 'Clientes que regresan' : 'Returning Customers'} />
+          <RetentionRing pct={retentionPct} active={activeCustomers30d} total={customers.length} />
+        </div>
 
         {/* ACTIVE SERVICES */}
-        <div style={{ flexShrink: 0 }}>
-          <SectionLabel text={es ? 'SERVICIOS ACTIVOS' : 'ACTIVE SERVICES'} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-            <ServiceTile count={repairsInProgress} label={es ? 'REPARACIONES' : 'REPAIRS'}   color="#F59E0B" />
-            <ServiceTile count={layawaysActive}    label="LAYAWAYS"                           color="#8B5CF6" />
-            <ServiceTile count={unlocksActive}     label="UNLOCKS"                            color="#3B82F6" />
-            <ServiceTile count={specialOrdersActive} label={es ? 'ESPECIALES' : 'SPECIALS'}  color="#10B981" />
+        <div style={{ marginBottom: 26, flexShrink: 0 }}>
+          <SectionTitle text={es ? 'Servicios activos' : 'Active Services'} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <ServiceCard count={repairsInProgress} label={es ? 'Reparaciones' : 'Repairs'}       countColor="#fbbf24" borderColor="#3a3218" />
+            <ServiceCard count={layawaysActive}    label="Layaways"                                countColor="#a78bfa" borderColor="#312444" />
+            <ServiceCard count={unlocksActive}     label="Unlocks"                                 countColor="#60a5fa" borderColor="#1c3147" />
+            <ServiceCard count={specialOrdersActive} label={es ? 'Especiales' : 'Special Orders'} countColor="#34d399" borderColor="#17352a" />
           </div>
         </div>
 
-        <div style={{ height: 1, background: '#0D1826', margin: '14px 0', flexShrink: 0 }} />
-
-        {/* HOURLY CHART */}
-        <div style={{ flex: 1, minHeight: 90, display: 'flex', flexDirection: 'column' }}>
-          <SectionLabel text={es ? 'VENTAS POR HORA' : 'SALES BY HOUR'} />
+        {/* SALES BY HOUR */}
+        <div style={{ flex: 1, minHeight: 100, display: 'flex', flexDirection: 'column' }}>
+          <SectionTitle text={es ? 'Ventas por hora' : 'Sales by Hour'} />
           <div style={{ flex: 1, minHeight: 0 }}>
             <HourlyChart hourlySales={hourlySales} />
           </div>
@@ -363,51 +369,68 @@ export default function SimpleOperatorView({
       {/* ── CENTER: Operational Heart ──────────────────────────── */}
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column',
-        padding: '26px 28px 22px',
-        background: BG_MAIN, minWidth: 0,
+        padding: 28, background: BG_MAIN, minWidth: 0,
       }}>
 
-        <SectionLabel text={es ? 'ACCIONES OPERACIONALES' : 'OPERATIONAL ACTIONS'} />
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
+            {es ? 'Acciones Operacionales' : 'Operational Actions'}
+          </div>
+          <div style={{ fontSize: 13, color: '#7b8794' }}>
+            {es ? 'Acciones rápidas para las prioridades de hoy' : "Quick actions for today's priorities"}
+          </div>
+        </div>
 
         <div style={{
+          flex: 1,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: 'minmax(130px, 200px) minmax(130px, 200px)',
-          gap: 14,
+          gridTemplateRows: '1fr 1fr',
+          gap: 18,
         }}>
-          {missions.map((m) => (
-            <MissionCard
-              key={m.query}
-              icon={m.icon} title={m.title} subtitle={m.subtitle}
-              accent={m.accent}
-              onClick={() => fireQuery(m.query)}
+          {actions.map((a) => (
+            <ActionCard
+              key={a.query}
+              icon={a.icon}
+              title={a.title}
+              subtitle={a.subtitle}
+              borderColor={a.borderColor}
+              iconBg={a.iconBg}
+              onClick={() => fireQuery(a.query)}
             />
           ))}
         </div>
 
-        <div style={{ paddingTop: 18 }}>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ marginTop: 20 }}>
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              height: 60, background: BG_CARD,
+              border: `1px solid #1f2937`, borderRadius: 18,
+              display: 'flex', alignItems: 'center',
+              padding: '0 12px 0 18px', gap: 12,
+            }}
+          >
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={es ? 'Pregunta sobre tu tienda…' : 'Ask anything about your store…'}
+              placeholder={es ? 'Pregunta a Intelligence…' : 'Ask Intelligence…'}
               style={{
-                flex: 1, background: BG_CARD, color: '#94A3B8',
-                borderRadius: 10, padding: '13px 17px', fontSize: 13,
-                border: `1px solid ${BORDER}`, outline: 'none', minWidth: 0,
+                flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                color: TEXT_PRIMARY, fontSize: 14,
               }}
             />
             <button
               type="submit"
               disabled={!inputText.trim()}
               style={{
-                padding: '13px 18px', borderRadius: 10, fontSize: 17,
-                background: inputText.trim() ? '#1A3560' : BG_CARD,
-                color: inputText.trim() ? '#93C5FD' : TEXT_DIM,
-                border: `1px solid ${inputText.trim() ? '#2D4E8A' : BORDER}`,
-                cursor: inputText.trim() ? 'pointer' : 'not-allowed',
-                flexShrink: 0, transition: 'background 0.14s, color 0.14s, border-color 0.14s',
+                width: 44, height: 44, border: 'none', borderRadius: 14,
+                background: inputText.trim() ? '#2563eb' : '#1d2633',
+                color: inputText.trim() ? 'white' : TEXT_DIM,
+                fontSize: 18, cursor: inputText.trim() ? 'pointer' : 'not-allowed',
+                flexShrink: 0, transition: 'background 0.14s, color 0.14s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
               →
@@ -418,21 +441,23 @@ export default function SimpleOperatorView({
 
       {/* ── RIGHT: Chat Execution ──────────────────────────────── */}
       <div style={{
-        width: 356, flexShrink: 0,
+        width: 420, flexShrink: 0,
+        background: BG_LEFT,
         borderLeft: `1px solid ${BORDER}`,
         display: 'flex', flexDirection: 'column',
-        overflow: 'hidden', background: BG_MAIN,
+        overflow: 'hidden',
       }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 7,
-          padding: '13px 18px 11px',
+          padding: '24px 22px',
           borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
         }}>
-          <div style={{ width: 2, height: 10, borderRadius: 2, background: '#1A2B3C', flexShrink: 0 }} />
-          <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.14em' }}>
-            {es ? 'ASISTENTE' : 'ASSISTANT'}
-          </span>
+          <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
+            Intelligence
+          </div>
+          <div style={{ fontSize: 13, color: '#7b8794' }}>
+            {es ? 'Pregunta sobre tu tienda' : 'Ask about your store'}
+          </div>
         </div>
         <OperatorChatShell
           engine={engine}
@@ -443,7 +468,6 @@ export default function SimpleOperatorView({
           onPanelCampaign={onPanelCampaign}
           chipData={chipData}
           compact
-          hideInput
         />
       </div>
     </div>

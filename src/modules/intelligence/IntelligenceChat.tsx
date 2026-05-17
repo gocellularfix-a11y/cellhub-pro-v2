@@ -975,44 +975,38 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
       {/* Command bar */}
       {compact ? (
-        !hideInput && <div style={{ padding: '12px 28px 24px', background: '#080F1E', borderTop: messages.length > 0 ? '1px solid #0D1420' : 'none', flexShrink: 0 }}>
-          {messages.length > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-              <button
-                onClick={clearChat}
-                style={{ fontSize: 11, color: '#4B5563', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-              >
-                {locale === 'es' ? 'Limpiar' : 'Clear'}
-              </button>
-            </div>
-          )}
-          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center', maxWidth: 620, margin: '0 auto' }}>
+        !hideInput && <div style={{
+          borderTop: `1px solid #1d2633`, padding: 18, flexShrink: 0,
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: '#171f2a', borderRadius: 16, padding: '12px 14px',
+          }}>
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={locale === 'es' ? 'Pregunta lo que sea…' : 'Ask anything…'}
+              placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : 'Ask Intelligence…'}
               style={{
-                flex: 1, background: '#0D1625', color: '#E2E8F0',
-                borderRadius: 12, padding: '14px 18px', fontSize: 14,
-                border: '1px solid #1A2535', outline: 'none', minWidth: 0,
+                flex: 1, background: 'transparent', border: 'none',
+                outline: 'none', color: 'white', fontSize: 14,
               }}
             />
             <button
-              type="submit"
+              onClick={(e) => { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent); }}
               disabled={!input.trim()}
               style={{
-                padding: '14px 20px', borderRadius: 12, fontSize: 18,
-                background: input.trim() ? '#1E3A6E' : '#0D1625',
-                color: input.trim() ? '#93C5FD' : '#2D3A4A',
-                border: `1px solid ${input.trim() ? '#2D4E8A' : '#1A2535'}`,
+                width: 42, height: 42, border: 'none', borderRadius: 12,
+                background: input.trim() ? '#2563eb' : '#1d2633',
+                color: 'white', fontSize: 18,
                 cursor: input.trim() ? 'pointer' : 'not-allowed',
-                flexShrink: 0, transition: 'all 0.12s',
+                flexShrink: 0, transition: 'background 0.12s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
               →
             </button>
-          </form>
+          </div>
         </div>
       ) : (
         <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
@@ -1149,15 +1143,14 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
 
   if (isUser) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <div style={{
-          maxWidth: '82%',
-          padding: '7px 12px',
-          borderRadius: 6,
-          background: '#0F1E35',
-          border: '1px solid #1E3352',
-          color: '#93C5FD',
-          fontSize: 13,
+          maxWidth: '80%',
+          padding: '12px 14px',
+          borderRadius: 14,
+          background: '#1b2430',
+          color: '#f3f4f6',
+          fontSize: 14,
           lineHeight: '1.5',
           whiteSpace: 'pre-wrap',
         }}>

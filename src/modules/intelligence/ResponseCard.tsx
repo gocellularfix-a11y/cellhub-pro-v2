@@ -85,22 +85,15 @@ function ResponseCard({
 
   return (
     <div style={{
-      borderRadius: 8,
-      border: `1px solid ${cfg.accent}1A`,
-      borderLeft: `3px solid ${cfg.accent}`,
-      background: '#0F1829',
-      overflow: 'hidden',
+      borderRadius: 18,
+      background: '#171f2a',
+      padding: 18,
       animation: 'rcFadeIn 0.16s ease-out',
       width: '100%',
     }}>
-      {/* Header — only for non-answer kinds (disambiguation, error, help) */}
+      {/* Badge — only for non-answer kinds (disambiguation, error, help) */}
       {!isAnswer && (
-        <div style={{
-          padding: '5px 12px',
-          borderBottom: '1px solid #141E2E',
-          display: 'flex',
-          alignItems: 'center',
-        }}>
+        <div style={{ marginBottom: 10 }}>
           <span style={{
             fontSize: 9, fontWeight: 700, letterSpacing: '0.09em',
             padding: '2px 7px', borderRadius: 99,
@@ -113,33 +106,29 @@ function ResponseCard({
       )}
 
       {/* Content */}
-      <div style={{ padding: '12px 14px 10px' }}>
-        <div style={{
-          fontSize: 13,
-          color: '#D1D5DB',
-          lineHeight: '1.6',
+      <div style={{
+        fontSize: 14,
+        color: '#d1d5db',
+        lineHeight: '1.7',
+        whiteSpace: 'pre-wrap',
+      }}>
+        {primary}
+      </div>
+      {rest.map((p, i) => (
+        <div key={i} style={{
+          marginTop: 10,
+          fontSize: 14,
+          color: '#d1d5db',
+          lineHeight: '1.7',
           whiteSpace: 'pre-wrap',
         }}>
-          {primary}
+          {p}
         </div>
-        {rest.map((p, i) => (
-          <div key={i} style={{
-            marginTop: 10,
-            paddingTop: 10,
-            borderTop: '1px solid #141E2E',
-            fontSize: 12,
-            color: '#8896A7',
-            lineHeight: '1.6',
-            whiteSpace: 'pre-wrap',
-          }}>
-            {p}
-          </div>
-        ))}
-      </div>
+      ))}
 
       {/* Workflow Sections */}
       {workflowSections && workflowSections.length > 0 && (
-        <div style={{ borderTop: '1px solid #141E2E', padding: '8px 14px 10px' }}>
+        <div style={{ marginTop: 14 }}>
           {workflowSections.map((section, si) => (
             <WorkflowSectionBlock key={si} section={section} />
           ))}
@@ -149,11 +138,10 @@ function ResponseCard({
       {/* Actions */}
       {hasActions && (
         <div style={{
-          padding: '8px 12px 10px',
-          borderTop: '1px solid #141E2E',
+          marginTop: 18,
           display: 'flex',
           flexWrap: 'wrap',
-          gap: 6,
+          gap: 10,
           alignItems: 'flex-start',
         }}>
           {primaryExec.map(a => (
@@ -200,15 +188,15 @@ function ExecButton({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 5,
-          padding: isPrimary ? '6px 13px' : '5px 11px',
-          borderRadius: 6,
-          fontSize: isPrimary ? 12 : 11,
-          fontWeight: isPrimary ? 600 : 400,
+          padding: '10px 14px',
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 500,
           cursor: executable ? 'pointer' : 'not-allowed',
           opacity: executable ? 1 : 0.4,
-          border: isPrimary ? `1px solid ${accent}44` : '1px solid rgba(51,65,85,0.7)',
-          background: isPrimary ? `${accent}15` : 'rgba(15,24,41,0.5)',
-          color: isPrimary ? accent : '#8896A7',
+          border: 'none',
+          background: '#232d3b',
+          color: '#f3f4f6',
           transition: 'opacity 0.1s',
           whiteSpace: 'nowrap',
         }}
@@ -239,12 +227,13 @@ function ChipButton({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 4,
-          padding: '4px 10px',
-          borderRadius: 99,
-          fontSize: 11,
-          color: '#64748B',
-          border: '1px solid #1A2535',
-          background: 'transparent',
+          padding: '10px 14px',
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 500,
+          color: '#f3f4f6',
+          border: 'none',
+          background: '#232d3b',
           cursor: 'pointer',
           whiteSpace: 'nowrap',
         }}
