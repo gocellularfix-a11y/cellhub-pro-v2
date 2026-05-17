@@ -827,7 +827,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               ? <RightColumnWelcome locale={locale} />
               : <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
           ) : (
-            <div style={{ padding: '16px 18px 12px' }}>
+            <div style={{ padding: '14px 16px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)}
             </div>
           )
@@ -1264,13 +1264,20 @@ function RightColumnWelcome({ locale }: { locale: string }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: '100%', padding: '32px 24px', textAlign: 'center',
+      justifyContent: 'center', height: '100%', padding: '28px 22px', textAlign: 'center', gap: 14,
     }}>
-      <div style={{ fontSize: 28, marginBottom: 16, opacity: 0.35 }}>💬</div>
-      <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: 0 }}>
+      <div style={{
+        width: 34, height: 34, borderRadius: '50%',
+        border: '1px solid #0E1A2B', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, color: '#1A2B3C',
+      }}>
+        ↗
+      </div>
+      <p style={{ fontSize: 12, color: '#2D3D52', lineHeight: 1.75, margin: 0, maxWidth: 200 }}>
         {locale === 'es'
-          ? 'Selecciona una acción o escribe una pregunta para comenzar.'
-          : 'Select an action or ask a question to get started.'}
+          ? 'Selecciona una acción o escribe una pregunta.'
+          : 'Select an action or type a question to get started.'}
       </p>
     </div>
   );

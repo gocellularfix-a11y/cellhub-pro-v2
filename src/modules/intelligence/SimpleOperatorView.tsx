@@ -1,7 +1,5 @@
 // SimpleOperatorView — CellHub Intelligence 3-column command center.
-// LEFT: Store Pulse (passive awareness)
-// CENTER: Operational Heart (4 mission cards + single Ask input)
-// RIGHT: Chat Execution (responses only, no input)
+// LEFT: Store Pulse   CENTER: Operational Heart   RIGHT: Chat Execution
 import { useState, useRef, useEffect } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
@@ -10,6 +8,108 @@ import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
 import { formatCurrency } from '@/utils/currency';
 import { useTranslation } from '@/i18n';
 import OperatorChatShell from './OperatorChatShell';
+
+// ── Design tokens ─────────────────────────────────────────────
+const BG_LEFT    = '#060C16';
+const BG_MAIN    = '#080F1E';
+const BG_CARD    = '#0B1523';
+const BG_HOVER   = '#0F1E35';
+const BORDER     = '#0E1A2B';
+const TEXT_DIM   = '#2D3D52';
+const TEXT_MUTED = '#4B5E72';
+
+// ── Shared sub-components ─────────────────────────────────────
+
+function SectionLabel({ text }: { text: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+      <div style={{ width: 2, height: 10, borderRadius: 2, background: '#1A2B3C', flexShrink: 0 }} />
+      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.14em' }}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function PulseRow({ label, value, valueColor = '#64748B' }: {
+  label: string; value: string; valueColor?: string;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <span style={{ fontSize: 11, color: TEXT_MUTED }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: valueColor, letterSpacing: '-0.01em' }}>{value}</span>
+    </div>
+  );
+}
+
+function PulsePill({ icon, text, accent, onClick }: {
+  icon: string; text: string; accent: string; onClick: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '7px 10px', borderRadius: 6, cursor: 'pointer',
+        background: hov ? accent + '18' : accent + '0B',
+        border: `1px solid ${hov ? accent + '30' : accent + '1A'}`,
+        width: '100%', textAlign: 'left',
+        transition: 'background 0.14s, border-color 0.14s',
+      }}
+    >
+      <span style={{ fontSize: 11, flexShrink: 0 }}>{icon}</span>
+      <span style={{
+        fontSize: 11, fontWeight: 500,
+        color: hov ? accent : accent + 'BB',
+        transition: 'color 0.14s',
+      }}>
+        {text}
+      </span>
+    </button>
+  );
+}
+
+function MissionCard({ icon, title, subtitle, accent, onClick }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+        gap: 12, padding: '24px 22px', borderRadius: 12, textAlign: 'left',
+        background: hov ? BG_HOVER : BG_CARD,
+        border: `1px solid ${hov ? accent + '28' : BORDER}`,
+        borderLeft: `2px solid ${hov ? accent : accent + '88'}`,
+        cursor: 'pointer',
+        transition: 'background 0.15s, border-color 0.15s',
+        minHeight: 0,
+      }}
+    >
+      <span style={{ fontSize: 26, lineHeight: 1 }}>{icon}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: 15, fontWeight: 600, lineHeight: 1.25, marginBottom: 5,
+          color: hov ? accent : accent + 'CC',
+          transition: 'color 0.15s',
+        }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 12, color: hov ? TEXT_MUTED : TEXT_DIM, lineHeight: 1.5, transition: 'color 0.15s' }}>
+          {subtitle}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────
 
 interface SimpleOperatorViewProps {
   engine: IntelligenceEngine;
@@ -61,10 +161,8 @@ export default function SimpleOperatorView({
       title: es ? 'Cobrar Pagos' : 'Collect Payments',
       subtitle: chipData.staleRepairCount > 0
         ? `${chipData.staleRepairCount} ${es ? 'sin recoger' : 'uncollected'}`
-        : staleRecoverable > 0
-          ? formatCurrency(staleRecoverable)
-          : es ? 'Sin pendientes' : 'Up to date',
-      accent: '#F59E0B',
+        : staleRecoverable > 0 ? formatCurrency(staleRecoverable) : es ? 'Sin pendientes' : 'Up to date',
+      accent: '#E59E0A',
       query: es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
     },
     {
@@ -107,27 +205,24 @@ export default function SimpleOperatorView({
       {/* ── LEFT: Store Pulse ──────────────────────────────────── */}
       <div style={{
         width: 210, flexShrink: 0,
-        background: '#080E1A',
-        borderRight: '1px solid #111827',
+        background: BG_LEFT,
+        borderRight: `1px solid ${BORDER}`,
         display: 'flex', flexDirection: 'column',
-        padding: '24px 18px', gap: 24, overflowY: 'auto',
+        padding: '22px 18px 24px', overflowY: 'auto',
       }}>
-        {/* Brand */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#1E3A5F', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-            CellHub
-          </div>
-          <div style={{ fontSize: 11, color: '#374151', marginTop: 2 }}>
-            Intelligence
-          </div>
+
+        {/* Branding */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 22, borderBottom: `1px solid ${BORDER}`, marginBottom: 22 }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#1E3A6E', flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#2A4A72', letterSpacing: '0.04em' }}>
+            CellHub Intelligence
+          </span>
         </div>
 
-        {/* Today */}
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#1F2937', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 14 }}>
-            {es ? 'HOY' : 'TODAY'}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+        {/* Today metrics */}
+        <div style={{ marginBottom: 22 }}>
+          <SectionLabel text={es ? 'HOY' : 'TODAY'} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <PulseRow label={es ? 'Ventas' : 'Revenue'} value={formatCurrency(todayRevenue)} valueColor="#34D399" />
             <PulseRow label={es ? 'Transacciones' : 'Transactions'} value={String(todaySalesCount)} />
             {totalAlerts > 0 && (
@@ -139,12 +234,10 @@ export default function SimpleOperatorView({
         {/* Attention signals */}
         {hasAttention && (
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#1F2937', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 14 }}>
-              {es ? 'ATENCIÓN' : 'ATTENTION'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <SectionLabel text={es ? 'ATENCIÓN' : 'ATTENTION'} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {chipData.staleRepairCount > 0 && (
-                <PulsePill icon="⏱" accent="#F59E0B"
+                <PulsePill icon="⏱" accent="#E59E0A"
                   text={`${chipData.staleRepairCount} ${es ? 'sin recoger' : 'uncollected'}`}
                   onClick={() => fireQuery(es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed')} />
               )}
@@ -171,88 +264,80 @@ export default function SimpleOperatorView({
       {/* ── CENTER: Operational Heart ──────────────────────────── */}
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column',
-        padding: '28px 32px 24px', gap: 18,
-        background: '#080F1E', overflowY: 'auto', minWidth: 0,
+        padding: '26px 28px 22px',
+        background: BG_MAIN, minWidth: 0,
       }}>
-        <div style={{
-          fontSize: 9, fontWeight: 700, color: '#1F2937',
-          letterSpacing: '0.14em', textTransform: 'uppercase',
-        }}>
-          {es ? 'ACCIONES OPERACIONALES' : 'OPERATIONAL ACTIONS'}
-        </div>
 
-        {/* 2×2 Mission cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, flex: 1 }}>
+        {/* Section label */}
+        <SectionLabel text={es ? 'ACCIONES OPERACIONALES' : 'OPERATIONAL ACTIONS'} />
+
+        {/* 2×2 Mission cards — fill available vertical space */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gridTemplateRows: '1fr 1fr',
+          gap: 14, flex: 1, minHeight: 0,
+        }}>
           {missions.map((m) => (
-            <button
+            <MissionCard
               key={m.query}
+              icon={m.icon} title={m.title} subtitle={m.subtitle}
+              accent={m.accent}
               onClick={() => fireQuery(m.query)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                gap: 14, padding: '26px 24px', borderRadius: 14, textAlign: 'left',
-                background: '#0C1528',
-                border: `1px solid ${m.accent}18`,
-                borderLeft: `3px solid ${m.accent}`,
-                cursor: 'pointer', transition: 'background 0.12s',
-              }}
-            >
-              <span style={{ fontSize: 32, lineHeight: 1 }}>{m.icon}</span>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: m.accent, marginBottom: 6, lineHeight: 1.2 }}>
-                  {m.title}
-                </div>
-                <div style={{ fontSize: 13, color: '#4B5563', lineHeight: 1.5 }}>
-                  {m.subtitle}
-                </div>
-              </div>
-            </button>
+            />
           ))}
         </div>
 
-        {/* Single Ask Intelligence input */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10 }}>
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder={es ? 'Pregunta sobre tu tienda…' : 'Ask anything about your store…'}
-            style={{
-              flex: 1, background: '#0C1528', color: '#CBD5E1',
-              borderRadius: 12, padding: '14px 18px', fontSize: 14,
-              border: '1px solid #1A2535', outline: 'none', minWidth: 0,
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim()}
-            style={{
-              padding: '14px 20px', borderRadius: 12, fontSize: 18,
-              background: inputText.trim() ? '#1E3A6E' : '#0C1528',
-              color: inputText.trim() ? '#93C5FD' : '#1E2D3D',
-              border: `1px solid ${inputText.trim() ? '#2D4E8A' : '#1A2535'}`,
-              cursor: inputText.trim() ? 'pointer' : 'not-allowed',
-              flexShrink: 0, transition: 'all 0.12s',
-            }}
-          >
-            →
-          </button>
-        </form>
+        {/* Ask Intelligence — single global input */}
+        <div style={{ paddingTop: 18 }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder={es ? 'Pregunta sobre tu tienda…' : 'Ask anything about your store…'}
+              style={{
+                flex: 1, background: BG_CARD, color: '#94A3B8',
+                borderRadius: 10, padding: '13px 17px', fontSize: 13,
+                border: `1px solid ${BORDER}`, outline: 'none', minWidth: 0,
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              style={{
+                padding: '13px 18px', borderRadius: 10, fontSize: 17,
+                background: inputText.trim() ? '#1A3560' : BG_CARD,
+                color: inputText.trim() ? '#93C5FD' : TEXT_DIM,
+                border: `1px solid ${inputText.trim() ? '#2D4E8A' : BORDER}`,
+                cursor: inputText.trim() ? 'pointer' : 'not-allowed',
+                flexShrink: 0, transition: 'background 0.14s, color 0.14s, border-color 0.14s',
+              }}
+            >
+              →
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* ── RIGHT: Chat Execution ──────────────────────────────── */}
       <div style={{
-        width: 360, flexShrink: 0,
-        borderLeft: '1px solid #111827',
+        width: 356, flexShrink: 0,
+        borderLeft: `1px solid ${BORDER}`,
         display: 'flex', flexDirection: 'column',
-        overflow: 'hidden', background: '#080F1E',
+        overflow: 'hidden', background: BG_MAIN,
       }}>
+        {/* Minimal section header */}
         <div style={{
-          padding: '14px 18px 10px',
-          borderBottom: '1px solid #111827',
-          fontSize: 10, fontWeight: 700, color: '#1F2937',
-          letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '13px 18px 11px',
+          borderBottom: `1px solid ${BORDER}`,
+          flexShrink: 0,
         }}>
-          {es ? 'ASISTENTE' : 'ASSISTANT'}
+          <div style={{ width: 2, height: 10, borderRadius: 2, background: '#1A2B3C', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.14em' }}>
+            {es ? 'ASISTENTE' : 'ASSISTANT'}
+          </span>
         </div>
         <OperatorChatShell
           engine={engine}
@@ -267,35 +352,5 @@ export default function SimpleOperatorView({
         />
       </div>
     </div>
-  );
-}
-
-function PulseRow({ label, value, valueColor = '#4B5563' }: {
-  label: string; value: string; valueColor?: string;
-}) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-      <span style={{ fontSize: 11, color: '#374151' }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 700, color: valueColor }}>{value}</span>
-    </div>
-  );
-}
-
-function PulsePill({ icon, text, accent, onClick }: {
-  icon: string; text: string; accent: string; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 7,
-        padding: '6px 10px', borderRadius: 7, cursor: 'pointer',
-        background: accent + '0F', border: `1px solid ${accent}22`,
-        width: '100%', textAlign: 'left',
-      }}
-    >
-      <span style={{ fontSize: 12, flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: 11, color: accent, fontWeight: 500 }}>{text}</span>
-    </button>
   );
 }
