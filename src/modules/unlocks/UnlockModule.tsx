@@ -39,6 +39,10 @@ import {
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 
+// Typed accessor for `taxable` — present at runtime but absent from the Unlock interface.
+// Narrower than `as any`: casts to a specific shape so the return type is boolean, not any.
+const getTaxable = (u: unknown): boolean => !!(u as { taxable?: boolean }).taxable;
+
 // R-EDIT-AUDIT: added 'Refund Pending' (active) and 'Refunded' (done).
 // Normalized forms: refund_pending, refunded.
 const STATUSES = ['All', 'Received', 'Processing', 'Code Received', 'Completed', 'Cancelled', 'Failed', 'Refund Pending', 'Refunded'];
@@ -173,7 +177,7 @@ export default function UnlockModule() {
 
   // ── Form state (inside modal) ───────────────────────────
 
-  const [form, setForm] = useState<Partial<Unlock>>({});
+  const [form, setForm] = useState<Partial<Unlock> & { taxable?: boolean }>({});
 
   // ── Autocomplete options ─────────────────────────────────
   // firstName/lastName split autocomplete options
@@ -217,13 +221,13 @@ export default function UnlockModule() {
       unlockType: '', unlockCode: '', supplier: '',
       orderDate: today, completionDate: '',
       taxable: false,
-    } as any);
+    });
     setShowModal(true);
   };
 
   const openEdit = (u: Unlock) => {
     setEditUnlock(u);
-    setSelectedCustomer(customers.find(c => c.id === (u as any).customerId) ?? null);
+    setSelectedCustomer(customers.find(c => c.id === u.customerId) ?? null);
     // Storage is in cents — convert to dollars for the form inputs
     setForm({
       ...u,
@@ -352,8 +356,8 @@ export default function UnlockModule() {
     lines.push(`DEPOSIT: ${money(unlock.depositAmount || 0)}${previously('depositAmount')}`);
     lines.push(`BALANCE: ${money(unlock.balance || 0)}${previously('balance')}`);
     // R-EDIT-AUDIT F4.5: show refund owed on corrected receipt when reason='refund'.
-    if (corrected && ((unlock as any).refundOwedAmount || 0) > 0) {
-      lines.push(`${t('unlocks.print.refundOwed')}: ${money((unlock as any).refundOwedAmount)}`);
+    if (corrected && (unlock.refundOwedAmount || 0) > 0) {
+      lines.push(`${t('unlocks.print.refundOwed')}: ${money(unlock.refundOwedAmount || 0)}`);
     }
     lines.push('----------------------------------------');
     if (unlock.notes) {
@@ -380,14 +384,14 @@ export default function UnlockModule() {
     note: string,
   ) => {
     const taxRate = settings.taxRate ?? 0.0925;
-    const newTaxable = (baseUpdated as any).taxable ?? false;
-    const oldTaxable = (fresh as any).taxable ?? false;
+    const newTaxable = getTaxable(baseUpdated);
+    const oldTaxable = getTaxable(fresh);
     const updated: Unlock = { ...baseUpdated };
 
     // Defensive: strip audit fields from any incoming spread and re-seed from fresh.
-    delete (updated as any).editHistory;
-    delete (updated as any).originalSnapshot;
-    delete (updated as any).refundOwedAmount;
+    delete updated.editHistory;
+    delete updated.originalSnapshot;
+    delete updated.refundOwedAmount;
     updated.editHistory = fresh.editHistory;
     updated.originalSnapshot = fresh.originalSnapshot;
     updated.refundOwedAmount = fresh.refundOwedAmount;
@@ -512,7 +516,7 @@ export default function UnlockModule() {
     const priceCents   = Math.round((form.price || 0) * 100);
     const costCents    = Math.round((form.cost || 0) * 100);
     const depositCents = Math.round((form.depositAmount || 0) * 100);
-    const taxable = !!(form as any).taxable;
+    const taxable = form.taxable ?? false;
     const taxRate = settings.taxRate ?? 0.0925;
     const _t = calcDepositTotals(priceCents, depositCents, taxRate, taxable);
     const balance = _t.balanceCents;
@@ -556,14 +560,12 @@ export default function UnlockModule() {
 
       // r-deposit-integrity-1 EDIT guard: never overwrite depositAmount from form.
       const lockedDeposit = editUnlock.depositAmount || 0;
-      const newPrice = priceCents;
-      const taxAmt = taxable ? Math.round(newPrice * taxRate) : 0;
-      const newTotalWithTax = newPrice + taxAmt;
-      const lockedBalance = Math.max(0, newTotalWithTax - lockedDeposit);
+      const fwd = forwardTaxFromBase(priceCents, taxRate, taxable);
+      const lockedBalance = Math.max(0, fwd.totalCents - lockedDeposit);
 
       const updated: Unlock = {
         ...editUnlock, ...form, customerName,
-        customerId: selectedCustomer?.id ?? (editUnlock as any).customerId ?? undefined,
+        customerId: selectedCustomer?.id ?? editUnlock.customerId ?? undefined,
         price: priceCents,
         cost: costCents,
         depositAmount: lockedDeposit,
@@ -609,7 +611,7 @@ export default function UnlockModule() {
         const reference: Record<string, unknown> = {
           price: fresh.price ?? 0,
           cost: fresh.cost ?? 0,
-          taxable: (fresh as any).taxable ?? false,
+          taxable: getTaxable(fresh),
           customerName: fresh.customerName ?? '',
           customerPhone: fresh.customerPhone ?? '',
           device: fresh.device ?? '',
@@ -709,7 +711,7 @@ export default function UnlockModule() {
           isTaxable: taxable,
         });
 
-        const customerId = (newUnlock as any).customerId;
+        const customerId = newUnlock.customerId;
         if (customerId) {
           dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
         } else if (newUnlock.customerPhone) {
@@ -739,7 +741,7 @@ export default function UnlockModule() {
 
   const collectBalance = useCallback((u: Unlock) => {
     if (!u.balance || u.balance <= 0) return;
-    const taxable = !!(u as any).taxable;
+    const taxable = getTaxable(u);
     const { combinedCents } = consolidateCartForUnlock({
       unlockId: u.id,
       additionalCents: u.balance,
@@ -747,7 +749,7 @@ export default function UnlockModule() {
       isTaxable: taxable,
     });
 
-    const customerId = (u as any).customerId;
+    const customerId = u.customerId;
     if (customerId) {
       dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
     } else if (u.customerPhone) {
@@ -791,7 +793,7 @@ export default function UnlockModule() {
     if (choice.method === 'store_credit' && depositCents > 0) {
       const phoneTail = (unlock.customerPhone || '').replace(/\D/g, '').slice(-10);
       const matched = customersRef.current.find((c) => {
-        if ((unlock as any).customerId && c.id === (unlock as any).customerId) return true;
+        if (unlock.customerId && c.id === unlock.customerId) return true;
         if (phoneTail) {
           const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
           if (cPhone && cPhone === phoneTail) return true;
@@ -832,9 +834,9 @@ export default function UnlockModule() {
 
       const refundSale: Sale = {
         id: generateId(),
-        storeId: (unlock as any).storeId,
+        storeId: unlock.storeId,
         invoiceNumber: `REFUND-${unlock.id.slice(-6).toUpperCase()}`,
-        customerId: (unlock as any).customerId,
+        customerId: unlock.customerId,
         customerName: unlock.customerName,
         customerPhone: unlock.customerPhone,
         items: [{
@@ -917,14 +919,14 @@ export default function UnlockModule() {
     if (!unlock) return;
 
     if ((unlock.balance || 0) > 0) {
-      const isTaxable = !!(unlock as any).taxable;
+      const isTaxable = getTaxable(unlock);
       consolidateCartForUnlock({
         unlockId: unlock.id,
         additionalCents: unlock.balance,
         device: unlock.device || '',
         isTaxable,
       });
-      const customerId = (unlock as any).customerId;
+      const customerId = unlock.customerId;
       if (customerId) {
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
       } else if (unlock.customerPhone) {
@@ -1481,8 +1483,8 @@ export default function UnlockModule() {
             <input
               type="checkbox"
               id="unlock-taxable"
-              checked={!!(form as any).taxable}
-              onChange={(e) => setForm({ ...form, taxable: e.target.checked } as any)}
+              checked={form.taxable ?? false}
+              onChange={(e) => setForm({ ...form, taxable: e.target.checked })}
               disabled={isLocked && !pin.editUnlocked}
               style={{ cursor: isLocked && !pin.editUnlocked ? 'not-allowed' : 'pointer' }}
             />
@@ -1507,18 +1509,18 @@ export default function UnlockModule() {
           {(form.price || 0) > 0 && (() => {
             const previewPriceCents = Math.round((form.price || 0) * 100);
             const previewDepositCents = Math.round((form.depositAmount || 0) * 100);
-            const _t = calcDepositTotals(previewPriceCents, previewDepositCents, settings.taxRate ?? 0.0925, !!(form as any).taxable);
+            const _t = calcDepositTotals(previewPriceCents, previewDepositCents, settings.taxRate ?? 0.0925, form.taxable ?? false);
             return (
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.75rem', padding: '0.875rem', fontSize: '0.85rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 700, padding: '0.2rem 0' }}>
                 <span>Service Price:</span><span>{formatCurrency(_t.subtotalCents)}</span>
               </div>
-              {(form as any).taxable && _t.taxCents > 0 && (
+              {form.taxable && _t.taxCents > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', padding: '0.2rem 0' }}>
                   <span>+ Tax ({((settings.taxRate ?? 0.0925) * 100).toFixed(2)}%):</span><span>+{formatCurrency(_t.taxCents)}</span>
                 </div>
               )}
-              {(form as any).taxable && _t.taxCents > 0 && (
+              {form.taxable && _t.taxCents > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 700, padding: '0.2rem 0', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.25rem', paddingTop: '0.3rem' }}>
                   <span>Total w/ Tax:</span><span>{formatCurrency(_t.totalWithTaxCents)}</span>
                 </div>
@@ -1591,7 +1593,7 @@ export default function UnlockModule() {
           itemLabel={`${depositModalUnlock.device} (${depositModalUnlock.carrier}) — Unlock`}
           itemPrice={(depositModalUnlock.price || 0) / 100}
           taxRate={settings.taxRate ?? 0.0925}
-          taxable={!!(depositModalUnlock as any).taxable}
+          taxable={getTaxable(depositModalUnlock)}
           existingDeposit={(depositModalUnlock.depositAmount || 0) / 100}
           pendingInCart={(pendingByUnlockId.get(depositModalUnlock.id) || 0) / 100}
           mode="balance"
@@ -1604,7 +1606,7 @@ export default function UnlockModule() {
             try {
               const u = depositModalUnlock;
               const newAmtCents = Math.round(depositAmt * 100);
-              const taxable = !!(u as any).taxable;
+              const taxable = getTaxable(u);
 
               const { combinedCents } = consolidateCartForUnlock({
                 unlockId: u.id,
@@ -1613,7 +1615,7 @@ export default function UnlockModule() {
                 isTaxable: taxable,
               });
 
-              const customerId = (u as any).customerId;
+              const customerId = u.customerId;
               if (customerId) {
                 dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
               } else if (u.customerPhone) {
@@ -1753,7 +1755,7 @@ export default function UnlockModule() {
         <ConfirmDialog
           open
           title={t('unlocks.markRefundedTitle')}
-          message={t('unlocks.markRefundedConfirm', (((refundConfirmTarget as any).refundOwedAmount || 0) / 100).toFixed(2))}
+          message={t('unlocks.markRefundedConfirm', ((refundConfirmTarget.refundOwedAmount || 0) / 100).toFixed(2))}
           confirmLabel={t('unlocks.yesRefunded')}
           cancelLabel={t('cancel')}
           onConfirm={() => {
@@ -1764,7 +1766,7 @@ export default function UnlockModule() {
               return;
             }
             const now = new Date().toISOString();
-            const refundAmountCents = (target as any).refundOwedAmount || 0;
+            const refundAmountCents = target.refundOwedAmount || 0;
 
             // 1. Mark ticket as refunded.
             const updated: Unlock = {
@@ -1784,9 +1786,9 @@ export default function UnlockModule() {
             if (refundAmountCents > 0) {
               const refundSale: Sale = {
                 id: generateId(),
-                storeId: (updated as any).storeId,
+                storeId: updated.storeId,
                 invoiceNumber: `REFUND-${updated.id.slice(-6).toUpperCase()}`,
-                customerId: (updated as any).customerId,
+                customerId: updated.customerId,
                 customerName: updated.customerName || 'Walk-in',
                 customerPhone: updated.customerPhone || '',
                 items: [{
