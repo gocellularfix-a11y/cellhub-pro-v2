@@ -83,15 +83,54 @@ export function ElementToolbar({
     if (preset) onSizeChange(preset.widthMm, preset.heightMm);
   }
 
+  const addBtnStyle: React.CSSProperties = {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.5rem 0.75rem',
+    background: '#141e30',
+    border: '1px solid rgba(148,163,184,0.10)',
+    borderRadius: '8px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    color: '#94a3b8',
+    cursor: 'pointer',
+    transition: 'all 0.12s ease',
+    textAlign: 'left',
+  };
+
   return (
-    <div className="flex flex-col gap-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Label size */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Label Size</label>
+        <label
+          style={{
+            display: 'block',
+            fontSize: '0.7rem',
+            fontWeight: 500,
+            color: '#64748b',
+            marginBottom: '0.375rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Label Size
+        </label>
         <select
           value={selectValue}
           onChange={handleSizeSelect}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{
+            width: '100%',
+            padding: '0.5rem 0.625rem',
+            border: '1px solid rgba(148,163,184,0.15)',
+            borderRadius: '8px',
+            fontSize: '0.75rem',
+            background: '#0a1120',
+            color: '#e2e8f0',
+            outline: 'none',
+            appearance: 'none',
+          }}
         >
           {SIZE_PRESETS.map(p => (
             <option key={`${p.widthMm}x${p.heightMm}`} value={`${p.widthMm}x${p.heightMm}`}>
@@ -103,36 +142,36 @@ export function ElementToolbar({
 
       {/* Add element buttons */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Add Element</label>
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={onAddText}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors shadow-sm"
-          >
-            <span className="text-base">T</span>
+        <label
+          style={{
+            display: 'block',
+            fontSize: '0.7rem',
+            fontWeight: 500,
+            color: '#64748b',
+            marginBottom: '0.5rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Add Element
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <button onClick={onAddText} style={addBtnStyle}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38bdf8', fontFamily: 'monospace' }}>T</span>
             Text
           </button>
-          <button
-            onClick={onAddBarcode}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors shadow-sm"
-          >
-            <span className="text-base font-mono text-xs tracking-tighter">▮▮▮</span>
+          <button onClick={onAddBarcode} style={addBtnStyle}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace', letterSpacing: '-0.05em' }}>▮▮▮</span>
             Barcode
           </button>
-          <button
-            onClick={onAddQR}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors shadow-sm"
-          >
-            <span className="text-base">⬛</span>
+          <button onClick={onAddQR} style={addBtnStyle}>
+            <span style={{ fontSize: '0.85rem' }}>⬛</span>
             QR Code
           </button>
           {hasClipboardApi && (
-            <button
-              onClick={handlePasteClick}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors shadow-sm"
-            >
-              <span className="text-base">📋</span>
-              Paste Text
+            <button onClick={handlePasteClick} style={addBtnStyle}>
+              <span style={{ fontSize: '0.85rem' }}>📋</span>
+              Paste
             </button>
           )}
         </div>
@@ -141,9 +180,19 @@ export function ElementToolbar({
       {/* Clear canvas */}
       <button
         onClick={onClear}
-        className="w-full px-3 py-2 text-sm text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+        style={{
+          width: '100%',
+          padding: '0.45rem 0.75rem',
+          fontSize: '0.8rem',
+          color: '#f87171',
+          background: 'rgba(239,68,68,0.06)',
+          border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'all 0.12s ease',
+        }}
       >
-        Clear canvas
+        ✕ Clear canvas
       </button>
     </div>
   );

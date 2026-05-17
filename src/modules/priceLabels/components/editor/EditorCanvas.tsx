@@ -204,8 +204,8 @@ export function EditorCanvas({
     ? (config.elements.find(e => e.id === selectedId) ?? null)
     : null;
 
-  // Handle size in label-space so it appears as a constant 10px on screen
-  const hp = 10 / scale;
+  // Handle size in label-space so it appears as a constant 12px on screen
+  const hp = 12 / scale;
 
   function renderResizeHandles() {
     if (!selectedEl || !selectedSize) return null;
@@ -234,7 +234,7 @@ export function EditorCanvas({
           height: hp,
           // Center the circle on the handle point
           transform: 'translate(-50%, -50%)',
-          background: '#3b82f6',
+          background: '#38bdf8',
           border: `${1 / scale}px solid #fff`,
           borderRadius: '50%',
           cursor: spec.cursor,
@@ -247,10 +247,16 @@ export function EditorCanvas({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      {/* Outer grey padding area */}
+      {/* Outer dark workspace with dot-grid pattern */}
       <div
         className="rounded-xl overflow-hidden flex items-center justify-center"
-        style={{ width: CANVAS_MAX_W + 32, height: CANVAS_MAX_H + 32, background: '#e5e7eb' }}
+        style={{
+          width: CANVAS_MAX_W + 32,
+          height: CANVAS_MAX_H + 32,
+          background: '#0a1120',
+          backgroundImage: 'radial-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        }}
       >
         {/* White label surface */}
         <div
@@ -260,7 +266,7 @@ export function EditorCanvas({
             position: 'relative',
             overflow: 'hidden',
             background: '#ffffff',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.18)',
+            boxShadow: '0 0 0 1px rgba(56,189,248,0.15), 0 8px 40px rgba(0,0,0,0.7), 0 0 60px rgba(56,189,248,0.04)',
             border: '1px solid #d1d5db',
             cursor: 'default',
           }}
@@ -323,7 +329,7 @@ export function EditorCanvas({
                 pointerEvents: 'none',
               }}
             >
-              <p style={{ fontSize: 12, color: '#9ca3af', fontFamily: 'Arial' }}>
+              <p style={{ fontSize: 12, color: '#334155', fontFamily: 'Arial' }}>
                 Add an element using the panel on the left
               </p>
             </div>
@@ -331,7 +337,7 @@ export function EditorCanvas({
         </div>
       </div>
 
-      <p className="text-xs text-gray-400">
+      <p style={{ fontSize: '0.72rem', color: '#475569' }}>
         {config.widthMm % 1 === 0 ? config.widthMm : config.widthMm.toFixed(1)} ×{' '}
         {config.heightMm % 1 === 0 ? config.heightMm : config.heightMm.toFixed(1)} mm
         &nbsp;·&nbsp; drag to move · handles to resize

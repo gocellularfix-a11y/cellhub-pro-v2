@@ -9,36 +9,82 @@ interface TemplateSelectorProps {
 export function TemplateSelector({ value, onChange }: TemplateSelectorProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Label Template</label>
-      <div className="space-y-2">
+      <label
+        style={{
+          display: 'block',
+          fontSize: '0.75rem',
+          fontWeight: 500,
+          color: '#64748b',
+          marginBottom: '0.5rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}
+      >
+        Label Template
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {TEMPLATE_LIST.map(template => {
           const selected = value === template.id;
           return (
             <button
               key={template.id}
               onClick={() => onChange(template.id)}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                selected
-                  ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-              }`}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.625rem 0.75rem',
+                borderRadius: '10px',
+                border: selected
+                  ? '1px solid rgba(56,189,248,0.35)'
+                  : '1px solid rgba(148,163,184,0.10)',
+                background: selected ? 'rgba(56,189,248,0.08)' : 'rgba(20,30,48,0.5)',
+                textAlign: 'left',
+                cursor: 'pointer',
+                transition: 'all 0.12s ease',
+                borderLeft: selected ? '3px solid #38bdf8' : '1px solid rgba(148,163,184,0.10)',
+              }}
             >
               <div
-                className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                  selected ? 'border-blue-500 bg-blue-500' : 'border-gray-400'
-                }`}
+                style={{
+                  width: '1rem',
+                  height: '1rem',
+                  borderRadius: '50%',
+                  border: selected ? '2px solid #38bdf8' : '2px solid #334155',
+                  background: selected ? '#38bdf8' : 'transparent',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.12s ease',
+                }}
               >
                 {selected && (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                  </div>
+                  <div
+                    style={{
+                      width: '0.375rem',
+                      height: '0.375rem',
+                      background: '#000',
+                      borderRadius: '50%',
+                    }}
+                  />
                 )}
               </div>
               <div>
-                <div className={`text-sm font-semibold ${selected ? 'text-blue-700' : 'text-gray-800'}`}>
+                <div
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    color: selected ? '#38bdf8' : '#cbd5e1',
+                    lineHeight: 1.3,
+                  }}
+                >
                   {template.name}
                 </div>
-                <div className="text-xs text-gray-500">{template.description}</div>
+                <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.1rem' }}>
+                  {template.description}
+                </div>
               </div>
             </button>
           );

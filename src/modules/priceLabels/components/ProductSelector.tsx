@@ -52,22 +52,72 @@ export function ProductSelector({ adapter, value, onChange }: ProductSelectorPro
   }
 
   return (
-    <div ref={containerRef} className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <label
+        style={{
+          display: 'block',
+          fontSize: '0.75rem',
+          fontWeight: 500,
+          color: '#64748b',
+          marginBottom: '0.375rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}
+      >
+        Product
+      </label>
 
       {value ? (
-        <div className="flex items-center gap-2 p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm">
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-gray-900 truncate">{value.name}</div>
-            <div className="text-xs text-gray-500 flex gap-3 mt-0.5">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.6rem 0.75rem',
+            background: '#0a1120',
+            border: '1px solid rgba(56,189,248,0.25)',
+            borderRadius: '10px',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: '#e2e8f0',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {value.name}
+            </div>
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: '#475569',
+                display: 'flex',
+                gap: '0.75rem',
+                marginTop: '0.2rem',
+              }}
+            >
               <span>{value.sku}</span>
-              <span className="font-medium text-emerald-700">{formatPrice(value.price)}</span>
-              {value.imei && <span className="text-gray-400">IMEI {value.imei}</span>}
+              <span style={{ fontWeight: 600, color: '#10b981' }}>{formatPrice(value.price)}</span>
+              {value.imei && <span style={{ color: '#334155' }}>IMEI {value.imei}</span>}
             </div>
           </div>
           <button
             onClick={handleClear}
-            className="text-gray-400 hover:text-gray-600 text-lg leading-none p-1 rounded"
+            style={{
+              color: '#475569',
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              padding: '0.25rem',
+              borderRadius: '6px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+            }}
             aria-label="Clear selection"
           >
             ×
@@ -84,25 +134,78 @@ export function ProductSelector({ adapter, value, onChange }: ProductSelectorPro
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            style={{
+              width: '100%',
+              padding: '0.6rem 0.75rem',
+              border: '1px solid rgba(148,163,184,0.15)',
+              borderRadius: '10px',
+              fontSize: '0.8rem',
+              background: '#0a1120',
+              color: '#e2e8f0',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
           />
 
           {open && (
-            <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <div
+              style={{
+                position: 'absolute',
+                zIndex: 50,
+                marginTop: '0.25rem',
+                width: '100%',
+                background: '#0e1525',
+                border: '1px solid rgba(148,163,184,0.12)',
+                borderRadius: '10px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                maxHeight: '15rem',
+                overflowY: 'auto',
+              }}
+            >
               {filtered.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-gray-500">No products found</div>
+                <div style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#475569' }}>
+                  No products found
+                </div>
               ) : (
                 filtered.map(product => (
                   <button
                     key={product.id}
                     onMouseDown={() => handleSelect(product)}
-                    className="w-full px-3 py-2.5 text-left hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.75rem',
+                      textAlign: 'left',
+                      background: 'none',
+                      border: 'none',
+                      borderBottom: '1px solid rgba(148,163,184,0.06)',
+                      cursor: 'pointer',
+                      display: 'block',
+                    }}
                   >
-                    <div className="text-sm font-medium text-gray-900 truncate">{product.name}</div>
-                    <div className="text-xs text-gray-500 flex gap-3 mt-0.5">
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 500,
+                        color: '#cbd5e1',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {product.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '0.7rem',
+                        color: '#475569',
+                        display: 'flex',
+                        gap: '0.75rem',
+                        marginTop: '0.15rem',
+                      }}
+                    >
                       <span>{product.sku}</span>
-                      <span className="font-semibold text-emerald-700">{formatPrice(product.price)}</span>
-                      {product.category && <span className="text-gray-400">{product.category}</span>}
+                      <span style={{ fontWeight: 600, color: '#10b981' }}>{formatPrice(product.price)}</span>
+                      {product.category && <span style={{ color: '#334155' }}>{product.category}</span>}
                     </div>
                   </button>
                 ))

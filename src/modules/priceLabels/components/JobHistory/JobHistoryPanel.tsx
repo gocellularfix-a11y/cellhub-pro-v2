@@ -23,10 +23,22 @@ export function JobHistoryPanel({
 
   if (jobs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center text-gray-400">
-        <div className="text-5xl mb-4">📋</div>
-        <div className="text-base font-semibold mb-1">No print jobs yet</div>
-        <div className="text-sm">Labels you print will appear here.</div>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '6rem 1rem',
+          textAlign: 'center',
+          color: '#475569',
+        }}
+      >
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📋</div>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.25rem', color: '#64748b' }}>
+          No print jobs yet
+        </div>
+        <div style={{ fontSize: '0.8rem', color: '#334155' }}>Labels you print will appear here.</div>
       </div>
     );
   }
@@ -34,27 +46,55 @@ export function JobHistoryPanel({
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-gray-500">{jobs.length} job{jobs.length !== 1 ? 's' : ''}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <span style={{ fontSize: '0.8rem', color: '#475569' }}>
+          {jobs.length} job{jobs.length !== 1 ? 's' : ''}
+        </span>
         {!confirmClear ? (
           <button
             onClick={() => setConfirmClear(true)}
-            className="text-xs text-red-500 hover:text-red-700 hover:underline"
+            style={{
+              fontSize: '0.72rem',
+              color: '#f87171',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              opacity: 0.7,
+            }}
           >
             Clear all
           </button>
         ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-red-600 font-medium">Delete all {jobs.length} jobs?</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.72rem', color: '#f87171', fontWeight: 500 }}>
+              Delete all {jobs.length} jobs?
+            </span>
             <button
               onClick={() => { onClearAll(); setConfirmClear(false); }}
-              className="text-xs px-2 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              style={{
+                fontSize: '0.72rem',
+                padding: '0.2rem 0.6rem',
+                background: 'rgba(239,68,68,0.15)',
+                color: '#f87171',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
             >
               Yes, clear
             </button>
             <button
               onClick={() => setConfirmClear(false)}
-              className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              style={{
+                fontSize: '0.72rem',
+                padding: '0.2rem 0.6rem',
+                background: '#141e30',
+                color: '#94a3b8',
+                border: '1px solid rgba(148,163,184,0.15)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
             >
               Cancel
             </button>

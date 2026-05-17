@@ -19,8 +19,16 @@ function MiniPreview({ job }: { job: LabelJob }) {
   if (job.isCustom && job.customLabel) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 rounded-t-xl"
-        style={{ height: CARD_PREVIEW_H }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: CARD_PREVIEW_H,
+          background: '#0a1120',
+          backgroundImage: 'radial-gradient(rgba(148,163,184,0.06) 1px, transparent 1px)',
+          backgroundSize: '12px 12px',
+          borderRadius: '10px 10px 0 0',
+        }}
       >
         <CustomLabelPreview
           config={job.customLabel}
@@ -44,9 +52,27 @@ function MiniPreview({ job }: { job: LabelJob }) {
   const barcodeValue = deriveBarcodeValue(job.product);
 
   return (
-    <div className="flex items-center justify-center bg-gray-50 rounded-t-xl" style={{ height: CARD_PREVIEW_H }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: CARD_PREVIEW_H,
+        background: '#0a1120',
+        backgroundImage: 'radial-gradient(rgba(148,163,184,0.06) 1px, transparent 1px)',
+        backgroundSize: '12px 12px',
+        borderRadius: '10px 10px 0 0',
+      }}
+    >
       <div style={{ width: displayW, height: displayH, position: 'relative' }}>
-        <div className="absolute inset-0 shadow rounded" style={{ border: '1px solid #ddd', background: '#fff' }} />
+        <div
+          className="absolute inset-0 rounded"
+          style={{
+            border: '1px solid #ddd',
+            background: '#fff',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+          }}
+        />
         <div
           style={{
             position: 'absolute',
@@ -72,47 +98,114 @@ export function JobCard({ job, onView, onReprint, onEdit, onDelete }: JobCardPro
   const displayPrice = job.product ? formatPrice(job.product.price) : null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+    <div
+      style={{
+        background: 'linear-gradient(160deg, #0e1525 0%, #0b1120 100%)',
+        borderRadius: '12px',
+        border: '1px solid rgba(148,163,184,0.10)',
+        overflow: 'hidden',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+      }}
+    >
       {/* Mini preview — click opens detail modal */}
-      <button className="w-full" onClick={() => onView(job)}>
+      <button style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }} onClick={() => onView(job)}>
         <MiniPreview job={job} />
       </button>
 
       {/* Info */}
-      <div className="p-3">
-        <div className="text-xs font-semibold text-gray-800 truncate leading-tight">{displayName}</div>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+      <div style={{ padding: '0.625rem 0.75rem' }}>
+        <div
+          style={{
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            color: '#cbd5e1',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            lineHeight: 1.3,
+          }}
+        >
+          {displayName}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.375rem', flexWrap: 'wrap' }}>
+          <span
+            style={{
+              fontSize: '0.65rem',
+              padding: '0.1rem 0.4rem',
+              background: 'rgba(56,189,248,0.1)',
+              color: '#38bdf8',
+              borderRadius: '4px',
+              fontWeight: 500,
+              border: '1px solid rgba(56,189,248,0.2)',
+            }}
+          >
             {job.templateName}
           </span>
-          <span className="text-xs text-gray-500">{job.copies}×</span>
+          <span style={{ fontSize: '0.65rem', color: '#475569' }}>{job.copies}×</span>
           {displayPrice && (
-            <span className="text-xs font-semibold text-emerald-700">{displayPrice}</span>
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#10b981' }}>{displayPrice}</span>
           )}
         </div>
-        <div className="text-xs text-gray-400 mt-1">{formatDate(job.createdAt)}</div>
+        <div style={{ fontSize: '0.65rem', color: '#334155', marginTop: '0.25rem' }}>{formatDate(job.createdAt)}</div>
       </div>
 
       {/* Actions */}
-      <div className="flex border-t border-gray-100 divide-x divide-gray-100">
+      <div
+        style={{
+          display: 'flex',
+          borderTop: '1px solid rgba(148,163,184,0.08)',
+        }}
+      >
         <button
           onClick={() => onReprint(job)}
           title="Reprint"
-          className="flex-1 py-2 text-xs text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition-colors font-medium"
+          style={{
+            flex: 1,
+            padding: '0.5rem 0',
+            fontSize: '0.7rem',
+            color: '#64748b',
+            background: 'none',
+            border: 'none',
+            borderRight: '1px solid rgba(148,163,184,0.08)',
+            cursor: 'pointer',
+            fontWeight: 500,
+            transition: 'color 0.12s ease, background 0.12s ease',
+          }}
         >
           🖨 Reprint
         </button>
         <button
           onClick={() => onEdit(job)}
           title="Duplicate / Edit"
-          className="flex-1 py-2 text-xs text-gray-600 hover:bg-amber-50 hover:text-amber-700 transition-colors font-medium"
+          style={{
+            flex: 1,
+            padding: '0.5rem 0',
+            fontSize: '0.7rem',
+            color: '#64748b',
+            background: 'none',
+            border: 'none',
+            borderRight: '1px solid rgba(148,163,184,0.08)',
+            cursor: 'pointer',
+            fontWeight: 500,
+            transition: 'color 0.12s ease, background 0.12s ease',
+          }}
         >
           ✏ Edit
         </button>
         <button
           onClick={() => onDelete(job.id)}
           title="Delete"
-          className="flex-1 py-2 text-xs text-gray-600 hover:bg-red-50 hover:text-red-700 transition-colors font-medium"
+          style={{
+            flex: 1,
+            padding: '0.5rem 0',
+            fontSize: '0.7rem',
+            color: '#64748b',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: 500,
+            transition: 'color 0.12s ease, background 0.12s ease',
+          }}
         >
           🗑 Delete
         </button>

@@ -26,12 +26,20 @@ export function LabelPreview({ product, templateId }: LabelPreviewProps) {
   if (!product) {
     return (
       <div
-        className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-xl bg-gray-50"
-        style={{ width: PREVIEW_MAX_W, height: PREVIEW_MAX_H }}
+        style={{
+          width: PREVIEW_MAX_W,
+          height: PREVIEW_MAX_H,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: '2px dashed rgba(148,163,184,0.12)',
+          borderRadius: '14px',
+          background: 'rgba(10,17,32,0.5)',
+        }}
       >
-        <div className="text-center text-gray-400">
-          <div className="text-4xl mb-2">🏷️</div>
-          <div className="text-sm font-medium">Select a product to preview</div>
+        <div style={{ textAlign: 'center', color: '#334155' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏷️</div>
+          <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#475569' }}>Select a product to preview</div>
         </div>
       </div>
     );
@@ -41,17 +49,27 @@ export function LabelPreview({ product, templateId }: LabelPreviewProps) {
 
   return (
     <div
-      className="flex items-center justify-center bg-gray-100 rounded-xl"
-      style={{ width: PREVIEW_MAX_W, height: PREVIEW_MAX_H }}
+      style={{
+        width: PREVIEW_MAX_W,
+        height: PREVIEW_MAX_H,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0a1120',
+        backgroundImage: 'radial-gradient(rgba(148,163,184,0.06) 1px, transparent 1px)',
+        backgroundSize: '16px 16px',
+        borderRadius: '14px',
+      }}
     >
       {/* Outer shell sized to scaled dimensions */}
       <div style={{ width: displayW, height: displayH, position: 'relative' }}>
         {/* Shadow + border for print preview feel */}
         <div
-          className="absolute inset-0 shadow-lg rounded"
+          className="absolute inset-0 rounded"
           style={{
             border: '1px solid #bbb',
             background: '#fff',
+            boxShadow: '0 0 0 1px rgba(56,189,248,0.12), 0 8px 32px rgba(0,0,0,0.6)',
           }}
         />
         {/* Scale the label to fit */}

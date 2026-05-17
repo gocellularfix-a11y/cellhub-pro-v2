@@ -21,6 +21,12 @@ interface PriceLabelsProps {
   adapter?: ProductAdapter;
 }
 
+const TAB_ICONS: Record<Tab, string> = {
+  product: '🏷',
+  custom: '✏',
+  history: '🕒',
+};
+
 export function PriceLabels({ adapter: adapterProp }: PriceLabelsProps = {}) {
   const [tab, setTab] = useState<Tab>('product');
   // Product-label state
@@ -76,144 +82,232 @@ export function PriceLabels({ adapter: adapterProp }: PriceLabelsProps = {}) {
     history: jobs.length > 0 ? `History (${jobs.length})` : 'History',
   };
 
+  const cardStyle: React.CSSProperties = {
+    background: 'linear-gradient(160deg, #0e1525 0%, #0b1120 100%)',
+    border: '1px solid rgba(148,163,184,0.10)',
+    borderRadius: '14px',
+  };
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: '0.625rem',
+    fontWeight: 600,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    alignSelf: 'flex-start',
+    marginBottom: '0.5rem',
+  };
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Price Labels</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Design and print product labels</p>
-        </div>
-
-        {/* Tab switcher */}
-        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
-          {(['product', 'custom', 'history'] as Tab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
-                tab === t
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+    <div
+      style={{
+        background: '#080d18',
+        minHeight: '100vh',
+        padding: '1.5rem 1rem 4rem',
+      }}
+    >
+      <div className="max-w-5xl mx-auto">
+        {/* Page header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '1.5rem',
+            flexWrap: 'wrap',
+            gap: '1rem',
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontSize: '1.5rem',
+                fontWeight: 800,
+                color: '#e2e8f0',
+                margin: 0,
+                lineHeight: 1.2,
+              }}
             >
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </div>
+              🏷 Label Studio
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.2rem 0 0' }}>
+              Design and print product labels
+            </p>
+          </div>
 
-      {/* ── Product Label tab ─────────────────────────────────────────────── */}
-      {tab === 'product' && (
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left panel */}
-          <div className="flex-shrink-0 w-full lg:w-72 space-y-5">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-5">
-              <ProductSelector
-                adapter={adapter}
-                value={selectedProduct}
-                onChange={setSelectedProduct}
+          {/* Tab switcher */}
+          <div
+            style={{
+              display: 'flex',
+              background: 'rgba(15,23,42,0.6)',
+              border: '1px solid rgba(148,163,184,0.12)',
+              borderRadius: '12px',
+              padding: '4px',
+              gap: '2px',
+            }}
+          >
+            {(['product', 'custom', 'history'] as Tab[]).map(t => {
+              const isActive = tab === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  style={{
+                    padding: '0.375rem 0.875rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: isActive ? '1px solid rgba(56,189,248,0.25)' : '1px solid transparent',
+                    background: isActive ? 'rgba(56,189,248,0.1)' : 'transparent',
+                    color: isActive ? '#38bdf8' : '#64748b',
+                    cursor: 'pointer',
+                    transition: 'all 0.12s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span>{TAB_ICONS[t]}</span>
+                  {TAB_LABELS[t]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Product Label tab ─────────────────────────────────────────────── */}
+        {tab === 'product' && (
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left panel */}
+            <div className="flex-shrink-0 w-full lg:w-72 space-y-4">
+              <div style={{ ...cardStyle, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <ProductSelector
+                  adapter={adapter}
+                  value={selectedProduct}
+                  onChange={setSelectedProduct}
+                />
+                <TemplateSelector value={selectedTemplate} onChange={setSelectedTemplate} />
+                <CopiesInput value={productCopies} onChange={setProductCopies} />
+              </div>
+              <PrintButton
+                copies={productCopies}
+                disabled={!selectedProduct}
+                isPrinting={isPrinting}
+                onClick={handleProductPrint}
               />
-              <TemplateSelector value={selectedTemplate} onChange={setSelectedTemplate} />
-              <CopiesInput value={productCopies} onChange={setProductCopies} />
+              {!selectedProduct && (
+                <p style={{ fontSize: '0.72rem', textAlign: 'center', color: '#475569' }}>
+                  Select a product to enable printing
+                </p>
+              )}
             </div>
-            <PrintButton
-              copies={productCopies}
-              disabled={!selectedProduct}
-              isPrinting={isPrinting}
-              onClick={handleProductPrint}
-            />
-            {!selectedProduct && (
-              <p className="text-xs text-center text-gray-400">Select a product to enable printing</p>
-            )}
-          </div>
 
-          {/* Right panel — live preview */}
-          <div className="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col items-center justify-center gap-4">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide self-start">
-              Preview
-            </h2>
-            <LabelPreview product={selectedProduct} templateId={selectedTemplate} />
-            {selectedProduct && (
-              <p className="text-xs text-gray-400">
-                Scaled for display — prints at actual label dimensions
-              </p>
-            )}
+            {/* Right panel — live preview */}
+            <div
+              style={{
+                ...cardStyle,
+                flex: 1,
+                padding: '1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '1rem',
+              }}
+            >
+              <span style={sectionLabelStyle}>Preview</span>
+              <LabelPreview product={selectedProduct} templateId={selectedTemplate} />
+              {selectedProduct && (
+                <p style={{ fontSize: '0.72rem', color: '#475569' }}>
+                  Scaled for display — prints at actual label dimensions
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Custom Label tab ──────────────────────────────────────────────── */}
-      {tab === 'custom' && (
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left panel — toolbox */}
-          <div className="flex-shrink-0 w-full lg:w-64 space-y-4">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-              <ElementToolbar
-                widthMm={customLabel.config.widthMm}
-                heightMm={customLabel.config.heightMm}
-                onAddText={customLabel.addText}
-                onAddBarcode={customLabel.addBarcode}
-                onAddQR={customLabel.addQR}
-                onSizeChange={customLabel.setLabelSize}
-                onClear={customLabel.clearCanvas}
+        {/* ── Custom Label tab ──────────────────────────────────────────────── */}
+        {tab === 'custom' && (
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left panel — toolbox */}
+            <div className="flex-shrink-0 w-full lg:w-64 space-y-4">
+              <div style={{ ...cardStyle, padding: '1rem' }}>
+                <ElementToolbar
+                  widthMm={customLabel.config.widthMm}
+                  heightMm={customLabel.config.heightMm}
+                  onAddText={customLabel.addText}
+                  onAddBarcode={customLabel.addBarcode}
+                  onAddQR={customLabel.addQR}
+                  onSizeChange={customLabel.setLabelSize}
+                  onClear={customLabel.clearCanvas}
+                  onPasteText={customLabel.addTextWithValue}
+                />
+              </div>
+
+              <ElementPropertiesPanel
+                element={customLabel.selectedElement}
+                onUpdate={customLabel.updateElement}
+                onDelete={customLabel.deleteElement}
+              />
+
+              <div style={{ ...cardStyle, padding: '1rem' }}>
+                <CopiesInput value={customCopies} onChange={setCustomCopies} />
+              </div>
+
+              <PrintButton
+                copies={customCopies}
+                disabled={customLabel.config.elements.length === 0}
+                isPrinting={isPrinting}
+                onClick={handleCustomPrint}
+              />
+              {customLabel.config.elements.length === 0 && (
+                <p style={{ fontSize: '0.72rem', textAlign: 'center', color: '#475569' }}>
+                  Add at least one element to print
+                </p>
+              )}
+            </div>
+
+            {/* Right panel — interactive canvas */}
+            <div
+              style={{
+                ...cardStyle,
+                flex: 1,
+                padding: '1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <span style={sectionLabelStyle}>Canvas</span>
+              <EditorCanvas
+                config={customLabel.config}
+                selectedId={customLabel.selectedId}
+                onSelect={customLabel.setSelectedId}
+                onMove={customLabel.moveElement}
+                onUpdate={customLabel.updateElement}
                 onPasteText={customLabel.addTextWithValue}
               />
             </div>
-
-            <ElementPropertiesPanel
-              element={customLabel.selectedElement}
-              onUpdate={customLabel.updateElement}
-              onDelete={customLabel.deleteElement}
-            />
-
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-              <CopiesInput value={customCopies} onChange={setCustomCopies} />
-            </div>
-
-            <PrintButton
-              copies={customCopies}
-              disabled={customLabel.config.elements.length === 0}
-              isPrinting={isPrinting}
-              onClick={handleCustomPrint}
-            />
-            {customLabel.config.elements.length === 0 && (
-              <p className="text-xs text-center text-gray-400">
-                Add at least one element to print
-              </p>
-            )}
           </div>
+        )}
 
-          {/* Right panel — interactive canvas */}
-          <div className="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col items-center justify-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide self-start mb-2">
-              Canvas
-            </h2>
-            <EditorCanvas
-              config={customLabel.config}
-              selectedId={customLabel.selectedId}
-              onSelect={customLabel.setSelectedId}
-              onMove={customLabel.moveElement}
-              onUpdate={customLabel.updateElement}
-              onPasteText={customLabel.addTextWithValue}
-            />
-          </div>
-        </div>
-      )}
+        {/* ── History tab ───────────────────────────────────────────────────── */}
+        {tab === 'history' && (
+          <JobHistoryPanel
+            jobs={jobs}
+            onReprint={handleReprintJob}
+            onEdit={handleEditJob}
+            onDelete={deleteJob}
+            onClearAll={clearAll}
+          />
+        )}
 
-      {/* ── History tab ───────────────────────────────────────────────────── */}
-      {tab === 'history' && (
-        <JobHistoryPanel
-          jobs={jobs}
-          onReprint={handleReprintJob}
-          onEdit={handleEditJob}
-          onDelete={deleteJob}
-          onClearAll={clearAll}
-        />
-      )}
-
-      {/* React portal for browser print — outside visible layout */}
-      {printPortal}
+        {/* React portal for browser print — outside visible layout */}
+        {printPortal}
+      </div>
     </div>
   );
 }

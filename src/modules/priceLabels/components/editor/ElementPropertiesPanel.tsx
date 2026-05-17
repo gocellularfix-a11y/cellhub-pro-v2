@@ -19,6 +19,31 @@ const TEXT_SIZE_BUTTONS: { label: string; value: TextSize }[] = [
   { label: 'L', value: 'large' },
 ];
 
+const darkInput: React.CSSProperties = {
+  background: '#0a1120',
+  border: '1px solid rgba(148,163,184,0.15)',
+  color: '#e2e8f0',
+  borderRadius: '8px',
+  padding: '0.35rem 0.5rem',
+  fontSize: '0.8rem',
+  outline: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+};
+
+const darkSelect: React.CSSProperties = {
+  ...darkInput,
+  appearance: 'none',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.7rem',
+  color: '#64748b',
+  marginBottom: '0.25rem',
+  fontWeight: 500,
+};
+
 export function ElementPropertiesPanel({
   element,
   onUpdate,
@@ -26,21 +51,59 @@ export function ElementPropertiesPanel({
 }: ElementPropertiesPanelProps) {
   if (!element) {
     return (
-      <div className="flex items-center justify-center text-center p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-        <p className="text-xs text-gray-400">Click an element on the canvas to edit it</p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          padding: '1rem',
+          background: 'rgba(10,17,32,0.5)',
+          borderRadius: '12px',
+          border: '1px dashed rgba(148,163,184,0.12)',
+        }}
+      >
+        <p style={{ fontSize: '0.72rem', color: '#334155' }}>Click an element on the canvas to edit it</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+    <div
+      style={{
+        background: 'linear-gradient(160deg, #0e1525 0%, #0b1120 100%)',
+        borderRadius: '12px',
+        border: '1px solid rgba(148,163,184,0.10)',
+        padding: '0.875rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span
+          style={{
+            fontSize: '0.65rem',
+            fontWeight: 600,
+            color: '#475569',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}
+        >
           {element.type === 'text' ? 'Text' : element.type === 'barcode' ? 'Barcode' : 'QR Code'}
         </span>
         <button
           onClick={() => onDelete(element.id)}
-          className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
+          style={{
+            fontSize: '0.7rem',
+            padding: '0.2rem 0.5rem',
+            background: 'rgba(239,68,68,0.08)',
+            color: '#f87171',
+            borderRadius: '6px',
+            border: '1px solid rgba(239,68,68,0.2)',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
         >
           🗑 Delete
         </button>
@@ -57,7 +120,15 @@ export function ElementPropertiesPanel({
       )}
 
       {/* Position */}
-      <div className="pt-1 border-t border-gray-100 grid grid-cols-2 gap-2">
+      <div
+        style={{
+          paddingTop: '0.5rem',
+          borderTop: '1px solid rgba(148,163,184,0.08)',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.5rem',
+        }}
+      >
         <NumField
           label="X (px)"
           value={Math.round(element.x)}
@@ -101,58 +172,75 @@ function TextPanel({
     <>
       {/* Value */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Value</label>
+        <label style={labelStyle}>Value</label>
         <input
           type="text"
           value={element.value}
           onChange={e => onUpdate({ ...element, value: e.target.value })}
-          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={darkInput}
           placeholder="Enter text…"
         />
       </div>
 
       {/* Font size — numeric + S/M/L quick buttons */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Font Size (6–72 px)</label>
-        <div className="flex items-center gap-2">
+        <label style={labelStyle}>Font Size (6–72 px)</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <input
             type="number"
             min={6}
             max={72}
             value={fontSize}
             onChange={e => setFontSize(e.target.value)}
-            className="w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+            style={{ ...darkInput, width: '4rem', textAlign: 'center' }}
           />
-          <span className="text-xs text-gray-400">px</span>
-          <div className="flex gap-1 ml-auto">
-            {TEXT_SIZE_BUTTONS.map(sz => (
-              <button
-                key={sz.value}
-                onClick={() => applyPreset(sz.value)}
-                title={`${sz.label}: ${FONT_SIZE_PRESETS[sz.value]}px`}
-                className={`w-8 h-7 text-xs font-semibold rounded border transition-colors ${
-                  fontSize === FONT_SIZE_PRESETS[sz.value]
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
-                }`}
-              >
-                {sz.label}
-              </button>
-            ))}
+          <span style={{ fontSize: '0.7rem', color: '#475569' }}>px</span>
+          <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
+            {TEXT_SIZE_BUTTONS.map(sz => {
+              const isActive = fontSize === FONT_SIZE_PRESETS[sz.value];
+              return (
+                <button
+                  key={sz.value}
+                  onClick={() => applyPreset(sz.value)}
+                  title={`${sz.label}: ${FONT_SIZE_PRESETS[sz.value]}px`}
+                  style={{
+                    width: '2rem',
+                    height: '1.75rem',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: isActive ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.15)',
+                    background: isActive ? '#38bdf8' : '#141e30',
+                    color: isActive ? '#000' : '#64748b',
+                    cursor: 'pointer',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  {sz.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
       {/* Bold */}
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-500">Style</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <label style={{ ...labelStyle, marginBottom: 0 }}>Style</label>
         <button
           onClick={() => onUpdate({ ...element, bold: !element.bold })}
-          className={`h-7 px-3 text-xs font-bold rounded border transition-colors ${
-            element.bold
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
-          }`}
+          style={{
+            height: '1.75rem',
+            padding: '0 0.75rem',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            borderRadius: '6px',
+            border: element.bold ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.15)',
+            background: element.bold ? '#38bdf8' : '#141e30',
+            color: element.bold ? '#000' : '#64748b',
+            cursor: 'pointer',
+            transition: 'all 0.1s ease',
+          }}
         >
           B
         </button>
@@ -160,11 +248,11 @@ function TextPanel({
 
       {/* Font family */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Font Family</label>
+        <label style={labelStyle}>Font Family</label>
         <select
           value={element.fontFamily ?? 'Arial'}
           onChange={e => onUpdate({ ...element, fontFamily: e.target.value })}
-          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={darkSelect}
         >
           {FONT_FAMILIES.map(f => (
             <option key={f} value={f}>{f}</option>
@@ -173,7 +261,15 @@ function TextPanel({
       </div>
 
       {/* Box size — optional width + height */}
-      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.5rem',
+          paddingTop: '0.5rem',
+          borderTop: '1px solid rgba(148,163,184,0.08)',
+        }}
+      >
         <OptNumField
           label="Box W (px)"
           value={element.width}
@@ -189,7 +285,7 @@ function TextPanel({
           onChange={v => onUpdate({ ...element, height: v })}
         />
       </div>
-      <p className="text-xs text-gray-400 -mt-1">
+      <p style={{ fontSize: '0.68rem', color: '#334155', marginTop: '-0.25rem' }}>
         Box W enables word-wrap · Box H clips overflow
       </p>
     </>
@@ -208,20 +304,20 @@ function BarcodePanel({
   return (
     <>
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Barcode Value (CODE128)</label>
+        <label style={labelStyle}>Barcode Value (CODE128)</label>
         <input
           type="text"
           value={element.value}
           onChange={e => onUpdate({ ...element, value: e.target.value })}
-          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{ ...darkInput, fontFamily: 'monospace' }}
           placeholder="e.g. 012345678901"
         />
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">
+        <label style={labelStyle}>
           Width: {element.width ?? 'auto'} px
-          <span className="text-gray-400 ml-1">(60–500)</span>
+          <span style={{ color: '#334155', marginLeft: '0.25rem' }}>(60–500)</span>
         </label>
         <input
           type="range"
@@ -235,9 +331,9 @@ function BarcodePanel({
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">
+        <label style={labelStyle}>
           Height: {element.height} px
-          <span className="text-gray-400 ml-1">(20–180)</span>
+          <span style={{ color: '#334155', marginLeft: '0.25rem' }}>(20–180)</span>
         </label>
         <input
           type="range"
@@ -265,19 +361,19 @@ function QRPanel({
   return (
     <>
       <div>
-        <label className="block text-xs text-gray-500 mb-1">QR Value / URL</label>
+        <label style={labelStyle}>QR Value / URL</label>
         <input
           type="text"
           value={element.value}
           onChange={e => onUpdate({ ...element, value: e.target.value })}
-          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={darkInput}
           placeholder="https://example.com"
         />
       </div>
       <div>
-        <label className="block text-xs text-gray-500 mb-1">
+        <label style={labelStyle}>
           Size: {element.size} px
-          <span className="text-gray-400 ml-1">(30–300)</span>
+          <span style={{ color: '#334155', marginLeft: '0.25rem' }}>(30–300)</span>
         </label>
         <input
           type="range"
@@ -308,7 +404,7 @@ function NumField({
 }) {
   return (
     <div>
-      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <label style={labelStyle}>{label}</label>
       <input
         type="number"
         value={value}
@@ -317,7 +413,7 @@ function NumField({
           const n = parseInt(e.target.value, 10);
           if (!isNaN(n)) onChange(Math.max(min, n));
         }}
-        className="w-full px-2 py-1 border border-gray-300 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+        style={{ ...darkInput, textAlign: 'center', fontSize: '0.72rem' }}
       />
     </div>
   );
@@ -338,7 +434,7 @@ function OptNumField({
 }) {
   return (
     <div>
-      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <label style={labelStyle}>{label}</label>
       <input
         type="number"
         value={value ?? ''}
@@ -350,7 +446,7 @@ function OptNumField({
           const n = parseInt(raw, 10);
           if (!isNaN(n)) onChange(Math.max(min, n));
         }}
-        className="w-full px-2 py-1 border border-gray-300 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+        style={{ ...darkInput, textAlign: 'center', fontSize: '0.72rem' }}
       />
     </div>
   );
