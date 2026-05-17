@@ -956,9 +956,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
       {/* Command bar — Phase 3 premium command center */}
       <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#374151', letterSpacing: '0.08em' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.09em' }}>
             {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
           </span>
         </div>
@@ -1097,8 +1097,18 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg px-3.5 py-2 text-sm bg-blue-600 text-white leading-relaxed whitespace-pre-wrap">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+        <div style={{
+          maxWidth: '82%',
+          padding: '7px 12px',
+          borderRadius: 6,
+          background: '#0F1E35',
+          border: '1px solid #1E3352',
+          color: '#93C5FD',
+          fontSize: 13,
+          lineHeight: '1.5',
+          whiteSpace: 'pre-wrap',
+        }}>
           {msg.content}
         </div>
       </div>

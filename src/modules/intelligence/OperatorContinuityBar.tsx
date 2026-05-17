@@ -95,7 +95,7 @@ export default function OperatorContinuityBar({ chipData, onFireChat, locale }: 
       flexWrap: 'wrap' as React.CSSProperties['flexWrap'],
       background: '#080E1A',
     }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: '#374151', letterSpacing: '0.1em', flexShrink: 0 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.1em', flexShrink: 0 }}>
         {headerLabel}
       </span>
       {signals.map((sig, i) => (

@@ -11,32 +11,28 @@ function ensureKeyframes() {
   s.id = KF_ID;
   s.textContent = `
 @keyframes rcFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
   to   { opacity: 1; transform: translateY(0);   }
 }`;
   document.head.appendChild(s);
 }
 
-// ── action visual config ──────────────────────────────────────
-type ExecutionTarget = string;
-
 const TARGET_ICON: Record<string, string> = {
-  whatsapp_url:       '📲',
-  open_customer:      '👤',
-  open_repair:        '🔧',
-  open_layaway:       '📦',
-  open_inventory:     '🗂️',
-  open_promote_panel: '🚀',
-  copy_to_clipboard:  '📋',
+  whatsapp_url:          '📲',
+  open_customer:         '👤',
+  open_repair:           '🔧',
+  open_layaway:          '📦',
+  open_inventory:        '🗂️',
+  open_promote_panel:    '🚀',
+  copy_to_clipboard:     '📋',
   add_to_operator_queue: '✅',
-  pos_discount:       '🏷️',
-  pos_bundle:         '📦',
-  review_panel:       '🔍',
-  reminder_queue:     '⏰',
-  queue_manager_review: '📊',
+  pos_discount:          '🏷️',
+  pos_bundle:            '📦',
+  review_panel:          '🔍',
+  reminder_queue:        '⏰',
+  queue_manager_review:  '📊',
 };
 
-// "Primary" targets get a more prominent button style.
 const PRIMARY_TARGETS = new Set([
   'whatsapp_url',
   'open_customer',
@@ -46,12 +42,11 @@ const PRIMARY_TARGETS = new Set([
   'open_promote_panel',
 ]);
 
-// ── kind config ───────────────────────────────────────────────
 const KIND_CFG: Record<string, { accent: string; badgeBg: string; badgeColor: string; badge: string }> = {
-  answer:        { accent: '#3B82F6', badgeBg: '#1E3A5F', badgeColor: '#60A5FA', badge: 'INTEL' },
-  disambiguation:{ accent: '#F59E0B', badgeBg: '#3D2B0A', badgeColor: '#FCD34D', badge: 'CLARIFY' },
-  error:         { accent: '#EF4444', badgeBg: '#3B0B0B', badgeColor: '#FCA5A5', badge: 'ERROR' },
-  help:          { accent: '#6B7280', badgeBg: '#1F2937', badgeColor: '#9CA3AF', badge: 'HELP' },
+  answer:         { accent: '#3B82F6', badgeBg: '#1E3A5F', badgeColor: '#60A5FA', badge: 'INTEL' },
+  disambiguation: { accent: '#F59E0B', badgeBg: '#3D2B0A', badgeColor: '#FCD34D', badge: 'CLARIFY' },
+  error:          { accent: '#EF4444', badgeBg: '#3B0B0B', badgeColor: '#FCA5A5', badge: 'ERROR' },
+  help:           { accent: '#6B7280', badgeBg: '#1F2937', badgeColor: '#9CA3AF', badge: 'HELP' },
 };
 
 export interface ResponseCardProps {
@@ -76,71 +71,64 @@ export default function ResponseCard({
   ensureKeyframes();
 
   const cfg = KIND_CFG[kind ?? 'answer'] ?? KIND_CFG.answer;
+  const isAnswer = !kind || kind === 'answer';
 
-  // Split content into sections on double-newline.
   const paragraphs = content.split('\n\n').map(p => p.trim()).filter(Boolean);
   const [primary, ...rest] = paragraphs;
 
-  // Partition actions: triggerQuery → chips; others → buttons by priority.
-  const chipActions  = (actions ?? []).filter(a => a.triggerQuery && a.triggerQuery.trim());
-  const execActions  = (actions ?? []).filter(a => !(a.triggerQuery && a.triggerQuery.trim()));
-  const primaryExec  = execActions.filter(a => PRIMARY_TARGETS.has(a.payload.executionTarget));
+  const chipActions   = (actions ?? []).filter(a => a.triggerQuery && a.triggerQuery.trim());
+  const execActions   = (actions ?? []).filter(a => !(a.triggerQuery && a.triggerQuery.trim()));
+  const primaryExec   = execActions.filter(a => PRIMARY_TARGETS.has(a.payload.executionTarget));
   const secondaryExec = execActions.filter(a => !PRIMARY_TARGETS.has(a.payload.executionTarget));
+  const hasActions    = (primaryExec.length + secondaryExec.length + chipActions.length) > 0;
 
   return (
     <div style={{
       borderRadius: 8,
-      border: `1px solid ${cfg.accent}22`,
+      border: `1px solid ${cfg.accent}1A`,
       borderLeft: `3px solid ${cfg.accent}`,
       background: '#0F1829',
       overflow: 'hidden',
-      animation: 'rcFadeIn 0.18s ease-out',
+      animation: 'rcFadeIn 0.16s ease-out',
       width: '100%',
     }}>
-      {/* ── Header bar ── */}
-      <div style={{
-        padding: '6px 12px',
-        borderBottom: '1px solid #1A2332',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <span style={{ fontSize: 10, color: '#374151', fontWeight: 700, letterSpacing: '0.1em' }}>
-          {cfg.badge}
-        </span>
-        {kind && kind !== 'answer' && (
+      {/* Header — only for non-answer kinds (disambiguation, error, help) */}
+      {!isAnswer && (
+        <div style={{
+          padding: '5px 12px',
+          borderBottom: '1px solid #141E2E',
+          display: 'flex',
+          alignItems: 'center',
+        }}>
           <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+            fontSize: 9, fontWeight: 700, letterSpacing: '0.09em',
             padding: '2px 7px', borderRadius: 99,
             background: cfg.badgeBg, color: cfg.badgeColor,
             border: `1px solid ${cfg.accent}33`,
           }}>
             {cfg.badge}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* ── Content ── */}
-      <div style={{ padding: '10px 14px' }}>
-        {/* Primary section — first paragraph */}
+      {/* Content */}
+      <div style={{ padding: '12px 14px 10px' }}>
         <div style={{
           fontSize: 13,
-          color: '#E2E8F0',
-          lineHeight: '1.55',
+          color: '#D1D5DB',
+          lineHeight: '1.6',
           whiteSpace: 'pre-wrap',
         }}>
           {primary}
         </div>
-
-        {/* Additional sections — subsequent paragraphs */}
         {rest.map((p, i) => (
           <div key={i} style={{
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: '1px solid #1A2332',
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: '1px solid #141E2E',
             fontSize: 12,
-            color: '#94A3B8',
-            lineHeight: '1.55',
+            color: '#8896A7',
+            lineHeight: '1.6',
             whiteSpace: 'pre-wrap',
           }}>
             {p}
@@ -148,57 +136,33 @@ export default function ResponseCard({
         ))}
       </div>
 
-      {/* ── Workflow Sections ── */}
+      {/* Workflow Sections */}
       {workflowSections && workflowSections.length > 0 && (
-        <div style={{ borderTop: '1px solid #1A2332', padding: '8px 14px 10px' }}>
+        <div style={{ borderTop: '1px solid #141E2E', padding: '8px 14px 10px' }}>
           {workflowSections.map((section, si) => (
             <WorkflowSectionBlock key={si} section={section} />
           ))}
         </div>
       )}
 
-      {/* ── Actions ── */}
-      {(primaryExec.length + secondaryExec.length + chipActions.length) > 0 && (
+      {/* Actions */}
+      {hasActions && (
         <div style={{
           padding: '8px 12px 10px',
-          borderTop: '1px solid #1A2332',
+          borderTop: '1px solid #141E2E',
           display: 'flex',
           flexWrap: 'wrap',
           gap: 6,
           alignItems: 'flex-start',
         }}>
-          {/* Primary exec buttons */}
           {primaryExec.map(a => (
-            <ExecButton
-              key={a.id}
-              action={a}
-              isPrimary
-              accent={cfg.accent}
-              feedback={feedbackById[a.id]}
-              onAction={onAction}
-              lang={lang}
-            />
+            <ExecButton key={a.id} action={a} isPrimary accent={cfg.accent} feedback={feedbackById[a.id]} onAction={onAction} lang={lang} />
           ))}
-          {/* Secondary exec buttons */}
           {secondaryExec.map(a => (
-            <ExecButton
-              key={a.id}
-              action={a}
-              isPrimary={false}
-              accent={cfg.accent}
-              feedback={feedbackById[a.id]}
-              onAction={onAction}
-              lang={lang}
-            />
+            <ExecButton key={a.id} action={a} isPrimary={false} accent={cfg.accent} feedback={feedbackById[a.id]} onAction={onAction} lang={lang} />
           ))}
-          {/* Chip-style trigger-query actions */}
           {chipActions.map(a => (
-            <ChipButton
-              key={a.id}
-              action={a}
-              feedback={feedbackById[a.id]}
-              onAction={onAction}
-            />
+            <ChipButton key={a.id} action={a} feedback={feedbackById[a.id]} onAction={onAction} />
           ))}
         </div>
       )}
@@ -206,14 +170,9 @@ export default function ResponseCard({
   );
 }
 
-// ── Exec button: primary or secondary ────────────────────────
+// ── Exec button ───────────────────────────────────────────────
 function ExecButton({
-  action,
-  isPrimary,
-  accent,
-  feedback,
-  onAction,
-  lang,
+  action, isPrimary, accent, feedback, onAction, lang,
 }: {
   action: ChatActionUI;
   isPrimary: boolean;
@@ -224,11 +183,9 @@ function ExecButton({
 }) {
   const icon = TARGET_ICON[action.payload.executionTarget] ?? '';
   const executable = action.payload.executable;
-  const notExecTitle = lang === 'es'
-    ? 'Datos faltantes para ejecutar'
-    : lang === 'pt'
-      ? 'Dados faltantes para executar'
-      : 'Missing data to execute';
+  const notExecTitle = lang === 'es' ? 'Datos faltantes para ejecutar'
+    : lang === 'pt' ? 'Dados faltantes para executar'
+    : 'Missing data to execute';
 
   return (
     <div>
@@ -245,15 +202,11 @@ function ExecButton({
           fontSize: isPrimary ? 12 : 11,
           fontWeight: isPrimary ? 600 : 400,
           cursor: executable ? 'pointer' : 'not-allowed',
-          opacity: executable ? 1 : 0.45,
-          border: isPrimary
-            ? `1px solid ${accent}55`
-            : '1px solid rgba(71,85,105,0.5)',
-          background: isPrimary
-            ? `${accent}18`
-            : 'rgba(15,24,41,0.6)',
-          color: isPrimary ? accent : '#94A3B8',
-          transition: 'background 0.1s, opacity 0.1s',
+          opacity: executable ? 1 : 0.4,
+          border: isPrimary ? `1px solid ${accent}44` : '1px solid rgba(51,65,85,0.7)',
+          background: isPrimary ? `${accent}15` : 'rgba(15,24,41,0.5)',
+          color: isPrimary ? accent : '#8896A7',
+          transition: 'opacity 0.1s',
           whiteSpace: 'nowrap',
         }}
       >
@@ -261,19 +214,15 @@ function ExecButton({
         {action.label}
       </button>
       {feedback?.message && (
-        <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280' }}>
-          {feedback.message}
-        </div>
+        <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280' }}>{feedback.message}</div>
       )}
     </div>
   );
 }
 
-// ── Chip button: fires a triggerQuery follow-up ───────────────
+// ── Chip button ───────────────────────────────────────────────
 function ChipButton({
-  action,
-  feedback,
-  onAction,
+  action, feedback, onAction,
 }: {
   action: ChatActionUI;
   feedback?: { message: string; ts: number };
@@ -290,12 +239,10 @@ function ChipButton({
           padding: '4px 10px',
           borderRadius: 99,
           fontSize: 11,
-          fontWeight: 400,
           color: '#64748B',
-          border: '1px solid #1E2D3D',
+          border: '1px solid #1A2535',
           background: 'transparent',
           cursor: 'pointer',
-          transition: 'color 0.1s, border-color 0.1s',
           whiteSpace: 'nowrap',
         }}
       >
@@ -303,9 +250,7 @@ function ChipButton({
         {action.label}
       </button>
       {feedback?.message && (
-        <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280' }}>
-          {feedback.message}
-        </div>
+        <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280' }}>{feedback.message}</div>
       )}
     </div>
   );
@@ -316,7 +261,7 @@ function WorkflowSectionBlock({ section }: { section: WorkflowSection }) {
   const accent = section.accent ?? '#6B7280';
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
         {section.icon && <span style={{ fontSize: 11, lineHeight: 1 }}>{section.icon}</span>}
         <span style={{
           fontSize: 10, fontWeight: 700, color: accent,
@@ -330,17 +275,15 @@ function WorkflowSectionBlock({ section }: { section: WorkflowSection }) {
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
-          padding: '5px 8px',
-          borderRadius: 5,
-          background: ri % 2 === 0 ? '#0B1220' : 'transparent',
-          marginBottom: 2,
+          padding: '6px 0',
+          borderTop: ri > 0 ? '1px solid #141E2E' : undefined,
         }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 12, color: '#CBD5E1', fontWeight: 500, lineHeight: '1.3' }}>
+            <div style={{ fontSize: 12, color: '#C4CDD9', fontWeight: 500, lineHeight: '1.3' }}>
               {row.label}
             </div>
             {row.meta && (
-              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1, lineHeight: '1.3' }}>
+              <div style={{ fontSize: 11, color: '#5A6880', marginTop: 2, lineHeight: '1.3' }}>
                 {row.meta}
               </div>
             )}
@@ -349,10 +292,10 @@ function WorkflowSectionBlock({ section }: { section: WorkflowSection }) {
             <span style={{
               fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
               padding: '2px 6px', borderRadius: 99,
-              background: `${row.badgeAccent ?? '#6B7280'}22`,
+              background: `${row.badgeAccent ?? '#6B7280'}1A`,
               color: row.badgeAccent ?? '#6B7280',
-              border: `1px solid ${row.badgeAccent ?? '#6B7280'}44`,
-              flexShrink: 0, marginLeft: 8, marginTop: 2,
+              border: `1px solid ${row.badgeAccent ?? '#6B7280'}33`,
+              flexShrink: 0, marginLeft: 10, marginTop: 1,
               whiteSpace: 'nowrap' as const,
             }}>
               {row.badge}
@@ -361,7 +304,7 @@ function WorkflowSectionBlock({ section }: { section: WorkflowSection }) {
         </div>
       ))}
       {section.summary && (
-        <div style={{ fontSize: 11, color: '#64748B', marginTop: 5, paddingLeft: 4 }}>
+        <div style={{ fontSize: 11, color: '#4B5563', marginTop: 6 }}>
           {section.summary}
         </div>
       )}

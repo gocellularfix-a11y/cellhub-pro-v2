@@ -208,8 +208,8 @@ function RowChip({ signal, onClick }: { signal: ChipSignal; onClick: () => void 
         background: `${signal.accent}0D`,
         cursor: 'pointer',
         flexShrink: 0,
-        minWidth: 160,
-        maxWidth: 220,
+        minWidth: 140,
+        maxWidth: 200,
         textAlign: 'left',
         transition: 'background 0.12s',
       }}
