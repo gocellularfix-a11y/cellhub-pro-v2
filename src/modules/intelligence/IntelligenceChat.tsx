@@ -786,7 +786,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   return (
     <div
       className={compact ? 'overflow-hidden flex flex-col' : 'bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col'}
-      style={compact ? { flex: 1, minHeight: 0, background: '#080F1E' } : { minHeight: '560px', maxHeight: '760px' }}
+      style={compact ? { flex: 1, minHeight: 0, background: 'transparent' } : { minHeight: '560px', maxHeight: '760px' }}
     >
       {/* Header — full mode only */}
       {!compact && (
@@ -978,10 +978,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         !hideInput && <div style={{
           borderTop: `1px solid #1d2633`, padding: 18, flexShrink: 0,
         }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: '#171f2a', borderRadius: 16, padding: '12px 14px',
-          }}>
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: '#171f2a', borderRadius: 16, padding: '12px 14px',
+            }}
+          >
             <input
               type="text"
               value={input}
@@ -993,7 +996,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               }}
             />
             <button
-              onClick={(e) => { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent); }}
+              type="submit"
               disabled={!input.trim()}
               style={{
                 width: 42, height: 42, border: 'none', borderRadius: 12,
@@ -1006,7 +1009,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             >
               →
             </button>
-          </div>
+          </form>
         </div>
       ) : (
         <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
