@@ -500,11 +500,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const text = action.payload.customMessage || '';
       if (text && typeof navigator !== 'undefined' && navigator.clipboard) {
         navigator.clipboard.writeText(text).then(
-          () => setFeedbackForAction(action.id, lang === 'es' ? '¡Copiado!' : 'Copied!'),
-          () => setFeedbackForAction(action.id, lang === 'es' ? 'Error al copiar' : 'Copy failed'),
+          () => setFeedbackForAction(action.id, t('chat.action.copied')),
+          () => setFeedbackForAction(action.id, t('chat.action.copyFailed')),
         );
       } else {
-        setFeedbackForAction(action.id, lang === 'es' ? '¡Copiado!' : 'Copied!');
+        setFeedbackForAction(action.id, t('chat.action.copied'));
       }
       return;
     }
@@ -530,13 +530,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         confidenceLabel,
       });
       window.dispatchEvent(new CustomEvent('cellhub:operator-queue-updated'));
-      setFeedbackForAction(action.id, lang === 'es' ? '✓ Agregado a la cola' : '✓ Added to queue');
+      setFeedbackForAction(action.id, t('chat.action.addedToQueue'));
       return;
     }
     const result = executeActionPayload(action.payload);
     if (!result.ok) {
       // R-INTELLIGENCE-ACTION-UX-STABILITY-V1: bilingual safe feedback — no crash, auto-clears in 5s
-      setFeedbackForAction(action.id, lang === 'es' ? 'Acción no disponible.' : 'Action not available.');
+      setFeedbackForAction(action.id, t('chat.action.notAvailable'));
       return;
     }
     switch (result.type) {
@@ -544,16 +544,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         setPendingWaAction({ action, url: result.url });
         return;
       case 'pos_discount':
-        setFeedbackForAction(action.id, 'Discount action prepared.');
+        setFeedbackForAction(action.id, t('chat.action.discountReady'));
         break;
       case 'pos_bundle':
-        setFeedbackForAction(action.id, 'Bundle action prepared.');
+        setFeedbackForAction(action.id, t('chat.action.bundleReady'));
         break;
       case 'review_panel':
-        setFeedbackForAction(action.id, 'Review action prepared.');
+        setFeedbackForAction(action.id, t('chat.action.reviewReady'));
         break;
       case 'reminder_queue':
-        setFeedbackForAction(action.id, 'Reminder action prepared.');
+        setFeedbackForAction(action.id, t('chat.action.reminderReady'));
         break;
       // R-OPERATOR-EXECUTABLE-ACTIONS-V1: deterministic hand-off into the
       // Promote Inventory panel. Parent module callback opens the panel +
@@ -570,19 +570,19 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       // executeActionPayload; we only add feedback labels here — the modules
       // listening to cellhub:* events drive the actual navigation.
       case 'open_repair':
-        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo ticket...' : 'Opening ticket...');
+        setFeedbackForAction(action.id, t('chat.action.openingTicket'));
         break;
       case 'open_customer':
-        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo cliente...' : 'Opening customer...');
+        setFeedbackForAction(action.id, t('chat.action.openingCustomer'));
         break;
       case 'open_layaway':
-        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo layaway...' : 'Opening layaway...');
+        setFeedbackForAction(action.id, t('chat.action.openingLayaway'));
         break;
       case 'open_inventory':
-        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo artículo...' : 'Opening item...');
+        setFeedbackForAction(action.id, t('chat.action.openingItem'));
         break;
       case 'queue_manager_review':
-        setFeedbackForAction(action.id, lang === 'es' ? 'Abriendo revisión...' : 'Opening review...');
+        setFeedbackForAction(action.id, t('chat.action.openingReview'));
         break;
     }
   }
@@ -806,7 +806,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           {messages.length === 0 ? (
             <QuickActionGrid onQuickAction={handleSuggestion} />
           ) : (
-            messages.map((msg) => <MessageBubble key={msg.id} msg={msg} es={locale === 'es'} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
+            messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
           )}
         </div>
       </div>
@@ -815,16 +815,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       {automationQueue.length > 0 && (
         <div className="border-t border-surface-700 px-3 py-2 shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-slate-400">Automation Queue</span>
+            <span className="text-xs font-medium text-slate-400">{t('chat.queue.header')}</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-slate-500">
-                Pending: {automationQueue.filter(i => i.status === 'pending').length}
+                {t('chat.queue.pending')} {automationQueue.filter(i => i.status === 'pending').length}
               </span>
               <button
                 onClick={() => setAutomationQueue(prev => prev.filter(i => i.status !== 'completed' && i.status !== 'cancelled'))}
                 className="text-[10px] text-slate-500 hover:text-slate-300 underline"
               >
-                Clear completed
+                {t('chat.queue.clearCompleted')}
               </button>
             </div>
           </div>
@@ -837,7 +837,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   <span className="text-[10px] text-slate-500">
                     {item.kind}{item.customerName ? ` · ${item.customerName}` : ''}{item.sku ? ` · ${item.sku}` : ''}
                     {' · '}
-                    <span title={priority.reasons.join(', ')}>Priority: {priority.score}</span>
+                    <span title={priority.reasons.join(', ')}>{t('chat.queue.priority')} {priority.score}</span>
                   </span>
                   {item.executionLog?.length ? (
                     <span className="text-[10px] text-slate-500 block">
@@ -848,16 +848,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   ) : null}
                   {item.outcomeLog?.length ? (
                     <span className="text-[10px] text-slate-500 block">
-                      Outcome: {item.outcomeLog[item.outcomeLog.length - 1].outcome}
+                      {t('chat.queue.outcome')} {item.outcomeLog[item.outcomeLog.length - 1].outcome}
                     </span>
                   ) : null}
                   {item.status === 'completed' && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {([
-                        ['customer_responded', 'Responded'],
-                        ['sale_created', 'Sale'],
-                        ['no_response', 'No Response'],
-                        ['not_relevant', 'Not Relevant'],
+                        ['customer_responded', t('chat.outcome.responded')],
+                        ['sale_created', t('chat.outcome.sale')],
+                        ['no_response', t('chat.outcome.noResponse')],
+                        ['not_relevant', t('chat.outcome.notRelevant')],
                       ] as [AutomationOutcome, string][]).map(([outcome, label]) => (
                         <button
                           key={outcome}
@@ -916,7 +916,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                       item.status === 'failed'    ? 'border-red-600/50 text-red-400' :
                       'border-slate-600 text-slate-500'
                     }`}>
-                      {item.status}
+                      {t(`chat.queue.status.${item.status}`)}
                     </span>
                   ) : (
                     <>
@@ -924,13 +924,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                         onClick={() => handleApproveAutomation(item.id)}
                         className="text-[10px] px-2 py-0.5 rounded border border-green-700 text-green-400 hover:bg-green-900/30"
                       >
-                        Approve
+                        {t('chat.queue.approve')}
                       </button>
                       <button
                         onClick={() => handleCancelAutomation(item.id)}
                         className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:bg-surface-600"
                       >
-                        Cancel
+                        {t('chat.queue.cancel')}
                       </button>
                     </>
                   )}
@@ -966,7 +966,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       <Modal
         open={!!pendingWaAction}
         onClose={() => setPendingWaAction(null)}
-        title="Open WhatsApp?"
+        title={t('chat.whatsapp.modalTitle')}
         size="max-w-sm"
         footer={
           <>
@@ -974,13 +974,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               onClick={() => setPendingWaAction(null)}
               className="px-4 py-2 rounded bg-surface-700 hover:bg-surface-600 text-slate-300 text-sm"
             >
-              Cancel
+              {t('chat.whatsapp.cancel')}
             </button>
             <button
               onClick={() => {
                 if (pendingWaAction) {
                   window.open(pendingWaAction.url, '_blank');
-                  setFeedbackForAction(pendingWaAction.action.id, 'WhatsApp opened.');
+                  setFeedbackForAction(pendingWaAction.action.id, t('chat.whatsapp.opened'));
                   // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: record the
                   // manual outreach as a 'sent' follow-up. No WhatsApp API,
                   // no scraping — this just stamps that the owner clicked
@@ -1032,16 +1032,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               }}
               className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
             >
-              Open WhatsApp
+              {t('chat.whatsapp.confirm')}
             </button>
           </>
         }
       >
         <p className="text-slate-300 text-sm mb-2">
-          This will open WhatsApp with a prepared message.
+          {t('chat.whatsapp.body')}
         </p>
         <p className="text-slate-200 text-sm font-medium">
-          {pendingWaAction?.action.payload.customerName ?? 'Customer'}
+          {pendingWaAction?.action.payload.customerName ?? t('chat.whatsapp.customer')}
         </p>
       </Modal>
     </div>
@@ -1049,7 +1049,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 }
 
 // ── Message bubble ──────────────────────────────────────────
-function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; es: boolean; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
+function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage; lang: string; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
+  const es = lang === 'es';
   const isUser = msg.role === 'user';
   const kindColor = {
     answer: 'border-blue-500/30 bg-blue-500/5',
@@ -1072,7 +1073,7 @@ function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; 
             : `bg-surface-700 text-slate-200 border ${colorClass}`
         }`}
       >
-        {!isUser && <div className="text-xs text-slate-400 mb-1.5">🤖 {es ? 'Intelligence' : 'Intelligence'}</div>}
+        {!isUser && <div className="text-xs text-slate-400 mb-1.5">🤖 Intelligence</div>}
         {msg.content}
         {!isUser && msg.actions && msg.actions.length > 0 && (
           <div className="flex flex-wrap mt-2">
@@ -1081,7 +1082,7 @@ function MessageBubble({ msg, es, onAction, feedbackById }: { msg: ChatMessage; 
                 <button
                   onClick={() => onAction(action)}
                   disabled={!action.payload.executable}
-                  title={action.payload.executable ? '' : 'Missing data to execute'}
+                  title={action.payload.executable ? '' : (lang === 'es' ? 'Datos faltantes para ejecutar' : lang === 'pt' ? 'Dados faltantes para executar' : 'Missing data to execute')}
                   className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 active:scale-[0.98] disabled:opacity-50"
                 >
                   {action.label}

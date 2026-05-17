@@ -551,6 +551,50 @@ export const translations: TranslationDictionary = {
     es: 'Panel de promoción no disponible aquí.',
     pt: 'Painel de promoção indisponível aqui.',
   },
+
+  // ── Chat action feedback ──────────────────────────────────
+  'chat.action.copied':          { en: '✓ Copied!',                    es: '✓ ¡Copiado!',                   pt: '✓ Copiado!' },
+  'chat.action.copyFailed':      { en: 'Copy failed',                  es: 'Error al copiar',               pt: 'Erro ao copiar' },
+  'chat.action.addedToQueue':    { en: '✓ Added to queue',             es: '✓ Agregado a la cola',          pt: '✓ Adicionado à fila' },
+  'chat.action.notAvailable':    { en: 'Action not available.',        es: 'Acción no disponible.',         pt: 'Ação não disponível.' },
+  'chat.action.discountReady':   { en: 'Discount action prepared.',    es: 'Descuento preparado.',          pt: 'Desconto preparado.' },
+  'chat.action.bundleReady':     { en: 'Bundle action prepared.',      es: 'Paquete preparado.',            pt: 'Pacote preparado.' },
+  'chat.action.reviewReady':     { en: 'Review action prepared.',      es: 'Revisión preparada.',           pt: 'Revisão preparada.' },
+  'chat.action.reminderReady':   { en: 'Reminder action prepared.',    es: 'Recordatorio preparado.',       pt: 'Lembrete preparado.' },
+  'chat.action.openingTicket':   { en: 'Opening ticket…',              es: 'Abriendo ticket…',              pt: 'Abrindo ticket…' },
+  'chat.action.openingCustomer': { en: 'Opening customer…',            es: 'Abriendo cliente…',             pt: 'Abrindo cliente…' },
+  'chat.action.openingLayaway':  { en: 'Opening layaway…',             es: 'Abriendo apartado…',            pt: 'Abrindo layaway…' },
+  'chat.action.openingItem':     { en: 'Opening item…',                es: 'Abriendo artículo…',            pt: 'Abrindo item…' },
+  'chat.action.openingReview':   { en: 'Opening review…',              es: 'Abriendo revisión…',            pt: 'Abrindo revisão…' },
+  'chat.action.missingData':     { en: 'Missing data to execute',      es: 'Datos faltantes para ejecutar', pt: 'Dados faltantes para executar' },
+
+  // ── Automation queue UI ───────────────────────────────────
+  'chat.queue.header':           { en: 'Automation Queue',             es: 'Cola de Automatización',        pt: 'Fila de Automação' },
+  'chat.queue.pending':          { en: 'Pending:',                     es: 'Pendientes:',                   pt: 'Pendentes:' },
+  'chat.queue.clearCompleted':   { en: 'Clear completed',              es: 'Limpiar completados',           pt: 'Limpar concluídos' },
+  'chat.queue.priority':         { en: 'Priority:',                    es: 'Prioridad:',                    pt: 'Prioridade:' },
+  'chat.queue.outcome':          { en: 'Outcome:',                     es: 'Resultado:',                    pt: 'Resultado:' },
+  'chat.queue.approve':          { en: 'Approve',                      es: 'Aprobar',                       pt: 'Aprovar' },
+  'chat.queue.cancel':           { en: 'Cancel',                       es: 'Cancelar',                      pt: 'Cancelar' },
+  'chat.queue.status.completed': { en: 'completed',                    es: 'completado',                    pt: 'concluído' },
+  'chat.queue.status.approved':  { en: 'approved',                     es: 'aprobado',                      pt: 'aprovado' },
+  'chat.queue.status.failed':    { en: 'failed',                       es: 'fallido',                       pt: 'falhou' },
+  'chat.queue.status.cancelled': { en: 'cancelled',                    es: 'cancelado',                     pt: 'cancelado' },
+
+  // ── Automation outcome buttons ────────────────────────────
+  'chat.outcome.responded':      { en: 'Responded',                    es: 'Respondió',                     pt: 'Respondeu' },
+  'chat.outcome.sale':           { en: 'Sale',                         es: 'Venta',                         pt: 'Venda' },
+  'chat.outcome.noResponse':     { en: 'No Response',                  es: 'Sin Respuesta',                 pt: 'Sem Resposta' },
+  'chat.outcome.notRelevant':    { en: 'Not Relevant',                 es: 'No Relevante',                  pt: 'Não Relevante' },
+
+  // ── WhatsApp confirm modal ────────────────────────────────
+  'chat.whatsapp.modalTitle':    { en: 'Open WhatsApp?',               es: '¿Abrir WhatsApp?',              pt: 'Abrir WhatsApp?' },
+  'chat.whatsapp.cancel':        { en: 'Cancel',                       es: 'Cancelar',                      pt: 'Cancelar' },
+  'chat.whatsapp.confirm':       { en: 'Open WhatsApp',                es: 'Abrir WhatsApp',                pt: 'Abrir WhatsApp' },
+  'chat.whatsapp.opened':        { en: 'WhatsApp opened.',             es: 'WhatsApp abierto.',             pt: 'WhatsApp aberto.' },
+  'chat.whatsapp.body':          { en: 'This will open WhatsApp with a prepared message.', es: 'Esto abrirá WhatsApp con un mensaje preparado.', pt: 'Isso abrirá o WhatsApp com uma mensagem preparada.' },
+  'chat.whatsapp.customer':      { en: 'Customer',                     es: 'Cliente',                       pt: 'Cliente' },
+
   'chat.reorder.days': { en: (n: number) => `${n} day${n === 1 ? '' : 's'}`, es: (n: number) => `${n} día${n === 1 ? '' : 's'}`, pt: (n: number) => `${n} dia${n === 1 ? '' : 's'}` },
   'chat.reorder.daysLessThanOne': { en: '<1 day', es: '<1 día', pt: '<1 dia' },
   'chat.reorder.empty': { en: 'Nothing on reorder alert. Stock looks healthy.', es: 'Nada en alerta de reorden. Stock saludable.', pt: 'Nada em alerta de reposição. Estoque saudável.' },

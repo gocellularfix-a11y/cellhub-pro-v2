@@ -37,6 +37,7 @@ export function buildCancellationReceiptHtml(
   settings: StoreSettings,
   locale: string,
   employeeName?: string,
+  paperSize?: string,
 ): string {
   const storeName = escHtml(settings.storeName || 'CellHub Pro');
   const storeAddr = escHtml((settings as any).storeAddress || '');
@@ -71,6 +72,7 @@ export function buildCancellationReceiptHtml(
   const isForfeit = row.refundMethod === 'forfeit';
   const amountPrefix = isForfeit ? '' : '-';
   const amountColor = isForfeit ? '#000' : '#c00';
+  const is80mm = paperSize === '80mm';
 
   return `<!DOCTYPE html>
 <html>
@@ -85,8 +87,8 @@ export function buildCancellationReceiptHtml(
     line-height: 1.35;
     color: #000;
     background: #fff;
-    padding: 8px;
-    width: 4in;
+    padding: ${is80mm ? '2mm 4mm' : '8px'};
+    width: ${is80mm ? '80mm' : '4in'};
   }
   .header { text-align: center; margin-bottom: 10px; }
   .store-name { font-size: 14px; font-weight: bold; letter-spacing: 0.5px; }
@@ -118,7 +120,7 @@ export function buildCancellationReceiptHtml(
     margin-top: 24px; font-size: 9px; text-align: center;
   }
   .footer { margin-top: 12px; padding-top: 8px; border-top: 1px dashed #000; text-align: center; font-size: 9px; }
-  @media print { body { padding: 0; } @page { size: 4in 6in; margin: 0.1in; } }
+  @media print { body { padding: 0; } @page { size: ${is80mm ? '80mm auto' : '4in 6in'}; margin: ${is80mm ? '0' : '0.1in'}; } }
 </style>
 </head>
 <body>

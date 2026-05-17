@@ -25,6 +25,7 @@ import AdminPinGate from '@/components/shared/AdminPinGate';
 import { persist } from '@/services/persist';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
+import type { PrintPageSizeKey } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 import { normalizeCarrier } from '@/utils/normalize';
@@ -2534,9 +2535,10 @@ tr:last-child td { border-bottom: none; }
                                   settings,
                                   locale,
                                   currentEmployee?.name,
+                                  settings.paperSize,
                                 );
                                 const printer = localStorage.getItem('receiptModal.lastPrinter') || ((settings as any).detectedPrinters as string[] | undefined)?.[0];
-                                printHtml(html, { silent: true, printer, pageSize: '4x6', copies: 1 });
+                                printHtml(html, { silent: true, printer, pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6', copies: 1 });
                               }}
                               style={{
                                 background: 'transparent',
@@ -2965,10 +2967,11 @@ tr:last-child td { border-bottom: none; }
                 // structured CHP|SALE|... payload (with optional |CUST|customerId)
                 // so reprinted copies scan equivalent to a fresh print.
                 const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale));
-                const html = generateReceiptHtml(reprintSale, settings, locale, undefined, bsvg);
+                const html = generateReceiptHtml(reprintSale, settings, locale, undefined, bsvg, settings.paperSize);
                 printHtml(html, {
                   silent: false,
                   printer: settings.detectedPrinters?.[0],
+                  pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6',
                 });
                 setReprintSale(null);
               }}
@@ -3281,8 +3284,8 @@ tr:last-child td { border-bottom: none; }
                     // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: post-edit reprint
                     // also uses the structured payload for scan parity.
                     const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
-                    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
-                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+                    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg, settings.paperSize);
+                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0], pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6' });
                   } catch (err) {
                     console.error('[edit-sale-item] reprint failed', err);
                   }
