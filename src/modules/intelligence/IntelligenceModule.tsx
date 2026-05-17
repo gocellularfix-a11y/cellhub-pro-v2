@@ -1292,6 +1292,14 @@ export default function IntelligenceModule() {
           externalQuery={externalQuery}
           onOpenPromote={handleOpenPromote}
           onPanelCampaign={handlePanelCampaign}
+          chipData={{
+            outreachCount,
+            staleRepairCount: staleRepairStats.count,
+            repairsPending: kpi.repairs.pending,
+            productOppsCount: productOpps.length,
+            biggestLeakCents: biggestLeak,
+            deadStockLockedCents: missedRev.deadStockLockedCents,
+          }}
         />
       </div>
 

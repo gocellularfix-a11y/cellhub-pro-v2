@@ -36,6 +36,7 @@ import { getOutcomeAdjustment } from '@/services/intelligence/operatorQueue/outc
 import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import ResponseCard from './ResponseCard';
+import SuggestionChips, { type ChipData } from './SuggestionChips';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -60,6 +61,7 @@ interface Props {
   // recipient WhatsApp buttons inside the Promote Inventory panel using
   // the existing buildWhatsAppUrl helper. No autonomous send, no API.
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
+  chipData?: ChipData;
 }
 
 interface ChatMessage {
@@ -73,7 +75,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -781,23 +783,23 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // column inside is constrained via max-w-3xl mx-auto so messages/input
     // read like a focused operator dialog, not an edge-to-edge log viewer.
     <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={{ minHeight: '560px', maxHeight: '760px' }}>
-      {/* Header — bigger, more breathing room */}
-      <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
-        <div>
-          <h3 className="text-xl font-semibold text-slate-100">
-            💬 {t('intelligence.askYourShop')}
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {t('intelligence.chatDescription')}
-          </p>
+      {/* Header — Phase 3 operator header */}
+      <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(31,41,55,0.8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: chipData ? 8 : 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.02em' }}>
+            ⚡ {t('intelligence.askYourShop')}
+          </span>
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, background: 'transparent', border: '1px solid #1F2937', color: '#6B7280', cursor: 'pointer' }}
+            >
+              {t('intelligence.clear')}
+            </button>
+          )}
         </div>
-        {messages.length > 0 && (
-          <button
-            onClick={clearChat}
-            className="text-xs px-3 py-1.5 rounded bg-surface-700 hover:bg-surface-600 text-slate-300"
-          >
-            {t('intelligence.clear')}
-          </button>
+        {chipData && (
+          <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' />
         )}
       </div>
 
@@ -805,7 +807,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       <div ref={messageListRef} className="flex-1 overflow-y-auto px-4 py-5">
         <div className="max-w-3xl mx-auto space-y-3">
           {messages.length === 0 ? (
-            <QuickActionGrid onQuickAction={handleSuggestion} />
+            <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
           ) : (
             messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
           )}
@@ -943,23 +945,54 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         </div>
       )}
 
-      {/* Input — larger, centered to match the conversation column above */}
-      <div className="border-t border-surface-700 p-4 shrink-0">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto flex gap-2">
+      {/* Command bar — Phase 3 premium command center */}
+      <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#374151', letterSpacing: '0.08em' }}>
+            {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
+          </span>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
           <input
-            type="text"
+            type='text'
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={t('intelligence.chatPlaceholder')}
-            className="flex-1 bg-surface-700 text-slate-100 rounded-lg px-4 py-3 text-sm border border-surface-600 focus:outline-none focus:border-blue-500 placeholder-slate-500"
-            style={{ transform: 'translateZ(0)' }}
+            placeholder={
+              locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias…'
+              : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
+              : 'Ask about customers, repairs, inventory, taxes, or profit…'
+            }
+            className='focus:border-blue-500/50'
+            style={{
+              flex: 1,
+              background: '#0B1220',
+              color: '#E2E8F0',
+              borderRadius: 8,
+              padding: '11px 15px',
+              fontSize: 13,
+              border: '1px solid #1F2937',
+              outline: 'none',
+              transform: 'translateZ(0)',
+            }}
           />
           <button
-            type="submit"
+            type='submit'
             disabled={!input.trim()}
-            className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-surface-700 disabled:text-slate-500 text-white text-sm font-semibold"
+            style={{
+              padding: '11px 16px',
+              borderRadius: 8,
+              background: input.trim() ? '#1D4ED8' : '#1F2937',
+              color: input.trim() ? '#fff' : '#4B5563',
+              fontSize: 16,
+              fontWeight: 600,
+              border: 'none',
+              cursor: input.trim() ? 'pointer' : 'not-allowed',
+              transition: 'background 0.15s',
+              flexShrink: 0,
+            }}
           >
-            {t('intelligence.send')}
+            ⏎
           </button>
         </form>
       </div>
@@ -1087,6 +1120,33 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
 // use inline locale ternary, mirroring the prior EmptyState pattern so
 // no new translation keys are needed and bilingual coverage stays
 // consistent. UI-only — no logic changes, no new state, no new effects.
+function OperatorWelcome({ locale, chipData, onSuggestion }: {
+  locale: string;
+  chipData?: ChipData;
+  onSuggestion: (text: string) => void;
+}) {
+  return (
+    <div style={{ padding: '16px 4px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 24, marginBottom: 6 }}>⚡</div>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#E2E8F0', margin: 0 }}>
+          {locale === 'es' ? 'Listo para operar tu tienda.'
+           : locale === 'pt' ? 'Pronto para operar sua loja.'
+           : 'Ready to help run your store.'}
+        </p>
+        <p style={{ fontSize: 11, color: '#6B7280', marginTop: 4, lineHeight: '1.4' }}>
+          {locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias.'
+           : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros.'
+           : 'Ask about customers, repairs, taxes, inventory, profit, and workflows.'}
+        </p>
+      </div>
+      {chipData
+        ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" />
+        : <QuickActionGrid onQuickAction={onSuggestion} />}
+    </div>
+  );
+}
+
 function QuickActionGrid({ onQuickAction }: { onQuickAction: (text: string) => void }) {
   const { t, locale } = useTranslation();
 

@@ -4,6 +4,7 @@ import IntelligenceChat from './IntelligenceChat';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+import type { ChipData } from './SuggestionChips';
 
 export interface OperatorChatShellProps {
   engine: IntelligenceEngine;
@@ -12,6 +13,7 @@ export interface OperatorChatShellProps {
   externalQuery?: { text: string; seq: number };
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
+  chipData?: ChipData;
 }
 
 export default function OperatorChatShell({
@@ -21,6 +23,7 @@ export default function OperatorChatShell({
   externalQuery,
   onOpenPromote,
   onPanelCampaign,
+  chipData,
 }: OperatorChatShellProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 7rem)', overflow: 'hidden' }}>
@@ -31,6 +34,7 @@ export default function OperatorChatShell({
         externalQuery={externalQuery}
         onOpenPromote={onOpenPromote}
         onPanelCampaign={onPanelCampaign}
+        chipData={chipData}
       />
     </div>
   );
