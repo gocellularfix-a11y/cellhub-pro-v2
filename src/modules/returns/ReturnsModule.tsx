@@ -1120,8 +1120,7 @@ export default function ReturnsModule() {
                       // display matches the totals panel (which applies discountRatio).
                       const effCents = effectivePriceCents(item);
                       const qtyForTotal = sel ? sel.qty : item.qty;
-                      const itemTotal = (effCents / 100) * qtyForTotal
-                        + (item.taxable ? rc((effCents / 100) * qtyForTotal * taxRate) : 0);
+                      const itemTotal = forwardTaxFromBase(effCents * qtyForTotal, taxRate, !!item.taxable).totalCents / 100;
                       return (
                         <div key={item.id}
                           onClick={() => !disabled && toggleItem(item.id)}

@@ -72,7 +72,7 @@ export default function DepositModal({
   const _remainingDue = Math.max(0, (totals.balanceCents / 100) - pendingInCart);
 
   const [depositInput, setDepositInput] = useState(
-    mode === 'balance' && _remainingDue > 0 ? _remainingDue.toFixed(2) : ''
+    mode === 'balance' && _remainingDue > 0 ? String(_remainingDue) : ''
   );
   const depositMode = 'round' as const;
 

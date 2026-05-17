@@ -100,7 +100,7 @@ const ACTION_TYPE_LABEL: Record<ActionType, string> = {
 // R-INTELLIGENCE-CONVERSATION-RUNNER-MODULE-V1: exported so per-domain
 // modules (conversationRunner.ts, etc.) can import without duplication.
 export type Lang3 = 'en' | 'es' | 'pt';
-export function tChat(lang: Lang3) {
+export function tChat(lang: Lang3): (key: string, ...args: any[]) => string {
   return (key: string, ...args: any[]): string => {
     const entry = translations[key];
     if (!entry) return key;

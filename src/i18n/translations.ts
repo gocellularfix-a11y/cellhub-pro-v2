@@ -10,7 +10,7 @@ export const translations: TranslationDictionary = {
   'activeRepairs': { en: 'Active Repairs', es: 'Reparaciones Activas', pt: 'Reparos Ativos' },
   'activeRepairs2': { en: 'ACTIVE REPAIRS', es: 'REPARACIONES ACTIVAS', pt: 'REPAROS ATIVOS' },
   'activeRequests': { en: 'ACTIVE REQUESTS', es: 'SOLICITUDES ACTIVAS', pt: 'SOLICITAÇÕES ATIVAS' },
-  'activeStatus': { en: 'active', es: 'active', pt: 'ativo' }, // TODO: missing ES translation
+  'activeStatus': { en: 'active', es: 'activo', pt: 'ativo' },
   'activeUnlocks': { en: 'Active Unlocks', es: 'Desbloqueos Activos', pt: 'Desbloqueios Ativos' },
   'add': { en: 'Add', es: 'Agregar', pt: 'Adicionar' },
   'addAnyway': { en: '�Agregar de todos modos?', es: '¿Agregar de todos modos?', pt: 'Adicionar mesmo assim?' },
@@ -775,7 +775,7 @@ export const translations: TranslationDictionary = {
   'estimate': { en: 'Estimate', es: 'Estimado', pt: 'Orçamento' },
   'estimatedCompletion': { en: 'Estimated Completion', es: 'Entrega Estimada', pt: 'Conclusão Estimada' },
   'estimatedCost': { en: 'Estimated Cost', es: 'Costo Estimado', pt: 'Custo Estimado' },
-  'estimatedGrossProfit': { en: 'Gross Profit', es: 'Gross Profit', pt: 'Lucro Bruto' }, // TODO: missing ES translation
+  'estimatedGrossProfit': { en: 'Gross Profit', es: 'Ganancia Bruta', pt: 'Lucro Bruto' },
   'exampleBillPayment': { en: 'Bill Payment Example', es: 'Ejemplo de Pago de Cuenta', pt: 'Exemplo de Pagamento de Conta' },
   'exampleCategory': { en: 'e.g., Tablets, SIM Cards, Bluetooth', es: 'ej., Tablets, SIM Cards, Bluetooth', pt: 'ex: Tablets, Cartões SIM, Bluetooth' },
   'exampleItemName': { en: 'Example: iPhone 13 Pro Max 128GB', es: 'Ejemplo: iPhone 13 Pro Max 128GB', pt: 'Exemplo: iPhone 13 Pro Max 128GB' },
@@ -784,7 +784,7 @@ export const translations: TranslationDictionary = {
   'exampleRedemption': { en: '{L.exampleRedemption}', es: 'Ejemplo: 0.01 significa que 100 puntos = $1.00 de descuento', pt: '{L.exampleRedemption}' },
   'exampleRepair': { en: 'Repair Service Example', es: 'Ejemplo de Servicio de Reparación', pt: 'Exemplo de Serviço de Reparo' },
   'exampleService': { en: 'e.g., Gmail Unlock, iCloud Bypass, Data Transfer', es: 'ej., Desbloqueo Gmail, iCloud, Transferencia de Datos', pt: 'ex: Desbloqueio Gmail, Desbloqueio iCloud, Transferência de Dados' },
-  'excludesTaxCarrier': { en: 'excludes tax & carrier payments', es: 'excludes tax & carrier payments', pt: 'exclui impostos e pagamentos de operadora' }, // TODO: missing ES translation
+  'excludesTaxCarrier': { en: 'excludes tax & carrier payments', es: 'excluye impuestos y pagos de operadora', pt: 'exclui impostos e pagamentos de operadora' },
   'expectedDate': { en: 'Expected Date', es: 'Fecha Esperada', pt: 'Data Prevista' },
   'export': { en: 'Export', es: 'Exportar', pt: 'Exportar' },
   'exportBackupBtn': { en: 'Export Backup', es: 'Exportar respaldo', pt: 'Exportar Backup' },
@@ -1478,7 +1478,7 @@ export const translations: TranslationDictionary = {
   'taxTotalReturns': { en: 'Total Returns', es: 'Total de Devoluciones', pt: 'Total de Devoluções' },
   'taxType': { en: 'Tax Type', es: 'Tipo de impuesto', pt: 'Tipo de Imposto' },
   'taxWarnings': { en: 'Warnings', es: 'Advertencias', pt: 'Avisos' },
-  'taxYearLabel': { en: 'Tax Year', es: 'Tax Year', pt: 'Ano Fiscal' }, // TODO: missing ES translation
+  'taxYearLabel': { en: 'Tax Year', es: 'Año Fiscal', pt: 'Ano Fiscal' },
   'taxable': { en: 'Taxable', es: 'Gravable', pt: 'Tributável' },
   'taxableAmount': { en: 'Taxable Amount', es: 'Monto Imponible', pt: 'Valor Tributável' },
   'taxableLabel': { en: '(Taxable)', es: '(Sujeto a impuesto)', pt: '(Tributável)' },
