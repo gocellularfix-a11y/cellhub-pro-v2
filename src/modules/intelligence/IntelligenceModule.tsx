@@ -119,6 +119,8 @@ import {
   type RoleRoutingResult,
 } from '@/services/intelligence/routing/roleIntelligenceRouting';
 import IntelligenceChat from './IntelligenceChat';
+import OperatorSidebar from './OperatorSidebar';
+import OperatorChatShell from './OperatorChatShell';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -1220,8 +1222,11 @@ export default function IntelligenceModule() {
   // here — only the synchronous work above (engine + memos + cards).
   if (INTEL_PERF_ENABLED) perfLog('intel.module.render.total', _renderT0);
 
+  // Phase 1: operator shell takes over. Legacy sections preserved but hidden.
+  const showLegacySections = false;
+
   return (
-    <div className="space-y-3 p-3 pb-8" style={{ background: PAGE_BG, minHeight: '100%' }}>
+    <div style={{ background: PAGE_BG, minHeight: '100%', display: 'flex', flexDirection: 'column', padding: '12px 12px 0', gap: 10 }}>
 
       {/* ── 1. TOP OPERATOR SUMMARY ─────────────────────────── */}
       <div
@@ -1265,92 +1270,32 @@ export default function IntelligenceModule() {
         </div>
       </div>
 
-      {/* ── 2. OPERATIONAL CARDS (LEFT) + CHAT PANEL (RIGHT) ──
-          R-INTELLIGENCE-OPERATOR-UX-V1: redesigned to a Quick-Actions-
-          inspired command-center hierarchy. 6 large action cards
-          dominate the left; chat lives in a narrower right sidebar so
-          it supports operations instead of dominating the viewport.
-          All firing actions reuse the existing fireChat / focusPromote
-          callbacks — no intelligence logic changed. */}
-      <div className="grid grid-cols-12 gap-3">
-
-        {/* LEFT: Operational cards grid */}
-        <div className="col-span-12 lg:col-span-8">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
-            {t('intelligence.console.makeMoneyTitle')}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            <OpCard
-              icon="💰"
-              title={t('intelligence.console.collectMoneyTitle')}
-              description={t('intelligence.console.collectMoneySub')}
-              stat={
-                staleRepairStats.recoverable >= 2000
-                  ? formatCurrency(staleRepairStats.recoverable)
-                  : missedRev.deadStockLockedCents > 0
-                    ? formatCurrency(missedRev.deadStockLockedCents)
-                    : undefined
-              }
-              accent="#10B981"
-              onClick={() => fireChat('where is money stuck')}
-            />
-            <OpCard
-              icon="🤝"
-              title={t('intelligence.console.closeDealsTitle')}
-              description={t('intelligence.console.closeDealsSub')}
-              accent="#22C55E"
-              onClick={() => fireChat('help me close sales today')}
-            />
-            <OpCard
-              icon="🚀"
-              title={t('intelligence.console.promoteProduct')}
-              description={t('intelligence.console.promoteSub')}
-              stat={productOpps.length > 0 ? String(productOpps.length) : undefined}
-              accent="#8B5CF6"
-              onClick={focusPromote}
-            />
-            <OpCard
-              icon="📞"
-              title={t('intelligence.console.contactCustomers')}
-              description={t('intelligence.console.contactSub')}
-              stat={outreachCount >= 2 ? String(outreachCount) : undefined}
-              accent="#3B82F6"
-              onClick={() => fireChipKey('intelligence.console.queryContactToday')}
-            />
-            <OpCard
-              icon="🔧"
-              title={t('intelligence.console.repairsReadyTitle')}
-              description={t('intelligence.console.repairsReadySub')}
-              stat={
-                kpi.repairs.pending > 0
-                  ? (staleRepairStats.count > 0
-                      ? `${kpi.repairs.pending} · ${staleRepairStats.count} ${t('intelligence.console.staleLabel')}`
-                      : String(kpi.repairs.pending))
-                  : undefined
-              }
-              accent="#F59E0B"
-              onClick={() => fireChipKey('intelligence.console.queryReadyRepairs')}
-            />
-            <OpCard
-              icon="💸"
-              title={t('intelligence.console.fixProfitTitle')}
-              description={t('intelligence.console.fixProfitSub')}
-              stat={biggestLeak > 0 ? formatCurrency(biggestLeak) : undefined}
-              accent="#EF4444"
-              onClick={() => fireChipKey('intelligence.dash.quickProfit')}
-            />
-          </div>
-        </div>
-
-        {/* RIGHT: Chat sidebar — narrower assistant panel */}
-        <div className="col-span-12 lg:col-span-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
-            {t('intelligence.console.askTitle')}
-          </p>
-          <IntelligenceChat engine={engine} customers={customers} lang={apiLang} externalQuery={externalQuery} onOpenPromote={handleOpenPromote} onPanelCampaign={handlePanelCampaign} />
-        </div>
+      {/* ── 2. OPERATOR SHELL — R-INTELLIGENCE-OPERATOR-SHELL-V1 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '330px 1fr', gap: 12, flex: 1 }}>
+        <OperatorSidebar
+          todayRevenue={todayRevenue}
+          todaySalesCount={todaySales.length}
+          totalAlerts={totalAlerts}
+          staleRecoverable={staleRepairStats.recoverable}
+          deadStockLocked={missedRev.deadStockLockedCents}
+          productOppsCount={productOpps.length}
+          outreachCount={outreachCount}
+          repairsPending={kpi.repairs.pending}
+          staleRepairCount={staleRepairStats.count}
+          biggestLeak={biggestLeak}
+          onFireChat={fireChat}
+        />
+        <OperatorChatShell
+          engine={engine}
+          customers={customers}
+          lang={apiLang}
+          externalQuery={externalQuery}
+          onOpenPromote={handleOpenPromote}
+          onPanelCampaign={handlePanelCampaign}
+        />
       </div>
 
+      {showLegacySections && (<>
       {/* ── 3. MANAGER QUEUE ─────────────────────────────────────────────── */}
       <div
         ref={queueSectionRef}
@@ -1989,6 +1934,7 @@ export default function IntelligenceModule() {
           🔄 {t('intelligence.refresh')}
         </button>
       </div>
+      </>)}
 
       {/* ── LIVE OPERATOR BUBBLE ─────────────────────────────────────────────── */}
       <FloatingOperatorBubble

@@ -35,6 +35,7 @@ import type { OperatorTaskType } from '@/services/intelligence/operatorQueue/ope
 import { getOutcomeAdjustment } from '@/services/intelligence/operatorQueue/outcomeLearning';
 import { Modal, useToast } from '@/components/ui';
 import { useTranslation } from '@/i18n';
+import ResponseCard from './ResponseCard';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -1050,55 +1051,29 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
 // ── Message bubble ──────────────────────────────────────────
 function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage; lang: string; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
-  const es = lang === 'es';
   const isUser = msg.role === 'user';
-  const kindColor = {
-    answer: 'border-blue-500/30 bg-blue-500/5',
-    disambiguation: 'border-amber-500/30 bg-amber-500/5',
-    error: 'border-red-500/30 bg-red-500/5',
-    help: 'border-slate-500/30 bg-slate-500/5',
-  };
-  const colorClass = !isUser && msg.kind ? kindColor[msg.kind] : '';
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] rounded-lg px-3.5 py-2 text-sm bg-blue-600 text-white leading-relaxed whitespace-pre-wrap">
+          {msg.content}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: relaxed leading + slightly
-        // more padding so blank-line section breaks in operator-style
-        // briefings actually breathe. text-sm preserved; whitespace-pre-wrap
-        // handles the existing newline structure. No animations, no markdown.
-        className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-          isUser
-            ? 'bg-blue-600 text-white'
-            : `bg-surface-700 text-slate-200 border ${colorClass}`
-        }`}
-      >
-        {!isUser && <div className="text-xs text-slate-400 mb-1.5">🤖 Intelligence</div>}
-        {msg.content}
-        {!isUser && msg.actions && msg.actions.length > 0 && (
-          <div className="flex flex-wrap mt-2">
-            {msg.actions.map(action => (
-              <div key={action.id} className="inline-block mr-2 mt-2 align-top">
-                <button
-                  onClick={() => onAction(action)}
-                  disabled={!action.payload.executable}
-                  title={action.payload.executable ? '' : (lang === 'es' ? 'Datos faltantes para ejecutar' : lang === 'pt' ? 'Dados faltantes para executar' : 'Missing data to execute')}
-                  className="px-3 py-1 rounded border border-slate-600 text-xs text-slate-300 hover:bg-surface-600 active:scale-[0.98] disabled:opacity-50"
-                >
-                  {action.label}
-                  {action.actionType && (
-                    <span className="ml-1 text-[10px] opacity-60">[{action.actionType}]</span>
-                  )}
-                </button>
-                {feedbackById[action.id]?.message && (
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {feedbackById[action.id]?.message}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+    <div className="flex justify-start w-full">
+      <div style={{ width: '100%', maxWidth: '96%' }}>
+        <ResponseCard
+          content={msg.content}
+          kind={msg.kind}
+          actions={msg.actions}
+          onAction={onAction}
+          feedbackById={feedbackById}
+          lang={lang}
+        />
       </div>
     </div>
   );
