@@ -1,59 +1,24 @@
 // Companion — Status panel (desktop).
-// Computes the snapshot from POS state + pushes it every 10s while
-// the panel is mounted. Shows the operator what's being pushed.
+// Displays the current store snapshot. The push loop lives in
+// StatusPushMount (globally mounted in AppShell) so data reaches
+// the mobile even when the operator is not on this tab.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useApp } from '@/store/AppProvider';
 import type { CompanionDesktopSession } from '@/types/companion';
-import { pushStoreStatus } from '@/services/companion/storeStatusService';
 import { computeLiteSnapshot } from '@/services/companion/snapshot';
-
-const PUSH_MS = 10_000;
 
 interface Props {
   session: CompanionDesktopSession;
 }
 
 export default function StatusPanel({ session }: Props) {
+  void session; // kept for prop-API parity
   const { state: { sales, repairs, layaways, employees, currentEmployee } } = useApp();
   const snapshot = useMemo(
     () => computeLiteSnapshot({ sales, repairs, layaways, employees, currentEmployee }),
     [sales, repairs, layaways, employees, currentEmployee],
   );
-
-  const [lastPushAt, setLastPushAt] = useState<string | null>(null);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const inFlightRef = useRef(false);
-
-  // Push immediately when the snapshot changes (debounced via useMemo) + at a
-  // steady interval so the mobile sees fresh values even if nothing in the
-  // POS state changed.
-  useEffect(() => {
-    let cancelled = false;
-    const send = async () => {
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
-      try {
-        await pushStoreStatus(session, {
-          ...snapshot,
-          pendingApprovalsCount: 0, // approval count merged server-side in step 7's flow
-        });
-        if (!cancelled) {
-          setLastPushAt(new Date().toISOString());
-          setLastError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLastError(err instanceof Error ? err.message : 'Push failed');
-        }
-      } finally {
-        inFlightRef.current = false;
-      }
-    };
-    void send();
-    const handle = setInterval(send, PUSH_MS);
-    return () => { cancelled = true; clearInterval(handle); };
-  }, [session, snapshot]);
 
   return (
     <div>
@@ -67,12 +32,7 @@ export default function StatusPanel({ session }: Props) {
       </div>
 
       <div style={{ marginTop: 12, fontSize: 11, color: '#64748b' }}>
-        {lastError
-          ? <span style={{ color: '#fca5a5' }}>⚠ {lastError}</span>
-          : lastPushAt
-            ? `Last push ${new Date(lastPushAt).toLocaleTimeString()} · pushing every ${PUSH_MS / 1000}s`
-            : 'Pushing…'
-        }
+        Live sync active · pushing every 10s
       </div>
     </div>
   );

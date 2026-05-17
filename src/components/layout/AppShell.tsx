@@ -42,6 +42,9 @@ const CompanionBubbleBadge = lazy(() => import('@/components/companion/Companion
 // is on a different sidebar tab. Without this, leaving Companion silences
 // all inbound notifications because the per-page polls unmount.
 const CompanionRuntimeMount = lazy(() => import('@/components/companion/CompanionRuntimeMount'));
+// COMPANION: always-on status push — keeps mobile data fresh even when the
+// operator is not on the Companion tab (StatusPanel only mounts on that tab).
+const StatusPushMount = lazy(() => import('@/components/companion/StatusPushMount'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -286,6 +289,10 @@ export default function AppShell() {
       {/* COMPANION: invisible — runs the background polling loop. */}
       <Suspense fallback={null}>
         <CompanionRuntimeMount />
+      </Suspense>
+      {/* COMPANION: invisible — pushes store snapshot to bridge always. */}
+      <Suspense fallback={null}>
+        <StatusPushMount />
       </Suspense>
     </div>
   );
