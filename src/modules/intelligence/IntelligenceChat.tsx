@@ -64,6 +64,7 @@ interface Props {
   // the existing buildWhatsAppUrl helper. No autonomous send, no API.
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
+  compact?: boolean;
 }
 
 interface ChatMessage {
@@ -78,7 +79,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -786,7 +787,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // the dominant workspace surface (was 400-600px). The conversation
     // column inside is constrained via max-w-3xl mx-auto so messages/input
     // read like a focused operator dialog, not an edge-to-edge log viewer.
-    <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={{ minHeight: '560px', maxHeight: '760px' }}>
+    <div className="bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col" style={compact ? { flex: 1, minHeight: 0 } : { minHeight: '560px', maxHeight: '760px' }}>
       {/* Header — Phase 3 operator header */}
       <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(31,41,55,0.8)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: chipData ? 8 : 0 }}>
@@ -802,13 +803,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             </button>
           )}
         </div>
-        {chipData && (
+        {!compact && chipData && (
           <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' />
         )}
       </div>
 
-      {/* Continuity bar — only visible when conversation is active */}
-      {messages.length > 0 && chipData && (
+      {/* Continuity bar — only in full mode */}
+      {!compact && messages.length > 0 && chipData && (
         <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} />
       )}
 

@@ -14,6 +14,7 @@ export interface OperatorChatShellProps {
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
+  compact?: boolean;
 }
 
 export default function OperatorChatShell({
@@ -24,9 +25,10 @@ export default function OperatorChatShell({
   onOpenPromote,
   onPanelCampaign,
   chipData,
+  compact,
 }: OperatorChatShellProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 7rem)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: compact ? 0 : 'calc(100vh - 7rem)', flex: compact ? 1 : undefined, overflow: 'hidden' }}>
       <IntelligenceChat
         engine={engine}
         customers={customers}
@@ -35,6 +37,7 @@ export default function OperatorChatShell({
         onOpenPromote={onOpenPromote}
         onPanelCampaign={onPanelCampaign}
         chipData={chipData}
+        compact={compact}
       />
     </div>
   );

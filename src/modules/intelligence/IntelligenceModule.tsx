@@ -118,9 +118,7 @@ import {
   computeRoleRouting,
   type RoleRoutingResult,
 } from '@/services/intelligence/routing/roleIntelligenceRouting';
-import IntelligenceChat from './IntelligenceChat';
-import OperatorSidebar from './OperatorSidebar';
-import OperatorChatShell from './OperatorChatShell';
+import SimpleOperatorView from './SimpleOperatorView';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -1270,38 +1268,26 @@ export default function IntelligenceModule() {
         </div>
       </div>
 
-      {/* ── 2. OPERATOR SHELL — R-INTELLIGENCE-OPERATOR-SHELL-V1 ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '330px 1fr', gap: 12, flex: 1 }}>
-        <OperatorSidebar
-          todayRevenue={todayRevenue}
-          todaySalesCount={todaySales.length}
-          totalAlerts={totalAlerts}
-          staleRecoverable={staleRepairStats.recoverable}
-          deadStockLocked={missedRev.deadStockLockedCents}
-          productOppsCount={productOpps.length}
-          outreachCount={outreachCount}
-          repairsPending={kpi.repairs.pending}
-          staleRepairCount={staleRepairStats.count}
-          biggestLeak={biggestLeak}
-          onFireChat={fireChat}
-        />
-        <OperatorChatShell
-          engine={engine}
-          customers={customers}
-          lang={apiLang}
-          externalQuery={externalQuery}
-          onOpenPromote={handleOpenPromote}
-          onPanelCampaign={handlePanelCampaign}
-          chipData={{
-            outreachCount,
-            staleRepairCount: staleRepairStats.count,
-            repairsPending: kpi.repairs.pending,
-            productOppsCount: productOpps.length,
-            biggestLeakCents: biggestLeak,
-            deadStockLockedCents: missedRev.deadStockLockedCents,
-          }}
-        />
-      </div>
+      {/* ── 2. OPERATOR SHELL — Phase 7 simplified layout ── */}
+      <SimpleOperatorView
+        engine={engine}
+        customers={customers}
+        lang={apiLang}
+        externalQuery={externalQuery}
+        onOpenPromote={handleOpenPromote}
+        onPanelCampaign={handlePanelCampaign}
+        chipData={{
+          outreachCount,
+          staleRepairCount: staleRepairStats.count,
+          repairsPending: kpi.repairs.pending,
+          productOppsCount: productOpps.length,
+          biggestLeakCents: biggestLeak,
+          deadStockLockedCents: missedRev.deadStockLockedCents,
+        }}
+        todayRevenue={todayRevenue}
+        todaySalesCount={todaySales.length}
+        onFireChat={fireChat}
+      />
 
       {showLegacySections && (<>
       {/* ── 3. MANAGER QUEUE ─────────────────────────────────────────────── */}
