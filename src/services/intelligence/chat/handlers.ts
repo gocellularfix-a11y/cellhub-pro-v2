@@ -1353,25 +1353,38 @@ function handleDailyOperatorBrief(engine: IntelligenceEngine, lang: Lang3): Chat
   }
 
   pris.sort((a, b) => b.rank - a.rank);
-  const top3 = pris.slice(0, 3);
+  const top5 = pris.slice(0, 5);
 
   const lines: string[] = [];
   lines.push(t('chat.dailyBrief2.header'));
   lines.push('');
-  top3.forEach((p, i) => {
+  top5.forEach((p, i) => {
     lines.push(`${i + 1}. ${t('chat.dailyBrief2.priorityLabel')} ${p.title}`);
     lines.push(`   ${t('chat.dailyBrief2.whyLabel')} ${p.why}`);
     lines.push(`   ${t('chat.dailyBrief2.actionLabel')} ${p.action}`);
-    if (i < top3.length - 1) lines.push('');
+    if (i < top5.length - 1) lines.push('');
   });
 
-  // Manager queue summary footer — shown if there are pending items not in top-3.
+  // Manager queue summary footer — shown if there are pending items not in top-5.
   if (brief.metrics.pendingQueueItems > 0) {
     lines.push('');
     lines.push(t('mq.chat.summary', brief.metrics.pendingQueueItems));
   }
 
-  return { kind: 'answer', text: lines.join('\n') };
+  // Attach executable action payloads from ranked module-wide opportunities.
+  const opps = mwoOpps(engine);
+  const actions = dedupeAndLimitActions(
+    opps.slice(0, 5).flatMap((opp) =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
+    5,
+  );
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
 }
 
 // ── Today Money Map (R-INTELLIGENCE-TODAY-MONEY-MAP-V1) ──────

@@ -522,10 +522,12 @@ const DAILY_OPERATOR_BRIEF_KEYWORDS = [
   // EN
   'daily brief', 'today brief', 'operator brief',
   'what should i do today', 'what matters today',
+  'what should i focus on', 'what should i focus on today',
   // ES
-  'resumen diario', 'resumen de hoy',
+  'resumen diario', 'resumen de hoy', 'resumen del día', 'resumen del dia',
   'qué hago hoy', 'que hago hoy',
   'qué importa hoy', 'que importa hoy',
+  'qué necesito hacer hoy', 'que necesito hacer hoy',
   // PT
   'resumo diário', 'resumo diario', 'resumo de hoje',
   'o que faço hoje', 'o que faco hoje', 'o que importa hoje',
