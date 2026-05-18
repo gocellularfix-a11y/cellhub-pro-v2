@@ -19,6 +19,9 @@ import type { ProactiveMission } from '../proactive/proactiveMissions';
 import type { ContinuityItem } from '../continuity/continuityEngine';
 import type { OperatorQueueItem } from '../operatorQueue/operatorQueue';
 import type { ManagerQueueItem } from '../managerQueue/types';
+// R-INTELLIGENCE-MERGE-BRIEFING-SYSTEMS-V1: canonical envelope
+import type { IntelligenceBrief, BriefItem, BriefSeverity } from './briefingTypes';
+import { sortBriefItems, severityToPriority } from './briefingHelpers';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -323,5 +326,59 @@ export function generateDailyBriefing(input: BriefingInput): DailyBriefingResult
     items,
     topPriority,
     recommendedFocus: storeState.recommendedFocus,
+  };
+}
+
+// ── Canonical adapter (R-INTELLIGENCE-MERGE-BRIEFING-SYSTEMS-V1) ──────────────
+
+// Maps this file's 3-level severity to the canonical 5-level scale.
+// urgent → critical (90): operator must act now
+// attention → medium (50): should handle today
+// info → info (10): informational only
+const BRIEFING_SEV: Record<BriefingSeverity, BriefSeverity> = {
+  urgent:    'critical',
+  attention: 'medium',
+  info:      'info',
+};
+
+// Maps this file's 5 categories to canonical BriefItemCategory values.
+const BRIEFING_CAT: Record<BriefingCategory, BriefItem['category']> = {
+  sales_rhythm:             'sales',
+  repairs:                  'repairs',
+  customer_opportunities:   'customers',
+  collections:              'collections',
+  operational_continuity:   'continuity',
+};
+
+/**
+ * Runs generateDailyBriefing() and wraps the result in an IntelligenceBrief
+ * envelope for cross-system aggregation.
+ *
+ * generateDailyBriefing() is unchanged — this is a parallel read path only.
+ * Consumers that need the original DailyBriefingResult should call that directly.
+ */
+export function generateDailyBriefAsCanonical(input: BriefingInput): IntelligenceBrief {
+  const result = generateDailyBriefing(input);
+  const detectedAt = result.generatedAt;
+  const items: BriefItem[] = result.items.map((item): BriefItem => {
+    const severity = BRIEFING_SEV[item.severity];
+    return {
+      id: `brief:daily_briefing:${item.id}`,
+      category: BRIEFING_CAT[item.category],
+      severity,
+      priority: severityToPriority(severity),
+      title: item.summary,
+      summary: item.supportingMetric,
+      suggestedAction: item.suggestedAction,
+      source: 'daily_briefing',
+      detectedAt,
+    };
+  });
+  const sorted = sortBriefItems(items);
+  return {
+    generatedAt: detectedAt,
+    items: sorted,
+    topPriority: sorted[0],
+    sources: ['daily_briefing'],
   };
 }
