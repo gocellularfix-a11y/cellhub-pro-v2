@@ -11,6 +11,7 @@ export type OperationalModule =
   | 'layaways'
   | 'special_orders'
   | 'unlocks'
+  | 'appointments'
   | 'approvals'
   | 'outreach'
   | 'reports'
@@ -31,6 +32,7 @@ export type OperationalSignalType =
   | 'outreach_underperforming'
   | 'sale_opportunity'
   | 'operational_warning'
+  | 'appointment_risk'
   | 'system_status';
 
 export type OperationalSeverity =
