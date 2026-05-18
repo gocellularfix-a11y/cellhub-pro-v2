@@ -618,6 +618,7 @@ export default function FloatingOperatorBubble() {
   const [chainStateTick, setChainStateTick] = useState(0);
   // Set to chain type when whole chain completes — drives "Sequence complete" flash.
   const [chainCompletedType, setChainCompletedType] = useState<string | null>(null);
+  const [bubbleChatInput, setBubbleChatInput] = useState('');
 
   // Aggregated outcome stats — refreshed when chain state changes.
   const outcomeStats = useMemo(() => getOutcomeStats(), [chainStateTick]);
@@ -719,6 +720,22 @@ export default function FloatingOperatorBubble() {
     advanceChainStep(displayedChain.type, step.id, 'skip');
     setChainStateTick((t) => t + 1);
   }, [displayedChain]);
+
+  const handleBubbleChatSubmit = useCallback(() => {
+    const text = bubbleChatInput.trim();
+    if (!text) return;
+    // sessionStorage relay — picked up by IntelligenceModule on mount (tab switch case).
+    try { sessionStorage.setItem('cellhub:bubble:pendingQuery', text); } catch { /* ignore */ }
+    setBubbleChatInput('');
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
+    setIsOverlayOpen(false);
+    // Custom event relay — picked up by IntelligenceModule when already mounted
+    // (user was already on Intelligence tab; no unmount/remount occurs).
+    // setTimeout(0) lets the dispatch settle before the event fires.
+    window.setTimeout(() => {
+      try { window.dispatchEvent(new CustomEvent('cellhub:bubble-query', { detail: { text } })); } catch { /* ignore */ }
+    }, 0);
+  }, [bubbleChatInput, dispatch]);
 
   // ── Workflow continuity derived state + handlers ───────────────────────────
 
@@ -1664,6 +1681,47 @@ export default function FloatingOperatorBubble() {
               })}
             </div>
           )}
+
+          {/* Bubble chat input */}
+          <div style={{ display: 'flex', gap: '0.3rem' }}>
+            <input
+              type="text"
+              value={bubbleChatInput}
+              onChange={(e) => setBubbleChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleBubbleChatSubmit(); }}
+              placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : locale === 'pt' ? 'Pergunte…' : 'Ask Intelligence…'}
+              style={{
+                flex: 1,
+                padding: '0.45rem 0.6rem',
+                borderRadius: '0.45rem',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(148,163,184,0.22)',
+                color: '#e2e8f0',
+                fontSize: '0.78rem',
+                outline: 'none',
+                minWidth: 0,
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleBubbleChatSubmit}
+              disabled={!bubbleChatInput.trim()}
+              style={{
+                padding: '0.45rem 0.65rem',
+                borderRadius: '0.45rem',
+                background: 'rgba(99,102,241,0.25)',
+                border: '1px solid rgba(99,102,241,0.45)',
+                color: '#a5b4fc',
+                cursor: bubbleChatInput.trim() ? 'pointer' : 'default',
+                opacity: bubbleChatInput.trim() ? 1 : 0.4,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              ↗
+            </button>
+          </div>
 
           {/* Action: open full Intelligence */}
           <button

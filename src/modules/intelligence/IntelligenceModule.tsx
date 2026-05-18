@@ -882,6 +882,33 @@ export default function IntelligenceModule() {
     return () => window.clearTimeout(tid);
   }, [currentStoreId, fireChat]);
 
+  // Bubble-query relay A — mount path: pick up queries stashed in sessionStorage
+  // by FloatingOperatorBubble when the user navigates FROM another tab.
+  useEffect(() => {
+    let pending = '';
+    try {
+      pending = sessionStorage.getItem('cellhub:bubble:pendingQuery') || '';
+      if (pending) sessionStorage.removeItem('cellhub:bubble:pendingQuery');
+    } catch { /* sessionStorage unavailable */ }
+    if (!pending) return;
+    const tid = window.setTimeout(() => fireChat(pending), 0);
+    return () => window.clearTimeout(tid);
+  }, [fireChat]);
+
+  // Bubble-query relay B — event path: picks up queries when already mounted
+  // (user was already on Intelligence tab; no unmount/remount triggers relay A).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text || '';
+      if (!text) return;
+      // Clear sessionStorage so relay A won't double-fire on a future mount.
+      try { sessionStorage.removeItem('cellhub:bubble:pendingQuery'); } catch { /* ignore */ }
+      fireChat(text);
+    };
+    window.addEventListener('cellhub:bubble-query', handler);
+    return () => window.removeEventListener('cellhub:bubble-query', handler);
+  }, [fireChat]);
+
   // Refs to scroll-target panels
   const promoteRef = useRef<HTMLDivElement>(null);
   const focusPromote = useCallback(() => {
