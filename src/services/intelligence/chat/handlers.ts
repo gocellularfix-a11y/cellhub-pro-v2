@@ -295,6 +295,9 @@ export function handleIntent(
     case 'who_to_contact_today':
       return handleWhoToContactToday(engine, lang);
 
+    case 'likely_to_buy_today':
+      return handleLikelyToBuyToday(engine, lang);
+
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
 
@@ -2736,6 +2739,161 @@ function handleWhatHurtingProfit(engine: IntelligenceEngine, lang: Lang3): ChatR
 // R-INTELLIGENCE-OPERATOR-RESPONSES-V1: cap visible list to top 3; summarize
 // the rest as a one-line count instead of dumping all 10. Same engine call,
 // same scoring — presentation only.
+// ── Likely To Buy Today (R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1) ────────────
+// Aggregates three existing signals ranked by conversion confidence:
+//   1. Repair-ready customers (highest — they're coming in anyway, owe money)
+//   2. Outreach queue candidates (consent-filtered, deduped by engine)
+//   3. Overdue next-visit predictions (fill gaps when pool is thin)
+// No new scoring engine — reuses engine.getRepairs(), buildOutreachQueueItems(),
+// and getNextVisitPredictions(). WhatsApp + Open Repair actions via existing payloads.
+function handleLikelyToBuyToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+
+  type Candidate = {
+    customerId: string;
+    name: string;
+    phone: string;
+    reason: string;
+    signal: 'repair_ready' | 'outreach' | 'overdue';
+    repairId?: string;
+    rank: number;
+  };
+
+  const seen = new Set<string>();
+  const candidates: Candidate[] = [];
+  const now = Date.now();
+
+  // Signal 1: Repair-ready customers — certain visit + optional balance collection.
+  try {
+    const repairs = engine.getRepairs();
+    for (const r of repairs) {
+      if (String(r.status || '').toLowerCase() !== 'ready') continue;
+      if (!r.customerPhone) continue;
+      const key = (r.customerId && r.customerId.trim()) || r.customerPhone;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({
+        customerId: r.customerId || '',
+        name: r.customerName,
+        phone: r.customerPhone,
+        reason: r.balance > 0
+          ? t('chat.likelyBuy.reason.repairBalance', COP(r.balance))
+          : t('chat.likelyBuy.reason.repairReady'),
+        signal: 'repair_ready',
+        repairId: r.id,
+        rank: 90000 + r.balance,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Signal 2: Outreach queue (consent-filtered, priority-ranked by engine).
+  try {
+    const outreach = engine.buildOutreachQueueItems();
+    for (const item of outreach.slice(0, 8)) {
+      const itemCid = item.customerId ?? '';
+      const itemPhone = item.phone ?? '';
+      if (!itemPhone && !itemCid) continue;
+      const key = itemCid || itemPhone;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const h = itemCid ? engine.getCustomerHistory(itemCid) : null;
+      const days = h?.lastVisit
+        ? Math.floor((now - h.lastVisit.getTime()) / 86400000)
+        : 0;
+      candidates.push({
+        customerId: itemCid,
+        name: h?.customer.name ?? itemPhone,
+        phone: itemPhone,
+        reason: t('chat.likelyBuy.reason.outreach', days),
+        signal: 'outreach',
+        rank: 50000 + ((h?.grossRevenue ?? 0) / 100),
+      });
+    }
+  } catch { /* skip */ }
+
+  // Signal 3: Overdue visit predictions — fill when pool is thin.
+  if (candidates.length < 5) {
+    try {
+      const predictions = engine.getNextVisitPredictions(10);
+      for (const p of predictions) {
+        if (p.overdueByDays <= 0 || !p.phone) continue;
+        const key = p.customerId || p.phone;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({
+          customerId: p.customerId,
+          name: p.name,
+          phone: p.phone,
+          reason: t('chat.likelyBuy.reason.overdue', p.overdueByDays),
+          signal: 'overdue',
+          rank: 30000 + Math.round(p.urgencyScore * 1000),
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  if (candidates.length === 0) {
+    return { kind: 'answer', text: t('chat.likelyBuy.empty') };
+  }
+
+  candidates.sort((a, b) => b.rank - a.rank);
+  const top = candidates.slice(0, 5);
+
+  // Action buttons: WhatsApp (message tailored to signal) + Open Repair when applicable.
+  const actions: ChatActionUI[] = [];
+  for (const c of top.slice(0, 3)) {
+    const firstName = c.name.split(' ')[0] || c.name;
+    if (c.phone) {
+      const msg = c.signal === 'repair_ready'
+        ? t('chat.likelyBuy.waMsg.repairReady', firstName)
+        : t('chat.likelyBuy.waMsg.followUp', firstName);
+      actions.push({
+        id: `lbt-wa-${c.customerId || c.phone}-${now}`,
+        label: t('chat.contact.waActionLabel', firstName),
+        actionType: 'whatsapp',
+        payload: {
+          type: 'whatsapp',
+          customMessage: msg,
+          ...(c.customerId ? { customerId: c.customerId } : {}),
+          customerName: c.name,
+          customerPhone: c.phone,
+          executable: true,
+          executionTarget: 'whatsapp_url',
+        },
+      });
+    }
+    if (c.repairId) {
+      actions.push({
+        id: `lbt-repair-${c.repairId}-${now}`,
+        label: t('chat.likelyBuy.openRepair'),
+        actionType: 'review',
+        payload: {
+          type: 'review',
+          entityId: c.repairId,
+          executable: true,
+          executionTarget: 'open_repair',
+        },
+      });
+    }
+  }
+
+  const lines: string[] = [];
+  lines.push(t('chat.likelyBuy.header'));
+  lines.push('');
+  top.forEach((c, i) => {
+    lines.push(`${i + 1}. ${c.name} · ${c.phone}`);
+    lines.push(`   ${c.reason}`);
+    if (i < top.length - 1) lines.push('');
+  });
+
+  const dedupedActions = dedupeAndLimitActions(actions, 5);
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(dedupedActions.length > 0 ? { actions: dedupedActions } : {}),
+  };
+}
+
 function handleWhoToContact(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const rawPredictions = engine.getNextVisitPredictions(10);

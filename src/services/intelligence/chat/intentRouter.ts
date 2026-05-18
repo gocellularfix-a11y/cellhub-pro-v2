@@ -57,6 +57,7 @@ export type IntentId =
   | 'anomaly_days'
   | 'who_to_contact'
   | 'who_to_contact_today'
+  | 'likely_to_buy_today'
   | 'marketing_campaign'
   | 'product_push'
   | 'what_hurting_profit'
@@ -620,6 +621,29 @@ const WHAT_HURTING_PROFIT_KEYWORDS = [
   'qué está mal', 'que esta mal', 'what is wrong', "what's wrong",
   'hurting', 'afectando', 'daña', 'problema', 'dinero', 'money',
   'qué me está costando', 'que me esta costando',
+];
+
+// R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: ranked buyer likelihood aggregator.
+// Uses repair-ready signal (highest confidence), outreach queue, and overdue
+// visit predictions. Distinct from who_to_contact_today (generic outreach list)
+// — focuses on immediate conversion signals, not broad reachability.
+// Listed AFTER who_to_contact_today (which anchors on "contact today/hoy") so
+// specific daily contact phrases stay there; "most likely to buy", "ready to
+// buy", "who should I message" route here.
+const LIKELY_TO_BUY_TODAY_KEYWORDS = [
+  // EN
+  'who is most likely to buy', 'who is ready to buy',
+  'who should i message', 'who can make me money today',
+  'most likely to buy today', 'best customer to contact',
+  'who will buy today', 'ready to buy today',
+  // ES
+  'qué cliente debo contactar', 'que cliente debo contactar',
+  'quién es más probable que compre', 'quien es mas probable que compre',
+  'quién está listo para comprar', 'quien esta listo para comprar',
+  'qué cliente me puede comprar hoy', 'que cliente me puede comprar hoy',
+  // PT
+  'quem devo contactar hoje', 'quem está pronto para comprar',
+  'quem pode comprar hoje', 'melhor cliente para contatar',
 ];
 
 const WHO_TO_CONTACT_KEYWORDS = [
@@ -1267,6 +1291,10 @@ export function classifyIntent(
     // generic customer-name detection doesn't swallow "a quien contacto hoy"
     // into a (failed) name lookup. List order also breaks score ties.
     { id: 'who_to_contact_today', score: scoreKeywords(query, WHO_TO_CONTACT_TODAY_KEYWORDS) },
+    // R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: listed AFTER who_to_contact_today
+    // so "contact today/hoy" phrases stay in the existing handler; "most likely
+    // to buy", "ready to buy", "who should I message" route here.
+    { id: 'likely_to_buy_today', score: scoreKeywords(query, LIKELY_TO_BUY_TODAY_KEYWORDS) },
     // R-INTEL-PRODUCT-PUSH-ENGINE: must run BEFORE marketing_campaign and
     // product_opportunities so phrases like "promote this product Galaxy"
     // route here (singular product). marketing_campaign keeps the plural

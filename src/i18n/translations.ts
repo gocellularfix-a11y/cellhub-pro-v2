@@ -7051,6 +7051,17 @@ export const translations: TranslationDictionary = {
     pt: 'Aguardando',
   },
 
+  // ── Likely To Buy Today (R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1) ──────
+  'chat.likelyBuy.header':                 { en: '📞 Most likely to buy today:', es: '📞 Más probable que compre hoy:', pt: '📞 Mais propenso a comprar hoje:' },
+  'chat.likelyBuy.empty':                  { en: 'Not enough customer data to rank likely buyers. Record more purchases to activate this signal.', es: 'Datos de clientes insuficientes para clasificar compradores probables. Registra más compras para activar esta señal.', pt: 'Dados de clientes insuficientes para classificar prováveis compradores.' },
+  'chat.likelyBuy.reason.repairBalance':   { en: (amount: string) => `Repair ready for pickup — ${amount} balance owed. They're coming in anyway.`, es: (amount: string) => `Reparación lista para recoger — ${amount} de saldo. Van a venir de todas formas.`, pt: (amount: string) => `Conserto pronto para retirada — ${amount} de saldo. Vão vir de qualquer forma.` },
+  'chat.likelyBuy.reason.repairReady':     { en: 'Repair ready for pickup — high-conversion visit incoming.', es: 'Reparación lista para recoger — visita de alta conversión por venir.', pt: 'Conserto pronto para retirada — visita de alta conversão chegando.' },
+  'chat.likelyBuy.reason.outreach':        { en: (days: number) => `${days}d inactive — flagged by outreach queue.`, es: (days: number) => `${days}d inactivo — marcado por la cola de seguimiento.`, pt: (days: number) => `${days}d inativo — marcado pela fila de contato.` },
+  'chat.likelyBuy.reason.overdue':         { en: (days: number) => `${days}d past their normal return window based on purchase history.`, es: (days: number) => `${days}d fuera de su ventana de regreso normal según historial de compras.`, pt: (days: number) => `${days}d além da janela de retorno normal com base no histórico de compras.` },
+  'chat.likelyBuy.waMsg.repairReady':      { en: (name: string) => `Hi ${name}! Your repair is ready for pickup. Come by whenever you're free!`, es: (name: string) => `¡Hola ${name}! Tu reparación está lista para recoger. ¡Pásate cuando puedas!`, pt: (name: string) => `Olá ${name}! Seu conserto está pronto para retirada. Passe por aqui quando puder!` },
+  'chat.likelyBuy.waMsg.followUp':         { en: (name: string) => `Hi ${name}! Just checking in — we have some deals you might like. Stop by today!`, es: (name: string) => `¡Hola ${name}! Solo saludando — tenemos ofertas que te podrían interesar. ¡Pásate hoy!`, pt: (name: string) => `Olá ${name}! Só passando para ver — temos ofertas que você pode gostar. Passe hoje!` },
+  'chat.likelyBuy.openRepair':             { en: 'Open Repair', es: 'Abrir reparación', pt: 'Abrir conserto' },
+
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
   'chat.pushNow.noOpps':            { en: 'No strong product opportunities detected right now. Record a few more sales so the engine can calibrate margins and velocity.', es: 'No se detectaron oportunidades de producto fuertes ahora. Registra más ventas para que el motor pueda calibrar márgenes y velocidad.', pt: 'Nenhuma oportunidade de produto forte detectada agora. Registre mais vendas para o motor calibrar margens e velocidade.' },
