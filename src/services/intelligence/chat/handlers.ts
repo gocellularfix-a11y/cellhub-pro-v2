@@ -88,6 +88,10 @@ import { generateDailyOperatorBrief } from '../operator/dailyBrief';
 import { isMeaningfulDeviation } from '../baseline/contextualBaseline';
 // R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal buyer ranker.
 import { getCustomersMostLikelyToBuyToday } from '../opportunities/buyTodayRanking';
+// R-INTELLIGENCE-EXTRACT-RANKERS-FROM-HANDLERS-V1: pure ranking functions.
+import { scanStaleRepairs } from '../ranking/staleRepairScanner';
+import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
+import { rankContactTodayCandidates } from '../ranking/contactTodayRanker';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -1233,32 +1237,9 @@ function handleProactiveOpportunities(engine: IntelligenceEngine, lang: Lang3): 
     }
   } catch { /* skip */ }
 
-  // Source 2: Repairs ready for pickup older than 3 days. Recoverable
-  // revenue = sum of remaining balances. Caps the scan at the engine's
-  // current repairs slice (already in memory; no external read).
+  // Source 2: Repairs ready for pickup older than 3 days.
   try {
-    const repairs = engine.getRepairs();
-    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    let staleCount = 0;
-    let recoverable = 0;
-    for (const r of repairs) {
-      const status = String((r as { status?: string }).status || '').toLowerCase();
-      if (status !== 'ready') continue;
-      const ca = (r as { completedAt?: unknown }).completedAt;
-      if (!ca) continue;
-      let ts = 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        ts = new Date(d as string | Date).getTime();
-      } catch { continue; }
-      if (!Number.isFinite(ts) || ts === 0) continue;
-      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
-      staleCount++;
-      recoverable += (r as { balance?: number }).balance || 0;
-    }
+    const { staleCount, recoverableCents: recoverable } = scanStaleRepairs(engine);
     if (staleCount > 0) {
       ops.push({
         title: t('chat.opportunities.staleRepairs.title'),
@@ -1538,28 +1519,7 @@ function handleTodayMoneyMap(engine: IntelligenceEngine, lang: Lang3): ChatRespo
   // Source 1: Stale ready repairs (>= $20 recoverable, > 3 days waiting).
   // "money already owed" — boosted rank.
   try {
-    const repairs = engine.getRepairs();
-    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    let staleCount = 0;
-    let recoverable = 0;
-    for (const r of repairs) {
-      const status = String((r as { status?: string }).status || '').toLowerCase();
-      if (status !== 'ready') continue;
-      const ca = (r as { completedAt?: unknown }).completedAt;
-      if (!ca) continue;
-      let ts = 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        ts = new Date(d as string | Date).getTime();
-      } catch { continue; }
-      if (!Number.isFinite(ts) || ts === 0) continue;
-      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
-      staleCount++;
-      recoverable += (r as { balance?: number }).balance || 0;
-    }
+    const { staleCount, recoverableCents: recoverable } = scanStaleRepairs(engine);
     if (staleCount > 0 && recoverable >= 2000) {
       ops.push({
         title: t('chat.opportunities.staleRepairs.title'),
@@ -1670,28 +1630,7 @@ function handleOperatorMode(engine: IntelligenceEngine, lang: Lang3): ChatRespon
 
   // Source 1: Stale ready repairs — money already owed, fastest collect.
   try {
-    const repairs = engine.getRepairs();
-    const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    let staleCount = 0;
-    let recoverable = 0;
-    for (const r of repairs) {
-      const status = String((r as { status?: string }).status || '').toLowerCase();
-      if (status !== 'ready') continue;
-      const ca = (r as { completedAt?: unknown }).completedAt;
-      if (!ca) continue;
-      let ts = 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        ts = new Date(d as string | Date).getTime();
-      } catch { continue; }
-      if (!Number.isFinite(ts) || ts === 0) continue;
-      if ((now - ts) <= PICKUP_THRESHOLD_MS) continue;
-      staleCount++;
-      recoverable += (r as { balance?: number }).balance || 0;
-    }
+    const { staleCount, recoverableCents: recoverable } = scanStaleRepairs(engine);
     if (staleCount > 0 && recoverable >= 2000) {
       plan.push({
         title: t('chat.opportunities.staleRepairs.title'),
@@ -2059,38 +1998,8 @@ function handleCloseToday(lang: Lang3): ChatResponse {
     return { kind: 'answer', text: `${t('chat.closeToday.headerEmpty')}\n\n${t('chat.closeToday.empty')}` };
   }
 
-  // Stage-base scores per spec.
-  const STAGE_BASE: Record<string, number> = {
-    pending_pickup:    100,
-    pending_approval:  85,
-    negotiating:       70,
-    interested:        55,
-    customer_replied:  45,
-    proposal_sent:     25,
-  };
-  // Buying-language regex — matches the spec's example phrases plus
-  // common close cues. EN/ES/PT.
-  const BUYING_PATTERN = /\b(take it|i'?ll take it|lo quiero|quiero|me interesa|how much|lowest|today|ahorita|voy|pickup|pick it up|hoy)\b/i;
-  const now = Date.now();
-  const HOUR_24 = 24 * 60 * 60 * 1000;
-  const HOUR_72 = 72 * 60 * 60 * 1000;
-  const DAY_7   = 7  * 24 * 60 * 60 * 1000;
-
-  const scored = active.map((d) => {
-    let score = STAGE_BASE[d.stage] || 0;
-    if (d.customerPhone && d.customerPhone.trim()) score += 15;
-    if (d.lastReplyText && d.lastReplyText.trim()) score += 15;
-    if (d.lastReplyText && BUYING_PATTERN.test(d.lastReplyText)) score += 20;
-    if ((now - d.updatedAt) < HOUR_24) score += 20;
-    if ((now - d.createdAt) < HOUR_72) score += 10;
-    if ((now - d.createdAt) > DAY_7 && !d.lastReplyText) score -= 30;
-    return { deal: d, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
+  const scored = scoreDealsForCloseToday(active);
   const top = scored.slice(0, 5);
-
-  const labelFor = (s: number): 'high' | 'medium' | 'low' =>
-    s >= 90 ? 'high' : s >= 60 ? 'medium' : 'low';
 
   const lines: string[] = [];
   lines.push(t('chat.closeToday.header'));
@@ -2098,7 +2007,7 @@ function handleCloseToday(lang: Lang3): ChatResponse {
   top.forEach(({ deal: d, score }, i) => {
     const customer = d.customerName || d.customerPhone || t('chat.closeToday.unknownCustomer');
     const product = d.productName || t('chat.closeToday.unknownProduct');
-    const lbl = labelFor(score);
+    const lbl = dealCloseLikelihood(score);
     lines.push(`${i + 1}. ${customer} · ${product}`);
     lines.push(`   ${t('chat.closeToday.likelihoodLabel')} ${t(`chat.closeToday.label.${lbl}`)}`);
     lines.push(`   ${t('chat.closeToday.whyLabel')} ${t(`chat.closeToday.why.${d.stage}`)}`);
@@ -3204,62 +3113,11 @@ function handleWhoToContactToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   if (scores.length === 0) {
     return { kind: 'answer', text: t('chat.whoToContact.empty') };
   }
-  // R-INTENT-CONTACT-TODAY-CONSENT-GUARD: consent lookup. CustomerHistorySummary
-  // exposes a narrow customer projection without consent, so read it from the
-  // engine's full customers array. Undefined = allowed (legacy records).
-  const consentById = new Map(engine.getCustomers().map((c) => [c.id, c.communicationConsent]));
+  const { top, highSpenderThreshold } = rankContactTodayCandidates(scores, engine);
 
-  type Candidate = {
-    name: string;
-    phone: string;
-    grossRevenue: number;
-    visitCount: number;
-    daysSinceLastVisit: number;
-    repairCount: number;
-    rankScore: number;
-  };
-
-  const now = Date.now();
-  const candidates: Candidate[] = [];
-  for (const cs of scores) {
-    const h = engine.getCustomerHistory(cs.customerId);
-    if (!h) continue;
-    const phone = h.customer.phone || '';
-    if (!phone) continue;                     // require contact channel
-    // R-INTENT-CONTACT-TODAY-CONSENT-GUARD: skip customers who explicitly
-    // opted out of communications. Undefined treated as allowed (legacy
-    // records pre-dating the consent field).
-    if (consentById.get(cs.customerId) === false) continue;
-    if (h.visitCount < 1) continue;           // require prior purchase
-    if (!h.lastVisit) continue;               // require valid last-visit date
-    const daysSinceLastVisit = Math.max(0, Math.floor((now - h.lastVisit.getTime()) / 86400000));
-    const rankScore = (h.grossRevenue / 100) + daysSinceLastVisit * 2 + h.visitCount * 10;
-    candidates.push({
-      name: h.customer.name,
-      phone,
-      grossRevenue: h.grossRevenue,
-      visitCount: h.visitCount,
-      daysSinceLastVisit,
-      repairCount: h.linkedEntities?.repairCount || 0,
-      rankScore,
-    });
-  }
-
-  if (candidates.length === 0) {
+  if (top.length === 0) {
     return { kind: 'answer', text: t('chat.whoToContact.empty') };
   }
-
-  // Prefer inactive 14+ days; fall back to full pool if <3 qualify.
-  const inactivePool = candidates.filter((c) => c.daysSinceLastVisit >= 14);
-  const pool = inactivePool.length >= 3 ? inactivePool : candidates;
-
-  // High-spender threshold = 75th percentile of grossRevenue across the full
-  // candidate set (not just the chosen pool — keeps the threshold stable).
-  const sortedSpend = candidates.map((c) => c.grossRevenue).sort((a, b) => a - b);
-  const q3Index = Math.max(0, Math.floor(sortedSpend.length * 0.75));
-  const highSpenderThreshold = sortedSpend[q3Index] || 0;
-
-  const top = pool.slice().sort((a, b) => b.rankScore - a.rankScore).slice(0, 3);
 
   // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: persist queue items at handler-level
   // so only this intent (who_to_contact_today) creates queue entries. Engine
