@@ -82,6 +82,9 @@ import { getPendingItems, getQueueSummary } from '../managerQueue/selectors';
 // collection from handleDailyOperatorBrief so the struct can be reused by
 // future UI widgets without re-running the handler.
 import { generateDailyOperatorBrief } from '../operator/dailyBrief';
+// R-INTELLIGENCE-SLOW-DAY-DIAGNOSTIC-V1: deviation classifier for real-time
+// "why is today slow" diagnosis against store-calibrated hourly baseline.
+import { isMeaningfulDeviation } from '../baseline/contextualBaseline';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -333,6 +336,9 @@ export function handleIntent(
 
     case 'slow_day_root_cause':
       return handleSlowDayRootCause(engine, lang);
+
+    case 'slow_day_diagnostic':
+      return handleSlowDayDiagnostic(engine, lang);
 
     case 'dead_stock_root_cause':
       return handleDeadStockRootCause(engine, lang);
@@ -3041,6 +3047,149 @@ function handleDeadStockRootCause(engine: IntelligenceEngine, lang: Lang3): Chat
   ).slice(0, 10);
 
   return { kind: 'answer', text: `${header}\n\n${sections.join('\n\n')}`, actions: actionUI };
+}
+
+// ── Slow Day Diagnostic (R-INTELLIGENCE-SLOW-DAY-DIAGNOSTIC-V1) ────────────
+// Real-time "why is today slow" aggregator. Compares today's live metrics
+// against the store's hourly baseline and surfaces causes + recovery actions.
+// Does NOT duplicate logic from handleSlowDayRootCause (which analyzes
+// historical weekday patterns). All data pulled from existing engine signals.
+function handleSlowDayDiagnostic(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+
+  type Cause = { title: string; evidence: string; rank: number };
+  const causes: Cause[] = [];
+
+  // Signal 1: today's metrics vs. hourly baseline.
+  let todayM: ReturnType<typeof engine.getTodayMetrics> | null = null;
+  let baseline: ReturnType<typeof engine.getContextualBaseline> | null = null;
+  try {
+    todayM   = engine.getTodayMetrics();
+    baseline = engine.getContextualBaseline();
+  } catch { /* skip */ }
+
+  if (!todayM || !baseline || baseline.dailyAverage === 0) {
+    return { kind: 'answer', text: t('chat.slowDiag.noData') };
+  }
+
+  if (todayM.transactions === 0) {
+    causes.push({
+      title:    t('chat.slowDiag.cause.noSales.title'),
+      evidence: t('chat.slowDiag.cause.noSales.evidence'),
+      rank: 99999,
+    });
+  } else {
+    // Sum hourly baseline up to (and including) current hour → expected so far.
+    const nowHour = new Date().getHours();
+    let expectedSoFar = 0;
+    for (let h = 0; h <= nowHour; h++) {
+      expectedSoFar += (baseline.hourlyAverage[h] ?? 0);
+    }
+    // Fallback: fraction of daily average when hourly data is sparse.
+    if (expectedSoFar < 100 && baseline.dailyAverage > 0) {
+      expectedSoFar = baseline.dailyAverage * Math.min((nowHour + 1) / 12, 1);
+    }
+    if (expectedSoFar > 500) {
+      const dev = isMeaningfulDeviation(todayM.revenueCents, expectedSoFar, baseline.volatilityScore);
+      if (dev.isDeviation && dev.pct < 0) {
+        causes.push({
+          title:    t('chat.slowDiag.cause.lowRevenue.title', Math.abs(Math.round(dev.pct))),
+          evidence: t('chat.slowDiag.cause.lowRevenue.evidence', COP(todayM.revenueCents), COP(expectedSoFar)),
+          rank: Math.abs(dev.pct) * 80,
+        });
+      }
+    }
+  }
+
+  // Signal 2: repairs ready for pickup — uncollected cash.
+  try {
+    const repairs = engine.getRepairs();
+    const ready = repairs.filter(
+      r => String((r as { status?: string }).status || '').toLowerCase() === 'ready',
+    );
+    const balance = ready.reduce((s, r) => s + ((r as { balance?: number }).balance || 0), 0);
+    if (ready.length >= 2 && balance >= 2000) {
+      causes.push({
+        title:    t('chat.slowDiag.cause.repairs.title', ready.length, COP(balance)),
+        evidence: t('chat.slowDiag.cause.repairs.evidence'),
+        rank: balance,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Signal 3: outreach candidates — potential walk-in traffic.
+  try {
+    const outreach = engine.buildOutreachQueueItems();
+    if (outreach.length >= 2) {
+      causes.push({
+        title:    t('chat.slowDiag.cause.outreach.title', outreach.length),
+        evidence: t('chat.slowDiag.cause.outreach.evidence'),
+        rank: outreach.length * 500,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Signal 4: dead stock — locked capital.
+  try {
+    const missed = engine.getMissedRevenue();
+    const dead = missed?.deadStockLockedCents ?? 0;
+    if (dead >= 10000) {
+      causes.push({
+        title:    t('chat.slowDiag.cause.deadStock.title', COP(dead)),
+        evidence: t('chat.slowDiag.cause.deadStock.evidence'),
+        rank: dead / 5,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Signal 5: high-margin product opportunity.
+  try {
+    const opps = engine.getProductOpportunities(1);
+    if (opps.length > 0) {
+      const top = opps[0];
+      const impact = top.impactCents || 0;
+      if (impact >= 1000) {
+        causes.push({
+          title:    t('chat.slowDiag.cause.productOpp.title', top.name),
+          evidence: t('chat.slowDiag.cause.productOpp.evidence', COP(impact)),
+          rank: impact / 10,
+        });
+      }
+    }
+  } catch { /* skip */ }
+
+  if (causes.length === 0) {
+    return { kind: 'answer', text: t('chat.slowDiag.looksNormal') };
+  }
+
+  causes.sort((a, b) => b.rank - a.rank);
+  const top = causes.slice(0, 5);
+
+  const lines: string[] = [];
+  lines.push(t('chat.slowDiag.header'));
+  lines.push('');
+  top.forEach((c, i) => {
+    lines.push(`${i + 1}. ${c.title}`);
+    lines.push(`   ${c.evidence}`);
+    if (i < top.length - 1) lines.push('');
+  });
+  lines.push('');
+  lines.push(t('chat.slowDiag.recovery'));
+
+  // Executable action buttons from ranked module-wide opportunities.
+  const globalOpps = mwoOpps(engine);
+  const actions = dedupeAndLimitActions(
+    globalOpps.slice(0, 5).flatMap(opp =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
+    5,
+  );
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
 }
 
 // ── Slow day root cause (R-INTEL-PHASE2B-RC) ───────────────

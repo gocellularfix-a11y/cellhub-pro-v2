@@ -63,6 +63,7 @@ export type IntentId =
   | 'product_opportunities'
   | 'root_cause'
   | 'slow_day_root_cause'
+  | 'slow_day_diagnostic'
   | 'dead_stock_root_cause'
   | 'customer_churn_root_cause'
   | 'help'
@@ -721,6 +722,25 @@ const SLOW_DAY_ROOT_CAUSE_KEYWORDS = [
   'dia mais fraco', 'por que meu dia fraco',
 ];
 
+// R-INTELLIGENCE-SLOW-DAY-DIAGNOSTIC-V1: real-time "why is today slow" diagnosis.
+// Distinct from slow_day_root_cause (which answers why a specific weekday is
+// historically weak). Listed AFTER slow_day_root_cause so "slow day reason"
+// still routes to the historical root-cause handler.
+const SLOW_DAY_DIAGNOSTIC_KEYWORDS = [
+  // EN
+  'why is today slow', 'why are sales slow', 'why am i slow today',
+  'slow day', 'why is business slow', 'business is slow',
+  'why slow today', 'sales are slow today',
+  // ES
+  'por qué está lento hoy', 'por que esta lento hoy',
+  'por qué no vendo hoy', 'por que no vendo hoy',
+  'día lento', 'dia lento',
+  'por qué estoy lento hoy', 'por que estoy lento hoy',
+  // PT
+  'vendas lentas', 'por que estou lento hoje',
+  'por que as vendas estão lentas', 'negócio lento', 'negocio lento',
+];
+
 const DEAD_STOCK_ROOT_CAUSE_KEYWORDS = [
   // EN
   'why not selling', 'not selling reason', 'dead stock reason', 'dead stock cause',
@@ -1355,6 +1375,7 @@ export function classifyIntent(
     { id: 'trend_direction', score: scoreKeywords(query, TREND_DIRECTION_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
+    { id: 'slow_day_diagnostic', score: scoreKeywords(query, SLOW_DAY_DIAGNOSTIC_KEYWORDS) },
     { id: 'dead_stock_root_cause', score: scoreKeywords(query, DEAD_STOCK_ROOT_CAUSE_KEYWORDS) },
     { id: 'customer_churn_root_cause', score: scoreKeywords(query, CUSTOMER_CHURN_KEYWORDS) },
     { id: 'help', score: scoreKeywords(query, HELP_KEYWORDS) },
