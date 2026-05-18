@@ -1062,6 +1062,18 @@ const FOLLOWUP_PHRASES = new Set([
   'que hago', 'qué hago', 'ahora que', 'y ahora',
   // PT (note: 'por que' shared with ES; added unique forms)
   'por quê', 'o que faço', 'o que faco', 'e agora',
+  // R-INTELLIGENCE-SESSION-CONTEXT-V1: pronoun contact references
+  'contact him', 'contact her', 'contact them', 'call him', 'call her', 'message him', 'message her',
+  'contactalo', 'contactala', 'contactalos', 'llamalo', 'llamala',
+  'contata ele', 'contata ela',
+  // open/show entity references
+  'open it', 'open that', 'show it',
+  'ábrelo', 'abrelo',
+  'abra isso', 'mostre isso',
+  // list extension
+  'show more', 'give me more', 'more results', 'see more',
+  'ver más', 'dame más', 'muéstrame más', 'muestrame mas',
+  'ver mais', 'mostrar mais', 'me dê mais',
 ]);
 
 export function isFollowUpQuery(query: string): boolean {

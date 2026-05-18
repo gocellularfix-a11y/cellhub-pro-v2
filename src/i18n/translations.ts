@@ -6648,6 +6648,14 @@ export const translations: TranslationDictionary = {
   'chat.followup.contactToday':          { en: 'these customers were ranked by recent activity and outreach opportunity.', es: 'estos clientes se rankearon por actividad reciente y oportunidad de contacto.', pt: 'esses clientes foram classificados por atividade recente e oportunidade de contato.' },
   'chat.followup.actionContact':         { en: 'Send a WhatsApp or call them today.', es: 'Manda un WhatsApp o llama hoy.', pt: 'Envie WhatsApp ou ligue hoje.' },
   'chat.followup.fallback':              { en: 'I can explain this better when the previous answer is a sales, customer, product, or contact insight.', es: 'Puedo explicar mejor cuando la respuesta anterior es sobre ventas, clientes, productos o contactos.', pt: 'Posso explicar melhor quando a resposta anterior é sobre vendas, clientes, produtos ou contatos.' },
+  // R-INTELLIGENCE-SESSION-CONTEXT-V1: pronoun / entity follow-up strings
+  'chat.followup.contactHeader':   { en: (n: string) => `Here's how to reach ${n}:`, es: (n: string) => `Aquí está el contacto de ${n}:`, pt: (n: string) => `Aqui está o contato de ${n}:` },
+  'chat.followup.contactAction':   { en: (n: string) => `WhatsApp ${n}`, es: (n: string) => `WhatsApp ${n}`, pt: (n: string) => `WhatsApp ${n}` },
+  'chat.followup.noContext':       { en: 'No recent context to reference. Please ask a complete question.', es: 'No hay contexto reciente. Haz una pregunta completa.', pt: 'Sem contexto recente. Faça uma pergunta completa.' },
+  'chat.followup.openRepairLabel': { en: 'Open Repair', es: 'Abrir Reparación', pt: 'Abrir Reparo' },
+  'chat.followup.openRepairHeader':{ en: 'Opening this repair ticket:', es: 'Abriendo este ticket de reparación:', pt: 'Abrindo este ticket de reparo:' },
+  'chat.followup.openCustomerLabel':{ en: 'View Customer', es: 'Ver Cliente', pt: 'Ver Cliente' },
+  'chat.followup.openCustomerHeader':{ en: 'Opening this customer profile:', es: 'Abriendo el perfil de este cliente:', pt: 'Abrindo o perfil deste cliente:' },
 
   // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
   'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },

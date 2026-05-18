@@ -429,6 +429,9 @@ function handleBestCustomer(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   return {
     kind: 'answer',
     text: `${t('chat.bestCustomer.header')}\n\n${summary}\n\n${t('chat.bestCustomer.recommendation')}`,
+    // R-INTELLIGENCE-SESSION-CONTEXT-V1: establishes customer context so
+    // "contact him" follow-ups can resolve the correct customer.
+    establishesContext: { type: 'customer', value: top.customerId },
   };
 }
 
@@ -762,8 +765,96 @@ export function handleFollowUp(
   context: FollowUpContext,
   engine: IntelligenceEngine,
   lang: Lang3,
+  operationalContext?: OperationalContext | null,
+  currentQuery?: string,
 ): ChatResponse {
   const t = tChat(lang);
+
+  // R-INTELLIGENCE-SESSION-CONTEXT-V1: resolve pronoun/entity follow-ups
+  // before the switch. These patterns require the operational context slot
+  // (type + value) rather than the intent-specific text in the switch below.
+  const cq = (currentQuery ?? '').toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // "contact him/her/them" — customer pronoun reference
+  const isContactRef = /^(contact h[ei]m|contact her|contact them|call h[ei]m|call her|message h[ei]m|message her|contactal[oa]|contactalos|llamal[oa]|contata ele|contata ela)\b/.test(cq);
+  if (isContactRef) {
+    if (operationalContext?.type === 'customer') {
+      const custId = operationalContext.value;
+      const customer = engine.getCustomers().find((c) => c.id === custId);
+      if (customer) {
+        const phone = (customer as { phone?: string }).phone || '';
+        const action: ChatActionUI = {
+          id: `fu-contact-${custId}`,
+          label: t('chat.followup.contactAction', customer.name),
+          actionType: 'whatsapp',
+          payload: {
+            type: 'whatsapp',
+            messageKey: 'whatsapp.template.reconnect',
+            customerId: custId,
+            customerName: customer.name,
+            customerPhone: phone,
+            executable: !!phone,
+            executionTarget: 'whatsapp_url',
+          },
+        };
+        return {
+          kind: 'answer',
+          text: t('chat.followup.contactHeader', customer.name),
+          actions: [action],
+        };
+      }
+    }
+    return { kind: 'answer', text: t('chat.followup.noContext') };
+  }
+
+  // "open it/that" — entity reference navigation
+  const isOpenRef = /^(open it|open that|show it|[aá]brelo|abrelo|abra isso|mostre isso)\b/.test(cq);
+  if (isOpenRef && operationalContext) {
+    if (operationalContext.type === 'repair') {
+      const action: ChatActionUI = {
+        id: `fu-open-repair-${operationalContext.value}`,
+        label: t('chat.followup.openRepairLabel'),
+        actionType: 'review',
+        payload: { type: 'review', entityId: operationalContext.value, executable: true, executionTarget: 'open_repair' },
+      };
+      return { kind: 'answer', text: t('chat.followup.openRepairHeader'), actions: [action] };
+    }
+    if (operationalContext.type === 'customer') {
+      const custId = operationalContext.value;
+      const customer = engine.getCustomers().find((c) => c.id === custId);
+      const action: ChatActionUI = {
+        id: `fu-open-cust-${custId}`,
+        label: t('chat.followup.openCustomerLabel'),
+        actionType: 'review',
+        payload: { type: 'review', entityId: custId, customerId: custId, customerName: customer?.name, executable: true, executionTarget: 'open_customer' },
+      };
+      return { kind: 'answer', text: t('chat.followup.openCustomerHeader'), actions: [action] };
+    }
+  }
+
+  // "show more" — re-run previous list handler for fresh results
+  const isShowMore = /^(show more|show me more|give me more|more results|see more|ver m[aá]s|dame m[aá]s|mu[eé]strame m[aá]s|ver mais|mostrar mais|me d[eê] mais)\b/.test(cq);
+  if (isShowMore) {
+    switch (context.intentId) {
+      case 'daily_operator_brief':
+      case 'what_to_do_today':
+      case 'proactive_opportunities':
+        return handleDailyOperatorBrief(engine, lang);
+      case 'who_to_contact':
+      case 'who_to_contact_today':
+      case 'likely_to_buy_today':
+        return handleLikelyToBuyToday(engine, lang);
+      case 'push_right_now':
+      case 'product_push':
+      case 'product_opportunities':
+        return handlePushRightNow(engine, lang);
+      case 'slow_day_diagnostic':
+        return handleSlowDayDiagnostic(engine, lang);
+      default:
+        return { kind: 'answer', text: t('chat.followup.fallback') };
+    }
+  }
+
   const lines: string[] = [t('chat.followup.header')];
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V2-CONTACT: optional ChatActionUI[]
   // attached only by the today_sales contact-cause branch below.
@@ -840,6 +931,18 @@ export function handleFollowUp(
       lines.push(t('chat.followup.action', t('chat.followup.actionContact')));
       break;
     }
+    case 'slow_day_diagnostic':
+    case 'slow_day_root_cause':
+    case 'root_cause':
+      return handleSlowDayDiagnostic(engine, lang);
+    case 'daily_operator_brief':
+    case 'what_to_do_today':
+    case 'daily_revenue_missions':
+      return handleDailyOperatorBrief(engine, lang);
+    case 'push_right_now':
+      return handlePushRightNow(engine, lang);
+    case 'likely_to_buy_today':
+      return handleLikelyToBuyToday(engine, lang);
     default:
       lines.push(t('chat.followup.fallback'));
   }

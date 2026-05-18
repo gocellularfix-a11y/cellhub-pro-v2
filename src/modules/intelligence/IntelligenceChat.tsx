@@ -39,6 +39,7 @@ import ResponseCard from './ResponseCard';
 import SuggestionChips, { type ChipData } from './SuggestionChips';
 import OperatorContinuityBar from './OperatorContinuityBar';
 import { getPendingResumeContexts } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { pushSessionContext, getSessionContext } from '@/services/intelligence/chat/sessionContext';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -161,6 +162,22 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { langRef.current = lang; }, [lang]);
 
+  // R-INTELLIGENCE-SESSION-CONTEXT-V1: restore context from localStorage on mount.
+  // Lets "contact him" and "why?" work even after a tab switch or page reload,
+  // as long as the previous context hasn't expired (30-min TTL).
+  useEffect(() => {
+    const saved = getSessionContext();
+    if (!saved) return;
+    if (saved.lastIntent) {
+      lastIntentRef.current = { intentId: saved.lastIntent, query: '', responseText: '', ts: saved.timestamp };
+    }
+    if (saved.lastCustomerId) {
+      operationalContextRef.current = { type: 'customer', value: saved.lastCustomerId, timestamp: saved.timestamp };
+    } else if (saved.lastRepairId) {
+      operationalContextRef.current = { type: 'repair', value: saved.lastRepairId, timestamp: saved.timestamp };
+    }
+  }, []); // once on mount — intentional
+
   function setFeedbackForAction(actionId: string, message: string) {
     const ts = Date.now();
     setActionFeedbackById((prev) => ({ ...prev, [actionId]: { message, ts } }));
@@ -245,7 +262,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     let matchedIntentId: string;
     if (isFollowUpQuery(query) && lastIntentRef.current) {
       response = perfTime('intel.chat.handleFollowUp',
-        () => handleFollowUp(lastIntentRef.current!, engineRef.current, langRef.current));
+        () => handleFollowUp(lastIntentRef.current!, engineRef.current, langRef.current, operationalContextRef.current, query));
       matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
     } else {
       // R-INTELLIGENCE-CONTEXT-MEMORY-V1: deterministic operational
@@ -295,6 +312,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         timestamp: now,
       };
     }
+    // R-INTELLIGENCE-SESSION-CONTEXT-V1: persist context for cross-tab/reload continuity.
+    pushSessionContext({
+      lastIntent: matchedIntentId,
+      lastRecommendationType: matchedIntentId,
+      ...(response.establishesContext?.type === 'customer' ? { lastCustomerId: response.establishesContext.value } : {}),
+      ...(response.establishesContext?.type === 'repair'   ? { lastRepairId:   response.establishesContext.value } : {}),
+    });
     clearActionFeedback();
     if (response.actions?.length) {
       const queueable = response.actions.filter(isQueueableAction);
@@ -449,7 +473,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     let response;
     let matchedIntentId: string;
     if (isFollowUpQuery(query) && lastIntentRef.current) {
-      response = handleFollowUp(lastIntentRef.current, engine, lang);
+      response = handleFollowUp(lastIntentRef.current, engine, lang, operationalContextRef.current, query);
       matchedIntentId = lastIntentRef.current.intentId;
     } else {
       const match = classifyIntent(query, customers, lang);
@@ -471,6 +495,21 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
     lastResponseRef.current = { text: response.text, ts: now };
     lastIntentRef.current = { intentId: matchedIntentId, query, responseText: response.text, ts: now };
+    // R-INTELLIGENCE-CONTEXT-MEMORY-V1: mirror fireQuery's operationalContext update.
+    if (response.establishesContext && response.kind !== 'error') {
+      operationalContextRef.current = {
+        type: response.establishesContext.type,
+        value: response.establishesContext.value,
+        timestamp: now,
+      };
+    }
+    // R-INTELLIGENCE-SESSION-CONTEXT-V1: persist for cross-tab/reload continuity.
+    pushSessionContext({
+      lastIntent: matchedIntentId,
+      lastRecommendationType: matchedIntentId,
+      ...(response.establishesContext?.type === 'customer' ? { lastCustomerId: response.establishesContext.value } : {}),
+      ...(response.establishesContext?.type === 'repair'   ? { lastRepairId:   response.establishesContext.value } : {}),
+    });
 
     const assistantMsg: ChatMessage = {
       id: `a-${now}`,
