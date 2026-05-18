@@ -13,6 +13,10 @@ import { addManagerQueueItem } from '../managerQueue/actions';
 // canonical helper also handles the 10-digit→US-prefix normalization in one
 // codepath instead of two.
 import { buildWhatsAppUrl } from '@/services/whatsapp';
+// R-INTELLIGENCE-UNIFY-EXECUTION-LOGS-V1: mirror writes to canonical store.
+// Own executionLog:v1 is preserved — getActionImpact() still reads from it.
+import { recordIntelligenceExecution } from '../execution/intelligenceExecutionHistory';
+import type { IntelligenceExecutionType, IntelligenceExecutionHistoryEntry } from '../execution/intelligenceExecutionHistory';
 
 // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: lightweight execution log so we
 // can later attribute revenue to actions the owner clicked. Logs live in
@@ -38,13 +42,33 @@ function readExecutionLog(): ExecutionLogItem[] {
   } catch { return []; }
 }
 
+// Maps executionTarget → canonical IntelligenceExecutionType.
+// Returns null for targets that don't warrant canonical tracking (none/default).
+function canonicalTypeFromTarget(target: ActionPayload['executionTarget']): IntelligenceExecutionType | null {
+  switch (target) {
+    case 'whatsapp_url':      return 'whatsapp';
+    case 'open_customer':     return 'open_customer';
+    case 'open_repair':       return 'open_repair';
+    case 'open_layaway':      return 'open_layaway';
+    case 'open_inventory':
+    case 'open_promote_panel': return 'open_product';
+    case 'reminder_queue':
+    case 'queue_manager_review': return 'queue_approved';
+    case 'pos_discount':
+    case 'pos_bundle':
+    case 'review_panel':      return 'completed';
+    default:                  return null;
+  }
+}
+
 function appendExecutionLog(payload: ActionPayload): void {
+  const now = Date.now();
   try {
     const item: ExecutionLogItem = {
-      id: `exec-${payload.type}-${payload.customerId || 'na'}-${Date.now()}`,
+      id: `exec-${payload.type}-${payload.customerId || 'na'}-${now}`,
       actionType: payload.type,
       customerId: payload.customerId,
-      timestamp: Date.now(),
+      timestamp: now,
     };
     const log = readExecutionLog();
     log.push(item);
@@ -52,6 +76,29 @@ function appendExecutionLog(payload: ActionPayload): void {
     const trimmed = log.length > MAX_LOG ? log.slice(log.length - MAX_LOG) : log;
     localStorage.setItem(EXECUTION_LOG_KEY, JSON.stringify(trimmed));
   } catch { /* incognito / quota — best-effort, never block */ }
+  // R-INTELLIGENCE-UNIFY-EXECUTION-LOGS-V1: mirror to canonical store.
+  const canonicalType = canonicalTypeFromTarget(payload.executionTarget);
+  if (canonicalType) {
+    const entityId = payload.entityId || payload.customerId || payload.productId;
+    const entityName = payload.customerName || payload.productName;
+    const entityType = (
+      canonicalType === 'open_customer' || canonicalType === 'whatsapp' ? 'customer'
+      : canonicalType === 'open_repair' ? 'repair'
+      : canonicalType === 'open_layaway' ? 'layaway'
+      : canonicalType === 'open_product' ? 'product'
+      : canonicalType === 'queue_approved' ? 'queue_item'
+      : undefined
+    ) as IntelligenceExecutionHistoryEntry['entityType'];
+    recordIntelligenceExecution({
+      type: canonicalType,
+      entityType,
+      entityId,
+      entityName,
+      sourceModule: 'action_executor',
+      payloadSummary: payload.executionTarget,
+      timestamp: now,
+    });
+  }
 }
 
 // R-INTELLIGENCE-ACTION-IMPACT-TRACKING-V1: deterministic 72h-window

@@ -2,6 +2,10 @@
 // Lightweight localStorage log for bubble-level navigation/workflow executions.
 // Distinct from the outreach queue (intelligence/actions.ts) which tracks WhatsApp sends.
 // Best-effort: quota failures are swallowed — never blocks execution paths.
+//
+// R-INTELLIGENCE-UNIFY-EXECUTION-LOGS-V1: mirror writes to canonical store.
+// Own storage is preserved so getRecentBubbleActions/countRecentActionById still work.
+import { recordIntelligenceExecution } from '../execution/intelligenceExecutionHistory';
 
 const EXEC_LOG_KEY = 'cellhub:intelligence:bubbleExecLog:v1';
 const MAX_ENTRIES = 200;
@@ -39,16 +43,26 @@ export function logBubbleAction(
   customerId?: string | null,
   suggestionId?: string,
 ): void {
+  const now = Date.now();
   const log = readLog();
   log.push({
-    id: `${actionId}-${Date.now()}`,
+    id: `${actionId}-${now}`,
     actionId,
     suggestionId,
     customerId,
-    executedAt: Date.now(),
+    executedAt: now,
   });
   const trimmed = log.length > MAX_ENTRIES ? log.slice(log.length - MAX_ENTRIES) : log;
   writeLog(trimmed);
+  // R-INTELLIGENCE-UNIFY-EXECUTION-LOGS-V1: mirror to canonical store.
+  recordIntelligenceExecution({
+    type: 'bubble_navigation',
+    entityType: customerId ? 'customer' : undefined,
+    entityId: customerId ?? undefined,
+    sourceModule: 'bubble',
+    payloadSummary: suggestionId ? `${actionId}/${suggestionId}` : actionId,
+    timestamp: now,
+  });
 }
 
 /** Most-recent N entries in descending time order. */
