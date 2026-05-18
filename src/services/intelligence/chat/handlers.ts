@@ -92,6 +92,9 @@ import { getCustomersMostLikelyToBuyToday } from '../opportunities/buyTodayRanki
 import { generateOutreachCampaign } from '../outreach/generateOutreachCampaign';
 // R-OUTREACH-OUTCOME-FEEDBACK-V1: performance summary for outreach_performance intent.
 import { getOutreachPerformanceSummary } from '../outreach/outreachEffectiveness';
+// R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.
+import { generateDailyBriefV2 } from '../operatorBrief/operatorDailyBriefV2';
+import type { BriefV2Section } from '../operatorBrief/operatorDailyBriefV2';
 // R-INTELLIGENCE-EXTRACT-RANKERS-FROM-HANDLERS-V1: pure ranking functions.
 import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
@@ -323,6 +326,9 @@ export function handleIntent(
 
     case 'outreach_performance':
       return handleOutreachPerformance(lang);
+
+    case 'operator_daily_brief_v2':
+      return handleOperatorDailyBriefV2(engine, lang);
 
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
@@ -896,6 +902,8 @@ export function handleFollowUp(
         return handleSmartOutreachCampaign(engine, lang);
       case 'outreach_performance':
         return handleOutreachPerformance(lang);
+      case 'operator_daily_brief_v2':
+        return handleOperatorDailyBriefV2(engine, lang);
       case 'slow_day_diagnostic':
         return handleSlowDayDiagnostic(engine, lang);
       default:
@@ -997,6 +1005,8 @@ export function handleFollowUp(
       return handleSmartOutreachCampaign(engine, lang);
     case 'outreach_performance':
       return handleOutreachPerformance(lang);
+    case 'operator_daily_brief_v2':
+      return handleOperatorDailyBriefV2(engine, lang);
     default:
       lines.push(t('chat.followup.fallback'));
   }
@@ -4834,4 +4844,84 @@ function handleSmartOutreachCampaign(engine: IntelligenceEngine, lang: Lang3): C
 function handleOutreachPerformance(lang: Lang3): ChatResponse {
   const summary = getOutreachPerformanceSummary(lang, 30);
   return { kind: 'answer', text: summary };
+}
+
+// R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.
+function handleOperatorDailyBriefV2(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const brief = generateDailyBriefV2(engine, lang);
+
+  const totalItems = Object.values(brief.sections).reduce((s, arr) => s + (arr?.length ?? 0), 0);
+  if (totalItems === 0) {
+    return { kind: 'answer', text: t('chat.briefV2.noData') };
+  }
+
+  const SECTION_ORDER: BriefV2Section[] = [
+    'critical_actions',
+    'revenue_opportunities',
+    'customer_outreach',
+    'risk_detection',
+    'operational_warnings',
+    'momentum_signals',
+  ];
+
+  const SECTION_KEY: Record<BriefV2Section, string> = {
+    critical_actions:     'chat.briefV2.section.criticalActions',
+    revenue_opportunities: 'chat.briefV2.section.revenueOpps',
+    customer_outreach:    'chat.briefV2.section.customerOutreach',
+    risk_detection:       'chat.briefV2.section.riskDetection',
+    operational_warnings: 'chat.briefV2.section.operationalWarnings',
+    momentum_signals:     'chat.briefV2.section.momentumSignals',
+  };
+
+  const lines: string[] = [t('chat.briefV2.header'), ''];
+
+  for (const section of SECTION_ORDER) {
+    const items = brief.sections[section];
+    if (!items || items.length === 0) continue;
+    lines.push(t(SECTION_KEY[section]));
+    for (const item of items) {
+      lines.push(`- ${item.text}`);
+    }
+    lines.push('');
+  }
+
+  if (lines[lines.length - 1] === '') lines.pop();
+
+  // Build ChatActionUI from topActions (max 5)
+  const now = Date.now();
+  const actions: ChatActionUI[] = [];
+  for (const payload of brief.topActions) {
+    if (actions.length >= 5) break;
+    if (payload.executionTarget === 'whatsapp_url') {
+      const name = payload.customerName?.split(' ')[0] ?? '';
+      actions.push({
+        id: `brief-wa-${payload.customerId ?? 'na'}-${now}`,
+        label: t('chat.briefV2.action.whatsapp', name),
+        actionType: 'whatsapp',
+        payload,
+      });
+    } else if (payload.executionTarget === 'open_repair') {
+      actions.push({
+        id: `brief-repair-${payload.entityId ?? 'na'}-${now}`,
+        label: t('chat.briefV2.action.openRepairs'),
+        actionType: 'review',
+        payload,
+      });
+    } else if (payload.executionTarget === 'open_customer') {
+      const name = payload.customerName?.split(' ')[0] ?? '';
+      actions.push({
+        id: `brief-cust-${payload.customerId ?? 'na'}-${now}`,
+        label: t('chat.briefV2.action.openCustomer', name),
+        actionType: 'review',
+        payload,
+      });
+    }
+  }
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
 }

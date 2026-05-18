@@ -34,6 +34,8 @@ export type IntentId =
   | 'proactive_opportunities'
   | 'conversation_runner'
   | 'daily_operator_brief'
+  // R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing
+  | 'operator_daily_brief_v2'
   | 'today_money_map'
   | 'operator_mode'
   | 'proposal_followup'
@@ -523,6 +525,23 @@ const TODAY_MONEY_MAP_KEYWORDS = [
   'onde o dinheiro está parado', 'onde o dinheiro esta parado',
   'onde posso ganhar dinheiro hoje',
   'o que pode fechar hoje',
+];
+
+// R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.
+// Listed BEFORE daily_operator_brief in the scores array so these phrases
+// route to v2. Includes phrases from the v1 bank that v2 supersedes.
+const OPERATOR_DAILY_BRIEF_V2_KEYWORDS = [
+  // EN
+  'daily brief', 'operator brief', 'store status',
+  'how is the business today', "today's priorities",
+  'operator daily brief', 'business status',
+  // ES
+  'resumen del día', 'resumen del dia', 'resumen operativo',
+  'estado de la tienda', 'cómo va el negocio hoy', 'como va el negocio hoy',
+  'prioridades de hoy',
+  // PT
+  'resumo do dia', 'status da loja', 'como está o negócio hoje',
+  'como esta o negocio hoje', 'prioridades de hoje',
 ];
 
 // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: action-first daily focus list.
@@ -1471,6 +1490,9 @@ export function classifyIntent(
     // overlapping anchored phrase "what should I do today" routes to the
     // action-first revenue mission list.
     { id: 'daily_revenue_missions', score: scoreKeywords(query, DAILY_REVENUE_MISSIONS_KEYWORDS) },
+    // R-OPERATOR-DAILY-BRIEF-V2: listed BEFORE daily_operator_brief so v2
+    // wins on tie-break for shared phrases like "daily brief"/"operator brief".
+    { id: 'operator_daily_brief_v2', score: scoreKeywords(query, OPERATOR_DAILY_BRIEF_V2_KEYWORDS) },
     // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-V1: listed ABOVE daily_brief so
     // overlapping anchored phrases route to the action-first briefing.
     { id: 'daily_operator_brief', score: scoreKeywords(query, DAILY_OPERATOR_BRIEF_KEYWORDS) },
