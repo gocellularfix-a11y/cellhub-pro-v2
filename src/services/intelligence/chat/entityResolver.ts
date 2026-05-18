@@ -41,6 +41,14 @@ export function resolveOperationalEntity(
   rawQuery: string,
   engine: IntelligenceEngine,
 ): OperationalEntityMatch | null {
+  // Direct ID lookup: "cust:<id>" bypasses all fuzzy matching.
+  // Used by disambiguation action buttons to resolve unambiguously.
+  if (rawQuery.startsWith('cust:')) {
+    const id = rawQuery.slice(5);
+    const customer = engine.getCustomers().find(c => c.id === id);
+    if (customer) return { kind: 'customer', customer, confidence: 1.0 };
+  }
+
   const q = normStr(rawQuery);
   if (q.length < 4) return null;
 

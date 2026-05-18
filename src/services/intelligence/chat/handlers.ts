@@ -4273,8 +4273,25 @@ function handleEntityLookup(
   // ── Ambiguous customer disambiguation ──────────────────────────────────
   if (match.kind === 'ambiguous_customer') {
     const lines = match.matches.map((c, i) => {
-      const phone = c.phone || c.phones?.[0] || '';
+      const phone = c.phone || (c as any).phones?.[0] || '';
       return `${i + 1}. **${c.name}**${phone ? ` — ${phone}` : ''}`;
+    });
+    // One action per candidate: triggerQuery uses "cust:<id>" so the entity
+    // resolver resolves exactly to that customer without further ambiguity.
+    const actions: ChatActionUI[] = match.matches.map(c => {
+      const phone = c.phone || (c as any).phones?.[0] || '';
+      return {
+        id: `disambig-${c.id}`,
+        label: phone ? `${c.name} (${phone})` : c.name,
+        triggerQuery: `cust:${c.id}`,
+        payload: {
+          type: 'whatsapp' as const,
+          executable: false,
+          executionTarget: 'none' as const,
+          customerName: c.name,
+          customerId: c.id,
+        },
+      };
     });
     return {
       kind: 'disambiguation',
@@ -4283,6 +4300,7 @@ function handleEntityLookup(
         : `Found ${match.matches.length} customers with that name:\n`)
         + lines.join('\n') + '\n\n'
         + (es ? '¿Cuál de ellos buscas?' : 'Which one are you looking for?'),
+      actions,
     };
   }
 

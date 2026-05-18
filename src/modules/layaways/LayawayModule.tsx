@@ -57,6 +57,7 @@ import {
 import LayawayPaymentModal from './LayawayPaymentModal';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
+import { escHtml } from '@/utils/escHtml';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -1119,17 +1120,7 @@ export default function LayawayModule() {
 
   const printLayawayTicket = useCallback((l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
-    // Round 13 fix: escape HTML for interpolations OUTSIDE the <pre> text block.
-    // Content inside <pre> is escaped inline at join time (see text.replace below).
-    const escHtml = (s: unknown): string => {
-      if (s === null || s === undefined) return '';
-      return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    };
+    const esc    = (s: unknown) => escHtml(s);
     const moneyC = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     const storeName  = (settings.storeName  || 'Go Cellular').toUpperCase();
     const storeAddr  = settings.storeAddress || '';
@@ -1147,24 +1138,7 @@ export default function LayawayModule() {
     const subtotalCents = totalCents - taxCents;
     const itemDesc = l.itemDescription || l.items?.[0]?.name || '';
 
-    const lines: string[] = [];
-    lines.push(storeName);
-    // Round 14: defense-in-depth HTML escape even inside pre content
-    if (storeAddr)  lines.push(escHtml(storeAddr));
-    if (storePhone) lines.push(escHtml(storePhone));
-    lines.push('----------------------------------------');
-    lines.push(t('layaway.print.receipt'));
-    lines.push(`TICKET: ${safe(l.ticketNumber)}`);
-    lines.push(`${t('layaway.print.date')}: ${new Date().toLocaleString()}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('layaway.print.customer')}: ${safe(l.customerName)}`);
-    if (l.customerPhone) lines.push(`${t('layaway.print.phone')}: ${safe(l.customerPhone)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('layaway.print.item')}: ${safe(itemDesc)}`);
-    if (l.imei)               lines.push(`IMEI: ${safe(l.imei)}`);
-    if (l.itemSku)            lines.push(`SKU: ${safe(l.itemSku)}`);
-    if (l.dueDate || l.pickupDate) lines.push(`${t('layaway.print.pickupDate')}: ${safe(l.dueDate || l.pickupDate)}`);
-    // r-layaway-receipt-desglose: format with commas + full tax breakdown
+    // r-layaway-receipt-desglose: format with commas + full tax breakdown.
     const fmtMoney = (cents: number) => {
       const abs = Math.abs(cents);
       const str = (abs / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1173,74 +1147,72 @@ export default function LayawayModule() {
     const isTaxable = !!(l as any).taxable;
     const effectiveRate = isTaxable ? (settings.taxRate ?? 0.0925) : 0;
 
-    lines.push('----------------------------------------');
-    lines.push(`${t('layaway.print.itemPrice')}:    ${fmtMoney(subtotalCents)}`);
-    lines.push('─────────────────────────────');
-    lines.push(`${t('layaway.print.subtotal')}:          ${fmtMoney(subtotalCents)}`);
-    if (isTaxable && taxCents > 0) {
-      lines.push(`${t('layaway.print.tax')} (${taxRatePctLocal}%):  + ${fmtMoney(taxCents)}`);
-    }
-    lines.push('                         ──────────');
-    lines.push(`${t('layaway.print.total')}:             ${fmtMoney(totalCents)}`);
-    lines.push('─────────────────────────────');
+    const depSplit = paidCents > 0 ? reverseTaxFromPayment(paidCents, effectiveRate, isTaxable) : null;
+    const balSplit = (isTaxable && balanceCents > 0) ? reverseTaxFromPayment(balanceCents, effectiveRate, isTaxable) : null;
 
-    // Deposit breakdown
-    if (paidCents > 0) {
-      const depSplit = reverseTaxFromPayment(paidCents, effectiveRate, isTaxable);
-      lines.push(`${t('layaway.print.deposit')}:          - ${fmtMoney(paidCents)}`);
-      if (isTaxable && depSplit.taxCents > 0) {
-        lines.push(`  ${t('layaway.print.taxIncluded')}:     ${fmtMoney(depSplit.taxCents)}`);
-        lines.push(`  ${t('layaway.print.preTaxBase')}:   ${fmtMoney(depSplit.baseCents)}`);
-      }
-    } else {
-      lines.push(`${t('layaway.print.deposit')}:          ${fmtMoney(0)}`);
-    }
-    lines.push('─────────────────────────────');
-
-    // Balance breakdown
-    lines.push(`${t('layaway.print.balanceDue')}:  ${fmtMoney(balanceCents)}`);
-    if (isTaxable && balanceCents > 0) {
-      const balSplit = reverseTaxFromPayment(balanceCents, effectiveRate, isTaxable);
-      lines.push(`  ${t('layaway.print.taxIncluded')}:     ${fmtMoney(balSplit.taxCents)}`);
-      lines.push(`  ${t('layaway.print.preTaxBase')}:   ${fmtMoney(balSplit.baseCents)}`);
-    }
-    lines.push('─────────────────────────────');
-
-    // R-LAYAWAY-MULTIPAY-V1 — payment summary (format A: latest + cumulative
-    // + remaining + count). Lazy-normalized so legacy single-deposit layaways
-    // still print a coherent block. Skipped silently when there are no
-    // recorded payments (brand-new layaway just created with $0 down).
+    // R-LAYAWAY-MULTIPAY-V1 — payment history block.
     const lpTotals = calculateLayawayTotals(l);
+    let latestPmt: { amount: number; date: string; method?: string } | null = null;
+    let latestPmtDate = '';
     if (lpTotals.paymentCount > 0) {
       const history = normalizeLayawayPayments(l);
-      // newest-first; the LATEST payment is the most recent date
-      const latest = [...history].sort((a, b) => {
+      latestPmt = [...history].sort((a, b) => {
         const da = new Date(a.date).getTime() || 0;
         const db = new Date(b.date).getTime() || 0;
         return db - da;
-      })[0];
-      if (latest) {
-        const latestDate = (() => { try { return new Date(latest.date).toLocaleDateString(); } catch { return latest.date; } })();
-        lines.push(`${t('layaway.print.lastPayment')}: ${fmtMoney(latest.amount)}  ${latestDate}  ${latest.method || ''}`.trimEnd());
+      })[0] ?? null;
+      if (latestPmt) {
+        latestPmtDate = (() => { try { return new Date(latestPmt!.date).toLocaleDateString(); } catch { return latestPmt!.date; } })();
       }
-      lines.push(`${t('layaway.print.totalPaid')}: ${fmtMoney(lpTotals.totalPaidCents)}  (${lpTotals.paymentCount} ${t('layaway.print.paymentCount').toLowerCase()})`);
-      lines.push(`${t('layaway.print.balanceDue')}: ${fmtMoney(lpTotals.remainingBalanceCents)}`);
-      lines.push('─────────────────────────────');
     }
-    if (l.notes) { lines.push(`${t('layaway.print.notes')}: ${safe(l.notes)}`); lines.push('----------------------------------------'); }
-    lines.push(t('layaway.print.conditionsHeader'));
-    lines.push(t('layaway.print.cond1'));
-    lines.push(t('layaway.print.cond2'));
-    lines.push(t('layaway.print.cond3'));
-    lines.push(t('layaway.print.cond4'));
-    lines.push('----------------------------------------');
-    if (l.employeeName) lines.push(`${t('layaway.print.servedBy')}: ${safe(l.employeeName)}`);
-    lines.push(t('layaway.print.thanks'));
-    // Round 14: defense-in-depth HTML escape even inside pre content
-    if (settings.storeWebsite) lines.push(escHtml(settings.storeWebsite));
 
-    const text = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Layaway ${escHtml(l.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
+    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.sub{font-size:9px;color:#666;padding-left:8px;margin-bottom:1px}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800;font-size:11px}.cond-hdr{font-weight:700;font-size:9px;margin:4px 0 2px}.cond{font-size:8px;color:#555;margin-bottom:1px}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Layaway ${esc(l.ticketNumber)}</title><style>${css}</style></head><body>
+<div class="hdr"><div class="store">${esc(storeName)}</div>${storeAddr ? `<div class="store-sub">${esc(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${esc(storePhone)}</div>` : ''}</div>
+<div class="title-bar">${esc(t('layaway.print.receipt'))}</div>
+<div class="sec">
+<div class="row"><span class="lbl">${esc(t('layaway.print.date'))}</span><span class="val">${esc(new Date().toLocaleString())}</span></div>
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${esc(t('layaway.print.customer'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${esc(safe(l.customerName))}</span></div>
+${l.customerPhone ? `<div class="row"><span class="lbl">${esc(t('layaway.print.phone'))}</span><span class="val">${esc(safe(l.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${esc(t('layaway.print.item'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${esc(safe(itemDesc))}</span></div>
+${l.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val">${esc(safe(l.imei))}</span></div>` : ''}
+${l.itemSku ? `<div class="row"><span class="lbl">SKU</span><span class="val">${esc(safe(l.itemSku))}</span></div>` : ''}
+${(l.dueDate || l.pickupDate) ? `<div class="row"><span class="lbl">${esc(t('layaway.print.pickupDate'))}</span><span class="val">${esc(safe(l.dueDate || l.pickupDate))}</span></div>` : ''}
+</div>
+<div class="solid"></div>
+<div class="sec">
+<div class="row"><span class="lbl">${esc(t('layaway.print.subtotal'))}</span><span class="val">${esc(fmtMoney(subtotalCents))}</span></div>
+${isTaxable && taxCents > 0 ? `<div class="row"><span class="lbl">${esc(t('layaway.print.tax'))} (${esc(taxRatePctLocal)}%)</span><span class="val">${esc(fmtMoney(taxCents))}</span></div>` : ''}
+<div class="dash"></div>
+<div class="row grand"><span class="lbl">${esc(t('layaway.print.total'))}</span><span class="val">${esc(fmtMoney(totalCents))}</span></div>
+<div class="dash"></div>
+<div class="row"><span class="lbl">${esc(t('layaway.print.deposit'))}</span><span class="val">${paidCents > 0 ? `- ${esc(fmtMoney(paidCents))}` : esc(fmtMoney(0))}</span></div>
+${depSplit && isTaxable && depSplit.taxCents > 0 ? `<div class="sub">${esc(t('layaway.print.taxIncluded'))}: ${esc(fmtMoney(depSplit.taxCents))}</div><div class="sub">${esc(t('layaway.print.preTaxBase'))}: ${esc(fmtMoney(depSplit.baseCents))}</div>` : ''}
+<div class="dash"></div>
+<div class="row ${balanceCents > 0 ? 'bal-due' : 'grand'}"><span class="lbl">${esc(t('layaway.print.balanceDue'))}</span><span class="val">${esc(fmtMoney(balanceCents))}</span></div>
+${balSplit ? `<div class="sub">${esc(t('layaway.print.taxIncluded'))}: ${esc(fmtMoney(balSplit.taxCents))}</div><div class="sub">${esc(t('layaway.print.preTaxBase'))}: ${esc(fmtMoney(balSplit.baseCents))}</div>` : ''}
+</div>
+${lpTotals.paymentCount > 0 && latestPmt ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">Payment History</div>${latestPmt ? `<div class="row"><span class="lbl">${esc(t('layaway.print.lastPayment'))}</span><span class="val">${esc(fmtMoney(latestPmt.amount))} ${esc(latestPmtDate)} ${esc(latestPmt.method || '')}</span></div>` : ''}<div class="row"><span class="lbl">${esc(t('layaway.print.totalPaid'))}</span><span class="val">${esc(fmtMoney(lpTotals.totalPaidCents))} (${lpTotals.paymentCount})</span></div><div class="row grand"><span class="lbl">${esc(t('layaway.print.balanceDue'))}</span><span class="val">${esc(fmtMoney(lpTotals.remainingBalanceCents))}</span></div></div>` : ''}
+${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc(t('layaway.print.notes'))}</div><div>${esc(safe(l.notes))}</div></div>` : ''}
+<div class="dash"></div>
+<div class="sec">
+<div class="cond-hdr">${esc(t('layaway.print.conditionsHeader'))}</div>
+<div class="cond">${esc(t('layaway.print.cond1'))}</div>
+<div class="cond">${esc(t('layaway.print.cond2'))}</div>
+<div class="cond">${esc(t('layaway.print.cond3'))}</div>
+<div class="cond">${esc(t('layaway.print.cond4'))}</div>
+</div>
+<div class="ftr">${l.employeeName ? `${esc(t('layaway.print.servedBy'))}: ${esc(safe(l.employeeName))}<br>` : ''}${esc(t('layaway.print.thanks'))}${settings.storeWebsite ? `<br>${esc(settings.storeWebsite)}` : ''}</div>
+</body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, t, printHtml]);
 

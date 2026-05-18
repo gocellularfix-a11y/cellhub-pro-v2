@@ -37,6 +37,7 @@ import {
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { escHtml } from '@/utils/escHtml';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -257,52 +258,51 @@ export default function SpecialOrdersModule() {
 
     const corrected = !!displayOverride?.corrected;
     const snap = displayOverride?.originalSnapshot?.snapshot;
-    const previously = (field: string): string => {
+    const prevHtml = (field: string): string => {
       if (!corrected || !snap) return '';
       const prior = snap[field];
       const current = (order as any)[field];
       if (prior == null || prior === '' || prior === current) return '';
-      if (typeof prior === 'number') return t('so.print.previously', money(prior));
+      if (typeof prior === 'number') return ` <span class="was">${escHtml(t('so.print.previously', money(prior)))}</span>`;
       return '';
     };
 
     const ticketNum = order.id.slice(-8).toUpperCase();
-    const lines: string[] = [];
-    lines.push(storeName);
-    if (storeAddr) lines.push(storeAddr);
-    if (storePhone) lines.push(storePhone);
-    lines.push('----------------------------------------');
-    if (corrected) {
-      lines.push(t('so.print.correctedReceipt'));
-      lines.push(`${t('so.print.corrected')}: ${new Date().toLocaleString()}`);
-      lines.push('----------------------------------------');
-    }
-    lines.push(t('so.print.title'));
-    lines.push(`TICKET: ${ticketNum}`);
-    lines.push(`STATUS: ${fmt(order.status)}`);
-    lines.push(`${t('so.print.date')}: ${new Date().toLocaleString()}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('so.print.customer')}: ${fmt(order.customerName)}`);
-    if (order.customerPhone) lines.push(`${t('so.print.phone')}: ${fmt(order.customerPhone)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('so.print.item')}: ${fmt(order.itemDescription)}`);
-    if (order.supplier) lines.push(`${t('so.print.supplier')}: ${fmt(order.supplier)}`);
-    if (order.estimatedArrival) lines.push(`${t('so.print.estArrival')}: ${fmt(order.estimatedArrival)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('so.print.price')}: ${money(order.price || 0)}${previously('price')}`);
-    lines.push(`${t('so.print.deposit')}: ${money(order.depositAmount || 0)}${previously('depositAmount')}`);
-    lines.push(`${t('so.print.balance')}: ${money(order.balance || 0)}${previously('balance')}`);
-    // R-EDIT-AUDIT F5: show refund owed on corrected receipt when reason='refund'.
-    if (corrected && ((order as any).refundOwedAmount || 0) > 0) {
-      lines.push(`${t('so.print.refundOwed')}: ${money((order as any).refundOwedAmount)}`);
-    }
-    lines.push('----------------------------------------');
-    if (order.notes) {
-      lines.push(`${t('so.print.notes')}: ${fmt(order.notes)}`);
-    }
-
-    const content = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>SO ${ticketNum}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></body></html>`;
+    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
+    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.corr-bar{background:#b91c1c;color:#fff;text-align:center;font-size:10px;font-weight:700;padding:2px 0;margin:2px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.was{font-size:9px;color:#999;font-style:italic}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SO ${escHtml(ticketNum)}</title><style>${css}</style></head><body>
+<div class="hdr"><div class="store">${escHtml(storeName)}</div>${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}</div>
+${corrected ? `<div class="corr-bar">${escHtml(t('so.print.correctedReceipt'))}</div>` : ''}
+<div class="title-bar">${escHtml(t('so.print.title'))} — #${escHtml(ticketNum)}</div>
+<div class="sec">
+<div class="row"><span class="lbl">${escHtml(t('so.print.date'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>
+<div class="row"><span class="lbl">Status</span><span class="val">${escHtml(fmt(order.status))}</span></div>
+${corrected ? `<div class="row"><span class="lbl">${escHtml(t('so.print.corrected'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('so.print.customer'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(order.customerName))}</span></div>
+${order.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('so.print.phone'))}</span><span class="val">${escHtml(fmt(order.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('so.print.item'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(order.itemDescription))}</span></div>
+${order.supplier ? `<div class="row"><span class="lbl">${escHtml(t('so.print.supplier'))}</span><span class="val">${escHtml(fmt(order.supplier))}</span></div>` : ''}
+${order.estimatedArrival ? `<div class="row"><span class="lbl">${escHtml(t('so.print.estArrival'))}</span><span class="val">${escHtml(fmt(order.estimatedArrival))}</span></div>` : ''}
+</div>
+<div class="solid"></div>
+<div class="sec">
+<div class="row"><span class="lbl">${escHtml(t('so.print.price'))}</span><span class="val">${escHtml(money(order.price || 0))}${prevHtml('price')}</span></div>
+<div class="row"><span class="lbl">${escHtml(t('so.print.deposit'))}</span><span class="val">${escHtml(money(order.depositAmount || 0))}${prevHtml('depositAmount')}</span></div>
+<div class="dash"></div>
+<div class="row ${(order.balance || 0) > 0 ? 'bal-due' : 'grand'}"><span class="lbl">${escHtml(t('so.print.balance'))}</span><span class="val">${escHtml(money(order.balance || 0))}${prevHtml('balance')}</span></div>
+${corrected && ((order as any).refundOwedAmount || 0) > 0 ? `<div class="row" style="color:#b91c1c"><span class="lbl">${escHtml(t('so.print.refundOwed'))}</span><span class="val">${escHtml(money((order as any).refundOwedAmount))}</span></div>` : ''}
+</div>
+${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${escHtml(t('so.print.notes'))}</div><div>${escHtml(fmt(order.notes))}</div></div>` : ''}
+<div class="ftr">Thank you for your business!<br>${escHtml(storeName)}</div>
+</body></html>`;
     printHtml(html, {
       silent: false,
       printer: settings.detectedPrinters?.[0],

@@ -38,6 +38,7 @@ import {
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { escHtml } from '@/utils/escHtml';
 
 // Typed accessor for `taxable` — present at runtime but absent from the Unlock interface.
 // Narrower than `as any`: casts to a specific shape so the return type is boolean, not any.
@@ -328,57 +329,56 @@ export default function UnlockModule() {
 
     const corrected = !!displayOverride?.corrected;
     const snap = displayOverride?.originalSnapshot?.snapshot;
-    const previously = (field: string): string => {
+    const prevHtml = (field: string): string => {
       if (!corrected || !snap) return '';
       const prior = snap[field];
       const current = (unlock as any)[field];
       if (prior == null || prior === '' || prior === current) return '';
-      if (typeof prior === 'number') return t('unlocks.print.previously', money(prior));
+      if (typeof prior === 'number') return ` <span class="was">${escHtml(t('unlocks.print.previously', money(prior)))}</span>`;
       return '';
     };
 
     const ticketNum = unlock.id.slice(-8).toUpperCase();
-    const lines: string[] = [];
-    lines.push(storeName);
-    if (storeAddr) lines.push(storeAddr);
-    if (storePhone) lines.push(storePhone);
-    lines.push('----------------------------------------');
-    if (corrected) {
-      lines.push(t('unlocks.print.correctedReceipt'));
-      lines.push(`${t('unlocks.print.correctedLabel')}: ${new Date().toLocaleString()}`);
-      lines.push('----------------------------------------');
-    }
-    lines.push(`UNLOCK TICKET: ${ticketNum}`);
-    lines.push(`STATUS: ${fmt(unlock.status)}`);
-    lines.push(`${t('unlocks.print.date')}: ${new Date().toLocaleString()}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('unlocks.print.customer')}: ${fmt(unlock.customerName)}`);
-    if (unlock.customerPhone) lines.push(`${t('unlocks.print.phone')}: ${fmt(unlock.customerPhone)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('unlocks.print.device')}: ${fmt(unlock.device)}`);
-    if (unlock.carrier) lines.push(`CARRIER: ${fmt(unlock.carrier)}`);
-    if (unlock.imei) lines.push(`IMEI: ${fmt(unlock.imei)}`);
-    if (unlock.unlockType) lines.push(`TYPE: ${typeLabel(unlock.unlockType as string)}`);
-    if (unlock.supplier) lines.push(`SUPPLIER: ${fmt(unlock.supplier)}`);
-    if (unlock.unlockCode) lines.push(`CODE: ${fmt(unlock.unlockCode)}`);
-    lines.push('----------------------------------------');
-    if (unlock.orderDate) lines.push(`${t('unlocks.print.ordered')}: ${fmt(unlock.orderDate)}`);
-    if (unlock.completionDate) lines.push(`${t('unlocks.print.completed')}: ${fmt(unlock.completionDate)}`);
-    lines.push('----------------------------------------');
-    lines.push(`PRICE: ${money(unlock.price || 0)}${previously('price')}`);
-    lines.push(`DEPOSIT: ${money(unlock.depositAmount || 0)}${previously('depositAmount')}`);
-    lines.push(`BALANCE: ${money(unlock.balance || 0)}${previously('balance')}`);
-    // R-EDIT-AUDIT F4.5: show refund owed on corrected receipt when reason='refund'.
-    if (corrected && (unlock.refundOwedAmount || 0) > 0) {
-      lines.push(`${t('unlocks.print.refundOwed')}: ${money(unlock.refundOwedAmount || 0)}`);
-    }
-    lines.push('----------------------------------------');
-    if (unlock.notes) {
-      lines.push(t('unlocks.print.notes'));
-      lines.push(fmt(unlock.notes));
-    }
-    const content = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Unlock ${ticketNum}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
+    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
+    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.corr-bar{background:#b91c1c;color:#fff;text-align:center;font-size:10px;font-weight:700;padding:2px 0;margin:2px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.was{font-size:9px;color:#999;font-style:italic}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Unlock ${escHtml(ticketNum)}</title><style>${css}</style></head><body>
+<div class="hdr"><div class="store">${escHtml(storeName)}</div>${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}</div>
+${corrected ? `<div class="corr-bar">${escHtml(t('unlocks.print.correctedReceipt'))}</div>` : ''}
+<div class="title-bar">${escHtml(t('unlocks.print.title') || 'UNLOCK TICKET')} — #${escHtml(ticketNum)}</div>
+<div class="sec">
+<div class="row"><span class="lbl">${escHtml(t('unlocks.print.date'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>
+<div class="row"><span class="lbl">Status</span><span class="val">${escHtml(fmt(unlock.status))}</span></div>
+${corrected ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.correctedLabel'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('unlocks.print.customer'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(unlock.customerName))}</span></div>
+${unlock.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.phone'))}</span><span class="val">${escHtml(fmt(unlock.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('unlocks.print.device'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(unlock.device))}</span></div>
+${unlock.carrier ? `<div class="row"><span class="lbl">Carrier</span><span class="val">${escHtml(fmt(unlock.carrier))}</span></div>` : ''}
+${unlock.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val">${escHtml(fmt(unlock.imei))}</span></div>` : ''}
+${unlock.unlockType ? `<div class="row"><span class="lbl">Type</span><span class="val">${escHtml(typeLabel(unlock.unlockType as string))}</span></div>` : ''}
+${unlock.supplier ? `<div class="row"><span class="lbl">Supplier</span><span class="val">${escHtml(fmt(unlock.supplier))}</span></div>` : ''}
+${unlock.unlockCode ? `<div class="row"><span class="lbl">Code</span><span class="val">${escHtml(fmt(unlock.unlockCode))}</span></div>` : ''}
+${unlock.orderDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.ordered'))}</span><span class="val">${escHtml(fmt(unlock.orderDate))}</span></div>` : ''}
+${unlock.completionDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.completed'))}</span><span class="val">${escHtml(fmt(unlock.completionDate))}</span></div>` : ''}
+</div>
+<div class="solid"></div>
+<div class="sec">
+<div class="row"><span class="lbl">Price</span><span class="val">${escHtml(money(unlock.price || 0))}${prevHtml('price')}</span></div>
+<div class="row"><span class="lbl">Deposit</span><span class="val">${escHtml(money(unlock.depositAmount || 0))}${prevHtml('depositAmount')}</span></div>
+<div class="dash"></div>
+<div class="row ${(unlock.balance || 0) > 0 ? 'bal-due' : 'grand'}"><span class="lbl">Balance</span><span class="val">${escHtml(money(unlock.balance || 0))}${prevHtml('balance')}</span></div>
+${corrected && (unlock.refundOwedAmount || 0) > 0 ? `<div class="row" style="color:#b91c1c"><span class="lbl">${escHtml(t('unlocks.print.refundOwed'))}</span><span class="val">${escHtml(money(unlock.refundOwedAmount || 0))}</span></div>` : ''}
+</div>
+${unlock.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${escHtml(t('unlocks.print.notes'))}</div><div>${escHtml(fmt(unlock.notes))}</div></div>` : ''}
+<div class="ftr">Thank you for your business!<br>${escHtml(storeName)}</div>
+</body></html>`;
     printHtml(html, {
       silent: false,
       printer: settings.detectedPrinters?.[0],
@@ -1015,35 +1015,46 @@ export default function UnlockModule() {
       return ({ factory: 'Factory', imei: 'IMEI', subsidy: 'Subsidy', custom: 'Custom' } as Record<string, string>)[tp] || tp;
     };
     const ticketNum = editUnlock ? editUnlock.id.slice(-8).toUpperCase() : 'NEW';
-    const lines = [
-      storeName.toUpperCase(), storeAddr,
-      storePhone, '----------------------------------------',
-      `UNLOCK TICKET: ${ticketNum}`,
-      `STATUS: ${fmt(form.status)}`,
-      `${t('unlocks.print.date')}: ${new Date().toLocaleString()}`,
-      '----------------------------------------',
-      `${t('unlocks.print.customer')}: ${customerName}`,
-      form.customerPhone ? `${t('unlocks.print.phone')}: ${fmt(form.customerPhone)}` : '',
-      '----------------------------------------',
-      `${t('unlocks.print.device')}: ${fmt(form.device)}`,
-      `CARRIER: ${fmt(form.carrier)}`,
-      form.imei ? `IMEI: ${fmt(form.imei)}` : '',
-      form.unlockType ? `TYPE: ${typeLabel(form.unlockType as string)}` : '',
-      form.supplier ? `SUPPLIER: ${fmt(form.supplier)}` : '',
-      form.unlockCode ? `CODE: ${fmt(form.unlockCode)}` : '',
-      '----------------------------------------',
-      form.orderDate ? `${t('unlocks.print.ordered')}: ${fmt(form.orderDate)}` : '',
-      form.completionDate ? `${t('unlocks.print.completed')}: ${fmt(form.completionDate)}` : '',
-      '----------------------------------------',
-      `PRICE: ${money(Math.round((form.price || 0) * 100))}`,
-      `DEPOSIT: ${money(Math.round((form.depositAmount || 0) * 100))}`,
-      `BALANCE: ${money(Math.max(0, Math.round(((form.price || 0) - (form.depositAmount || 0)) * 100)))}`,
-      '----------------------------------------',
-      form.notes ? t('unlocks.print.notes') : '',
-      form.notes ? fmt(form.notes) : '',
-    ].filter(Boolean);
-    const content = lines.join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Unlock Ticket</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
+    const priceCents   = Math.round((form.price        || 0) * 100);
+    const depositCents = Math.round((form.depositAmount || 0) * 100);
+    const balanceCents = Math.max(0, Math.round(((form.price || 0) - (form.depositAmount || 0)) * 100));
+    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
+    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Unlock Ticket</title><style>${css}</style></head><body>
+<div class="hdr"><div class="store">${escHtml(storeName.toUpperCase())}</div>${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}</div>
+<div class="title-bar">${escHtml(t('unlocks.print.title') || 'UNLOCK TICKET')} — #${escHtml(ticketNum)}</div>
+<div class="sec">
+<div class="row"><span class="lbl">${escHtml(t('unlocks.print.date'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>
+<div class="row"><span class="lbl">Status</span><span class="val">${escHtml(fmt(form.status))}</span></div>
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('unlocks.print.customer'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(customerName)}</span></div>
+${form.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.phone'))}</span><span class="val">${escHtml(fmt(form.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+<div class="sec-lbl">${escHtml(t('unlocks.print.device'))}</div>
+<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(form.device))}</span></div>
+${form.carrier ? `<div class="row"><span class="lbl">Carrier</span><span class="val">${escHtml(fmt(form.carrier))}</span></div>` : ''}
+${form.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val">${escHtml(fmt(form.imei))}</span></div>` : ''}
+${form.unlockType ? `<div class="row"><span class="lbl">Type</span><span class="val">${escHtml(typeLabel(form.unlockType as string))}</span></div>` : ''}
+${form.supplier ? `<div class="row"><span class="lbl">Supplier</span><span class="val">${escHtml(fmt(form.supplier))}</span></div>` : ''}
+${form.unlockCode ? `<div class="row"><span class="lbl">Code</span><span class="val">${escHtml(fmt(form.unlockCode))}</span></div>` : ''}
+${form.orderDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.ordered'))}</span><span class="val">${escHtml(fmt(form.orderDate))}</span></div>` : ''}
+${form.completionDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.completed'))}</span><span class="val">${escHtml(fmt(form.completionDate))}</span></div>` : ''}
+</div>
+<div class="solid"></div>
+<div class="sec">
+<div class="row"><span class="lbl">Price</span><span class="val">${escHtml(money(priceCents))}</span></div>
+<div class="row"><span class="lbl">Deposit</span><span class="val">${escHtml(money(depositCents))}</span></div>
+<div class="dash"></div>
+<div class="row ${balanceCents > 0 ? 'bal-due' : 'grand'}"><span class="lbl">Balance</span><span class="val">${escHtml(money(balanceCents))}</span></div>
+</div>
+${form.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${escHtml(t('unlocks.print.notes'))}</div><div>${escHtml(fmt(form.notes))}</div></div>` : ''}
+<div class="ftr">Thank you for your business!<br>${escHtml(storeName.toUpperCase())}</div>
+</body></html>`;
     printHtml(html, {
       silent: false,
       printer: settings.detectedPrinters?.[0],
