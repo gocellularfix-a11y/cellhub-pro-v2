@@ -1,4 +1,18 @@
 // CellHub Intelligence — Customer Scorer
+//
+// DEPRECATED — compatibility-only.
+// Use customerScoringEngine.ts via IntelligenceEngine.getCustomerScores() or
+// FloatingOperatorBubble's getCustomerBusinessProfile() for new feature work.
+// This file must NOT grow: no new scoring dimensions, no new tier rules.
+//
+// Migration status (R-INTELLIGENCE-REMOVE-DUPLICATE-CUSTOMER-SCORER-V1):
+//   - Consumers of getCustomerScores() read tier as 'platinum'|'gold'|'silver'|'bronze'|'standard'
+//   - customerScoringEngine uses 'VIP'|'Loyal'|'Active'|'Casual'|'At Risk'|'Lost'
+//   - See scoring/tierAdapter.ts for the deterministic equivalence mapping
+//   - Full migration requires: updating IntelligenceEngine to call customerScoringEngine,
+//     threading repairs/layaways/unlocks through the constructor, migrating 3 consumers
+//     (buyTodayRanking, dailyBrief, handlers) to canonical tier names.
+//   - Until then: this class is frozen. Do not add new rules here.
 import type { Customer, Sale } from '@/store/types';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { percentile, movingAverage } from '../utils/statistics';

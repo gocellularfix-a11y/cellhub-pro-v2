@@ -13,6 +13,7 @@ export { AlertEngine } from './alerts/AlertEngine';
 export * from './alerts/AlertTypes';
 export { DEFAULT_THRESHOLDS } from './alerts/thresholds';
 
+// DEPRECATED: CustomerScorer — see scoring/CustomerScorer.ts header and scoring/tierAdapter.ts
 export { CustomerScorer, type CustomerScore } from './scoring/CustomerScorer';
 export { InventoryScorer, type InventoryScore } from './scoring/InventoryScorer';
 export { RepairScorer, type RepairScore } from './scoring/RepairScorer';

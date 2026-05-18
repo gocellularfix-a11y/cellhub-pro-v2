@@ -522,6 +522,11 @@ export class IntelligenceEngine {
     return this.cachedResult.alerts;
   }
 
+  // R-INTELLIGENCE-REMOVE-DUPLICATE-CUSTOMER-SCORER-V1: returns legacy CustomerScore[]
+  // from CustomerScorer (deprecated). Tier names are platinum|gold|silver|bronze|standard.
+  // Future: replace with customerScoringEngine output (VIP|Loyal|Active|Casual|At Risk|Lost).
+  // See scoring/tierAdapter.ts for the deterministic equivalence map.
+  // Do NOT add new callers reading legacy tier names — migrate to CustomerBusinessProfile.
   getCustomerScores(): CustomerScore[] {
     if (!this.cachedResult) return [];
     return this.cachedResult.customerScores;
