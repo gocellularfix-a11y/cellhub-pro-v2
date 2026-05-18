@@ -625,7 +625,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: navigation events dispatched by
       // executeActionPayload; we only add feedback labels here — the modules
       // listening to cellhub:* events drive the actual navigation.
-      case 'open_repair':
+      case 'open_repair': {
+        const _now = Date.now();
         setFeedbackForAction(action.id, t('chat.action.openingTicket'));
         recordOperatorAction({
           actionType: 'open_repair',
@@ -633,10 +634,15 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           entityId: action.payload.entityId,
           entityName: action.payload.customerName,
           sourceIntent: lastIntentRef.current?.intentId,
-          timestamp: Date.now(),
+          timestamp: _now,
         });
+        if (action.payload.entityId) {
+          operationalContextRef.current = { type: 'repair', value: action.payload.entityId, timestamp: _now };
+        }
         break;
-      case 'open_customer':
+      }
+      case 'open_customer': {
+        const _now = Date.now();
         setFeedbackForAction(action.id, t('chat.action.openingCustomer'));
         recordOperatorAction({
           actionType: 'open_customer',
@@ -644,14 +650,34 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           entityId: action.payload.entityId || action.payload.customerId,
           entityName: action.payload.customerName,
           sourceIntent: lastIntentRef.current?.intentId,
-          timestamp: Date.now(),
+          timestamp: _now,
         });
+        const _custId = action.payload.entityId || action.payload.customerId;
+        if (_custId) {
+          operationalContextRef.current = { type: 'customer', value: _custId, timestamp: _now };
+        }
         break;
+      }
       case 'record_outreach_outcome':
         setFeedbackForAction(action.id, t('chat.action.outcomeSaved'));
         break;
       case 'open_layaway':
         setFeedbackForAction(action.id, t('chat.action.openingLayaway'));
+        if (action.payload.customerId) {
+          operationalContextRef.current = { type: 'customer', value: action.payload.customerId, timestamp: Date.now() };
+        }
+        break;
+      case 'open_unlock':
+        setFeedbackForAction(action.id, t('chat.action.openingUnlock'));
+        if (action.payload.customerId) {
+          operationalContextRef.current = { type: 'customer', value: action.payload.customerId, timestamp: Date.now() };
+        }
+        break;
+      case 'open_special_order':
+        setFeedbackForAction(action.id, t('chat.action.openingSpecialOrder'));
+        if (action.payload.customerId) {
+          operationalContextRef.current = { type: 'customer', value: action.payload.customerId, timestamp: Date.now() };
+        }
         break;
       case 'open_inventory':
         setFeedbackForAction(action.id, t('chat.action.openingItem'));
