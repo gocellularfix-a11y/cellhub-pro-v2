@@ -1247,14 +1247,22 @@ const WHAT_NEEDS_ATTENTION_KEYWORDS = [
   'what needs attention', 'needs attention', 'what needs my attention',
   'what is urgent', 'urgent items', 'urgent actions',
   'what should i prioritize', 'priority list',
+  // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
+  'who needs attention', 'who needs my attention', 'who needs attention right now',
+  'what needs attention right now',
   // ES
   'qué necesita atención', 'que necesita atencion', 'qué está urgente',
   'que esta urgente', 'qué debo priorizar', 'que debo priorizar',
   'lista de prioridades', 'qué es urgente', 'que es urgente',
   'qué hay pendiente urgente', 'que hay pendiente urgente',
+  // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
+  'qué debo revisar ahora', 'que debo revisar ahora',
+  'qué necesito revisar ahora', 'que necesito revisar ahora',
   // PT
   'o que precisa de atenção', 'o que precisa de atencao', 'o que é urgente',
   'prioridades urgentes',
+  // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
+  'quem precisa de atenção agora', 'o que devo revisar agora',
 ];
 
 // Count how many keywords from a bank appear in the query.

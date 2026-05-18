@@ -92,6 +92,9 @@ import { getCustomersMostLikelyToBuyToday } from '../opportunities/buyTodayRanki
 import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
 import { rankContactTodayCandidates } from '../ranking/contactTodayRanker';
+// R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
+import { computeEntityAttentionPriorities } from '../attention/entityPriorityEngine';
+import type { AttentionAction } from '../attention/entityPriorityTypes';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -2543,50 +2546,78 @@ function handleWhereLoosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatR
   };
 }
 
+// Converts an AttentionAction to a ChatActionUI using the existing execution targets.
+// Skips 'whatsapp' — no phone number in AttentionAction payload; open_customer suffices.
+function attentionActionToChat(
+  act: AttentionAction,
+  itemId: string,
+  idx: number,
+): ChatActionUI | null {
+  const id = `attn-${itemId}-${act.actionType}-${idx}`;
+  const { payload } = act;
+  switch (act.actionType) {
+    case 'open_repair':
+      return {
+        id, label: act.label,
+        payload: { type: 'review', entityId: String(payload?.repairId ?? ''), executable: !!payload?.repairId, executionTarget: 'open_repair' },
+      };
+    case 'open_customer':
+      return {
+        id, label: act.label,
+        payload: { type: 'review', entityId: String(payload?.customerId ?? ''), executable: !!payload?.customerId, executionTarget: 'open_customer' },
+      };
+    case 'open_layaway':
+      return {
+        id, label: act.label,
+        payload: { type: 'review', entityId: String(payload?.layawayId ?? ''), executable: !!payload?.layawayId, executionTarget: 'open_layaway' },
+      };
+    case 'query':
+      return {
+        id, label: act.label,
+        payload: { type: 'review', executable: true, executionTarget: 'queue_manager_review' },
+      };
+    default:
+      return null;
+  }
+}
+
 function handleWhatNeedsAttention(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
-  const preamble = buildContextualPreamble(engine, lang);
-  const opps = mwoOpps(engine);
+  const { items } = computeEntityAttentionPriorities(engine, lang);
 
-  const urgentSlice = opps.filter((o) => o.severity === 'critical' || o.severity === 'high').slice(0, 5);
-  const remaining = Math.max(0, 5 - urgentSlice.length);
-  const medLowSlice = opps.filter((o) => o.severity === 'medium' || o.severity === 'low').slice(0, remaining);
-  const shownOpps = [...urgentSlice, ...medLowSlice];
-
-  if (shownOpps.length === 0 && !preamble) {
+  if (items.length === 0) {
     return {
       kind: 'answer',
       text: `**${t('chat.attention.header')}**\n\n${t('chat.attention.empty')}`,
     };
   }
 
-  const parts: string[] = [];
-  if (preamble) { parts.push(preamble.text); parts.push(''); }
+  const BADGE: Record<string, string> = {
+    critical: '🚨', high: '⚠️', medium: '📌', low: 'ℹ️',
+  };
 
-  if (shownOpps.length > 0) {
-    parts.push(`**${t('chat.attention.header')}**`, '');
-    let idx = 1;
-    for (const opp of urgentSlice) {
-      const badge = opp.severity === 'critical' ? '🚨' : '⚠️';
-      parts.push(`${idx++}. ${badge} ${t(opp.summaryKey, ...opp.evidence)}`);
-    }
-    for (const opp of medLowSlice) {
-      parts.push(`${idx++}. ${t(opp.summaryKey, ...opp.evidence)}`);
+  const lines: string[] = [`**${t('chat.attention.header')}**`, ''];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const badge = BADGE[item.urgency] ?? '•';
+    const name = item.entityName ? ` — ${item.entityName}` : '';
+    lines.push(`${i + 1}. ${badge} ${item.reason}${name}`);
+    lines.push(`   💡 ${item.recommendedAction}`);
+  }
+
+  const rawActions: ChatActionUI[] = [];
+  let actIdx = 0;
+  for (const item of items) {
+    for (const act of item.actions ?? []) {
+      const ui = attentionActionToChat(act, item.id, actIdx++);
+      if (ui) rawActions.push(ui);
     }
   }
 
-  const globalActions = dedupeAndLimitActions(
-    shownOpps.flatMap((opp) =>
-      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
-    ),
-    3,
-  );
-  const actions = dedupeAndLimitActions([...(preamble?.actions ?? []), ...globalActions]);
-
   return {
     kind: 'answer',
-    text: parts.join('\n'),
-    ...(actions.length > 0 ? { actions } : {}),
+    text: lines.join('\n'),
+    ...(rawActions.length > 0 ? { actions: dedupeAndLimitActions(rawActions) } : {}),
   };
 }
 
