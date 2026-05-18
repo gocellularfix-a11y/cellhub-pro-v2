@@ -4285,7 +4285,7 @@ function handleEntityLookup(
         label: phone ? `${c.name} (${phone})` : c.name,
         triggerQuery: `cust:${c.id}`,
         payload: {
-          type: 'whatsapp' as const,
+          type: 'operator_action' as const,
           executable: false,
           executionTarget: 'none' as const,
           customerName: c.name,
@@ -4312,7 +4312,7 @@ function handleEntityLookup(
       {
         id: `open-repair-${r.id}`,
         label: es ? 'Ver Ticket' : 'Open Ticket',
-        payload: { type: 'whatsapp', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
+        payload: { type: 'operator_action', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
       },
     ];
     if ((r.balance || 0) > 0 && match.customer?.phone) {
@@ -4361,7 +4361,7 @@ function handleEntityLookup(
         {
           id: `open-inventory-${p.id}`,
           label: es ? 'Ver en Inventario' : 'View in Inventory',
-          payload: { type: 'whatsapp', executable: true, executionTarget: 'open_inventory', entityId: p.id, productName: p.name },
+          payload: { type: 'operator_action', executable: true, executionTarget: 'open_inventory', entityId: p.id, productName: p.name },
         },
       ],
       establishesContext: { type: 'product', value: p.id },
@@ -4438,7 +4438,7 @@ function handleEntityLookup(
     {
       id: `open-customer-${customer.id}`,
       label: es ? 'Ver Cliente' : 'View Customer',
-      payload: { type: 'whatsapp', executable: true, executionTarget: 'open_customer', entityId: customer.id, customerName: customer.name },
+      payload: { type: 'operator_action', executable: true, executionTarget: 'open_customer', entityId: customer.id, customerName: customer.name },
     },
   ];
   if (phone) {
@@ -4454,7 +4454,7 @@ function handleEntityLookup(
     actions.push({
       id: `open-repair-${r.id}`,
       label: `${es ? 'Ver' : 'Open'} #${tn}`,
-      payload: { type: 'whatsapp', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
+      payload: { type: 'operator_action', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
     });
   }
 

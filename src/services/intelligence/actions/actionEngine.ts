@@ -3,7 +3,11 @@
 import type { ActionItem } from '../types';
 
 export interface ActionPayload {
-  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder' | 'promote_product' | 'outcome';
+  // R-OPERATOR-ACTION-TRANSPORT-SPLIT-V1: 'operator_action' covers
+  // non-messaging navigation targets (open_customer, open_repair, etc.)
+  // so they no longer piggyback on 'whatsapp'. Execution still routes on
+  // executionTarget — this field is metadata/logging only.
+  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder' | 'promote_product' | 'outcome' | 'operator_action';
   messageKey?: string;
   // R-INTELLIGENCE-PENDING-DEAL-V1: optional dynamic message text for cases
   // where the static messageKey templates can't carry per-instance details
