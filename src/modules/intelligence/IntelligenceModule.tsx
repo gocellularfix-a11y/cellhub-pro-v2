@@ -334,6 +334,10 @@ export default function IntelligenceModule() {
         window.dispatchEvent(new CustomEvent('cellhub:open-layaway',        { detail: { layawayId:  item.entityId } })); break;
       case 'inventory':
         window.dispatchEvent(new CustomEvent('cellhub:open-inventory-item', { detail: { itemId:     item.entityId } })); break;
+      case 'unlock':
+        window.dispatchEvent(new CustomEvent('cellhub:open-unlock',         { detail: { unlockId:   item.entityId } })); break;
+      case 'special_order':
+        window.dispatchEvent(new CustomEvent('cellhub:open-special-order',  { detail: { orderId:    item.entityId } })); break;
       default: break;
     }
     writeFeedback(item, 'useful');   // auto-signal: navigating to entity = useful
@@ -1231,13 +1235,16 @@ export default function IntelligenceModule() {
       case 'open_entity':
         if (s.action.entityType && s.action.entityId) {
           const evtMap: Record<string, string> = {
-            repair:    'cellhub:open-repair',
-            customer:  'cellhub:open-customer',
-            layaway:   'cellhub:open-layaway',
-            inventory: 'cellhub:open-inventory-item',
+            repair:         'cellhub:open-repair',
+            customer:       'cellhub:open-customer',
+            layaway:        'cellhub:open-layaway',
+            inventory:      'cellhub:open-inventory-item',
+            unlock:         'cellhub:open-unlock',
+            special_order:  'cellhub:open-special-order',
           };
           const keyMap: Record<string, string> = {
             repair: 'repairId', customer: 'customerId', layaway: 'layawayId', inventory: 'itemId',
+            unlock: 'unlockId', special_order: 'orderId',
           };
           const evtName = evtMap[s.action.entityType];
           const detailKey = keyMap[s.action.entityType];

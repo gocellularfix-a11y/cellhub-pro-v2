@@ -14,7 +14,7 @@ export interface ResolutionResult {
 }
 export type QueueItemSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type QueueItemCategory = 'refund' | 'discount' | 'override' | 'writeoff' | 'review' | 'general';
-export type QueueEntityType   = 'repair' | 'customer' | 'layaway' | 'inventory' | 'sale';
+export type QueueEntityType   = 'repair' | 'customer' | 'layaway' | 'inventory' | 'sale' | 'unlock' | 'special_order';
 
 export interface ManagerQueueItem {
   id: string;
