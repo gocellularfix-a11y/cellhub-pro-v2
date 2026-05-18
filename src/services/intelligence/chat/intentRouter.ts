@@ -101,6 +101,8 @@ export type IntentId =
   | 'vip_outreach'
   | 'repair_follow_up'
   | 'repair_escalate'
+  // R-FUSION-CHAT-INTEGRATION-V1: cross-system operational flow awareness
+  | 'fusion_insights'
   | 'fallback_question'
   | 'unknown';
 
@@ -1265,6 +1267,24 @@ const WHAT_NEEDS_ATTENTION_KEYWORDS = [
   'quem precisa de atenção agora', 'o que devo revisar agora',
 ];
 
+// R-FUSION-CHAT-INTEGRATION-V1: cross-system operational awareness.
+// Anchored on "missing / risks / focus" — no overlap with what_needs_attention
+// ("urgent / prioritize"), what_to_do_today ("plan / do today"), or
+// proactive_operations ("what should i do now"). Zero keyword collision by design.
+const FUSION_INSIGHTS_KEYWORDS = [
+  // EN
+  'what am i missing', 'am i missing anything', 'biggest risks', 'biggest risk',
+  'operational risks', 'operational risk', 'what should i focus on',
+  'what requires attention', 'missed something',
+  // ES
+  'que me estoy perdiendo', 'mayores riesgos', 'mayor riesgo',
+  'riesgos operacionales', 'que debo atender', 'que requiere atencion',
+  'en que enfocarme', 'en que me debo enfocar',
+  // PT
+  'maiores riscos', 'maior risco', 'riscos operacionais',
+  'no que devo focar', 'o que requer atenção', 'o que requer atencao',
+];
+
 // Count how many keywords from a bank appear in the query.
 function scoreKeywords(query: string, keywords: string[]): number {
   let hits = 0;
@@ -1430,6 +1450,10 @@ export function classifyIntent(
     // listed ABOVE repairs_overdue so anchored "ready" phrases win.
     { id: 'repairs_ready',   score: scoreKeywords(query, REPAIRS_READY_KEYWORDS) },
     { id: 'repairs_overdue', score: scoreKeywords(query, REPAIRS_KEYWORDS) },
+    // R-FUSION-CHAT-INTEGRATION-V1: listed BEFORE what_needs_attention so
+    // "missing / risks / focus" phrases route to the fusion handler.
+    // No keyword overlap — no hijack risk on attention/priority phrases.
+    { id: 'fusion_insights', score: scoreKeywords(query, FUSION_INSIGHTS_KEYWORDS) },
     { id: 'what_needs_attention', score: scoreKeywords(query, WHAT_NEEDS_ATTENTION_KEYWORDS) },
     // R-INTELLIGENCE-MANAGER-QUEUE-V1: anchored multi-word phrases — no collision.
     { id: 'manager_queue', score: scoreKeywords(query, MANAGER_QUEUE_KEYWORDS) },

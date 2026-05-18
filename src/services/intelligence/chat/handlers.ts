@@ -95,6 +95,9 @@ import { rankContactTodayCandidates } from '../ranking/contactTodayRanker';
 // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
 import { computeEntityAttentionPriorities } from '../attention/entityPriorityEngine';
 import type { AttentionAction } from '../attention/entityPriorityTypes';
+// R-FUSION-CHAT-INTEGRATION-V1
+import { generateFusedInsights } from '../fusion/fusionEngine';
+import type { SuppressionPattern } from '../fusion/fusionTypes';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -384,6 +387,10 @@ export function handleIntent(
 
     case 'what_needs_attention':
       return handleWhatNeedsAttention(engine, lang);
+
+    // R-FUSION-CHAT-INTEGRATION-V1
+    case 'fusion_insights':
+      return handleFusionInsights(lang);
 
     // R-INTELLIGENCE-MANAGER-QUEUE-V1
     case 'manager_queue':
@@ -2618,6 +2625,98 @@ function handleWhatNeedsAttention(engine: IntelligenceEngine, lang: Lang3): Chat
     kind: 'answer',
     text: lines.join('\n'),
     ...(rawActions.length > 0 ? { actions: dedupeAndLimitActions(rawActions) } : {}),
+  };
+}
+
+// ── Fusion Insights ─────────────────────────────────────────
+function handleFusionInsights(lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const report = generateFusedInsights();
+
+  if (report.insights.length === 0) {
+    return {
+      kind: 'answer',
+      text: `**${t('chat.fusion.header')}**\n\n${t('chat.fusion.empty')}`,
+    };
+  }
+
+  const SEV: Record<string, string> = {
+    critical: '🚨', high: '⚠️', medium: '📌', low: 'ℹ️',
+  };
+
+  const critHigh = report.criticalCount + report.highCount;
+  const lines: string[] = [
+    `**${t('chat.fusion.header')}**`,
+    '',
+    t('chat.fusion.summary', report.insights.length, critHigh),
+    '',
+  ];
+
+  const SUPPRESSION_KEY: Partial<Record<SuppressionPattern, string>> = {
+    ignored_vip:               'chat.fusion.repeatedDismissal',
+    repeated_dismissal:        'chat.fusion.repeatedDismissal',
+    stale_workflow:            'chat.fusion.workflowDegradation',
+    repeated_unresolved:       'chat.fusion.repeatedRepairRisk',
+    operator_overload_pattern: 'chat.fusion.operatorSuppression',
+  };
+
+  for (const insight of report.insights) {
+    const badge = SEV[insight.severity] ?? '•';
+    const title   = lang === 'es' ? insight.titleEs   : lang === 'pt' ? insight.titlePt   : insight.title;
+    const summary = lang === 'es' ? insight.summaryEs : lang === 'pt' ? insight.summaryPt : insight.summary;
+    lines.push(`• ${badge} ${title}`);
+    lines.push(`   ${summary}`);
+    if (insight.suppressionPattern) {
+      const key = SUPPRESSION_KEY[insight.suppressionPattern];
+      if (key) lines.push(`   🔁 ${t(key)}`);
+    }
+  }
+
+  const actions: ChatActionUI[] = [];
+  let actIdx = 0;
+  for (const insight of report.insights.slice(0, 4)) {
+    if (!insight.actionType) continue;
+    const id       = `fusion-${insight.id}-${actIdx++}`;
+    const entityId = insight.actionTargetId ?? '';
+    const phone    = insight.actionTargetPhone ?? '';
+
+    switch (insight.actionType) {
+      case 'open_repair':
+        if (entityId) actions.push({
+          id,
+          label: lang === 'es' ? 'Abrir Reparación' : lang === 'pt' ? 'Abrir Reparo' : 'Open Repair',
+          payload: { type: 'review', entityId, executable: true, executionTarget: 'open_repair' },
+        });
+        break;
+      case 'open_customer':
+        if (entityId) actions.push({
+          id,
+          label: lang === 'es' ? 'Abrir Cliente' : lang === 'pt' ? 'Abrir Cliente' : 'Open Customer',
+          payload: { type: 'review', entityId, executable: true, executionTarget: 'open_customer' },
+        });
+        break;
+      case 'send_whatsapp':
+        if (phone) actions.push({
+          id,
+          label: 'WhatsApp',
+          actionType: 'whatsapp',
+          payload: { type: 'whatsapp', customerPhone: phone, executable: true, executionTarget: 'whatsapp_url' },
+        });
+        break;
+      case 'open_manager_queue':
+        actions.push({
+          id,
+          label: t('chat.fusion.actions'),
+          payload: { type: 'review', executable: true, executionTarget: 'queue_manager_review' },
+        });
+        break;
+    }
+  }
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(actions.length > 0 ? { actions: dedupeAndLimitActions(actions) } : {}),
   };
 }
 

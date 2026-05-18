@@ -7132,4 +7132,64 @@ export const translations: TranslationDictionary = {
   'chat.slowDiag.cause.productOpp.title':   { en: (name: string) => `"${name}" ready to push`, es: (name: string) => `"${name}" listo para impulsar`, pt: (name: string) => `"${name}" pronto para promover` },
   'chat.slowDiag.cause.productOpp.evidence':{ en: (amount: string) => `${amount} revenue potential. Promote to walk-ins or ping customers via WhatsApp.`, es: (amount: string) => `${amount} de potencial de ingreso. Promuévelo a clientes en tienda o por WhatsApp.`, pt: (amount: string) => `${amount} de potencial de receita. Promova para clientes na loja ou via WhatsApp.` },
   'chat.slowDiag.recovery':                 { en: 'Suggested recovery actions:', es: 'Acciones de recuperación sugeridas:', pt: 'Ações de recuperação sugeridas:' },
+  // R-FUSION-CHAT-INTEGRATION-V1
+  'chat.fusion.header': { en: '🔍 Operational Awareness', es: '🔍 Estado Operacional', pt: '🔍 Visão Operacional' },
+  'chat.fusion.empty': {
+    en: 'No interrupted flows or stalled workflows detected. Everything looks operational.',
+    es: 'Sin flujos interrumpidos ni workflows estancados. Todo operativo.',
+    pt: 'Nenhum fluxo interrompido ou workflow parado detectado. Tudo operacional.',
+  },
+  'chat.fusion.summary': {
+    en: (n: number, critHigh: number) => critHigh > 0
+      ? `${n} signal${n !== 1 ? 's' : ''} detected — ${critHigh} require${critHigh === 1 ? 's' : ''} immediate attention.`
+      : `${n} signal${n !== 1 ? 's' : ''} detected.`,
+    es: (n: number, critHigh: number) => critHigh > 0
+      ? `${n} señal${n !== 1 ? 'es' : ''} detectada${n !== 1 ? 's' : ''} — ${critHigh} requiere${critHigh !== 1 ? 'n' : ''} atención inmediata.`
+      : `${n} señal${n !== 1 ? 'es' : ''} detectada${n !== 1 ? 's' : ''}.`,
+    pt: (n: number, critHigh: number) => critHigh > 0
+      ? `${n} sinal${n !== 1 ? 'is' : ''} detectado${n !== 1 ? 's' : ''} — ${critHigh} requer${critHigh !== 1 ? 'em' : ''} atenção imediata.`
+      : `${n} sinal${n !== 1 ? 'is' : ''} detectado${n !== 1 ? 's' : ''}.`,
+  },
+  'chat.fusion.actions':  { en: 'Recommended actions', es: 'Acciones recomendadas', pt: 'Ações recomendadas' },
+  'chat.fusion.operatorOverload': {
+    en: 'Operator is overloaded — incoming suggestions are being filtered.',
+    es: 'El operador está saturado — sugerencias entrantes están filtradas.',
+    pt: 'Operador sobrecarregado — sugestões estão sendo filtradas.',
+  },
+  'chat.fusion.vipRisk': {
+    en: 'VIP customer at risk — issue awaiting resolution.',
+    es: 'Cliente VIP en riesgo — problema pendiente de resolución.',
+    pt: 'Cliente VIP em risco — problema aguardando resolução.',
+  },
+  'chat.fusion.recoveryOpportunity': {
+    en: 'Recovery opportunity — follow-up needed.',
+    es: 'Oportunidad de recuperación — se requiere seguimiento.',
+    pt: 'Oportunidade de recuperação — acompanhamento necessário.',
+  },
+  'chat.fusion.conversionOpportunity': {
+    en: 'Conversion opportunity — deal momentum at risk.',
+    es: 'Oportunidad de conversión — momentum del trato en riesgo.',
+    pt: 'Oportunidade de conversão — momentum do negócio em risco.',
+  },
+  // R-FUSION-SUPPRESSION-AWARENESS-V1
+  'chat.fusion.repeatedDismissal': {
+    en: 'Important follow-up has been ignored repeatedly.',
+    es: 'Seguimiento importante ignorado repetidamente.',
+    pt: 'Acompanhamento importante ignorado repetidamente.',
+  },
+  'chat.fusion.workflowDegradation': {
+    en: 'Workflow interruption pattern detected.',
+    es: 'Patrón de interrupción de workflow detectado.',
+    pt: 'Padrão de interrupção de workflow detectado.',
+  },
+  'chat.fusion.repeatedRepairRisk': {
+    en: 'Pending repair continues unresolved.',
+    es: 'Reparación pendiente sigue sin resolver.',
+    pt: 'Reparo pendente continua sem resolução.',
+  },
+  'chat.fusion.operatorSuppression': {
+    en: 'High-priority items being suppressed by operator overload.',
+    es: 'Ítems de alta prioridad suprimidos por saturación del operador.',
+    pt: 'Itens de alta prioridade suprimidos pela sobrecarga do operador.',
+  },
 };
