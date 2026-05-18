@@ -17,6 +17,15 @@ function categorizeSignal(signal: OperationalSignal): OperationalPriorityCategor
       if (tags.some((t) => t === 'pickup_overdue' || t === 'pickup_pending')) {
         return 'pickup_opportunity';
       }
+      // Repair workflow sub-status risks
+      if (tags.some((t) =>
+        t === 'repair_pickup_waiting' ||
+        t === 'repair_waiting_parts' ||
+        t === 'repair_past_estimate' ||
+        t === 'repair_no_movement'
+      )) {
+        return 'business_risk';
+      }
       return 'system_attention';
     }
 
