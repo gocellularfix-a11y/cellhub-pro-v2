@@ -9,6 +9,7 @@ import type { Repair, Layaway, Customer, Sale, InventoryItem, Unlock, SpecialOrd
 import type { ModuleOpportunity, ExecutableOpportunityAction } from '../moduleWideOpportunities/moduleWideOpportunityTypes';
 import type { IntelligenceContext } from './intelligenceContext';
 import type { IntelligenceEngine } from '../IntelligenceEngine';
+import { buildCustomerCrossModuleProfile } from './customerCrossModuleProfile';
 
 // ── Date helpers (mirrors moduleWideOpportunityDetectors) ─────────────────────
 
@@ -463,7 +464,16 @@ export function computeContextualOpportunities(
     run(() => detectRepairContext(ctx.activeRepairId!, engine.getRepairs(), now));
   }
   if (ctx.activeCustomerId) {
-    run(() => detectCustomerContext(ctx.activeCustomerId!, engine.getCustomers(), engine.getSales(), engine.getRepairs(), engine.getLayaways(), now));
+    run(() => buildCustomerCrossModuleProfile({
+      customerId: ctx.activeCustomerId!,
+      customers: engine.getCustomers(),
+      repairs: engine.getRepairs(),
+      unlocks: engine.getUnlocks(),
+      specialOrders: engine.getSpecialOrders(),
+      layaways: engine.getLayaways(),
+      sales: engine.getSales(),
+      now,
+    }));
   }
   if (ctx.activeLayawayId) {
     run(() => detectLayawayContext(ctx.activeLayawayId!, engine.getLayaways(), now));

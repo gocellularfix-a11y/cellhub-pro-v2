@@ -5922,6 +5922,31 @@ export const translations: TranslationDictionary = {
     es: (name: string, amount: string) => `Cliente activo — ${name} tiene balance pendiente de ${amount}`,
     pt: (name: string, amount: string) => `Cliente ativo — ${name} tem saldo pendente de ${amount}`,
   },
+  'ctx.customer.repair_ready': {
+    en: (name: string, days: string, count: string) => `Viewing customer — ${name} has ${count === '1' ? 'a device' : `${count} devices`} ready, waiting ${days} day(s) for pickup`,
+    es: (name: string, days: string, count: string) => `Cliente activo — ${name} tiene ${count === '1' ? 'un dispositivo' : `${count} dispositivos`} listo(s), ${days} día(s) esperando`,
+    pt: (name: string, days: string, count: string) => `Cliente ativo — ${name} tem ${count === '1' ? 'um dispositivo' : `${count} dispositivos`} pronto(s), aguardando ${days} dia(s)`,
+  },
+  'ctx.customer.so_arrived': {
+    en: (name: string, item: string) => `Viewing customer — ${name}'s special order (${item}) has arrived, notify customer`,
+    es: (name: string, item: string) => `Cliente activo — llegó la orden especial (${item}) de ${name}, notificar`,
+    pt: (name: string, item: string) => `Cliente ativo — pedido especial (${item}) de ${name} chegou, notificar`,
+  },
+  'ctx.customer.unlock_ready': {
+    en: (name: string, device: string) => `Viewing customer — ${name}'s unlock code for ${device} is ready, deliver now`,
+    es: (name: string, device: string) => `Cliente activo — código de unlock para ${device} de ${name} listo, entregar ahora`,
+    pt: (name: string, device: string) => `Cliente ativo — código de desbloqueio para ${device} de ${name} pronto, entregar agora`,
+  },
+  'ctx.customer.unlock_waiting': {
+    en: (name: string, days: string) => `Viewing customer — ${name}'s unlock has been waiting ${days} day(s) for supplier code`,
+    es: (name: string, days: string) => `Cliente activo — unlock de ${name} lleva ${days} día(s) esperando código del proveedor`,
+    pt: (name: string, days: string) => `Cliente ativo — desbloqueio de ${name} aguarda ${days} dia(s) pelo código do fornecedor`,
+  },
+  'ctx.customer.repeat_repair': {
+    en: (name: string, total: string, recent: string) => `Viewing customer — ${name} has had ${total} repairs (${recent} in last 6 months) — consider protection plan`,
+    es: (name: string, total: string, recent: string) => `Cliente activo — ${name} ha tenido ${total} reparaciones (${recent} en 6 meses) — considera plan de protección`,
+    pt: (name: string, total: string, recent: string) => `Cliente ativo — ${name} teve ${total} reparos (${recent} nos últimos 6 meses) — considere plano de proteção`,
+  },
   'ctx.layaway.overdue': {
     en: (name: string, amount: string) => `Active layaway — ${name}'s payment is overdue, ${amount} remaining`,
     es: (name: string, amount: string) => `Layaway activo — pago de ${name} vencido, quedan ${amount}`,
