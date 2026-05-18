@@ -7159,6 +7159,12 @@ export const translations: TranslationDictionary = {
   'chat.briefV2.action.collectPayments':        { en: 'Collect Payments', es: 'Cobrar Pagos', pt: 'Cobrar Pagamentos' },
   'chat.briefV2.action.openCustomer':           { en: (n: string) => `Open ${n}`, es: (n: string) => `Abrir ${n}`, pt: (n: string) => `Abrir ${n}` },
 
+  // ── OCE Debug Status (R-OCE-V1) ──────────────────────────────────────────
+  'chat.oceStatus.header':        { en: 'OPERATIONAL CONTEXT STATUS', es: 'ESTADO DEL CONTEXTO OPERACIONAL', pt: 'STATUS DO CONTEXTO OPERACIONAL' },
+  'chat.oceStatus.modulesHeader': { en: 'Modules:', es: 'Módulos:', pt: 'Módulos:' },
+  'chat.oceStatus.topSignalsHeader': { en: 'Top Signals:', es: 'Señales Principales:', pt: 'Principais Sinais:' },
+  'chat.oceStatus.noSignals':     { en: 'No operational signals detected.', es: 'No se detectaron señales operacionales.', pt: 'Nenhum sinal operacional detectado.' },
+
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
   'chat.pushNow.noOpps':            { en: 'No strong product opportunities detected right now. Record a few more sales so the engine can calibrate margins and velocity.', es: 'No se detectaron oportunidades de producto fuertes ahora. Registra más ventas para que el motor pueda calibrar márgenes y velocidad.', pt: 'Nenhuma oportunidade de produto forte detectada agora. Registre mais vendas para o motor calibrar margens e velocidade.' },

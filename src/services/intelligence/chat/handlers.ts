@@ -95,6 +95,9 @@ import { getOutreachPerformanceSummary } from '../outreach/outreachEffectiveness
 // R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.
 import { generateDailyBriefV2 } from '../operatorBrief/operatorDailyBriefV2';
 import type { BriefV2Section } from '../operatorBrief/operatorDailyBriefV2';
+// R-OCE-V1: operational context engine for debug status intent.
+import { buildOperationalContext } from '../oce/buildOperationalContext';
+import { getTopOperationalSignals, getModuleStatus } from '../oce/operationalContextQueries';
 // R-INTELLIGENCE-EXTRACT-RANKERS-FROM-HANDLERS-V1: pure ranking functions.
 import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
@@ -329,6 +332,9 @@ export function handleIntent(
 
     case 'operator_daily_brief_v2':
       return handleOperatorDailyBriefV2(engine, lang);
+
+    case 'operational_context_status':
+      return handleOperationalContextStatus(engine, lang);
 
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
@@ -904,6 +910,8 @@ export function handleFollowUp(
         return handleOutreachPerformance(lang);
       case 'operator_daily_brief_v2':
         return handleOperatorDailyBriefV2(engine, lang);
+      case 'operational_context_status':
+        return handleOperationalContextStatus(engine, lang);
       case 'slow_day_diagnostic':
         return handleSlowDayDiagnostic(engine, lang);
       default:
@@ -1007,6 +1015,8 @@ export function handleFollowUp(
       return handleOutreachPerformance(lang);
     case 'operator_daily_brief_v2':
       return handleOperatorDailyBriefV2(engine, lang);
+    case 'operational_context_status':
+      return handleOperationalContextStatus(engine, lang);
     default:
       lines.push(t('chat.followup.fallback'));
   }
@@ -4844,6 +4854,36 @@ function handleSmartOutreachCampaign(engine: IntelligenceEngine, lang: Lang3): C
 function handleOutreachPerformance(lang: Lang3): ChatResponse {
   const summary = getOutreachPerformanceSummary(lang, 30);
   return { kind: 'answer', text: summary };
+}
+
+// R-OCE-V1: development debug intent — shows module availability + top signals.
+function handleOperationalContextStatus(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const snapshot = buildOperationalContext(engine);
+  const modules = getModuleStatus(snapshot);
+  const top5 = getTopOperationalSignals(snapshot, 5);
+
+  const lines: string[] = [t('chat.oceStatus.header'), ''];
+
+  lines.push(t('chat.oceStatus.modulesHeader'));
+  if (modules.length === 0) {
+    lines.push(t('chat.oceStatus.noSignals'));
+  } else {
+    for (const m of modules) {
+      const sev = m.highestSeverity ? ` (${m.highestSeverity})` : '';
+      lines.push(`• ${m.module} — ${m.signalCount} signal${m.signalCount !== 1 ? 's' : ''}${sev}`);
+    }
+  }
+
+  if (top5.length > 0) {
+    lines.push('');
+    lines.push(t('chat.oceStatus.topSignalsHeader'));
+    top5.forEach((sig, i) => {
+      lines.push(`${i + 1}. [${sig.severity}] ${sig.title}`);
+    });
+  }
+
+  return { kind: 'answer', text: lines.join('\n') };
 }
 
 // R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.

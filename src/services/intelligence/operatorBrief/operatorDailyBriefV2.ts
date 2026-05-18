@@ -9,8 +9,10 @@ import type { Lang3 } from '../opportunities/buyTodayRanking';
 import { generateOutreachCampaign } from '../outreach/generateOutreachCampaign';
 import { getOutreachEffectiveness } from '../outreach/outreachEffectiveness';
 import type { OutreachGroup } from '../outreach/outreachOutcomeTypes';
-import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { translations } from '@/i18n/translations';
+// R-OCE-V1: risk/warning sections now sourced from the Operational Context Engine
+import { buildOperationalContext } from '../oce/buildOperationalContext';
+import { getSignalsByType } from '../oce/operationalContextQueries';
 import { PRIORITY, URGENCY } from './priorityEngine';
 import type { PriorityUrgency } from './priorityEngine';
 
@@ -219,45 +221,46 @@ export function generateDailyBriefV2(
     }
   }
 
-  // ── 5. Stale repairs ──────────────────────────────────────────────────────
-  const stale = scanStaleRepairs(engine);
-  if (stale.staleCount > 0) {
+  // ── 5-7. OCE-driven: operational warnings + risk signals ─────────────────
+  // Migration step 1: these sections now read from the Operational Context Engine
+  // instead of calling engine methods directly. Output is identical.
+  const oce = buildOperationalContext(engine);
+
+  const staleSignals = getSignalsByType(oce, 'operational_warning');
+  for (const sig of staleSignals.slice(0, 1)) {
+    const n = (sig.metadata?.staleCount as number | undefined) ?? 1;
     allItems.push({
       id: 'stale-repairs',
       section: 'operational_warnings',
-      text: tl(lang, 'chat.briefV2.item.staleRepairs', stale.staleCount),
+      text: tl(lang, 'chat.briefV2.item.staleRepairs', n),
       urgency: URGENCY.STALE_REPAIRS,
       priority: PRIORITY.STALE_REPAIRS,
     });
   }
 
-  // ── 6. Slow day risk ──────────────────────────────────────────────────────
-  try {
-    const slowDay = engine.getSlowDayRootCause();
-    if (slowDay) {
-      allItems.push({
-        id: 'slow-day-risk',
-        section: 'risk_detection',
-        text: tl(lang, 'chat.briefV2.item.slowDay'),
-        urgency: 'medium',
-        priority: PRIORITY.SLOW_DAY_RISK,
-      });
-    }
-  } catch { /* skip */ }
+  if (getSignalsByType(oce, 'slow_day').length > 0) {
+    allItems.push({
+      id: 'slow-day-risk',
+      section: 'risk_detection',
+      text: tl(lang, 'chat.briefV2.item.slowDay'),
+      urgency: 'medium',
+      priority: PRIORITY.SLOW_DAY_RISK,
+    });
+  }
 
-  // ── 7. Dead stock ─────────────────────────────────────────────────────────
-  try {
-    const dead = engine.getDeadStockRootCause();
-    if (dead.length > 3) {
+  const deadSignals = getSignalsByType(oce, 'dead_stock');
+  if (deadSignals.length > 0) {
+    const count = (deadSignals[0].metadata?.count as number | undefined) ?? 0;
+    if (count > 3) {
       allItems.push({
         id: 'dead-stock',
         section: 'risk_detection',
-        text: tl(lang, 'chat.briefV2.item.deadStock', dead.length),
+        text: tl(lang, 'chat.briefV2.item.deadStock', count),
         urgency: 'medium',
         priority: PRIORITY.DEAD_STOCK_RISK,
       });
     }
-  } catch { /* skip */ }
+  }
 
   // ── Bucket into sections (sorted by priority, max MAX_PER_SECTION each) ───
   allItems.sort((a, b) => a.priority - b.priority);

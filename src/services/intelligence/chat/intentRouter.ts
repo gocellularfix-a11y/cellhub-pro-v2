@@ -98,6 +98,8 @@ export type IntentId =
   | 'active_context_query'
   // R-INTELLIGENCE-MANAGER-QUEUE-V1
   | 'manager_queue'
+  // R-OCE-V1: operational context engine debug/status intent
+  | 'operational_context_status'
   // R-SMART-OUTREACH-CAMPAIGN-V1: grouped deterministic outreach campaign
   | 'smart_outreach_campaign'
   // R-OUTREACH-OUTCOME-FEEDBACK-V1: outreach effectiveness/performance report
@@ -666,6 +668,18 @@ const WHO_IS_MOST_LIKELY_TO_BUY_TODAY_KEYWORDS = [
   // PT
   'quem vai comprar hoje', 'clientes com chance de comprar',
   'oportunidade de venda hoje', 'melhores clientes para vender hoje',
+];
+
+// R-OCE-V1: operational context engine debug status.
+const OPERATIONAL_CONTEXT_STATUS_KEYWORDS = [
+  // EN
+  'operational context status', 'intelligence access status',
+  'what can intelligence see', 'oce status', 'context engine status',
+  // ES
+  'estado del contexto operacional', 'qué puede ver intelligence',
+  'que puede ver intelligence', 'estado del motor de contexto',
+  // PT
+  'status do contexto operacional', 'o que intelligence pode ver',
 ];
 
 // R-SMART-OUTREACH-CAMPAIGN-V1: grouped operational outreach campaign.
@@ -1423,6 +1437,8 @@ export function classifyIntent(
     // their handlers. Listed BEFORE likely_to_buy_today so "who should i message
     // right now" wins the position tie-break over likely_to_buy's shorter
     // "who should i message" substring.
+    // R-OCE-V1: debug intent — anchored multi-word phrases only to avoid noise.
+    { id: 'operational_context_status', score: scoreKeywords(query, OPERATIONAL_CONTEXT_STATUS_KEYWORDS) },
     { id: 'smart_outreach_campaign', score: scoreKeywords(query, SMART_OUTREACH_CAMPAIGN_KEYWORDS) },
     // R-OUTREACH-OUTCOME-FEEDBACK-V1: listed after smart_outreach_campaign so
     // "outreach campaign" stays there; listed before marketing_campaign.
