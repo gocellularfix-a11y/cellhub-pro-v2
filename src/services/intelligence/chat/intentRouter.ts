@@ -403,7 +403,7 @@ const PROPOSAL_FOLLOWUP_KEYWORDS = [
 const DAILY_REVENUE_MISSIONS_KEYWORDS = [
   // EN
   'daily missions', 'revenue missions',
-  'what should i do today', 'what should i focus on today',
+  'what should i focus on today',
   "today's priorities", 'todays priorities',
   'money tasks today',
   // ES
