@@ -6656,6 +6656,8 @@ export const translations: TranslationDictionary = {
   'chat.followup.openRepairHeader':{ en: 'Opening this repair ticket:', es: 'Abriendo este ticket de reparación:', pt: 'Abrindo este ticket de reparo:' },
   'chat.followup.openCustomerLabel':{ en: 'View Customer', es: 'Ver Cliente', pt: 'Ver Cliente' },
   'chat.followup.openCustomerHeader':{ en: 'Opening this customer profile:', es: 'Abriendo el perfil de este cliente:', pt: 'Abrindo o perfil deste cliente:' },
+  // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: entity no longer in store
+  'chat.followup.staleContext':      { en: 'That previous context is no longer available. Please ask again with the customer, product, or repair name.', es: 'Ese contexto anterior ya no está disponible. Pregunta de nuevo con el nombre del cliente, producto o reparación.', pt: 'Esse contexto anterior não está mais disponível. Pergunte novamente com o nome do cliente, produto ou reparo.' },
 
   // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
   'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },

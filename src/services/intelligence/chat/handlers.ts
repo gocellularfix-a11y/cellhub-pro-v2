@@ -47,6 +47,7 @@ export { runProductPush } from './productPromotion';
 // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intelligence
 import { handleRecoverCustomer, handleVipOutreach } from './customerOutreach';
 import { handleRepairFollowUp, handleRepairEscalate } from './repairIntelligence';
+import { validateCustomerContext, validateRepairContext } from '../context/contextValidator';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
@@ -779,6 +780,10 @@ export function handleFollowUp(
   const isContactRef = /^(contact h[ei]m|contact her|contact them|call h[ei]m|call her|message h[ei]m|message her|contactal[oa]|contactalos|llamal[oa]|contata ele|contata ela)\b/.test(cq);
   if (isContactRef) {
     if (operationalContext?.type === 'customer') {
+      // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block execution if entity gone from store
+      if (!validateCustomerContext(engine, operationalContext).valid) {
+        return { kind: 'answer', text: t('chat.followup.staleContext') };
+      }
       const custId = operationalContext.value;
       const customer = engine.getCustomers().find((c) => c.id === custId);
       if (customer) {
@@ -811,6 +816,10 @@ export function handleFollowUp(
   const isOpenRef = /^(open it|open that|show it|[aá]brelo|abrelo|abra isso|mostre isso)\b/.test(cq);
   if (isOpenRef && operationalContext) {
     if (operationalContext.type === 'repair') {
+      // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if repair no longer in store
+      if (!validateRepairContext(engine, operationalContext).valid) {
+        return { kind: 'answer', text: t('chat.followup.staleContext') };
+      }
       const action: ChatActionUI = {
         id: `fu-open-repair-${operationalContext.value}`,
         label: t('chat.followup.openRepairLabel'),
@@ -820,6 +829,10 @@ export function handleFollowUp(
       return { kind: 'answer', text: t('chat.followup.openRepairHeader'), actions: [action] };
     }
     if (operationalContext.type === 'customer') {
+      // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if customer no longer in store
+      if (!validateCustomerContext(engine, operationalContext).valid) {
+        return { kind: 'answer', text: t('chat.followup.staleContext') };
+      }
       const custId = operationalContext.value;
       const customer = engine.getCustomers().find((c) => c.id === custId);
       const action: ChatActionUI = {
