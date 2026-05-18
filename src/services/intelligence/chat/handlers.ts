@@ -307,6 +307,9 @@ export function handleIntent(
     case 'product_opportunities':
       return handleProductOpportunities(engine, lang);
 
+    case 'push_right_now':
+      return handlePushRightNow(engine, lang);
+
     // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1
     case 'proactive_operations':
       return handleProactiveOperations(engine, lang);
@@ -2339,6 +2342,125 @@ function handleWhatToDoToday(engine: IntelligenceEngine, lang: Lang3): ChatRespo
     text: parts.join('\n'),
     ...(actions.length > 0 ? { actions } : {}),
   };
+}
+
+// ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ───────────────────────
+// Single-best-opportunity aggregator for "what should I push right now?".
+// Reuses existing engine.getProductOpportunities(), slow-day detection, and
+// the module-wide action payload pipeline. Returns ONE primary recommendation
+// with reasoning, revenue potential, audience signal, and executable buttons.
+function handlePushRightNow(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+
+  // Pull and qualify product opportunities (existing engine signal).
+  const oppsRaw = engine.getProductOpportunities(10);
+  const opps = oppsRaw.filter(o =>
+    o.type !== 'HIGH_RETURN' &&          // skip problem items
+    (o.impactCents >= 500 || o.type === 'DEAD_STOCK' || o.marginPct >= 35),
+  );
+
+  if (opps.length === 0) {
+    return { kind: 'answer', text: t('chat.pushNow.noOpps') };
+  }
+
+  // Slow-day context: amplifies urgency when today is below baseline.
+  let isSlowDay = false;
+  try {
+    const m = engine.getTodayMetrics();
+    const b = engine.getContextualBaseline();
+    isSlowDay = m.transactions === 0 ||
+      (b.dailyAverage > 0 && m.revenueCents < b.expectedRangeLow * 0.6);
+  } catch { /* skip */ }
+
+  // "Right now" urgency scoring:
+  // Dead stock wins — cash locked, clearance is immediate.
+  // High margin next — every sale is premium profit.
+  // Low margin last — needs velocity but not the top pick.
+  const scored = opps
+    .map(opp => {
+      let score = opp.impactCents;
+      if (opp.type === 'DEAD_STOCK')  score += 60000;
+      if (opp.type === 'HIGH_MARGIN') score += 25000;
+      if (isSlowDay) score = Math.round(score * 1.3);
+      return { opp, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const { opp: top } = scored[0];
+  const secondary = scored.slice(1, 3).map(s => s.opp);
+
+  // Outreach audience — reuse existing signal.
+  let audienceCount = 0;
+  try { audienceCount = engine.buildOutreachQueueItems().length; } catch { /* skip */ }
+
+  const REASON_KEY: Record<string, string> = {
+    HIGH_MARGIN: 'chat.pushNow.reason.highMargin',
+    LOW_MARGIN:  'chat.pushNow.reason.lowMargin',
+    DEAD_STOCK:  'chat.pushNow.reason.deadStock',
+  };
+  // Reuse the existing productOps action labels — same strings, no duplication.
+  const ACTION_KEY: Record<string, string> = {
+    PROMOTE:  'chat.productOps.action.promote',
+    DISCOUNT: 'chat.productOps.action.discount',
+    BUNDLE:   'chat.productOps.action.bundle',
+    REVIEW:   'chat.productOps.action.review',
+  };
+
+  const lines: string[] = [];
+  lines.push(t('chat.pushNow.header'));
+  lines.push('');
+  lines.push(top.name);
+  lines.push('');
+  lines.push(`${t('chat.pushNow.whyLabel')} ${t(REASON_KEY[top.type] ?? 'chat.pushNow.reason.generic')}`);
+  if (top.impactCents > 0) {
+    lines.push(`${t('chat.pushNow.potentialLabel')} ~${COP(top.impactCents)}`);
+  }
+  if (isSlowDay) {
+    lines.push('');
+    lines.push(t('chat.pushNow.slowDaySignal'));
+  }
+  if (audienceCount >= 2) {
+    lines.push('');
+    lines.push(t('chat.pushNow.audience', audienceCount));
+  }
+  lines.push('');
+  lines.push(`${t('chat.pushNow.actionLabel')} ${t(ACTION_KEY[top.action] ?? 'chat.productOps.action.review')}`);
+
+  if (secondary.length > 0) {
+    lines.push('');
+    lines.push(t('chat.pushNow.alsoConsider'));
+    for (const s of secondary) {
+      lines.push(`• ${s.name}`);
+    }
+  }
+
+  // Promote action — same payload shape as buildOpenPromoteAction in productPromotion.ts.
+  const promoteAction: ChatActionUI = {
+    id: `prn-${top.inventoryId}-${Date.now()}`,
+    label: t('chat.productOps.promoteAction', top.name),
+    actionType: 'whatsapp',
+    payload: {
+      type: 'promote_product',
+      productId: top.inventoryId,
+      productName: top.name,
+      strategy: audienceCount > 0 ? 'targeted_whatsapp' : 'broad_campaign',
+      recommendedChannel: audienceCount > 0 ? 'whatsapp' : 'whatsapp_status',
+      executable: true,
+      executionTarget: 'open_promote_panel',
+    },
+  };
+
+  // Additional actions from module-wide opportunities (outreach, open repair, etc.).
+  const mwoActions = dedupeAndLimitActions(
+    mwoOpps(engine).slice(0, 4).flatMap(opp =>
+      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
+    ),
+    4,
+  );
+
+  const actions = dedupeAndLimitActions([promoteAction, ...mwoActions], 5);
+
+  return { kind: 'answer', text: lines.join('\n'), actions };
 }
 
 function handleWhereLoosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatResponse {

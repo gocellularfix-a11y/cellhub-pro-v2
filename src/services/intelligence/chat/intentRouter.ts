@@ -61,6 +61,7 @@ export type IntentId =
   | 'product_push'
   | 'what_hurting_profit'
   | 'product_opportunities'
+  | 'push_right_now'
   | 'root_cause'
   | 'slow_day_root_cause'
   | 'slow_day_diagnostic'
@@ -683,6 +684,26 @@ const MARKETING_KEYWORDS = [
   // PT
   'campanha', 'criar campanha', 'promover produtos',
   'campanhas', 'ideias de campanha',
+];
+
+// R-INTELLIGENCE-PUSH-RIGHT-NOW-V1: single-best-opportunity aggregator.
+// Listed BEFORE product_opportunities so urgency phrases ("right now", "today",
+// "make me money") route to the tighter recommendation, while analytical
+// queries ("opportunity", "bundle", "upsell") still reach product_opportunities.
+const PUSH_RIGHT_NOW_KEYWORDS = [
+  // EN
+  'what should i push right now', 'what should i push today',
+  'what product should i promote', 'what should i sell today',
+  'what can make me money right now', 'best product to push',
+  'top product to sell', 'what to sell today',
+  // ES
+  'qué debo promover', 'que debo promover',
+  'qué producto debo impulsar', 'que producto debo impulsar',
+  'qué vendo hoy', 'que vendo hoy',
+  'qué debo vender hoy', 'que debo vender hoy',
+  // PT
+  'o que devo promover hoje', 'o que devo vender hoje',
+  'melhor produto para promover', 'o que vende agora',
 ];
 
 const PRODUCT_OPPORTUNITY_KEYWORDS = [
@@ -1346,6 +1367,11 @@ export function classifyIntent(
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
     { id: 'where_losing_money', score: scoreKeywords(query, WHERE_LOSING_MONEY_KEYWORDS) },
+    // R-INTELLIGENCE-PUSH-RIGHT-NOW-V1: listed BEFORE proactive_opportunities so
+    // urgency phrases ("right now", "today", "what should i push right now") win
+    // the tie-break over the generic "what should i push" substring in proactive.
+    // Bare "what should i push" still routes to proactive (scores 0 here; 1 there).
+    { id: 'push_right_now', score: scoreKeywords(query, PUSH_RIGHT_NOW_KEYWORDS) },
     // R-INTELLIGENCE-PROACTIVE-OPPORTUNITIES-V1: list ABOVE product_opportunities
     // so a bare "opportunities" query routes to the multi-source operator
     // briefing. product_opportunities (product-only ranked list) still wins

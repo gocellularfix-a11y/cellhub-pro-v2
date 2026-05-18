@@ -7051,6 +7051,20 @@ export const translations: TranslationDictionary = {
     pt: 'Aguardando',
   },
 
+  // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
+  'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
+  'chat.pushNow.noOpps':            { en: 'No strong product opportunities detected right now. Record a few more sales so the engine can calibrate margins and velocity.', es: 'No se detectaron oportunidades de producto fuertes ahora. Registra más ventas para que el motor pueda calibrar márgenes y velocidad.', pt: 'Nenhuma oportunidade de produto forte detectada agora. Registre mais vendas para o motor calibrar margens e velocidade.' },
+  'chat.pushNow.whyLabel':          { en: 'Why:', es: 'Por qué:', pt: 'Por quê:' },
+  'chat.pushNow.potentialLabel':    { en: 'Revenue potential:', es: 'Potencial de ingreso:', pt: 'Potencial de receita:' },
+  'chat.pushNow.actionLabel':       { en: 'Move:', es: 'Acción:', pt: 'Ação:' },
+  'chat.pushNow.slowDaySignal':     { en: '⚠️ Today is below normal pace — this is your most urgent push.', es: '⚠️ Hoy está por debajo del ritmo normal — este es tu impulso más urgente.', pt: '⚠️ Hoje está abaixo do ritmo normal — este é o seu impulso mais urgente.' },
+  'chat.pushNow.audience':          { en: (n: number) => `${n} customers ready for outreach — can be messaged directly.`, es: (n: number) => `${n} clientes listos para contactar — se les puede escribir directamente.`, pt: (n: number) => `${n} clientes prontos para contato — podem ser contactados diretamente.` },
+  'chat.pushNow.alsoConsider':      { en: 'Also worth considering:', es: 'También vale considerar:', pt: 'Também vale considerar:' },
+  'chat.pushNow.reason.highMargin': { en: 'High-margin item — every sale is maximum profit.', es: 'Artículo de alto margen — cada venta es ganancia máxima.', pt: 'Item de alta margem — cada venda é lucro máximo.' },
+  'chat.pushNow.reason.lowMargin':  { en: 'Moving slow and eating space — a push can clear it.', es: 'Movimiento lento y ocupa espacio — un empuje puede liberarlo.', pt: 'Movimento lento e ocupando espaço — um empurrão pode liberá-lo.' },
+  'chat.pushNow.reason.deadStock':  { en: 'Dead stock — cash locked in inventory. A quick discount or bundle unlocks it today.', es: 'Stock muerto — efectivo inmovilizado. Un descuento rápido o paquete hoy lo libera.', pt: 'Estoque parado — dinheiro preso. Um desconto rápido ou pacote hoje o libera.' },
+  'chat.pushNow.reason.generic':    { en: 'Top-ranked based on current inventory and margin signals.', es: 'Mejor clasificado según señales actuales de inventario y margen.', pt: 'Melhor classificado com base nos sinais de inventário e margem atuais.' },
+
   // ── Slow Day Diagnostic (R-INTELLIGENCE-SLOW-DAY-DIAGNOSTIC-V1) ──
   'chat.slowDiag.header':                   { en: '🐌 Today is running slow. Here\'s what I found:', es: '🐌 Hoy está lento. Esto es lo que detecté:', pt: '🐌 Hoje está devagar. Aqui está o que encontrei:' },
   'chat.slowDiag.noData':                   { en: 'Not enough sales history to diagnose today\'s slowdown. Keep recording sales to unlock diagnostics.', es: 'Historial insuficiente para diagnosticar el día de hoy. Sigue registrando ventas para activar el diagnóstico.', pt: 'Histórico insuficiente para diagnosticar a lentidão de hoje.' },
