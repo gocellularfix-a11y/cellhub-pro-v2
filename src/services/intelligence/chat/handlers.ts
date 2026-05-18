@@ -98,6 +98,9 @@ import type { BriefV2Section } from '../operatorBrief/operatorDailyBriefV2';
 // R-OCE-V1: operational context engine for debug status intent.
 import { buildOperationalContext } from '../oce/buildOperationalContext';
 import { getTopOperationalSignals, getModuleStatus } from '../oce/operationalContextQueries';
+// R-GPO-V1: global priority orchestrator
+import { buildGlobalPriorities } from '../gpo/buildGlobalPriorities';
+import { extractTopActions } from '../gpo/extractTopActions';
 // R-INTELLIGENCE-EXTRACT-RANKERS-FROM-HANDLERS-V1: pure ranking functions.
 import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
@@ -335,6 +338,10 @@ export function handleIntent(
 
     case 'operational_context_status':
       return handleOperationalContextStatus(engine, lang);
+
+    // R-GPO-V1: global priority orchestrator
+    case 'global_priority_status':
+      return handleGlobalPriorityStatus(engine, lang);
 
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
@@ -4884,6 +4891,62 @@ function handleOperationalContextStatus(engine: IntelligenceEngine, lang: Lang3)
   }
 
   return { kind: 'answer', text: lines.join('\n') };
+}
+
+// R-GPO-V1: global priority orchestrator — top priorities right now.
+function handleGlobalPriorityStatus(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const es = lang === 'es';
+  const pt = lang === 'pt';
+
+  const priorities = buildGlobalPriorities(buildOperationalContext(engine));
+
+  if (priorities.length === 0) {
+    const msg = es ? 'No hay prioridades operativas detectadas. La tienda se ve estable.'
+      : pt ? 'Nenhuma prioridade operacional detectada. A loja parece estável.'
+      : 'No operational priorities detected. Store looks stable.';
+    return { kind: 'answer', text: msg };
+  }
+
+  const header = es ? 'PRIORIDADES OPERATIVAS' : pt ? 'PRIORIDADES OPERACIONAIS' : 'OPERATIONAL PRIORITIES';
+  const lines: string[] = [header, ''];
+
+  const SEV_ICON: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡' };
+
+  for (const p of priorities) {
+    const icon = SEV_ICON[p.severity] ?? '⚪';
+    lines.push(`${icon} ${p.title.toUpperCase()}`);
+    if (p.summary && p.summary !== p.title) {
+      lines.push(`   ${p.summary}`);
+    }
+  }
+
+  const topActions = extractTopActions(priorities);
+  if (topActions.length > 0) {
+    lines.push('');
+    const actHeader = es ? 'ACCIONES PRINCIPALES' : pt ? 'AÇÕES PRINCIPAIS' : 'TOP ACTIONS';
+    lines.push(actHeader);
+    topActions.forEach((a, i) => {
+      const label = a.executionTarget.replace(/_/g, ' ');
+      lines.push(`${i + 1}. ${label}${a.entityId ? ` — #${a.entityId.slice(-6).toUpperCase()}` : ''}`);
+    });
+  }
+
+  const actions: ChatActionUI[] = [];
+  const now = Date.now();
+  for (const action of topActions) {
+    if (actions.length >= 3) break;
+    const label = action.executionTarget
+      .replace('open_', '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    actions.push({
+      id: `gpo-action-${action.executionTarget}-${now}`,
+      label,
+      payload: action,
+    });
+  }
+
+  return { kind: 'answer', text: lines.join('\n'), actions: actions.length > 0 ? actions : undefined };
 }
 
 // R-OPERATOR-DAILY-BRIEF-V2: unified aggregated operational briefing.

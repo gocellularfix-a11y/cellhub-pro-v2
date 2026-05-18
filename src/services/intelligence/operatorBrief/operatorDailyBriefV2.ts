@@ -12,7 +12,8 @@ import type { OutreachGroup } from '../outreach/outreachOutcomeTypes';
 import { translations } from '@/i18n/translations';
 // R-OCE-V1: risk/warning sections now sourced from the Operational Context Engine
 import { buildOperationalContext } from '../oce/buildOperationalContext';
-import { getSignalsByType } from '../oce/operationalContextQueries';
+// R-GPO-V1: OCE signals compressed into grouped priorities
+import { buildGlobalPriorities } from '../gpo/buildGlobalPriorities';
 import { PRIORITY, URGENCY } from './priorityEngine';
 import type { PriorityUrgency } from './priorityEngine';
 
@@ -221,24 +222,42 @@ export function generateDailyBriefV2(
     }
   }
 
-  // ── 5-7. OCE-driven: operational warnings + risk signals ─────────────────
-  // Migration step 1: these sections now read from the Operational Context Engine
-  // instead of calling engine methods directly. Output is identical.
-  const oce = buildOperationalContext(engine);
+  // ── 5-7. GPO-driven: compressed operational signals ──────────────────────
+  // R-GPO-V1: OCE signals grouped and compressed by the Global Priority
+  // Orchestrator. Each category emits at most one brief item, reducing noise.
+  const gpo = buildGlobalPriorities(buildOperationalContext(engine));
 
-  const staleSignals = getSignalsByType(oce, 'operational_warning');
-  for (const sig of staleSignals.slice(0, 1)) {
-    const n = (sig.metadata?.staleCount as number | undefined) ?? 1;
+  // Pickup opportunity: stale repairs + special orders awaiting pickup (compressed)
+  const pickupPriority = gpo.find((p) => p.category === 'pickup_opportunity');
+  if (pickupPriority) {
+    const n = pickupPriority.sourceSignals.reduce(
+      (s, sig) => s + ((sig.metadata?.count as number | undefined) ?? (sig.metadata?.staleCount as number | undefined) ?? 1), 0,
+    );
     allItems.push({
-      id: 'stale-repairs',
+      id: 'gpo-pickup',
       section: 'operational_warnings',
       text: tl(lang, 'chat.briefV2.item.staleRepairs', n),
-      urgency: URGENCY.STALE_REPAIRS,
+      urgency: pickupPriority.severity === 'critical' ? 'critical'
+        : pickupPriority.severity === 'high' ? 'high' : 'medium',
       priority: PRIORITY.STALE_REPAIRS,
     });
   }
 
-  if (getSignalsByType(oce, 'slow_day').length > 0) {
+  // Payment collection: SOs + layaways with balance due (new OCE coverage)
+  const paymentPriority = gpo.find((p) => p.category === 'payment_collection');
+  if (paymentPriority) {
+    allItems.push({
+      id: 'gpo-payment-collection',
+      section: 'critical_actions',
+      text: tl(lang, 'chat.briefV2.item.paymentsOverdue', paymentPriority.signalCount),
+      urgency: URGENCY.PAYMENT_OVERDUE,
+      priority: PRIORITY.PAYMENT_DUE,
+    });
+  }
+
+  // Business risk: slow day trend
+  const bizRisk = gpo.find((p) => p.category === 'business_risk');
+  if (bizRisk && bizRisk.sourceSignals.some((s) => s.type === 'slow_day')) {
     allItems.push({
       id: 'slow-day-risk',
       section: 'risk_detection',
@@ -248,9 +267,12 @@ export function generateDailyBriefV2(
     });
   }
 
-  const deadSignals = getSignalsByType(oce, 'dead_stock');
-  if (deadSignals.length > 0) {
-    const count = (deadSignals[0].metadata?.count as number | undefined) ?? 0;
+  // Inventory attention: dead stock
+  const invAttn = gpo.find((p) => p.category === 'inventory_attention');
+  if (invAttn) {
+    const count = invAttn.sourceSignals.reduce(
+      (s, sig) => s + ((sig.metadata?.count as number | undefined) ?? 1), 0,
+    );
     if (count > 3) {
       allItems.push({
         id: 'dead-stock',

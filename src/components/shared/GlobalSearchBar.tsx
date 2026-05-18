@@ -27,6 +27,7 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { matchesSearchPhones } from '@/utils/search';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 import { SearchInput } from '@/components/ui';
+import type { Repair } from '@/store/types';
 
 // All collection keys searchable by this component. Modules pass one of these
 // to `excludeCollection` to hide their own collection's matches in the dropdown.
@@ -65,6 +66,14 @@ interface GlobalSearchBarProps {
    *  the cross-module "No results / Customers / Repairs / …" panel
    *  doesn't sit on top of the inventory table. */
   disableResultsDropdown?: boolean;
+  /** R-REPAIRS-SEARCH-FIX-V1: when provided, clicking a repair result in the
+   *  dropdown calls this handler instead of navigating to the repairs tab.
+   *  Repairs module passes this to open the repair detail modal directly. */
+  onRepairSelect?: (repair: Repair) => void;
+  /** R-REPAIRS-SEARCH-FIX-V1: when true, clicking a sales result in the
+   *  dropdown closes it without navigating to Reports. Repairs module sets
+   *  this so repair-context searches never accidentally open Reports. */
+  suppressSalesNav?: boolean;
 }
 
 // ── Internal sub-components (moved from Dashboard.tsx) ────
@@ -140,6 +149,8 @@ export default function GlobalSearchBar({
   showTip = false,
   className = '',
   disableResultsDropdown = false,
+  onRepairSelect,
+  suppressSalesNav = false,
 }: GlobalSearchBarProps) {
   const {
     state: {
@@ -396,7 +407,15 @@ export default function GlobalSearchBar({
                   if (s === REPAIR_STATUS.IN_PROGRESS) return 'rgba(245,158,11,0.3)';
                   return undefined;
                 })()}
-                onClick={() => { goTo('repairs', r.customerName, r.id); clearSearch(); }}
+                onClick={() => {
+                  if (onRepairSelect) {
+                    onRepairSelect(r);
+                    clearSearch();
+                  } else {
+                    goTo('repairs', r.customerName, r.id);
+                    clearSearch();
+                  }
+                }}
               />
             ))}
           </SearchSection>
@@ -420,7 +439,14 @@ export default function GlobalSearchBar({
                 primary={s.invoiceNumber}
                 secondary={s.customerName || t('globalSearch.walkIn')}
                 badge={formatCurrency(s.total)}
-                onClick={() => { goTo('reports', s.invoiceNumber, s.id); clearSearch(); }}
+                onClick={() => {
+                  if (suppressSalesNav) {
+                    setShowDropdown(false);
+                  } else {
+                    goTo('reports', s.invoiceNumber, s.id);
+                    clearSearch();
+                  }
+                }}
               />
             ))}
           </SearchSection>

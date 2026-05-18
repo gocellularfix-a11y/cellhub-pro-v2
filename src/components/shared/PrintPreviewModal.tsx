@@ -207,7 +207,7 @@ export default function PrintPreviewModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+      background: 'rgba(0,0,0,0.88)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
@@ -344,6 +344,23 @@ export default function PrintPreviewModal({
 
           {/* Copies */}
           <Field label="Copies">
+            <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.4rem' }}>
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => { setCopies(n); setCopiesInput(String(n)); }}
+                  style={{
+                    flex: 1, padding: '0.35rem 0', fontSize: '0.85rem', fontWeight: 700,
+                    borderRadius: '0.4rem', cursor: 'pointer', border: 'none',
+                    background: copies === n ? '#3b82f6' : 'rgba(255,255,255,0.08)',
+                    color: copies === n ? '#fff' : '#94a3b8',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  ×{n}
+                </button>
+              ))}
+            </div>
             <input
               type="number"
               min={1}
@@ -351,12 +368,6 @@ export default function PrintPreviewModal({
               step={1}
               value={copiesInput}
               onChange={(e) => {
-                // R-PRINT-INPUT-FIX-V1: same shadow-string pattern as
-                // scale — keep raw text, commit live only when valid in
-                // [1, 99]. The prior pattern (a) snapped empty input to
-                // 1 mid-typing, (b) had no upper clamp, so the user
-                // could enter "100" despite max=99 and the modal would
-                // happily forward 100 copies to the printer.
                 const raw = e.target.value;
                 setCopiesInput(raw);
                 const n = parseInt(raw, 10);
@@ -370,7 +381,7 @@ export default function PrintPreviewModal({
                 setCopies(clamped);
                 setCopiesInput(String(clamped));
               }}
-              style={inputStyle}
+              style={{ ...inputStyle, width: '100%' }}
             />
           </Field>
 

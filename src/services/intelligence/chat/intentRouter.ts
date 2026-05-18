@@ -100,6 +100,8 @@ export type IntentId =
   | 'manager_queue'
   // R-OCE-V1: operational context engine debug/status intent
   | 'operational_context_status'
+  // R-GPO-V1: global priority orchestrator — top priorities right now
+  | 'global_priority_status'
   // R-SMART-OUTREACH-CAMPAIGN-V1: grouped deterministic outreach campaign
   | 'smart_outreach_campaign'
   // R-OUTREACH-OUTCOME-FEEDBACK-V1: outreach effectiveness/performance report
@@ -680,6 +682,20 @@ const OPERATIONAL_CONTEXT_STATUS_KEYWORDS = [
   'que puede ver intelligence', 'estado del motor de contexto',
   // PT
   'status do contexto operacional', 'o que intelligence pode ver',
+];
+
+// R-GPO-V1: global priority orchestrator — what matters most right now
+const GLOBAL_PRIORITY_STATUS_KEYWORDS = [
+  // EN
+  'top priorities', 'what matters most', 'operational priorities',
+  'global priorities', 'what needs attention right now', 'priority status',
+  'most important right now', 'what should i focus on', 'priorities right now',
+  // ES
+  'prioridades operativas', 'prioridades principales', 'qué importa más',
+  'que importa mas', 'prioridades ahora', 'en qué enfocarse',
+  'qué debo atender', 'que debo atender',
+  // PT
+  'prioridades operacionais', 'o que importa mais', 'prioridades agora',
 ];
 
 // R-SMART-OUTREACH-CAMPAIGN-V1: grouped operational outreach campaign.
@@ -1439,6 +1455,8 @@ export function classifyIntent(
     // "who should i message" substring.
     // R-OCE-V1: debug intent — anchored multi-word phrases only to avoid noise.
     { id: 'operational_context_status', score: scoreKeywords(query, OPERATIONAL_CONTEXT_STATUS_KEYWORDS) },
+    // R-GPO-V1: listed after operational_context_status so "oce status" stays there.
+    { id: 'global_priority_status', score: scoreKeywords(query, GLOBAL_PRIORITY_STATUS_KEYWORDS) },
     { id: 'smart_outreach_campaign', score: scoreKeywords(query, SMART_OUTREACH_CAMPAIGN_KEYWORDS) },
     // R-OUTREACH-OUTCOME-FEEDBACK-V1: listed after smart_outreach_campaign so
     // "outreach campaign" stays there; listed before marketing_campaign.

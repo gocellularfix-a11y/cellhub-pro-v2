@@ -1124,8 +1124,9 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
           <GlobalSearchBar
             localValue={search}
             onLocalChange={(s) => { setSearch(s); setVisibleCount(50); }}
-            excludeCollection="repairs"
             placeholder={t('repairs.searchPlaceholder')}
+            onRepairSelect={(r) => { setEditRepair(r); setShowModal(true); }}
+            suppressSalesNav={true}
           />
         }
         stats={[
