@@ -33,6 +33,7 @@ export type OperationalSignalType =
   | 'sale_opportunity'
   | 'operational_warning'
   | 'appointment_risk'
+  | 'margin_risk'
   | 'system_status';
 
 export type OperationalSeverity =

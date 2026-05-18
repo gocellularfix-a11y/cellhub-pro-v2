@@ -38,6 +38,9 @@ function categorizeSignal(signal: OperationalSignal): OperationalPriorityCategor
     case 'system_status':
       return 'business_risk';
 
+    case 'margin_risk':
+      return 'business_risk';
+
     case 'appointment_risk': {
       const tags = signal.tags ?? [];
       if (tags.includes('high_value_appointment')) return 'customer_outreach';
