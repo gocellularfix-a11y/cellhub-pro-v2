@@ -12,6 +12,7 @@ export type OperationalModule =
   | 'special_orders'
   | 'unlocks'
   | 'appointments'
+  | 'returns'
   | 'approvals'
   | 'outreach'
   | 'reports'
