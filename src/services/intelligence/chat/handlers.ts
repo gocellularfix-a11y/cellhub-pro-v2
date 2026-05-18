@@ -3043,7 +3043,12 @@ function handleWhoIsMostLikelyToBuyToday(engine: IntelligenceEngine, lang: Lang3
   candidates.forEach((c, i) => {
     const firstName = c.customerName.split(' ')[0] || c.customerName;
     const phoneDisplay = c.phone ? ` · ${c.phone}` : '';
-    lines.push(`${i + 1}. ${c.customerName}${phoneDisplay}`);
+    const urgencyBadge = c.urgencyLevel === 'urgent'
+      ? ` ${t('chat.buyToday.urgent')}`
+      : c.urgencyLevel === 'active'
+        ? ` ${t('chat.buyToday.activeNow')}`
+        : '';
+    lines.push(`${i + 1}. ${c.customerName}${phoneDisplay}${urgencyBadge}`);
     c.reasons.forEach((r) => lines.push(`   • ${r}`));
     const actionLabel = c.opportunityType === 'repair_ready'
       ? t('chat.buyToday.action.contact')

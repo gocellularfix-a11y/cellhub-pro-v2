@@ -11,6 +11,7 @@
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { translations } from '@/i18n/translations';
+import { applyOpportunityUrgency } from './opportunityUrgency';
 
 export type Lang3 = 'en' | 'es' | 'pt';
 
@@ -28,6 +29,7 @@ export interface BuyTodayCandidate {
     | 'missed_revenue'
     | 'recent_interest';
   repairId?: string;
+  urgencyLevel?: 'urgent' | 'active';
 }
 
 const MAX_RESULTS = 5;
@@ -199,15 +201,26 @@ export function getCustomersMostLikelyToBuyToday(
 
   // ── Build final result ────────────────────────────────────────────────────
   return Array.from(acc.entries())
-    .map(([customerId, e]): BuyTodayCandidate => ({
-      customerId,
-      customerName: e.customerName,
-      phone: e.phone,
-      score: e.score,
-      reasons: Array.from(e.reasonSet),
-      opportunityType: e.opportunityType,
-      ...(e.repairId ? { repairId: e.repairId } : {}),
-    }))
+    .map(([customerId, e]): BuyTodayCandidate => {
+      const base: BuyTodayCandidate = {
+        customerId,
+        customerName: e.customerName,
+        phone: e.phone,
+        score: e.score,
+        reasons: Array.from(e.reasonSet),
+        opportunityType: e.opportunityType,
+        ...(e.repairId ? { repairId: e.repairId } : {}),
+      };
+      // Apply urgency modifiers — adjustedScore replaces base score.
+      const urgency = applyOpportunityUrgency(base, engine, lang);
+      base.score = urgency.adjustedScore;
+      // Prepend urgency reasons (deduped) before base reasons.
+      const allReasons = [...urgency.urgencyReasons, ...base.reasons];
+      const seen = new Set<string>();
+      base.reasons = allReasons.filter((r) => { if (seen.has(r)) return false; seen.add(r); return true; });
+      if (urgency.urgencyLevel) base.urgencyLevel = urgency.urgencyLevel;
+      return base;
+    })
     .filter((c) => !!c.customerId && !!c.customerName)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_RESULTS);

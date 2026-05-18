@@ -7089,6 +7089,14 @@ export const translations: TranslationDictionary = {
   'chat.buyToday.reason.outreach':             { en: 'Due for outreach', es: 'Pendiente de seguimiento', pt: 'Pendente de contato' },
   'chat.buyToday.waMsg.repairReady':           { en: (n: string) => `Hi ${n}! Your repair is ready for pickup. Come by whenever you're free!`, es: (n: string) => `¡Hola ${n}! Tu reparación está lista. ¡Pásate cuando puedas!`, pt: (n: string) => `Olá ${n}! Seu conserto está pronto. Passe por aqui quando puder!` },
   'chat.buyToday.waMsg.followUp':              { en: (n: string) => `Hi ${n}! Just checking in — we'd love to see you. Stop by today!`, es: (n: string) => `¡Hola ${n}! Solo saludando — nos gustaría verte. ¡Pásate hoy!`, pt: (n: string) => `Olá ${n}! Só passando para ver — adoraríamos te ver. Passe hoje!` },
+  // ── Urgency badges (R-INTELLIGENCE-OPPORTUNITY-URGENCY-ENGINE-V1) ────
+  'chat.buyToday.urgent':                      { en: '🔥 URGENT', es: '🔥 URGENTE', pt: '🔥 URGENTE' },
+  'chat.buyToday.activeNow':                   { en: '⚡ ACTIVE TODAY', es: '⚡ ACTIVO HOY', pt: '⚡ ATIVO HOJE' },
+  'chat.buyToday.reason.repairToday':          { en: 'Repair completed today', es: 'Reparación completada hoy', pt: 'Conserto concluído hoje' },
+  'chat.buyToday.reason.recentlyActive':       { en: 'Recently active customer', es: 'Cliente activo recientemente', pt: 'Cliente ativo recentemente' },
+  'chat.buyToday.reason.followUpOverdue':      { en: 'Follow-up overdue', es: 'Seguimiento atrasado', pt: 'Acompanhamento atrasado' },
+  'chat.buyToday.reason.paymentOverdue':       { en: 'Payment overdue', es: 'Pago vencido', pt: 'Pagamento em atraso' },
+  'chat.buyToday.reason.opportunityCooling':   { en: 'Opportunity becoming cold', es: 'Oportunidad enfriándose', pt: 'Oportunidade esfriando' },
 
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
