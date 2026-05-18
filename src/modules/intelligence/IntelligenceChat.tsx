@@ -45,6 +45,7 @@ import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
+import { recordOperatorAction } from '@/services/intelligence/history/operatorActionHistory';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -626,9 +627,25 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       // listening to cellhub:* events drive the actual navigation.
       case 'open_repair':
         setFeedbackForAction(action.id, t('chat.action.openingTicket'));
+        recordOperatorAction({
+          actionType: 'open_repair',
+          entityType: 'repair',
+          entityId: action.payload.entityId,
+          entityName: action.payload.customerName,
+          sourceIntent: lastIntentRef.current?.intentId,
+          timestamp: Date.now(),
+        });
         break;
       case 'open_customer':
         setFeedbackForAction(action.id, t('chat.action.openingCustomer'));
+        recordOperatorAction({
+          actionType: 'open_customer',
+          entityType: 'customer',
+          entityId: action.payload.entityId || action.payload.customerId,
+          entityName: action.payload.customerName,
+          sourceIntent: lastIntentRef.current?.intentId,
+          timestamp: Date.now(),
+        });
         break;
       case 'open_layaway':
         setFeedbackForAction(action.id, t('chat.action.openingLayaway'));
@@ -1125,6 +1142,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   // Open WhatsApp so the chat can later list pending
                   // follow-ups and link pasted replies to a record.
                   const a = pendingWaAction.action;
+                  recordOperatorAction({
+                    actionType: 'whatsapp',
+                    entityType: 'customer',
+                    entityId: a.payload.customerId,
+                    entityName: a.payload.customerName,
+                    sourceIntent: lastIntentRef.current?.intentId,
+                    timestamp: Date.now(),
+                  });
                   if (a.payload.customerId || a.payload.customerPhone || a.payload.customerName) {
                     const followupId = generateId();
                     addProposalFollowup({

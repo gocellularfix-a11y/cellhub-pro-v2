@@ -9,6 +9,7 @@
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { translations } from '@/i18n/translations';
+import { hasRecentOperatorAction } from '../history/operatorActionHistory';
 
 export type Lang3 = 'en' | 'es' | 'pt';
 
@@ -27,6 +28,8 @@ interface UrgencyCandidate {
 }
 
 const MS_PER_DAY = 86_400_000;
+const MS_24H = 86_400_000;
+const MS_6H  = 21_600_000;
 
 function tsToMs(val: unknown): number {
   if (!val) return 0;
@@ -109,6 +112,28 @@ export function applyOpportunityUrgency(
       delta -= 15;
       urgencyReasons.push(tl(lang, 'chat.buyToday.reason.opportunityCooling'));
     }
+  }
+
+  // ── Operator action penalties ─────────────────────────────────────────────
+  // Reduce ranking when operator has already acted on this customer recently
+  // so the engine does not keep recommending the same person blindly.
+
+  // Penalty 1: WhatsApp sent within 24h (-35).
+  if (hasRecentOperatorAction(candidate.customerId, 'whatsapp', MS_24H)) {
+    delta -= 35;
+    urgencyReasons.push(tl(lang, 'chat.buyToday.reason.alreadyContacted'));
+  }
+
+  // Penalty 2: Customer record opened within 6h (-10).
+  if (hasRecentOperatorAction(candidate.customerId, 'open_customer', MS_6H)) {
+    delta -= 10;
+    urgencyReasons.push(tl(lang, 'chat.buyToday.reason.recentlyReviewed'));
+  }
+
+  // Penalty 3: Marked completed within 24h (-50).
+  if (hasRecentOperatorAction(candidate.customerId, 'completed', MS_24H)) {
+    delta -= 50;
+    urgencyReasons.push(tl(lang, 'chat.buyToday.reason.alreadyHandled'));
   }
 
   return {

@@ -7097,6 +7097,9 @@ export const translations: TranslationDictionary = {
   'chat.buyToday.reason.followUpOverdue':      { en: 'Follow-up overdue', es: 'Seguimiento atrasado', pt: 'Acompanhamento atrasado' },
   'chat.buyToday.reason.paymentOverdue':       { en: 'Payment overdue', es: 'Pago vencido', pt: 'Pagamento em atraso' },
   'chat.buyToday.reason.opportunityCooling':   { en: 'Opportunity becoming cold', es: 'Oportunidad enfriándose', pt: 'Oportunidade esfriando' },
+  'chat.buyToday.reason.alreadyContacted':     { en: 'Already contacted today', es: 'Ya contactado hoy', pt: 'Já contatado hoje' },
+  'chat.buyToday.reason.recentlyReviewed':     { en: 'Recently reviewed', es: 'Revisado recientemente', pt: 'Revisado recentemente' },
+  'chat.buyToday.reason.alreadyHandled':       { en: 'Already handled', es: 'Ya atendido', pt: 'Já atendido' },
 
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
