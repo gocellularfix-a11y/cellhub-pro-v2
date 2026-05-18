@@ -7072,6 +7072,24 @@ export const translations: TranslationDictionary = {
   'chat.likelyBuy.waMsg.followUp':         { en: (name: string) => `Hi ${name}! Just checking in — we have some deals you might like. Stop by today!`, es: (name: string) => `¡Hola ${name}! Solo saludando — tenemos ofertas que te podrían interesar. ¡Pásate hoy!`, pt: (name: string) => `Olá ${name}! Só passando para ver — temos ofertas que você pode gostar. Passe hoje!` },
   'chat.likelyBuy.openRepair':             { en: 'Open Repair', es: 'Abrir reparación', pt: 'Abrir conserto' },
 
+  // ── Who Is Most Likely To Buy Today (R-INTELLIGENCE-BUY-TODAY-RANKING-V1) ──
+  'chat.buyToday.header':                      { en: '🔥 Best customers to contact right now', es: '🔥 Mejores clientes para contactar ahora', pt: '🔥 Melhores clientes para contatar agora' },
+  'chat.buyToday.empty':                       { en: 'No clear buyer signals yet. Check back after more sales are recorded.', es: 'Sin señales claras de compra todavía. Vuelve después de registrar más ventas.', pt: 'Ainda sem sinais claros de compra. Volte após registrar mais vendas.' },
+  'chat.buyToday.recommendedAction':           { en: 'Recommended action:', es: 'Acción recomendada:', pt: 'Ação recomendada:' },
+  'chat.buyToday.action.contact':              { en: 'Contact now for pickup + accessory upsell.', es: 'Contacta ahora para recoger + venta de accesorios.', pt: 'Entre em contato agora para retirada + upsell de acessórios.' },
+  'chat.buyToday.action.followUp':             { en: 'Reach out today — high revenue opportunity.', es: 'Contacta hoy — alta oportunidad de ingresos.', pt: 'Entre em contato hoje — alta oportunidade de receita.' },
+  'chat.buyToday.action.openCustomer':         { en: 'View Customer', es: 'Ver Cliente', pt: 'Ver Cliente' },
+  'chat.buyToday.action.openRepair':           { en: 'Open Repair', es: 'Abrir Reparación', pt: 'Abrir Reparo' },
+  'chat.buyToday.action.whatsapp':             { en: (n: string) => `WhatsApp ${n}`, es: (n: string) => `WhatsApp ${n}`, pt: (n: string) => `WhatsApp ${n}` },
+  'chat.buyToday.reason.repairReady':          { en: 'Repair ready for pickup', es: 'Reparación lista para recoger', pt: 'Conserto pronto para retirada' },
+  'chat.buyToday.reason.balanceDue':           { en: 'Has outstanding balance', es: 'Tiene saldo pendiente', pt: 'Possui saldo pendente' },
+  'chat.buyToday.reason.vipCustomer':          { en: 'VIP / high-spend customer', es: 'Cliente VIP / alto gasto', pt: 'Cliente VIP / alto valor' },
+  'chat.buyToday.reason.inactiveHighValue':    { en: (days: number) => `High-value customer, inactive ${days} day${days === 1 ? '' : 's'}`, es: (days: number) => `Cliente de alto valor, inactivo ${days} día${days === 1 ? '' : 's'}`, pt: (days: number) => `Cliente de alto valor, inativo ${days} dia${days === 1 ? '' : 's'}` },
+  'chat.buyToday.reason.recentActivity':       { en: (days: number) => days === 0 ? 'Was in today' : `Recent visit — ${days} day${days === 1 ? '' : 's'} ago`, es: (days: number) => days === 0 ? 'Estuvo hoy' : `Visita reciente — hace ${days} día${days === 1 ? '' : 's'}`, pt: (days: number) => days === 0 ? 'Esteve aqui hoje' : `Visita recente — ${days} dia${days === 1 ? '' : 's'} atrás` },
+  'chat.buyToday.reason.outreach':             { en: 'Due for outreach', es: 'Pendiente de seguimiento', pt: 'Pendente de contato' },
+  'chat.buyToday.waMsg.repairReady':           { en: (n: string) => `Hi ${n}! Your repair is ready for pickup. Come by whenever you're free!`, es: (n: string) => `¡Hola ${n}! Tu reparación está lista. ¡Pásate cuando puedas!`, pt: (n: string) => `Olá ${n}! Seu conserto está pronto. Passe por aqui quando puder!` },
+  'chat.buyToday.waMsg.followUp':              { en: (n: string) => `Hi ${n}! Just checking in — we'd love to see you. Stop by today!`, es: (n: string) => `¡Hola ${n}! Solo saludando — nos gustaría verte. ¡Pásate hoy!`, pt: (n: string) => `Olá ${n}! Só passando para ver — adoraríamos te ver. Passe hoje!` },
+
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
   'chat.pushNow.noOpps':            { en: 'No strong product opportunities detected right now. Record a few more sales so the engine can calibrate margins and velocity.', es: 'No se detectaron oportunidades de producto fuertes ahora. Registra más ventas para que el motor pueda calibrar márgenes y velocidad.', pt: 'Nenhuma oportunidade de produto forte detectada agora. Registre mais vendas para o motor calibrar margens e velocidade.' },

@@ -58,6 +58,8 @@ export type IntentId =
   | 'who_to_contact'
   | 'who_to_contact_today'
   | 'likely_to_buy_today'
+  // R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal ranked buyer list
+  | 'who_is_most_likely_to_buy_today'
   | 'marketing_campaign'
   | 'product_push'
   | 'what_hurting_profit'
@@ -621,6 +623,24 @@ const WHAT_HURTING_PROFIT_KEYWORDS = [
   'qué está mal', 'que esta mal', 'what is wrong', "what's wrong",
   'hurting', 'afectando', 'daña', 'problema', 'dinero', 'money',
   'qué me está costando', 'que me esta costando',
+];
+
+// R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal buyer ranking.
+// Phrases unique to this intent — no overlap with who_to_contact_today or
+// likely_to_buy_today. Listed BEFORE likely_to_buy_today so position breaks
+// any tie on shared substrings.
+const WHO_IS_MOST_LIKELY_TO_BUY_TODAY_KEYWORDS = [
+  // EN
+  'who should i sell to', 'best customers to contact',
+  'who can generate revenue today', 'generate revenue today',
+  'customers likely to buy today', 'revenue opportunity customers',
+  // ES
+  'quién debo venderle hoy', 'quien debo venderle hoy',
+  'a quien le vendo hoy', 'candidatos de venta hoy',
+  'clientes con más probabilidad de comprar', 'clientes con mas probabilidad de comprar',
+  // PT
+  'quem vai comprar hoje', 'clientes com chance de comprar',
+  'oportunidade de venda hoje', 'melhores clientes para vender hoje',
 ];
 
 // R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: ranked buyer likelihood aggregator.
@@ -1303,6 +1323,10 @@ export function classifyIntent(
     // generic customer-name detection doesn't swallow "a quien contacto hoy"
     // into a (failed) name lookup. List order also breaks score ties.
     { id: 'who_to_contact_today', score: scoreKeywords(query, WHO_TO_CONTACT_TODAY_KEYWORDS) },
+    // R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal buyer ranking.
+    // Listed BEFORE likely_to_buy_today so unique "sell to / generate revenue"
+    // phrases route here. Tie-break ensures no hijack of existing outreach phrases.
+    { id: 'who_is_most_likely_to_buy_today', score: scoreKeywords(query, WHO_IS_MOST_LIKELY_TO_BUY_TODAY_KEYWORDS) },
     // R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: listed AFTER who_to_contact_today
     // so "contact today/hoy" phrases stay in the existing handler; "most likely
     // to buy", "ready to buy", "who should I message" route here.

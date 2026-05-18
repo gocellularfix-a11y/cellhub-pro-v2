@@ -86,6 +86,8 @@ import { generateDailyOperatorBrief } from '../operator/dailyBrief';
 // R-INTELLIGENCE-SLOW-DAY-DIAGNOSTIC-V1: deviation classifier for real-time
 // "why is today slow" diagnosis against store-calibrated hourly baseline.
 import { isMeaningfulDeviation } from '../baseline/contextualBaseline';
+// R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal buyer ranker.
+import { getCustomersMostLikelyToBuyToday } from '../opportunities/buyTodayRanking';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -298,6 +300,9 @@ export function handleIntent(
 
     case 'likely_to_buy_today':
       return handleLikelyToBuyToday(engine, lang);
+
+    case 'who_is_most_likely_to_buy_today':
+      return handleWhoIsMostLikelyToBuyToday(engine, lang);
 
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
@@ -861,6 +866,8 @@ export function handleFollowUp(
       case 'product_push':
       case 'product_opportunities':
         return handlePushRightNow(engine, lang);
+      case 'who_is_most_likely_to_buy_today':
+        return handleWhoIsMostLikelyToBuyToday(engine, lang);
       case 'slow_day_diagnostic':
         return handleSlowDayDiagnostic(engine, lang);
       default:
@@ -956,6 +963,8 @@ export function handleFollowUp(
       return handlePushRightNow(engine, lang);
     case 'likely_to_buy_today':
       return handleLikelyToBuyToday(engine, lang);
+    case 'who_is_most_likely_to_buy_today':
+      return handleWhoIsMostLikelyToBuyToday(engine, lang);
     default:
       lines.push(t('chat.followup.fallback'));
   }
@@ -3007,6 +3016,105 @@ function handleLikelyToBuyToday(engine: IntelligenceEngine, lang: Lang3): ChatRe
     kind: 'answer',
     text: lines.join('\n'),
     ...(dedupedActions.length > 0 ? { actions: dedupedActions } : {}),
+  };
+}
+
+// R-INTELLIGENCE-BUY-TODAY-RANKING-V1 ─────────────────────────────────────
+// Multi-signal ranked buyer list. Uses buyTodayRanking.ts for scoring;
+// attaches WhatsApp + Open Customer + Open Repair actions per candidate.
+// Establishes context on the top candidate for "contact him" follow-ups.
+// Does NOT block: no consent override, no auto-send.
+function handleWhoIsMostLikelyToBuyToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const now = Date.now();
+
+  const candidates = getCustomersMostLikelyToBuyToday(engine, lang);
+
+  if (candidates.length === 0) {
+    return { kind: 'answer', text: t('chat.buyToday.empty') };
+  }
+
+  const lines: string[] = [t('chat.buyToday.header'), ''];
+  const actions: ChatActionUI[] = [];
+
+  // Consent map — exclude opted-out customers from WhatsApp actions.
+  const consentById = new Map(engine.getCustomers().map((c) => [c.id, c.communicationConsent]));
+
+  candidates.forEach((c, i) => {
+    const firstName = c.customerName.split(' ')[0] || c.customerName;
+    const phoneDisplay = c.phone ? ` · ${c.phone}` : '';
+    lines.push(`${i + 1}. ${c.customerName}${phoneDisplay}`);
+    c.reasons.forEach((r) => lines.push(`   • ${r}`));
+    const actionLabel = c.opportunityType === 'repair_ready'
+      ? t('chat.buyToday.action.contact')
+      : t('chat.buyToday.action.followUp');
+    lines.push(`   ${t('chat.buyToday.recommendedAction')} ${actionLabel}`);
+    if (i < candidates.length - 1) lines.push('');
+
+    // Attach actions for top 3 only.
+    if (i >= 3) return;
+
+    // WhatsApp (consent-safe).
+    const consentOk = consentById.get(c.customerId) !== false;
+    if (c.phone && consentOk) {
+      const msg = c.opportunityType === 'repair_ready'
+        ? t('chat.buyToday.waMsg.repairReady', firstName)
+        : t('chat.buyToday.waMsg.followUp', firstName);
+      actions.push({
+        id: `btr-wa-${c.customerId}-${now}`,
+        label: t('chat.buyToday.action.whatsapp', firstName),
+        actionType: 'whatsapp',
+        payload: {
+          type: 'whatsapp',
+          customMessage: msg,
+          customerId: c.customerId,
+          customerName: c.customerName,
+          customerPhone: c.phone,
+          executable: true,
+          executionTarget: 'whatsapp_url',
+        },
+      });
+    }
+
+    // Open Customer.
+    actions.push({
+      id: `btr-cust-${c.customerId}-${now}`,
+      label: t('chat.buyToday.action.openCustomer'),
+      actionType: 'review',
+      payload: {
+        type: 'review',
+        entityId: c.customerId,
+        customerId: c.customerId,
+        customerName: c.customerName,
+        executable: true,
+        executionTarget: 'open_customer',
+      },
+    });
+
+    // Open Repair (when repair_ready was the primary signal).
+    if (c.repairId) {
+      actions.push({
+        id: `btr-repair-${c.repairId}-${now}`,
+        label: t('chat.buyToday.action.openRepair'),
+        actionType: 'review',
+        payload: {
+          type: 'review',
+          entityId: c.repairId,
+          executable: true,
+          executionTarget: 'open_repair',
+        },
+      });
+    }
+  });
+
+  const top = candidates[0];
+  const dedupedActions = dedupeAndLimitActions(actions, 6);
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(dedupedActions.length > 0 ? { actions: dedupedActions } : {}),
+    // Establish context on top candidate so "contact him" follow-up resolves correctly.
+    establishesContext: { type: 'customer', value: top.customerId },
   };
 }
 
