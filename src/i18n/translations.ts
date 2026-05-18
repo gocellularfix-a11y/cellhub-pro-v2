@@ -5998,6 +5998,24 @@ export const translations: TranslationDictionary = {
     pt: (name: string, amount: string) => `Pedido especial ativo — ${name} tem saldo pendente de ${amount}`,
   },
 
+  // R-NEXT-BEST-ACTION-ENGINE-V1 — NBA output headers + action headlines
+  'nba.header': { en: '**Priority action:**', es: '**Acción prioritaria:**', pt: '**Ação prioritária:**' },
+  'nba.why':    { en: '**Why:**',             es: '**Por qué:**',            pt: '**Por quê:**'          },
+  'nba.also':   { en: '**Also:**',            es: '**Además:**',             pt: '**Também:**'           },
+  'nba.action.notify_customer_pickup':     { en: (n: string) => `Contact ${n} — device ready for pickup`,      es: (n: string) => `Contacta a ${n} — dispositivo listo para recoger`,   pt: (n: string) => `Contate ${n} — dispositivo pronto para retirar`   },
+  'nba.action.deliver_unlock_code':        { en: (n: string) => `Deliver unlock code to ${n}`,                 es: (n: string) => `Entrega el código de desbloqueo a ${n}`,             pt: (n: string) => `Entregue o código de desbloqueio a ${n}`         },
+  'nba.action.notify_customer_so_arrival': { en: (n: string) => `Contact ${n} — special order has arrived`,   es: (n: string) => `Contacta a ${n} — pedido especial llegó`,             pt: (n: string) => `Contate ${n} — pedido especial chegou`           },
+  'nba.action.notify_customer_arrival':    { en: (n: string) => `Contact ${n} — order has arrived`,           es: (n: string) => `Contacta a ${n} — pedido llegó`,                      pt: (n: string) => `Contate ${n} — pedido chegou`                    },
+  'nba.action.collect_balance':            { en: (n: string) => `Collect outstanding balance from ${n}`,      es: (n: string) => `Cobra el saldo pendiente de ${n}`,                    pt: (n: string) => `Cobre o saldo pendente de ${n}`                  },
+  'nba.action.contact_layaway_overdue':    { en: (n: string) => `Contact ${n} — layaway is overdue`,          es: (n: string) => `Contacta a ${n} — apartado vencido`,                  pt: (n: string) => `Contate ${n} — reserva atrasada`                 },
+  'nba.action.follow_up_supplier':         { en: (n: string) => `Follow up with supplier for ${n}`,           es: (n: string) => `Haz seguimiento con el proveedor para ${n}`,          pt: (n: string) => `Acompanhe o fornecedor para ${n}`                },
+  'nba.action.update_repair_status':       { en: (n: string) => `Update repair status for ${n}`,              es: (n: string) => `Actualiza el estado de reparación de ${n}`,           pt: (n: string) => `Atualize o status do reparo de ${n}`             },
+  'nba.action.encourage_final_payment':    { en: (n: string) => `Encourage final payment from ${n}`,          es: (n: string) => `Anima a ${n} a hacer su último pago`,                 pt: (n: string) => `Incentive ${n} a fazer o pagamento final`        },
+  'nba.action.contact_customer':           { en: (n: string) => `Reach out to ${n}`,                          es: (n: string) => `Contacta a ${n}`,                                     pt: (n: string) => `Entre em contato com ${n}`                      },
+  'nba.action.discuss_protection_plan':    { en: (n: string) => `Discuss protection plan with ${n}`,          es: (n: string) => `Habla de un plan de protección con ${n}`,             pt: (n: string) => `Discuta plano de proteção com ${n}`             },
+  'nba.action.reorder':                    { en: (n: string) => `Reorder ${n}`,                               es: (n: string) => `Reordena ${n}`,                                       pt: (n: string) => `Repedido de ${n}`                                },
+  'nba.action.discount_or_bundle':         { en: (n: string) => `Discount or bundle ${n}`,                   es: (n: string) => `Descuento o paquete para ${n}`,                       pt: (n: string) => `Desconto ou pacote para ${n}`                    },
+
   // R-INTELLIGENCE-AMBIENT-AWARENESS-V1 — passive bubble hint pills
   'ambient.repair.overdue': {
     en: (name: string, days: string) => `🔧 ${name} — no update in ${days} day(s)`,

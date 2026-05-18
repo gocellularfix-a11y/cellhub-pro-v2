@@ -76,6 +76,8 @@ import { buildChatActionsFromOpportunity, dedupeAndLimitActions } from './opport
 // R-INTELLIGENCE-CONTEXT-AWARE-V1
 import { getIntelligenceContext } from '../context/intelligenceContext';
 import { computeContextualOpportunities } from '../context/contextualOpportunityService';
+// R-NEXT-BEST-ACTION-ENGINE-V1
+import { rankOpportunitiesForNBA } from '../context/nextBestActionEngine';
 // R-INTELLIGENCE-MANAGER-QUEUE-V1
 import { getQueue } from '../managerQueue/actions';
 import { getPendingItems, getQueueSummary } from '../managerQueue/selectors';
@@ -2352,17 +2354,26 @@ function buildContextualPreamble(
   const ctxOpps = computeContextualOpportunities(ctx, engine);
   if (ctxOpps.length === 0) return null;
 
+  const nba = rankOpportunitiesForNBA(ctxOpps);
+  if (!nba) return null;
+
   const t = tChat(lang);
-  const lines: string[] = [`**${t('chat.context.header')}**`, ''];
-  ctxOpps.slice(0, 3).forEach((opp) => {
+  const { primary, secondary } = nba;
+  const name = primary.evidence[0] ?? '';
+  const headlineKey = `nba.action.${primary.recommendedAction ?? ''}`;
+  const rawHeadline = t(headlineKey, name);
+  const headline = rawHeadline !== headlineKey ? rawHeadline : t(primary.summaryKey, ...primary.evidence);
+
+  const lines: string[] = [`**${t('chat.context.header')}**`, headline, ''];
+
+  // Primary + 1 supporting signal as compact context
+  [primary, ...secondary.slice(0, 1)].forEach((opp) => {
     const badge = opp.severity === 'critical' ? '🚨 ' : opp.severity === 'high' ? '⚡ ' : '';
     lines.push(`• ${badge}${t(opp.summaryKey, ...opp.evidence)}`);
   });
 
   const actions = dedupeAndLimitActions(
-    ctxOpps.flatMap((opp) =>
-      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
-    ),
+    primary.actions ? buildChatActionsFromOpportunity(primary.actions, primary.id, lang) : [],
     3,
   );
 
@@ -2372,23 +2383,47 @@ function buildContextualPreamble(
 function handleActiveContextQuery(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const ctx = getIntelligenceContext();
-  if (!ctx) {
-    return { kind: 'answer', text: t('chat.context.noContext') };
-  }
+  if (!ctx) return { kind: 'answer', text: t('chat.context.noContext') };
+
   const ctxOpps = computeContextualOpportunities(ctx, engine);
-  if (ctxOpps.length === 0) {
-    return { kind: 'answer', text: t('chat.context.noContext') };
-  }
-  const lines: string[] = [`**${t('chat.context.header')}**`, ''];
-  ctxOpps.forEach((opp) => {
-    const badge = opp.severity === 'critical' ? '🚨 ' : opp.severity === 'high' ? '⚡ ' : '';
-    lines.push(`• ${badge}${t(opp.summaryKey, ...opp.evidence)}`);
+  if (ctxOpps.length === 0) return { kind: 'answer', text: t('chat.context.noContext') };
+
+  const nba = rankOpportunitiesForNBA(ctxOpps);
+  if (!nba) return { kind: 'answer', text: t('chat.context.noContext') };
+
+  const { primary, secondary } = nba;
+  const name = primary.evidence[0] ?? '';
+  const headlineKey = `nba.action.${primary.recommendedAction ?? ''}`;
+  const rawHeadline = t(headlineKey, name);
+  const headline = rawHeadline !== headlineKey ? rawHeadline : t(primary.summaryKey, ...primary.evidence);
+
+  const lines: string[] = [
+    t('nba.header'),
+    headline,
+    '',
+    t('nba.why'),
+    `• ${t(primary.summaryKey, ...primary.evidence)}`,
+  ];
+
+  // Up to 3 secondary signals contribute supporting context to "Why"
+  secondary.slice(0, 3).forEach((opp) => {
+    lines.push(`• ${t(opp.summaryKey, ...opp.evidence)}`);
   });
+
+  // Remaining lower-priority signals go to "Also"
+  const tail = secondary.slice(3);
+  if (tail.length > 0) {
+    lines.push('', t('nba.also'));
+    tail.forEach((opp) => {
+      lines.push(`• ${t(opp.summaryKey, ...opp.evidence)}`);
+    });
+  }
+
+  // Actions from primary only — deduplicated
   const actions = dedupeAndLimitActions(
-    ctxOpps.flatMap((opp) =>
-      opp.actions ? buildChatActionsFromOpportunity(opp.actions, opp.id, lang) : [],
-    ),
+    primary.actions ? buildChatActionsFromOpportunity(primary.actions, primary.id, lang) : [],
   );
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
