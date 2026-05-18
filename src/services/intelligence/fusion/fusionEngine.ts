@@ -14,6 +14,7 @@ import { detectResumableWorkflows } from '../workflows/workflowContinuationEngin
 import { computeAttentionSnapshot } from '../attention/attentionEngine';
 import { readQueue } from '../managerQueue/store';
 import { detectSuppressionAwareness, ESCALATION_TIER_RANK } from './suppressionAwareness';
+import { detectPressureAccumulation } from './pressureAccumulation';
 import type {
   FusedInsight,
   FusedInsightSeverity,
@@ -100,6 +101,7 @@ function insightsFromWorkflows(report: WorkflowContinuationReport): FusedInsight
       actionType,
       actionTargetId: wf.resumeAction?.targetId,
       actionTargetPhone: wf.resumeAction?.targetPhone,
+      staleSinceMs: wf.staleSinceMs,
     };
   });
 }
@@ -160,28 +162,13 @@ function insightsFromManagerQueue(now: number): FusedInsight[] {
   return result;
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Deduplication helper ──────────────────────────────────────────────────────
+// Shared by base dedup and final merge dedup. Keeps strongest signal per id:
+// highest severity wins; on tie, highest escalation tier wins.
 
-/**
- * Aggregate cross-system operational signals into a severity-ranked report.
- * Pure read — no writes, no side effects, no new storage keys.
- */
-export function generateFusedInsights(now?: number): FusedInsightsReport {
-  const _now = now ?? Date.now();
-
-  // Fetch once — shared between insightsFromWorkflows and detectSuppressionAwareness.
-  const workflowReport = detectResumableWorkflows(_now);
-
-  const all: FusedInsight[] = [
-    ...insightsFromAttention(),
-    ...insightsFromManagerQueue(_now),
-    ...insightsFromWorkflows(workflowReport),
-    ...detectSuppressionAwareness(workflowReport.workflows, _now),
-  ];
-
-  // Deduplicate by id — keep strongest: highest severity, then highest escalation tier.
+function deduplicateInsights(pool: FusedInsight[]): FusedInsight[] {
   const byId = new Map<string, FusedInsight>();
-  for (const insight of all) {
+  for (const insight of pool) {
     const existing = byId.get(insight.id);
     if (!existing) {
       byId.set(insight.id, insight);
@@ -199,12 +186,112 @@ export function generateFusedInsights(now?: number): FusedInsightsReport {
       if (newTier > exTier) byId.set(insight.id, insight);
     }
   }
-  const deduped = Array.from(byId.values());
+  return Array.from(byId.values());
+}
 
-  const sorted = deduped.sort(
-    (a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity],
-  );
-  const insights = sorted.slice(0, MAX_INSIGHTS);
+// ── MUST-FIX 1: Operator overload collapse ────────────────────────────────────
+// Multiple operator_overload insights describe the same operational state.
+// Keep only the strongest: severity → escalationTier → pressureScore.
+
+function collapseOperatorOverload(insights: FusedInsight[]): FusedInsight[] {
+  const overload = insights.filter((i) => i.category === 'operator_overload');
+  if (overload.length <= 1) return insights;
+
+  const others    = insights.filter((i) => i.category !== 'operator_overload');
+  const strongest = overload.reduce((best, cur) => {
+    const bSev = SEVERITY_RANK[best.severity];
+    const cSev = SEVERITY_RANK[cur.severity];
+    if (cSev !== bSev) return cSev > bSev ? cur : best;
+    const bTier = best.escalationTier !== undefined ? ESCALATION_TIER_RANK[best.escalationTier] : 0;
+    const cTier = cur.escalationTier  !== undefined ? ESCALATION_TIER_RANK[cur.escalationTier]  : 0;
+    if (cTier !== bTier) return cTier > bTier ? cur : best;
+    return (cur.pressureScore ?? 0) > (best.pressureScore ?? 0) ? cur : best;
+  });
+
+  return [...others, strongest];
+}
+
+// ── MUST-FIX 3: Category diversity cap ───────────────────────────────────────
+// Max 2 insights per category; max 1 for operator_overload (overload already
+// collapsed above, enforced here as a safety net).
+
+function applyCategoryDiversity(sorted: FusedInsight[]): FusedInsight[] {
+  const counts = new Map<string, number>();
+  return sorted.filter((insight) => {
+    const limit = insight.category === 'operator_overload' ? 1 : 2;
+    const count = counts.get(insight.category) ?? 0;
+    if (count >= limit) return false;
+    counts.set(insight.category, count + 1);
+    return true;
+  });
+}
+
+// ── MUST-FIX 2 + 5: Overload calm mode ───────────────────────────────────────
+// Overloaded operator sees max 2 insights: actionable signals first, max 1
+// overload notice. Abstract cluster-only insights yield to base signals with
+// a direct executable action.
+
+function applyOverloadCalmMode(insights: FusedInsight[]): FusedInsight[] {
+  const tieBreak = (a: FusedInsight, b: FusedInsight): number => {
+    const sevDiff = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+    if (sevDiff !== 0) return sevDiff;
+    const aTier = a.escalationTier !== undefined ? ESCALATION_TIER_RANK[a.escalationTier] : 0;
+    const bTier = b.escalationTier !== undefined ? ESCALATION_TIER_RANK[b.escalationTier] : 0;
+    if (bTier !== aTier) return bTier - aTier;
+    return (b.pressureScore ?? 0) - (a.pressureScore ?? 0);
+  };
+
+  const actionable    = insights.filter((i) => !!i.actionType).sort(tieBreak);
+  const nonActionable = insights.filter((i) => !i.actionType).sort(tieBreak);
+  const ordered       = [...actionable, ...nonActionable];
+
+  const result: FusedInsight[] = [];
+  let overloadCount = 0;
+  for (const insight of ordered) {
+    if (result.length >= 2) break;
+    if (insight.category === 'operator_overload') {
+      if (overloadCount >= 1) continue;
+      overloadCount++;
+    }
+    result.push(insight);
+  }
+  return result;
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+/**
+ * Aggregate cross-system operational signals into a severity-ranked report.
+ * Pure read — no writes, no side effects, no new storage keys.
+ */
+export function generateFusedInsights(now?: number): FusedInsightsReport {
+  const _now = now ?? Date.now();
+  const snap = computeAttentionSnapshot();
+
+  // Fetch once — shared between insightsFromWorkflows and detectSuppressionAwareness.
+  const workflowReport = detectResumableWorkflows(_now);
+
+  const basePool: FusedInsight[] = [
+    ...insightsFromAttention(),
+    ...insightsFromManagerQueue(_now),
+    ...insightsFromWorkflows(workflowReport),
+    ...detectSuppressionAwareness(workflowReport.workflows, _now),
+  ];
+
+  // Dedup base pool, then detect pressure clusters from clean signals.
+  const baseDeduped      = deduplicateInsights(basePool);
+  const pressureInsights = detectPressureAccumulation(baseDeduped, _now);
+
+  // Merge, dedup, collapse overload, apply diversity cap, sort by severity.
+  const merged      = deduplicateInsights([...baseDeduped, ...pressureInsights]);
+  const collapsed   = collapseOperatorOverload(merged);
+  const sorted      = collapsed.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+  const diversified = applyCategoryDiversity(sorted);
+
+  // Calm mode: overloaded operator sees max 2 actionable insights.
+  const insights = snap.state === 'overloaded'
+    ? applyOverloadCalmMode(diversified)
+    : diversified.slice(0, MAX_INSIGHTS);
 
   return {
     generatedAt: _now,

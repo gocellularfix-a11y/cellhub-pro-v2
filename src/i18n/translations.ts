@@ -7197,4 +7197,10 @@ export const translations: TranslationDictionary = {
   'chat.fusion.tier.warning':  { en: 'Warning',  es: 'Aviso',      pt: 'Aviso' },
   'chat.fusion.tier.urgent':   { en: 'Urgent',   es: 'Urgente',    pt: 'Urgente' },
   'chat.fusion.tier.critical': { en: 'Critical', es: 'Crítico',    pt: 'Crítico' },
+  // R-FUSION-PRESSURE-ACCUMULATION-V1
+  'chat.fusion.customerDecay':       { en: 'Customer decay',       es: 'Deterioro de cliente',       pt: 'Deterioração do cliente' },
+  'chat.fusion.workflowInstability': { en: 'Workflow instability', es: 'Inestabilidad de workflows', pt: 'Instabilidade de workflows' },
+  'chat.fusion.operatorSaturation':  { en: 'Operator saturation',  es: 'Saturación del operador',    pt: 'Saturação do operador' },
+  'chat.fusion.revenuePressure':     { en: 'Revenue pressure',     es: 'Presión de ingresos',        pt: 'Pressão de receita' },
+  'chat.fusion.recoveryPressure':    { en: 'Recovery pressure',    es: 'Presión de recuperación',    pt: 'Pressão de recuperação' },
 };

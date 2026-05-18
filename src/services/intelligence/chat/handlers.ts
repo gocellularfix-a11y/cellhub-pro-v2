@@ -97,7 +97,7 @@ import { computeEntityAttentionPriorities } from '../attention/entityPriorityEng
 import type { AttentionAction } from '../attention/entityPriorityTypes';
 // R-FUSION-CHAT-INTEGRATION-V1
 import { generateFusedInsights } from '../fusion/fusionEngine';
-import type { SuppressionPattern, EscalationTier } from '../fusion/fusionTypes';
+import type { EscalationTier } from '../fusion/fusionTypes';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -2652,14 +2652,6 @@ function handleFusionInsights(lang: Lang3): ChatResponse {
     '',
   ];
 
-  const SUPPRESSION_KEY: Partial<Record<SuppressionPattern, string>> = {
-    ignored_vip:               'chat.fusion.repeatedDismissal',
-    repeated_dismissal:        'chat.fusion.repeatedDismissal',
-    stale_workflow:            'chat.fusion.workflowDegradation',
-    repeated_unresolved:       'chat.fusion.repeatedRepairRisk',
-    operator_overload_pattern: 'chat.fusion.operatorSuppression',
-  };
-
   const TIER_KEY: Record<EscalationTier, string> = {
     watch:    'chat.fusion.tier.watch',
     warning:  'chat.fusion.tier.warning',
@@ -2668,16 +2660,12 @@ function handleFusionInsights(lang: Lang3): ChatResponse {
   };
 
   for (const insight of report.insights) {
-    const badge = SEV[insight.severity] ?? '•';
+    const badge   = SEV[insight.severity] ?? '•';
     const title   = lang === 'es' ? insight.titleEs   : lang === 'pt' ? insight.titlePt   : insight.title;
     const summary = lang === 'es' ? insight.summaryEs : lang === 'pt' ? insight.summaryPt : insight.summary;
     lines.push(`• ${badge} ${title}`);
     lines.push(`   ${summary}`);
-    if (insight.suppressionPattern) {
-      const key = SUPPRESSION_KEY[insight.suppressionPattern];
-      if (key) lines.push(`   🔁 ${t(key)}`);
-    }
-    if (insight.escalationTier) {
+    if (insight.escalationTier === 'urgent' || insight.escalationTier === 'critical') {
       lines.push(`   ⏱ ${t(TIER_KEY[insight.escalationTier])}`);
     }
   }

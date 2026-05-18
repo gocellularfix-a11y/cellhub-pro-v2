@@ -15,6 +15,14 @@ export type SuppressionPattern =
 // R-FUSION-ESCALATION-TIERS-V1
 export type EscalationTier = 'watch' | 'warning' | 'urgent' | 'critical';
 
+// R-FUSION-PRESSURE-ACCUMULATION-V1
+export type PressureClusterType =
+  | 'customer_decay'
+  | 'workflow_instability'
+  | 'operator_overload'
+  | 'revenue_pressure'
+  | 'recovery_pressure';
+
 export type FusedInsightCategory =
   | 'operator_overload'
   | 'vip_risk'
@@ -56,6 +64,11 @@ export interface FusedInsight {
   // R-FUSION-ESCALATION-TIERS-V1
   escalationTier?: EscalationTier;
   ageHours?: number;
+  // R-FUSION-PRESSURE-ACCUMULATION-V1
+  pressureCluster?: PressureClusterType;
+  pressureScore?: number;
+  // R-FUSION-REVENUE-PRESSURE-FIX-V1
+  staleSinceMs?: number;
 }
 
 export interface FusedInsightsReport {
