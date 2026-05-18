@@ -7101,6 +7101,38 @@ export const translations: TranslationDictionary = {
   'chat.buyToday.reason.recentlyReviewed':     { en: 'Recently reviewed', es: 'Revisado recientemente', pt: 'Revisado recentemente' },
   'chat.buyToday.reason.alreadyHandled':       { en: 'Already handled', es: 'Ya atendido', pt: 'Já atendido' },
 
+  // ── Smart Outreach Campaign (R-SMART-OUTREACH-CAMPAIGN-V1) ──────────
+  'chat.outreachCampaign.header':                  { en: (n: number) => `Outreach Campaign — ${n} contact${n === 1 ? '' : 's'} ready`, es: (n: number) => `Campaña de outreach — ${n} contacto${n === 1 ? '' : 's'} listo${n === 1 ? '' : 's'}`, pt: (n: number) => `Campanha de outreach — ${n} contato${n === 1 ? '' : 's'} pronto${n === 1 ? '' : 's'}` },
+  'chat.outreachCampaign.empty':                   { en: "I don't see strong outreach opportunities right now.", es: 'No veo oportunidades de outreach fuertes ahora mismo.', pt: 'Não vejo oportunidades de outreach fortes agora.' },
+  'chat.outreachCampaign.cooldown':                { en: '(contacted recently)', es: '(contactado recientemente)', pt: '(contatado recentemente)' },
+  'chat.outreachCampaign.group.repairReady':        { en: 'REPAIR PICKUP', es: 'RECOGER REPARACIÓN', pt: 'RETIRAR CONSERTO' },
+  'chat.outreachCampaign.group.paymentDue':         { en: 'COLLECT PAYMENT', es: 'COBRAR PAGO', pt: 'COBRAR PAGAMENTO' },
+  'chat.outreachCampaign.group.vipInactive':        { en: 'VIP INACTIVE', es: 'VIP INACTIVO', pt: 'VIP INATIVO' },
+  'chat.outreachCampaign.group.highValueInactive':  { en: 'HIGH VALUE INACTIVE', es: 'ALTO VALOR INACTIVO', pt: 'ALTO VALOR INATIVO' },
+  'chat.outreachCampaign.group.recentInterest':     { en: 'RECENT INTEREST', es: 'INTERÉS RECIENTE', pt: 'INTERESSE RECENTE' },
+  'chat.outreachCampaign.group.missedRevenue':      { en: 'OUTREACH QUEUE', es: 'COLA DE OUTREACH', pt: 'FILA DE OUTREACH' },
+  'chat.outreachCampaign.msg.repairReady':          { en: (n: string) => `Hi ${n}, your repair is ready for pickup today.`, es: (n: string) => `Hola ${n}, tu reparación está lista para recoger hoy.`, pt: (n: string) => `Oi ${n}, seu conserto está pronto para retirada hoje.` },
+  'chat.outreachCampaign.msg.paymentDue':           { en: (n: string) => `Hi ${n}, this is a reminder that you still have a pending balance with us.`, es: (n: string) => `Hola ${n}, te recordamos que tienes un saldo pendiente con nosotros.`, pt: (n: string) => `Oi ${n}, lembramos que você ainda tem um saldo pendente conosco.` },
+  'chat.outreachCampaign.msg.vipInactive':          { en: (n: string) => `Hi ${n}, we haven't seen you in a while. We have promotions available for valued customers.`, es: (n: string) => `Hola ${n}, tenemos tiempo sin verte. Tenemos promociones disponibles para clientes especiales.`, pt: (n: string) => `Oi ${n}, faz tempo que não te vemos. Temos promoções disponíveis para clientes especiais.` },
+  'chat.outreachCampaign.msg.highValueInactive':    { en: (n: string) => `Hi ${n}, just reaching out to say we miss you. Come by when you can.`, es: (n: string) => `Hola ${n}, solo queríamos saludarte. Pásate cuando puedas.`, pt: (n: string) => `Oi ${n}, só queríamos dizer que sentimos sua falta. Passe quando puder.` },
+  'chat.outreachCampaign.msg.recentInterest':       { en: (n: string) => `Hi ${n}, let us know if you still need help. We're here.`, es: (n: string) => `Hola ${n}, avísanos si todavía necesitas ayuda. Aquí estamos.`, pt: (n: string) => `Oi ${n}, nos avise se ainda precisar de ajuda. Estamos aqui.` },
+  'chat.outreachCampaign.msg.missedRevenue':        { en: (n: string) => `Hi ${n}, we have options available that may interest you.`, es: (n: string) => `Hola ${n}, tenemos opciones disponibles que te pueden interesar.`, pt: (n: string) => `Oi ${n}, temos opções disponíveis que podem te interessar.` },
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: outcome action button labels
+  'chat.outreachCampaign.action.markReplied':         { en: (n: string) => `${n} replied`, es: (n: string) => `${n} respondió`, pt: (n: string) => `${n} respondeu` },
+  'chat.outreachCampaign.action.markIgnored':         { en: (n: string) => `${n} ignored`, es: (n: string) => `${n} ignoró`, pt: (n: string) => `${n} ignorou` },
+  'chat.outreachCampaign.action.markSaleDone':        { en: (n: string) => `${n} bought`, es: (n: string) => `${n} compró`, pt: (n: string) => `${n} comprou` },
+  'chat.outreachCampaign.action.markPickedUp':        { en: (n: string) => `${n} picked up`, es: (n: string) => `${n} recogió`, pt: (n: string) => `${n} retirou` },
+  'chat.outreachCampaign.action.markPaymentReceived': { en: (n: string) => `${n} paid`, es: (n: string) => `${n} pagó`, pt: (n: string) => `${n} pagou` },
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: reason modifier labels for opportunityUrgency
+  'chat.buyToday.reason.repeatedlyIgnored':           { en: 'Ignored repeatedly', es: 'Ignorado repetidamente', pt: 'Ignorado repetidamente' },
+  'chat.buyToday.reason.recentlyResponsive':          { en: 'Responded recently', es: 'Respondió recientemente', pt: 'Respondeu recentemente' },
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: outreach performance summary
+  'chat.outreachPerf.header':    { en: (days: number) => `Outreach performance — last ${days} days`, es: (days: number) => `Rendimiento de outreach — últimos ${days} días`, pt: (days: number) => `Desempenho de outreach — últimos ${days} dias` },
+  'chat.outreachPerf.noDataYet': { en: 'No outreach outcomes recorded yet. Mark replies and outcomes on campaign results to start tracking.', es: 'Aún no hay resultados de outreach registrados. Marca respuestas y resultados en los contactos de campaña para empezar a rastrear.', pt: 'Nenhum resultado de outreach registrado ainda. Marque respostas e resultados nos contatos de campanha para começar a rastrear.' },
+  'chat.outreachPerf.statsLine': { en: (sent: number, rr: number, cr: number) => `${sent} contacts tracked · ${rr}% response rate · ${cr}% conversion`, es: (sent: number, rr: number, cr: number) => `${sent} contactos rastreados · ${rr}% tasa de respuesta · ${cr}% conversión`, pt: (sent: number, rr: number, cr: number) => `${sent} contatos rastreados · ${rr}% taxa de resposta · ${cr}% conversão` },
+  'chat.outreachPerf.groupLine': { en: (label: string, sent: number, cr: number) => `• ${label}: ${sent} sent, ${cr}% converted`, es: (label: string, sent: number, cr: number) => `• ${label}: ${sent} enviados, ${cr}% convertidos`, pt: (label: string, sent: number, cr: number) => `• ${label}: ${sent} enviados, ${cr}% convertidos` },
+  'chat.outreachPerf.summary':   { en: (converted: number, ignored: number) => `${converted} converted · ${ignored} ignored`, es: (converted: number, ignored: number) => `${converted} convertidos · ${ignored} ignorados`, pt: (converted: number, ignored: number) => `${converted} convertidos · ${ignored} ignorados` },
+
   // ── Push Right Now (R-INTELLIGENCE-PUSH-RIGHT-NOW-V1) ──────────────
   'chat.pushNow.header':            { en: '🎯 Best opportunity to push right now:', es: '🎯 Mejor oportunidad para impulsar ahora mismo:', pt: '🎯 Melhor oportunidade para promover agora:' },
   'chat.pushNow.noOpps':            { en: 'No strong product opportunities detected right now. Record a few more sales so the engine can calibrate margins and velocity.', es: 'No se detectaron oportunidades de producto fuertes ahora. Registra más ventas para que el motor pueda calibrar márgenes y velocidad.', pt: 'Nenhuma oportunidade de produto forte detectada agora. Registre mais vendas para o motor calibrar margens e velocidade.' },

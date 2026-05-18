@@ -10,6 +10,7 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { translations } from '@/i18n/translations';
 import { hasRecentOperatorAction } from '../history/operatorActionHistory';
+import { getCustomerOutcomeStats } from '../outreach/outreachOutcomeStore';
 
 export type Lang3 = 'en' | 'es' | 'pt';
 
@@ -134,6 +135,35 @@ export function applyOpportunityUrgency(
   if (hasRecentOperatorAction(candidate.customerId, 'completed', MS_24H)) {
     delta -= 50;
     urgencyReasons.push(tl(lang, 'chat.buyToday.reason.alreadyHandled'));
+  }
+
+  // ── Outreach outcome modifiers ────────────────────────────────────────────
+  const MS_30_DAYS = 30 * MS_PER_DAY;
+  const MS_14_DAYS = 14 * MS_PER_DAY;
+  const stats = getCustomerOutcomeStats(candidate.customerId);
+
+  // Modifier 6: Repeatedly ignored (-20) — ignored 3+ times in last 30 days.
+  const recentEvents = stats.total > 0 && stats.lastOutcomeAt
+    ? stats.lastOutcomeAt >= now - MS_30_DAYS
+    : false;
+  if (recentEvents && stats.ignored >= 3) {
+    delta -= 20;
+    urgencyReasons.push(tl(lang, 'chat.buyToday.reason.repeatedlyIgnored'));
+  }
+
+  // Modifier 7: Recently responsive (+10) — replied or converted within 14 days.
+  if (
+    stats.lastOutcomeAt &&
+    stats.lastOutcomeAt >= now - MS_14_DAYS &&
+    stats.lastOutcome &&
+    (stats.lastOutcome === 'replied' ||
+      stats.lastOutcome === 'payment_collected' ||
+      stats.lastOutcome === 'repair_picked_up' ||
+      stats.lastOutcome === 'sale_completed' ||
+      stats.lastOutcome === 'visited_store')
+  ) {
+    delta += 10;
+    urgencyReasons.push(tl(lang, 'chat.buyToday.reason.recentlyResponsive'));
   }
 
   return {

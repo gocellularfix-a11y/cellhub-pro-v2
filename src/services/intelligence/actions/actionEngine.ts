@@ -3,7 +3,7 @@
 import type { ActionItem } from '../types';
 
 export interface ActionPayload {
-  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder' | 'promote_product';
+  type: 'whatsapp' | 'discount' | 'bundle' | 'review' | 'reminder' | 'promote_product' | 'outcome';
   messageKey?: string;
   // R-INTELLIGENCE-PENDING-DEAL-V1: optional dynamic message text for cases
   // where the static messageKey templates can't carry per-instance details
@@ -59,7 +59,13 @@ export interface ActionPayload {
     // R-INTELLIGENCE-OPERATOR-QUEUE-V1: operator manually queues a task.
     // Handled client-side in IntelligenceChat — executor never sees it.
     | 'add_to_operator_queue'
+    // R-OUTREACH-OUTCOME-FEEDBACK-V1: records a deterministic outcome for a
+    // customer after outreach. Handled in executeActionPayload.
+    | 'record_outreach_outcome'
     | 'none';
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: outcome recording metadata.
+  outreachGroup?: string;
+  outreachOutcome?: string;
 }
 
 export interface ActionContext {

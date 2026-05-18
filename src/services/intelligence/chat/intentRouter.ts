@@ -96,6 +96,10 @@ export type IntentId =
   | 'active_context_query'
   // R-INTELLIGENCE-MANAGER-QUEUE-V1
   | 'manager_queue'
+  // R-SMART-OUTREACH-CAMPAIGN-V1: grouped deterministic outreach campaign
+  | 'smart_outreach_campaign'
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: outreach effectiveness/performance report
+  | 'outreach_performance'
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intents
   | 'recover_customer'
   | 'vip_outreach'
@@ -643,6 +647,46 @@ const WHO_IS_MOST_LIKELY_TO_BUY_TODAY_KEYWORDS = [
   // PT
   'quem vai comprar hoje', 'clientes com chance de comprar',
   'oportunidade de venda hoje', 'melhores clientes para vender hoje',
+];
+
+// R-SMART-OUTREACH-CAMPAIGN-V1: grouped operational outreach campaign.
+// Listed AFTER who_to_contact_today + who_is_most_likely_to_buy_today and BEFORE
+// likely_to_buy_today + marketing_campaign in the scores array.
+// Anchored multi-word phrases avoid single-word hijack of marketing_campaign
+// ("campaña") and likely_to_buy_today ("who should i message").
+// "who should i message right now" beats likely_to_buy's "who should i message"
+// via position tie-break when smart_outreach is listed first.
+const SMART_OUTREACH_CAMPAIGN_KEYWORDS = [
+  // EN
+  'generate outreach', 'outreach campaign', 'build outreach queue',
+  'fill outreach queue', 'generate customer outreach',
+  'who should i message right now',
+  // ES
+  'generar outreach', 'generar campaña de outreach', 'generar campana de outreach',
+  'a quién le escribo', 'a quien le escribo',
+  'a quién contacto ahorita', 'a quien contacto ahorita',
+  'generar cola de outreach', 'generar contactos hoy',
+  // PT
+  'gerar outreach', 'quem devo chamar',
+  'quem devo contactar agora', 'gerar campanha de outreach',
+];
+
+// R-OUTREACH-OUTCOME-FEEDBACK-V1: outreach effectiveness/performance report.
+// Listed AFTER smart_outreach_campaign so "outreach campaign" still routes there;
+// "outreach performance", "outreach results", "how are my outreach doing" land here.
+const OUTREACH_PERFORMANCE_KEYWORDS = [
+  // EN
+  'outreach performance', 'outreach results', 'outreach stats', 'outreach effectiveness',
+  'how is my outreach', 'how are my outreach', 'outreach report',
+  'did my outreach work', 'outreach conversion', 'outreach response rate',
+  // ES
+  'rendimiento de outreach', 'resultados de outreach', 'estadísticas de outreach',
+  'estadisticas de outreach', 'cómo va mi outreach', 'como va mi outreach',
+  'qué tan efectivo es mi outreach', 'que tan efectivo es mi outreach',
+  'cuántos respondieron', 'cuantos respondieron', 'tasa de respuesta outreach',
+  // PT
+  'desempenho de outreach', 'resultados de outreach', 'estatísticas de outreach',
+  'como está meu outreach', 'taxa de conversão outreach',
 ];
 
 // R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: ranked buyer likelihood aggregator.
@@ -1355,6 +1399,15 @@ export function classifyIntent(
     // Listed BEFORE likely_to_buy_today so unique "sell to / generate revenue"
     // phrases route here. Tie-break ensures no hijack of existing outreach phrases.
     { id: 'who_is_most_likely_to_buy_today', score: scoreKeywords(query, WHO_IS_MOST_LIKELY_TO_BUY_TODAY_KEYWORDS) },
+    // R-SMART-OUTREACH-CAMPAIGN-V1: listed AFTER who_to_contact_today and
+    // who_is_most_likely_to_buy_today so "hoy/today" anchored phrases stay in
+    // their handlers. Listed BEFORE likely_to_buy_today so "who should i message
+    // right now" wins the position tie-break over likely_to_buy's shorter
+    // "who should i message" substring.
+    { id: 'smart_outreach_campaign', score: scoreKeywords(query, SMART_OUTREACH_CAMPAIGN_KEYWORDS) },
+    // R-OUTREACH-OUTCOME-FEEDBACK-V1: listed after smart_outreach_campaign so
+    // "outreach campaign" stays there; listed before marketing_campaign.
+    { id: 'outreach_performance', score: scoreKeywords(query, OUTREACH_PERFORMANCE_KEYWORDS) },
     // R-INTELLIGENCE-LIKELY-TO-BUY-TODAY-V1: listed AFTER who_to_contact_today
     // so "contact today/hoy" phrases stay in the existing handler; "most likely
     // to buy", "ready to buy", "who should I message" route here.

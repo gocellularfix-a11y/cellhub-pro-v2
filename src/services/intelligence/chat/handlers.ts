@@ -88,6 +88,10 @@ import { generateDailyOperatorBrief } from '../operator/dailyBrief';
 import { isMeaningfulDeviation } from '../baseline/contextualBaseline';
 // R-INTELLIGENCE-BUY-TODAY-RANKING-V1: multi-signal buyer ranker.
 import { getCustomersMostLikelyToBuyToday } from '../opportunities/buyTodayRanking';
+// R-SMART-OUTREACH-CAMPAIGN-V1: grouped deterministic outreach campaign.
+import { generateOutreachCampaign } from '../outreach/generateOutreachCampaign';
+// R-OUTREACH-OUTCOME-FEEDBACK-V1: performance summary for outreach_performance intent.
+import { getOutreachPerformanceSummary } from '../outreach/outreachEffectiveness';
 // R-INTELLIGENCE-EXTRACT-RANKERS-FROM-HANDLERS-V1: pure ranking functions.
 import { scanStaleRepairs } from '../ranking/staleRepairScanner';
 import { scoreDealsForCloseToday, dealCloseLikelihood } from '../ranking/closeTodayRanker';
@@ -313,6 +317,12 @@ export function handleIntent(
 
     case 'who_is_most_likely_to_buy_today':
       return handleWhoIsMostLikelyToBuyToday(engine, lang);
+
+    case 'smart_outreach_campaign':
+      return handleSmartOutreachCampaign(engine, lang);
+
+    case 'outreach_performance':
+      return handleOutreachPerformance(lang);
 
     case 'marketing_campaign':
       return handleMarketingCampaign(engine, lang);
@@ -882,6 +892,10 @@ export function handleFollowUp(
         return handlePushRightNow(engine, lang);
       case 'who_is_most_likely_to_buy_today':
         return handleWhoIsMostLikelyToBuyToday(engine, lang);
+      case 'smart_outreach_campaign':
+        return handleSmartOutreachCampaign(engine, lang);
+      case 'outreach_performance':
+        return handleOutreachPerformance(lang);
       case 'slow_day_diagnostic':
         return handleSlowDayDiagnostic(engine, lang);
       default:
@@ -979,6 +993,10 @@ export function handleFollowUp(
       return handleLikelyToBuyToday(engine, lang);
     case 'who_is_most_likely_to_buy_today':
       return handleWhoIsMostLikelyToBuyToday(engine, lang);
+    case 'smart_outreach_campaign':
+      return handleSmartOutreachCampaign(engine, lang);
+    case 'outreach_performance':
+      return handleOutreachPerformance(lang);
     default:
       lines.push(t('chat.followup.fallback'));
   }
@@ -4666,4 +4684,154 @@ function handleDecisionRecommendation(engine: IntelligenceEngine, lang: Lang3): 
   }
 
   return { kind: 'answer', text: lines.join('\n').trim() };
+}
+
+// R-SMART-OUTREACH-CAMPAIGN-V1 ─────────────────────────────────────────────
+// Grouped deterministic outreach campaign. Reuses buyTodayRanking signals;
+// groups by opportunity type; attaches executable WhatsApp + navigation actions.
+// Anti-spam: 24h cooldown — score reduced + badge shown; WA button withheld.
+function handleSmartOutreachCampaign(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const campaign = generateOutreachCampaign(engine, lang);
+
+  if (campaign.totalCandidates === 0 || campaign.groups.length === 0) {
+    return { kind: 'answer', text: t('chat.outreachCampaign.empty') };
+  }
+
+  const consentById = new Map(engine.getCustomers().map((c) => [c.id, c.communicationConsent]));
+  const now = Date.now();
+  const lines: string[] = [t('chat.outreachCampaign.header', campaign.totalCandidates), ''];
+  const actions: ChatActionUI[] = [];
+  let actionSlots = 6;
+
+  for (const grp of campaign.groups) {
+    lines.push(t(grp.groupLabelKey));
+    grp.entries.forEach((entry, i) => {
+      const firstName = entry.customerName.split(' ')[0] || entry.customerName;
+      const urgencyBadge = entry.urgencyLevel === 'urgent'
+        ? ` ${t('chat.buyToday.urgent')}`
+        : entry.urgencyLevel === 'active'
+          ? ` ${t('chat.buyToday.activeNow')}`
+          : '';
+      const cooldownBadge = entry.recentlyContacted
+        ? ` ${t('chat.outreachCampaign.cooldown')}` : '';
+      lines.push(`${i + 1}. ${entry.customerName} · ${entry.phone}${urgencyBadge}${cooldownBadge}`);
+      entry.reasons.slice(0, 2).forEach((r) => lines.push(`   • ${r}`));
+      lines.push(`   💬 "${entry.waMessage}"`);
+
+      if (actionSlots <= 0) return;
+      const consentOk = consentById.get(entry.customerId) !== false;
+
+      if (!entry.recentlyContacted && consentOk && entry.phone) {
+        actions.push({
+          id: `oc-wa-${entry.customerId}-${now}`,
+          label: t('chat.buyToday.action.whatsapp', firstName),
+          actionType: 'whatsapp',
+          payload: {
+            type: 'whatsapp',
+            customMessage: entry.waMessage,
+            customerId: entry.customerId,
+            customerName: entry.customerName,
+            customerPhone: entry.phone,
+            executable: true,
+            executionTarget: 'whatsapp_url',
+          },
+        });
+        actionSlots--;
+      }
+
+      if (actionSlots > 0) {
+        actions.push({
+          id: `oc-cust-${entry.customerId}-${now}`,
+          label: t('chat.buyToday.action.openCustomer'),
+          actionType: 'review',
+          payload: {
+            type: 'review',
+            entityId: entry.customerId,
+            customerId: entry.customerId,
+            customerName: entry.customerName,
+            executable: true,
+            executionTarget: 'open_customer',
+          },
+        });
+        actionSlots--;
+      }
+
+      if (actionSlots > 0 && entry.repairId) {
+        actions.push({
+          id: `oc-repair-${entry.repairId}-${now}`,
+          label: t('chat.buyToday.action.openRepair'),
+          actionType: 'review',
+          payload: {
+            type: 'review',
+            entityId: entry.repairId,
+            executable: true,
+            executionTarget: 'open_repair',
+          },
+        });
+        actionSlots--;
+      }
+    });
+    lines.push('');
+  }
+
+  if (lines[lines.length - 1] === '') lines.pop();
+
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1: add Mark Replied + Mark Ignored buttons
+  // for top-2 candidates (non-cooldown only — skip if already recently contacted).
+  const topCandidates = campaign.groups
+    .flatMap((g) => g.entries.map((e) => ({ ...e, group: g.group })))
+    .filter((e) => !e.recentlyContacted)
+    .slice(0, 2);
+
+  for (const entry of topCandidates) {
+    const firstName = entry.customerName.split(' ')[0] || entry.customerName;
+    if (actionSlots > 0) {
+      actions.push({
+        id: `oc-replied-${entry.customerId}-${now}`,
+        label: tChat(lang)('chat.outreachCampaign.action.markReplied', firstName),
+        actionType: 'review',
+        payload: {
+          type: 'outcome',
+          customerId: entry.customerId,
+          customerName: entry.customerName,
+          outreachGroup: entry.group,
+          outreachOutcome: 'replied',
+          executable: true,
+          executionTarget: 'record_outreach_outcome',
+        },
+      });
+      actionSlots--;
+    }
+    if (actionSlots > 0) {
+      actions.push({
+        id: `oc-ignored-${entry.customerId}-${now}`,
+        label: tChat(lang)('chat.outreachCampaign.action.markIgnored', firstName),
+        actionType: 'review',
+        payload: {
+          type: 'outcome',
+          customerId: entry.customerId,
+          customerName: entry.customerName,
+          outreachGroup: entry.group,
+          outreachOutcome: 'ignored',
+          executable: true,
+          executionTarget: 'record_outreach_outcome',
+        },
+      });
+      actionSlots--;
+    }
+  }
+
+  const dedupedActions = dedupeAndLimitActions(actions, 6);
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    ...(dedupedActions.length > 0 ? { actions: dedupedActions } : {}),
+  };
+}
+
+// R-OUTREACH-OUTCOME-FEEDBACK-V1: performance summary for last 30 days.
+function handleOutreachPerformance(lang: Lang3): ChatResponse {
+  const summary = getOutreachPerformanceSummary(lang, 30);
+  return { kind: 'answer', text: summary };
 }

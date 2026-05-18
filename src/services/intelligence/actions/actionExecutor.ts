@@ -6,6 +6,8 @@ import type { Sale } from '@/store/types';
 // R-INTELLIGENCE-MANAGER-QUEUE-V1: create a real queue item when
 // queue_manager_review fires instead of just navigating.
 import { addManagerQueueItem } from '../managerQueue/actions';
+import { recordOutreachOutcome } from '../outreach/outreachOutcomeStore';
+import type { OutreachOutcomeType, OutreachGroup } from '../outreach/outreachOutcomeTypes';
 // R-OPERATOR-WHATSAPP-PERFORMANCE-ARCHITECTURE-AUDIT-V1: converge wa.me URL
 // construction onto the canonical service. The previous inline build skipped
 // sanitizeToBMP, which on Windows + Electron corrupts non-BMP emojis in the
@@ -238,6 +240,8 @@ export type ExecutionResult =
   | { ok: true;  type: 'open_layaway';          layawayId: string }
   | { ok: true;  type: 'open_inventory';        itemId: string }
   | { ok: true;  type: 'queue_manager_review' }
+  // R-OUTREACH-OUTCOME-FEEDBACK-V1
+  | { ok: true;  type: 'record_outreach_outcome'; customerId: string; outcome: OutreachOutcomeType }
   | { ok: false; reason: 'not_executable' | 'missing_customer' | 'missing_sku' | 'missing_template' | 'missing_product' };
 
 function buildMessage(messageKey: string, customerName?: string): string {
@@ -387,6 +391,15 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
       });
       window.dispatchEvent(new CustomEvent('cellhub:open-manager-review'));
       return { ok: true, type: 'queue_manager_review' };
+    }
+
+    // R-OUTREACH-OUTCOME-FEEDBACK-V1: record deterministic outcome then return result.
+    case 'record_outreach_outcome': {
+      if (!payload.customerId) return { ok: false, reason: 'missing_customer' };
+      const outcome = (payload.outreachOutcome || 'sent') as OutreachOutcomeType;
+      const group = (payload.outreachGroup || 'missed_revenue') as OutreachGroup;
+      recordOutreachOutcome(payload.customerId, group, outcome);
+      return { ok: true, type: 'record_outreach_outcome', customerId: payload.customerId, outcome };
     }
 
     case 'none':
