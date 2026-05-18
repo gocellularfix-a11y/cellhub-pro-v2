@@ -264,6 +264,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       response = perfTime('intel.chat.handleFollowUp',
         () => handleFollowUp(lastIntentRef.current!, engineRef.current, langRef.current, operationalContextRef.current, query));
       matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
+    } else if (isFollowUpQuery(query)) {
+      // Follow-up phrase with no prior context — clarify instead of mis-routing to classifyIntent.
+      response = { kind: 'answer' as const, text: langRef.current === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : 'No recent context to reference. Please ask a complete question.' };
+      matchedIntentId = 'followup_no_context';
     } else {
       // R-INTELLIGENCE-CONTEXT-MEMORY-V1: deterministic operational
       // follow-up enrichment. If the raw query matches a known vague
@@ -475,6 +479,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     if (isFollowUpQuery(query) && lastIntentRef.current) {
       response = handleFollowUp(lastIntentRef.current, engine, lang, operationalContextRef.current, query);
       matchedIntentId = lastIntentRef.current.intentId;
+    } else if (isFollowUpQuery(query)) {
+      response = { kind: 'answer' as const, text: lang === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : 'No recent context to reference. Please ask a complete question.' };
+      matchedIntentId = 'followup_no_context';
     } else {
       const match = classifyIntent(query, customers, lang);
       response = handleIntent(match, engine, lang);
