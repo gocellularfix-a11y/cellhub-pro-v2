@@ -7192,4 +7192,9 @@ export const translations: TranslationDictionary = {
     es: 'Ítems de alta prioridad suprimidos por saturación del operador.',
     pt: 'Itens de alta prioridade suprimidos pela sobrecarga do operador.',
   },
+  // R-FUSION-ESCALATION-TIERS-V1
+  'chat.fusion.tier.watch':    { en: 'Watch',    es: 'Monitorear', pt: 'Monitorar' },
+  'chat.fusion.tier.warning':  { en: 'Warning',  es: 'Aviso',      pt: 'Aviso' },
+  'chat.fusion.tier.urgent':   { en: 'Urgent',   es: 'Urgente',    pt: 'Urgente' },
+  'chat.fusion.tier.critical': { en: 'Critical', es: 'Crítico',    pt: 'Crítico' },
 };

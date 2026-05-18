@@ -12,8 +12,64 @@
 import { getIntelligenceExecutionHistory } from '../execution/intelligenceExecutionHistory';
 import { readQueue } from '../managerQueue/store';
 import { computeAttentionSnapshot } from '../attention/attentionEngine';
-import type { FusedInsight } from './fusionTypes';
+import type { FusedInsight, FusedInsightSeverity, EscalationTier } from './fusionTypes';
 import type { ResumableWorkflow } from '../workflows/workflowContinuationTypes';
+
+// ── Escalation tier helpers ───────────────────────────────────────────────────
+// Exported so fusionEngine can compare tiers without duplicating the rank order.
+
+export const ESCALATION_TIER_RANK: Record<EscalationTier, number> = {
+  watch: 1, warning: 2, urgent: 3, critical: 4,
+};
+
+const SEV_RANK: Record<FusedInsightSeverity, number> = {
+  low: 1, medium: 2, high: 3, critical: 4,
+};
+
+const TIER_MIN_SEV: Record<EscalationTier, FusedInsightSeverity | null> = {
+  watch:    null,
+  warning:  'medium',
+  urgent:   'high',
+  critical: 'critical',
+};
+
+/**
+ * Compute escalation tier from existing insight fields, upgrade severity if required.
+ * Pure — no I/O, no side effects.
+ */
+export function applyEscalationTier(insight: FusedInsight, now: number): FusedInsight {
+  const ageMs    = insight.firstDetectedAt !== undefined ? now - insight.firstDetectedAt : 0;
+  const ageHours = ageMs / 3600_000;
+  const count    = insight.repeatCount ?? 0;
+  const pattern  = insight.suppressionPattern;
+
+  let tier: EscalationTier;
+  if (
+    count >= 5 ||
+    ageHours >= 72 ||
+    (pattern === 'ignored_vip'        && ageHours >= 24) ||
+    (pattern === 'repeated_unresolved' && ageHours >= 48)
+  ) {
+    tier = 'critical';
+  } else if (count >= 3 || ageHours >= 24) {
+    tier = 'urgent';
+  } else if (count >= 2 || ageHours >= 6) {
+    tier = 'warning';
+  } else {
+    tier = 'watch';
+  }
+
+  const minSev  = TIER_MIN_SEV[tier];
+  const severity: FusedInsightSeverity =
+    minSev && SEV_RANK[insight.severity] < SEV_RANK[minSev] ? minSev : insight.severity;
+
+  return {
+    ...insight,
+    escalationTier: tier,
+    ageHours:       Math.round(ageHours * 10) / 10,
+    severity,
+  };
+}
 
 // ── Thresholds ─────────────────────────────────────────────────────────────────
 
@@ -229,10 +285,11 @@ export function detectSuppressionAwareness(
   now?: number,
 ): FusedInsight[] {
   const _now = now ?? Date.now();
-  return [
-    ...detectOverloadSuppression(_now),     // overload first — signals system-wide suppression
+  const raw = [
+    ...detectOverloadSuppression(_now),
     ...detectVipNeglect(_now),
     ...detectRepeatedRepairNeglect(_now),
     ...detectWorkflowDegradation(existingWorkflows, _now),
   ];
+  return raw.map((insight) => applyEscalationTier(insight, _now));
 }

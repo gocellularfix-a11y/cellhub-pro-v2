@@ -12,6 +12,9 @@ export type SuppressionPattern =
   | 'repeated_unresolved'
   | 'operator_overload_pattern';
 
+// R-FUSION-ESCALATION-TIERS-V1
+export type EscalationTier = 'watch' | 'warning' | 'urgent' | 'critical';
+
 export type FusedInsightCategory =
   | 'operator_overload'
   | 'vip_risk'
@@ -50,6 +53,9 @@ export interface FusedInsight {
   suppressionPattern?: SuppressionPattern;
   repeatCount?: number;
   firstDetectedAt?: number;
+  // R-FUSION-ESCALATION-TIERS-V1
+  escalationTier?: EscalationTier;
+  ageHours?: number;
 }
 
 export interface FusedInsightsReport {

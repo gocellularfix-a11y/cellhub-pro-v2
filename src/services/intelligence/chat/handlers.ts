@@ -97,7 +97,7 @@ import { computeEntityAttentionPriorities } from '../attention/entityPriorityEng
 import type { AttentionAction } from '../attention/entityPriorityTypes';
 // R-FUSION-CHAT-INTEGRATION-V1
 import { generateFusedInsights } from '../fusion/fusionEngine';
-import type { SuppressionPattern } from '../fusion/fusionTypes';
+import type { SuppressionPattern, EscalationTier } from '../fusion/fusionTypes';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -2660,6 +2660,13 @@ function handleFusionInsights(lang: Lang3): ChatResponse {
     operator_overload_pattern: 'chat.fusion.operatorSuppression',
   };
 
+  const TIER_KEY: Record<EscalationTier, string> = {
+    watch:    'chat.fusion.tier.watch',
+    warning:  'chat.fusion.tier.warning',
+    urgent:   'chat.fusion.tier.urgent',
+    critical: 'chat.fusion.tier.critical',
+  };
+
   for (const insight of report.insights) {
     const badge = SEV[insight.severity] ?? '•';
     const title   = lang === 'es' ? insight.titleEs   : lang === 'pt' ? insight.titlePt   : insight.title;
@@ -2669,6 +2676,9 @@ function handleFusionInsights(lang: Lang3): ChatResponse {
     if (insight.suppressionPattern) {
       const key = SUPPRESSION_KEY[insight.suppressionPattern];
       if (key) lines.push(`   🔁 ${t(key)}`);
+    }
+    if (insight.escalationTier) {
+      lines.push(`   ⏱ ${t(TIER_KEY[insight.escalationTier])}`);
     }
   }
 

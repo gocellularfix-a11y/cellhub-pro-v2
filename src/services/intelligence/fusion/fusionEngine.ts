@@ -13,7 +13,7 @@
 import { detectResumableWorkflows } from '../workflows/workflowContinuationEngine';
 import { computeAttentionSnapshot } from '../attention/attentionEngine';
 import { readQueue } from '../managerQueue/store';
-import { detectSuppressionAwareness } from './suppressionAwareness';
+import { detectSuppressionAwareness, ESCALATION_TIER_RANK } from './suppressionAwareness';
 import type {
   FusedInsight,
   FusedInsightSeverity,
@@ -179,14 +179,27 @@ export function generateFusedInsights(now?: number): FusedInsightsReport {
     ...detectSuppressionAwareness(workflowReport.workflows, _now),
   ];
 
-  // Deduplicate by id, sort by severity descending, cap.
-  const seen = new Set<string>();
-  const deduped: FusedInsight[] = [];
+  // Deduplicate by id — keep strongest: highest severity, then highest escalation tier.
+  const byId = new Map<string, FusedInsight>();
   for (const insight of all) {
-    if (seen.has(insight.id)) continue;
-    seen.add(insight.id);
-    deduped.push(insight);
+    const existing = byId.get(insight.id);
+    if (!existing) {
+      byId.set(insight.id, insight);
+      continue;
+    }
+    const newSev = SEVERITY_RANK[insight.severity];
+    const exSev  = SEVERITY_RANK[existing.severity];
+    if (newSev > exSev) {
+      byId.set(insight.id, insight);
+      continue;
+    }
+    if (newSev === exSev) {
+      const newTier = insight.escalationTier  !== undefined ? ESCALATION_TIER_RANK[insight.escalationTier]  : 0;
+      const exTier  = existing.escalationTier !== undefined ? ESCALATION_TIER_RANK[existing.escalationTier] : 0;
+      if (newTier > exTier) byId.set(insight.id, insight);
+    }
   }
+  const deduped = Array.from(byId.values());
 
   const sorted = deduped.sort(
     (a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity],
