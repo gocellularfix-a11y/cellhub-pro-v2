@@ -38,6 +38,7 @@ import {
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { escHtml } from '@/utils/escHtml';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -107,6 +108,21 @@ export default function SpecialOrdersModule() {
     window.addEventListener('cellhub:_intel-open-special-order', handler);
     return () => window.removeEventListener('cellhub:_intel-open-special-order', handler);
   }, []);
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active special order entity so
+  // Intelligence surfaces contextual recommendations for this specific ticket.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
+  useEffect(() => {
+    if (editOrder) {
+      setIntelligenceContext({
+        activeModule: 'specialOrders',
+        activeSpecialOrderId: editOrder.id,
+        activeCustomerId: (editOrder as any).customerId ?? undefined,
+      });
+    } else {
+      clearEntityContext();
+    }
+  }, [editOrder]);
 
   // Consume cross-module search term once on mount
   useEffect(() => {

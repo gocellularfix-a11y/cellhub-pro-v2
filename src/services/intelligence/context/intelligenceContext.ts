@@ -10,6 +10,8 @@ export interface IntelligenceContext {
   activeCustomerId?: string;
   activeLayawayId?: string;
   activeInventoryItemId?: string;
+  activeUnlockId?: string;
+  activeSpecialOrderId?: string;
   updatedAt: number;
 }
 

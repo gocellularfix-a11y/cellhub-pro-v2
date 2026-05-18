@@ -38,6 +38,7 @@ import {
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { escHtml } from '@/utils/escHtml';
 
 // Typed accessor for `taxable` — present at runtime but absent from the Unlock interface.
@@ -106,6 +107,21 @@ export default function UnlockModule() {
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Unlock | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<Unlock | null>(null);
+
+  // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active unlock entity so Intelligence
+  // surfaces contextual recommendations for this specific ticket.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
+  useEffect(() => {
+    if (editUnlock) {
+      setIntelligenceContext({
+        activeModule: 'unlocks',
+        activeUnlockId: editUnlock.id,
+        activeCustomerId: (editUnlock as any).customerId ?? undefined,
+      });
+    } else {
+      clearEntityContext();
+    }
+  }, [editUnlock]);
 
   // R-EDIT-AUDIT F4: post-completion edit tracking — PIN gate, reason prompt,
   // edit-history viewer, print-choice dialog, Mark Refunded confirmation.
