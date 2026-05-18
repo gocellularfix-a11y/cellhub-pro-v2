@@ -2625,27 +2625,7 @@ function handleRepairsReady(engine: IntelligenceEngine, lang: Lang3): ChatRespon
     return { kind: 'answer', text: t('chat.repairsReady.empty') };
   }
 
-  // Stale-pickup scan (matches the live card's threshold + filter).
-  const PICKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  let staleCount = 0;
-  try {
-    for (const r of engine.getRepairs()) {
-      const status = String((r as { status?: string }).status || '').toLowerCase();
-      if (status !== 'ready') continue;
-      const ca = (r as { completedAt?: unknown }).completedAt;
-      if (!ca) continue;
-      let ts = 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        ts = new Date(d as string | Date).getTime();
-      } catch { continue; }
-      if (!Number.isFinite(ts) || ts === 0) continue;
-      if ((now - ts) > PICKUP_THRESHOLD_MS) staleCount++;
-    }
-  } catch { /* skip — handler stays on the kpi count */ }
+  const { staleCount } = scanStaleRepairs(engine);
 
   const lines: string[] = [];
   lines.push(t('chat.repairsReady.header', ready));
