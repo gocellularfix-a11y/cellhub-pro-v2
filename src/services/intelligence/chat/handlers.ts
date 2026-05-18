@@ -111,6 +111,9 @@ import type { AttentionAction } from '../attention/entityPriorityTypes';
 // R-FUSION-CHAT-INTEGRATION-V1
 import { generateFusedInsights } from '../fusion/fusionEngine';
 import type { EscalationTier } from '../fusion/fusionTypes';
+// R-ENTITY-FIRST-INTELLIGENCE-ROUTING-V1
+import { resolveOperationalEntity } from './entityResolver';
+import type { OperationalEntityMatch } from './entityResolver';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -438,8 +441,13 @@ export function handleIntent(
     case 'repair_escalate':
       return handleRepairEscalate(match, engine, lang);
 
-    case 'fallback_question':
+    case 'fallback_question': {
+      // R-ENTITY-FIRST-INTELLIGENCE-ROUTING-V1: try deterministic entity
+      // resolution before falling through to the analytics summary.
+      const entityMatch = resolveOperationalEntity(match.query || '', engine);
+      if (entityMatch) return handleEntityLookup(entityMatch, engine, lang);
       return handleFallbackQuestion(match, engine, lang);
+    }
 
     case 'unknown':
     default:
@@ -4253,6 +4261,193 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
 }
 
 // ── Fallback open-question handler ──────────────────────────
+// R-ENTITY-FIRST-INTELLIGENCE-ROUTING-V1: build a chat response from a
+// resolved operational entity. No mutations, no cart writes, no analytics.
+function handleEntityLookup(
+  match: OperationalEntityMatch,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const es = lang === 'es';
+
+  // ── Ambiguous customer disambiguation ──────────────────────────────────
+  if (match.kind === 'ambiguous_customer') {
+    const lines = match.matches.map((c, i) => {
+      const phone = c.phone || c.phones?.[0] || '';
+      return `${i + 1}. **${c.name}**${phone ? ` — ${phone}` : ''}`;
+    });
+    return {
+      kind: 'disambiguation',
+      text: (es
+        ? `Encontré ${match.matches.length} clientes con ese nombre:\n`
+        : `Found ${match.matches.length} customers with that name:\n`)
+        + lines.join('\n') + '\n\n'
+        + (es ? '¿Cuál de ellos buscas?' : 'Which one are you looking for?'),
+    };
+  }
+
+  // ── Single repair match (ticket-ID lookup) ─────────────────────────────
+  if (match.kind === 'repair') {
+    const r = match.repair;
+    const ticketNum = String((r as any).ticketNumber || r.id.slice(-8).toUpperCase());
+    const actions: ChatActionUI[] = [
+      {
+        id: `open-repair-${r.id}`,
+        label: es ? 'Ver Ticket' : 'Open Ticket',
+        payload: { type: 'whatsapp', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
+      },
+    ];
+    if ((r.balance || 0) > 0 && match.customer?.phone) {
+      actions.push({
+        id: `whatsapp-repair-${r.id}`,
+        label: 'WhatsApp',
+        actionType: 'whatsapp',
+        payload: {
+          type: 'whatsapp', executable: true, executionTarget: 'whatsapp_url',
+          customerPhone: match.customer.phone, customerName: r.customerName,
+          customMessage: es
+            ? `Hola ${r.customerName}, tu reparación de ${r.device} está lista. Balance: ${COP(r.balance || 0)}`
+            : `Hi ${r.customerName}, your ${r.device} repair is ready. Balance due: ${COP(r.balance || 0)}`,
+        },
+      });
+    }
+    const balLine = (r.balance || 0) > 0
+      ? `**${es ? 'Balance' : 'Balance due'}: ${COP(r.balance || 0)}**`
+      : (es ? 'Pagado en su totalidad ✓' : 'Paid in full ✓');
+    return {
+      kind: 'answer',
+      text: [
+        `**${es ? 'Ticket' : 'Ticket'} #${ticketNum}**`,
+        `${es ? 'Cliente' : 'Customer'}: ${r.customerName || '—'}`,
+        `${es ? 'Dispositivo' : 'Device'}: ${r.device || '—'}`,
+        `${es ? 'Estado' : 'Status'}: ${r.status}`,
+        balLine,
+      ].join('\n'),
+      actions,
+      establishesContext: { type: 'repair', value: r.id },
+    };
+  }
+
+  // ── Product match ──────────────────────────────────────────────────────
+  if (match.kind === 'product') {
+    const p = match.product;
+    return {
+      kind: 'answer',
+      text: [
+        `**${p.name}**`,
+        `SKU: ${p.sku}`,
+        `${es ? 'En existencia' : 'In stock'}: ${p.qty}`,
+        `${es ? 'Precio' : 'Price'}: ${COP(p.price)}`,
+      ].join('\n'),
+      actions: [
+        {
+          id: `open-inventory-${p.id}`,
+          label: es ? 'Ver en Inventario' : 'View in Inventory',
+          payload: { type: 'whatsapp', executable: true, executionTarget: 'open_inventory', entityId: p.id, productName: p.name },
+        },
+      ],
+      establishesContext: { type: 'product', value: p.id },
+    };
+  }
+
+  // ── Customer match — full operational summary ──────────────────────────
+  if (match.kind !== 'customer') {
+    return { kind: 'answer', text: es ? 'Entidad no encontrada.' : 'Entity not found.' };
+  }
+  const customer = match.customer;
+
+  const allRepairs   = engine.getRepairs().filter(r => r.customerId === customer.id || r.customerName === customer.name);
+  const allUnlocks   = engine.getUnlocks().filter(u => u.customerId === customer.id || u.customerName === customer.name);
+  const allSOs       = engine.getSpecialOrders().filter(o => o.customerId === customer.id || o.customerName === customer.name);
+  const allLayaways  = engine.getLayaways().filter(l => l.customerId === customer.id || l.customerName === customer.name);
+
+  const terminalRepair  = (s: string) => ['cancelled', 'picked_up'].includes(s.toLowerCase());
+  const terminalGeneric = (s: string) => ['cancelled', 'picked_up', 'completed'].includes(s.toLowerCase());
+
+  const activeRepairs  = allRepairs.filter(r => !terminalRepair(String(r.status || '')));
+  const activeUnlocks  = allUnlocks.filter(u => !terminalGeneric(String(u.status || '')));
+  const activeSOs      = allSOs.filter(o => !terminalGeneric(String(o.status || '')));
+  const activeLayaways = allLayaways.filter(l => !terminalGeneric(String(l.status || '')));
+
+  const totalBalance =
+    activeRepairs.reduce((s, r)  => s + (r.balance  || 0), 0) +
+    activeUnlocks.reduce((s, u)  => s + (u.balance  || 0), 0) +
+    activeSOs.reduce((s, o)      => s + (o.balance  || 0), 0) +
+    activeLayaways.reduce((s, l) => s + (l.balance  || 0), 0);
+
+  const phone = customer.phone || (customer as any).phones?.[0] || '';
+  const lines: string[] = [`**${customer.name}**${phone ? ` — ${phone}` : ''}`];
+
+  if (activeRepairs.length > 0) {
+    lines.push(`\n${es ? 'Reparaciones activas' : 'Active repairs'} (${activeRepairs.length}):`);
+    for (const r of activeRepairs.slice(0, 5)) {
+      const tn = String((r as any).ticketNumber || r.id.slice(-8).toUpperCase());
+      const bal = (r.balance || 0) > 0 ? ` — **${COP(r.balance!)}**` : '';
+      lines.push(`  • #${tn} ${r.device || ''} [${r.status}]${bal}`);
+    }
+  }
+  if (activeUnlocks.length > 0) {
+    lines.push(`\n${es ? 'Unlocks activos' : 'Active unlocks'} (${activeUnlocks.length}):`);
+    for (const u of activeUnlocks.slice(0, 3)) {
+      const bal = (u.balance || 0) > 0 ? ` — ${COP(u.balance!)}` : '';
+      lines.push(`  • ${u.device || '—'} [${u.status}]${bal}`);
+    }
+  }
+  if (activeSOs.length > 0) {
+    lines.push(`\n${es ? 'Órdenes especiales' : 'Special orders'} (${activeSOs.length}):`);
+    for (const o of activeSOs.slice(0, 3)) {
+      const bal = (o.balance || 0) > 0 ? ` — ${COP(o.balance!)}` : '';
+      lines.push(`  • ${o.itemDescription || '—'} [${o.status}]${bal}`);
+    }
+  }
+  if (activeLayaways.length > 0) {
+    lines.push(`\n${es ? 'Layaways activos' : 'Active layaways'} (${activeLayaways.length}):`);
+    for (const l of activeLayaways.slice(0, 3)) {
+      const total = l.totalPrice ? COP(l.totalPrice) : '—';
+      const bal = (l.balance || 0) > 0 ? ` — ${COP(l.balance!)}` : '';
+      lines.push(`  • ${total} [${l.status}]${bal}`);
+    }
+  }
+
+  const hasActive = activeRepairs.length + activeUnlocks.length + activeSOs.length + activeLayaways.length > 0;
+  if (!hasActive) {
+    lines.push(es ? '\nSin tickets activos.' : '\nNo active tickets.');
+  } else if (totalBalance > 0) {
+    lines.push(`\n**${es ? 'Total balance pendiente' : 'Total balance owed'}: ${COP(totalBalance)}**`);
+  }
+
+  const actions: ChatActionUI[] = [
+    {
+      id: `open-customer-${customer.id}`,
+      label: es ? 'Ver Cliente' : 'View Customer',
+      payload: { type: 'whatsapp', executable: true, executionTarget: 'open_customer', entityId: customer.id, customerName: customer.name },
+    },
+  ];
+  if (phone) {
+    actions.push({
+      id: `whatsapp-${customer.id}`,
+      label: 'WhatsApp',
+      actionType: 'whatsapp',
+      payload: { type: 'whatsapp', executable: true, executionTarget: 'whatsapp_url', customerPhone: phone, customerName: customer.name },
+    });
+  }
+  for (const r of activeRepairs.slice(0, 2)) {
+    const tn = String((r as any).ticketNumber || r.id.slice(-8).toUpperCase());
+    actions.push({
+      id: `open-repair-${r.id}`,
+      label: `${es ? 'Ver' : 'Open'} #${tn}`,
+      payload: { type: 'whatsapp', executable: true, executionTarget: 'open_repair', entityId: r.id, customerName: r.customerName },
+    });
+  }
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    actions,
+    establishesContext: { type: 'customer', value: customer.id },
+  };
+}
+
 // R-INTEL-FALLBACK-OPEN-QUESTIONS: deterministic answer for queries that
 // don't trigger any keyword bank. R-INTEL-FALLBACK-QUESTION-AWARE: response
 // adapts to topic keywords detected in the raw query (day/product/customer/
