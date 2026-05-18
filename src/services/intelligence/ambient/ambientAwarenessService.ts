@@ -9,8 +9,10 @@
 //  - Never fires for terminal entities (cancelled, completed, picked_up)
 //  - No network, no store access — pure in-memory computation over args passed in
 
-import type { Repair, Layaway, InventoryItem, Unlock, SpecialOrder } from '@/store/types';
+import type { Repair, Layaway, InventoryItem, Unlock, SpecialOrder, Customer, Sale } from '@/store/types';
 import { calculateLayawayTotals } from '@/services/layaway/payments';
+import { buildCustomerCrossModuleProfile } from '../context/customerCrossModuleProfile';
+import { rankOpportunitiesForNBA } from '../context/nextBestActionEngine';
 
 // ── Event shape ───────────────────────────────────────────────────────────────
 
@@ -307,6 +309,65 @@ export function emitSpecialOrderAmbient(order: SpecialOrder): void {
       severity: 'info',
     });
   }
+}
+
+// ── Customer (cross-module) ───────────────────────────────────────────────────
+
+export interface CustomerAmbientParams {
+  customer: Customer;
+  repairs: Repair[];
+  unlocks: Unlock[];
+  specialOrders: SpecialOrder[];
+  layaways: Layaway[];
+  sales: Sale[];
+  customers: Customer[];
+  now?: number;
+}
+
+const SUMMARY_TO_AMBIENT: Record<string, string> = {
+  'ctx.customer.repair_ready':   'ambient.customer.repair_ready',
+  'ctx.customer.so_arrived':     'ambient.customer.so_arrived',
+  'ctx.customer.unlock_ready':   'ambient.customer.unlock_ready',
+  'ctx.customer.balance':        'ambient.customer.balance',
+  'ctx.customer.unlock_waiting': 'ambient.customer.unlock_waiting',
+  'ctx.customer.inactive':       'ambient.customer.inactive',
+  'ctx.customer.repeat_repair':  'ambient.customer.repeat_repair',
+};
+
+/**
+ * Call when a customer profile modal opens.
+ * Runs the cross-module profile, picks the top NBA signal, and emits one hint.
+ * Suppressed for 5 minutes per customer (COOLDOWN_MS).
+ */
+export function emitCustomerAmbient(params: CustomerAmbientParams): void {
+  const { customer, repairs, unlocks, specialOrders, layaways, sales, customers, now = Date.now() } = params;
+
+  const cooldownKey = `customer_top:${customer.id}`;
+  if (!canShow(cooldownKey)) return;
+
+  const opps = buildCustomerCrossModuleProfile({
+    customerId: customer.id,
+    customers,
+    repairs,
+    unlocks,
+    specialOrders,
+    layaways,
+    sales,
+    now,
+  });
+
+  const result = rankOpportunitiesForNBA(opps);
+  if (!result) return;
+
+  const i18nKey = SUMMARY_TO_AMBIENT[result.primary.summaryKey];
+  if (!i18nKey) return;
+
+  markShown(cooldownKey);
+  emit({
+    i18nKey,
+    args: result.primary.evidence,
+    severity: result.primary.severity === 'critical' || result.primary.severity === 'high' ? 'alert' : 'info',
+  });
 }
 
 // ── Cooldown reset (testing / manual clear) ───────────────────────────────────

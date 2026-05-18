@@ -19,6 +19,7 @@ import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
 import { openWhatsApp } from '@/services/whatsapp';
 import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
+import { emitCustomerAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
 export default function CustomerModule() {
   // Round 18: extract `state` at root and destructure separately so we can also
@@ -99,19 +100,26 @@ export default function CustomerModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active customer so Intelligence
   // surfaces contextual recommendations for this specific profile.
-  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
-  // Customer ambient insights are already surfaced by the bubble's existing
-  // computeInsightsForContext pipeline — no duplicate emit needed here.
+  // R-CUSTOMER-AMBIENT-V1: emit cross-module ambient hint on customer open.
   useEffect(() => {
     if (editCustomer) {
       setIntelligenceContext({
         activeModule: 'customers',
         activeCustomerId: editCustomer.id,
       });
+      emitCustomerAmbient({
+        customer: editCustomer,
+        repairs,
+        unlocks,
+        specialOrders,
+        layaways,
+        sales,
+        customers,
+      });
     } else {
       clearEntityContext();
     }
-  }, [editCustomer]);
+  }, [editCustomer]); // eslint-disable-line react-hooks/exhaustive-deps
   // R-OPERATOR-AMBIENT-AWARENESS-V1: phone prefill for the create-mode
   // form when triggered externally (e.g. Operator bubble Create Customer
   // for an unknown_phone context). Only consulted when editCustomer is

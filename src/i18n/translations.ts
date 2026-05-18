@@ -6083,6 +6083,43 @@ export const translations: TranslationDictionary = {
     pt: (name: string, amount: string) => `💰 ${name} — saldo de pedido especial ${amount} pendente`,
   },
 
+  // R-CUSTOMER-AMBIENT-V1 — cross-module customer profile hints
+  'ambient.customer.repair_ready': {
+    en: (name: string, days: string, count: string) => `✅ ${name} — ${count} device(s) ready, waiting ${days}d`,
+    es: (name: string, days: string, count: string) => `✅ ${name} — ${count} dispositivo(s) listo(s), ${days}d esperando`,
+    pt: (name: string, days: string, count: string) => `✅ ${name} — ${count} dispositivo(s) pronto(s), ${days}d aguardando`,
+  },
+  'ambient.customer.so_arrived': {
+    en: (name: string, item: string) => `📦 ${name} — order arrived: ${item}`,
+    es: (name: string, item: string) => `📦 ${name} — llegó el pedido: ${item}`,
+    pt: (name: string, item: string) => `📦 ${name} — pedido chegou: ${item}`,
+  },
+  'ambient.customer.unlock_ready': {
+    en: (name: string, device: string) => `✅ ${name} — unlock code ready for ${device}`,
+    es: (name: string, device: string) => `✅ ${name} — código de unlock listo para ${device}`,
+    pt: (name: string, device: string) => `✅ ${name} — código de desbloqueio pronto para ${device}`,
+  },
+  'ambient.customer.balance': {
+    en: (name: string, amount: string) => `💰 ${name} — outstanding balance: ${amount}`,
+    es: (name: string, amount: string) => `💰 ${name} — saldo pendiente: ${amount}`,
+    pt: (name: string, amount: string) => `💰 ${name} — saldo pendente: ${amount}`,
+  },
+  'ambient.customer.unlock_waiting': {
+    en: (name: string, days: string) => `⏳ ${name} — unlock waiting ${days}d, follow up supplier`,
+    es: (name: string, days: string) => `⏳ ${name} — unlock esperando ${days}d, seguimiento proveedor`,
+    pt: (name: string, days: string) => `⏳ ${name} — desbloqueio aguardando ${days}d, contate fornecedor`,
+  },
+  'ambient.customer.inactive': {
+    en: (name: string, days: string) => `📞 ${name} — inactive ${days} days, reach out`,
+    es: (name: string, days: string) => `📞 ${name} — ${days} días sin visitar, contáctalo`,
+    pt: (name: string, days: string) => `📞 ${name} — ${days} dias inativo, entre em contato`,
+  },
+  'ambient.customer.repeat_repair': {
+    en: (name: string, total: string, recent: string) => `🔧 ${name} — ${recent} repairs in 6mo (${total} total) — offer protection plan`,
+    es: (name: string, total: string, recent: string) => `🔧 ${name} — ${recent} reparaciones en 6m (${total} total) — ofrece plan de protección`,
+    pt: (name: string, total: string, recent: string) => `🔧 ${name} — ${recent} reparos em 6m (${total} total) — ofereça plano de proteção`,
+  },
+
   // R-INTELLIGENCE-MANAGER-QUEUE-V1 — manager queue UI + chat keys
   'mq.sectionTitle':    { en: 'Manager Queue', es: 'Cola del Gerente', pt: 'Fila do Gerente' },
   'mq.emptyState':      { en: 'All clear — no pending reviews', es: 'Todo bien — sin revisiones pendientes', pt: 'Tudo certo — sem revisões pendentes' },
