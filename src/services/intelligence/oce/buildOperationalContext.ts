@@ -11,11 +11,14 @@ import {
   sortOperationalSignals,
   buildOperationalContextSnapshot,
 } from './operationalSignalRegistry';
-import { repairsAdapter }   from './adapters/repairsAdapter';
-import { customersAdapter } from './adapters/customersAdapter';
-import { outreachAdapter }  from './adapters/outreachAdapter';
-import { inventoryAdapter } from './adapters/inventoryAdapter';
-import { posAdapter }       from './adapters/posAdapter';
+import { repairsAdapter }       from './adapters/repairsAdapter';
+import { customersAdapter }     from './adapters/customersAdapter';
+import { outreachAdapter }      from './adapters/outreachAdapter';
+import { inventoryAdapter }     from './adapters/inventoryAdapter';
+import { posAdapter }           from './adapters/posAdapter';
+import { specialOrdersAdapter } from './adapters/specialOrdersAdapter';
+import { layawaysAdapter }      from './adapters/layawaysAdapter';
+import { phonePaymentsAdapter } from './adapters/phonePaymentsAdapter';
 
 const REGISTERED_ADAPTERS: OperationalModuleAdapter[] = [
   repairsAdapter,
@@ -23,6 +26,9 @@ const REGISTERED_ADAPTERS: OperationalModuleAdapter[] = [
   outreachAdapter,
   inventoryAdapter,
   posAdapter,
+  specialOrdersAdapter,
+  layawaysAdapter,
+  phonePaymentsAdapter,
 ];
 
 export function buildOperationalContext(

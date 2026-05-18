@@ -647,6 +647,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           timestamp: Date.now(),
         });
         break;
+      case 'record_outreach_outcome':
+        setFeedbackForAction(action.id, t('chat.action.outcomeSaved'));
+        break;
       case 'open_layaway':
         setFeedbackForAction(action.id, t('chat.action.openingLayaway'));
         break;

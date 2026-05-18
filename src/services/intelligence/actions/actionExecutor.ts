@@ -49,9 +49,11 @@ function readExecutionLog(): ExecutionLogItem[] {
 function canonicalTypeFromTarget(target: ActionPayload['executionTarget']): IntelligenceExecutionType | null {
   switch (target) {
     case 'whatsapp_url':      return 'whatsapp';
-    case 'open_customer':     return 'open_customer';
-    case 'open_repair':       return 'open_repair';
-    case 'open_layaway':      return 'open_layaway';
+    case 'open_customer':      return 'open_customer';
+    case 'open_repair':        return 'open_repair';
+    case 'open_layaway':       return 'open_layaway';
+    case 'open_unlock':        return 'open_unlock';
+    case 'open_special_order': return 'open_special_order';
     case 'open_inventory':
     case 'open_promote_panel': return 'open_product';
     case 'reminder_queue':
@@ -98,9 +100,11 @@ function appendExecutionLog(payload: ActionPayload): void {
     const entityId = payload.entityId || payload.customerId || payload.productId;
     const entityName = payload.customerName || payload.productName;
     const entityType = (
-      canonicalType === 'open_layaway' ? 'layaway'
-      : canonicalType === 'open_product' ? 'product'
-      : canonicalType === 'queue_approved' ? 'queue_item'
+      canonicalType === 'open_layaway'       ? 'layaway'
+      : canonicalType === 'open_unlock'      ? 'unlock'
+      : canonicalType === 'open_special_order' ? 'special_order'
+      : canonicalType === 'open_product'     ? 'product'
+      : canonicalType === 'queue_approved'   ? 'queue_item'
       : undefined
     ) as IntelligenceExecutionHistoryEntry['entityType'];
     recordIntelligenceExecution({
@@ -238,6 +242,8 @@ export type ExecutionResult =
   | { ok: true;  type: 'open_repair';           repairId: string }
   | { ok: true;  type: 'open_customer';         customerId: string }
   | { ok: true;  type: 'open_layaway';          layawayId: string }
+  | { ok: true;  type: 'open_unlock';           unlockId: string }
+  | { ok: true;  type: 'open_special_order';    orderId: string }
   | { ok: true;  type: 'open_inventory';        itemId: string }
   | { ok: true;  type: 'queue_manager_review' }
   // R-OUTREACH-OUTCOME-FEEDBACK-V1
@@ -361,6 +367,20 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
       appendExecutionLog(payload);
       window.dispatchEvent(new CustomEvent('cellhub:open-layaway', { detail: { layawayId: payload.entityId } }));
       return { ok: true, type: 'open_layaway', layawayId: payload.entityId };
+    }
+
+    case 'open_unlock': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-unlock', { detail: { unlockId: payload.entityId } }));
+      return { ok: true, type: 'open_unlock', unlockId: payload.entityId };
+    }
+
+    case 'open_special_order': {
+      if (!payload.entityId) return { ok: false, reason: 'not_executable' };
+      appendExecutionLog(payload);
+      window.dispatchEvent(new CustomEvent('cellhub:open-special-order', { detail: { orderId: payload.entityId } }));
+      return { ok: true, type: 'open_special_order', orderId: payload.entityId };
     }
 
     case 'open_inventory': {

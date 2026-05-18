@@ -915,6 +915,16 @@ export default function IntelligenceModule() {
     promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  // Scroll promote panel into view after React renders it (panel only appears when selectedProduct is set)
+  useEffect(() => {
+    if (selectedProduct) {
+      const tid = window.setTimeout(() => {
+        promoteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+      return () => window.clearTimeout(tid);
+    }
+  }, [selectedProduct?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // R-OPERATOR-EXECUTABLE-ACTIONS-V1: hand-off callback for chat-action
   // "Promote {name}" clicks. Auto-selects the exact product (productId is
   // the real inventory id from ProductOpportunity.inventoryId, not a
@@ -1305,7 +1315,7 @@ export default function IntelligenceModule() {
   const showLegacySections = false;
 
   return (
-    <div style={{ background: PAGE_BG, height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: PAGE_BG, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── OPERATOR COMMAND CENTER — 3-column layout ── */}
       <SimpleOperatorView
@@ -1627,12 +1637,15 @@ export default function IntelligenceModule() {
           )}
         </div>
       )}
+      </>)}
 
-      {/* ── 6. SECONDARY TOOLS (Promote Inventory + Customer Lookup below) ── */}
+      {/* ── 6. SECONDARY TOOLS ────────────────────────────────────────────── */}
+      {/* Promote panel renders independently of legacy sections when a product is selected */}
+      {(showLegacySections || !!selectedProduct) && (
       <div className="grid grid-cols-12 gap-3">
 
         {/* Promote Inventory */}
-        <div ref={promoteRef} className="col-span-12 lg:col-span-6 rounded-lg border p-3"
+        <div ref={promoteRef} className={`${showLegacySections ? 'col-span-12 lg:col-span-6' : 'col-span-12'} rounded-lg border p-3`}
           style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
           <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
             {t('intelligence.console.promoteInvTitle')}
@@ -1915,7 +1928,8 @@ export default function IntelligenceModule() {
           )}
         </div>
 
-        {/* Customer Lookup — sibling to Promote Inventory (same grid row) */}
+        {/* Customer Lookup — legacy sections only */}
+        {showLegacySections && (
         <div className="col-span-12 lg:col-span-6 rounded-lg p-4 border" style={{ background: CARD_BG, borderColor: CARD_BORDER }}>
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -1965,9 +1979,11 @@ export default function IntelligenceModule() {
 
           {history && <CustomerHistoryCard history={history} />}
         </div>
+        )}
       </div>
+      )}
 
-      {/* Refresh button (bottom) */}
+      {showLegacySections && (
       <div className="flex justify-end">
         <button
           onClick={handleRefresh}
@@ -1977,7 +1993,7 @@ export default function IntelligenceModule() {
           🔄 {t('intelligence.refresh')}
         </button>
       </div>
-      </>)}
+      )}
 
       {/* ── LIVE OPERATOR BUBBLE ─────────────────────────────────────────────── */}
       <FloatingOperatorBubble

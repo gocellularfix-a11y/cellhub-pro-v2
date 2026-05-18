@@ -563,6 +563,7 @@ export const translations: TranslationDictionary = {
   'chat.action.reminderReady':   { en: 'Reminder action prepared.',    es: 'Recordatorio preparado.',       pt: 'Lembrete preparado.' },
   'chat.action.openingTicket':   { en: 'Opening ticket…',              es: 'Abriendo ticket…',              pt: 'Abrindo ticket…' },
   'chat.action.openingCustomer': { en: 'Opening customer…',            es: 'Abriendo cliente…',             pt: 'Abrindo cliente…' },
+  'chat.action.outcomeSaved':    { en: 'Outcome recorded.',             es: 'Resultado registrado.',         pt: 'Resultado registrado.' },
   'chat.action.openingLayaway':  { en: 'Opening layaway…',             es: 'Abriendo apartado…',            pt: 'Abrindo layaway…' },
   'chat.action.openingItem':     { en: 'Opening item…',                es: 'Abriendo artículo…',            pt: 'Abrindo item…' },
   'chat.action.openingReview':   { en: 'Opening review…',              es: 'Abriendo revisión…',            pt: 'Abrindo revisão…' },
@@ -3531,6 +3532,7 @@ export const translations: TranslationDictionary = {
   'customers.history.appointments':   { en: 'Appointments',           es: 'Citas',                      pt: 'Agendamentos' },
   'customers.history.appointment':    { en: 'Appointment',            es: 'Cita',                       pt: 'Agendamento' },
   'customers.history.noRecords':      { en: 'No records',             es: 'Sin registros',              pt: 'Sem registros' },
+  'customers.history.open':           { en: 'Open',                   es: 'Abrir',                      pt: 'Abrir' },
 
   'customers.form.email':             { en: 'Email',                  es: 'Email',                      pt: 'Email' },
   'customers.form.zip':               { en: 'Zip',                    es: 'Código Postal',              pt: 'CEP' },

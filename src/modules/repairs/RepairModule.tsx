@@ -284,47 +284,13 @@ export default function RepairModule() {
       return '';
     };
 
-    const lines: string[] = [];
-    lines.push(storeName);
-    if (storeAddr) lines.push(storeAddr);
-    if (storePhone) lines.push(storePhone);
-    lines.push('----------------------------------------');
-    if (corrected) {
-      lines.push(t('repairs.print.correctedReceipt'));
-      lines.push(`${t('repairs.print.corrected')}: ${new Date().toLocaleString()}`);
-      lines.push('----------------------------------------');
-    }
-    lines.push(t('repairs.print.repairTicket'));
-    lines.push(`TICKET: ${safe(repair.ticketNumber)}`);
-    lines.push(`${t('repairs.print.date')}: ${new Date().toLocaleString()}`);
-    lines.push(`STATUS: ${safe(repair.status)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('repairs.print.customer')}: ${safe(repair.customerName)}`);
-    if (repair.customerPhone) lines.push(`${t('repairs.print.phone')}: ${safe(repair.customerPhone)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('repairs.print.device')}: ${safe(repair.device)}`);
-    if (repair.imei) lines.push(`IMEI: ${safe(repair.imei)}`);
-    lines.push('----------------------------------------');
-    lines.push(`${t('repairs.print.issue')}: ${safe(repair.issue)}`);
-    if (repair.notes) {
-      lines.push('----------------------------------------');
-      lines.push(`${t('repairs.print.notes')}: ${safe(repair.notes)}`);
-    }
-    lines.push('----------------------------------------');
+    // Financial computations — unchanged from original
     const partsCents = (repair.subtotal || 0) - (repair.laborCost || 0);
-    if (partsCents > 0) lines.push(`${t('repairs.print.parts')}: ${money(partsCents)}`);
-    if (repair.laborCost) lines.push(`${t('repairs.print.labor')}: ${money(repair.laborCost)}${previously('laborCost')}`);
-    lines.push(`SUBTOTAL: ${money(repair.subtotal || 0)}${previously('subtotal')}`);
-    if (repair.taxable && repair.taxAmount > 0) {
-      lines.push(`${t('repairs.print.tax')} (${((repair.taxRate || 0) * 100).toFixed(2)}%): ${money(repair.taxAmount)}${previously('taxAmount')}`);
-    }
-    lines.push(`TOTAL: ${money(repair.total || 0)}${previously('total')}`);
     // Round R-QF1: print the deposit intent captured at form save.
     // depositAmount is $0 until POS checkout reconciles the cart sale
     // (per r-deposit-integrity-1). depositAgreementAmount is the
     // frozen-at-save intent value, never mutated by POS, so re-prints
     // after creation but before checkout still show the correct deposit.
-    // Full Agreement + Payment Receipt split is a post-build round.
     const displayDeposit = displayOverride?.depositAmount
       ?? (repair.depositAmount || (repair as any).depositAgreementAmount || 0);
     // When the fallback to depositAgreementAmount fires (pre-checkout),
@@ -333,18 +299,100 @@ export default function RepairModule() {
     const displayTotal = repair.total || repair.estimatedCost || 0;
     const displayBalance = displayOverride?.balance
       ?? Math.max(0, displayTotal - displayDeposit);
-    lines.push(`${t('repairs.print.deposit')}: ${money(displayDeposit)}${previously('depositAmount')}`);
-    lines.push(`${t('repairs.print.balance')}: ${money(displayBalance)}${previously('balance')}`);
-    // R-EDIT-AUDIT F3.8: show refund owed on corrected receipt when reason='refund'.
-    if (corrected && (repair.refundOwedAmount || 0) > 0) {
-      lines.push(`${t('repairs.print.refundOwed')}: ${money(repair.refundOwedAmount)}`);
-    }
-    lines.push('----------------------------------------');
-    if (repair.warranty) lines.push(`${t('repairs.print.warranty')}: ${repair.warranty} ${t('repairs.print.days')}`);
-    lines.push(t('repairs.print.thankYou'));
 
-    const text = lines.filter(Boolean).join('\n');
-    const html = `<!DOCTYPE html><html><head><title>Repair ${escHtml(repair.ticketNumber)}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+    // Pre-compute corrected-receipt annotations
+    const prevLabor    = previously('laborCost');
+    const prevSubtotal = previously('subtotal');
+    const prevTax      = previously('taxAmount');
+    const prevTotal    = previously('total');
+    const prevDeposit  = previously('depositAmount');
+    const prevBalance  = previously('balance');
+    const technician   = safe((repair as any).technician);
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Repair ${escHtml(safe(repair.ticketNumber))}</title><style>
+@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:4in;font-family:-apple-system,Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}
+body{padding:.18in .22in .15in .22in}
+.hdr{text-align:center;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
+.store{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.store-sub{font-size:9px;color:#444;margin-top:1px}
+.title-bar{text-align:center;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 0;border-bottom:1.5px solid #000;margin-bottom:5px}
+.corrected-bar{background:#1a1a1a;color:#fff;text-align:center;font-size:9px;font-weight:700;letter-spacing:.05em;padding:3px 0;margin-bottom:4px}
+.sec{margin-bottom:6px}
+.sec-lbl{font-size:7.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#555;border-bottom:.5px solid #ccc;padding-bottom:1px;margin-bottom:3px}
+.row{display:flex;justify-content:space-between;align-items:baseline;margin:1.5px 0;gap:6px}
+.lbl{font-size:9px;color:#444;white-space:nowrap}
+.val{font-size:9px;font-weight:500;text-align:right;word-break:break-word}
+.mono{font-family:monospace;letter-spacing:.02em}
+.tkt{font-family:monospace;font-size:12px;font-weight:800;letter-spacing:.06em}
+.badge{display:inline-block;font-size:7.5px;font-weight:700;padding:1px 5px;border:1px solid #000;border-radius:2px;text-transform:uppercase;letter-spacing:.04em}
+.dash{border-top:.5px dashed #bbb;margin:5px 0}
+.solid{border-top:1px solid #000;margin:4px 0}
+.totals .lbl{font-size:9.5px;font-weight:600}
+.totals .val{font-size:9.5px;font-weight:700}
+.grand .lbl,.grand .val{font-size:11px;font-weight:800}
+.balance .val{color:#c00}
+.prev{font-size:8px;color:#888;font-style:italic;margin-left:3px}
+.wbox{text-align:center;border:1px dashed #888;padding:2px 8px;margin:4px auto;width:fit-content;font-size:9px;font-weight:700;letter-spacing:.05em}
+.sig-sec{border-top:.5px solid #bbb;padding-top:5px;margin-top:6px}
+.sig-line{border-bottom:.5px solid #000;margin:14px 0 2px}
+.sig-lbl{font-size:8px;color:#666}
+.ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:6px;line-height:1.5}
+@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<div class="hdr">
+  <div class="store">${escHtml(storeName)}</div>
+  ${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}
+  ${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}
+</div>
+${corrected ? `<div class="corrected-bar">&#9888; ${escHtml(t('repairs.print.correctedReceipt'))}</div>` : ''}
+<div class="title-bar">${escHtml(t('repairs.print.repairTicket'))}</div>
+<div class="sec">
+  <div class="row"><span class="lbl">Ticket #</span><span class="val tkt">${escHtml(safe(repair.ticketNumber))}</span></div>
+  <div class="row"><span class="lbl">${escHtml(t('repairs.print.date'))}</span><span class="val">${new Date().toLocaleDateString()}</span></div>
+  ${corrected ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.corrected'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>` : ''}
+  <div class="row"><span class="lbl">Status</span><span class="val"><span class="badge">${escHtml(safe(repair.status))}</span></span></div>
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">${escHtml(t('repairs.print.customer'))}</div>
+  <div class="row"><span class="lbl">${escHtml(t('repairs.print.customer'))}</span><span class="val">${escHtml(safe(repair.customerName))}</span></div>
+  ${repair.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.phone'))}</span><span class="val mono">${escHtml(safe(repair.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">${escHtml(t('repairs.print.device'))}</div>
+  <div class="row"><span class="lbl">${escHtml(t('repairs.print.device'))}</span><span class="val">${escHtml(safe(repair.device))}</span></div>
+  ${repair.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val mono">${escHtml(safe(repair.imei))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">${escHtml(t('repairs.print.issue'))}</div>
+  <div class="row"><span class="lbl">${escHtml(t('repairs.print.issue'))}</span><span class="val" style="max-width:60%">${escHtml(safe(repair.issue))}</span></div>
+  ${repair.notes ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.notes'))}</span><span class="val" style="max-width:60%">${escHtml(safe(repair.notes))}</span></div>` : ''}
+  ${technician ? `<div class="row"><span class="lbl">Tech</span><span class="val">${escHtml(technician)}</span></div>` : ''}
+</div>
+<div class="solid"></div>
+<div class="sec totals">
+  ${partsCents > 0 ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.parts'))}</span><span class="val">${money(partsCents)}</span></div>` : ''}
+  ${(repair.laborCost || 0) > 0 ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.labor'))}</span><span class="val">${money(repair.laborCost)}${prevLabor ? `<span class="prev">${escHtml(prevLabor)}</span>` : ''}</span></div>` : ''}
+  <div class="row"><span class="lbl">Subtotal</span><span class="val">${money(repair.subtotal || 0)}${prevSubtotal ? `<span class="prev">${escHtml(prevSubtotal)}</span>` : ''}</span></div>
+  ${repair.taxable && (repair.taxAmount || 0) > 0 ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.tax'))} (${((repair.taxRate || 0) * 100).toFixed(2)}%)</span><span class="val">${money(repair.taxAmount)}${prevTax ? `<span class="prev">${escHtml(prevTax)}</span>` : ''}</span></div>` : ''}
+  <div class="row grand" style="border-top:1px solid #000;padding-top:2px;margin-top:2px">
+    <span class="lbl">TOTAL</span><span class="val">${money(repair.total || 0)}${prevTotal ? `<span class="prev">${escHtml(prevTotal)}</span>` : ''}</span>
+  </div>
+  <div class="dash" style="margin:4px 0"></div>
+  <div class="row"><span class="lbl">${escHtml(t('repairs.print.deposit'))}</span><span class="val">${money(displayDeposit)}${prevDeposit ? `<span class="prev">${escHtml(prevDeposit)}</span>` : ''}</span></div>
+  <div class="row balance"><span class="lbl">${escHtml(t('repairs.print.balance'))}</span><span class="val">${money(displayBalance)}${prevBalance ? `<span class="prev">${escHtml(prevBalance)}</span>` : ''}</span></div>
+  ${corrected && (repair.refundOwedAmount || 0) > 0 ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.refundOwed'))}</span><span class="val">${money(repair.refundOwedAmount)}</span></div>` : ''}
+</div>
+${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: ${escHtml(safe(repair.warranty))} ${escHtml(t('repairs.print.days'))}</div>` : ''}
+<div class="sig-sec">
+  <div class="sig-line"></div>
+  <div class="sig-lbl">Customer Signature / Pickup Authorization</div>
+</div>
+<div class="ftr">${escHtml(t('repairs.print.thankYou'))}<br>${escHtml(storeName)}</div>
+</body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, printHtml, t]);
 

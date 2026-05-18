@@ -1360,13 +1360,13 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
           {sales.length === 0
             ? <Empty />
             : sales.slice(0, 20).map((s) => (
-                <div key={s.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm">
-                  <div>
+                <div key={s.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
+                  <div className="flex-1 min-w-0">
                     <span className="text-brand-400 font-mono">{s.invoiceNumber}</span>
                     <span className="text-slate-500 ml-2">{formatDate(s.createdAt)}</span>
                     <span className="text-slate-400 ml-2">{s.items?.length || 0} {t('customers.history.salesItems')}</span>
                   </div>
-                  <span className="text-emerald-400 font-medium">{formatCurrency(s.total)}</span>
+                  <span className="text-emerald-400 font-medium shrink-0">{formatCurrency(s.total)}</span>
                 </div>
               ))
           }
@@ -1379,6 +1379,7 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             : repairs.slice(0, 10).map((r) => (
                 <div key={r.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
+                    {r.ticketNumber && <span className="text-brand-400 font-mono text-xs mr-2">{r.ticketNumber}</span>}
                     <span className="text-slate-300">{r.device || `${r.brand || ''} ${r.model || ''}`.trim()}</span>
                     {r.issue && <span className="text-slate-500 ml-2 text-xs truncate">{r.issue}</span>}
                     <div className="text-xs text-slate-600">{formatDate(r.createdAt)}</div>
@@ -1386,6 +1387,11 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
                   <div className="flex items-center gap-2 shrink-0">
                     {(r.balance || 0) > 0 && <span className="text-amber-400 text-xs">{formatCurrency(r.balance)}</span>}
                     <Badge status={r.status} />
+                    <button
+                      onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('cellhub:open-repair', { detail: { repairId: r.id } })); }}
+                      className="text-xs px-1.5 py-0.5 rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition"
+                      title={t('customers.history.open')}
+                    >↗</button>
                   </div>
                 </div>
               ))
@@ -1399,12 +1405,18 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             : layaways.slice(0, 10).map((l) => (
                 <div key={l.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-white/5 text-sm gap-2">
                   <div className="flex-1 min-w-0">
+                    {l.ticketNumber && <span className="text-brand-400 font-mono text-xs mr-2">{l.ticketNumber}</span>}
                     <span className="text-slate-300">{l.itemDescription || l.items?.[0]?.name || '—'}</span>
                     <div className="text-xs text-slate-600">{formatDate(l.createdAt)}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {(l.balance || 0) > 0 && <span className="text-amber-400 text-xs">{formatCurrency(l.balance)}</span>}
                     <Badge status={l.status} />
+                    <button
+                      onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('cellhub:open-layaway', { detail: { layawayId: l.id } })); }}
+                      className="text-xs px-1.5 py-0.5 rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition"
+                      title={t('customers.history.open')}
+                    >↗</button>
                   </div>
                 </div>
               ))
@@ -1426,6 +1438,11 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-slate-300 text-xs">{formatCurrency(u.price || 0)}</span>
                     <Badge status={u.status} />
+                    <button
+                      onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('cellhub:open-unlock', { detail: { unlockId: u.id } })); }}
+                      className="text-xs px-1.5 py-0.5 rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition"
+                      title={t('customers.history.open')}
+                    >↗</button>
                   </div>
                 </div>
               ))
@@ -1446,6 +1463,11 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
                   <div className="flex items-center gap-2 shrink-0">
                     {(o.balance || 0) > 0 && <span className="text-amber-400 text-xs">{formatCurrency(o.balance)}</span>}
                     <Badge status={o.status} />
+                    <button
+                      onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('cellhub:open-special-order', { detail: { orderId: o.id } })); }}
+                      className="text-xs px-1.5 py-0.5 rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition"
+                      title={t('customers.history.open')}
+                    >↗</button>
                   </div>
                 </div>
               ))

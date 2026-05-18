@@ -94,6 +94,19 @@ export default function SpecialOrdersModule() {
   useEffect(() => { cartRef.current = cart; }, [cart]);
   useEffect(() => { salesRef.current = sales; }, [sales]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
+      if (!orderId) return;
+      const order = specialOrdersRef.current.find((o) => o.id === orderId);
+      if (!order) { console.warn('[cellhub] _intel-open-special-order: not found', orderId); return; }
+      setEditOrder(order);
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:_intel-open-special-order', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-special-order', handler);
+  }, []);
+
   // Consume cross-module search term once on mount
   useEffect(() => {
     if (globalSearchTerm) {

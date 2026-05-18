@@ -51,6 +51,8 @@ export interface ActionPayload {
     | 'open_repair'
     | 'open_customer'
     | 'open_layaway'
+    | 'open_unlock'
+    | 'open_special_order'
     | 'open_inventory'
     | 'queue_manager_review'
     // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: browser clipboard copy.

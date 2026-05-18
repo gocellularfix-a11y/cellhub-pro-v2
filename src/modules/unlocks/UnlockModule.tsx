@@ -74,6 +74,19 @@ export default function UnlockModule() {
   const unlocksRef = useRef(unlocks);
   useEffect(() => { unlocksRef.current = unlocks; }, [unlocks]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { unlockId } = (e as CustomEvent<{ unlockId?: string }>).detail ?? {};
+      if (!unlockId) return;
+      const unlock = unlocksRef.current.find((u) => u.id === unlockId);
+      if (!unlock) { console.warn('[cellhub] _intel-open-unlock: not found', unlockId); return; }
+      setEditUnlock(unlock);
+      setShowModal(true);
+    };
+    window.addEventListener('cellhub:_intel-open-unlock', handler);
+    return () => window.removeEventListener('cellhub:_intel-open-unlock', handler);
+  }, []);
+
   // r-new-5 port: refs to avoid stale closures in handlers (multi-station sync).
   const cartRef = useRef(cart);
   const customersRef = useRef(customers);

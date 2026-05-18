@@ -18,6 +18,8 @@ export type IntelligenceExecutionType =
   | 'open_repair'
   | 'open_product'
   | 'open_layaway'
+  | 'open_unlock'
+  | 'open_special_order'
   | 'queue_approved'
   | 'queue_rejected'
   | 'dismissed'
@@ -28,7 +30,7 @@ export type IntelligenceExecutionType =
 export interface IntelligenceExecutionHistoryEntry {
   id: string;
   type: IntelligenceExecutionType;
-  entityType?: 'customer' | 'repair' | 'product' | 'layaway' | 'queue_item' | 'workflow';
+  entityType?: 'customer' | 'repair' | 'product' | 'layaway' | 'unlock' | 'special_order' | 'queue_item' | 'workflow';
   entityId?: string;
   entityName?: string;
   sourceIntent?: string;

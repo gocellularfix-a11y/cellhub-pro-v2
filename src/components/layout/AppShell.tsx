@@ -183,6 +183,24 @@ export default function AppShell() {
       }, 80);
     };
 
+    const onOpenUnlock = (e: Event) => {
+      const { unlockId } = (e as CustomEvent<{ unlockId?: string }>).detail ?? {};
+      if (!unlockId) return;
+      nav('unlocks');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-unlock', { detail: { unlockId } }));
+      }, 80);
+    };
+
+    const onOpenSpecialOrder = (e: Event) => {
+      const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
+      if (!orderId) return;
+      nav('specialOrders');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-special-order', { detail: { orderId } }));
+      }, 80);
+    };
+
     const onManagerReview = () => {
       // No dedicated approvals panel yet — navigate to Intelligence where the
       // action queue is visible. Console.warn documents the gap.
@@ -200,6 +218,8 @@ export default function AppShell() {
     window.addEventListener('cellhub:open-customer',       onOpenCustomer);
     window.addEventListener('cellhub:open-layaway',        onOpenLayaway);
     window.addEventListener('cellhub:open-inventory-item', onOpenInventory);
+    window.addEventListener('cellhub:open-unlock',         onOpenUnlock);
+    window.addEventListener('cellhub:open-special-order',  onOpenSpecialOrder);
     window.addEventListener('cellhub:open-manager-review', onManagerReview);
     window.addEventListener('cellhub:navigate-tab',        onNavigateTab);
     return () => {
@@ -207,6 +227,8 @@ export default function AppShell() {
       window.removeEventListener('cellhub:open-customer',       onOpenCustomer);
       window.removeEventListener('cellhub:open-layaway',        onOpenLayaway);
       window.removeEventListener('cellhub:open-inventory-item', onOpenInventory);
+      window.removeEventListener('cellhub:open-unlock',         onOpenUnlock);
+      window.removeEventListener('cellhub:open-special-order',  onOpenSpecialOrder);
       window.removeEventListener('cellhub:open-manager-review', onManagerReview);
       window.removeEventListener('cellhub:navigate-tab',        onNavigateTab);
     };
