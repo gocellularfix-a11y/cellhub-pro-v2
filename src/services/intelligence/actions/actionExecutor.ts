@@ -61,6 +61,18 @@ function canonicalTypeFromTarget(target: ActionPayload['executionTarget']): Inte
   }
 }
 
+// R-INTELLIGENCE-DEDUP-EXECUTION-PIPELINE-V1
+// IntelligenceChat.tsx owns canonical execution recording for these targets:
+//   whatsapp_url  → modal confirm → recordOperatorAction('whatsapp')
+//   open_customer → switch case  → recordOperatorAction('open_customer')
+//   open_repair   → switch case  → recordOperatorAction('open_repair')
+// appendExecutionLog must NOT mirror those to canonical — it would double-write.
+// All other targets (open_layaway, open_inventory, pos_*, review_panel, queues)
+// have no IntelligenceChat canonical write, so this executor mirrors them.
+const CHAT_OWNED_CANONICAL = new Set<ActionPayload['executionTarget']>([
+  'whatsapp_url', 'open_customer', 'open_repair',
+]);
+
 function appendExecutionLog(payload: ActionPayload): void {
   const now = Date.now();
   try {
@@ -77,14 +89,14 @@ function appendExecutionLog(payload: ActionPayload): void {
     localStorage.setItem(EXECUTION_LOG_KEY, JSON.stringify(trimmed));
   } catch { /* incognito / quota — best-effort, never block */ }
   // R-INTELLIGENCE-UNIFY-EXECUTION-LOGS-V1: mirror to canonical store.
+  // Skip targets IntelligenceChat records itself to prevent double-write.
+  if (CHAT_OWNED_CANONICAL.has(payload.executionTarget)) return;
   const canonicalType = canonicalTypeFromTarget(payload.executionTarget);
   if (canonicalType) {
     const entityId = payload.entityId || payload.customerId || payload.productId;
     const entityName = payload.customerName || payload.productName;
     const entityType = (
-      canonicalType === 'open_customer' || canonicalType === 'whatsapp' ? 'customer'
-      : canonicalType === 'open_repair' ? 'repair'
-      : canonicalType === 'open_layaway' ? 'layaway'
+      canonicalType === 'open_layaway' ? 'layaway'
       : canonicalType === 'open_product' ? 'product'
       : canonicalType === 'queue_approved' ? 'queue_item'
       : undefined
