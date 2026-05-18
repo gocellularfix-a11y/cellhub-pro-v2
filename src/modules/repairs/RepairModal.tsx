@@ -278,48 +278,98 @@ export default function RepairModal({ repair, customers, inventory, settings, al
     updatedAt: new Date().toISOString(),
   });
 
-  // Print ticket
+  // Print ticket — premium 4×6 HTML receipt (replaces old monospace template)
   const printTicket = (payload: any = buildPayload(), notesOnly = false) => {
-    const storeName = settings.storeName || 'CellHub Pro';
-    const storeAddr = settings.storeAddress || '';
-    const storePhone = settings.storePhone || '';
-    const fmt = (v: any) => v == null ? '' : String(v);
-    const money = (v: number) => `$${(v / 100).toFixed(2)}`;
-    const lines = [
-      storeName.toUpperCase(), storeAddr,
-      storePhone, '----------------------------------------',
-      `TICKET: ${fmt(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || '')}`,
-      `STATUS: ${fmt(payload.status)}`,
-      `DATE: ${new Date(payload.updatedAt || Date.now()).toLocaleString()}`,
-      '----------------------------------------',
-      `CUSTOMER: ${fmt(payload.customerName)}`,
-      payload.customerPhone ? `PHONE: ${fmt(payload.customerPhone)}` : '',
-      '----------------------------------------',
-      `DEVICE: ${fmt(payload.brand)} ${fmt(payload.model)}`,
-      payload.imei ? `IMEI: ${fmt(payload.imei)}` : '',
-      '----------------------------------------',
-      'ISSUE:', fmt(payload.issue),
-      payload.notes ? '----------------------------------------' : '',
-      payload.notes ? 'NOTES:' : '', payload.notes ? fmt(payload.notes) : '',
-      '----------------------------------------',
-      ...(() => {
-        const partsCents = (payload.subtotal || 0) - (payload.laborCost || 0);
-        const lines = [];
-        if (partsCents > 0) lines.push(`PARTS: ${money(partsCents)}`);
-        if (payload.laborCost) lines.push(`LABOR: ${money(payload.laborCost)}`);
-        lines.push(`SUBTOTAL: ${money(payload.subtotal)}`);
-        if (payload.taxable && payload.taxAmount > 0) lines.push(`TAX (${((payload.taxRate || 0) * 100).toFixed(2)}%): ${money(payload.taxAmount)}`);
-        lines.push(`TOTAL: ${money(payload.total)}`);
-        lines.push(`DEPOSIT: ${money(payload.depositAmount)}`);
-        lines.push(`BALANCE: ${money(payload.balance)}`);
-        lines.push('----------------------------------------');
-        return lines;
-      })(),
-    ].filter(Boolean);
-    const content = lines.join('\n');
-    // Build self-contained HTML for the ticket
-    const html = `<!DOCTYPE html><html><head><title>Repair Ticket ${escHtml(payload.ticketNumber || '')}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;height:6in;margin:0;padding:0}body{font-family:monospace}.paper{width:4in;height:6in;padding:.25in;box-sizing:border-box}pre{font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><div class="paper"><pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div></body></html>`;
-    // r-print-audit: unified Chromium print dialog via usePrint hook
+    const storeName  = settings.storeName  || 'CellHub Pro';
+    const storeAddr  = settings.storeAddress || '';
+    const storePhone = settings.storePhone  || '';
+    const safe  = (v: any) => v == null ? '' : String(v);
+    const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    const ticketNum  = safe(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || '');
+    const partsCents = (payload.subtotal || 0) - (payload.laborCost || 0);
+    const deviceLabel = safe(payload.device || `${safe(payload.brand)} ${safe(payload.model)}`.trim());
+
+    const financialSection = notesOnly ? '' : `
+<div class="solid"></div>
+<div class="sec totals">
+  ${partsCents > 0 ? `<div class="row"><span class="lbl">Parts</span><span class="val">${money(partsCents)}</span></div>` : ''}
+  ${(payload.laborCost || 0) > 0 ? `<div class="row"><span class="lbl">Labor</span><span class="val">${money(payload.laborCost)}</span></div>` : ''}
+  <div class="row"><span class="lbl">Subtotal</span><span class="val">${money(payload.subtotal || 0)}</span></div>
+  ${payload.taxable && (payload.taxAmount || 0) > 0 ? `<div class="row"><span class="lbl">Tax (${((payload.taxRate || 0) * 100).toFixed(2)}%)</span><span class="val">${money(payload.taxAmount)}</span></div>` : ''}
+  <div class="row grand" style="border-top:1px solid #000;padding-top:2px;margin-top:2px">
+    <span class="lbl">TOTAL</span><span class="val">${money(payload.total || 0)}</span>
+  </div>
+  <div class="dash" style="margin:3px 0"></div>
+  <div class="row"><span class="lbl">Deposit</span><span class="val">${money(payload.depositAmount || 0)}</span></div>
+  <div class="row balance-due"><span class="lbl">Balance Due</span><span class="val">${money(payload.balance || 0)}</span></div>
+</div>
+${payload.warranty ? `<div class="wbox">WARRANTY: ${escHtml(safe(payload.warranty))} days</div>` : ''}
+<div class="sig-sec">
+  <div class="sig-line"></div>
+  <div class="sig-lbl">Customer Signature / Pickup Authorization</div>
+</div>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Repair Ticket ${escHtml(ticketNum)}</title><style>
+@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}
+body{padding:.18in .22in .15in .22in;overflow-x:hidden}
+.hdr{text-align:center;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
+.store{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.store-sub{font-size:9px;color:#444;margin-top:1px}
+.title-bar{text-align:center;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 0;border-bottom:1.5px solid #000;margin-bottom:5px}
+.sec{margin-bottom:5px}
+.sec-lbl{font-size:7.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#555;border-bottom:.5px solid #ccc;padding-bottom:1px;margin-bottom:3px}
+.row{display:flex;justify-content:space-between;align-items:baseline;margin:1.5px 0;gap:4px}
+.lbl{font-size:9px;color:#444;white-space:nowrap;flex-shrink:0}
+.val{font-size:9px;font-weight:500;text-align:right;word-break:break-word;min-width:0}
+.tkt{font-family:monospace;font-size:12px;font-weight:800;letter-spacing:.06em}
+.badge{display:inline-block;font-size:7.5px;font-weight:700;padding:1px 5px;border:1px solid #000;border-radius:2px;text-transform:uppercase;letter-spacing:.04em}
+.dash{border-top:.5px dashed #bbb;margin:4px 0}
+.solid{border-top:1px solid #000;margin:4px 0}
+.totals .lbl{font-size:9.5px;font-weight:600}
+.totals .val{font-size:9.5px;font-weight:700}
+.grand .lbl,.grand .val{font-size:11px;font-weight:800}
+.balance-due .val{color:#c00;font-weight:800}
+.wbox{text-align:center;border:1px dashed #888;padding:2px 8px;margin:4px auto;width:fit-content;font-size:9px;font-weight:700;letter-spacing:.05em}
+.sig-sec{border-top:.5px solid #bbb;padding-top:5px;margin-top:5px}
+.sig-line{border-bottom:.5px solid #000;margin:12px 0 2px}
+.sig-lbl{font-size:8px;color:#666}
+.ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:5px;line-height:1.5}
+@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<div class="hdr">
+  <div class="store">${escHtml(storeName)}</div>
+  ${storeAddr  ? `<div class="store-sub">${escHtml(storeAddr)}</div>`  : ''}
+  ${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}
+</div>
+<div class="title-bar">REPAIR TICKET</div>
+<div class="sec">
+  <div class="row"><span class="lbl">Ticket #</span><span class="val tkt">${escHtml(ticketNum)}</span></div>
+  <div class="row"><span class="lbl">Date</span><span class="val">${new Date().toLocaleDateString()}</span></div>
+  <div class="row"><span class="lbl">Status</span><span class="val"><span class="badge">${escHtml(safe(payload.status))}</span></span></div>
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">Customer</div>
+  <div class="row"><span class="lbl">Name</span><span class="val">${escHtml(safe(payload.customerName))}</span></div>
+  ${payload.customerPhone ? `<div class="row"><span class="lbl">Phone</span><span class="val">${escHtml(safe(payload.customerPhone))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">Device</div>
+  <div class="row"><span class="lbl">Device</span><span class="val">${escHtml(deviceLabel)}</span></div>
+  ${payload.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val" style="font-family:monospace;font-size:9px">${escHtml(safe(payload.imei))}</span></div>` : ''}
+</div>
+<div class="dash"></div>
+<div class="sec">
+  <div class="sec-lbl">Issue / Service</div>
+  <div style="font-size:9px;line-height:1.4;word-break:break-word">${escHtml(safe(payload.issue))}</div>
+  ${payload.notes ? `<div style="font-size:8.5px;color:#555;margin-top:3px;word-break:break-word">${escHtml(safe(payload.notes))}</div>` : ''}
+</div>
+${financialSection}
+<div class="ftr">Thank you for your business!<br>${escHtml(storeName)}</div>
+</body></html>`;
+
     printHtml(html, {
       silent: false,
       printer: settings.detectedPrinters?.[0],

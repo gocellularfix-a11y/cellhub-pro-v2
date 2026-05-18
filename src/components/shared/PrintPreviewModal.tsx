@@ -82,6 +82,7 @@ export default function PrintPreviewModal({
   // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
   const [pageRangeMode, setPageRangeMode] = useState<'all' | 'custom'>('all');
   const [pageRangeInput, setPageRangeInput] = useState<string>('');
+  const [pageRangeError, setPageRangeError] = useState<string | null>(null);
 
   // ── Load printers on open ─────────────────────────────────
   useEffect(() => {
@@ -128,6 +129,15 @@ export default function PrintPreviewModal({
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = async () => {
     if (!window.electronAPI?.printRun || !selectedPrinter) return;
+    // Validate custom page range before sending to printer
+    if (pageRangeMode === 'custom') {
+      const parsed = parsePageRanges(pageRangeInput);
+      if (pageRangeInput.trim() && !parsed) {
+        setPageRangeError('Invalid range. Use: 1 · 1-2 · 1,3 · 1-2,4');
+        return;
+      }
+      setPageRangeError(null);
+    }
     try { localStorage.setItem('cellhub_lastPrinter', selectedPrinter); } catch {}
     setPrinting(true);
     setPrintResult(null);
@@ -361,51 +371,71 @@ export default function PrintPreviewModal({
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              step={1}
-              value={copiesInput}
-              onChange={(e) => {
-                const raw = e.target.value;
-                setCopiesInput(raw);
-                const n = parseInt(raw, 10);
-                if (Number.isFinite(n) && n >= 1 && n <= 99) {
-                  setCopies(n);
-                }
-              }}
-              onBlur={() => {
-                const n = parseInt(copiesInput, 10);
-                const clamped = Number.isFinite(n) ? Math.min(99, Math.max(1, n)) : 1;
-                setCopies(clamped);
-                setCopiesInput(String(clamped));
-              }}
-              style={{ ...inputStyle, width: '100%' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                onClick={() => { const n = Math.max(1, copies - 1); setCopies(n); setCopiesInput(String(n)); }}
+                style={stepperBtnStyle}
+              >−</button>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                step={1}
+                value={copiesInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setCopiesInput(raw);
+                  const n = parseInt(raw, 10);
+                  if (Number.isFinite(n) && n >= 1 && n <= 99) {
+                    setCopies(n);
+                  }
+                }}
+                onBlur={() => {
+                  const n = parseInt(copiesInput, 10);
+                  const clamped = Number.isFinite(n) ? Math.min(99, Math.max(1, n)) : 1;
+                  setCopies(clamped);
+                  setCopiesInput(String(clamped));
+                }}
+                style={{ ...inputStyle, flex: 1, textAlign: 'center' }}
+              />
+              <button
+                onClick={() => { const n = Math.min(99, copies + 1); setCopies(n); setCopiesInput(String(n)); }}
+                style={stepperBtnStyle}
+              >+</button>
+            </div>
           </Field>
 
-          {/* R-PRINT-PAGE-RANGES-V1: page-range picker. "All" = print every
-              page (default). "Custom" exposes a free-text input the owner
-              fills with page numbers / ranges (e.g., "1", "2", "1-2",
-              "1,3"). Empty/invalid input falls back to all pages. */}
+          {/* Page range picker */}
           <Field label="Pages">
             <select
               value={pageRangeMode}
-              onChange={(e) => setPageRangeMode(e.target.value as 'all' | 'custom')}
+              onChange={(e) => {
+                setPageRangeMode(e.target.value as 'all' | 'custom');
+                setPageRangeError(null);
+              }}
               style={selectStyle}
             >
               <option value="all">All pages</option>
               <option value="custom">Custom range…</option>
             </select>
             {pageRangeMode === 'custom' && (
-              <input
-                type="text"
-                value={pageRangeInput}
-                onChange={(e) => setPageRangeInput(e.target.value)}
-                placeholder="e.g., 1 or 1-2 or 1,3"
-                style={{ ...inputStyle, marginTop: '0.4rem', width: '100%' }}
-              />
+              <>
+                <input
+                  type="text"
+                  value={pageRangeInput}
+                  onChange={(e) => { setPageRangeInput(e.target.value); setPageRangeError(null); }}
+                  placeholder="e.g., 1  ·  1-2  ·  1,3  ·  1-2,4"
+                  style={{
+                    ...inputStyle, marginTop: '0.4rem', width: '100%',
+                    borderColor: pageRangeError ? '#ef4444' : 'rgba(255,255,255,0.12)',
+                  }}
+                />
+                {pageRangeError && (
+                  <div style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>
+                    ⚠ {pageRangeError}
+                  </div>
+                )}
+              </>
             )}
           </Field>
 
@@ -439,11 +469,16 @@ export default function PrintPreviewModal({
             }}>
               Cancel
             </button>
-            <button onClick={handlePrint} disabled={printing || !selectedPrinter} style={{
-              flex: 2, padding: '0.65rem', borderRadius: '0.5rem', border: 'none',
-              background: printing ? '#334155' : '#3b82f6', color: '#fff', cursor: printing ? 'wait' : 'pointer',
-              fontSize: '0.9rem', fontWeight: 700, opacity: !selectedPrinter ? 0.5 : 1,
-            }}>
+            <button
+              onClick={handlePrint}
+              disabled={printing || !selectedPrinter || (pageRangeMode === 'custom' && !!pageRangeError)}
+              style={{
+                flex: 2, padding: '0.65rem', borderRadius: '0.5rem', border: 'none',
+                background: printing ? '#334155' : '#3b82f6', color: '#fff', cursor: printing ? 'wait' : 'pointer',
+                fontSize: '0.9rem', fontWeight: 700,
+                opacity: (!selectedPrinter || (pageRangeMode === 'custom' && !!pageRangeError)) ? 0.5 : 1,
+              }}
+            >
               {printing ? '⏳ Printing...' : `🖨️ Print${copies > 1 ? ` (×${copies})` : ''}`}
             </button>
           </div>
@@ -478,7 +513,7 @@ export default function PrintPreviewModal({
             <iframe
               srcDoc={scaledHtml}
               title="Print preview"
-              sandbox=""
+              sandbox="allow-same-origin"
               style={{
                 width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
                 height: landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
@@ -521,4 +556,10 @@ const inputStyle: React.CSSProperties = {
   padding: '0.4rem 0.5rem', fontSize: '0.85rem',
   background: '#1e293b', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.12)',
   borderRadius: '0.4rem', outline: 'none',
+};
+
+const stepperBtnStyle: React.CSSProperties = {
+  width: '32px', height: '32px', flexShrink: 0, borderRadius: '0.4rem', border: 'none',
+  background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', cursor: 'pointer',
+  fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
