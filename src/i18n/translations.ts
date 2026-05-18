@@ -6004,6 +6004,36 @@ export const translations: TranslationDictionary = {
     es: (name: string, days: string) => `📊 ${name} — sin ventas en ${days} días`,
     pt: (name: string, days: string) => `📊 ${name} — sem vendas em ${days} dias`,
   },
+  'ambient.unlock.ready': {
+    en: (name: string, device: string) => `✅ ${name} — unlock code for ${device} ready, deliver now`,
+    es: (name: string, device: string) => `✅ ${name} — código de unlock para ${device} listo, entregar ahora`,
+    pt: (name: string, device: string) => `✅ ${name} — código de desbloqueio para ${device} pronto, entregar agora`,
+  },
+  'ambient.unlock.waiting': {
+    en: (name: string, days: string | number) => `⏳ ${name} — waiting on supplier for ${days} day(s)`,
+    es: (name: string, days: string | number) => `⏳ ${name} — esperando proveedor ${days} día(s)`,
+    pt: (name: string, days: string | number) => `⏳ ${name} — aguardando fornecedor por ${days} dia(s)`,
+  },
+  'ambient.unlock.balance': {
+    en: (name: string, amount: string) => `💰 ${name} — unlock balance ${amount} pending`,
+    es: (name: string, amount: string) => `💰 ${name} — balance de unlock ${amount} pendiente`,
+    pt: (name: string, amount: string) => `💰 ${name} — saldo de desbloqueio ${amount} pendente`,
+  },
+  'ambient.specialorder.arrived': {
+    en: (name: string, item: string) => `📦 ${name} — ${item} arrived, notify customer`,
+    es: (name: string, item: string) => `📦 ${name} — llegó ${item}, notificar al cliente`,
+    pt: (name: string, item: string) => `📦 ${name} — ${item} chegou, notificar cliente`,
+  },
+  'ambient.specialorder.waiting': {
+    en: (name: string, days: string | number) => `⏳ ${name} — order in transit ${days} day(s), no update`,
+    es: (name: string, days: string | number) => `⏳ ${name} — orden en tránsito ${days} día(s), sin actualización`,
+    pt: (name: string, days: string | number) => `⏳ ${name} — pedido em trânsito ${days} dia(s), sem atualização`,
+  },
+  'ambient.specialorder.balance': {
+    en: (name: string, amount: string) => `💰 ${name} — special order balance ${amount} pending`,
+    es: (name: string, amount: string) => `💰 ${name} — balance de orden especial ${amount} pendiente`,
+    pt: (name: string, amount: string) => `💰 ${name} — saldo de pedido especial ${amount} pendente`,
+  },
 
   // R-INTELLIGENCE-MANAGER-QUEUE-V1 — manager queue UI + chat keys
   'mq.sectionTitle':    { en: 'Manager Queue', es: 'Cola del Gerente', pt: 'Fila do Gerente' },

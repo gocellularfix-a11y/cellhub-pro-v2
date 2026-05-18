@@ -39,6 +39,7 @@ import {
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { emitUnlockAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { escHtml } from '@/utils/escHtml';
 
 // Typed accessor for `taxable` — present at runtime but absent from the Unlock interface.
@@ -110,7 +111,8 @@ export default function UnlockModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active unlock entity so Intelligence
   // surfaces contextual recommendations for this specific ticket.
-  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: emit passive ambient hint on entity open;
+  // clear entity context when modal closes to prevent stale context bleed.
   useEffect(() => {
     if (editUnlock) {
       setIntelligenceContext({
@@ -118,6 +120,7 @@ export default function UnlockModule() {
         activeUnlockId: editUnlock.id,
         activeCustomerId: (editUnlock as any).customerId ?? undefined,
       });
+      emitUnlockAmbient(editUnlock);
     } else {
       clearEntityContext();
     }

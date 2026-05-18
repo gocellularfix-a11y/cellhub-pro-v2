@@ -39,6 +39,7 @@ import {
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { escHtml } from '@/utils/escHtml';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
+import { emitSpecialOrderAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
 // FIX Bug 1+2: Added In Transit, Received, Ready so those orders aren't invisible
 const STATUSES = ['All', 'Ordered', 'In Transit', 'Received', 'Ready', 'Picked Up', 'Cancelled'];
@@ -111,7 +112,8 @@ export default function SpecialOrdersModule() {
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active special order entity so
   // Intelligence surfaces contextual recommendations for this specific ticket.
-  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: clear entity context on modal close.
+  // R-INTELLIGENCE-AMBIENT-AWARENESS-V1: emit passive ambient hint on entity open;
+  // clear entity context when modal closes to prevent stale context bleed.
   useEffect(() => {
     if (editOrder) {
       setIntelligenceContext({
@@ -119,6 +121,7 @@ export default function SpecialOrdersModule() {
         activeSpecialOrderId: editOrder.id,
         activeCustomerId: (editOrder as any).customerId ?? undefined,
       });
+      emitSpecialOrderAmbient(editOrder);
     } else {
       clearEntityContext();
     }

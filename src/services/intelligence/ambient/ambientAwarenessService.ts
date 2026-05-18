@@ -9,7 +9,7 @@
 //  - Never fires for terminal entities (cancelled, completed, picked_up)
 //  - No network, no store access — pure in-memory computation over args passed in
 
-import type { Repair, Layaway, InventoryItem } from '@/store/types';
+import type { Repair, Layaway, InventoryItem, Unlock, SpecialOrder } from '@/store/types';
 import { calculateLayawayTotals } from '@/services/layaway/payments';
 
 // ── Event shape ───────────────────────────────────────────────────────────────
@@ -204,6 +204,108 @@ export function emitInventoryAmbient(
     if (!canShow(key)) return;
     markShown(key);
     emit({ i18nKey: 'ambient.inventory.dead', args: [name, daysWithoutSale], severity: 'info' });
+  }
+}
+
+// ── Unlock ────────────────────────────────────────────────────────────────────
+
+const UNLOCK_TERMINAL_AMBIENT = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * Call when an unlock modal opens. Fires ambient hint if:
+ *   - Code is received and not yet delivered (unlockCode present, not terminal)
+ *   - Waiting on supplier 3+ days without a code
+ *   - Unpaid balance ≥ $5
+ * No hint for terminal statuses.
+ */
+export function emitUnlockAmbient(unlock: Unlock): void {
+  const s = String(unlock.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+  if (UNLOCK_TERMINAL_AMBIENT.has(s)) return;
+
+  const name = unlock.customerName || `#${unlock.id.slice(-6).toUpperCase()}`;
+  const device = unlock.device || 'device';
+
+  if (unlock.unlockCode) {
+    const key = `unlock_ready:${unlock.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({ i18nKey: 'ambient.unlock.ready', args: [name, device], severity: 'info' });
+    return;
+  }
+
+  const days = daysSince(unlock.createdAt);
+  if (days >= 3) {
+    const key = `unlock_waiting:${unlock.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({
+      i18nKey: 'ambient.unlock.waiting',
+      args: [name, days],
+      severity: days >= 7 ? 'alert' : 'info',
+    });
+    return;
+  }
+
+  if (unlock.balance >= 500) {
+    const key = `unlock_balance:${unlock.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({
+      i18nKey: 'ambient.unlock.balance',
+      args: [name, `$${(unlock.balance / 100).toFixed(2)}`],
+      severity: 'info',
+    });
+  }
+}
+
+// ── Special Order ─────────────────────────────────────────────────────────────
+
+const SO_TERMINAL_AMBIENT = new Set(['picked_up', 'cancelled', 'refunded']);
+
+/**
+ * Call when a special order modal opens. Fires ambient hint if:
+ *   - Item arrived (received/ready) — notify customer
+ *   - Still waiting 5+ days without status change
+ *   - Unpaid balance ≥ $5
+ * No hint for terminal statuses.
+ */
+export function emitSpecialOrderAmbient(order: SpecialOrder): void {
+  const s = String(order.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+  if (SO_TERMINAL_AMBIENT.has(s)) return;
+
+  const name = order.customerName || `#${order.id.slice(-6).toUpperCase()}`;
+  const item = order.itemDescription || 'item';
+
+  if (s === 'received' || s === 'ready') {
+    const key = `so_arrived:${order.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({ i18nKey: 'ambient.specialorder.arrived', args: [name, item], severity: 'info' });
+    return;
+  }
+
+  const days = daysSince(order.createdAt);
+  if ((s === 'ordered' || s === 'in_transit') && days >= 5) {
+    const key = `so_waiting:${order.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({
+      i18nKey: 'ambient.specialorder.waiting',
+      args: [name, days],
+      severity: days >= 14 ? 'alert' : 'info',
+    });
+    return;
+  }
+
+  if (order.balance >= 500) {
+    const key = `so_balance:${order.id}`;
+    if (!canShow(key)) return;
+    markShown(key);
+    emit({
+      i18nKey: 'ambient.specialorder.balance',
+      args: [name, `$${(order.balance / 100).toFixed(2)}`],
+      severity: 'info',
+    });
   }
 }
 
