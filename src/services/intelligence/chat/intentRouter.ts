@@ -1279,17 +1279,25 @@ export function enrichFollowUpQuery(
 // Scored high (90+) so it wins over global opportunity intents when the user
 // is clearly asking about the currently open repair/customer/layaway/item.
 const ACTIVE_CONTEXT_KEYWORDS = [
-  // EN
+  // EN — explicit entity references
   'what about this', 'anything on this', 'tell me about this',
   'info on this', 'info on current', 'current item', 'current repair',
   'this repair', 'this customer', 'this layaway', 'this item',
   'what can i do with this', 'help me with this',
-  // ES
+  // EN — lightweight contextual prompts
+  'what should i do here', 'anything important', 'what should i know',
+  'recommendation', 'advise me', 'next step', "what's next", 'status check',
+  'what do i do', 'what now', 'help me here', 'any action needed',
+  // ES — referencias explícitas
   'qué pasa con esto', 'que pasa con esto', 'algo sobre esto',
   'qué hay de esto', 'que hay de esto', 'este cliente',
   'esta reparación', 'esta reparacion', 'este layaway', 'este artículo',
   'este articulo', 'cuéntame de esto', 'cuentame de esto',
   'qué hago con esto', 'que hago con esto',
+  // ES — prompts contextuales ligeros
+  'qué hago aquí', 'que hago aqui', 'algo importante', 'qué debo saber',
+  'que debo saber', 'recomendación', 'recomendacion', 'siguiente paso',
+  'qué sigue', 'que sigue', 'aconséjame', 'aconsejame', 'qué procede', 'que procede',
 ];
 
 const WHAT_TO_DO_TODAY_KEYWORDS = [

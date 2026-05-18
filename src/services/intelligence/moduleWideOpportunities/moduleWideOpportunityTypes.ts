@@ -4,7 +4,7 @@
 
 import type { Repair, Layaway, Customer, Sale, InventoryItem } from '@/store/types';
 
-export type OpportunityModule = 'repairs' | 'inventory' | 'customers' | 'layaways' | 'approvals';
+export type OpportunityModule = 'repairs' | 'inventory' | 'customers' | 'layaways' | 'approvals' | 'unlocks' | 'special_orders';
 export type OpportunitySeverity = 'critical' | 'high' | 'medium' | 'low';
 export type OpportunityConfidence = 'high' | 'medium' | 'low';
 
@@ -16,6 +16,8 @@ export type OpportunityActionType =
   | 'open_layaway'
   | 'queue_manager_review'
   | 'open_inventory'
+  | 'open_unlock'
+  | 'open_special_order'
   | 'callback_reminder';
 
 export interface ExecutableOpportunityAction {

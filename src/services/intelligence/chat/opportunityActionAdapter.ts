@@ -67,6 +67,22 @@ export function buildChatActionsFromOpportunity(
           executionTarget: 'open_inventory',
         };
         break;
+      case 'open_unlock':
+        payload = {
+          type: 'review',
+          entityId: act.entityId,
+          executable: Boolean(act.entityId),
+          executionTarget: 'open_unlock',
+        };
+        break;
+      case 'open_special_order':
+        payload = {
+          type: 'review',
+          entityId: act.entityId,
+          executable: Boolean(act.entityId),
+          executionTarget: 'open_special_order',
+        };
+        break;
       case 'queue_manager_review':
         payload = {
           type: 'review',
@@ -106,6 +122,8 @@ function dedupeKey(action: ChatActionUI): string {
     case 'open_customer':
     case 'open_layaway':
     case 'open_inventory':
+    case 'open_unlock':
+    case 'open_special_order':
       return `${t}:${action.payload.entityId ?? ''}`;
     case 'reminder_queue':
       return `reminder:${action.payload.customerId ?? action.payload.customerName ?? ''}`;

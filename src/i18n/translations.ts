@@ -5942,6 +5942,36 @@ export const translations: TranslationDictionary = {
     es: (name: string, days: string) => `Artículo activo — ${name} sin ventas en ${days} días — considera un descuento`,
     pt: (name: string, days: string) => `Item ativo — ${name} sem vendas em ${days} dias — considere um desconto`,
   },
+  'ctx.unlock.ready': {
+    en: (name: string, device: string) => `Active unlock — ${name}'s ${device} code is ready, deliver to customer`,
+    es: (name: string, device: string) => `Unlock activo — código de ${name} (${device}) listo, entregar al cliente`,
+    pt: (name: string, device: string) => `Desbloqueio ativo — código de ${name} (${device}) pronto, entregar ao cliente`,
+  },
+  'ctx.unlock.waiting': {
+    en: (name: string, days: string) => `Active unlock — ${name}'s order waiting on supplier for ${days} day(s)`,
+    es: (name: string, days: string) => `Unlock activo — pedido de ${name} esperando proveedor ${days} día(s)`,
+    pt: (name: string, days: string) => `Desbloqueio ativo — pedido de ${name} aguardando fornecedor ${days} dia(s)`,
+  },
+  'ctx.unlock.balance': {
+    en: (name: string, amount: string) => `Active unlock — ${name} has an outstanding balance of ${amount}`,
+    es: (name: string, amount: string) => `Unlock activo — ${name} tiene balance pendiente de ${amount}`,
+    pt: (name: string, amount: string) => `Desbloqueio ativo — ${name} tem saldo pendente de ${amount}`,
+  },
+  'ctx.specialorder.arrived': {
+    en: (name: string, item: string) => `Active special order — ${name}'s ${item} has arrived, notify customer`,
+    es: (name: string, item: string) => `Orden especial activa — llegó ${item} de ${name}, notificar al cliente`,
+    pt: (name: string, item: string) => `Pedido especial ativo — ${item} de ${name} chegou, notificar cliente`,
+  },
+  'ctx.specialorder.ordered': {
+    en: (name: string, days: string) => `Active special order — ${name}'s item is ${days} day(s) in — follow up with supplier`,
+    es: (name: string, days: string) => `Orden especial activa — artículo de ${name} lleva ${days} día(s) — dar seguimiento al proveedor`,
+    pt: (name: string, days: string) => `Pedido especial ativo — item de ${name} está ${days} dia(s) — acompanhe o fornecedor`,
+  },
+  'ctx.specialorder.balance': {
+    en: (name: string, amount: string) => `Active special order — ${name} has an outstanding balance of ${amount}`,
+    es: (name: string, amount: string) => `Orden especial activa — ${name} tiene balance pendiente de ${amount}`,
+    pt: (name: string, amount: string) => `Pedido especial ativo — ${name} tem saldo pendente de ${amount}`,
+  },
 
   // R-INTELLIGENCE-AMBIENT-AWARENESS-V1 — passive bubble hint pills
   'ambient.repair.overdue': {
@@ -6023,9 +6053,11 @@ export const translations: TranslationDictionary = {
   'oppo.action.openRepair':    { en: 'Open Ticket',      es: 'Abrir Ticket',         pt: 'Abrir Ticket' },
   'oppo.action.openCustomer':  { en: 'Open Customer',    es: 'Ver Cliente',          pt: 'Ver Cliente' },
   'oppo.action.openLayaway':   { en: 'Open Layaway',     es: 'Ver Layaway',          pt: 'Ver Layaway' },
-  'oppo.action.openInventory': { en: 'Open Item',        es: 'Ver Artículo',         pt: 'Ver Item' },
-  'oppo.action.review':        { en: 'Review Now',       es: 'Revisar Ahora',        pt: 'Revisar Agora' },
-  'oppo.action.reminder':      { en: 'Add Reminder',     es: 'Agregar Recordatorio', pt: 'Adicionar Lembrete' },
+  'oppo.action.openInventory':    { en: 'Open Item',        es: 'Ver Artículo',         pt: 'Ver Item' },
+  'oppo.action.openUnlock':       { en: 'Open Unlock',      es: 'Ver Unlock',           pt: 'Ver Desbloqueio' },
+  'oppo.action.openSpecialOrder': { en: 'Open Order',       es: 'Ver Orden',            pt: 'Ver Pedido' },
+  'oppo.action.review':           { en: 'Review Now',       es: 'Revisar Ahora',        pt: 'Revisar Agora' },
+  'oppo.action.reminder':         { en: 'Add Reminder',     es: 'Agregar Recordatorio', pt: 'Adicionar Lembrete' },
 
   'intelligence.console.actionQueueTitle':     { en: '🗂️ Action Queue',                                             es: '🗂️ Cola de Acciones',                                                  pt: '🗂️ Fila de Ações' },
   'intelligence.console.queueEmpty':           { en: 'No pending actions. Generate a campaign or ask who to contact.', es: 'Sin acciones pendientes. Genera una campaña o pregunta a quién contactar.', pt: 'Sem ações pendentes. Gere uma campanha ou pergunte quem contatar.' },
