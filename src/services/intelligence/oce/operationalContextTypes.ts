@@ -10,6 +10,7 @@ export type OperationalModule =
   | 'phone_payments'
   | 'layaways'
   | 'special_orders'
+  | 'unlocks'
   | 'approvals'
   | 'outreach'
   | 'reports'

@@ -684,18 +684,25 @@ const OPERATIONAL_CONTEXT_STATUS_KEYWORDS = [
   'status do contexto operacional', 'o que intelligence pode ver',
 ];
 
-// R-GPO-V1: global priority orchestrator — what matters most right now
+// R-GPO-V1 / R-GLOBAL-OPERATOR-CONSOLE-V1: what matters most right now
 const GLOBAL_PRIORITY_STATUS_KEYWORDS = [
   // EN
   'top priorities', 'what matters most', 'operational priorities',
   'global priorities', 'what needs attention right now', 'priority status',
   'most important right now', 'what should i focus on', 'priorities right now',
+  'urgent actions', 'operator brief', 'store priorities', 'priority list',
+  'what to focus on', 'what should i do right now', 'most urgent',
+  'critical actions', 'top action', 'most pressing',
   // ES
   'prioridades operativas', 'prioridades principales', 'qué importa más',
   'que importa mas', 'prioridades ahora', 'en qué enfocarse',
   'qué debo atender', 'que debo atender',
+  'acciones urgentes', 'resumen operativo', 'qué hacer ahora',
+  'lista de prioridades', 'lo más urgente', 'acción más importante',
   // PT
   'prioridades operacionais', 'o que importa mais', 'prioridades agora',
+  'ações urgentes', 'resumo operacional', 'o que fazer agora',
+  'lista de prioridades', 'mais urgente',
 ];
 
 // R-SMART-OUTREACH-CAMPAIGN-V1: grouped operational outreach campaign.

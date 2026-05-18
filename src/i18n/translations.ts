@@ -5998,6 +5998,11 @@ export const translations: TranslationDictionary = {
     pt: (name: string, amount: string) => `Pedido especial ativo — ${name} tem saldo pendente de ${amount}`,
   },
 
+  // R-GLOBAL-OPERATOR-CONSOLE-V1 — store-wide priority output headers
+  'goc.header': { en: '**Store Priorities**',                                                                       es: '**Prioridades de la Tienda**',                                             pt: '**Prioridades da Loja**'                                               },
+  'goc.empty':  { en: 'No operational priorities detected. Store looks stable.',                                    es: 'No se detectaron prioridades operativas. La tienda se ve estable.',         pt: 'Nenhuma prioridade operacional detectada. A loja parece estável.'       },
+  'goc.others': { en: '**Other important items:**',                                                                 es: '**Otros elementos importantes:**',                                         pt: '**Outros itens importantes:**'                                          },
+
   // R-NEXT-BEST-ACTION-ENGINE-V1 — NBA output headers + action headlines
   'nba.header': { en: '**Priority action:**', es: '**Acción prioritaria:**', pt: '**Ação prioritária:**' },
   'nba.why':    { en: '**Why:**',             es: '**Por qué:**',            pt: '**Por quê:**'          },
