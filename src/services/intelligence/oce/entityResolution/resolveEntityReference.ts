@@ -11,6 +11,7 @@ import {
   matchKeywordReference,
   matchPriorityEntity,
 } from './entityMatchers';
+import { matchActiveMemory } from './activeEntityMemory';
 
 /**
  * Returns true if the query contains a word that signals a contextual entity reference
@@ -38,13 +39,20 @@ function hasFollowUpSignal(q: string): boolean {
  *      Pattern-extracted phone number, ticket number (R-XXXX, LAY-XXXX), or SKU.
  *      Highest confidence (0.9–0.95). Caller must look up extracted identifier in store.
  *
- *   2+3. RECENT CONTEXT + ACTIVE FOLLOW-UP ENTITY
+ *   2. RECENT CONTEXT
  *      Keyword-driven pronoun/phrase resolution against session context or OCE signals.
  *      Handles: "that customer", "him", "her", "that repair", "that phone",
  *               "the unpaid one", "the overdue repair", "the last one",
  *               "open it", "this one", layaway/repair follow-ups.
  *      Only attempted when hasFollowUpSignal() is true (guards against false triggers).
  *      Confidence 0.7–0.8.
+ *
+ *   3. ACTIVE FOLLOW-UP ENTITY (R-GOER-V3)
+ *      Session-only entity memory populated whenever GOER resolves an entity.
+ *      Used when no OperationalContext session slot is set but the user previously
+ *      resolved an entity in the same session ("open it" after viewing a repair).
+ *      Only attempted when hasFollowUpSignal() is true.
+ *      Confidence 0.65–0.7.
  *
  *   4. OPERATIONAL PRIORITY ENTITY
  *      Highest-score actionable OCE signal matching an entity type word in the query.
@@ -95,10 +103,14 @@ export function resolveEntityReference(
   const inventory = matchExplicitInventory(q);
   if (inventory) return inventory;
 
-  // ── 2+3. Recent context + active follow-up entity ─────────────────────────
+  // ── 2. Recent context ────────────────────────────────────────────────────
   if (hasFollowUpSignal(q)) {
     const keyword = matchKeywordReference(q, operationalContext);
     if (keyword) return keyword;
+
+    // ── 3. Active follow-up entity (session memory) ───────────────────────
+    const fromMemory = matchActiveMemory(q);
+    if (fromMemory) return fromMemory;
   }
 
   // ── 4. Operational priority entity ───────────────────────────────────────

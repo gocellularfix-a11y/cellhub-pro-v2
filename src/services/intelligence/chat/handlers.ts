@@ -128,6 +128,8 @@ import type { EntityIntentResult } from '../entityAccess/entityIntentResolver';
 import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
 // R-GOER-V2: deterministic follow-up entity resolution
 import { resolveEntityReference } from '../oce/entityResolution/resolveEntityReference';
+// R-GOER-V3: session-only active entity memory
+import { rememberResolvedEntity } from '../oce/entityResolution/activeEntityMemory';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -5445,6 +5447,10 @@ function handleGoerFollowUp(
   const tc = tChat(lang);
   const goer = resolveEntityReference({ query, operationalContext });
   if (!goer) return null;
+
+  // R-GOER-V3: stamp the resolved entity into session memory so subsequent
+  // follow-ups ("open it", "contact him") can resolve without re-stating.
+  rememberResolvedEntity(goer);
 
   if (goer.type === 'customer') {
     const c = engine.getCustomers().find(
