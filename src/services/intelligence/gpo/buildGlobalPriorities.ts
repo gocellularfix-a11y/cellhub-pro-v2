@@ -27,6 +27,13 @@ function highestSeverity(signals: OperationalSignal[]): 'critical' | 'high' | 'm
 
 // ── Title builders (English — callers format with their own i18n if needed) ──
 
+// Per-category signal caps applied before priority assembly.
+// Signals are pre-sorted by severity→score, so slicing keeps the most critical.
+// business_risk has no natural aggregate — without a cap "43 risks" renders as noise.
+const CATEGORY_SIGNAL_CAP: Partial<Record<OperationalPriorityCategory, number>> = {
+  business_risk: 10,
+};
+
 function buildTitle(category: OperationalPriorityCategory, signals: OperationalSignal[]): string {
   const n = signals.length;
   switch (category) {
@@ -52,7 +59,8 @@ function buildTitle(category: OperationalPriorityCategory, signals: OperationalS
       return `${total} inventory item${total !== 1 ? 's' : ''} need attention`;
     }
     case 'business_risk':
-      return n === 1 ? signals[0].title : `${n} business risk${n !== 1 ? 's' : ''} detected`;
+      if (n === 1) return signals[0].title;
+      return `${signals[0].title} (+${n - 1} more)`;
     case 'system_attention':
       return `${n} item${n !== 1 ? 's' : ''} need attention`;
   }
@@ -99,8 +107,11 @@ export function buildGlobalPriorities(
   const groups = groupSignalsByCategory(snapshot.signals);
   const priorities: AggregatedPriority[] = [];
 
-  for (const [category, signals] of groups) {
-    if (signals.length === 0) continue;
+  for (const [category, rawSignals] of groups) {
+    if (rawSignals.length === 0) continue;
+
+    const cap = CATEGORY_SIGNAL_CAP[category];
+    const signals = cap && rawSignals.length > cap ? rawSignals.slice(0, cap) : rawSignals;
 
     const severity  = highestSeverity(signals);
     const title     = buildTitle(category, signals);

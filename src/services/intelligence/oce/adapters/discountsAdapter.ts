@@ -30,7 +30,7 @@ const discountsAdapter: OperationalModuleAdapter = {
     if (opps.length === 0) return [];
 
     return opps.map((opp, i) => ({
-      id: `approvals:margin_risk:${i}:${now}`,
+      id: `approvals:margin_risk:discount:${opp.summaryKey ?? String(i)}`,
       type: 'margin_risk' as const,
       sourceModule: 'approvals' as const,
       severity: opp.severity === 'high' || opp.severity === 'critical' ? 'high' : 'medium',

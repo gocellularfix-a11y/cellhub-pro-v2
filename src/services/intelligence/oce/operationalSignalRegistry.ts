@@ -23,16 +23,18 @@ export function normalizeSignal(signal: OperationalSignal): OperationalSignal {
   };
 }
 
-// Dedupe by type + (entityId ?? '') + sourceModule — first occurrence wins.
+// Dedupe by signal id — ids are stable, unique per detection condition per adapter.
+// Prior type:entityId:sourceModule key collapsed all no-entityId signals from the
+// same module+type into one, silently dropping distinct detections (expenses, approvals,
+// employees, discounts adapters all affected).
 export function dedupeOperationalSignals(
   signals: OperationalSignal[],
 ): OperationalSignal[] {
   const seen = new Set<string>();
   const out: OperationalSignal[] = [];
   for (const s of signals) {
-    const key = `${s.type}:${s.entityId ?? ''}:${s.sourceModule}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
     out.push(s);
   }
   return out;
