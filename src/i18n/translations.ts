@@ -6809,6 +6809,13 @@ export const translations: TranslationDictionary = {
   'chat.followup.openCustomerHeader':{ en: 'Opening this customer profile:', es: 'Abriendo el perfil de este cliente:', pt: 'Abrindo o perfil deste cliente:' },
   // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: entity no longer in store
   'chat.followup.staleContext':      { en: 'That previous context is no longer available. Please ask again with the customer, product, or repair name.', es: 'Ese contexto anterior ya no está disponible. Pregunta de nuevo con el nombre del cliente, producto o reparación.', pt: 'Esse contexto anterior não está mais disponível. Pergunte novamente com o nome do cliente, produto ou reparo.' },
+  // R-GOER-V2: deterministic follow-up entity resolution strings
+  'chat.entityResolution.needMoreDetail':    { en: 'I need more context — mention the customer, repair number, or ticket.', es: 'Necesito más contexto — menciona el cliente, número de reparación o ticket.', pt: 'Preciso de mais contexto — mencione o cliente, número de reparo ou ticket.' },
+  'chat.entityResolution.resolvedCustomer':  { en: (n: string) => `Customer: **${n}**`, es: (n: string) => `Cliente: **${n}**`, pt: (n: string) => `Cliente: **${n}**` },
+  'chat.entityResolution.resolvedRepair':    { en: (n: string) => `Repair ticket: **${n}**`, es: (n: string) => `Ticket de reparación: **${n}**`, pt: (n: string) => `Ticket de reparo: **${n}**` },
+  'chat.entityResolution.resolvedInventory': { en: (n: string) => `Product: **${n}**`, es: (n: string) => `Producto: **${n}**`, pt: (n: string) => `Produto: **${n}**` },
+  'chat.entityResolution.resolvedLayaway':   { en: (n: string) => `Layaway: **${n}**`, es: (n: string) => `Apartado: **${n}**`, pt: (n: string) => `Layaway: **${n}**` },
+  'chat.entityResolution.resolvedSale':      { en: (n: string) => `Sale: **${n}**`, es: (n: string) => `Venta: **${n}**`, pt: (n: string) => `Venda: **${n}**` },
 
   // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
   'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },

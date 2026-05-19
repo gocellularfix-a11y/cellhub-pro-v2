@@ -126,6 +126,8 @@ import type { OperationalEntityMatch } from './entityResolver';
 import { resolveEntityIntent } from '../entityAccess/entityIntentResolver';
 import type { EntityIntentResult } from '../entityAccess/entityIntentResolver';
 import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
+// R-GOER-V2: deterministic follow-up entity resolution
+import { resolveEntityReference } from '../oce/entityResolution/resolveEntityReference';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -939,6 +941,17 @@ export function handleFollowUp(
       };
       return { kind: 'answer', text: t('chat.followup.openCustomerHeader'), actions: [action] };
     }
+  }
+
+  // R-GOER-V2: supplementary entity resolution for follow-up trigger phrases.
+  // Runs after the contact/open patterns above so existing behavior is unchanged.
+  // Covers: trigger phrases whose session context type is not yet handled above
+  // (e.g. "open it" with a layaway/product context), and explicit entity
+  // mentions (R-XXXX, phone) embedded in follow-up phrasing.
+  if (currentQuery && isGoerTrigger(cq)) {
+    const goerResp = handleGoerFollowUp(currentQuery, operationalContext, engine, lang);
+    if (goerResp) return goerResp;
+    return { kind: 'answer', text: t('chat.entityResolution.needMoreDetail') };
   }
 
   // "show more" — re-run previous list handler for fresh results
@@ -5412,6 +5425,107 @@ function buildEntityDisambiguation(
   };
 }
 
+// ── R-GOER-V2: safe follow-up resolver ───────────────────────────────────────
+// Deterministic entity resolution for follow-up trigger phrases.
+// Wired into handleFollowUp (session context) and handleOperationalEntityCommand
+// (OCE snapshot). Returns null → caller falls through to existing logic.
+
+const GOER_TRIGGER_RE = /\b(?:open (?:it|this)|show (?:it|this)|contact (?:him|her|them)|message (?:him|her)|that (?:customer|repair|product|layaway))\b/;
+
+function isGoerTrigger(q: string): boolean {
+  return GOER_TRIGGER_RE.test(q);
+}
+
+function handleGoerFollowUp(
+  query: string,
+  operationalContext: unknown,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse | null {
+  const tc = tChat(lang);
+  const goer = resolveEntityReference({ query, operationalContext });
+  if (!goer) return null;
+
+  if (goer.type === 'customer') {
+    const c = engine.getCustomers().find(
+      cu => cu.id === goer.customerId || (cu as any).phone === goer.customerId,
+    );
+    const name = c
+      ? String((c as any).name || '').trim() || goer.customerId
+      : goer.customerId;
+    const actions: ChatActionUI[] = [{
+      id: `goer-open-customer-${goer.customerId}`,
+      label: tc('chat.followup.openCustomerLabel'),
+      payload: { type: 'operator_action', entityId: goer.customerId, executable: true, executionTarget: 'open_customer' },
+    }];
+    if (c && (c as any).phone) {
+      actions.push({
+        id: `goer-wa-${goer.customerId}`,
+        label: `WhatsApp ${name}`,
+        payload: {
+          type: 'whatsapp',
+          customerId: goer.customerId,
+          customerName: name,
+          customerPhone: (c as any).phone,
+          executable: true,
+          executionTarget: 'whatsapp_url',
+        },
+      });
+    }
+    return { kind: 'answer', text: tc('chat.entityResolution.resolvedCustomer', name), actions };
+  }
+
+  if (goer.type === 'repair') {
+    const r = engine.getRepairs().find(re => re.id === goer.repairId);
+    const desc = r
+      ? `${(r as any).ticketNumber ?? goer.repairId}${(r as any).customerName ? ` — ${(r as any).customerName}` : ''}`
+      : goer.repairId;
+    return {
+      kind: 'answer',
+      text: tc('chat.entityResolution.resolvedRepair', desc),
+      actions: [{
+        id: `goer-open-repair-${goer.repairId}`,
+        label: tc('chat.followup.openRepairLabel'),
+        payload: { type: 'operator_action', entityId: goer.repairId, executable: true, executionTarget: 'open_repair' },
+      }],
+    };
+  }
+
+  if (goer.type === 'layaway') {
+    const l = engine.getLayaways().find(la => la.id === goer.layawayId);
+    const desc = l ? String((l as any).customerName ?? goer.layawayId) : goer.layawayId;
+    return {
+      kind: 'answer',
+      text: tc('chat.entityResolution.resolvedLayaway', desc),
+      actions: [{
+        id: `goer-open-layaway-${goer.layawayId}`,
+        label: lang === 'es' ? 'Abrir Apartado' : 'Open Layaway',
+        payload: { type: 'operator_action', entityId: goer.layawayId, executable: true, executionTarget: 'open_layaway' },
+      }],
+    };
+  }
+
+  if (goer.type === 'inventory') {
+    const inv = engine.getInventory().find(i => i.id === goer.sku || (i as any).sku === goer.sku);
+    const desc = inv ? String((inv as any).name ?? goer.sku) : goer.sku;
+    return {
+      kind: 'answer',
+      text: tc('chat.entityResolution.resolvedInventory', desc),
+      actions: [{
+        id: `goer-open-inv-${goer.sku}`,
+        label: lang === 'es' ? 'Ver Producto' : 'View Product',
+        payload: { type: 'operator_action', entityId: goer.sku, executable: true, executionTarget: 'open_inventory' },
+      }],
+    };
+  }
+
+  if (goer.type === 'sale') {
+    return { kind: 'answer', text: tc('chat.entityResolution.resolvedSale', goer.saleId) };
+  }
+
+  return null;
+}
+
 function handleOperationalEntityCommand(
   match: IntentMatch,
   engine: IntelligenceEngine,
@@ -5419,6 +5533,15 @@ function handleOperationalEntityCommand(
 ): ChatResponse {
   const es = lang === 'es';
   const rawQuery = match.query || '';
+
+  // R-GOER-V2: try deterministic follow-up resolution before entity intent lookup.
+  // Uses OCE snapshot for context (session context not available at this call site).
+  const q = rawQuery.toLowerCase().trim();
+  if (isGoerTrigger(q)) {
+    const goerResp = handleGoerFollowUp(rawQuery, buildOperationalContext(engine), engine, lang);
+    if (goerResp) return goerResp;
+    // GOER couldn't resolve — fall through to existing entity intent resolver
+  }
 
   const result: EntityIntentResult = resolveEntityIntent(rawQuery, engine);
 
