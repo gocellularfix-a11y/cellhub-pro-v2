@@ -115,6 +115,10 @@ export type IntentId =
   | 'fusion_insights'
   // INTELLIGENCE-ENTITY-INTEGRATION-V1: explicit operational command routing
   | 'entity_operational_command'
+  // INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1: active workflow follow-up
+  | 'workflow_continuity'
+  // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: unresolved mission/workflow pressure feed
+  | 'attention_feed'
   | 'fallback_question'
   | 'unknown';
 
@@ -1169,6 +1173,44 @@ const REPAIR_ESCALATE_KEYWORDS = [
 ];
 
 // INTELLIGENCE-ENTITY-INTEGRATION-V1
+// INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1
+// Short follow-up phrases only. Single bare words kept minimal to avoid
+// collision with analytics keyword banks. Ties broken in the handler by
+// resolveWorkflowFollowUp word-boundary check.
+const WORKFLOW_CONTINUITY_KEYWORDS = [
+  // EN — multi-word phrases (unambiguous)
+  'next step', 'what now', 'send it', 'send reminder', 'open it',
+  'mark complete', 'mark done',
+  // "continue" alone is low-collision in analytics context
+  'continue',
+  // ES
+  'siguiente paso', 'que sigue', 'qué sigue',
+  'enviar recordatorio', 'ábrelo', 'abrelo', 'marcar completo',
+  'continua', 'continuar', 'siguiente', 'listo',
+  // PT
+  'próximo passo', 'o que agora', 'enviar lembrete', 'concluir',
+];
+
+// INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: unresolved mission/workflow attention feed.
+// Includes overlapping phrases from WHAT_NEEDS_ATTENTION_KEYWORDS intentionally —
+// attention_feed is listed BEFORE what_needs_attention in the scores array, so it
+// wins tie-breaks and supersedes the old handler for shared phrases.
+const ATTENTION_FEED_KEYWORDS = [
+  // EN — distinctive
+  'attention', 'unfinished work', 'unresolved work', 'attention feed',
+  'show attention feed', 'show attention',
+  // EN — shared with what_needs_attention (wins via list-order tie-break)
+  'what needs attention', 'what needs my attention', 'what is urgent',
+  'urgent', 'prioritize', 'what am i missing',
+  // ES
+  'que necesita atencion', 'qué necesita atención', 'urgente',
+  'pendientes', 'trabajo pendiente', 'que me falta', 'qué me falta',
+  'pendiente urgente',
+  // PT
+  'atenção', 'urgente', 'pendente', 'trabalho pendente',
+  'pendentes', 'o que falta',
+];
+
 // Anchored 2-word command phrases only — no single words that would conflict
 // with analytics intents. Placement before customer_history guarantees win
 // on "show customer" / "open customer" tie-breaks.
@@ -1558,6 +1600,16 @@ export function classifyIntent(
     { id: 'vip_outreach',     score: scoreKeywords(query, VIP_OUTREACH_KEYWORDS) },
     { id: 'repair_follow_up', score: scoreKeywords(query, REPAIR_FOLLOW_UP_KEYWORDS) },
     { id: 'repair_escalate',  score: scoreKeywords(query, REPAIR_ESCALATE_KEYWORDS) },
+    // INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1: short follow-up phrases.
+    // Listed BEFORE entity_operational_command but AFTER repair_escalate so
+    // "follow up repair" / "open repair X" stay in their handlers (they score
+    // higher on those specific banks). Bare "continue" wins when analytics
+    // banks score 0.
+    { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: listed BEFORE what_needs_attention
+    // so attention_feed supersedes the old handler on shared phrases ("urgent",
+    // "what needs attention"). Also listed BEFORE daily_operator_brief.
+    { id: 'attention_feed', score: scoreKeywords(query, ATTENTION_FEED_KEYWORDS) },
     // INTELLIGENCE-ENTITY-INTEGRATION-V1: explicit command routing runs BEFORE
     // customer_history so "show customer X" / "open repair Y" routes here.
     // Listed AFTER repair_follow_up so "follow up repair" stays in its handler.
@@ -1671,6 +1723,23 @@ export function classifyIntent(
     return { id: 'fallback_question', confidence: 0, query: rawQuery };
   }
 
+  // INTELLIGENCE-ROUTING-TIEBREAK-FIX-V1: "what should i do [now]" and peer
+  // action phrases appear in DECISION_RECOMMENDATION_KEYWORDS as substrings,
+  // causing decision_recommendation to win via list-order over
+  // proactive_operations. Force the correct intent when one of these canonical
+  // action phrases is present and proactive_operations scored > 0.
+  const PROACTIVE_TIEBREAK_PHRASES = [
+    'what should i do', 'what should we do', 'what should i focus on',
+    'que hago', 'qué hago', 'que debo hacer', 'qué debo hacer',
+  ];
+  if (
+    winner.id === 'decision_recommendation' &&
+    PROACTIVE_TIEBREAK_PHRASES.some(p => query.includes(p)) &&
+    (scores.find(s => s.id === 'proactive_operations')?.score ?? 0) > 0
+  ) {
+    winner.id = 'proactive_operations';
+  }
+
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
 
@@ -1703,6 +1772,16 @@ export function classifyIntent(
   // INTELLIGENCE-ENTITY-INTEGRATION-V1: pass raw query so the handler can
   // run resolveEntityIntent on the full original string.
   if (winner.id === 'entity_operational_command') {
+    result.query = rawQuery;
+  }
+
+  // INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1: pass raw query for follow-up classification.
+  if (winner.id === 'workflow_continuity') {
+    result.query = rawQuery;
+  }
+
+  // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: pass raw query for context.
+  if (winner.id === 'attention_feed') {
     result.query = rawQuery;
   }
 

@@ -123,6 +123,9 @@ import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
 import { recordAttentionSignal } from '@/services/intelligence/attention/store';
+// INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1
+import { getAttentionFeed } from '@/services/intelligence/attention/attentionEngine';
+import { setAttentionPressure, severityToLevel } from '@/services/intelligence/attention/attentionPressureStore';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { useTranslation } from '@/i18n';
@@ -264,6 +267,19 @@ export default function IntelligenceModule() {
     setActiveIntelligenceEngine(engine);
     return () => { setActiveIntelligenceEngine(null); };
   }, [engine]);
+
+  // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: push attention pressure to
+  // the bubble bridge. Computed once per panel open (empty deps intentional —
+  // feed is a one-time snapshot, not a live subscription).
+  useEffect(() => {
+    const feed = getAttentionFeed(engineRef.current!);
+    const topSeverity = feed[0]?.severity ?? 0;
+    setAttentionPressure({
+      level: severityToLevel(feed.length, topSeverity),
+      count: feed.length,
+      topSeverity,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-INTELLIGENCE-MANAGER-QUEUE-V1: reload queue when a new item is pushed.
   const reloadQueue = useCallback(() => { setQueueItems(getQueue()); }, []);

@@ -64,6 +64,13 @@ import { loadActiveChainState, applyChainState, advanceChainStep, getCurrentStep
 import { getActionById } from '@/services/intelligence/actionExecution/actionExecutionRegistry';
 import { recordOutcome } from '@/services/intelligence/outcomes/outcomeStore';
 import { getOutcomeStats, getRecentlyCompletedChainTypes } from '@/services/intelligence/outcomes/outcomeSelectors';
+// INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: attention pressure bridge
+import {
+  getAttentionPressure,
+  subscribeAttentionPressure,
+  type AttentionLevel,
+  type AttentionPressure,
+} from '@/services/intelligence/attention/attentionPressureStore';
 
 // ── Constants ─────────────────────────────────────────────
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
@@ -614,6 +621,10 @@ export default function FloatingOperatorBubble() {
   // Tracks which suggestion's action was last clicked (for "Opened" flash).
   const [flashedSuggId, setFlashedSuggId] = useState<string | null>(null);
 
+  // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: attention pressure from bridge store.
+  const [attnPressure, setAttnPressure] = useState<AttentionPressure>(() => getAttentionPressure());
+  useEffect(() => subscribeAttentionPressure(() => setAttnPressure(getAttentionPressure())), []);
+
   // Incremented when chain step state changes (localStorage write) to trigger re-render.
   const [chainStateTick, setChainStateTick] = useState(0);
   // Set to chain type when whole chain completes — drives "Sequence complete" flash.
@@ -830,7 +841,31 @@ export default function FloatingOperatorBubble() {
           ? getTrendModeLabel(opHealth.storeRhythm.temporalTrend.trendMode)
           : previewText;
 
-  // ── Render decisions ───────────────────────────────────
+  // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: attention-level helpers.
+  // Badge and ring are only driven by the bridge store — never by polling.
+  function attnLevelColor(level: AttentionLevel): string | null {
+    switch (level) {
+      case 'critical': return 'rgba(239,68,68,0.85)';
+      case 'high':     return 'rgba(249,115,22,0.75)';
+      case 'medium':   return 'rgba(245,158,11,0.60)';
+      default:         return null;
+    }
+  }
+  function attnBadgePalette(level: AttentionLevel): { bg: string; fg: string } {
+    switch (level) {
+      case 'critical': return { bg: 'rgba(239,68,68,0.92)',  fg: '#fff' };
+      case 'high':     return { bg: 'rgba(249,115,22,0.88)', fg: '#fff' };
+      case 'medium':   return { bg: 'rgba(245,158,11,0.82)', fg: '#fff' };
+      case 'low':      return { bg: 'rgba(100,116,139,0.70)', fg: '#e2e8f0' };
+      default:         return { bg: 'transparent', fg: 'transparent' };
+    }
+  }
+  const attnRingColor = attnLevelColor(attnPressure.level);
+  const attnBadge     = attnBadgePalette(attnPressure.level);
+  const showAttnBadge = attnPressure.count > 0;
+  const showAttnRing  = attnRingColor !== null; // medium, high, critical only
+
+  // Render decisions
   const tooltip = isOverlayOpen
     ? t('operator.bubble.closeTooltip')
     : t('operator.bubble.openTooltip');
@@ -848,7 +883,7 @@ export default function FloatingOperatorBubble() {
   // Hint pill is a passive ambient surface. It hides while the overlay
   // is open (overlay shows the same hint inside its body).
   const showPill = enabled && bubbleState === 'ready' && !!hintText && !isDragging && !isOverlayOpen;
-  const showRing = enabled && (bubbleState === 'ready' || bubbleState === 'alert' || isUrgentContext);
+  const showRing = enabled && (bubbleState === 'ready' || bubbleState === 'alert' || isUrgentContext || showAttnRing);
 
   const statusLabel = t(`operator.status.${enabled ? bubbleState : 'sleeping'}`);
 
@@ -1061,20 +1096,24 @@ export default function FloatingOperatorBubble() {
           </svg>
         </span>
 
-        {/* Pulse ring — green for ready hints, amber when urgent context */}
+        {/* Pulse ring — green for ready hints, amber when urgent, attention color for pressure */}
         {showRing && (
           <span
             aria-hidden="true"
             style={{
               position: 'absolute',
-              inset: isUrgentContext ? -8 : -6,
+              inset: (isUrgentContext || attnPressure.level === 'critical') ? -8 : -6,
               borderRadius: '50%',
               border: isUrgentContext
                 ? '2.5px solid rgba(251,191,36,0.7)'
-                : '2px solid rgba(52,211,153,0.55)',
-              animation: isUrgentContext
+                : (attnRingColor
+                  ? `1.5px solid ${attnRingColor}`
+                  : '2px solid rgba(52,211,153,0.55)'),
+              animation: (isUrgentContext || attnPressure.level === 'critical')
                 ? 'cellhubOperatorPulseRing 1.1s ease-out infinite'
-                : 'cellhubOperatorPulseRing 1.6s ease-out infinite',
+                : (showAttnRing
+                  ? 'cellhubOperatorPulseRing 2.4s ease-out infinite'
+                  : 'cellhubOperatorPulseRing 1.6s ease-out infinite'),
               pointerEvents: 'none',
             }}
           />
@@ -1098,6 +1137,35 @@ export default function FloatingOperatorBubble() {
             animation: isDragging ? 'none' : dotAnim,
           }}
         />
+
+        {/* INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: attention count badge.
+            Bottom-left corner — complements the status dot at top-right.
+            Static (no animation) to avoid constant motion. */}
+        {showAttnBadge && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              bottom: 4, left: 4,
+              minWidth: 18, height: 18,
+              borderRadius: 9,
+              background: attnBadge.bg,
+              border: '2px solid rgba(15,23,42,0.92)',
+              color: attnBadge.fg,
+              fontSize: '0.60rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 3px',
+              pointerEvents: 'none',
+              letterSpacing: '-0.01em',
+              lineHeight: 1,
+            }}
+          >
+            {attnPressure.count > 9 ? '9+' : attnPressure.count}
+          </span>
+        )}
       </button>
 
       {/* Context badge — small pill below the bubble, shows customer name

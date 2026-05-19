@@ -87,3 +87,10 @@ export function purgeExpiredSessions(): void {
     if (now > s.expiresAt) sessions.delete(id);
   }
 }
+
+export function getActiveWorkflowSessions(): WorkflowSession[] {
+  purgeExpiredSessions();
+  return Array.from(sessions.values())
+    .filter(s => !s.completed)
+    .sort((a, b) => b.createdAt - a.createdAt);
+}

@@ -112,6 +112,8 @@ import { rankContactTodayCandidates } from '../ranking/contactTodayRanker';
 // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
 import { computeEntityAttentionPriorities } from '../attention/entityPriorityEngine';
 import type { AttentionAction } from '../attention/entityPriorityTypes';
+// INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
+import { getAttentionFeed } from '../attention/attentionEngine';
 // R-FUSION-CHAT-INTEGRATION-V1
 import { generateFusedInsights } from '../fusion/fusionEngine';
 import type { EscalationTier } from '../fusion/fusionTypes';
@@ -126,6 +128,18 @@ import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
 import type { ExecutionPayload } from '../execution/types';
+// INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1
+import {
+  getActiveWorkflowSession,
+  resolveWorkflowFollowUp,
+  getWorkflowNextStep,
+  advanceWorkflowSession,
+  completeWorkflowSession,
+  expireWorkflowSession,
+} from '../workflows/workflowContinuity';
+import { getWorkflowDefinition } from '../workflows/workflowRegistry';
+import type { WorkflowSession } from '../workflows/types';
+import type { OperationalExecutionAction } from '../execution/types';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -452,6 +466,14 @@ export function handleIntent(
 
     case 'repair_escalate':
       return handleRepairEscalate(match, engine, lang);
+
+    // INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1
+    case 'workflow_continuity':
+      return handleWorkflowContinuityCommand(match, engine, lang);
+
+    // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
+    case 'attention_feed':
+      return handleAttentionFeed(engine, lang);
 
     // INTELLIGENCE-ENTITY-INTEGRATION-V1
     case 'entity_operational_command':
@@ -5427,4 +5449,221 @@ function handleOperationalEntityCommand(
   }
 
   return buildEntityCommandResponse(result.entity, result.action, es);
+}
+
+// ── INTELLIGENCE-OPERATOR-CONTINUITY-RUNTIME-V1 ───────────────────────────────
+
+function kindToOpenAction(kind: string): OperationalExecutionAction | null {
+  switch (kind) {
+    case 'repair':             return 'open_repair';
+    case 'customer':           return 'open_customer';
+    case 'layaway':            return 'open_layaway';
+    case 'unlock':             return 'open_unlock';
+    case 'special_order':      return 'open_special_order';
+    case 'inventory_product':  return 'open_inventory';
+    default:                   return null;
+  }
+}
+
+function buildWorkflowOpenAction(session: WorkflowSession, es: boolean): ChatActionUI | null {
+  const act = session.entityKind ? kindToOpenAction(session.entityKind) : null;
+  if (!act || !session.entityId) return null;
+  const ep: ExecutionPayload = {
+    action: act,
+    entityId: session.entityId,
+    customerName: session.entityName,
+  };
+  return {
+    id: `wf-open-${session.entityId}`,
+    label: es ? 'Abrir' : 'Open',
+    payload: toActionPayload(ep),
+  };
+}
+
+function buildWorkflowWhatsAppAction(session: WorkflowSession): ChatActionUI | null {
+  if (!session.entityPhone) return null;
+  const ep: ExecutionPayload = {
+    action: 'whatsapp_url',
+    customerPhone: session.entityPhone,
+    customerName: session.entityName,
+  };
+  return {
+    id: `wf-wa-${session.entityId ?? 'unknown'}`,
+    label: 'WhatsApp',
+    payload: toActionPayload(ep),
+  };
+}
+
+// INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
+// Read-only — never mutates missions, workflows, or attention state.
+
+function attentionActionLabel(action: string, es: boolean): string {
+  switch (action) {
+    case 'open_repair':         return es ? 'Ver Ticket'      : 'Open Ticket';
+    case 'open_customer':       return es ? 'Ver Cliente'     : 'View Customer';
+    case 'open_layaway':        return es ? 'Ver Layaway'     : 'View Layaway';
+    case 'open_unlock':         return es ? 'Ver Unlock'      : 'View Unlock';
+    case 'open_special_order':  return es ? 'Ver Orden'       : 'View Order';
+    case 'open_inventory':      return es ? 'Ver Inventario'  : 'View Inventory';
+    case 'whatsapp_url':        return 'WhatsApp';
+    case 'promote_product':     return es ? 'Promover'        : 'Promote';
+    default:                    return es ? 'Ver'             : 'View';
+  }
+}
+
+function handleAttentionFeed(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const es = lang === 'es';
+  const feed = getAttentionFeed(engine, 5);
+
+  if (feed.length === 0) {
+    return {
+      kind: 'answer',
+      text: es
+        ? 'Sin items urgentes en este momento. Todo está al día.'
+        : 'No urgent items right now. Everything is up to date.',
+    };
+  }
+
+  const header = es ? '**Requiere atención ahora:**' : '**Needs attention now:**';
+
+  const lines = feed.map((item, i) => {
+    const rank = i + 1;
+    const sevLabel = es ? 'Severidad' : 'Severity';
+    return `${rank}. **${item.title}**\n${item.reason}\n${sevLabel}: ${item.severity}/100`;
+  });
+
+  const text = `${header}\n\n${lines.join('\n\n')}`;
+
+  // Build action buttons — open entity + WhatsApp + continue-workflow trigger
+  const actions: ChatActionUI[] = [];
+
+  for (const item of feed) {
+    if (!item.executionPayload) continue;
+
+    const ep = item.executionPayload;
+    const openLabel = attentionActionLabel(ep.action, es);
+
+    actions.push({
+      id: `attn-open-${item.id}`,
+      label: openLabel,
+      payload: toActionPayload(ep),
+    });
+
+    // WhatsApp action when phone is available
+    if ('customerPhone' in ep && ep.customerPhone) {
+      const waEp: import('../execution/types').ExecutionPayload = {
+        action: 'whatsapp_url',
+        customerPhone: ep.customerPhone,
+        customerName: ('customerName' in ep ? ep.customerName : undefined),
+      };
+      actions.push({
+        id: `attn-wa-${item.id}`,
+        label: 'WhatsApp',
+        payload: toActionPayload(waEp),
+      });
+    }
+
+    // Unfinished workflow items get a re-fire button that routes to workflow_continuity
+    if (item.type === 'unfinished_workflow') {
+      actions.push({
+        id: `attn-wf-${item.id}`,
+        label: es ? 'Continuar flujo' : 'Continue workflow',
+        payload: toActionPayload({ action: 'open_repair', entityId: item.entityId ?? '', customerName: item.title }),
+        triggerQuery: 'continue',
+      });
+    }
+  }
+
+  return {
+    kind: 'answer',
+    text,
+    actions: actions.length > 0 ? actions : undefined,
+  };
+}
+
+function handleWorkflowContinuityCommand(
+  match: IntentMatch,
+  _engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const es = lang === 'es';
+
+  // 1. Check for active session
+  const session = getActiveWorkflowSession();
+  if (!session) {
+    return {
+      kind: 'answer',
+      text: es
+        ? 'No hay ningún flujo de trabajo activo en este momento. Inicia uno con un comando como "cobrar a Juan" o "seguimiento reparación 1032".'
+        : 'No active workflow right now. Start one with a command like "collect payment from John" or "follow up repair 1032".',
+    };
+  }
+
+  // 2. Classify follow-up action
+  const rawQuery = match.query ?? '';
+  const followUp = resolveWorkflowFollowUp(rawQuery);
+  const action = followUp.action ?? 'continue';
+
+  // 3. Cancel — expire session immediately
+  if (action === 'cancel') {
+    expireWorkflowSession(session.id);
+    return {
+      kind: 'answer',
+      text: es ? 'Flujo de trabajo cancelado.' : 'Workflow cancelled.',
+    };
+  }
+
+  // 4. Complete — mark done, no side effects
+  if (action === 'complete') {
+    completeWorkflowSession(session.id);
+    const def = getWorkflowDefinition(session.type);
+    const entityPart = session.entityName ? ` — ${session.entityName}` : '';
+    return {
+      kind: 'answer',
+      text: es
+        ? `✓ ${def.labelEs}${entityPart} marcado como completado.`
+        : `✓ ${def.labelEn}${entityPart} marked as complete.`,
+    };
+  }
+
+  // 5. Continue — advance one step
+  const advanced = action === 'continue' ? advanceWorkflowSession(session.id) : session;
+  const activeSession = advanced ?? session;
+
+  // 6. Build next-step guidance (no auto-execution)
+  const nextStep = getWorkflowNextStep(activeSession);
+
+  // 7. Attach safe actions — open entity and/or WhatsApp draft only
+  const safeActions: ChatActionUI[] = [];
+
+  const openAction = buildWorkflowOpenAction(activeSession, es);
+  const waAction = buildWorkflowWhatsAppAction(activeSession);
+
+  if (
+    nextStep.suggestedAction === 'open_entity' ||
+    action === 'open_entity'
+  ) {
+    if (openAction) safeActions.push(openAction);
+  }
+
+  if (
+    nextStep.suggestedAction === 'send_message' ||
+    action === 'send_message'
+  ) {
+    if (waAction) safeActions.push(waAction);
+    if (openAction && !safeActions.includes(openAction)) safeActions.push(openAction);
+  }
+
+  const stepText = activeSession.completed
+    ? (es ? `✓ ${nextStep.labelEs} — flujo completado.` : `✓ ${nextStep.labelEn} — workflow complete.`)
+    : (es ? nextStep.labelEs : nextStep.labelEn);
+
+  return {
+    kind: 'answer',
+    text: stepText,
+    actions: safeActions.length > 0 ? safeActions : undefined,
+  };
 }

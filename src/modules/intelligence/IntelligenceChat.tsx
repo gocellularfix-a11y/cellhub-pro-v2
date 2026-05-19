@@ -46,6 +46,9 @@ import { generateId } from '@/utils/dates';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
 import { recordOperatorAction } from '@/services/intelligence/history/operatorActionHistory';
+// INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1
+import { getAttentionFeed } from '@/services/intelligence/attention/attentionEngine';
+import type { OperatorAttentionItem } from '@/services/intelligence/attention/types';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -875,6 +878,15 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 
   const clearChat = () => setMessages([]);
 
+  // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: compute peek item once on
+  // mount (ref lazy init). No re-compute on keystrokes, no polling.
+  const peekItemRef = useRef<OperatorAttentionItem | null | undefined>(undefined);
+  if (peekItemRef.current === undefined) {
+    const feed = getAttentionFeed(engine, 1);
+    peekItemRef.current = (feed[0]?.severity ?? 0) >= 70 ? (feed[0] ?? null) : null;
+  }
+  const peekItem = peekItemRef.current;
+
   return (
     <div
       className={compact ? 'overflow-hidden flex flex-col' : 'bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col'}
@@ -905,6 +917,57 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       {/* Continuity bar — full mode only */}
       {!compact && messages.length > 0 && chipData && (
         <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} />
+      )}
+
+      {/* INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: proactive peek card.
+          Shown only when messages are empty (panel just opened) and top
+          attention item severity >= 70. Disappears once the user asks anything.
+          Read-only — no auto-execution, no mutation. */}
+      {peekItem && messages.length === 0 && (
+        <div
+          aria-live="polite"
+          style={{
+            margin: '8px 14px 0',
+            background: 'rgba(249,115,22,0.07)',
+            border: '1px solid rgba(249,115,22,0.28)',
+            borderRadius: '0.5rem',
+            padding: '0.55rem 0.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.2rem',
+          }}
+        >
+          <div style={{ fontSize: '0.62rem', color: '#fb923c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            {locale === 'es' ? 'Requiere atención' : locale === 'pt' ? 'Requer atenção' : 'Needs attention'}
+          </div>
+          <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#f3f4f6', lineHeight: 1.3 }}>
+            {peekItem.title}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.35 }}>
+            {peekItem.reason}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+              {locale === 'es' ? 'Severidad' : 'Severity'}: {peekItem.severity}/100
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSuggestion('what needs attention')}
+              style={{
+                padding: '0.22rem 0.6rem',
+                borderRadius: '0.9rem',
+                fontSize: '0.70rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: '1px solid rgba(249,115,22,0.45)',
+                background: 'rgba(249,115,22,0.12)',
+                color: '#fb923c',
+              }}
+            >
+              {locale === 'es' ? 'Ver todo' : locale === 'pt' ? 'Ver tudo' : 'See all'}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Messages */}
