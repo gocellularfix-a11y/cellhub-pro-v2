@@ -76,3 +76,35 @@ export const STEP_TEMPLATES: Record<WorkflowCategory, StepTemplate[]> = {
     { id: 'resolved',  label: 'Resolved' },
   ],
 };
+
+// ── INTELLIGENCE-OPERATIONAL-WORKFLOW-SESSIONS-V1 ─────────────────────────────
+// Chat-driven session types — distinct from store-backed OperationalWorkflow.
+
+export type WorkflowStepKind =
+  | 'detect_entity'
+  | 'navigate_to_entity'
+  | 'confirm_amount'
+  | 'send_message'
+  | 'confirm_action'
+  | 'complete';
+
+export type OperationalWorkflowType =
+  | 'payment_collection'
+  | 'repair_followup'
+  | 'customer_outreach'
+  | 'inventory_promotion';
+
+export interface WorkflowSession {
+  id: string;
+  type: OperationalWorkflowType;
+  currentStepIndex: number;
+  steps: WorkflowStepKind[];
+  entityKind?: string;
+  entityId?: string;
+  entityName?: string;
+  entityPhone?: string;
+  amountCents?: number;
+  createdAt: number;
+  expiresAt: number;
+  completed: boolean;
+}

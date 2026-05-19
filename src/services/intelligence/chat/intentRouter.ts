@@ -113,6 +113,8 @@ export type IntentId =
   | 'repair_escalate'
   // R-FUSION-CHAT-INTEGRATION-V1: cross-system operational flow awareness
   | 'fusion_insights'
+  // INTELLIGENCE-ENTITY-INTEGRATION-V1: explicit operational command routing
+  | 'entity_operational_command'
   | 'fallback_question'
   | 'unknown';
 
@@ -1166,6 +1168,29 @@ const REPAIR_ESCALATE_KEYWORDS = [
   'escalar reparo', 'reparo vencido', 'escalar reparo atrasado',
 ];
 
+// INTELLIGENCE-ENTITY-INTEGRATION-V1
+// Anchored 2-word command phrases only — no single words that would conflict
+// with analytics intents. Placement before customer_history guarantees win
+// on "show customer" / "open customer" tie-breaks.
+const ENTITY_COMMAND_KEYWORDS = [
+  // EN — open / show / find
+  'open repair', 'open ticket', 'open customer', 'open invoice',
+  'open layaway', 'open unlock', 'open order',
+  'show repair', 'show customer', 'show ticket', 'show layaway',
+  'show unlock', 'show order', 'show invoice',
+  'find repair', 'find customer', 'find ticket', 'find invoice',
+  'call customer',
+  'collect payment', 'collect balance',
+  'mark ready',
+  // ES
+  'abrir reparación', 'abrir ticket', 'abrir cliente',
+  'ver ticket', 'ver reparación', 'ver cliente', 'ver factura', 'ver layaway',
+  'buscar cliente', 'buscar ticket',
+  'cobrar a', 'marcar listo',
+  // PT
+  'abrir reparo', 'ver reparo', 'ver fatura',
+];
+
 // Strip punctuation + lowercase for matching.
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1533,6 +1558,10 @@ export function classifyIntent(
     { id: 'vip_outreach',     score: scoreKeywords(query, VIP_OUTREACH_KEYWORDS) },
     { id: 'repair_follow_up', score: scoreKeywords(query, REPAIR_FOLLOW_UP_KEYWORDS) },
     { id: 'repair_escalate',  score: scoreKeywords(query, REPAIR_ESCALATE_KEYWORDS) },
+    // INTELLIGENCE-ENTITY-INTEGRATION-V1: explicit command routing runs BEFORE
+    // customer_history so "show customer X" / "open repair Y" routes here.
+    // Listed AFTER repair_follow_up so "follow up repair" stays in its handler.
+    { id: 'entity_operational_command', score: scoreKeywords(query, ENTITY_COMMAND_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks
     // for today. Listed ABOVE daily_operator_brief + daily_brief so the
@@ -1668,6 +1697,12 @@ export function classifyIntent(
   // stage-marker handler can parse "mark Juan deal won" / "Juan trato
   // ganado" patterns. List handler doesn't need it but it's cheap.
   if (winner.id === 'mark_deal_stage' || winner.id === 'deal_pipeline') {
+    result.query = rawQuery;
+  }
+
+  // INTELLIGENCE-ENTITY-INTEGRATION-V1: pass raw query so the handler can
+  // run resolveEntityIntent on the full original string.
+  if (winner.id === 'entity_operational_command') {
     result.query = rawQuery;
   }
 

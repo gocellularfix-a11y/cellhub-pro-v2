@@ -43,3 +43,36 @@ export interface ExecutionReport {
   topExecution?: PreparedExecution;
   totalEstimatedImpactCents: number;
 }
+
+// ── INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1 ──────────────────────────
+// Canonical types for the centralized operational execution layer.
+
+/** Canonical set of operational actions Intelligence can execute. */
+export type OperationalExecutionAction =
+  | 'open_repair'
+  | 'open_customer'
+  | 'open_layaway'
+  | 'open_unlock'
+  | 'open_special_order'
+  | 'open_inventory'
+  | 'whatsapp_url'
+  | 'promote_product'
+  | 'collect_payment'    // future: POS collect-balance flow
+  | 'mark_ready';        // future: repair mark-ready shortcut
+
+/** Normalized payload for executeOperationalAction. */
+export interface ExecutionPayload {
+  action: OperationalExecutionAction;
+  entityId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productId?: string;
+  productName?: string;
+}
+
+/** Result returned by executeOperationalAction. */
+export interface OperationalExecutionResult {
+  ok: boolean;
+  action: OperationalExecutionAction;
+  reason?: string;
+}

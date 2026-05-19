@@ -118,6 +118,14 @@ import type { EscalationTier } from '../fusion/fusionTypes';
 // R-ENTITY-FIRST-INTELLIGENCE-ROUTING-V1
 import { resolveOperationalEntity } from './entityResolver';
 import type { OperationalEntityMatch } from './entityResolver';
+// INTELLIGENCE-ENTITY-INTEGRATION-V1
+import { resolveEntityIntent } from '../entityAccess/entityIntentResolver';
+import type { EntityIntentResult } from '../entityAccess/entityIntentResolver';
+import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
+// INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
+import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
+import { getExecutionDescriptor } from '../execution/executionRegistry';
+import type { ExecutionPayload } from '../execution/types';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -444,6 +452,10 @@ export function handleIntent(
 
     case 'repair_escalate':
       return handleRepairEscalate(match, engine, lang);
+
+    // INTELLIGENCE-ENTITY-INTEGRATION-V1
+    case 'entity_operational_command':
+      return handleOperationalEntityCommand(match, engine, lang);
 
     case 'fallback_question': {
       // R-ENTITY-FIRST-INTELLIGENCE-ROUTING-V1: try deterministic entity
@@ -5267,4 +5279,152 @@ function handleOperatorDailyBriefV2(engine: IntelligenceEngine, lang: Lang3): Ch
     text: lines.join('\n'),
     ...(actions.length > 0 ? { actions } : {}),
   };
+}
+
+// ── INTELLIGENCE-ENTITY-INTEGRATION-V1 ─────────────────────────────────────
+
+// Build a primary open/nav action button for a ResolvedEntity.
+// Reuses existing executionTarget values — no new navigation system.
+function buildEntityOpenAction(entity: ResolvedEntity, es: boolean): ChatActionUI | null {
+  const ep = entityKindToExecutionPayload(entity);
+  if (!ep) return null;
+  const descriptor = getExecutionDescriptor(ep.action);
+  const label = descriptor ? (es ? descriptor.labelEs : descriptor.labelEn) : (es ? 'Ver' : 'Open');
+  return {
+    id: `ec-${entity.kind}-${entity.id}`,
+    label,
+    payload: toActionPayload(ep),
+  };
+}
+
+// Build a WhatsApp action if entity has a phone in its raw data.
+function buildEntityWhatsAppAction(entity: ResolvedEntity, _es: boolean): ChatActionUI | null {
+  const ep = entityKindToExecutionPayload(entity, 'whatsapp');
+  if (!ep) return null;
+  return {
+    id: `ec-wa-${entity.id}`,
+    label: 'WhatsApp',
+    actionType: 'whatsapp',
+    payload: toActionPayload(ep),
+  };
+}
+
+// Build a Promote action for inventory products.
+function buildEntityPromoteAction(entity: ResolvedEntity): ChatActionUI {
+  const ep: ExecutionPayload = { action: 'promote_product', productId: entity.id, productName: entity.title };
+  return {
+    id: `ec-promote-${entity.id}`,
+    label: 'Promote',
+    triggerQuery: `promote ${entity.title}`,
+    payload: toActionPayload(ep),
+  };
+}
+
+// Single entity → compact summary + action buttons.
+function buildEntityCommandResponse(
+  entity: ResolvedEntity,
+  action: EntityAction | undefined,
+  es: boolean,
+): ChatResponse {
+  const openAction = buildEntityOpenAction(entity, es);
+  const waAction = buildEntityWhatsAppAction(entity, es);
+  const actions: ChatActionUI[] = [];
+
+  // For 'open_history' on a customer, delegate to the customer lookup.
+  // The caller already checks this; this is a safety guard.
+
+  // Primary action depends on intent verb
+  if (action === 'promote' && entity.kind === 'inventory_product') {
+    actions.push(buildEntityPromoteAction(entity));
+  } else if (action === 'whatsapp' && waAction) {
+    actions.push(waAction);
+    if (openAction) actions.push(openAction);
+  } else if (action === 'call' && waAction) {
+    // No native call executionTarget — show phone + WhatsApp as CTA
+    actions.push(waAction);
+    if (openAction) actions.push(openAction);
+  } else {
+    if (openAction) actions.push(openAction);
+    if (waAction && entity.availableActions.includes('whatsapp')) actions.push(waAction);
+  }
+
+  const text = entity.subtitle
+    ? `**${entity.title}**\n${entity.subtitle}`
+    : `**${entity.title}**`;
+
+  return {
+    kind: 'answer',
+    text,
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
+// Disambiguation when multiple candidates exist.
+function buildEntityDisambiguation(
+  candidates: ResolvedEntity[],
+  es: boolean,
+): ChatResponse {
+  const top = candidates.slice(0, 5);
+  const lines = top.map((e, i) =>
+    `${i + 1}. **${e.title}**${e.subtitle ? ` — ${e.subtitle}` : ''}`,
+  );
+  const disambigActions: ChatActionUI[] = top.map(e => {
+    const openBtn = buildEntityOpenAction(e, es);
+    return openBtn ?? {
+      id: `ec-disambig-${e.id}`,
+      label: e.title,
+      payload: { type: 'operator_action', executable: false, executionTarget: 'none' },
+    };
+  });
+  return {
+    kind: 'disambiguation',
+    text: (es
+      ? `Encontré ${top.length} resultados:\n`
+      : `Found ${top.length} results:\n`)
+      + lines.join('\n')
+      + '\n\n'
+      + (es ? '¿Cuál buscas?' : 'Which one are you looking for?'),
+    actions: disambigActions,
+  };
+}
+
+function handleOperationalEntityCommand(
+  match: IntentMatch,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const es = lang === 'es';
+  const rawQuery = match.query || '';
+
+  const result: EntityIntentResult = resolveEntityIntent(rawQuery, engine);
+
+  // Nothing found → try old resolver as fallback, then generic fallback
+  if (!result.entity) {
+    const oldMatch = resolveOperationalEntity(rawQuery, engine);
+    if (oldMatch) return handleEntityLookup(oldMatch, engine, lang);
+    return {
+      kind: 'answer',
+      text: es
+        ? 'No encontré ningún resultado para esa búsqueda.'
+        : 'No results found for that search.',
+    };
+  }
+
+  // 'open_history' on customer → delegate to existing full history handler
+  if (result.action === 'open_history' && result.entity.kind === 'customer') {
+    const fakeMatch: IntentMatch = {
+      id: 'customer_history',
+      confidence: 0.9,
+      matchedCustomer: result.entity.raw as import('@/store/types').Customer,
+    };
+    return handleCustomerHistory(fakeMatch, engine, es);
+  }
+
+  // Multiple candidates of same kind → disambiguation
+  const sameKind = result.candidates.filter(c => c.kind === result.entity!.kind);
+  if (sameKind.length > 1) {
+    return buildEntityDisambiguation(sameKind, es);
+  }
+
+  return buildEntityCommandResponse(result.entity, result.action, es);
 }
