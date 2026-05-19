@@ -19,6 +19,8 @@ import { useEffect, useRef } from 'react';
 import {
   isStructuredReceiptBarcode,
   parseReceiptBarcodePayload,
+  isChBarcode,
+  parseChBarcode,
 } from '@/services/barcode/receiptPayload';
 
 interface Options {
@@ -87,6 +89,23 @@ export function useBarcodeScanner({
     };
 
     const routeScan = (code: string) => {
+      // R-PHONE-PAYMENT-RECEIPT-BARCODE-SCAN-V1: CH: prefixed barcodes from
+      // phone-payment receipts are checked first.
+      //   CH:CUST:{id}           → pass full value; BarcodeActionModal detects
+      //                            prefix and opens customer-history mode.
+      //   CH:PHONEPAY:{invoiceRef}→ unwrap to invoiceRef → standard invoice path.
+      //   CH:PHONE:{number}      → fall through to inventory search.
+      if (isChBarcode(code)) {
+        const ch = parseChBarcode(code);
+        if (ch) {
+          if (ch.kind === 'cust') { onInvoiceScan(code); return; }
+          if (ch.kind === 'phonepay') { onInvoiceScan(ch.value); return; }
+          // phone — no dedicated route, treat as inventory/search
+        }
+        onInventoryScan(code);
+        return;
+      }
+
       // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: structured receipt
       // payload (CHP|SALE|{invoiceNumber}[|CUST|{customerId}]) takes
       // precedence. We unwrap to the saleRef and reuse onInvoiceScan

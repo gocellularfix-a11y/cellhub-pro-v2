@@ -19,7 +19,7 @@ import { usePrint } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
-import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
+import { buildReceiptBarcodePayload, CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
 
 export default function BarcodeActionModal() {
   const { state, dispatch } = useApp();
@@ -28,18 +28,28 @@ export default function BarcodeActionModal() {
     sales,
     settings,
     cart,
+    customers,
   } = state;
 
   const { printHtml } = usePrint();
   const { t, locale } = useTranslation();
 
-  // Find the sale matching the scanned invoice number
+  // R-PHONE-PAYMENT-RECEIPT-BARCODE-SCAN-V1: CH:CUST: barcodes from
+  // phone-payment receipts open customer-history mode directly.
+  const isChCustScan = !!pendingBarcodeInvoice && pendingBarcodeInvoice.startsWith(CH_CUST_PREFIX);
+  const chCustomerId = isChCustScan ? pendingBarcodeInvoice.slice(CH_CUST_PREFIX.length) : undefined;
+  const chCustomer = useMemo(() => {
+    if (!chCustomerId) return null;
+    return (customers || []).find((c) => c.id === chCustomerId) || null;
+  }, [chCustomerId, customers]);
+
+  // Find the sale matching the scanned invoice number (standard mode only)
   const sale = useMemo(() => {
-    if (!pendingBarcodeInvoice) return null;
+    if (!pendingBarcodeInvoice || isChCustScan) return null;
     return (sales || []).find(
       (s) => s.invoiceNumber?.toLowerCase() === pendingBarcodeInvoice.toLowerCase()
     ) || null;
-  }, [pendingBarcodeInvoice, sales]);
+  }, [pendingBarcodeInvoice, isChCustScan, sales]);
 
   const isOpen = !!pendingBarcodeInvoice;
 
@@ -117,6 +127,90 @@ export default function BarcodeActionModal() {
       size="max-w-sm"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+        {/* CH:CUST: mode — customer-history scan */}
+        {isChCustScan && (
+          <>
+            <div style={{
+              textAlign: 'center',
+              padding: '0.875rem',
+              background: 'rgba(139,92,246,0.08)',
+              border: '1px solid rgba(139,92,246,0.25)',
+              borderRadius: '0.75rem',
+            }}>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                {locale === 'es' ? 'Cliente Detectado' : 'Customer Scan'}
+              </div>
+              {chCustomer ? (
+                <>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#c4b5fd' }}>{chCustomer.name}</div>
+                  {chCustomer.phone && <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '0.2rem' }}>{chCustomer.phone}</div>}
+                </>
+              ) : (
+                <div style={{ fontSize: '0.82rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                  ⚠️ {locale === 'es' ? 'Cliente no encontrado' : 'Customer not found'}
+                </div>
+              )}
+            </div>
+
+            {chCustomer && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
+                    navigate('customers');
+                  }}
+                  style={actionStyle('#8B5CF6')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>👤</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.viewCustomer')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{chCustomer.name}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
+                    navigate('reports');
+                  }}
+                  style={actionStyle('#0EA5E9')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>📋</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.custHistory')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.allTx')}</div>
+                  </div>
+                </button>
+                {chCustomer.phone && settings.waEnabled !== false && (
+                  <button
+                    onClick={() => {
+                      const msg = buildWaMessage('thankYou', {
+                        customerName: chCustomer.name || 'Customer',
+                        storeName: settings.storeName || 'Go Cellular',
+                        storePhone: settings.storePhone || '',
+                      }, locale === 'es' ? 'es' : locale === 'pt' ? 'pt' : 'en', (settings as any).waTemplateThankYou || '');
+                      openWhatsApp(chCustomer.phone!, msg);
+                    }}
+                    style={actionStyle('#25D366')}
+                  >
+                    <span style={{ fontSize: '1.25rem' }}>📲</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>WhatsApp</div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.waMessage')}</div>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button onClick={close} className="btn btn-secondary" style={{ marginTop: '0.25rem' }}>
+              {t('barcode.cancel')}
+            </button>
+          </>
+        )}
+
+        {/* Standard invoice-mode content */}
+        {!isChCustScan && <>
 
         {/* Invoice badge */}
         <div style={{
@@ -276,6 +370,8 @@ export default function BarcodeActionModal() {
         >
           {t('barcode.cancel')}
         </button>
+        </>}
+
       </div>
     </Modal>
   );
