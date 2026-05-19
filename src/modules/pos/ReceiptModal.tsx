@@ -18,7 +18,7 @@ import { openWhatsApp } from '@/services/whatsapp';
 // (post-sale SMS button retired; WhatsApp button is now the sole comm channel
 // from this modal). Service files deleted in next round.
 import { matchesSearch } from '@/utils/fuzzyMatch';
-import { normalizePhone } from '@/utils/normalize';
+import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
 import { escHtml } from '@/utils/escHtml';
@@ -696,6 +696,34 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   // template. With SMS sending disabled, the printed opt-in checkboxes
   // had no backing send path. Restored if SMS comms return in a future round.
 
+  // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-PHONE-HIGHLIGHT-V1
+  // Collect newly activated numbers from 'activation' and 'sim' category items.
+  // Regular bill-payment items (category='phone_payment') are deliberately excluded —
+  // those are existing customer numbers, not new activations.
+  const actSeen = new Set<string>();
+  const activationLines: Array<{ phone: string; carrier: string }> = [];
+  for (const item of sale.items) {
+    if ((item.category === 'activation' || item.category === 'sim') && item.phoneNumber) {
+      if (!actSeen.has(item.phoneNumber)) {
+        actSeen.add(item.phoneNumber);
+        activationLines.push({ phone: item.phoneNumber, carrier: item.carrier ?? '' });
+      }
+    }
+  }
+  const activationBlock = activationLines.length > 0
+    ? `<div style="text-align:center;margin:6px 0;padding:8px 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
+        activationLines.map(({ phone, carrier }) =>
+          `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">${
+            es ? 'Nuevo Número de Teléfono' : pt ? 'Novo Número de Telefone' : 'New Phone Number'
+          }</div><div style="font-size:22px;font-weight:900;letter-spacing:0.04em;line-height:1.2">${
+            escHtml(formatPhone(phone) || phone)
+          }</div>${
+            carrier ? `<div style="font-size:10px;font-weight:600;color:#444;margin-top:3px">${escHtml(carrier)}</div>` : ''
+          }`
+        ).join('<div style="border-top:1px dashed #ccc;margin:5px 0"></div>')
+      }</div>`
+    : '';
+
   const is80mm = paperSize === '80mm';
   // 80mm thermal roll: no fixed height (continuous), narrower barcode column
   const pageStyle = is80mm
@@ -752,6 +780,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   <!-- Items -->
   <table style="margin-bottom:5px">${itemRows}</table>
   <div class="sep"></div>
+  ${activationBlock}
 
   <!-- Totals -->
   <table style="margin-bottom:5px">
