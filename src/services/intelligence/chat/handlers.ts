@@ -114,6 +114,8 @@ import { computeEntityAttentionPriorities } from '../attention/entityPriorityEng
 import type { AttentionAction } from '../attention/entityPriorityTypes';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
 import { getAttentionFeed } from '../attention/attentionEngine';
+// INTELLIGENCE-OPERATOR-TIMELINE-V1
+import { recordAttentionShown, recordWorkflowContinued, recordWorkflowCompleted } from '../timeline/timelineRecorder';
 // R-FUSION-CHAT-INTEGRATION-V1
 import { generateFusedInsights } from '../fusion/fusionEngine';
 import type { EscalationTier } from '../fusion/fusionTypes';
@@ -5518,6 +5520,9 @@ function handleAttentionFeed(
   const es = lang === 'es';
   const feed = getAttentionFeed(engine, 5);
 
+  // INTELLIGENCE-OPERATOR-TIMELINE-V1: record each visible item.
+  for (const item of feed) recordAttentionShown(item);
+
   if (feed.length === 0) {
     return {
       kind: 'answer',
@@ -5610,6 +5615,7 @@ function handleWorkflowContinuityCommand(
   // 3. Cancel — expire session immediately
   if (action === 'cancel') {
     expireWorkflowSession(session.id);
+    recordWorkflowCompleted(session, 'Cancelled'); // INTELLIGENCE-OPERATOR-TIMELINE-V1
     return {
       kind: 'answer',
       text: es ? 'Flujo de trabajo cancelado.' : 'Workflow cancelled.',
@@ -5619,6 +5625,7 @@ function handleWorkflowContinuityCommand(
   // 4. Complete — mark done, no side effects
   if (action === 'complete') {
     completeWorkflowSession(session.id);
+    recordWorkflowCompleted(session); // INTELLIGENCE-OPERATOR-TIMELINE-V1
     const def = getWorkflowDefinition(session.type);
     const entityPart = session.entityName ? ` — ${session.entityName}` : '';
     return {
@@ -5632,6 +5639,7 @@ function handleWorkflowContinuityCommand(
   // 5. Continue — advance one step
   const advanced = action === 'continue' ? advanceWorkflowSession(session.id) : session;
   const activeSession = advanced ?? session;
+  recordWorkflowContinued(activeSession); // INTELLIGENCE-OPERATOR-TIMELINE-V1
 
   // 6. Build next-step guidance (no auto-execution)
   const nextStep = getWorkflowNextStep(activeSession);

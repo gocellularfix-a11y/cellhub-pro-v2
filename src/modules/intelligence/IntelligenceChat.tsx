@@ -49,6 +49,8 @@ import { recordOperatorAction } from '@/services/intelligence/history/operatorAc
 // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1
 import { getAttentionFeed } from '@/services/intelligence/attention/attentionEngine';
 import type { OperatorAttentionItem } from '@/services/intelligence/attention/types';
+// INTELLIGENCE-OPERATOR-TIMELINE-V1
+import { recordActionClicked } from '@/services/intelligence/timeline/timelineRecorder';
 
 interface Props {
   engine: IntelligenceEngine;
@@ -544,6 +546,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   };
 
   function handleActionClick(action: ChatActionUI) {
+    // INTELLIGENCE-OPERATOR-TIMELINE-V1: record every user-clicked action.
+    recordActionClicked(
+      action.label,
+      action.payload?.executionTarget ?? (action.triggerQuery ? 'trigger_query' : undefined),
+      action.payload?.entityId ?? undefined,
+      action.payload?.customerName ?? undefined,
+    );
+
     // R-INTELLIGENCE-ACTION-BUTTONS-V1: chat-replay buttons (e.g., "Promote
     // {product}") fire a follow-up query through the SAME fireQuery
     // pipeline the user already uses. No new execution system, no
