@@ -987,6 +987,7 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
             setEditOrder(null);
             setCancelTarget(o);
           }}
+          onPrint={editOrder ? () => printSpecialOrderEntity(editOrder) : undefined}
           onClose={() => { setShowModal(false); setEditOrder(null); }}
           lang={lang}
           allOrders={specialOrders}
@@ -1256,6 +1257,7 @@ interface SpecialOrderModalProps {
   // R-EDIT-AUDIT F5: signature extended to accept optional audit metadata.
   onSave: (auditMeta?: SpecialOrderAuditMeta) => void;
   onRequestCancel?: (order: SpecialOrder) => void;
+  onPrint?: () => void;
   onClose: () => void;
   lang: string;
   // R-EDIT-AUDIT F5: freshest orders list for stale check on locked edits.
@@ -1265,7 +1267,7 @@ interface SpecialOrderModalProps {
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onClose, lang, allOrders }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onPrint, onClose, lang, allOrders }: SpecialOrderModalProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
@@ -1765,6 +1767,16 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
         {/* Footer */}
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleClose}>{t('so.cancelBtn')}</button>
+          {onPrint && editOrder && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ flex: 1 }}
+              onClick={onPrint}
+            >
+              🖨️ {lang === 'es' ? 'Imprimir' : lang === 'pt' ? 'Imprimir' : 'Print'}
+            </button>
+          )}
           {/* r-new-4 port: Cancel Order with disposition. Only shown when editing
               an SO that has a deposit — unpaid orders can be deleted directly.
               r-new-8: also hidden on terminal statuses (picked_up / cancelled) —

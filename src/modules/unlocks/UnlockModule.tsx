@@ -61,6 +61,18 @@ const STATUS_BADGE: Record<string, string> = {
   'Refunded': 'badge-danger',
 };
 
+function generateImei(): string {
+  const digits: number[] = Array.from({ length: 14 }, () => Math.floor(Math.random() * 10));
+  let sum = 0;
+  for (let i = 0; i < 14; i++) {
+    let d = digits[i];
+    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return [...digits, check].join('');
+}
+
 export default function UnlockModule() {
   const {
     state: { unlocks, customers, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
@@ -1334,14 +1346,24 @@ ${form.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">IMEI</label>
-              <input
-                value={form.imei || ''}
-                onChange={(e) => setForm({ ...form, imei: e.target.value })}
-                className="input"
-                maxLength={15}
-                inputMode="numeric"
-                placeholder="15 digits"
-              />
+              <div className="flex gap-1">
+                <input
+                  value={form.imei || ''}
+                  onChange={(e) => setForm({ ...form, imei: e.target.value })}
+                  className="input flex-1"
+                  maxLength={15}
+                  inputMode="numeric"
+                  placeholder="15 digits"
+                />
+                <button
+                  type="button"
+                  title={lang === 'es' ? 'Generar IMEI' : lang === 'pt' ? 'Gerar IMEI' : 'Generate IMEI'}
+                  className="btn btn-ghost text-xs px-2"
+                  onClick={() => setForm({ ...form, imei: generateImei() })}
+                >
+                  {lang === 'es' ? 'Generar' : lang === 'pt' ? 'Gerar' : 'Generate'}
+                </button>
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
