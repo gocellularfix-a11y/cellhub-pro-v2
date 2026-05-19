@@ -364,7 +364,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
         title="Receipt preview"
         sandbox=""
         style={{
-          width: settings.paperSize === '80mm' ? '80mm' : '4in',
+          width: settings.paperSize === '80mm' ? '80mm' : settings.paperSize === 'label' ? '57.15mm' : settings.paperSize === 'cr80' ? '85.6mm' : '4in',
           maxWidth: '100%',
           height: '60vh',
           border: '1px solid #333',
@@ -725,18 +725,29 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       }</div>`
     : '';
 
-  const is80mm = paperSize === '80mm';
-  // 80mm thermal roll: no fixed height (continuous), narrower barcode column
+  const is80mm  = paperSize === '80mm';
+  const isLabel = paperSize === 'label';
+  const isCr80  = paperSize === 'cr80';
   const pageStyle = is80mm
     ? `@page { size: 80mm auto; margin: 0; }
   html, body { width: 80mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }
   body { padding: 2mm 4mm; box-sizing: border-box; }`
+    : isLabel
+    ? `@page { size: 57.15mm 31.75mm; margin: 0; }
+  html, body { width: 57.15mm; height: 31.75mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 7px; color: #000; background: #fff; overflow: hidden; }
+  body { padding: 1mm 1.5mm; box-sizing: border-box; }`
+    : isCr80
+    ? `@page { size: 85.6mm 54mm; margin: 0; }
+  html, body { width: 85.6mm; height: 54mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 8px; color: #000; background: #fff; overflow: hidden; }
+  body { padding: 1.5mm 2mm; box-sizing: border-box; }`
     : `@page { size: 4in 6in; margin: 0; }
   html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
   body { padding: 0.1in 0.15in; box-sizing: border-box; }`;
 
-  const barcodeColStyle = is80mm
+  const barcodeColStyle = (is80mm || isCr80)
     ? 'text-align:right;flex:0 1 34mm;min-width:0;max-width:34mm;overflow:hidden;display:block;box-sizing:border-box'
+    : isLabel
+    ? 'text-align:right;flex:0 1 18mm;min-width:0;max-width:18mm;overflow:hidden;display:block;box-sizing:border-box'
     : 'text-align:right;flex:0 1 1.9in;min-width:0;max-width:1.9in;overflow:hidden;display:block;box-sizing:border-box';
 
   return `<!DOCTYPE html>

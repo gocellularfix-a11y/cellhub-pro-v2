@@ -72,7 +72,7 @@ export interface StoreSettings {
 
   // Receipt
   receiptFooter: string;
-  paperSize: '4x6' | 'letter' | '80mm';
+  paperSize: '4x6' | '80mm' | 'letter' | 'legal' | 'a4' | 'label' | 'cr80';
   detectedPrinters: string[];
 
   // Financial

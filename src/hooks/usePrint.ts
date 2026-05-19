@@ -23,7 +23,7 @@ import { useCallback, useState } from 'react';
  */
 
 /** Page size keys understood by PrintPreviewModal — mirror of PAGE_SIZES */
-export type PrintPageSizeKey = '4x6' | '80mm' | 'letter' | 'legal' | 'a4' | 'label';
+export type PrintPageSizeKey = '4x6' | '80mm' | 'letter' | 'legal' | 'a4' | 'label' | 'cr80';
 
 export interface PrintOptions {
   /** If true AND a printer is provided AND we're in Electron, skip the
@@ -54,6 +54,7 @@ const PAGE_SIZE_MICRONS: Record<PrintPageSizeKey, { width: number; height: numbe
   'legal':  { width: 215900, height: 355600 },
   'a4':     { width: 210000, height: 297000 },
   'label':  { width: 57150,  height: 31750  },
+  'cr80':   { width: 85600,  height: 54000  },
 };
 
 /** Global print state — set by usePrint, read by the modal host */

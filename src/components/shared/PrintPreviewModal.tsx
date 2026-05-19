@@ -14,7 +14,8 @@ const PAGE_SIZES: Record<string, { label: string; width: number; height: number 
   'letter': { label: 'Letter (8.5×11)',  width: 215900, height: 279400 },
   'legal':  { label: 'Legal (8.5×14)',   width: 215900, height: 355600 },
   'a4':     { label: 'A4',              width: 210000, height: 297000 },
-  'label':  { label: 'Label (2.25×1.25)', width: 57150, height: 31750 },
+  'label':  { label: 'Dymo Label (2¼×1¼")', width: 57150, height: 31750 },
+  'cr80':   { label: 'Credential / ID Card (CR80)', width: 85600, height: 54000 },
 };
 
 interface PrintPreviewModalProps {

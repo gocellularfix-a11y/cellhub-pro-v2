@@ -1475,6 +1475,10 @@ export default function SettingsModule() {
                   <option value="4x6">4×6 Thermal</option>
                   <option value="80mm">80mm Thermal</option>
                   <option value="letter">Letter (8.5×11)</option>
+                  <option value="legal">Legal (8.5×14)</option>
+                  <option value="a4">A4 (210×297mm)</option>
+                  <option value="label">Dymo Label (2¼×1¼")</option>
+                  <option value="cr80">Credential / ID Card (CR80)</option>
                 </select>
               </div>
 
