@@ -1395,6 +1395,11 @@ ${financialSection}
             🗑️ {t('repairs.clear')}
           </button>
         )}
+        {!isEdit && (
+          <button type="button" onClick={() => printTicket(buildPayload())} className="btn btn-secondary" style={{ flex: 0.7 }}>
+            🖨️ {lang === 'es' ? 'Imprimir' : 'Print'}
+          </button>
+        )}
         <button type="button" onClick={handleSubmit} className="btn btn-primary" style={{ flex: 1 }}>
           ✓ {isEdit ? t('repairs.save') : t('repairs.createTicket')}
         </button>

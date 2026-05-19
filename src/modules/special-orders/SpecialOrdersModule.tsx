@@ -525,6 +525,7 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
       specialOrdersRef.current = nextOrders;
       setSpecialOrders(nextOrders);
       persist.specialOrder(newOrder.id, newOrder as unknown as Record<string, unknown>);
+      setTimeout(() => printSpecialOrderEntity(newOrder), 300);
       try {
         window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
           detail: { type: 'special_order.created', payload: { customerId: (newOrder as any).customerId || undefined } },

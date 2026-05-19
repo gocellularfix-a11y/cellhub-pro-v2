@@ -1661,6 +1661,22 @@ ${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc
             </div>
             <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem' }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowForm(false)}>{t('layaway.cancelBtn')}</button>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => {
+                if (editLayaway) {
+                  printLayawayTicket(editLayaway);
+                } else {
+                  printLayawayTicket({
+                    ...form,
+                    customerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+                    totalPrice: Math.round(grandTotal * 100),
+                    taxAmount: Math.round(taxAmt * 100),
+                    depositAmount: Math.round(depositAmt * 100),
+                    balance: Math.round(balanceAmt * 100),
+                    paidAmount: 0,
+                    ticketNumber: locale === 'es' ? 'VISTA PREVIA' : 'PREVIEW',
+                  });
+                }
+              }}>🖨️ {t('layaway.printBtn')}</button>
               <button className="btn btn-primary min-w-[140px]" style={{ flex: 2 }} onClick={handleSave} disabled={isSaving} aria-busy={isSaving}>💾 {isSaving ? t('layaway.saving') : t('layaway.saveBtn')}</button>
             </div>
           </div>
