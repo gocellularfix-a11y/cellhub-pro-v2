@@ -25,6 +25,7 @@ import { discountsAdapter }     from './adapters/discountsAdapter';
 import { returnsAdapter }       from './adapters/returnsAdapter';
 import { expensesAdapter }      from './adapters/expensesAdapter';
 import { approvalsAdapter }     from './adapters/approvalsAdapter';
+import { employeesAdapter }     from './adapters/employeesAdapter';
 
 const REGISTERED_ADAPTERS: OperationalModuleAdapter[] = [
   repairsAdapter,
@@ -41,6 +42,7 @@ const REGISTERED_ADAPTERS: OperationalModuleAdapter[] = [
   returnsAdapter,
   expensesAdapter,
   approvalsAdapter,
+  employeesAdapter,
 ];
 
 export function buildOperationalContext(

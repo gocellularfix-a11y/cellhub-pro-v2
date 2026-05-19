@@ -14,6 +14,7 @@ export type OperationalModule =
   | 'appointments'
   | 'returns'
   | 'expenses'
+  | 'employees'
   | 'approvals'
   | 'outreach'
   | 'reports'
