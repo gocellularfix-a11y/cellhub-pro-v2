@@ -133,6 +133,9 @@ import { rememberResolvedEntity } from '../oce/entityResolution/activeEntityMemo
 // R-ACTION-REGISTRY-V1: centralized action descriptors
 // Direct path required — ../actions resolves to the existing actions.ts flat file.
 import { getActionDescriptor } from '../actions/operationalActionRegistry';
+// R-PERMISSION-GATE-V1: deterministic action permission evaluation
+import { evaluateActionPermission } from '../permissions/actionPermissionGate';
+import type { OperationalEntityKind } from '../actions/types';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -5454,6 +5457,17 @@ function handleGoerFollowUp(
   // R-GOER-V3: stamp the resolved entity into session memory so subsequent
   // follow-ups ("open it", "contact him") can resolve without re-stating.
   rememberResolvedEntity(goer);
+
+  // R-PERMISSION-GATE-V1: evaluate open action permission for resolved entity.
+  // TODO: replace 'owner' with current employee/session role once role
+  //       management is wired into the Intelligence session context.
+  const _openPermission = evaluateActionPermission({
+    role: 'owner',
+    descriptor: getActionDescriptor(goer.type as OperationalEntityKind, 'open'),
+    entityKind: goer.type as OperationalEntityKind,
+    actionKey: 'open',
+  });
+  void _openPermission; // decision is always 'allowed' with owner; wired for future role checks
 
   if (goer.type === 'customer') {
     const c = engine.getCustomers().find(

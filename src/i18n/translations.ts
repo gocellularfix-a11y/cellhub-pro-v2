@@ -7044,6 +7044,11 @@ export const translations: TranslationDictionary = {
   'chat.actions.openLayaway':      { en: 'Open Layaway',     es: 'Abrir Apartado',        pt: 'Abrir Layaway' },
   'chat.actions.openSale':         { en: 'View Sale',        es: 'Ver Venta',             pt: 'Ver Venda' },
   'chat.actions.viewReceipt':      { en: 'View Receipt',     es: 'Ver Recibo',            pt: 'Ver Recibo' },
+  // R-PERMISSION-GATE-V1: permission decision user-facing strings
+  'chat.permissions.requiresApproval': { en: 'This action requires manager approval.',         es: 'Esta acción requiere aprobación del manager.',    pt: 'Esta ação requer aprovação do gerente.' },
+  'chat.permissions.blocked':          { en: 'You do not have permission for this action.',     es: 'No tienes permiso para esta acción.',             pt: 'Você não tem permissão para esta ação.' },
+  'chat.permissions.unsupportedAction':{ en: 'This action is not available.',                   es: 'Esta acción no está disponible.',                 pt: 'Esta ação não está disponível.' },
+  'chat.permissions.unknownRole':      { en: 'Role not recognized. Please log in to continue.', es: 'Rol no reconocido. Inicia sesión para continuar.', pt: 'Função não reconhecida. Faça login para continuar.' },
 
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
   'chat.recoverCustomer.noCustomer': {
