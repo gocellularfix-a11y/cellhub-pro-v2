@@ -7049,6 +7049,10 @@ export const translations: TranslationDictionary = {
   'chat.permissions.blocked':          { en: 'You do not have permission for this action.',     es: 'No tienes permiso para esta acción.',             pt: 'Você não tem permissão para esta ação.' },
   'chat.permissions.unsupportedAction':{ en: 'This action is not available.',                   es: 'Esta acción no está disponible.',                 pt: 'Esta ação não está disponível.' },
   'chat.permissions.unknownRole':      { en: 'Role not recognized. Please log in to continue.', es: 'Rol no reconocido. Inicia sesión para continuar.', pt: 'Função não reconhecida. Faça login para continuar.' },
+  // R-EXECUTION-PIPELINE-V1: execution request status strings
+  'chat.execution.ready':              { en: 'Ready to execute.',                  es: 'Listo para ejecutar.',                  pt: 'Pronto para executar.' },
+  'chat.execution.requiresApproval':   { en: 'Waiting for manager approval.',      es: 'Esperando aprobación del manager.',     pt: 'Aguardando aprovação do gerente.' },
+  'chat.execution.blocked':            { en: 'Action blocked. Insufficient role.',  es: 'Acción bloqueada. Rol insuficiente.',   pt: 'Ação bloqueada. Função insuficiente.' },
 
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
   'chat.recoverCustomer.noCustomer': {

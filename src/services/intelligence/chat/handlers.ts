@@ -136,6 +136,8 @@ import { getActionDescriptor } from '../actions/operationalActionRegistry';
 // R-PERMISSION-GATE-V1: deterministic action permission evaluation
 import { evaluateActionPermission } from '../permissions/actionPermissionGate';
 import type { OperationalEntityKind } from '../actions/types';
+// R-EXECUTION-PIPELINE-V1: execution request builder
+import { buildExecutionRequest } from '../executionPipeline/executionRequestBuilder';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -5458,17 +5460,6 @@ function handleGoerFollowUp(
   // follow-ups ("open it", "contact him") can resolve without re-stating.
   rememberResolvedEntity(goer);
 
-  // R-PERMISSION-GATE-V1: evaluate open action permission for resolved entity.
-  // TODO: replace 'owner' with current employee/session role once role
-  //       management is wired into the Intelligence session context.
-  const _openPermission = evaluateActionPermission({
-    role: 'owner',
-    descriptor: getActionDescriptor(goer.type as OperationalEntityKind, 'open'),
-    entityKind: goer.type as OperationalEntityKind,
-    actionKey: 'open',
-  });
-  void _openPermission; // decision is always 'allowed' with owner; wired for future role checks
-
   if (goer.type === 'customer') {
     const c = engine.getCustomers().find(
       cu => cu.id === goer.customerId || (cu as any).phone === goer.customerId,
@@ -5476,10 +5467,15 @@ function handleGoerFollowUp(
     const name = c
       ? String((c as any).name || '').trim() || goer.customerId
       : goer.customerId;
+    // R-EXECUTION-PIPELINE-V1: derive open action via execution request builder
+    // TODO: replace 'owner' with current session role once role mgmt is wired
+    const openDesc = getActionDescriptor('customer', 'open')!;
+    const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'customer', actionKey: 'open' });
+    const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
     const actions: ChatActionUI[] = [{
-      id: `goer-open-customer-${goer.customerId}`,
-      label: tc(getActionDescriptor('customer', 'open')!.labelKey),
-      payload: { type: 'operator_action', entityId: goer.customerId, executable: true, executionTarget: 'open_customer' },
+      id:      openReq.id,
+      label:   tc(openDesc.labelKey),
+      payload: openReq.payload as ActionPayload,
     }];
     if (c && (c as any).phone) {
       actions.push({
@@ -5503,42 +5499,42 @@ function handleGoerFollowUp(
     const desc = r
       ? `${(r as any).ticketNumber ?? goer.repairId}${(r as any).customerName ? ` — ${(r as any).customerName}` : ''}`
       : goer.repairId;
+    // R-EXECUTION-PIPELINE-V1
+    const openDesc = getActionDescriptor('repair', 'open')!;
+    const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'repair', actionKey: 'open' });
+    const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedRepair', desc),
-      actions: [{
-        id: `goer-open-repair-${goer.repairId}`,
-        label: tc(getActionDescriptor('repair', 'open')!.labelKey),
-        payload: { type: 'operator_action', entityId: goer.repairId, executable: true, executionTarget: 'open_repair' },
-      }],
+      actions: [{ id: openReq.id, label: tc(openDesc.labelKey), payload: openReq.payload as ActionPayload }],
     };
   }
 
   if (goer.type === 'layaway') {
     const l = engine.getLayaways().find(la => la.id === goer.layawayId);
     const desc = l ? String((l as any).customerName ?? goer.layawayId) : goer.layawayId;
+    // R-EXECUTION-PIPELINE-V1
+    const openDesc = getActionDescriptor('layaway', 'open')!;
+    const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'layaway', actionKey: 'open' });
+    const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedLayaway', desc),
-      actions: [{
-        id: `goer-open-layaway-${goer.layawayId}`,
-        label: tc(getActionDescriptor('layaway', 'open')!.labelKey),
-        payload: { type: 'operator_action', entityId: goer.layawayId, executable: true, executionTarget: 'open_layaway' },
-      }],
+      actions: [{ id: openReq.id, label: tc(openDesc.labelKey), payload: openReq.payload as ActionPayload }],
     };
   }
 
   if (goer.type === 'inventory') {
     const inv = engine.getInventory().find(i => i.id === goer.sku || (i as any).sku === goer.sku);
     const desc = inv ? String((inv as any).name ?? goer.sku) : goer.sku;
+    // R-EXECUTION-PIPELINE-V1
+    const openDesc = getActionDescriptor('inventory', 'open')!;
+    const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'inventory', actionKey: 'open' });
+    const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedInventory', desc),
-      actions: [{
-        id: `goer-open-inv-${goer.sku}`,
-        label: tc(getActionDescriptor('inventory', 'open')!.labelKey),
-        payload: { type: 'operator_action', entityId: goer.sku, executable: true, executionTarget: 'open_inventory' },
-      }],
+      actions: [{ id: openReq.id, label: tc(openDesc.labelKey), payload: openReq.payload as ActionPayload }],
     };
   }
 
