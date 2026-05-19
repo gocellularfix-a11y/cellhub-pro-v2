@@ -7024,6 +7024,26 @@ export const translations: TranslationDictionary = {
     es: (firstName: string) => `WhatsApp ${firstName}`,
     pt: (firstName: string) => `WhatsApp ${firstName}`,
   },
+  // R-ACTION-REGISTRY-V1: operational action registry labels
+  'chat.actions.openCustomer':     { en: 'View Customer',    es: 'Ver Cliente',           pt: 'Ver Cliente' },
+  'chat.actions.whatsappCustomer': {
+    en: (n: string) => `WhatsApp ${n}`,
+    es: (n: string) => `WhatsApp ${n}`,
+    pt: (n: string) => `WhatsApp ${n}`,
+  },
+  'chat.actions.loyaltyReward':    { en: 'Loyalty Reward',   es: 'Recompensa de Lealtad', pt: 'Recompensa de Fidelidade' },
+  'chat.actions.collectPayment':   { en: 'Collect Payment',  es: 'Cobrar',                pt: 'Cobrar Pagamento' },
+  'chat.actions.openRepair':       { en: 'Open Repair',      es: 'Abrir Reparación',      pt: 'Abrir Reparo' },
+  'chat.actions.notifyCustomer':   { en: 'Notify Customer',  es: 'Notificar Cliente',     pt: 'Notificar Cliente' },
+  'chat.actions.markRepairReady':  { en: 'Mark Ready',       es: 'Marcar Listo',          pt: 'Marcar Pronto' },
+  'chat.actions.escalateRepair':   { en: 'Escalate',         es: 'Escalar',               pt: 'Escalar' },
+  'chat.actions.openInventory':    { en: 'View Product',     es: 'Ver Producto',          pt: 'Ver Produto' },
+  'chat.actions.promoteProduct':   { en: 'Promote',          es: 'Promocionar',           pt: 'Promover' },
+  'chat.actions.discountProduct':  { en: 'Apply Discount',   es: 'Aplicar Descuento',     pt: 'Aplicar Desconto' },
+  'chat.actions.reorderProduct':   { en: 'Reorder',          es: 'Reordenar',             pt: 'Reordenar' },
+  'chat.actions.openLayaway':      { en: 'Open Layaway',     es: 'Abrir Apartado',        pt: 'Abrir Layaway' },
+  'chat.actions.openSale':         { en: 'View Sale',        es: 'Ver Venta',             pt: 'Ver Venda' },
+  'chat.actions.viewReceipt':      { en: 'View Receipt',     es: 'Ver Recibo',            pt: 'Ver Recibo' },
 
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
   'chat.recoverCustomer.noCustomer': {

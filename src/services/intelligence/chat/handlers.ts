@@ -130,6 +130,9 @@ import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
 import { resolveEntityReference } from '../oce/entityResolution/resolveEntityReference';
 // R-GOER-V3: session-only active entity memory
 import { rememberResolvedEntity } from '../oce/entityResolution/activeEntityMemory';
+// R-ACTION-REGISTRY-V1: centralized action descriptors
+// Direct path required — ../actions resolves to the existing actions.ts flat file.
+import { getActionDescriptor } from '../actions/operationalActionRegistry';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -5461,13 +5464,13 @@ function handleGoerFollowUp(
       : goer.customerId;
     const actions: ChatActionUI[] = [{
       id: `goer-open-customer-${goer.customerId}`,
-      label: tc('chat.followup.openCustomerLabel'),
+      label: tc(getActionDescriptor('customer', 'open')!.labelKey),
       payload: { type: 'operator_action', entityId: goer.customerId, executable: true, executionTarget: 'open_customer' },
     }];
     if (c && (c as any).phone) {
       actions.push({
         id: `goer-wa-${goer.customerId}`,
-        label: `WhatsApp ${name}`,
+        label: tc(getActionDescriptor('customer', 'whatsapp')!.labelKey, name),
         payload: {
           type: 'whatsapp',
           customerId: goer.customerId,
@@ -5491,7 +5494,7 @@ function handleGoerFollowUp(
       text: tc('chat.entityResolution.resolvedRepair', desc),
       actions: [{
         id: `goer-open-repair-${goer.repairId}`,
-        label: tc('chat.followup.openRepairLabel'),
+        label: tc(getActionDescriptor('repair', 'open')!.labelKey),
         payload: { type: 'operator_action', entityId: goer.repairId, executable: true, executionTarget: 'open_repair' },
       }],
     };
@@ -5505,7 +5508,7 @@ function handleGoerFollowUp(
       text: tc('chat.entityResolution.resolvedLayaway', desc),
       actions: [{
         id: `goer-open-layaway-${goer.layawayId}`,
-        label: lang === 'es' ? 'Abrir Apartado' : 'Open Layaway',
+        label: tc(getActionDescriptor('layaway', 'open')!.labelKey),
         payload: { type: 'operator_action', entityId: goer.layawayId, executable: true, executionTarget: 'open_layaway' },
       }],
     };
@@ -5519,7 +5522,7 @@ function handleGoerFollowUp(
       text: tc('chat.entityResolution.resolvedInventory', desc),
       actions: [{
         id: `goer-open-inv-${goer.sku}`,
-        label: lang === 'es' ? 'Ver Producto' : 'View Product',
+        label: tc(getActionDescriptor('inventory', 'open')!.labelKey),
         payload: { type: 'operator_action', entityId: goer.sku, executable: true, executionTarget: 'open_inventory' },
       }],
     };
