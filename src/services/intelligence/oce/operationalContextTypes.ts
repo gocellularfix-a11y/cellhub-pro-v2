@@ -13,6 +13,7 @@ export type OperationalModule =
   | 'unlocks'
   | 'appointments'
   | 'returns'
+  | 'expenses'
   | 'approvals'
   | 'outreach'
   | 'reports'
