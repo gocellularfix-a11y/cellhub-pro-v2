@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { mmToPx } from '../utils';
 import type {
   CustomLabelConfig,
   LabelElement,
@@ -94,12 +95,18 @@ export function useCustomLabel() {
   }, []);
 
   const moveElement = useCallback((id: string, x: number, y: number) => {
-    setConfig(prev => ({
-      ...prev,
-      elements: prev.elements.map(el =>
-        el.id === id ? { ...el, x: Math.max(0, x), y: Math.max(0, y) } : el
-      ),
-    }));
+    setConfig(prev => {
+      const maxX = mmToPx(prev.widthMm) - 10;
+      const maxY = mmToPx(prev.heightMm) - 10;
+      return {
+        ...prev,
+        elements: prev.elements.map(el =>
+          el.id === id
+            ? { ...el, x: Math.max(0, Math.min(x, maxX)), y: Math.max(0, Math.min(y, maxY)) }
+            : el
+        ),
+      };
+    });
   }, []);
 
   const deleteElement = useCallback((id: string) => {
@@ -111,7 +118,20 @@ export function useCustomLabel() {
   }, []);
 
   const setLabelSize = useCallback((widthMm: number, heightMm: number) => {
-    setConfig(prev => ({ ...prev, widthMm, heightMm }));
+    setConfig(prev => {
+      const newMaxX = mmToPx(widthMm) - 10;
+      const newMaxY = mmToPx(heightMm) - 10;
+      return {
+        ...prev,
+        widthMm,
+        heightMm,
+        elements: prev.elements.map(el => ({
+          ...el,
+          x: Math.max(0, Math.min(el.x, newMaxX)),
+          y: Math.max(0, Math.min(el.y, newMaxY)),
+        })),
+      };
+    });
   }, []);
 
   const loadConfig = useCallback((incoming: CustomLabelConfig) => {
