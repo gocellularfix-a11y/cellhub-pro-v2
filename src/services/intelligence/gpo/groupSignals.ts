@@ -48,6 +48,7 @@ function categorizeSignal(signal: OperationalSignal): OperationalPriorityCategor
       return 'business_risk';
 
     case 'margin_risk':
+    case 'approval_risk':
       return 'business_risk';
 
     case 'appointment_risk': {

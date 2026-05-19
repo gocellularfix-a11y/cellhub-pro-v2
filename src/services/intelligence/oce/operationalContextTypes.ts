@@ -36,6 +36,7 @@ export type OperationalSignalType =
   | 'operational_warning'
   | 'appointment_risk'
   | 'margin_risk'
+  | 'approval_risk'
   | 'system_status';
 
 export type OperationalSeverity =
