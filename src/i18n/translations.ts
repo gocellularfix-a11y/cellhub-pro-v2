@@ -7060,6 +7060,17 @@ export const translations: TranslationDictionary = {
   'chat.approvals.rejected':    { en: 'Rejected.',                              es: 'Rechazado.',                                  pt: 'Rejeitado.' },
   'chat.approvals.notRequired': { en: 'No approval required for this action.',  es: 'Esta acción no requiere aprobación.',         pt: 'Esta ação não requer aprovação.' },
 
+  // R-WORKFLOW-CHAIN-V1: workflow chain user-facing strings
+  'chat.workflow.created':         { en: 'Workflow created.',                   es: 'Flujo de trabajo creado.',              pt: 'Fluxo de trabalho criado.' },
+  'chat.workflow.ready':           { en: 'Workflow ready.',                     es: 'Flujo de trabajo listo.',               pt: 'Fluxo de trabalho pronto.' },
+  'chat.workflow.waitingApproval': { en: 'Waiting for approval.',               es: 'Esperando aprobación.',                 pt: 'Aguardando aprovação.' },
+  'chat.workflow.completed':       { en: 'Workflow completed.',                 es: 'Flujo de trabajo completado.',          pt: 'Fluxo de trabalho concluído.' },
+  'chat.workflow.blocked':         { en: 'Workflow blocked.',                   es: 'Flujo de trabajo bloqueado.',           pt: 'Fluxo de trabalho bloqueado.' },
+  'chat.workflow.stepExecution':   { en: 'Execute action',                      es: 'Ejecutar acción',                       pt: 'Executar ação' },
+  'chat.workflow.stepApproval':    { en: 'Pending approval',                    es: 'Pendiente de aprobación',               pt: 'Aprovação pendente' },
+  'chat.workflow.stepTimeline':    { en: 'Timeline note',                       es: 'Nota en línea de tiempo',               pt: 'Nota na linha do tempo' },
+  'chat.workflow.stepFollowUp':    { en: 'Follow-up',                           es: 'Seguimiento',                           pt: 'Acompanhamento' },
+
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
   'chat.recoverCustomer.noCustomer': {
     en: 'No inactive customers found with contact info.',
