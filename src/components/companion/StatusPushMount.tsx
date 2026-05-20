@@ -14,20 +14,27 @@ import { useApp } from '@/store/AppProvider';
 import { loadDesktopSession } from '@/services/companion/identityStore';
 import { pushStoreStatus } from '@/services/companion/storeStatusService';
 import { computeLiteSnapshot } from '@/services/companion/snapshot';
+import { backfillRecentSnapshots } from '@/services/companion/reports/reportSnapshotBackfill';
 
 const PUSH_MS = 10_000;
 
 export default function StatusPushMount() {
-  const { state: { sales, repairs, layaways, employees, currentEmployee } } = useApp();
+  const { state: { sales, repairs, layaways, employees, currentEmployee, settings } } = useApp();
 
   const snapshot = useMemo(
     () => computeLiteSnapshot({ sales, repairs, layaways, employees, currentEmployee }),
     [sales, repairs, layaways, employees, currentEmployee],
   );
 
-  const inFlightRef = useRef(false);
-  const snapshotRef = useRef(snapshot);
+  const inFlightRef    = useRef(false);
+  const snapshotRef    = useRef(snapshot);
+  const salesRef       = useRef(sales);
+  const settingsRef    = useRef(settings);
+  const backfillDoneRef = useRef(false);
+
   snapshotRef.current = snapshot;
+  salesRef.current    = sales;
+  settingsRef.current = settings;
 
   useEffect(() => {
     const send = async () => {
@@ -39,6 +46,12 @@ export default function StatusPushMount() {
           ...snapshotRef.current,
           pendingApprovalsCount: 0,
         });
+        // Fire backfill once on first successful push — non-blocking.
+        if (!backfillDoneRef.current) {
+          backfillDoneRef.current = true;
+          const tz = settingsRef.current.timezone || 'UTC';
+          void backfillRecentSnapshots(salesRef.current, session, tz).catch(() => {});
+        }
       } catch {
         // transient — retry next interval
       } finally {
