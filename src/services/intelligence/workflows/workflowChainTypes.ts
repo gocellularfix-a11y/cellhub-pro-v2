@@ -56,6 +56,34 @@ export type WorkflowChain = {
   updatedAt: number;
 };
 
+// ── R-WORKFLOW-CONTINUATION-PRIMITIVES-V1 ────────────────────────────────────
+
+export type WorkflowContinuationKind =
+  | 'after_step_completed'
+  | 'after_step_blocked'
+  | 'after_approval_received'
+  | 'manual';
+
+export type WorkflowContinuation = {
+  /** Deterministic: continuation-{workflowId}-{fromStepId}-{toStepId}-{kind} */
+  id: string;
+  workflowId: string;
+  fromStepId: string;
+  toStepId: string;
+  kind: WorkflowContinuationKind;
+  createdAt: number;
+};
+
+// ── R-WORKFLOW-READINESS-EVALUATION-V1 ───────────────────────────────────────
+
+export type WorkflowReadinessResult = {
+  workflowId: string;
+  readyStepIds: string[];
+  blockedStepIds: string[];
+  waitingApprovalStepIds: string[];
+  completedStepIds: string[];
+};
+
 // ── R-WORKFLOW-TRANSITIONS-V1 ─────────────────────────────────────────────────
 
 export type WorkflowTransitionReason =
@@ -66,10 +94,16 @@ export type WorkflowTransitionReason =
   | 'system_sync';
 
 export type WorkflowTransition = {
+  /** `${key}-${sequence}` */
   id: string;
+  /** Deterministic semantic key: transition-{workflowId}-{from}-{to}-{reason} */
+  key: string;
+  /** Session-local monotonic occurrence counter. Resets on clearWorkflowTransitions(). */
+  sequence: number;
   workflowId: string;
   fromStatus: WorkflowChainStatus;
   toStatus: WorkflowChainStatus;
   reason: WorkflowTransitionReason;
+  /** Occurrence timestamp only — NOT part of identity. */
   createdAt: number;
 };

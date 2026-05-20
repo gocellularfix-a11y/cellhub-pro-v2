@@ -14,6 +14,9 @@ import type {
   WorkflowChainStepStatus,
   WorkflowTransition,
   WorkflowTransitionReason,
+  WorkflowContinuation,
+  WorkflowContinuationKind,
+  WorkflowReadinessResult,
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem, ApprovalQueueStatus } from '../approvals/types';
@@ -22,9 +25,12 @@ import { publishOperatorEvent } from '../events/operatorEventBus';
 
 const MAX_CHAINS = 100;
 const MAX_TRANSITIONS = 500;
+const MAX_CONTINUATIONS = 500;
 
 let _chains: WorkflowChain[] = [];
 let _transitions: WorkflowTransition[] = [];
+let _transitionSeq = 0;
+let _continuations: WorkflowContinuation[] = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -361,7 +367,8 @@ export function clearWorkflowChains(): void {
 /**
  * Records a workflow status transition.
  * Returns null (no-op) when fromStatus === toStatus — no actual change occurred.
- * Deterministic id: transition-{workflowId}-{from}-{to}-{timestamp}.
+ * key  = deterministic: transition-{workflowId}-{from}-{to}-{reason}
+ * id   = `${key}-${sequence}` — unique across session, stable across replay
  * If an entry with the same id exists it is replaced in-place (idempotent).
  */
 export function createWorkflowTransition(params: {
@@ -373,8 +380,13 @@ export function createWorkflowTransition(params: {
   if (params.fromStatus === params.toStatus) return null;
 
   const now = Date.now();
+  const key = `transition-${params.workflowId}-${params.fromStatus}-${params.toStatus}-${params.reason}`;
+  const sequence = _transitionSeq + 1;
+  _transitionSeq = sequence;
   const transition: WorkflowTransition = {
-    id:         `transition-${params.workflowId}-${params.fromStatus}-${params.toStatus}-${now}`,
+    id:         `${key}-${sequence}`,
+    key,
+    sequence,
     workflowId: params.workflowId,
     fromStatus: params.fromStatus,
     toStatus:   params.toStatus,
@@ -403,12 +415,93 @@ export function getWorkflowTransitions(workflowId?: string): WorkflowTransition[
   return _transitions.filter(t => t.workflowId === workflowId);
 }
 
-/** Wipes all transitions (e.g. session end / test teardown). */
+/** Wipes all transitions and resets the sequence counter (e.g. session end / test teardown). */
 export function clearWorkflowTransitions(): void {
   _transitions = [];
+  _transitionSeq = 0;
+}
+
+// ── Continuations (R-WORKFLOW-CONTINUATION-PRIMITIVES-V1) ────────────────────
+
+/**
+ * Declares a possible continuation relationship between two steps.
+ * Deterministic id: continuation-{workflowId}-{fromStepId}-{toStepId}-{kind}.
+ * Replace-in-place if same id already exists (idempotent).
+ * Does NOT execute or auto-progress any steps.
+ */
+export function createWorkflowContinuation(params: {
+  workflowId: string;
+  fromStepId: string;
+  toStepId: string;
+  kind: WorkflowContinuationKind;
+}): WorkflowContinuation {
+  const continuation: WorkflowContinuation = {
+    id:         `continuation-${params.workflowId}-${params.fromStepId}-${params.toStepId}-${params.kind}`,
+    workflowId: params.workflowId,
+    fromStepId: params.fromStepId,
+    toStepId:   params.toStepId,
+    kind:       params.kind,
+    createdAt:  Date.now(),
+  };
+
+  const existingIdx = _continuations.findIndex(c => c.id === continuation.id);
+  if (existingIdx !== -1) {
+    // Preserve original createdAt so a stable declarative continuation
+    // doesn't appear "new" in replay/persistence/debugging contexts.
+    const preserved: WorkflowContinuation = {
+      ...continuation,
+      createdAt: _continuations[existingIdx].createdAt,
+    };
+    _continuations = [
+      ..._continuations.slice(0, existingIdx),
+      preserved,
+      ..._continuations.slice(existingIdx + 1),
+    ];
+    return { ...preserved };
+  } else {
+    const next = [..._continuations, continuation];
+    _continuations = next.length > MAX_CONTINUATIONS ? next.slice(next.length - MAX_CONTINUATIONS) : next;
+  }
+
+  return { ...continuation };
+}
+
+/** Returns all continuations, or only those for the given workflowId. */
+export function getWorkflowContinuations(workflowId?: string): WorkflowContinuation[] {
+  if (workflowId === undefined) return [..._continuations];
+  return _continuations.filter(c => c.workflowId === workflowId);
+}
+
+/** Wipes all continuations (e.g. session end / test teardown). */
+export function clearWorkflowContinuations(): void {
+  _continuations = [];
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Evaluates which steps in a workflow chain are ready, blocked, waiting, or complete.
+ * Pure read — no mutations, no events, no side effects.
+ * Returns null if the workflow chain does not exist.
+ */
+export function evaluateWorkflowReadiness(workflowId: string): WorkflowReadinessResult | null {
+  const chain = _chains.find(c => c.id === workflowId);
+  if (!chain) return null;
+
+  const readyStepIds: string[] = [];
+  const blockedStepIds: string[] = [];
+  const waitingApprovalStepIds: string[] = [];
+  const completedStepIds: string[] = [];
+
+  for (const step of chain.steps) {
+    if      (step.status === 'ready')            readyStepIds.push(step.id);
+    else if (step.status === 'blocked')          blockedStepIds.push(step.id);
+    else if (step.status === 'waiting_approval') waitingApprovalStepIds.push(step.id);
+    else if (step.status === 'completed')        completedStepIds.push(step.id);
+  }
+
+  return { workflowId, readyStepIds, blockedStepIds, waitingApprovalStepIds, completedStepIds };
+}
 
 /** Returns a shallow copy of all chains (never the internal reference). */
 export function getWorkflowChains(): WorkflowChain[] {

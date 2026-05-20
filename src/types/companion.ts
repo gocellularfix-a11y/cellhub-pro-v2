@@ -126,3 +126,37 @@ export interface CompanionDesktopSession {
   bridgeUrl: string;
   pairedAt: string;
 }
+
+// ── Daily report snapshot ─────────────────────────────────────────────
+// MANUALLY DUPLICATED to bridge/src/companion-lite/types.ts and
+// cellhub-companion/src/types/companionLite.ts. Money in cents.
+
+export interface DailyReportCategory {
+  category: string;
+  revenueCents: number;
+  qty: number;
+}
+
+export interface DailyReportTopItem {
+  name: string;
+  revenueCents: number;
+  qty: number;
+}
+
+export interface DailyReportSnapshot {
+  storeId: string;
+  date: string;                   // YYYY-MM-DD in store local timezone
+  grossRevenueCents: number;      // sum of sale.total for countable sales (negative refund sales reduce this)
+  salesTaxCents: number;
+  utilityTaxCents: number;
+  mobileSurchargeCents: number;
+  cashCents: number;
+  cardCents: number;
+  storeCreditCents: number;
+  otherCents: number;
+  salesCount: number;
+  refundCount: number;            // countable sales with total < 0
+  categoryBreakdown: DailyReportCategory[];
+  topItems: DailyReportTopItem[];
+  builtAt: string;                // ISO timestamp
+}

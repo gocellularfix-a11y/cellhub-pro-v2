@@ -11,6 +11,9 @@ export type {
   WorkflowChainStepKind,
   WorkflowChainStep,
   WorkflowChain,
+  WorkflowContinuationKind,
+  WorkflowContinuation,
+  WorkflowReadinessResult,
   WorkflowTransitionReason,
   WorkflowTransition,
 } from './workflowChainTypes';
@@ -27,4 +30,8 @@ export {
   createWorkflowTransition,
   getWorkflowTransitions,
   clearWorkflowTransitions,
+  createWorkflowContinuation,
+  getWorkflowContinuations,
+  clearWorkflowContinuations,
+  evaluateWorkflowReadiness,
 } from './workflowChain';
