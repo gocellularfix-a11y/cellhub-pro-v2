@@ -257,6 +257,33 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   const barcodePayload = useMemo(() => buildReceiptBarcodePayload(sale), [sale?.invoiceNumber, sale?.id, sale?.customerId]);
   const barcodeSvg = useMemo(() => renderBarcodeSvg(barcodePayload), [barcodePayload]);
 
+  // R-RECEIPT-PREVIEW-OVERFLOW-FIX: dynamic iframe height. Iframes don't
+  // auto-size to srcDoc content, so without measurement we either get a
+  // too-short iframe (internal scrollbars) or a too-tall one (whitespace).
+  // We measure documentElement.scrollHeight on load and let the parent
+  // Modal's overflow-y-auto handle outer scrolling. `scrolling="no"` plus
+  // `overflow:hidden` on the iframe kills the inner scrollbar UI even
+  // before measurement completes. Requires sandbox="allow-same-origin"
+  // (no allow-scripts) so the parent can read contentDocument without
+  // executing receipt JS — the template has no scripts anyway.
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [previewIframeHeight, setPreviewIframeHeight] = useState<number>(600);
+  const handlePreviewLoad = () => {
+    const f = previewIframeRef.current;
+    if (!f) return;
+    try {
+      const doc = f.contentDocument;
+      if (!doc) return;
+      const h = Math.max(
+        doc.documentElement?.scrollHeight || 0,
+        doc.body?.scrollHeight || 0,
+      );
+      if (h > 0) setPreviewIframeHeight(h);
+    } catch {
+      // opaque origin or cross-origin block — keep default height
+    }
+  };
+
   // ── Deps extraction: primitive fields that generateReceiptHtml reads ──
   const storeName = settings.storeName;
   const storeAddress = settings.storeAddress;
@@ -358,23 +385,40 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 
   return (
     <Modal open={open} onClose={onClose} title={`🧾 ${t('receiptModal.modalTitle')} — ${sale.invoiceNumber}`} size="max-w-md">
-      {/* 4×6 Preview — single source of truth via generateReceiptHtml */}
-      <iframe
-        srcDoc={previewHtml}
-        title="Receipt preview"
-        sandbox=""
+      {/* 4×6 Preview — single source of truth via generateReceiptHtml.
+          R-RECEIPT-PREVIEW-OVERFLOW-FIX: outer wrapper clips horizontal
+          overflow as a belt-and-suspenders against any future child that
+          forgets max-width. The iframe itself is sized to the paper width
+          but capped at 100% of the wrapper so narrow modals shrink it. */}
+      <div
         style={{
-          width: settings.paperSize === '80mm' ? '80mm' : settings.paperSize === 'label' ? '57.15mm' : settings.paperSize === 'cr80' ? '85.6mm' : '4in',
+          width: '100%',
           maxWidth: '100%',
-          height: '60vh',
-          border: '1px solid #333',
-          borderRadius: '4px',
-          background: '#fff',
-          display: 'block',
-          margin: '0 auto',
-          overflow: 'auto',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
         }}
-      />
+      >
+        <iframe
+          ref={previewIframeRef}
+          srcDoc={previewHtml}
+          onLoad={handlePreviewLoad}
+          title="Receipt preview"
+          sandbox="allow-same-origin"
+          scrolling="no"
+          style={{
+            width: settings.paperSize === '80mm' ? '80mm' : settings.paperSize === 'label' ? '57.15mm' : settings.paperSize === 'cr80' ? '85.6mm' : '4in',
+            maxWidth: '100%',
+            height: previewIframeHeight,
+            border: '1px solid #333',
+            borderRadius: '4px',
+            background: '#fff',
+            display: 'block',
+            margin: '0 auto',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
 
       {/* ── Retroactive Customer Assignment ─────────────── */}
       {isWalkIn && loyaltyEnabled && salePoints > 0 && (
@@ -756,6 +800,21 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
 <title>Receipt</title>
 <style>
   ${pageStyle}
+  /* R-RECEIPT-PREVIEW-OVERFLOW-FIX: screen-only overrides keep the receipt
+     fully visible inside the preview iframe without internal scrollbars.
+     The print pipeline ignores @media screen, so @page + the pageStyle
+     widths above continue to drive the printed receipt unchanged. */
+  @media screen {
+    html, body {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: auto !important;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    * { box-sizing: border-box; max-width: 100%; }
+    img, svg, canvas { max-width: 100%; height: auto; }
+  }
   table { width: 100%; border-collapse: collapse; }
   .sep { border-top: 1px dashed #999; margin: 5px 0; }
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
