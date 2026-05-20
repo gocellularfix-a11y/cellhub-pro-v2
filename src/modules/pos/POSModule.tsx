@@ -290,8 +290,13 @@ export default function POSModule() {
         cartRef.current = next;
         setCart(next);
       } else {
-        // Determine tax mode from active category
-        let taxable = !['service', 'quick_charge', 'phone_payment', 'top_up'].includes(item.category);
+        // Use the inventory item's taxable flag as the authoritative source.
+        // phone_payment / top_up / quick_charge always bypass sales tax —
+        // they generate utility tax or follow a separate fee structure.
+        // 'service' is intentionally excluded from the override so taxable
+        // repair/installation items are charged correctly.
+        let taxable = item.taxable &&
+          !['phone_payment', 'top_up', 'quick_charge'].includes(item.category);
         let category = item.category;
 
         if (activeCategory?.startsWith('custom:')) {
