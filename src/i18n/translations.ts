@@ -7053,6 +7053,12 @@ export const translations: TranslationDictionary = {
   'chat.execution.ready':              { en: 'Ready to execute.',                  es: 'Listo para ejecutar.',                  pt: 'Pronto para executar.' },
   'chat.execution.requiresApproval':   { en: 'Waiting for manager approval.',      es: 'Esperando aprobación del manager.',     pt: 'Aguardando aprovação do gerente.' },
   'chat.execution.blocked':            { en: 'Action blocked. Insufficient role.',  es: 'Acción bloqueada. Rol insuficiente.',   pt: 'Ação bloqueada. Função insuficiente.' },
+  // R-APPROVAL-QUEUE-V1: approval queue user-facing strings
+  'chat.approvals.created':     { en: 'Approval request sent.',                 es: 'Solicitud de aprobación enviada.',            pt: 'Solicitação de aprovação enviada.' },
+  'chat.approvals.pending':     { en: 'Waiting for approval.',                  es: 'Esperando aprobación.',                       pt: 'Aguardando aprovação.' },
+  'chat.approvals.approved':    { en: 'Approved.',                              es: 'Aprobado.',                                   pt: 'Aprovado.' },
+  'chat.approvals.rejected':    { en: 'Rejected.',                              es: 'Rechazado.',                                  pt: 'Rejeitado.' },
+  'chat.approvals.notRequired': { en: 'No approval required for this action.',  es: 'Esta acción no requiere aprobación.',         pt: 'Esta ação não requer aprovação.' },
 
   // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: recover_customer intent
   'chat.recoverCustomer.noCustomer': {

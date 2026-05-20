@@ -5469,6 +5469,8 @@ function handleGoerFollowUp(
       : goer.customerId;
     // R-EXECUTION-PIPELINE-V1: derive open action via execution request builder
     // TODO: replace 'owner' with current session role once role mgmt is wired
+    // Future (R-APPROVAL-QUEUE-V1): when openReq.status === 'requires_approval',
+    //   create approval queue item and surface approval message to the user.
     const openDesc = getActionDescriptor('customer', 'open')!;
     const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'customer', actionKey: 'open' });
     const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
