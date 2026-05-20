@@ -514,7 +514,7 @@ export default function ReturnsModule() {
       const exchangeItem: CartItem = {
         id: generateId(),
         name: t('returns.exchangeCreditName', returnNumber),
-        category: 'service',
+        category: 'exchange_credit',
         price: -totalCents,
         qty: 1, taxable: false, cbeEligible: false,
         notes: t('returns.exchangeFrom', returnRecord.originalInvoice),

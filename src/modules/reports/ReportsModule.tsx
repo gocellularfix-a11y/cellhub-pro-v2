@@ -214,7 +214,7 @@ function lineRevenueCents(item: SaleItem): number {
 }
 
 /** Item type detection — handles legacy `type` and v2 `category` fields. */
-type ItemKind = 'phone_payment' | 'topup' | 'repair' | 'unlock' | 'special_order' | 'cc_fee' | 'service' | 'product';
+type ItemKind = 'phone_payment' | 'topup' | 'repair' | 'unlock' | 'special_order' | 'cc_fee' | 'service' | 'product' | 'exchange_credit';
 
 function classifyItem(item: SaleItem): ItemKind {
   const cat = String(item.category || '').toLowerCase();
@@ -226,9 +226,11 @@ function classifyItem(item: SaleItem): ItemKind {
   if (type === 'repair' || item.repairId) return 'repair';
   if (type === 'unlock' || item.unlockId) return 'unlock';
   if (type === 'special_order' || item.specialOrderId) return 'special_order';
+  if (cat === 'exchange_credit') return 'exchange_credit';
   if (type === 'service' || cat === 'service' || cat === 'services') {
     // legacy services that are actually repairs
     const n = (item.name || '').toLowerCase();
+    if (n.includes('exchange credit') || n.includes('crédito cambio') || n.includes('crédito troca')) return 'exchange_credit';
     if (n.includes('repair') || n.includes('reparación')) return 'repair';
     // R-REPORTS-LAYAWAY-CATEGORY-FIX: "UNLOCKED" in a product name (e.g.
     // "SAMSUNG GALAXY S24 ULTRA UNLOCKED — Layaway") is a product attribute,
@@ -1132,6 +1134,10 @@ export default function ReportsModule() {
           catName = 'Services';
           costCents = (item.cost || 0) * qty;
           profitCents = revenueCents - costCents;
+        } else if (kind === 'exchange_credit') {
+          catName = 'Returns';
+          costCents = 0;
+          profitCents = revenueCents;
         } else {
           catName = item.category || 'Products';
           let unitCost = item.cost || 0;
@@ -1570,6 +1576,7 @@ export default function ReportsModule() {
           : kind === 'special_order' ? 'Special Orders'
           : kind === 'cc_fee' ? 'CC Fees'
           : kind === 'service' ? 'Services'
+          : kind === 'exchange_credit' ? 'Returns'
           : (item.category || 'Products');
         // R-REPORTS-ANALYTICS-FINANCIAL-AUDIT-V1: mirror the aggregation
         // rule at line ~828 — layaway-linked items always bucket under
