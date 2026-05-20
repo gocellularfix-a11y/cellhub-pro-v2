@@ -3,6 +3,8 @@
 
 import type { ApprovalQueueItem } from './types';
 import type { ExecutionRequest } from '../executionPipeline/types';
+// R-OPERATOR-EVENTS-V1: approval queue publishes observable events
+import { publishOperatorEvent } from '../events/operatorEventBus';
 
 let _queue: ApprovalQueueItem[] = [];
 
@@ -50,6 +52,15 @@ export function createApprovalQueueItem(params: {
   };
 
   _queue = [..._queue, item];
+  publishOperatorEvent({
+    id:         `event-approval-requested-${item.id}`,
+    type:       'approval_requested',
+    source:     'intelligence',
+    approvalId: item.id,
+    requestId:  request.id,
+    entityType: request.entity.type,
+    status:     item.status,
+  });
   return { ...item };
 }
 
@@ -68,6 +79,13 @@ export function approveQueueItem(id: string): ApprovalQueueItem | null {
   };
 
   _queue = [..._queue.slice(0, idx), updated, ..._queue.slice(idx + 1)];
+  publishOperatorEvent({
+    id:         `event-approval-approved-${id}`,
+    type:       'approval_approved',
+    source:     'intelligence',
+    approvalId: id,
+    status:     'approved',
+  });
   return { ...updated };
 }
 
@@ -86,6 +104,13 @@ export function rejectQueueItem(id: string): ApprovalQueueItem | null {
   };
 
   _queue = [..._queue.slice(0, idx), updated, ..._queue.slice(idx + 1)];
+  publishOperatorEvent({
+    id:         `event-approval-rejected-${id}`,
+    type:       'approval_rejected',
+    source:     'intelligence',
+    approvalId: id,
+    status:     'rejected',
+  });
   return { ...updated };
 }
 

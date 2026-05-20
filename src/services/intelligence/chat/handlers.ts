@@ -138,6 +138,8 @@ import { evaluateActionPermission } from '../permissions/actionPermissionGate';
 import type { OperationalEntityKind } from '../actions/types';
 // R-EXECUTION-PIPELINE-V1: execution request builder
 import { buildExecutionRequest } from '../executionPipeline/executionRequestBuilder';
+// R-OPERATOR-EVENTS-V1: operational event bus
+import { publishOperatorEvent } from '../events/operatorEventBus';
 // INTELLIGENCE-OPERATIONAL-EXECUTION-REGISTRY-V1
 import { entityKindToExecutionPayload, toActionPayload } from '../execution/executionResolver';
 import { getExecutionDescriptor } from '../execution/executionRegistry';
@@ -5460,6 +5462,20 @@ function handleGoerFollowUp(
   // follow-ups ("open it", "contact him") can resolve without re-stating.
   rememberResolvedEntity(goer);
 
+  // R-OPERATOR-EVENTS-V1: publish entity_resolved event
+  const resolvedEntityId: string = goer.type === 'customer'  ? goer.customerId
+                                 : goer.type === 'repair'    ? goer.repairId
+                                 : goer.type === 'inventory' ? goer.sku
+                                 : goer.type === 'layaway'   ? goer.layawayId
+                                 : goer.saleId;
+  publishOperatorEvent({
+    id:         `event-entity-resolved-${goer.type}-${resolvedEntityId}`,
+    type:       'entity_resolved',
+    source:     'intelligence',
+    entityType: goer.type,
+    entityId:   resolvedEntityId,
+  });
+
   if (goer.type === 'customer') {
     const c = engine.getCustomers().find(
       cu => cu.id === goer.customerId || (cu as any).phone === goer.customerId,
@@ -5474,6 +5490,16 @@ function handleGoerFollowUp(
     const openDesc = getActionDescriptor('customer', 'open')!;
     const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'customer', actionKey: 'open' });
     const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
+    publishOperatorEvent({
+      id:         `event-execution-request-${openReq.id}`,
+      type:       'execution_request_created',
+      source:     'intelligence',
+      entityType: goer.type,
+      entityId:   openReq.payload.entityId,
+      actionKey:  openDesc.key,
+      requestId:  openReq.id,
+      status:     openReq.status,
+    });
     const actions: ChatActionUI[] = [{
       id:      openReq.id,
       label:   tc(openDesc.labelKey),
@@ -5505,6 +5531,16 @@ function handleGoerFollowUp(
     const openDesc = getActionDescriptor('repair', 'open')!;
     const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'repair', actionKey: 'open' });
     const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
+    publishOperatorEvent({
+      id:         `event-execution-request-${openReq.id}`,
+      type:       'execution_request_created',
+      source:     'intelligence',
+      entityType: goer.type,
+      entityId:   openReq.payload.entityId,
+      actionKey:  openDesc.key,
+      requestId:  openReq.id,
+      status:     openReq.status,
+    });
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedRepair', desc),
@@ -5519,6 +5555,16 @@ function handleGoerFollowUp(
     const openDesc = getActionDescriptor('layaway', 'open')!;
     const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'layaway', actionKey: 'open' });
     const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
+    publishOperatorEvent({
+      id:         `event-execution-request-${openReq.id}`,
+      type:       'execution_request_created',
+      source:     'intelligence',
+      entityType: goer.type,
+      entityId:   openReq.payload.entityId,
+      actionKey:  openDesc.key,
+      requestId:  openReq.id,
+      status:     openReq.status,
+    });
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedLayaway', desc),
@@ -5533,6 +5579,16 @@ function handleGoerFollowUp(
     const openDesc = getActionDescriptor('inventory', 'open')!;
     const openPerm = evaluateActionPermission({ role: 'owner', descriptor: openDesc, entityKind: 'inventory', actionKey: 'open' });
     const openReq  = buildExecutionRequest({ entity: goer, action: openDesc, permission: openPerm })!;
+    publishOperatorEvent({
+      id:         `event-execution-request-${openReq.id}`,
+      type:       'execution_request_created',
+      source:     'intelligence',
+      entityType: goer.type,
+      entityId:   openReq.payload.entityId,
+      actionKey:  openDesc.key,
+      requestId:  openReq.id,
+      status:     openReq.status,
+    });
     return {
       kind: 'answer',
       text: tc('chat.entityResolution.resolvedInventory', desc),
