@@ -745,26 +745,27 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   // Collect newly activated numbers from 'activation' and 'sim' category items.
   // Regular bill-payment items (category='phone_payment') are deliberately excluded —
   // those are existing customer numbers, not new activations.
+  // R-RECEIPT-VISUAL-CLEANUP: carrier label dropped from this block — the
+  // carrier already appears in the item rows above ("Plan AT&T", "Activation
+  // Fee AT&T") so repeating it under the phone number was redundant noise.
   const actSeen = new Set<string>();
-  const activationLines: Array<{ phone: string; carrier: string }> = [];
+  const activationLines: string[] = [];
   for (const item of sale.items) {
     if ((item.category === 'activation' || item.category === 'sim') && item.phoneNumber) {
       if (!actSeen.has(item.phoneNumber)) {
         actSeen.add(item.phoneNumber);
-        activationLines.push({ phone: item.phoneNumber, carrier: item.carrier ?? '' });
+        activationLines.push(item.phoneNumber);
       }
     }
   }
   const activationBlock = activationLines.length > 0
     ? `<div style="text-align:center;margin:6px 0;padding:8px 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
-        activationLines.map(({ phone, carrier }) =>
+        activationLines.map((phone) =>
           `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">${
             es ? 'Nuevo Número de Teléfono' : pt ? 'Novo Número de Telefone' : 'New Phone Number'
           }</div><div style="font-size:22px;font-weight:900;letter-spacing:0.04em;line-height:1.2">${
             escHtml(formatPhone(phone) || phone)
-          }</div>${
-            carrier ? `<div style="font-size:10px;font-weight:600;color:#444;margin-top:3px">${escHtml(carrier)}</div>` : ''
-          }`
+          }</div>`
         ).join('<div style="border-top:1px dashed #ccc;margin:5px 0"></div>')
       }</div>`
     : '';
@@ -794,7 +795,12 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   // the store name. Wider bars = more print-dots per CODE128 module = more
   // forgiving for cheap thermal scanners. Heights stay paper-size aware so
   // label/cr80 receipts don't lose half their vertical real estate.
-  const barcodeHeight = isLabel ? 30 : isCr80 ? 40 : 60;
+  // R-RECEIPT-VISUAL-CLEANUP: barcode trimmed for a lighter, premium look —
+  // heights lowered (60/40/30 → 40/30/22) and rendered at 80% of receipt
+  // width instead of 100%, which thins the individual bars while keeping
+  // enough print-dots per module for thermal scanners (~3.2 dots @ 203 DPI
+  // for a typical invoice on 4x6 vs ~4 before).
+  const barcodeHeight = isLabel ? 22 : isCr80 ? 30 : 40;
 
   return `<!DOCTYPE html>
 <html><head>
@@ -831,12 +837,13 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storePhone || '')}</div>
   </div>
 
-  <!-- Full-width barcode row. R-RECEIPT-BARCODE-FULLWIDTH-V1: bars stretch
-       the full receipt content area so each CODE128 module gets the maximum
-       possible print width. Invoice number below as human-readable fallback. -->
+  <!-- Barcode row. R-RECEIPT-BARCODE-FULLWIDTH-V1: own row below header.
+       R-RECEIPT-VISUAL-CLEANUP: rendered at 80% width (centered) for a
+       lighter retail-receipt look, and the human-readable invoice number
+       below was removed because the invoice info table directly under
+       this section already shows it on the right. -->
   <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
-    ${barcodeSvg ? barcodeSvg.replace('<svg', `<svg style="width:100%;max-width:100%;height:${barcodeHeight}px;display:block"`) : '<svg style="display:block"></svg>'}
-    <div style="font-size:11px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.08em;text-align:center;margin-top:2px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
+    ${barcodeSvg ? barcodeSvg.replace('<svg', `<svg style="width:80%;max-width:80%;height:${barcodeHeight}px;display:block;margin:0 auto"`) : '<svg style="display:block"></svg>'}
   </div>
 
   <!-- Invoice info -->
