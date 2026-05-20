@@ -1,6 +1,8 @@
+// OPERATIONAL WORKFLOW CHAIN TYPES
+// NOT interchangeable with legacy WorkflowStep types in ./types.ts
+// Separate intentionally to avoid breaking older workflow engine paths.
+//
 // R-WORKFLOW-CHAIN-V1 — Workflow chain types.
-// Separate file to avoid name collision with legacy types.ts
-// (WorkflowStep / WorkflowStepKind already defined there for older rounds).
 // Session-only; no persistence, no cloud, no UI yet.
 
 import type { ExecutionRequest } from '../executionPipeline/types';

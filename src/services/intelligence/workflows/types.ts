@@ -1,3 +1,7 @@
+// LEGACY CONVERSATIONAL WORKFLOW TYPES
+// Used by older flow engine / continuity systems.
+// NOT interchangeable with WorkflowChain* operational types in ./workflowChainTypes.ts
+//
 // R-INTELLIGENCE-AUTONOMOUS-FLOWS-V1
 // Operational workflow types — no imports from store or React.
 

@@ -4,7 +4,6 @@
 // TODO: Future integrations —
 //   - convert ExecutionRequest into workflow chain step
 //   - convert ApprovalQueueItem into workflow chain step
-//   - publish workflow events to operatorEventBus
 //   - surface chain in timeline / Companion feed
 
 import type {
@@ -16,6 +15,7 @@ import type {
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem } from '../approvals/types';
+import { publishOperatorEvent } from '../events/operatorEventBus';
 
 const MAX_CHAINS = 100;
 
@@ -87,6 +87,15 @@ export function createWorkflowChain(params: {
     _chains = next.length > MAX_CHAINS ? next.slice(next.length - MAX_CHAINS) : next;
   }
 
+  publishOperatorEvent({
+    id: `workflow-created-${chain.id}`,
+    type: 'workflow_created',
+    source: 'intelligence',
+    severity: 'info',
+    workflowId: chain.id,
+    workflowStatus: chain.status,
+  });
+
   return { ...chain, steps: [...chain.steps] };
 }
 
@@ -105,6 +114,48 @@ export function addWorkflowChainStep(chainId: string, step: WorkflowChainStep): 
   };
 
   _chains = [..._chains.slice(0, idx), updated, ..._chains.slice(idx + 1)];
+
+  publishOperatorEvent({
+    id: `workflow-step-added-${chainId}-${step.id}`,
+    type: 'workflow_step_added',
+    source: 'intelligence',
+    severity: 'info',
+    workflowId: chainId,
+    workflowStatus: updated.status,
+    stepId: step.id,
+    stepKind: step.kind,
+    stepStatus: step.status,
+  });
+
+  publishOperatorEvent({
+    id: `workflow-updated-${chainId}`,
+    type: 'workflow_updated',
+    source: 'intelligence',
+    severity: 'info',
+    workflowId: chainId,
+    workflowStatus: updated.status,
+  });
+
+  if (updated.status === 'completed') {
+    publishOperatorEvent({
+      id: `workflow-completed-${chainId}`,
+      type: 'workflow_completed',
+      source: 'intelligence',
+      severity: 'success',
+      workflowId: chainId,
+      workflowStatus: updated.status,
+    });
+  } else if (updated.status === 'blocked') {
+    publishOperatorEvent({
+      id: `workflow-blocked-${chainId}`,
+      type: 'workflow_blocked',
+      source: 'intelligence',
+      severity: 'warning',
+      workflowId: chainId,
+      workflowStatus: updated.status,
+    });
+  }
+
   return { ...updated, steps: [...updated.steps] };
 }
 
@@ -140,6 +191,53 @@ export function updateWorkflowChainStepStatus(params: {
   };
 
   _chains = [..._chains.slice(0, chainIdx), updated, ..._chains.slice(chainIdx + 1)];
+
+  const stepSeverity =
+    params.status === 'completed' ? 'success' :
+    params.status === 'blocked'   ? 'warning' :
+    'info';
+
+  publishOperatorEvent({
+    id: `workflow-step-updated-${params.chainId}-${params.stepId}`,
+    type: 'workflow_step_updated',
+    source: 'intelligence',
+    severity: stepSeverity,
+    workflowId: params.chainId,
+    workflowStatus: updated.status,
+    stepId: params.stepId,
+    stepKind: updatedStep.kind,
+    stepStatus: params.status,
+  });
+
+  publishOperatorEvent({
+    id: `workflow-updated-${params.chainId}`,
+    type: 'workflow_updated',
+    source: 'intelligence',
+    severity: 'info',
+    workflowId: params.chainId,
+    workflowStatus: updated.status,
+  });
+
+  if (updated.status === 'completed') {
+    publishOperatorEvent({
+      id: `workflow-completed-${params.chainId}`,
+      type: 'workflow_completed',
+      source: 'intelligence',
+      severity: 'success',
+      workflowId: params.chainId,
+      workflowStatus: updated.status,
+    });
+  } else if (updated.status === 'blocked') {
+    publishOperatorEvent({
+      id: `workflow-blocked-${params.chainId}`,
+      type: 'workflow_blocked',
+      source: 'intelligence',
+      severity: 'warning',
+      workflowId: params.chainId,
+      workflowStatus: updated.status,
+    });
+  }
+
   return { ...updated, steps: [...updated.steps] };
 }
 
