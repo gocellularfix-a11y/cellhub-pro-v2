@@ -2,6 +2,7 @@
 export type { OperatorEventType, OperatorEvent } from './types';
 export {
   publishOperatorEvent,
+  subscribeOperatorEvents,
   getOperatorEvents,
   getOperatorEventsByType,
   clearOperatorEvents,

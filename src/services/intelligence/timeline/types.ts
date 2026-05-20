@@ -10,7 +10,14 @@ export type OperatorTimelineEventType =
   | 'workflow_completed'
   | 'action_suggested'
   | 'action_clicked'
-  | 'entity_opened';
+  | 'entity_opened'
+  // R-WORKFLOW-TIMELINE-BRIDGE-V1 — operational workflow chain events
+  | 'workflow_chain_created'
+  | 'workflow_chain_updated'
+  | 'workflow_chain_step_added'
+  | 'workflow_chain_step_updated'
+  | 'workflow_chain_completed'
+  | 'workflow_chain_blocked';
 
 export interface OperatorTimelineEvent {
   id: string;

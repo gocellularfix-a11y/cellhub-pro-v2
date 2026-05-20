@@ -7,6 +7,22 @@ const MAX_EVENTS = 250;
 
 let _events: OperatorEvent[] = [];
 
+// ── Subscribers ───────────────────────────────────────────────────────────────
+
+type EventListener = (event: OperatorEvent) => void;
+let _listeners: EventListener[] = [];
+
+/**
+ * Registers a synchronous listener that is called after each published event.
+ * Returns an unsubscribe function. Listeners are notified in registration order.
+ */
+export function subscribeOperatorEvents(listener: EventListener): () => void {
+  _listeners = [..._listeners, listener];
+  return () => {
+    _listeners = _listeners.filter(l => l !== listener);
+  };
+}
+
 // ── Write ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -14,6 +30,7 @@ let _events: OperatorEvent[] = [];
  *
  * If an event with the same id already exists it is replaced in-place.
  * When the total count exceeds MAX_EVENTS the oldest events are dropped.
+ * All registered subscribers are notified synchronously after storage.
  */
 export function publishOperatorEvent(event: Omit<OperatorEvent, 'createdAt'>): OperatorEvent {
   const full: OperatorEvent = { ...event, createdAt: Date.now() };
@@ -30,7 +47,13 @@ export function publishOperatorEvent(event: Omit<OperatorEvent, 'createdAt'>): O
     _events = next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
   }
 
-  return { ...full };
+  const published = { ...full };
+  const snapshot = [..._listeners];
+  for (const listener of snapshot) {
+    listener(published);
+  }
+
+  return published;
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────

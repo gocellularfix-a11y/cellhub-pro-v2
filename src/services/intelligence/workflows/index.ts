@@ -11,6 +11,8 @@ export type {
   WorkflowChainStepKind,
   WorkflowChainStep,
   WorkflowChain,
+  WorkflowTransitionReason,
+  WorkflowTransition,
 } from './workflowChainTypes';
 export {
   createWorkflowChain,
@@ -20,4 +22,9 @@ export {
   addWorkflowChainStep,
   updateWorkflowChainStepStatus,
   clearWorkflowChains,
+  createWorkflowChainFromApproval,
+  syncWorkflowStepFromApproval,
+  createWorkflowTransition,
+  getWorkflowTransitions,
+  clearWorkflowTransitions,
 } from './workflowChain';

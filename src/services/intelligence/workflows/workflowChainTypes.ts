@@ -35,6 +35,14 @@ export type WorkflowChainStep = {
   titleKey: string;
   executionRequest?: ExecutionRequest;
   approvalItem?: ApprovalQueueItem;
+  // R-WORKFLOW-APPROVAL-LINKAGE-V1 — immutable snapshot fields for workflow lookup/debugging
+  // These fields are treated as immutable snapshots captured at workflow-step creation time.
+  // They are NOT guaranteed to stay synchronized with nested live objects after creation.
+  approvalId?: string;
+  requestId?: string;
+  actionKey?: string;
+  entityType?: string;
+  entityId?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -46,4 +54,22 @@ export type WorkflowChain = {
   steps: WorkflowChainStep[];
   createdAt: number;
   updatedAt: number;
+};
+
+// ── R-WORKFLOW-TRANSITIONS-V1 ─────────────────────────────────────────────────
+
+export type WorkflowTransitionReason =
+  | 'step_completed'
+  | 'step_blocked'
+  | 'approval_received'
+  | 'manual_update'
+  | 'system_sync';
+
+export type WorkflowTransition = {
+  id: string;
+  workflowId: string;
+  fromStatus: WorkflowChainStatus;
+  toStatus: WorkflowChainStatus;
+  reason: WorkflowTransitionReason;
+  createdAt: number;
 };
