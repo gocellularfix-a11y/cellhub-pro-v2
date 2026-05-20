@@ -788,11 +788,13 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
   body { padding: 0.1in 0.15in; box-sizing: border-box; }`;
 
-  const barcodeColStyle = (is80mm || isCr80)
-    ? 'text-align:right;flex:0 1 34mm;min-width:0;max-width:34mm;overflow:hidden;display:block;box-sizing:border-box'
-    : isLabel
-    ? 'text-align:right;flex:0 1 18mm;min-width:0;max-width:18mm;overflow:hidden;display:block;box-sizing:border-box'
-    : 'text-align:right;flex:0 1 1.9in;min-width:0;max-width:1.9in;overflow:hidden;display:block;box-sizing:border-box';
+  // R-RECEIPT-BARCODE-FULLWIDTH-V1: barcode moved out of the header and into
+  // its own full-width row below the store info so the bars can stretch the
+  // full usable width of the receipt instead of sharing a ~1.9in column with
+  // the store name. Wider bars = more print-dots per CODE128 module = more
+  // forgiving for cheap thermal scanners. Heights stay paper-size aware so
+  // label/cr80 receipts don't lose half their vertical real estate.
+  const barcodeHeight = isLabel ? 30 : isCr80 ? 40 : 60;
 
   return `<!DOCTYPE html>
 <html><head>
@@ -820,21 +822,21 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head><body>
-  <!-- Header: store left, barcode right.
-       R-RECEIPT-BARCODE-PAGEWIDTH-FIX: every flex item has min-width:0
-       so an oversized child (long store name, dense barcode) cannot
-       force the parent past the page width. Right column shrinks on 80mm.
-       overflow:hidden + box-sizing:border-box clamp every level. -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;margin-bottom:6px;border-bottom:2px solid #000;padding-bottom:5px;overflow:hidden">
-    <div style="flex:1 1 auto;min-width:0;overflow:hidden">
-      <div style="font-size:18px;font-weight:900;line-height:1;letter-spacing:0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
-      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storeAddress || '')}</div>
-      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(settings.storePhone || '')}</div>
-    </div>
-    <div style="${barcodeColStyle}">
-      ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="width:100%;max-width:100%;height:50px;display:block"') : '<svg style="display:block"></svg>'}
-      <div style="font-size:11px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.06em;text-align:center;margin-top:3px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
-    </div>
+  <!-- Header: store info, single column. R-RECEIPT-BARCODE-FULLWIDTH-V1:
+       barcode no longer rides the right column — it now has its own row
+       below so the store name has the full receipt width to breathe. -->
+  <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center">
+    <div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
+    <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storeAddress || '')}</div>
+    <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storePhone || '')}</div>
+  </div>
+
+  <!-- Full-width barcode row. R-RECEIPT-BARCODE-FULLWIDTH-V1: bars stretch
+       the full receipt content area so each CODE128 module gets the maximum
+       possible print width. Invoice number below as human-readable fallback. -->
+  <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
+    ${barcodeSvg ? barcodeSvg.replace('<svg', `<svg style="width:100%;max-width:100%;height:${barcodeHeight}px;display:block"`) : '<svg style="display:block"></svg>'}
+    <div style="font-size:11px;font-family:'Courier New',monospace;font-weight:800;letter-spacing:0.08em;text-align:center;margin-top:2px;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sale.invoiceNumber)}</div>
   </div>
 
   <!-- Invoice info -->
