@@ -18,6 +18,7 @@ export type {
   WorkflowTransition,
   WorkflowDependencyKind,
   WorkflowDependency,
+  WorkflowGraphReadinessResult,
 } from './workflowChainTypes';
 export {
   createWorkflowChain,
@@ -36,6 +37,7 @@ export {
   getWorkflowContinuations,
   clearWorkflowContinuations,
   evaluateWorkflowReadiness,
+  evaluateWorkflowGraphReadiness,
   createWorkflowDependency,
   getWorkflowDependencies,
   clearWorkflowDependencies,

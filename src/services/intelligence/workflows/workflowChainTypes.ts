@@ -102,6 +102,15 @@ export type WorkflowReadinessResult = {
   completedStepIds: string[];
 };
 
+// ── R-WORKFLOW-READINESS-GRAPH-INTEGRATION-V1 ────────────────────────────────
+
+export type WorkflowGraphReadinessResult = WorkflowReadinessResult & {
+  /** Ready steps that have at least one unresolved dependency in the graph. */
+  dependencyBlockedStepIds: string[];
+  /** Ready steps whose dependency graph is fully satisfied (or has no dependencies). */
+  dependencyReadyStepIds: string[];
+};
+
 // ── R-WORKFLOW-TRANSITIONS-V1 ─────────────────────────────────────────────────
 
 export type WorkflowTransitionReason =

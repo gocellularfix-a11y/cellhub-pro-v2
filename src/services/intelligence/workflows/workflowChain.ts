@@ -19,6 +19,7 @@ import type {
   WorkflowReadinessResult,
   WorkflowDependency,
   WorkflowDependencyKind,
+  WorkflowGraphReadinessResult,
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem, ApprovalQueueStatus } from '../approvals/types';
@@ -538,10 +539,23 @@ export function clearWorkflowDependencies(): void {
   _dependencies = [];
 }
 
+function isDependencySatisfied(
+  kind: WorkflowDependencyKind,
+  dependsOnStatus: WorkflowChainStepStatus | undefined,
+): boolean {
+  if (kind === 'blocks_until_resolved') {
+    // Satisfied as long as the blocking step is not stuck in 'blocked'.
+    // Missing step counts as unsatisfied.
+    return dependsOnStatus !== undefined && dependsOnStatus !== 'blocked';
+  }
+  // requires_completion | requires_approval | requires_manual_action
+  return dependsOnStatus === 'completed';
+}
+
 /**
  * Evaluates the dependency state for a single step.
  * Pure read — no mutations, no events, no side effects.
- * A dependency is satisfied when the dependsOn step status === 'completed'.
+ * Satisfaction semantics are per-kind (see isDependencySatisfied).
  * Returns null if the workflow chain does not exist.
  */
 export function evaluateWorkflowDependencyState(params: {
@@ -565,7 +579,7 @@ export function evaluateWorkflowDependencyState(params: {
 
   for (const dep of deps) {
     const depStep = chain.steps.find(s => s.id === dep.dependsOnStepId);
-    if (depStep?.status === 'completed') {
+    if (isDependencySatisfied(dep.kind, depStep?.status)) {
       satisfiedDependencyStepIds.push(dep.dependsOnStepId);
     } else {
       unresolvedDependencyStepIds.push(dep.dependsOnStepId);
@@ -600,6 +614,33 @@ export function evaluateWorkflowReadiness(workflowId: string): WorkflowReadiness
   }
 
   return { workflowId, readyStepIds, blockedStepIds, waitingApprovalStepIds, completedStepIds };
+}
+
+/**
+ * Readiness evaluation combined with dependency graph inspection.
+ * Pure read — no mutations, no events, no side effects.
+ * readyStepIds from base result is preserved unchanged.
+ * dependencyReadyStepIds  = ready steps with all dependencies satisfied (or none declared).
+ * dependencyBlockedStepIds = ready steps with at least one unresolved dependency.
+ * Returns null if the workflow chain does not exist.
+ */
+export function evaluateWorkflowGraphReadiness(workflowId: string): WorkflowGraphReadinessResult | null {
+  const base = evaluateWorkflowReadiness(workflowId);
+  if (!base) return null;
+
+  const dependencyBlockedStepIds: string[] = [];
+  const dependencyReadyStepIds: string[] = [];
+
+  for (const stepId of base.readyStepIds) {
+    const depState = evaluateWorkflowDependencyState({ workflowId, stepId });
+    if (depState && depState.unresolvedDependencyStepIds.length > 0) {
+      dependencyBlockedStepIds.push(stepId);
+    } else {
+      dependencyReadyStepIds.push(stepId);
+    }
+  }
+
+  return { ...base, dependencyBlockedStepIds, dependencyReadyStepIds };
 }
 
 /** Returns a shallow copy of all chains (never the internal reference). */
