@@ -17,6 +17,8 @@ import type {
   WorkflowContinuation,
   WorkflowContinuationKind,
   WorkflowReadinessResult,
+  WorkflowDependency,
+  WorkflowDependencyKind,
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem, ApprovalQueueStatus } from '../approvals/types';
@@ -26,11 +28,13 @@ import { publishOperatorEvent } from '../events/operatorEventBus';
 const MAX_CHAINS = 100;
 const MAX_TRANSITIONS = 500;
 const MAX_CONTINUATIONS = 500;
+const MAX_DEPENDENCIES = 1000;
 
 let _chains: WorkflowChain[] = [];
 let _transitions: WorkflowTransition[] = [];
 let _transitionSeq = 0;
 let _continuations: WorkflowContinuation[] = [];
+let _dependencies: WorkflowDependency[] = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -476,6 +480,100 @@ export function getWorkflowContinuations(workflowId?: string): WorkflowContinuat
 /** Wipes all continuations (e.g. session end / test teardown). */
 export function clearWorkflowContinuations(): void {
   _continuations = [];
+}
+
+// ── Dependencies (R-WORKFLOW-DEPENDENCY-GRAPH-V1) ─────────────────────────────
+
+/**
+ * Declares a dependency between two steps in the same workflow.
+ * Deterministic id: dependency-{workflowId}-{fromStepId}-{dependsOnStepId}-{kind}.
+ * Replace-in-place if same id already exists (idempotent); preserves original createdAt.
+ * Does NOT execute, auto-progress, or mutate any steps or chains.
+ */
+export function createWorkflowDependency(params: {
+  workflowId: string;
+  fromStepId: string;
+  dependsOnStepId: string;
+  kind: WorkflowDependencyKind;
+}): WorkflowDependency {
+  const dependency: WorkflowDependency = {
+    id:              `dependency-${params.workflowId}-${params.fromStepId}-${params.dependsOnStepId}-${params.kind}`,
+    workflowId:      params.workflowId,
+    fromStepId:      params.fromStepId,
+    dependsOnStepId: params.dependsOnStepId,
+    kind:            params.kind,
+    createdAt:       Date.now(),
+  };
+
+  const existingIdx = _dependencies.findIndex(d => d.id === dependency.id);
+  if (existingIdx !== -1) {
+    const existing = _dependencies[existingIdx];
+    const updated: WorkflowDependency = {
+      ...existing,
+      ...dependency,
+      id:        existing.id,
+      createdAt: existing.createdAt,
+    };
+    _dependencies = [
+      ..._dependencies.slice(0, existingIdx),
+      updated,
+      ..._dependencies.slice(existingIdx + 1),
+    ];
+    return { ...updated };
+  }
+
+  const next = [..._dependencies, dependency];
+  _dependencies = next.length > MAX_DEPENDENCIES ? next.slice(next.length - MAX_DEPENDENCIES) : next;
+  return { ...dependency };
+}
+
+/** Returns all dependencies, or only those for the given workflowId. */
+export function getWorkflowDependencies(workflowId?: string): WorkflowDependency[] {
+  if (workflowId === undefined) return [..._dependencies];
+  return _dependencies.filter(d => d.workflowId === workflowId);
+}
+
+/** Wipes all dependencies (e.g. session end / test teardown). */
+export function clearWorkflowDependencies(): void {
+  _dependencies = [];
+}
+
+/**
+ * Evaluates the dependency state for a single step.
+ * Pure read — no mutations, no events, no side effects.
+ * A dependency is satisfied when the dependsOn step status === 'completed'.
+ * Returns null if the workflow chain does not exist.
+ */
+export function evaluateWorkflowDependencyState(params: {
+  workflowId: string;
+  stepId: string;
+}): {
+  blockedByStepIds: string[];
+  satisfiedDependencyStepIds: string[];
+  unresolvedDependencyStepIds: string[];
+} | null {
+  const chain = _chains.find(c => c.id === params.workflowId);
+  if (!chain) return null;
+
+  const deps = _dependencies.filter(
+    d => d.workflowId === params.workflowId && d.fromStepId === params.stepId,
+  );
+
+  const blockedByStepIds: string[] = [];
+  const satisfiedDependencyStepIds: string[] = [];
+  const unresolvedDependencyStepIds: string[] = [];
+
+  for (const dep of deps) {
+    const depStep = chain.steps.find(s => s.id === dep.dependsOnStepId);
+    if (depStep?.status === 'completed') {
+      satisfiedDependencyStepIds.push(dep.dependsOnStepId);
+    } else {
+      unresolvedDependencyStepIds.push(dep.dependsOnStepId);
+      blockedByStepIds.push(dep.dependsOnStepId);
+    }
+  }
+
+  return { blockedByStepIds, satisfiedDependencyStepIds, unresolvedDependencyStepIds };
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────

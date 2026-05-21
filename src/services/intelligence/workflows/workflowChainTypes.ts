@@ -74,6 +74,24 @@ export type WorkflowContinuation = {
   createdAt: number;
 };
 
+// ── R-WORKFLOW-DEPENDENCY-GRAPH-V1 ───────────────────────────────────────────
+
+export type WorkflowDependencyKind =
+  | 'requires_completion'
+  | 'requires_approval'
+  | 'requires_manual_action'
+  | 'blocks_until_resolved';
+
+export type WorkflowDependency = {
+  /** Deterministic: dependency-{workflowId}-{fromStepId}-{dependsOnStepId}-{kind} */
+  id: string;
+  workflowId: string;
+  fromStepId: string;
+  dependsOnStepId: string;
+  kind: WorkflowDependencyKind;
+  createdAt: number;
+};
+
 // ── R-WORKFLOW-READINESS-EVALUATION-V1 ───────────────────────────────────────
 
 export type WorkflowReadinessResult = {
