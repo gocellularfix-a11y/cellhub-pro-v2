@@ -35,39 +35,41 @@ const KIND_CUSTOMER = 'CUST';
 const SEP = '|';
 
 // ── CH: format constants (phone-pay receipts) ─────────────────────────────────
+// Still exported because parsers + downstream UI (BarcodeActionModal, etc.)
+// match on these prefixes when scanning legacy receipts. The receipt emitter
+// no longer produces them (R-RECEIPT-BARCODE-MATCH-WORKING-V1).
 export const CH_CUST_PREFIX     = 'CH:CUST:';
 export const CH_PHONEPAY_PREFIX = 'CH:PHONEPAY:';
 export const CH_PHONE_PREFIX    = 'CH:PHONE:';
 
-// Categories that mark a sale as a phone-payment receipt
-const PHONE_PAY_CATS = new Set(['phone_payment', 'activation', 'sim']);
-
 /**
  * Encode a sale into the canonical receipt barcode payload.
  *
- * Phone-payment sales (contains phone_payment / activation / sim items):
- *   - Has customerId  → CH:CUST:{customerId}    (direct customer-history scan)
- *   - No customerId   → CH:PHONEPAY:{invoiceNumber}  (invoice-based fallback)
+ * R-RECEIPT-BARCODE-MATCH-WORKING-V1: emission simplified to the bare
+ * invoice number for every sale. The structured CHP|S| / CH:CUST: /
+ * CH:PHONEPAY: prefixes were adding 6–8 extra CODE128 modules each,
+ * which combined with the receipt's tight barcode column to compress
+ * the bars below the shop scanner's read threshold. With the bars now
+ * rendered at their natural SVG size, keeping the payload short is
+ * what makes a 4in / 80mm thermal print fit without overflow.
  *
- * All other sales keep the short CHP|S| form unchanged.
+ * The parsers below still accept all legacy formats so previously
+ * printed receipts keep scanning. The downside: new phone-pay receipts
+ * lose the "scan opens customer history" shortcut — they now route
+ * through the standard invoice lookup and the cashier reaches the
+ * customer in one extra click via the sale screen.
+ *
+ * Used to emit:
+ *   - Phone-pay + customerId → CH:CUST:{customerId}
+ *   - Phone-pay, no customer → CH:PHONEPAY:{invoiceNumber}
+ *   - All other sales        → CHP|S|{invoiceNumber}
  */
 export function buildReceiptBarcodePayload(
   sale: (Pick<Sale, 'invoiceNumber' | 'id' | 'customerId'> & { items?: Sale['items'] }) | null | undefined,
 ): string {
   if (!sale) return '';
-
-  const isPhonePay = (sale.items ?? []).some((i) => PHONE_PAY_CATS.has(i.category));
-
-  if (isPhonePay) {
-    if (sale.customerId) return `${CH_CUST_PREFIX}${sale.customerId}`;
-    const ref = (sale.invoiceNumber?.trim()) || sale.id || '';
-    if (ref) return `${CH_PHONEPAY_PREFIX}${ref}`;
-  }
-
-  // Standard receipt — invoice-based
   const ref = (sale.invoiceNumber && sale.invoiceNumber.trim()) || sale.id || '';
-  if (!ref) return '';
-  return [PREFIX, KIND_SALE_SHORT, ref].join(SEP);
+  return ref;
 }
 
 // ── CH: barcode helpers ───────────────────────────────────────────────────────

@@ -66,8 +66,16 @@ export function renderBarcodeSvg(value: string): string {
     // too thin/short at 203 DPI. The SVG is rendered at width:100%;height:50px
     // in the receipt template so bars always fill the container width while
     // maintaining a scannable 50px height regardless of payload length.
+    // R-RECEIPT-BARCODE-MATCH-WORKING-V1: copied verbatim from the two
+    // CellHub barcodes that scan reliably today — the price-label
+    // BarcodeRenderer (width:1.5/height:50) and the CredentialMaker
+    // (width:1.5/height:35). The receipt previously used width:1.2 and
+    // then forced the SVG to CSS width:100% inside a ~1.9in column,
+    // which compressed the bars below the scanner's module threshold.
+    // displayValue stays false because the invoice number is already
+    // printed in the invoice-info table just below the barcode.
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.2, height: 50,
+      format: 'CODE128', width: 1.5, height: 50,
       displayValue: false, margin: 2,
       background: '#ffffff', lineColor: '#000000',
     });
@@ -789,18 +797,12 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
   body { padding: 0.1in 0.15in; box-sizing: border-box; }`;
 
-  // R-RECEIPT-BARCODE-FULLWIDTH-V1: barcode moved out of the header and into
-  // its own full-width row below the store info so the bars can stretch the
-  // full usable width of the receipt instead of sharing a ~1.9in column with
-  // the store name. Wider bars = more print-dots per CODE128 module = more
-  // forgiving for cheap thermal scanners. Heights stay paper-size aware so
-  // label/cr80 receipts don't lose half their vertical real estate.
-  // R-RECEIPT-VISUAL-CLEANUP: barcode trimmed for a lighter, premium look —
-  // heights lowered (60/40/30 → 40/30/22) and rendered at 80% of receipt
-  // width instead of 100%, which thins the individual bars while keeping
-  // enough print-dots per module for thermal scanners (~3.2 dots @ 203 DPI
-  // for a typical invoice on 4x6 vs ~4 before).
-  const barcodeHeight = isLabel ? 22 : isCr80 ? 30 : 40;
+  // R-RECEIPT-BARCODE-MATCH-WORKING-V1: barcode goes in its own row below
+  // the header (single-column store info above) so it can render at its
+  // NATURAL SVG size — same approach the credential-maker and price-label
+  // barcodes use, which are the two CODE128 strips the shop scanner already
+  // reads reliably. No CSS width:100% scaling here — that's the bit that
+  // was breaking the scanner reads on the receipt's previous attempts.
 
   return `<!DOCTYPE html>
 <html><head>
@@ -828,22 +830,26 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head><body>
-  <!-- Header: store info, single column. R-RECEIPT-BARCODE-FULLWIDTH-V1:
-       barcode no longer rides the right column — it now has its own row
-       below so the store name has the full receipt width to breathe. -->
+  <!-- Header: store info, single column.
+       R-RECEIPT-BARCODE-MATCH-WORKING-V1: header reverts to single-column
+       so the barcode below it can sit centered in its own full-width row
+       and render at its natural SVG size (matches credential-maker +
+       price-label format the scanner already reads). -->
   <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center">
     <div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
     <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storeAddress || '')}</div>
     <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(settings.storePhone || '')}</div>
   </div>
 
-  <!-- Barcode row. R-RECEIPT-BARCODE-FULLWIDTH-V1: own row below header.
-       R-RECEIPT-VISUAL-CLEANUP: rendered at 80% width (centered) for a
-       lighter retail-receipt look, and the human-readable invoice number
-       below was removed because the invoice info table directly under
-       this section already shows it on the right. -->
+  <!-- Barcode row. R-RECEIPT-BARCODE-MATCH-WORKING-V1: render the SVG at
+       its natural size, centered. NO width:100% / max-width forcing —
+       that's exactly what was compressing the bars and killing reads.
+       max-width:100% on the wrapper alone clips overflow if a very long
+       payload ever needs to. Invoice number under the barcode stays
+       removed (R-RECEIPT-VISUAL-CLEANUP) — the table below still shows
+       it on the right. -->
   <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
-    ${barcodeSvg ? barcodeSvg.replace('<svg', `<svg style="width:80%;max-width:80%;height:${barcodeHeight}px;display:block;margin:0 auto"`) : '<svg style="display:block"></svg>'}
+    ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : '<svg style="display:block"></svg>'}
   </div>
 
   <!-- Invoice info -->
