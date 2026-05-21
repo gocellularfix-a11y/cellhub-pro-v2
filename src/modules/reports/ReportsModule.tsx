@@ -898,10 +898,16 @@ export default function ReportsModule() {
   const stats = useMemo(() => {
     let salesSubtotalCents = 0;
     let salesDiscountCents = 0;
-    let salesTaxCents = 0;
+    // R-FINANCIAL-BUCKET-PURITY-FIX P1: the previous `salesTaxCents`
+    // accumulator was conflating salesTax + utilityTax + mobileSurcharge
+    // (and on the legacy-fallback path, taxAmount). It's replaced with
+    // four PURE buckets that match the Sale interface 1:1. The exposed
+    // `taxCollectedCents` aggregate (computed below the loop) preserves
+    // the prior display value as an explicit sum of these buckets.
     let productSalesTaxCents = 0;
     let utilityTaxCents = 0;
     let mobilitySurchargeCents = 0;
+    let legacyTaxAmountCents = 0;
     let salesCbeCents = 0;
     let salesScreenFeeCents = 0;
     let totalCostCents = 0;
@@ -985,13 +991,29 @@ export default function ReportsModule() {
       salesDiscountCents += Math.max(0, saleSubtotal - saleSubAfterDisc);
       // v2 writes salesTax + utilityTax + mobileSurcharge separately;
       // legacy v1 data uses the aggregate taxAmount field. Read both.
+      // R-FINANCIAL-BUCKET-PURITY-FIX P1: each tax bucket lands in its own
+      // accumulator — productSalesTax is CA SALES TAX ONLY, never the
+      // sum that conflated utility/mobility. Negative-total refund-audit
+      // sales (status='completed', total<0) flow through this same loop
+      // and naturally subtract from the matching bucket because their
+      // own salesTax / utilityTax / mobileSurcharge fields are negative.
+      // That's the per-bucket refund reversal P2 asked for — handled
+      // automatically by the iteration without a global subtraction.
       productSalesTaxCents += (sale as any).salesTax || 0;
       utilityTaxCents += (sale as any).utilityTax || 0;
       mobilitySurchargeCents += (sale as any).mobileSurcharge || 0;
-      const saleTax = ((sale as any).salesTax || 0)
+      // Legacy fallback: only when ALL three v2 fields are zero on this
+      // sale, route the legacy aggregate to its OWN bucket. Never mix into
+      // productSalesTaxCents (that's what corrupted the sales-tax bucket
+      // before). Reports UI can surface legacyTaxAmountCents separately
+      // for transparency, and the exposed `taxCollectedCents` aggregate
+      // includes it so the displayed total still reconciles.
+      const v2TaxSum = ((sale as any).salesTax || 0)
         + ((sale as any).utilityTax || 0)
         + ((sale as any).mobileSurcharge || 0);
-      salesTaxCents += saleTax > 0 ? saleTax : (sale.taxAmount || 0);
+      if (v2TaxSum === 0 && (sale.taxAmount || 0) !== 0) {
+        legacyTaxAmountCents += sale.taxAmount || 0;
+      }
       salesCbeCents += sale.cbeTotal || 0;
       salesScreenFeeCents += sale.screenFeeTotal || 0;
 
@@ -1291,9 +1313,22 @@ export default function ReportsModule() {
     const totalReturnsCents = returnsFromPeriodSales.reduce((s, r) => s + r.totalCents, 0);
     const netRevenueCents = grossRevenueCents - totalReturnsCents;
 
-    // Fix 3: tax collected must net out the tax that was refunded on returns.
-    const returnsTaxCents = returnsFromPeriodSales.reduce((s, r) => s + r.taxCents, 0);
-    salesTaxCents = Math.max(0, salesTaxCents - returnsTaxCents);
+    // R-FINANCIAL-BUCKET-PURITY-FIX P2: customer-return refunds adjust the
+    // EXPOSED aggregate only — they no longer mutate any pure bucket.
+    // customerReturn records carry a single `r.taxCents` aggregate without
+    // a per-bucket breakdown, so the previous code (which forced the
+    // adjustment into `salesTaxCents`) was the only way to apply it — but
+    // that polluted the sales-tax bucket whenever the refund's tax was
+    // really utility/mobility. The accumulator-level cleanup happens in
+    // P1 above; here we just compute the customer-return adjustment as a
+    // standalone number to subtract from the explicit `taxCollectedCents`
+    // aggregate below. Negative-total refund-audit sales (R-EDIT-AUDIT
+    // pattern, status='completed') reverse buckets in the main loop and
+    // are NOT included in this adjustment.
+    const customerReturnTaxAdjustmentCents = returnsFromPeriodSales.reduce(
+      (s, r) => s + r.taxCents,
+      0,
+    );
 
     const subtotalBeforeTaxCents = salesSubtotalCents - salesDiscountCents + standaloneUnlockRevenueCents;
 
@@ -1345,6 +1380,50 @@ export default function ReportsModule() {
     const cleanSalesCount = filteredSales.filter((s) => (s.total || 0) > 0).length;
     const refundSalesCount = filteredSales.filter((s) => (s.total || 0) < 0).length;
 
+    // ── R-REPORT-ZTAPE-RECONCILIATION-FIX ─────────────────────────────────
+    // Additive reconciliation layer that does NOT mutate any of the legacy
+    // report numbers above. Exposes the 6 explicit financial buckets the
+    // shop's physical Z tape uses so the daily report can be cross-checked
+    // line-by-line. Every value is derived from the same raw accumulators
+    // the existing report already uses — no parallel summation, no new
+    // refund handling, no behavioural change. Per-line conventions:
+    //
+    //   reconGrossCollected      = Σ sale.total for non-voided/non-refunded
+    //                              sales (tax-included, negative refund-audit
+    //                              rows already subtract) + standalone unlocks.
+    //                              Matches Z tape NET2.
+    //   reconTaxCollected        = Σ (salesTax + utilityTax + mobileSurcharge
+    //                              + legacyTaxAmount) gross — pure-bucket sum,
+    //                              not reduced by the customer-return tax
+    //                              adjustment. Matches Z TTL TAX for a day
+    //                              with no customer returns; on refund days
+    //                              subtract reconRefundTaxAdjustment.
+    //   reconFeeCollected        = Σ (cbeTotal + screenFeeTotal). Always
+    //                              separate from tax because the Z tape's
+    //                              TTL TAX line is sales-tax only.
+    //   reconRefundTaxAdjustment = tax portion of returns in the period
+    //                              (positive number, subtract to reconcile).
+    //   reconOperationalRevenue  = grossCollected − taxCollected − feeCollected.
+    //                              Pre-tax retail revenue. Matches Z NET1 on
+    //                              days with no refunds; subtract returns'
+    //                              non-tax subtotal to compare otherwise.
+    //   reconNetRevenue          = grossCollected − totalReturns. Post-refund
+    //                              gross. Same value as the existing
+    //                              netRevenueCents above — re-exposed under
+    //                              the recon namespace so the reconciliation
+    //                              block reads self-consistently.
+    const reconTaxCollectedCents = productSalesTaxCents
+      + utilityTaxCents
+      + mobilitySurchargeCents
+      + legacyTaxAmountCents;
+    const reconFeeCollectedCents = salesCbeCents + salesScreenFeeCents;
+    const reconGrossCollectedCents = grossRevenueCents;
+    const reconRefundTaxAdjustmentCents = customerReturnTaxAdjustmentCents;
+    const reconOperationalRevenueCents = reconGrossCollectedCents
+      - reconTaxCollectedCents
+      - reconFeeCollectedCents;
+    const reconNetRevenueCents = netRevenueCents;
+
     return {
       grossRevenueCents,
       netRevenueCents,
@@ -1353,12 +1432,41 @@ export default function ReportsModule() {
       totalCostCents,
       subtotalBeforeTaxCents,
       profitMargin,
-      taxCollectedCents: salesTaxCents,
+      // R-FINANCIAL-BUCKET-PURITY-FIX P1: `taxCollectedCents` is now an
+      // EXPLICIT aggregate of the four pure tax buckets minus the
+      // customer-return adjustment. Numeric value preserved versus the
+      // previous accumulator (sum of the same fields, identical refund
+      // subtraction) so every consumer reading this field — statCard
+      // "Tax", "Total Fees" display, recon panel — sees the same dollar
+      // amount it saw before. Pure buckets are exposed below for
+      // bucket-level inspection.
+      taxCollectedCents: Math.max(0,
+        productSalesTaxCents
+        + utilityTaxCents
+        + mobilitySurchargeCents
+        + legacyTaxAmountCents
+        - customerReturnTaxAdjustmentCents,
+      ),
       productSalesTaxCents,
       utilityTaxCents,
       mobilitySurchargeCents,
+      legacyTaxAmountCents,
+      customerReturnTaxAdjustmentCents,
       cbeCollectedCents: salesCbeCents,
       screenFeeCents: salesScreenFeeCents,
+      // R-REPORT-ZTAPE-RECONCILIATION-FIX: explicit Z-tape reconciliation
+      // bucket. Additive — never replaces legacy fields, never feeds back
+      // into them. Remove this `recon` object only after the dedicated
+      // reconciliation UI/section is removed too.
+      recon: {
+        grossCollectedCents: reconGrossCollectedCents,
+        taxCollectedCents: reconTaxCollectedCents,
+        feeCollectedCents: reconFeeCollectedCents,
+        refundTaxAdjustmentCents: reconRefundTaxAdjustmentCents,
+        operationalRevenueCents: reconOperationalRevenueCents,
+        netRevenueCents: reconNetRevenueCents,
+        totalReturnsCents,
+      },
       cashCents,
       cardCents,
       storeCreditCents,
@@ -1452,6 +1560,50 @@ export default function ReportsModule() {
 
     return { cashIn, cashOut, net: cashIn - cashOut };
   }, [allFilteredSales, returnsInPeriod, cancellationsInPeriod, safeLayaways, inRange]);
+
+  // ── R-REPORT-ZTAPE-RECONCILIATION-FIX: temporary debug ──────────────────
+  // Logs the 6 reconciliation buckets to the devtools console whenever the
+  // stats memo recomputes. Intended to be left on while Jorge reconciles a
+  // few days of reports against the physical Z tape; rip out the useEffect
+  // (and the corresponding console.table call) once the reconciliation UI
+  // has been verified to match.
+  useEffect(() => {
+    if (!stats?.recon) return;
+    const r = stats.recon;
+    const fmt = (c: number) => (c / 100).toFixed(2);
+    // eslint-disable-next-line no-console
+    console.table({
+      'Gross Collected (~Z NET2)':       fmt(r.grossCollectedCents),
+      'Tax Collected (bruto, ~Z TTL TAX)': fmt(r.taxCollectedCents),
+      'Fee Collected (cbe + screen)':    fmt(r.feeCollectedCents),
+      'Refund Tax Adjustment':           fmt(r.refundTaxAdjustmentCents),
+      'Operational Revenue (~Z NET1)':   fmt(r.operationalRevenueCents),
+      'Net Revenue (gross − returns)':   fmt(r.netRevenueCents),
+      'Returns Total':                   fmt(r.totalReturnsCents),
+    });
+
+    // R-FINANCIAL-BUCKET-PURITY-FIX P3: reconciliation assertion.
+    // Σ category line revenue must equal subtotalBeforeTax within ±1 cent.
+    // Drift here means a discount or pseudo-item revenue didn't allocate
+    // properly to its line, OR an item carries a price that diverges from
+    // the sale's subtotal contribution. Debug-warning only — never crashes
+    // and never blocks the UI. Remove this block when the production data
+    // has reconciled cleanly across multiple days.
+    const categoryPreTaxTotalCents = stats.categoriesByRevenue.reduce(
+      (s, c) => s + c.revenueCents,
+      0,
+    );
+    const reconDeltaCents = categoryPreTaxTotalCents - stats.subtotalBeforeTaxCents;
+    if (Math.abs(reconDeltaCents) > 1) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[finance-recon] categoryPreTaxTotal vs subtotalBeforeTax drift: ${(reconDeltaCents / 100).toFixed(2)} `
+        + `(categoryTotal=${(categoryPreTaxTotalCents / 100).toFixed(2)}, `
+        + `subtotalBeforeTax=${(stats.subtotalBeforeTaxCents / 100).toFixed(2)}, `
+        + `period=${periodRange})`,
+      );
+    }
+  }, [stats, periodRange]);
 
   // ── Phone payment per-line rows (for portal report and detail table) ──
   const phonePaymentRows = useMemo(() => {
@@ -2164,6 +2316,47 @@ tr:last-child td { border-bottom: none; }
             {statCard(t('reports.card'), stats.cardCents, '', '#a78bfa')}
             {stats.storeCreditCents > 0 && statCard(t('reports.storeCredit'), stats.storeCreditCents, '', '#c084fc')}
           </div>
+
+          {/* ── R-REPORT-ZTAPE-RECONCILIATION-FIX: Z tape reconciliation panel ──
+              Additive panel that exposes the 6 explicit financial buckets the
+              physical Z tape uses, so the daily report can be cross-checked
+              line by line. No legacy field above has been mutated — these
+              values are derived from the same accumulators as the summary
+              cards. Reads "should match" against the paper tape's NET1 /
+              TTL TAX / NET2 columns. */}
+          {stats.recon && (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(96,165,250,0.25)',
+              borderRadius: '0.75rem',
+              padding: '0.875rem 1rem',
+            }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#60a5fa', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                🧾 Z Tape Reconciliation
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
+                {([
+                  ['Gross Collected', stats.recon.grossCollectedCents, '~ Z NET2', '#e2e8f0'],
+                  ['Tax Collected (bruto)', stats.recon.taxCollectedCents, '~ Z TTL TAX', '#60a5fa'],
+                  ['Fee Collected', stats.recon.feeCollectedCents, 'cbe + screen', '#a78bfa'],
+                  ['Refund Tax Adj.', stats.recon.refundTaxAdjustmentCents, 'subtract from tax', stats.recon.refundTaxAdjustmentCents > 0 ? '#ef4444' : '#64748b'],
+                  ['Operational Revenue', stats.recon.operationalRevenueCents, '~ Z NET1', '#22c55e'],
+                  ['Net Revenue (post-returns)', stats.recon.netRevenueCents, 'gross − returns', '#22c55e'],
+                ] as const).map(([label, valueCents, sub, color]) => (
+                  <div key={label} style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 0.7rem',
+                  }}>
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, marginBottom: '0.2rem' }}>{label}</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color }}>{formatCurrency(valueCents)}</div>
+                    <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '0.1rem', fontStyle: 'italic' }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Diagnosis Conversion (when repairs have outcomes) ── */}
           {filteredRepairs.length > 0 && (() => {
