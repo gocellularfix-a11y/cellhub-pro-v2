@@ -446,18 +446,19 @@ export function createWorkflowContinuation(params: {
 
   const existingIdx = _continuations.findIndex(c => c.id === continuation.id);
   if (existingIdx !== -1) {
-    // Preserve original createdAt so a stable declarative continuation
-    // doesn't appear "new" in replay/persistence/debugging contexts.
-    const preserved: WorkflowContinuation = {
+    const existing = _continuations[existingIdx];
+    const updated: WorkflowContinuation = {
+      ...existing,
       ...continuation,
-      createdAt: _continuations[existingIdx].createdAt,
+      id:        existing.id,
+      createdAt: existing.createdAt,
     };
     _continuations = [
       ..._continuations.slice(0, existingIdx),
-      preserved,
+      updated,
       ..._continuations.slice(existingIdx + 1),
     ];
-    return { ...preserved };
+    return { ...updated };
   } else {
     const next = [..._continuations, continuation];
     _continuations = next.length > MAX_CONTINUATIONS ? next.slice(next.length - MAX_CONTINUATIONS) : next;
