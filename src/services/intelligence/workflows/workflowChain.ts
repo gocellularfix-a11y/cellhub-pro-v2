@@ -20,6 +20,8 @@ import type {
   WorkflowDependency,
   WorkflowDependencyKind,
   WorkflowGraphReadinessResult,
+  WorkflowExecutionCandidatesResult,
+  WorkflowPlanResult,
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem, ApprovalQueueStatus } from '../approvals/types';
@@ -544,9 +546,11 @@ function isDependencySatisfied(
   dependsOnStatus: WorkflowChainStepStatus | undefined,
 ): boolean {
   if (kind === 'blocks_until_resolved') {
-    // Satisfied as long as the blocking step is not stuck in 'blocked'.
+    // Resolved when the blocking step has reached a terminal state:
+    // completed = resolved successfully; blocked = resolved as cannot-continue.
+    // draft / ready / waiting_approval are NOT resolved — still in-flight.
     // Missing step counts as unsatisfied.
-    return dependsOnStatus !== undefined && dependsOnStatus !== 'blocked';
+    return dependsOnStatus === 'completed' || dependsOnStatus === 'blocked';
   }
   // requires_completion | requires_approval | requires_manual_action
   return dependsOnStatus === 'completed';
@@ -641,6 +645,53 @@ export function evaluateWorkflowGraphReadiness(workflowId: string): WorkflowGrap
   }
 
   return { ...base, dependencyBlockedStepIds, dependencyReadyStepIds };
+}
+
+/**
+ * Returns the set of steps that are structural candidates for execution.
+ * Pure read — no mutations, no events, no side effects, no execution.
+ * This function does NOT apply execution policies (permissions, priority,
+ * throttling, concurrency, execution windows). Those are a future layer.
+ * candidateStepIds    = dependency-clear ready steps (structural only).
+ * blockedReadyStepIds = ready steps still held by unresolved dependencies.
+ * Returns null if the workflow chain does not exist.
+ */
+export function evaluateWorkflowExecutionCandidates(workflowId: string): WorkflowExecutionCandidatesResult | null {
+  const graph = evaluateWorkflowGraphReadiness(workflowId);
+  if (!graph) return null;
+
+  return {
+    workflowId,
+    candidateStepIds:    graph.dependencyReadyStepIds,
+    blockedReadyStepIds: graph.dependencyBlockedStepIds,
+    reason: 'dependency_clear_ready_steps',
+    mode:   'structural_candidates_only',
+  };
+}
+
+/**
+ * Builds a ranked plan of ready and blocked steps for a workflow.
+ * Pure read — no mutations, no events, no side effects, no execution.
+ * No sorting or priority applied — insertion order preserved.
+ * Returns null if the workflow chain does not exist.
+ */
+export function evaluateWorkflowPlan(workflowId: string): WorkflowPlanResult | null {
+  const candidates = evaluateWorkflowExecutionCandidates(workflowId);
+  if (!candidates) return null;
+
+  const ready = candidates.candidateStepIds.map((stepId, i) => ({
+    stepId,
+    rank:   i + 1,
+    reason: 'dependency_clear' as const,
+  }));
+
+  const blocked = candidates.blockedReadyStepIds.map((stepId, i) => ({
+    stepId,
+    rank:   i + 1,
+    reason: 'dependency_blocked' as const,
+  }));
+
+  return { workflowId, ready, blocked, mode: 'planning_only' };
 }
 
 /** Returns a shallow copy of all chains (never the internal reference). */

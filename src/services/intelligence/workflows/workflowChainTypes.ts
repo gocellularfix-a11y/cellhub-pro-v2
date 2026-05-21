@@ -111,6 +111,37 @@ export type WorkflowGraphReadinessResult = WorkflowReadinessResult & {
   dependencyReadyStepIds: string[];
 };
 
+// ── R-WORKFLOW-EXECUTION-CANDIDATES-V1 ───────────────────────────────────────
+
+export type WorkflowExecutionCandidatesResult = {
+  workflowId: string;
+  /**
+   * Structurally executable candidates only.
+   * These are NOT final execution decisions — policies (permissions, priority,
+   * throttling, concurrency, execution windows) are applied by a future layer.
+   */
+  candidateStepIds: string[];
+  /** Steps that are ready but blocked by unresolved graph dependencies. */
+  blockedReadyStepIds: string[];
+  reason: 'dependency_clear_ready_steps';
+  mode: 'structural_candidates_only';
+};
+
+// ── R-WORKFLOW-PLANNING-PRIMITIVES-V1 ────────────────────────────────────────
+
+export type WorkflowPlanItem = {
+  stepId: string;
+  rank: number;
+  reason: 'dependency_clear' | 'dependency_blocked';
+};
+
+export type WorkflowPlanResult = {
+  workflowId: string;
+  ready: WorkflowPlanItem[];
+  blocked: WorkflowPlanItem[];
+  mode: 'planning_only';
+};
+
 // ── R-WORKFLOW-TRANSITIONS-V1 ─────────────────────────────────────────────────
 
 export type WorkflowTransitionReason =
