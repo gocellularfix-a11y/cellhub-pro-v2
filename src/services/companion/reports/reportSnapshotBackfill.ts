@@ -60,7 +60,7 @@ export async function buildAndSyncReportSnapshotsForRange(
   const isDev = import.meta.env.DEV;
   const dates = datesInRange(startDate, endDate);
 
-  for (const date of dates) {
+  for (const date of dates.slice().reverse()) {
     const snapshot = buildDailyReportSnapshot(sales, date, session.storeId, timezone);
     if (snapshot.salesCount === 0) continue;
 

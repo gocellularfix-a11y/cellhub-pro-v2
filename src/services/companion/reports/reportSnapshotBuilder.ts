@@ -11,6 +11,11 @@ const TOP_ITEMS_LIMIT = 10;
 function toDateSafe(v: unknown): Date | null {
   if (!v) return null;
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  // Plain { seconds, nanoseconds } shape from localStorage-deserialized Timestamps (no toDate method)
+  if (typeof v === 'object' && v !== null && 'seconds' in v && typeof (v as { seconds: unknown }).seconds === 'number') {
+    const d = new Date((v as { seconds: number }).seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
   if (typeof v === 'object' && 'toDate' in v && typeof (v as { toDate: unknown }).toDate === 'function') {
     try {
       const d = (v as { toDate: () => Date }).toDate();
@@ -54,7 +59,8 @@ function normalizePaymentMethod(pm: string): NormalizedPm {
 }
 
 function isCountable(s: Sale): boolean {
-  return s.status !== 'voided' && s.status !== 'refunded';
+  const st = (s.status as string || '').toLowerCase();
+  return st !== 'voided' && st !== 'refunded';
 }
 
 /**
