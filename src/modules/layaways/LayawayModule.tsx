@@ -378,8 +378,14 @@ export default function LayawayModule() {
     deviceLabel: string;
     ticketNumber?: string;
     isTaxable: boolean;
+    // R-LAYAWAY-DEPOSIT-CART-LINE-CONTEXT-V1: display-only, no effect on balance logic
+    displayContext?: {
+      customerName?: string;
+      itemName?: string;
+      currentBalanceCents?: number;
+    };
   }): { combinedCents: number } => {
-    const { layawayId, additionalCents, deviceLabel, ticketNumber, isTaxable } = params;
+    const { layawayId, additionalCents, deviceLabel, ticketNumber, isTaxable, displayContext } = params;
     const lTaxRate = settings.taxRate ?? 0.0925;
 
     const existingItems = cartRef.current.filter((c) => c.layawayId === layawayId);
@@ -391,6 +397,11 @@ export default function LayawayModule() {
     }
 
     const split = reverseTaxFromPayment(combinedCents, lTaxRate, isTaxable);
+    // R-LAYAWAY-DEPOSIT-CART-LINE-CONTEXT-V1: estimated balance after this payment,
+    // display-only — does not touch the actual layaway record.
+    const estBalanceCents = displayContext?.currentBalanceCents !== undefined
+      ? Math.max(displayContext.currentBalanceCents - additionalCents, 0)
+      : undefined;
     const consolidatedItem: CartItem = {
       id: generateId(),
       name: `${deviceLabel} — ${t('layaway.cartItemName')}`,
@@ -401,6 +412,10 @@ export default function LayawayModule() {
       cbeEligible: false,
       layawayId,
       notes: ticketNumber || layawayId.slice(-6).toUpperCase(),
+      layawayCustomerName: displayContext?.customerName,
+      layawayItemName: displayContext?.itemName,
+      layawayCurrentBalanceCents: displayContext?.currentBalanceCents,
+      layawayEstimatedBalanceCents: estBalanceCents,
     };
 
     const nextCart = [
@@ -596,6 +611,11 @@ export default function LayawayModule() {
         deviceLabel: form.itemDescription,
         ticketNumber: ticket,
         isTaxable: form.taxable,
+        displayContext: {
+          customerName,
+          itemName: form.itemDescription,
+          currentBalanceCents: totalCents,
+        },
       });
       if (finalCustomerId) {
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: finalCustomerId });
@@ -630,6 +650,11 @@ export default function LayawayModule() {
       deviceLabel,
       ticketNumber,
       isTaxable,
+      displayContext: {
+        customerName: l.customerName,
+        itemName: deviceLabel,
+        currentBalanceCents: l.balance,
+      },
     });
 
     // Propagate customer to POS (customerId first, phone-tail fallback).

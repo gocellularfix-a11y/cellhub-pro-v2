@@ -873,7 +873,7 @@ export default function InventoryModule() {
                             Companion session at click time — if not paired yet, toasts
                             a hint and skips. */}
                         <button onClick={() => handleRequestApprovalForItem(item)} title={t('inventory.approvalRequest.tooltip')} aria-label={t('inventory.approvalRequest.btn')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>📲</button>
-                        <button onClick={() => { setEditItem(item); setShowModal(true); emitInventoryLookup({ sku: item.sku, itemName: item.name }); }} title="Edit" style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>✏️</button>
+                        <button onClick={() => { setEditItem(item); setShowModal(true); emitInventoryLookup({ sku: item.sku, itemName: item.name }); }} title={lang === 'es' ? 'Editar artículo' : 'Edit item'} style={{ padding: '0 0.5rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, gap: '0.25rem', background: 'rgba(168,85,247,0.15)', color: '#a855f7', whiteSpace: 'nowrap' }}>✏️ {lang === 'es' ? 'Editar' : 'Edit'}</button>
                         {/* R-LOSSES-SHRINKAGE-V1: Mark as Loss — opens the
                             shrinkage modal; manager-PIN guarded on commit. */}
                         <button onClick={() => openMarkAsLoss(item)} title={t('inventory.loss.button')} style={{ width: '2rem', height: '2rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', background: 'rgba(234,88,12,0.15)', color: '#fb923c' }}>📉</button>
@@ -1271,6 +1271,39 @@ function InventoryFormModal({
       setTimeout(() => skuInputRef.current?.focus(), 0);
     });
   }, []);
+
+  // R-INVENTORY-SKU-FOCUS-RECLAIM-HARDENING-V1: tracks whether a window
+  // focus listener is already pending so rapid saves never stack duplicates.
+  const skuFocusListenerActiveRef = useRef(false);
+
+  // R-INVENTORY-SKU-FOCUS-RECLAIM-HARDENING-V1: hardened SKU/IMEI focus
+  // restore for new-item create flow only (isEdit guard lives at call site).
+  //
+  // SKU/IMEI focus is operator-speed critical — losing it after a label
+  // print forces manual mouse clicks between every item add in a cashier
+  // scan flow.
+  //
+  // Two-phase strategy:
+  //   Phase 1 — immediate: focusSkuInput() via rAF covers the normal save
+  //              path where no print dialog is shown.
+  //   Phase 2 — deferred: a deduped window 'focus' listener fires when the
+  //              Electron/browser print dialog closes and the main window
+  //              regains focus, re-asserting SKU focus at that moment.
+  //              skuFocusListenerActiveRef prevents ghost listeners from
+  //              stacking on rapid saves or re-entrancy.
+  const restoreSkuFocusAfterCreate = useCallback(() => {
+    // Phase 1: immediate (no-print-dialog path).
+    focusSkuInput();
+    // Phase 2: deduped window listener (print-dialog-close path).
+    if (!skuFocusListenerActiveRef.current) {
+      skuFocusListenerActiveRef.current = true;
+      const handler = () => {
+        skuFocusListenerActiveRef.current = false;
+        focusSkuInput();
+      };
+      window.addEventListener('focus', handler, { once: true });
+    }
+  }, [focusSkuInput]);
 
   // R-INVENTORY-SCAN-DEDUP-V1 + R-INVENTORY-FOCUS-HARDEN-V1: auto-focus
   // the unified SKU/IMEI input on Add Item modal open so the cashier
@@ -1671,7 +1704,13 @@ function InventoryFormModal({
       // BUG-5: auto-print label after creating a single new item. Edit-mode
       // saves don't trigger auto-print (label content didn't change in
       // a meaningful way for the operator).
-      if (!isEdit) handleLabel();
+      if (!isEdit) {
+        handleLabel();
+        // R-INVENTORY-SKU-FOCUS-RECLAIM-HARDENING-V1: hardened helper covers
+        // both normal-save (immediate rAF) and print-dialog (deduped window
+        // 'focus' listener) focus reclaim paths.
+        restoreSkuFocusAfterCreate();
+      }
     }
     if (!isEdit) {
       // BUG-11 (R-INV-FORM-UX): full reset post-save instead of partial.
@@ -2374,8 +2413,10 @@ function InventoryFormModal({
 
         {/* Clear — R-INVENTORY-FOCUS-RESTORE-V1: shared helper so the
             manual clear path also clears dedup/autofill state and lands
-            focus back on SKU/IMEI for the next scan. */}
-        <button
+            focus back on SKU/IMEI for the next scan.
+            R-INVENTORY-ITEM-EDIT-AND-FOCUS-FLOW-V1: hidden in edit mode
+            (resetFormAndFocus blanks to defaults, not back to item values). */}
+        {!isEdit && <button
           onClick={resetFormAndFocus}
           style={{
             padding: '0 0.875rem', borderRadius: '0.625rem',
@@ -2387,7 +2428,7 @@ function InventoryFormModal({
           title={t('inventory.form.clear')}
         >
           🗑️ {t('inventory.form.clear')}
-        </button>
+        </button>}
 
         {/* Batch Mode — only on new items */}
         {!isEdit && (

@@ -22,6 +22,28 @@ import type {
   WorkflowGraphReadinessResult,
   WorkflowExecutionCandidatesResult,
   WorkflowPlanResult,
+  WorkflowExecutionDecision,
+  WorkflowExecutionDecisionResult,
+  WorkflowPolicyEvaluation,
+  WorkflowPolicyEvaluationResult,
+  WorkflowOrchestrationIntent,
+  WorkflowOrchestrationIntentResult,
+  WorkflowRuntimeCapability,
+  WorkflowRuntimeCapabilityKind,
+  WorkflowRuntimeCapabilityResult,
+  WorkflowExecutionContract,
+  WorkflowExecutionContractRequirement,
+  WorkflowExecutionContractResult,
+  WorkflowRuntimeBoundary,
+  WorkflowRuntimeBoundaryResult,
+  WorkflowExecutionSessionIdentity,
+  WorkflowExecutionSessionIdentityResult,
+  WorkflowRuntimeOwnership,
+  WorkflowRuntimeOwnershipResult,
+  WorkflowAuthorityResolution,
+  WorkflowAuthorityResolutionResult,
+  WorkflowAuthorityDelegation,
+  WorkflowAuthorityDelegationResult,
 } from './workflowChainTypes';
 import type { ExecutionRequest } from '../executionPipeline/types';
 import type { ApprovalQueueItem, ApprovalQueueStatus } from '../approvals/types';
@@ -671,8 +693,11 @@ export function evaluateWorkflowExecutionCandidates(workflowId: string): Workflo
 
 /**
  * Builds a ranked plan of ready and blocked steps for a workflow.
- * Pure read — no mutations, no events, no side effects, no execution.
- * No sorting or priority applied — insertion order preserved.
+ * Planning is PASSIVE — no mutations, no events, no side effects, no execution.
+ * Planning is NOT orchestration, NOT permission/policy evaluation, NOT execution.
+ * All plan items carry decisionState 'not_decided': candidates are observed,
+ * not committed. Policies are applied by a future layer, not here.
+ * Insertion order is preserved; no dynamic priority sorting is applied.
  * Returns null if the workflow chain does not exist.
  */
 export function evaluateWorkflowPlan(workflowId: string): WorkflowPlanResult | null {
@@ -680,18 +705,317 @@ export function evaluateWorkflowPlan(workflowId: string): WorkflowPlanResult | n
   if (!candidates) return null;
 
   const ready = candidates.candidateStepIds.map((stepId, i) => ({
+    workflowId,
     stepId,
-    rank:   i + 1,
-    reason: 'dependency_clear' as const,
+    status:          'ready'                as const,
+    structuralState: 'dependency_clear'     as const,
+    rank:            i + 1,
+    reason:          'dependency_clear'     as const,
+    candidateKind:   'structural_candidate' as const,
+    decisionState:   'not_decided'          as const,
   }));
 
   const blocked = candidates.blockedReadyStepIds.map((stepId, i) => ({
+    workflowId,
     stepId,
-    rank:   i + 1,
-    reason: 'dependency_blocked' as const,
+    // status is 'ready' because the step is structurally eligible;
+    // structuralState distinguishes that dependencies are not yet clear.
+    status:          'ready'                as const,
+    structuralState: 'dependency_blocked'   as const,
+    rank:            i + 1,
+    reason:          'dependency_blocked'   as const,
+    candidateKind:   'structural_candidate' as const,
+    decisionState:   'not_decided'          as const,
   }));
 
-  return { workflowId, ready, blocked, mode: 'planning_only' };
+  return { workflowId, ready, blocked, mode: 'passive_plan_only' };
+}
+
+/**
+ * Maps a passive plan into execution-decision primitives.
+ * This is the layer between planning and execution — it is NOT execution itself.
+ * Decisions do NOT mutate workflow state.
+ * Decisions do NOT publish events.
+ * Decisions do NOT trigger side effects, scheduling, or orchestration.
+ * No policy engine exists yet — all decisions default to 'undecided' / 'policy_pending'.
+ * No orchestrator exists yet — this is a passive, read-only primitive.
+ * A future policy layer consumes these decisions and may flip state to
+ * 'allowed', 'blocked', or 'deferred'. That layer does not exist yet.
+ * Separation: candidate ≠ plan ≠ decision ≠ execution.
+ */
+export function evaluateWorkflowExecutionDecisions(
+  plan: WorkflowPlanResult,
+): WorkflowExecutionDecisionResult {
+  const allItems = [...plan.ready, ...plan.blocked];
+
+  const decisions: WorkflowExecutionDecision[] = allItems.map(item => ({
+    workflowId:    item.workflowId,
+    stepId:        item.stepId,
+    state:         'undecided'              as const,
+    reason:        'policy_pending'         as const,
+    planRank:      item.rank,
+    candidateKind: 'structural_candidate'   as const,
+  }));
+
+  return { workflowId: plan.workflowId, decisions, mode: 'execution_decision_passive' };
+}
+
+/**
+ * Evaluates passive policy primitives for a set of execution decisions.
+ * Policy evaluation is the layer between decisions and future orchestration.
+ * Policies are PASSIVE evaluations only — they are NOT execution.
+ * Policies do NOT execute workflows.
+ * Policies do NOT mutate workflow state.
+ * Policies do NOT publish events.
+ * Policies do NOT schedule execution or trigger side effects.
+ * No permission system exists yet — all evaluations default to 'pending' / 'no_policy_engine'.
+ * No concurrency control or execution window system exists yet.
+ * A future policy engine consumes these and may resolve state to 'permitted' or 'denied'.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ execution.
+ */
+export function evaluateWorkflowPolicies(
+  decisionResult: WorkflowExecutionDecisionResult,
+): WorkflowPolicyEvaluationResult {
+  const evaluations: WorkflowPolicyEvaluation[] = decisionResult.decisions.map(decision => ({
+    workflowId:    decision.workflowId,
+    stepId:        decision.stepId,
+    state:         'pending'                as const,
+    reason:        'no_policy_engine'       as const,
+    planRank:      decision.planRank,
+    candidateKind: 'structural_candidate'   as const,
+  }));
+
+  return { workflowId: decisionResult.workflowId, evaluations, mode: 'policy_evaluation_passive' };
+}
+
+/**
+ * Maps passive policy evaluations into orchestration-intent primitives.
+ * Orchestration intent is the layer between policy and future runtime.
+ * Orchestration intent is NOT orchestration.
+ * Orchestration intent does NOT execute workflows.
+ * Orchestration intent does NOT mutate workflow state.
+ * Orchestration intent does NOT publish events.
+ * Orchestration intent does NOT schedule, retry, or trigger side effects.
+ * No orchestration runtime exists yet — all intents default to 'awaiting_runtime' / 'runtime_not_available'.
+ * No scheduler or retry system exists yet — this is a passive, read-only primitive.
+ * A future runtime consumes these intents and decides whether to proceed.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ execution.
+ */
+export function evaluateWorkflowOrchestrationIntent(
+  policyResult: WorkflowPolicyEvaluationResult,
+): WorkflowOrchestrationIntentResult {
+  const intents: WorkflowOrchestrationIntent[] = policyResult.evaluations.map(evaluation => ({
+    workflowId:    evaluation.workflowId,
+    stepId:        evaluation.stepId,
+    state:         'awaiting_runtime'       as const,
+    reason:        'runtime_not_available'  as const,
+    planRank:      evaluation.planRank,
+    candidateKind: 'structural_candidate'   as const,
+  }));
+
+  return { workflowId: policyResult.workflowId, intents, mode: 'orchestration_intent_passive' };
+}
+
+const ALL_RUNTIME_CAPABILITY_KINDS: WorkflowRuntimeCapabilityKind[] = [
+  'scheduling',
+  'retries',
+  'concurrency_control',
+  'execution_windows',
+  'approval_gates',
+  'manual_action_gates',
+  'remote_execution',
+  'companion_execution',
+];
+
+/**
+ * Returns a passive descriptive capability snapshot for a workflow's orchestration intents.
+ * Capabilities describe what a future orchestration runtime MAY support.
+ * Capabilities are DESCRIPTIVE ONLY — they do NOT create runtime behavior.
+ * Capabilities do NOT execute workflows.
+ * Capabilities do NOT mutate workflow state.
+ * Capabilities do NOT publish events.
+ * Capabilities do NOT schedule, retry, or trigger side effects.
+ * No orchestration runtime exists yet.
+ * No execution, scheduling, or retry systems exist yet.
+ * A future runtime consumes this result to understand what feature surface it must satisfy.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution.
+ */
+export function evaluateWorkflowRuntimeCapabilities(
+  intentResult: WorkflowOrchestrationIntentResult,
+): WorkflowRuntimeCapabilityResult {
+  const capabilities: WorkflowRuntimeCapability[] = ALL_RUNTIME_CAPABILITY_KINDS.map(kind => ({
+    kind,
+    state: 'future_supported' as const,
+  }));
+
+  return { workflowId: intentResult.workflowId, capabilities, mode: 'runtime_capability_passive' };
+}
+
+const ALL_CONTRACT_REQUIREMENTS: WorkflowExecutionContractRequirement[] = [
+  'approval',
+  'manual_confirmation',
+  'execution_runtime',
+  'execution_window',
+  'retry_support',
+  'concurrency_control',
+  'audit_logging',
+  'remote_transport',
+  'companion_transport',
+];
+
+/**
+ * Produces passive execution-contract descriptors for a workflow.
+ * Execution contracts are DESCRIPTIVE ONLY — they do NOT execute workflows.
+ * Contracts describe what a future execution runtime REQUIRES to run a step.
+ * Contracts do NOT create runtime behavior.
+ * Contracts do NOT mutate workflow state.
+ * Contracts do NOT publish events.
+ * Contracts do NOT schedule, retry, or trigger side effects.
+ * No execution runtime exists yet.
+ * No orchestration runtime exists yet.
+ * A future executor consumes these contracts to verify prerequisites before running.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution contract ≠ execution.
+ */
+export function evaluateWorkflowExecutionContracts(
+  capabilityResult: WorkflowRuntimeCapabilityResult,
+): WorkflowExecutionContractResult {
+  const contracts: WorkflowExecutionContract[] = ALL_CONTRACT_REQUIREMENTS.map(requirement => ({
+    requirement,
+    state: 'future_supported' as const,
+  }));
+
+  return {
+    workflowId:          capabilityResult.workflowId,
+    contracts,
+    mode:                'execution_contract_passive',
+    descriptorBoundary:  'final_pre_runtime_descriptor',
+  };
+}
+
+/**
+ * Produces a passive runtime-boundary descriptor for a workflow.
+ * Runtime boundary defines the SHAPE and AUTHORITY of a future runtime.
+ * Boundary is NOT runtime — it does NOT execute workflows.
+ * Boundary does NOT mutate workflow state.
+ * Boundary does NOT publish events.
+ * Boundary does NOT schedule, retry, or trigger side effects.
+ * No runtime implementation exists yet — this is a passive, read-only primitive.
+ * A future runtime implementation MUST consume this boundary before executing.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution contract ≠ runtime boundary ≠ execution.
+ */
+export function evaluateWorkflowRuntimeBoundary(
+  contractResult: WorkflowExecutionContractResult,
+): WorkflowRuntimeBoundaryResult {
+  const boundary: WorkflowRuntimeBoundary = {
+    workflowId:        contractResult.workflowId,
+    runtimeBoundaryId: `workflow-runtime-boundary-${contractResult.workflowId}`,
+    boundaryScope:     'workflow_boundary',
+    authority:         'runtime_required',
+    lifecycleState:    'waiting_for_runtime',
+  };
+
+  return { workflowId: contractResult.workflowId, boundary, mode: 'runtime_boundary_passive' };
+}
+
+/**
+ * Produces a passive deterministic execution-session identity for a workflow.
+ * Session identity is passive only — it does NOT execute workflows.
+ * Session identity does NOT start runtime.
+ * Session identity does NOT mutate workflow state.
+ * Session identity does NOT publish events.
+ * sessionId is deterministic: workflow-execution-session-{workflowId}.
+ * No timestamps, counters, random values, or runtime state are included.
+ * Future runtime uses sessionId for replay, idempotency, and cancellation targeting.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution contract ≠ runtime boundary ≠ execution session identity ≠ execution.
+ */
+export function evaluateWorkflowExecutionSessionIdentity(
+  boundaryResult: WorkflowRuntimeBoundaryResult,
+): WorkflowExecutionSessionIdentityResult {
+  const sessionIdentity: WorkflowExecutionSessionIdentity = {
+    workflowId:    boundaryResult.workflowId,
+    sessionId:     `workflow-execution-session-${boundaryResult.workflowId}`,
+    scope:         'workflow',
+    state:         'waiting_for_runtime',
+    identityLevel: 'workflow_session_identity',
+  };
+
+  return { workflowId: boundaryResult.workflowId, sessionIdentity, mode: 'session_identity_passive' };
+}
+
+/**
+ * Produces a passive runtime-ownership descriptor for a workflow.
+ * Ownership is passive only — it does NOT execute workflows.
+ * Ownership does NOT grant real permissions to users or devices.
+ * Ownership does NOT assign real users or devices — no runtime exists yet.
+ * Ownership does NOT publish events.
+ * Ownership does NOT schedule, retry, or trigger side effects.
+ * ownershipId is deterministic: workflow-runtime-ownership-{workflowId}.
+ * No timestamps, counters, random values, or environment data are included.
+ * Future runtime consumes this to resolve authority and coordinate multi-device execution.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution contract ≠ runtime boundary ≠ execution session identity ≠ runtime ownership ≠ execution.
+ */
+export function evaluateWorkflowRuntimeOwnership(
+  sessionIdentityResult: WorkflowExecutionSessionIdentityResult,
+): WorkflowRuntimeOwnershipResult {
+  const ownership: WorkflowRuntimeOwnership = {
+    workflowId:  sessionIdentityResult.workflowId,
+    ownershipId: `workflow-runtime-ownership-${sessionIdentityResult.workflowId}`,
+    ownerKind:   'future_runtime',
+    state:       'pending_assignment',
+  };
+
+  return { workflowId: sessionIdentityResult.workflowId, ownership, mode: 'runtime_ownership_passive' };
+}
+
+/**
+ * Produces a passive authority-resolution descriptor for a workflow.
+ * Authority resolution is passive only — it does NOT grant permission to any actor.
+ * Authority resolution does NOT execute workflows.
+ * Authority resolution does NOT mutate workflow state.
+ * Authority resolution does NOT publish events.
+ * Authority resolution does NOT assign real users or devices.
+ * authorityId is deterministic: workflow-authority-resolution-{workflowId}.
+ * No timestamps, counters, random values, or environment data are included.
+ * Future permission and runtime systems MUST consume this before acting.
+ * Separation: candidate ≠ plan ≠ decision ≠ policy ≠ orchestration intent ≠ runtime capability ≠ execution contract ≠ runtime boundary ≠ execution session identity ≠ runtime ownership ≠ authority resolution ≠ execution.
+ */
+export function evaluateWorkflowAuthorityResolution(
+  ownershipResult: WorkflowRuntimeOwnershipResult,
+): WorkflowAuthorityResolutionResult {
+  const authorityResolution: WorkflowAuthorityResolution = {
+    workflowId:  ownershipResult.workflowId,
+    authorityId: `workflow-authority-resolution-${ownershipResult.workflowId}`,
+    actorKind:   'future_runtime',
+    state:       'pending_authority',
+    requirement: 'future_permission_system_required',
+  };
+
+  return { workflowId: ownershipResult.workflowId, authorityResolution, mode: 'authority_resolution_passive' };
+}
+
+/**
+ * Produces a passive authority-delegation descriptor for a workflow.
+ * Delegation is passive only — it does NOT grant authority to any actor.
+ * Delegation does NOT revoke real authority from any actor.
+ * Delegation does NOT execute workflows.
+ * Delegation does NOT mutate workflow state.
+ * Delegation does NOT publish events.
+ * delegationId is deterministic: workflow-authority-delegation-{workflowId}.
+ * No timestamps, counters, random values, or environment data are included.
+ * Future runtime and permission systems MUST consume this before acting.
+ * Separation: ownership ≠ authority resolution ≠ authority delegation ≠ execution.
+ */
+export function evaluateWorkflowAuthorityDelegation(
+  authorityResult: WorkflowAuthorityResolutionResult,
+): WorkflowAuthorityDelegationResult {
+  const delegation: WorkflowAuthorityDelegation = {
+    workflowId:   authorityResult.workflowId,
+    delegationId: `workflow-authority-delegation-${authorityResult.workflowId}`,
+    kind:         'none',
+    state:        'not_delegated',
+  };
+
+  return { workflowId: authorityResult.workflowId, delegation, mode: 'authority_delegation_passive' };
 }
 
 /** Returns a shallow copy of all chains (never the internal reference). */

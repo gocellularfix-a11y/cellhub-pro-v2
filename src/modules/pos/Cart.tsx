@@ -324,6 +324,39 @@ export default function Cart({
                 {item.carrier && (
                   <p className="text-xs text-blue-400">{item.carrier}</p>
                 )}
+                {/* R-LAYAWAY-DEPOSIT-CART-LINE-CONTEXT-V1: layaway payment context.
+                    Display-only — no payment logic lives here. Falls back silently
+                    when metadata is absent (old cart items, removed-then-re-added). */}
+                {item.layawayId && item.layawayCustomerName && (
+                  <div style={{ marginTop: '0.3rem', fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.7 }}>
+                    <span>{lang === 'es' ? 'Cliente' : 'Customer'}: </span>
+                    <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{item.layawayCustomerName}</span>
+                    {item.layawayItemName && (
+                      <>
+                        <br />
+                        <span>{lang === 'es' ? 'Artículo' : 'Item'}: </span>
+                        <span style={{ color: '#cbd5e1' }}>{item.layawayItemName}</span>
+                      </>
+                    )}
+                    {item.layawayEstimatedBalanceCents !== undefined && (
+                      <>
+                        <br />
+                        <span>{lang === 'es' ? 'Balance est. tras pago' : 'Est. balance after payment'}: </span>
+                        <span style={{
+                          color: item.layawayEstimatedBalanceCents === 0 ? '#34d399' : '#fbbf24',
+                          fontWeight: 600,
+                        }}>
+                          {formatCurrency(item.layawayEstimatedBalanceCents)}
+                          {item.layawayEstimatedBalanceCents === 0 && (
+                            <span style={{ marginLeft: '0.3rem' }}>
+                              {lang === 'es' ? '✓ Liquidado' : '✓ Paid in full'}
+                            </span>
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
                 {/* R-POS-CUSTOMER-QUICKEDIT-V1: quick-edit button for the
                     wireless info on the customer record. Only shown when
                     the line is a phone_payment AND a customer is selected

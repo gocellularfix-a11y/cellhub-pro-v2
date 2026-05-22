@@ -658,6 +658,13 @@ export interface CartItem {
   specialOrderId?: string;
   unlockId?: string;
   layawayId?: string;
+  // R-LAYAWAY-DEPOSIT-CART-LINE-CONTEXT-V1: display-only context for layaway
+  // payment lines. No payment logic reads these — they exist solely so the cart
+  // line can show customer, item, and estimated remaining balance to the cashier.
+  layawayCustomerName?: string;
+  layawayItemName?: string;
+  layawayCurrentBalanceCents?: number;   // cents — balance at time of cart add
+  layawayEstimatedBalanceCents?: number; // cents — max(currentBalance - payment, 0)
   // R-CART-LINE-DISCOUNT-PRICE-OVERRIDE-V1: optional audit fields stamped
   // when the cashier applies a per-line override / discount via the new
   // line-discount modal. The effective per-unit price stays in `price`
