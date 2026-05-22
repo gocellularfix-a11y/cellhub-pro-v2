@@ -119,6 +119,8 @@ export type IntentId =
   | 'workflow_continuity'
   // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: unresolved mission/workflow pressure feed
   | 'attention_feed'
+  // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine
+  | 'who_needs_attention_today'
   | 'fallback_question'
   | 'unknown';
 
@@ -1419,6 +1421,32 @@ const MANAGER_QUEUE_KEYWORDS = [
   'fila de revisão', 'revisões pendentes', 'aprovações pendentes',
 ];
 
+// R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
+// Listed in the scores array BEFORE attention_feed / what_needs_attention /
+// proactive_operations / customer_history so the new operator command wins
+// the listed trigger phrases. Keep phrases ANCHORED ("today / hoy / hoje" or
+// "pendientes / pending / follow up") so generic "needs attention" still
+// falls to attention_feed when no time-anchored intent is in play.
+const WHO_NEEDS_ATTENTION_TODAY_KEYWORDS = [
+  // EN — primary triggers
+  'who needs attention today', 'who needs my attention today',
+  'who needs follow up', 'who needs followup', 'who needs help',
+  'what should i handle today', 'who is pending', 'who should i call',
+  'who should i contact today',
+  // EN — secondary triggers (action-first phrasings)
+  'who needs attention',
+  // ES
+  'a quien debo contactar', 'a quién debo contactar',
+  'clientes pendientes', 'clientes por atender',
+  'a quién debo atender', 'a quien debo atender',
+  'a quién llamar hoy', 'a quien llamar hoy',
+  'qué clientes están pendientes', 'que clientes estan pendientes',
+  // PT
+  'quem precisa atenção hoje', 'quem precisa de atenção hoje',
+  'quem precisa de acompanhamento', 'clientes pendentes',
+  'quem devo contatar hoje', 'quem devo atender hoje',
+];
+
 const WHAT_NEEDS_ATTENTION_KEYWORDS = [
   // EN
   'what needs attention', 'needs attention', 'what needs my attention',
@@ -1606,6 +1634,15 @@ export function classifyIntent(
     // higher on those specific banks). Bare "continue" wins when analytics
     // banks score 0.
     { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision
+    // engine. Listed BEFORE attention_feed / what_needs_attention / proactive_
+    // operations / customer_history so the listed trigger phrases (anchored on
+    // today / pendientes / hoje / follow up) route to the new handler. Generic
+    // "needs attention" without a time/queue anchor still falls through to
+    // attention_feed below (its keyword bank has 'attention' as a bare token
+    // which scores 1 on most queries — the new bank uses only multi-word
+    // anchored phrases, so attention_feed still wins generic queries).
+    { id: 'who_needs_attention_today', score: scoreKeywords(query, WHO_NEEDS_ATTENTION_TODAY_KEYWORDS) },
     // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1: listed BEFORE what_needs_attention
     // so attention_feed supersedes the old handler on shared phrases ("urgent",
     // "what needs attention"). Also listed BEFORE daily_operator_brief.

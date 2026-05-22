@@ -35,6 +35,22 @@ export function isAllowedVerificationSource(s: unknown): s is PaymentVerificatio
   return typeof s === 'string' && ALLOWED_SOURCES.has(s as PaymentVerificationSource);
 }
 
+// R-PHONE-PAYMENT-REMINDER-TODAY: business-day boundary check. Both arguments
+// in epoch ms. Returns true iff the calendar date in the operator's LOCAL
+// timezone is the same — avoids UTC drift for stores that don't sit on UTC
+// (Go Cellular is America/Los_Angeles). Pure, deterministic, no side effects.
+export function isSameLocalBusinessDay(createdAtMs: number, nowMs: number): boolean {
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return false;
+  if (!Number.isFinite(nowMs)       || nowMs       <= 0) return false;
+  const a = new Date(createdAtMs);
+  const b = new Date(nowMs);
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth()    === b.getMonth() &&
+    a.getDate()     === b.getDate()
+  );
+}
+
 export interface PaymentVerification {
   verificationId: string;
   saleId: string;
@@ -168,7 +184,13 @@ export function getDueVerification(now = Date.now()): PaymentVerification | null
       if (v.status !== 'pending') return false;
       if (v.remindAt > now) return false;
       const src = (v.source ?? 'phone_payment') as PaymentVerificationSource;
-      return isAllowedVerificationSource(src);
+      if (!isAllowedVerificationSource(src)) return false;
+      // R-PHONE-PAYMENT-REMINDER-TODAY: only surface reminders created TODAY
+      // (operator-local business day). Yesterday's pending reminders stay in
+      // the store as historical records but never re-render or pulse.
+      // History (status !== 'pending') is NOT filtered here — confirmed and
+      // dismissed records are surfaced by other consumers untouched.
+      return isSameLocalBusinessDay(v.createdAt, now);
     })
     .sort((a, b) => a.remindAt - b.remindAt);
   return due[0] ?? null;

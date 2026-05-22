@@ -283,6 +283,46 @@ export default function PhonePaymentModal({
       .slice(0, 6);
   }, [custSearch, customers]);
 
+  // R-PHONE-PAYMENT-REMINDER-TODAY-LAST-PAYMENT-BUBBLE-ANCHOR §2:
+  // Derive the most-recent EXTERNAL phone_payment record for the entered
+  // phone number. Used to surface "Last payment: <date> — $<amount>" right
+  // under the autofill checkmark. Returns null when no historical
+  // phone_payment exists — UI uses that to show "No previous phone payment
+  // found" instead of fabricating data. Real sales only — never inferred
+  // from non-phone-payment purchases.
+  const lastPhonePayment = useMemo<{
+    dateMs: number;
+    amountCents: number;
+    carrier: string;
+  } | null>(() => {
+    const norm = normalizePhone(phoneNumber || '');
+    if (!norm || norm.length !== 10) return null;
+    let best: { dateMs: number; amountCents: number; carrier: string } | null = null;
+    for (const s of sales || []) {
+      const ca = (s as any).createdAt;
+      if (!ca) continue;
+      let ms = 0;
+      try {
+        ms = new Date(typeof ca?.toDate === 'function' ? ca.toDate() : ca).getTime();
+      } catch { ms = 0; }
+      if (!ms) continue;
+      for (const it of (s.items || [])) {
+        if (it.category !== 'phone_payment') continue;
+        if (normalizePhone(it.phoneNumber || '') !== norm) continue;
+        const amt = Math.max(0, (it.price || 0) * (it.qty || 1));
+        if (amt <= 0) continue;
+        if (!best || ms > best.dateMs) {
+          best = {
+            dateMs: ms,
+            amountCents: amt,
+            carrier: String(it.carrier || '').trim(),
+          };
+        }
+      }
+    }
+    return best;
+  }, [phoneNumber, sales]);
+
   // ── Known phone lines for selected customer ───────────────
   // Derived from past phone_payment sales linked to this customer.
   // Returns unique phone numbers sorted by most-recently-used first.
@@ -2841,6 +2881,33 @@ export default function PhonePaymentModal({
                   }}>
                     ✓ {t('phonePay.autoFilled')}
                   </div>
+                )}
+                {/* R-PHONE-PAYMENT-REMINDER-TODAY-LAST-PAYMENT-BUBBLE-ANCHOR §2:
+                    "Last payment" hint — real phone_payment history only,
+                    never inferred from non-phone-payment purchases. */}
+                {phoneNumber.trim().length === 10 && (
+                  lastPhonePayment ? (
+                    <div style={{
+                      fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.35rem',
+                      textAlign: 'center', fontWeight: 500,
+                    }}>
+                      📅 {t(
+                        'phonePay.lastPayment',
+                        new Date(lastPhonePayment.dateMs).toLocaleDateString(),
+                        '$' + (lastPhonePayment.amountCents / 100).toFixed(2),
+                      )}
+                      {lastPhonePayment.carrier
+                        ? ` · ${lastPhonePayment.carrier}`
+                        : ''}
+                    </div>
+                  ) : (
+                    <div style={{
+                      fontSize: '0.7rem', color: '#64748b', marginTop: '0.35rem',
+                      textAlign: 'center', fontWeight: 500, fontStyle: 'italic',
+                    }}>
+                      {t('phonePay.lastPaymentNone')}
+                    </div>
+                  )
                 )}
               </div>
             ) : null}

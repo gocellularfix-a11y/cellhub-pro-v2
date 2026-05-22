@@ -112,6 +112,8 @@ import { rankContactTodayCandidates } from '../ranking/contactTodayRanker';
 // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-RIGHT-NOW-V1
 import { computeEntityAttentionPriorities } from '../attention/entityPriorityEngine';
 import type { AttentionAction } from '../attention/entityPriorityTypes';
+// R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
+import { handleWhoNeedsAttentionToday } from './whoNeedsAttentionToday';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
 import { getAttentionFeed } from '../attention/attentionEngine';
 // INTELLIGENCE-OPERATOR-TIMELINE-V1
@@ -461,6 +463,10 @@ export function handleIntent(
 
     case 'what_needs_attention':
       return handleWhatNeedsAttention(engine, lang);
+
+    // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
+    case 'who_needs_attention_today':
+      return handleWhoNeedsAttentionToday(engine, lang);
 
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':

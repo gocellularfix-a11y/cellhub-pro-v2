@@ -30,6 +30,16 @@ import { useTranslation } from '@/i18n';
 
 const POLL_INTERVAL_MS = 15_000;        // check storage every 15 seconds
 const REPEAT_PULSE_MS  = 2 * 60 * 1000; // re-pulse every 2 minutes until confirmed
+// R-PHONE-PAYMENT-REMINDER-BUBBLE-ANCHOR: read the same localStorage key the
+// FloatingOperatorBubble writes on drag-end so the nudge can dock above /
+// beside the bubble's actual position. If the user never dragged the bubble
+// the key is empty → we fall back to the existing bottom-right anchor.
+const BUBBLE_POSITION_KEY = 'cellhub:operatorBubble:position:v1';
+const BUBBLE_SIZE_PX      = 110;
+const NUDGE_WIDTH_PX      = 320;
+const NUDGE_HEIGHT_EST_PX = 180;
+const ANCHOR_GAP_PX       = 12;
+const VIEWPORT_MARGIN_PX  = 16;
 
 // ── Module-level dedup guard ───────────────────────────────
 // AppShell mounts this nudge alongside the FloatingOperatorBubble so it's
@@ -58,6 +68,40 @@ export default function PaymentVerificationNudge(_props: Props) {
   // Stable id for the dedup guard — registered on mount, released on unmount.
   const mountIdRef = useRef<string>(`pv-mount-${Math.random().toString(36).slice(2, 10)}`);
   const [isActiveMount, setIsActiveMount] = useState(false);
+
+  // R-PHONE-PAYMENT-REMINDER-BUBBLE-ANCHOR: position computed from the bubble's
+  // last saved position; recomputed on each storage poll + on window resize.
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
+  const recomputeAnchor = useCallback(() => {
+    if (typeof window === 'undefined') { setAnchor(null); return; }
+    let bx: number | null = null;
+    let by: number | null = null;
+    try {
+      const raw = localStorage.getItem(BUBBLE_POSITION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+          bx = parsed.x;
+          by = parsed.y;
+        }
+      }
+    } catch { /* corrupt JSON — fall back below */ }
+    if (bx === null || by === null) { setAnchor(null); return; }
+    // Default: card sits directly ABOVE the bubble, aligned to its left edge.
+    let left = bx;
+    let top  = by - NUDGE_HEIGHT_EST_PX - ANCHOR_GAP_PX;
+    // If clipped at the top, drop the card BELOW the bubble instead.
+    if (top < VIEWPORT_MARGIN_PX) {
+      top = by + BUBBLE_SIZE_PX + ANCHOR_GAP_PX;
+    }
+    // Clamp horizontally inside the viewport.
+    const maxLeft = Math.max(VIEWPORT_MARGIN_PX, window.innerWidth - NUDGE_WIDTH_PX - VIEWPORT_MARGIN_PX);
+    left = Math.max(VIEWPORT_MARGIN_PX, Math.min(left, maxLeft));
+    // Clamp vertically inside the viewport.
+    const maxTop = Math.max(VIEWPORT_MARGIN_PX, window.innerHeight - NUDGE_HEIGHT_EST_PX - VIEWPORT_MARGIN_PX);
+    top = Math.max(VIEWPORT_MARGIN_PX, Math.min(top, maxTop));
+    setAnchor({ left, top });
+  }, []);
 
   // Claim the active-mount slot (additive dedup with no refactor).
   useEffect(() => {
@@ -93,14 +137,18 @@ export default function PaymentVerificationNudge(_props: Props) {
   useEffect(() => {
     if (!isActiveMount) return;
     checkDue();
-    const interval = setInterval(checkDue, POLL_INTERVAL_MS);
-    const onEvent = () => checkDue();
+    recomputeAnchor();
+    const interval = setInterval(() => { checkDue(); recomputeAnchor(); }, POLL_INTERVAL_MS);
+    const onEvent = () => { checkDue(); recomputeAnchor(); };
+    const onResize = () => recomputeAnchor();
     window.addEventListener('cellhub:payment-verify-nudge', onEvent);
+    window.addEventListener('resize', onResize);
     return () => {
       clearInterval(interval);
       window.removeEventListener('cellhub:payment-verify-nudge', onEvent);
+      window.removeEventListener('resize', onResize);
     };
-  }, [checkDue, isActiveMount]);
+  }, [checkDue, recomputeAnchor, isActiveMount]);
 
   // R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE: 2-minute repeat pulse — ticks
   // ONLY while a card is on-screen and ONLY for the active mount.
@@ -146,10 +194,15 @@ export default function PaymentVerificationNudge(_props: Props) {
       key={`pv-${due.verificationId}-${pulseTick}`}
       style={{
         position: 'fixed',
-        bottom: 88,
-        right: 24,
+        // R-PHONE-PAYMENT-REMINDER-BUBBLE-ANCHOR: dock above/below the bubble's
+        // saved position when known; otherwise fall back to the historical
+        // bottom-right anchor so behavior is unchanged for users who never
+        // dragged the bubble.
+        ...(anchor
+          ? { left: anchor.left, top: anchor.top }
+          : { bottom: 88, right: 24 }),
         zIndex: 9999,
-        width: 320,
+        width: NUDGE_WIDTH_PX,
         maxWidth: 'calc(100vw - 32px)',
         background: '#1F2937',
         border: '1px solid #F59E0B',
