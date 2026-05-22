@@ -428,11 +428,18 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
  *
  * Ties broken by domain priority order, then entityId lexical order.
  */
-export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+// R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: shared compute exported so
+// the next-best-action handler can take items[0] without rebuilding the
+// scoring pipeline. Returns the fully-sorted candidate list (NOT truncated
+// to MAX_ITEMS) so callers can choose their own slice.
+export function computeAttentionItemsForToday(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+  nowMs: number = Date.now(),
+): AttentionItem[] {
   const t = tChat(lang);
-  const nowMs = Date.now();
 
-  const allCandidates: AttentionItem[] = [
+  const all: AttentionItem[] = [
     ...collectRepairs(engine, t, nowMs),
     ...collectLayaways(engine, t, nowMs),
     ...collectSpecialOrders(engine, t, nowMs),
@@ -441,14 +448,7 @@ export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: L
   ];
 
   const ext = collectExternalPaymentReminder(t, nowMs);
-  if (ext) allCandidates.push(ext);
-
-  if (allCandidates.length === 0) {
-    return {
-      kind: 'answer',
-      text: `**${t('chat.whoNeedsAttention.header')}**\n\n${t('chat.whoNeedsAttention.empty')}`,
-    };
-  }
+  if (ext) all.push(ext);
 
   // Domain priority for deterministic tie-break: external payment first
   // (time-sensitive money out of the drawer), then repairs/layaways/SO
@@ -462,11 +462,35 @@ export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: L
     store_credit: 5,
   };
 
-  allCandidates.sort((a, b) => {
+  all.sort((a, b) => {
     if (b.priorityScore !== a.priorityScore) return b.priorityScore - a.priorityScore;
     if (DOMAIN_RANK[a.domain] !== DOMAIN_RANK[b.domain]) return DOMAIN_RANK[a.domain] - DOMAIN_RANK[b.domain];
     return a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0;
   });
+
+  return all;
+}
+
+// R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: shared action builder so the
+// next-best-action handler renders the same buttons as the top row of the
+// "who needs attention today" list.
+export function actionsForAttentionItem(
+  item: AttentionItem,
+  lang: Lang3,
+): ChatActionUI[] {
+  return actionsFor(item, tChat(lang));
+}
+
+export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const allCandidates = computeAttentionItemsForToday(engine, lang);
+
+  if (allCandidates.length === 0) {
+    return {
+      kind: 'answer',
+      text: `**${t('chat.whoNeedsAttention.header')}**\n\n${t('chat.whoNeedsAttention.empty')}`,
+    };
+  }
 
   const items = allCandidates.slice(0, MAX_ITEMS);
 

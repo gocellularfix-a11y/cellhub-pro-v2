@@ -1306,49 +1306,51 @@ export default function POSModule() {
           </div>
         )}
 
-        {/* R-STORE-CREDIT-REDEMPTION-SYSTEM: apply-credit button. Always
-            available when the cart has items so the cashier can pay all or
-            part of the sale with a previously-issued certificate. */}
+        {/* R-POS-CART-GRID-STORE-CREDIT-BUTTON-LAYOUT-FIX: apply-credit
+            button is stacked directly above the Cart inside the SAME
+            right-column grid child so the parent 2-col layout
+            (1fr / 380px) stays intact. Previous `gridColumn: 'span 2'`
+            wrapper auto-placed Cart in the wrong row. */}
         {cart.length > 0 && (
-          <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', marginBottom: '-0.5rem' }}>
-            <button
-              type="button"
-              onClick={() => setShowApplyStoreCredit(true)}
-              className="btn btn-secondary btn-sm"
-              style={{ borderColor: 'rgba(56,189,248,0.4)', color: '#38bdf8', fontWeight: 600 }}
-            >
-              🎫 {t('storeCredit.apply.openBtn')}
-            </button>
+          <div className="flex flex-col h-full min-h-0 gap-2">
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowApplyStoreCredit(true)}
+                className="btn btn-secondary btn-sm"
+                style={{ borderColor: 'rgba(56,189,248,0.4)', color: '#38bdf8', fontWeight: 600 }}
+              >
+                🎫 {t('storeCredit.apply.openBtn')}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <Cart
+                cart={cart}
+                setCart={setCart}
+                totals={totals}
+                selectedCustomer={selectedCustomer}
+                discount={discount}
+                setDiscount={setDiscount}
+                paymentMethod={paymentMethod}
+                setPaymentMethod={setPaymentMethod}
+                cashAmount={cashAmount}
+                setCashAmount={setCashAmount}
+                cardAmount={cardAmount}
+                setCardAmount={setCardAmount}
+                addCreditCardFee={addCreditCardFee}
+                setAddCreditCardFee={setAddCreditCardFee}
+                creditCardFeeOverride={creditCardFeeOverride}
+                setCreditCardFeeOverride={setCreditCardFeeOverride}
+                onCheckout={handleCartCheckout}
+                onClearCart={() => setShowClearConfirm(true)}
+                onSelectCustomer={() => setShowCustomerSearch(true)}
+                onEditCustomerPlan={handleEditCustomerPlan}
+                settings={settings}
+                lang={lang}
+                L={L}
+              />
+            </div>
           </div>
-        )}
-
-        {/* Right: cart panel (only when items in cart) */}
-        {cart.length > 0 && (
-          <Cart
-            cart={cart}
-            setCart={setCart}
-            totals={totals}
-            selectedCustomer={selectedCustomer}
-            discount={discount}
-            setDiscount={setDiscount}
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
-            cashAmount={cashAmount}
-            setCashAmount={setCashAmount}
-            cardAmount={cardAmount}
-            setCardAmount={setCardAmount}
-            addCreditCardFee={addCreditCardFee}
-            setAddCreditCardFee={setAddCreditCardFee}
-            creditCardFeeOverride={creditCardFeeOverride}
-            setCreditCardFeeOverride={setCreditCardFeeOverride}
-            onCheckout={handleCartCheckout}
-            onClearCart={() => setShowClearConfirm(true)}
-            onSelectCustomer={() => setShowCustomerSearch(true)}
-            onEditCustomerPlan={handleEditCustomerPlan}
-            settings={settings}
-            lang={lang}
-            L={L}
-          />
         )}
       </div>
 

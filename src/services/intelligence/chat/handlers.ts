@@ -114,6 +114,10 @@ import { computeEntityAttentionPriorities } from '../attention/entityPriorityEng
 import type { AttentionAction } from '../attention/entityPriorityTypes';
 // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
 import { handleWhoNeedsAttentionToday } from './whoNeedsAttentionToday';
+// R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
+import { handleRecommendedNextBestAction } from './nextBestAction';
+// R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY: deterministic behavioral context.
+import { buildCustomerTimeline, formatTimelineContext, formatTimelineTagLabel } from '../customerTimeline/customerTimelineEngine';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
 import { getAttentionFeed } from '../attention/attentionEngine';
 // INTELLIGENCE-OPERATOR-TIMELINE-V1
@@ -468,6 +472,10 @@ export function handleIntent(
     case 'who_needs_attention_today':
       return handleWhoNeedsAttentionToday(engine, lang);
 
+    // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top action.
+    case 'recommended_next_best_action':
+      return handleRecommendedNextBestAction(engine, lang);
+
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':
       return handleFusionInsights(lang);
@@ -665,9 +673,40 @@ function handleCustomerHistory(
     };
   }
 
+  // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY §4: append operational profile.
+  // Pure additive — never replaces summarizeCustomerHistory output; appends
+  // 1-3 short rule-derived lines so the operator immediately sees cadence,
+  // streak, repair pattern, and credit holdings without opening Reports.
+  const lang3: Lang3 = es ? 'es' : 'en';
+  const t = tChat(lang3);
+  let appended = '';
+  try {
+    const timeline = buildCustomerTimeline({
+      customerId: match.matchedCustomer.id,
+      sales: engine.getSales(),
+      repairs: engine.getRepairs(),
+      layaways: engine.getLayaways(),
+      // storeCreditLedger pulled from localStorage by the engine when omitted.
+    });
+    const lines = formatTimelineContext(timeline, t as unknown as (k: string, ...a: unknown[]) => string);
+    const tagsLabel = timeline.tags
+      .map((tag) => formatTimelineTagLabel(tag, t as unknown as (k: string, ...a: unknown[]) => string))
+      .filter(Boolean);
+    const block: string[] = [];
+    if (lines.length > 0 || tagsLabel.length > 0) {
+      block.push('');
+      block.push(`**${t('customerTimeline.headerOperational')}**`);
+      for (const ln of lines) block.push(`• ${ln}`);
+      if (tagsLabel.length > 0) {
+        block.push(`🏷 ${tagsLabel.join(' · ')}`);
+      }
+    }
+    appended = block.join('\n');
+  } catch { /* timeline is enrichment-only — never block the main answer */ }
+
   return {
     kind: 'answer',
-    text: summarizeCustomerHistory(history, es ? 'es' : 'en'),
+    text: summarizeCustomerHistory(history, lang3) + (appended ? `\n${appended}` : ''),
     // R-INTELLIGENCE-CONTEXT-MEMORY-V1: stamp customer so vague follow-ups
     // (e.g., "show another", "anything else") can resolve back to this
     // customer on the next turn. V1 enrichment rules only target product

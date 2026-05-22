@@ -3566,6 +3566,169 @@ export const translations: TranslationDictionary = {
   'phonePay.lastPaymentNone': { en: 'No previous phone payment found.', es: 'No se encontró un pago de teléfono anterior.', pt: 'Nenhum pagamento de telefone anterior encontrado.' },
   'paymentVerify.bubble.expired':  { en: 'Reminder expired (yesterday)', es: 'Recordatorio expirado (ayer)', pt: 'Lembrete expirado (ontem)' },
   'paymentVerify.bubble.todayOnly':{ en: 'Today-only reminder', es: 'Recordatorio solo de hoy', pt: 'Lembrete somente de hoje' },
+  // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY — PhonePaymentModal cadence row
+  'phonePay.cadence.usually': {
+    en: (days: number) => `Usually pays every ${days}d`,
+    es: (days: number) => `Usualmente paga cada ${days}d`,
+    pt: (days: number) => `Costuma pagar a cada ${days}d`,
+  },
+  'phonePay.cadence.overdue': {
+    en: (days: number) => `${days}d overdue`,
+    es: (days: number) => `${days}d de retraso`,
+    pt: (days: number) => `${days}d de atraso`,
+  },
+  'phonePay.cadence.onTimeStreak': {
+    en: (n: number) => `On-time for ${n} consecutive payments`,
+    es: (n: number) => `Puntual en ${n} pagos consecutivos`,
+    pt: (n: number) => `Pontual em ${n} pagamentos consecutivos`,
+  },
+  'phonePay.cadence.skipped': { en: 'Customer skipped last month', es: 'Cliente saltó el mes pasado', pt: 'Cliente pulou o mês passado' },
+  // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY — Intelligence enrichment lines
+  'customerTimeline.headerOperational': { en: 'Operational profile', es: 'Perfil operativo', pt: 'Perfil operacional' },
+  'customerTimeline.cadence.usuallyPays': {
+    en: (days: number) => `Usually pays every ${days}d`,
+    es: (days: number) => `Usualmente paga cada ${days}d`,
+    pt: (days: number) => `Costuma pagar a cada ${days}d`,
+  },
+  'customerTimeline.cadence.lastPaymentDays': {
+    en: (days: number) => `Last payment ${days}d ago`,
+    es: (days: number) => `Último pago hace ${days}d`,
+    pt: (days: number) => `Último pagamento há ${days}d`,
+  },
+  'customerTimeline.cadence.lastPaymentLate': {
+    en: (days: number, late: number) => `Last payment ${days}d ago — ${late}d overdue vs. usual cadence`,
+    es: (days: number, late: number) => `Último pago hace ${days}d — ${late}d de retraso vs. su cadencia`,
+    pt: (days: number, late: number) => `Último pagamento há ${days}d — ${late}d atrasado vs. cadência`,
+  },
+  'customerTimeline.cadence.skipped': {
+    en: (days: number) => `Skipped — no phone payment in ${days}d`,
+    es: (days: number) => `Saltó — sin pago de teléfono en ${days}d`,
+    pt: (days: number) => `Pulou — sem pagamento de telefone em ${days}d`,
+  },
+  'customerTimeline.cadence.onTimeStreak': {
+    en: (n: number) => `On-time streak: ${n} payments`,
+    es: (n: number) => `Racha puntual: ${n} pagos`,
+    pt: (n: number) => `Sequência pontual: ${n} pagamentos`,
+  },
+  'customerTimeline.repair.completed': {
+    en: (n: number) => `${n} completed repair${n === 1 ? '' : 's'} historically`,
+    es: (n: number) => `${n} reparación${n === 1 ? '' : 'es'} completada${n === 1 ? '' : 's'} históricamente`,
+    pt: (n: number) => `${n} reparo${n === 1 ? '' : 's'} concluído${n === 1 ? '' : 's'} historicamente`,
+  },
+  'customerTimeline.repair.withRepeatIssue': {
+    en: (n: number, issue: string) => `${n} repairs — repeat ${issue} issue`,
+    es: (n: number, issue: string) => `${n} reparaciones — problema recurrente de ${issue}`,
+    pt: (n: number, issue: string) => `${n} reparos — problema recorrente de ${issue}`,
+  },
+  'customerTimeline.repair.issue.battery':  { en: 'battery',  es: 'batería',  pt: 'bateria' },
+  'customerTimeline.repair.issue.screen':   { en: 'screen',   es: 'pantalla', pt: 'tela' },
+  'customerTimeline.repair.issue.charging': { en: 'charging', es: 'carga',    pt: 'carga' },
+  'customerTimeline.repair.issue.water':    { en: 'water',    es: 'agua',     pt: 'água' },
+  'customerTimeline.layaway.reliable': {
+    en: (done: number, total: number) => `Completes layaways consistently (${done}/${total})`,
+    es: (done: number, total: number) => `Cumple apartados consistentemente (${done}/${total})`,
+    pt: (done: number, total: number) => `Conclui layaways consistentemente (${done}/${total})`,
+  },
+  'customerTimeline.layaway.abandonRisk': {
+    en: (abandoned: number, total: number) => `Layaway abandon risk — ${abandoned}/${total} abandoned`,
+    es: (abandoned: number, total: number) => `Riesgo de abandono — ${abandoned}/${total} apartados abandonados`,
+    pt: (abandoned: number, total: number) => `Risco de abandono — ${abandoned}/${total} layaways abandonados`,
+  },
+  'customerTimeline.storeCredit.unused': {
+    en: (amount: string, days: number) => `Unused store credit ${amount} — idle ${days}d`,
+    es: (amount: string, days: number) => `Crédito sin usar ${amount} — inactivo ${days}d`,
+    pt: (amount: string, days: number) => `Crédito não usado ${amount} — parado ${days}d`,
+  },
+  'customerTimeline.vip.active': {
+    en: (amount: string) => `VIP — lifetime ${amount}`,
+    es: (amount: string) => `VIP — total histórico ${amount}`,
+    pt: (amount: string) => `VIP — total ${amount}`,
+  },
+  'customerTimeline.vip.inactive': {
+    en: (amount: string, days: number) => `VIP — inactive ${days}d (lifetime ${amount})`,
+    es: (amount: string, days: number) => `VIP — inactivo ${days}d (total histórico ${amount})`,
+    pt: (amount: string, days: number) => `VIP — inativo ${days}d (total ${amount})`,
+  },
+  // Tag labels — short chips
+  'customerTimeline.tag.reliable_payer':         { en: 'Reliable payer',          es: 'Pagador puntual',          pt: 'Pagador confiável' },
+  'customerTimeline.tag.late_payer':             { en: 'Late payer',              es: 'Pagador tardío',           pt: 'Pagador atrasado' },
+  'customerTimeline.tag.vip':                    { en: 'VIP',                     es: 'VIP',                       pt: 'VIP' },
+  'customerTimeline.tag.inactive_vip':           { en: 'Inactive VIP',            es: 'VIP inactivo',              pt: 'VIP inativo' },
+  'customerTimeline.tag.repeat_repair_customer': { en: 'Repeat repair customer',  es: 'Cliente con reparaciones recurrentes', pt: 'Cliente com reparos repetidos' },
+  'customerTimeline.tag.abandoned_layaway_risk': { en: 'Layaway abandon risk',    es: 'Riesgo de abandono apartado', pt: 'Risco de abandono layaway' },
+  'customerTimeline.tag.frequent_upgrader':      { en: 'Frequent upgrader',       es: 'Actualiza frecuentemente',  pt: 'Atualiza com frequência' },
+  'customerTimeline.tag.unused_credit_holder':   { en: 'Unused credit holder',    es: 'Crédito sin usar',          pt: 'Crédito não usado' },
+  // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION
+  'chat.nextBestAction.header':       { en: '🎯 Next best action',                es: '🎯 Próxima mejor acción',                  pt: '🎯 Próxima melhor ação' },
+  'chat.nextBestAction.empty':        { en: 'Nothing urgent right now. Check POS flow or inventory.', es: 'Nada urgente ahorita. Revisa POS o inventario.', pt: 'Nada urgente agora. Verifique POS ou estoque.' },
+  'chat.nextBestAction.whyLabel':     { en: 'Why',                                es: 'Por qué',                                  pt: 'Por quê' },
+  'chat.nextBestAction.stepLabel':    { en: 'Next step',                          es: 'Siguiente paso',                           pt: 'Próximo passo' },
+  // Domain-specific headline / step (translated; reason re-uses item.reason).
+  'chat.nextBestAction.headline.extPayment': {
+    en: (label: string) => `Confirm carrier portal payment now — ${label}`,
+    es: (label: string) => `Confirma pago en el portal ahora — ${label}`,
+    pt: (label: string) => `Confirme pagamento no portal agora — ${label}`,
+  },
+  'chat.nextBestAction.why.extPayment': {
+    en: 'External portal payment is unresolved and recorded as completed in CellHub — confirm the carrier side before the drawer reconciles.',
+    es: 'El pago externo está sin resolver y registrado como completado en CellHub — confirma con el operador antes de la conciliación de caja.',
+    pt: 'O pagamento externo está pendente e registrado como concluído no CellHub — confirme com a operadora antes da conciliação do caixa.',
+  },
+  'chat.nextBestAction.step.extPayment': {
+    en: 'Open the carrier portal, verify the transaction, then tap "Confirm payment" on the bubble nudge.',
+    es: 'Abre el portal del operador, verifica la transacción y presiona "Confirmar pago" en el bubble.',
+    pt: 'Abra o portal da operadora, verifique a transação e toque em "Confirmar pagamento" no bubble.',
+  },
+  'chat.nextBestAction.headline.repair': {
+    en: (name: string) => `Call ${name} now — repair ready`,
+    es: (name: string) => `Llama a ${name} ahora — reparación lista`,
+    pt: (name: string) => `Ligue para ${name} agora — reparo pronto`,
+  },
+  'chat.nextBestAction.step.repair': {
+    en: (name: string) => `Send pickup WhatsApp${name ? ' to ' + name : ''} and open the repair ticket.`,
+    es: (name: string) => `Envía WhatsApp de recogida${name ? ' a ' + name : ''} y abre el ticket de reparación.`,
+    pt: (name: string) => `Envie WhatsApp de retirada${name ? ' para ' + name : ''} e abra o ticket de reparo.`,
+  },
+  'chat.nextBestAction.headline.layaway': {
+    en: (name: string) => `Follow up with ${name} — layaway stale`,
+    es: (name: string) => `Da seguimiento a ${name} — apartado sin actividad`,
+    pt: (name: string) => `Acompanhe ${name} — layaway parado`,
+  },
+  'chat.nextBestAction.step.layaway': {
+    en: (name: string) => `Open the layaway and message${name ? ' ' + name : ' the customer'} about the pending balance.`,
+    es: (name: string) => `Abre el apartado y avisa${name ? ' a ' + name : ' al cliente'} sobre el saldo pendiente.`,
+    pt: (name: string) => `Abra o layaway e avise${name ? ' ' + name : ' o cliente'} sobre o saldo pendente.`,
+  },
+  'chat.nextBestAction.headline.specialOrder': {
+    en: (name: string) => `Notify ${name} — special order waiting`,
+    es: (name: string) => `Avisa a ${name} — pedido especial esperando`,
+    pt: (name: string) => `Avise ${name} — pedido especial esperando`,
+  },
+  'chat.nextBestAction.step.specialOrder': {
+    en: (name: string) => `Confirm pickup window${name ? ' with ' + name : ''} and open the order.`,
+    es: (name: string) => `Confirma la recogida${name ? ' con ' + name : ''} y abre el pedido.`,
+    pt: (name: string) => `Confirme a retirada${name ? ' com ' + name : ''} e abra o pedido.`,
+  },
+  'chat.nextBestAction.headline.churn': {
+    en: (name: string) => `Re-engage ${name} — VIP gone quiet`,
+    es: (name: string) => `Reconecta con ${name} — VIP en silencio`,
+    pt: (name: string) => `Reconecte com ${name} — VIP em silêncio`,
+  },
+  'chat.nextBestAction.step.churn': {
+    en: (name: string) => `Send a personal check-in WhatsApp${name ? ' to ' + name : ''} and open their customer card.`,
+    es: (name: string) => `Envía un saludo personal por WhatsApp${name ? ' a ' + name : ''} y abre su ficha.`,
+    pt: (name: string) => `Envie uma mensagem pessoal por WhatsApp${name ? ' para ' + name : ''} e abra a ficha do cliente.`,
+  },
+  'chat.nextBestAction.headline.storeCredit': {
+    en: (name: string) => `Remind ${name} — unused store credit`,
+    es: (name: string) => `Recuérdale a ${name} — crédito sin usar`,
+    pt: (name: string) => `Lembre ${name} — crédito não usado`,
+  },
+  'chat.nextBestAction.step.storeCredit': {
+    en: (name: string) => `Open${name ? ' ' + name + '\'s' : ' the'} customer card and message that the credit is still active.`,
+    es: (name: string) => `Abre la ficha${name ? ' de ' + name : ''} y avisa que el crédito sigue activo.`,
+    pt: (name: string) => `Abra a ficha${name ? ' de ' + name : ''} e avise que o crédito ainda está ativo.`,
+  },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

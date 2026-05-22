@@ -357,7 +357,13 @@ export default function LayawayModule() {
       itemSku:         r.itemSku      || '',
       imei:            r.imei         || '',
       itemCategory:    r.itemCategory || 'Phones',
-      totalPrice:      String((l.totalPrice  || 0) / 100),
+      // R-LAYAWAY-MATH-INTEGRITY-AUDIT: Layaway.totalPrice is tax-INCLUSIVE
+      // (per write at lines 461/522/573). The form's totalPrice input is
+      // pre-tax (calcDepositTotals treats it as base). Load the pre-tax
+      // dollar string by backing out the stored taxAmount split so the
+      // re-edit doesn't apply tax twice. Falls back to totalPrice when no
+      // tax split is present (legacy non-taxable rows).
+      totalPrice:      String(Math.max(0, (l.totalPrice || 0) - ((l as any).taxAmount || 0)) / 100),
       deposit:         String((l.paidAmount  || 0) / 100),
       taxable:         r.taxable      || false,
       pickupDate:      l.dueDate      || '',

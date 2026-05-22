@@ -35,6 +35,7 @@ import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 import { startWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
+import { buildCustomerTimeline } from '@/services/intelligence/customerTimeline/customerTimelineEngine';
 import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
 
@@ -235,7 +236,7 @@ export default function PhonePaymentModal({
   // which auto-opens this modal. We detect the pending ID here and
   // autofill everything from the customer record.
   const { state: appState, dispatch: appDispatch } = useApp();
-  const { pendingPhonePaymentCustomerId, inventory } = appState;
+  const { pendingPhonePaymentCustomerId, inventory, repairs: appRepairs, layaways: appLayaways, storeCreditLedger: appLedger } = appState;
   // R-SIM-INTAKE: anti-stale-closure ref for inventory — back-to-back
   // activations (same modal session) should see post-decrement qty so the
   // SIM picker doesn't show items that were already sold this session.
@@ -290,13 +291,17 @@ export default function PhonePaymentModal({
   // phone_payment exists — UI uses that to show "No previous phone payment
   // found" instead of fabricating data. Real sales only — never inferred
   // from non-phone-payment purchases.
-  const lastPhonePayment = useMemo<{
+  //
+  // R-PHONE-PAYMENT-BUBBLE-LAST-PAYMENT-DATE-FIX: shared compute exposed via
+  // a pure local helper so the Known Lines list (per-customer recognized
+  // phones, see hasKnownLines branch ~line 2403) can show the same hint
+  // per row. Behaviour identical to the previous inline memo.
+  const findLastPhonePaymentForNorm = useCallback((normalized: string): {
     dateMs: number;
     amountCents: number;
     carrier: string;
-  } | null>(() => {
-    const norm = normalizePhone(phoneNumber || '');
-    if (!norm || norm.length !== 10) return null;
+  } | null => {
+    if (!normalized || normalized.length !== 10) return null;
     let best: { dateMs: number; amountCents: number; carrier: string } | null = null;
     for (const s of sales || []) {
       const ca = (s as any).createdAt;
@@ -308,7 +313,7 @@ export default function PhonePaymentModal({
       if (!ms) continue;
       for (const it of (s.items || [])) {
         if (it.category !== 'phone_payment') continue;
-        if (normalizePhone(it.phoneNumber || '') !== norm) continue;
+        if (normalizePhone(it.phoneNumber || '') !== normalized) continue;
         const amt = Math.max(0, (it.price || 0) * (it.qty || 1));
         if (amt <= 0) continue;
         if (!best || ms > best.dateMs) {
@@ -321,7 +326,30 @@ export default function PhonePaymentModal({
       }
     }
     return best;
-  }, [phoneNumber, sales]);
+  }, [sales]);
+
+  const lastPhonePayment = useMemo<{
+    dateMs: number;
+    amountCents: number;
+    carrier: string;
+  } | null>(() => findLastPhonePaymentForNorm(normalizePhone(phoneNumber || '')),
+  [phoneNumber, findLastPhonePaymentForNorm]);
+
+  // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY §5: deterministic cadence /
+  // streak / late signals derived from the customer's real phone_payment
+  // history. Memoized on the resolved customer + sales reference — the
+  // engine's pure functions are cheap but we still avoid rescanning on
+  // every keystroke. No AI, no inference outside the historical record.
+  const customerTimeline = useMemo(() => {
+    if (!selectedCustomer) return null;
+    return buildCustomerTimeline({
+      customerId: selectedCustomer.id,
+      sales,
+      repairs: appRepairs || [],
+      layaways: appLayaways || [],
+      storeCreditLedger: appLedger || [],
+    });
+  }, [selectedCustomer, sales, appRepairs, appLayaways, appLedger]);
 
   // ── Known phone lines for selected customer ───────────────
   // Derived from past phone_payment sales linked to this customer.
@@ -369,6 +397,18 @@ export default function PhonePaymentModal({
       .sort((a, b) => b[1] - a[1])
       .map(([norm]) => norm);
   }, [selectedCustomer, sales]);
+
+  // R-PHONE-PAYMENT-BUBBLE-LAST-PAYMENT-DATE-FIX: per-known-line last payment
+  // record. Built once per (knownLines, sales) change so the Known Lines
+  // render doesn't rescan sales for every row. Map<normalizedPhone, record>.
+  const lastPaymentByLine = useMemo<Map<string, { dateMs: number; amountCents: number; carrier: string }>>(() => {
+    const out = new Map<string, { dateMs: number; amountCents: number; carrier: string }>();
+    for (const norm of knownLines) {
+      const rec = findLastPhonePaymentForNorm(norm);
+      if (rec) out.set(norm, rec);
+    }
+    return out;
+  }, [knownLines, findLastPhonePaymentForNorm]);
 
   // ── Which known-line rows are checked (for multi-select) ─
   // key: normalized phone, value: amount string
@@ -2430,24 +2470,55 @@ export default function PhonePaymentModal({
                       onChange={() => toggleKnownLine(norm)}
                       style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#667eea', flexShrink: 0 }}
                     />
-                    {/* Formatted phone — click to copy */}
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        autoCopyPhone(norm);
-                      }}
-                      title={t('phonePay.clickToCopy')}
-                      style={{
-                        fontSize: '0.9rem', fontFamily: 'monospace',
-                        color: copiedPhone === norm ? '#22c55e' : (isChecked ? '#e2e8f0' : '#94a3b8'),
-                        flex: 1, letterSpacing: '0.04em',
-                        cursor: 'pointer',
-                        transition: 'color 0.2s',
-                        userSelect: 'all',
-                      }}
-                    >
-                      {copiedPhone === norm ? `✓ ${t('phonePay.copiedExclaim')}` : formatPhone(norm)}
-                    </span>
+                    {/* Formatted phone — click to copy.
+                        R-PHONE-PAYMENT-BUBBLE-LAST-PAYMENT-DATE-FIX: wrap
+                        the phone span and a tiny "Last payment" sub-line in
+                        a flex column so the per-line history is visible
+                        when the customer is recognized (knownLines branch). */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          autoCopyPhone(norm);
+                        }}
+                        title={t('phonePay.clickToCopy')}
+                        style={{
+                          fontSize: '0.9rem', fontFamily: 'monospace',
+                          color: copiedPhone === norm ? '#22c55e' : (isChecked ? '#e2e8f0' : '#94a3b8'),
+                          letterSpacing: '0.04em',
+                          cursor: 'pointer',
+                          transition: 'color 0.2s',
+                          userSelect: 'all',
+                        }}
+                      >
+                        {copiedPhone === norm ? `✓ ${t('phonePay.copiedExclaim')}` : formatPhone(norm)}
+                      </span>
+                      {(() => {
+                        const lp = lastPaymentByLine.get(norm);
+                        if (!lp) {
+                          return (
+                            <span style={{
+                              fontSize: '0.66rem', color: '#475569', fontStyle: 'italic',
+                              marginTop: '0.1rem',
+                            }}>
+                              {t('phonePay.lastPaymentNone')}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span style={{
+                            fontSize: '0.66rem', color: '#94a3b8', marginTop: '0.1rem',
+                          }}>
+                            📅 {t(
+                              'phonePay.lastPayment',
+                              new Date(lp.dateMs).toLocaleDateString(),
+                              '$' + (lp.amountCents / 100).toFixed(2),
+                            )}
+                            {lp.carrier ? ` · ${lp.carrier}` : ''}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     {/* Copied badge when checked */}
                     {isChecked && copiedPhone === norm && (
                       <span style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 600, flexShrink: 0 }}>
@@ -2908,6 +2979,35 @@ export default function PhonePaymentModal({
                       {t('phonePay.lastPaymentNone')}
                     </div>
                   )
+                )}
+                {/* R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY §5: cadence /
+                    streak / late hint. Pure rule output — only renders
+                    when the customer has 2+ historical phone_payments. */}
+                {customerTimeline && customerTimeline.cadence.paymentCount >= 2 && (
+                  <div style={{
+                    fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.25rem',
+                    textAlign: 'center', fontWeight: 500, display: 'flex',
+                    flexWrap: 'wrap', justifyContent: 'center', gap: '0.4rem',
+                  }}>
+                    {customerTimeline.cadence.averageDaysBetween !== null && (
+                      <span>🔁 {t('phonePay.cadence.usually', customerTimeline.cadence.averageDaysBetween)}</span>
+                    )}
+                    {customerTimeline.cadence.isLate && customerTimeline.cadence.cadenceDeltaDays !== null && customerTimeline.cadence.cadenceDeltaDays > 0 && (
+                      <span style={{ color: '#f59e0b', fontWeight: 600 }}>
+                        ⏳ {t('phonePay.cadence.overdue', customerTimeline.cadence.cadenceDeltaDays)}
+                      </span>
+                    )}
+                    {!customerTimeline.cadence.isLate && customerTimeline.cadence.onTimeStreak >= 3 && (
+                      <span style={{ color: '#10b981', fontWeight: 600 }}>
+                        ✓ {t('phonePay.cadence.onTimeStreak', customerTimeline.cadence.onTimeStreak)}
+                      </span>
+                    )}
+                    {customerTimeline.cadence.skippedLikely && (
+                      <span style={{ color: '#ef4444', fontWeight: 600 }}>
+                        ⚠️ {t('phonePay.cadence.skipped')}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ) : null}

@@ -121,6 +121,8 @@ export type IntentId =
   | 'attention_feed'
   // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine
   | 'who_needs_attention_today'
+  // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action
+  | 'recommended_next_best_action'
   | 'fallback_question'
   | 'unknown';
 
@@ -1427,6 +1429,32 @@ const MANAGER_QUEUE_KEYWORDS = [
 // the listed trigger phrases. Keep phrases ANCHORED ("today / hoy / hoje" or
 // "pendientes / pending / follow up") so generic "needs attention" still
 // falls to attention_feed when no time-anchored intent is in play.
+// R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top action command.
+// Keep phrases SHORT and ACTION-ANCHORED ("next", "siguiente", "próxima")
+// so generic "what should I do" phrasings stay with their existing intents
+// (decision_recommendation / proactive_operations). Listed in the scores
+// array BEFORE who_needs_attention_today so the "next" anchor wins on the
+// shared "what should I do" tail; without "next" / "siguiente" / "próxima"
+// the existing intents continue to handle the query.
+const RECOMMENDED_NEXT_BEST_ACTION_KEYWORDS = [
+  // EN
+  'next best action', 'what is the next move', 'what is my next move',
+  'what should i do next', 'what should i handle now',
+  'what now', 'next move', 'next action',
+  // ES
+  'siguiente acción', 'siguiente accion',
+  'cuál es el siguiente paso', 'cual es el siguiente paso',
+  'qué sigue', 'que sigue',
+  'qué hago ahora', 'que hago ahora',
+  'próxima acción', 'proxima accion',
+  'mejor siguiente acción', 'mejor siguiente accion',
+  // PT
+  'próxima ação', 'proxima acao',
+  'qual o próximo passo', 'qual o proximo passo',
+  'o que faço agora', 'o que faco agora',
+  'melhor próxima ação', 'melhor proxima acao',
+];
+
 const WHO_NEEDS_ATTENTION_TODAY_KEYWORDS = [
   // EN — primary triggers
   'who needs attention today', 'who needs my attention today',
@@ -1634,6 +1662,14 @@ export function classifyIntent(
     // higher on those specific banks). Bare "continue" wins when analytics
     // banks score 0.
     { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
+    // Listed BEFORE who_needs_attention_today / attention_feed / proactive_
+    // operations / decision_recommendation so anchored "next move / siguiente
+    // acción / próxima ação" phrases route to the one-action card. Generic
+    // "what should I do" still falls to decision_recommendation/proactive
+    // because this bank requires the action-anchor ("next" / "siguiente" /
+    // "próxima") in addition to the verb.
+    { id: 'recommended_next_best_action', score: scoreKeywords(query, RECOMMENDED_NEXT_BEST_ACTION_KEYWORDS) },
     // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision
     // engine. Listed BEFORE attention_feed / what_needs_attention / proactive_
     // operations / customer_history so the listed trigger phrases (anchored on
