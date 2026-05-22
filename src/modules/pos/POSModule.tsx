@@ -29,13 +29,15 @@ import EstimateModal from './EstimateModal';
 import RMALabelModal from './RMALabelModal';
 import PriceLabelsModal from '../priceLabels/PriceLabelsModal';
 import TopUpModal from './TopUpModal';
+import ApplyStoreCreditModal from './ApplyStoreCreditModal';
 import type { CartTotals, DiscountState, CustomCategory, calculateCartTotals } from './types';
 import { calculateCartTotals as calcTotals } from './types';
-import type { Customer, Sale, InventoryItem, CartItem } from '@/store/types';
+import type { Customer, Sale, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
 
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { addLayawayPayment } from '@/services/layaway/payments';
+import { redeemLedgerEntry } from '@/services/storeCredit/ledger';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
@@ -59,10 +61,11 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
-      pendingPosCustomer,
+      pendingPosCustomer, storeCreditLedger,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
+    setStoreCreditLedger,
   } = useApp();
 
   const { toast } = useToast();
@@ -93,6 +96,9 @@ export default function POSModule() {
   useEffect(() => { unlocksRef.current = unlocks; }, [unlocks]);
   useEffect(() => { layawaysRef.current = layaways; }, [layaways]);
   useEffect(() => { cartRef.current = cart; }, [cart]);
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM
+  const storeCreditLedgerRef = useRef(storeCreditLedger);
+  useEffect(() => { storeCreditLedgerRef.current = storeCreditLedger; }, [storeCreditLedger]);
 
   // ── Local State ─────────────────────────────────────────
 
@@ -161,6 +167,8 @@ export default function POSModule() {
   const [showLabelPrinter, setShowLabelPrinter] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM
+  const [showApplyStoreCredit, setShowApplyStoreCredit] = useState(false);
 
   // ── Auto-open PhonePaymentModal when customer credential is scanned ──
   // AppShell scanner handler sets pendingPhonePaymentCustomerId when a GC-xxxx
@@ -383,18 +391,31 @@ export default function POSModule() {
 
       // R-INTELLIGENCE-PAYMENT-VERIFY-V1: after phone_payment checkout,
       // schedule a 2-min nudge to remind cashier to confirm carrier portal.
+      //
+      // R-EXTERNAL-PAYMENT-ONLY-NUDGE-GUARD: only carrier-bound phone_payment
+      // items qualify. A phone_payment line without a carrier (rare — usually
+      // a manual entry) is treated as internal POS and skipped. The service
+      // also enforces the allowlist + carrier-required guard as defense in
+      // depth, so this filter and the service guard are independent.
       try {
-        const phoneItems = sale.items.filter((i) => i.category === 'phone_payment');
-        if (phoneItems.length > 0) {
-          const carrier = String((phoneItems[0] as any).carrier || '').trim() || 'Carrier';
-          const amountCents = phoneItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
-          addVerification({
+        const externalPhoneItems = sale.items.filter((i) =>
+          i.category === 'phone_payment'
+          && typeof (i as any).carrier === 'string'
+          && String((i as any).carrier).trim().length > 0
+        );
+        if (externalPhoneItems.length > 0) {
+          const carrier = String((externalPhoneItems[0] as any).carrier).trim();
+          const amountCents = externalPhoneItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
+          const created = addVerification({
             saleId: sale.id,
             customerName: sale.customerName || selectedCustomer?.name || '',
             carrier,
             amountCents,
+            source: 'phone_payment',
           });
-          window.dispatchEvent(new CustomEvent('cellhub:payment-verify-nudge'));
+          if (created) {
+            window.dispatchEvent(new CustomEvent('cellhub:payment-verify-nudge'));
+          }
         }
       } catch { /* non-critical */ }
 
@@ -815,6 +836,54 @@ export default function POSModule() {
         batchSave(layawayOps);
       }
 
+      // ── 4e. Store-credit redemption ──────────────────────
+      // R-STORE-CREDIT-REDEMPTION-SYSTEM: every cart line that came from
+      // ApplyStoreCreditModal carries `storeCreditLedgerId` + a negative
+      // `price`. Record one redemption per line against the matching
+      // ledger entry. Aggregates per ledgerId in case two lines target
+      // the same cert (defensive — modal blocks this today via
+      // alreadyAppliedLedgerIds, but the post-hook must still be safe).
+      const ledgerDeltas = new Map<string, { cents: number; cert: string }>();
+      for (const item of sale.items) {
+        const lid = (item as any).storeCreditLedgerId as string | undefined;
+        if (!lid) continue;
+        const cert = (item as any).storeCreditCertNumber || '';
+        const absCents = Math.abs((item.price || 0) * (item.qty || 1));
+        if (absCents <= 0) continue;
+        const prev = ledgerDeltas.get(lid);
+        ledgerDeltas.set(lid, { cents: (prev?.cents || 0) + absCents, cert: cert || prev?.cert || '' });
+      }
+      if (ledgerDeltas.size > 0) {
+        const updatedLedger = [...storeCreditLedgerRef.current];
+        const ledgerOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
+        for (const [lid, { cents }] of ledgerDeltas) {
+          const idx = updatedLedger.findIndex((l) => l.id === lid);
+          if (idx < 0) continue;
+          try {
+            const { ledger: nextLedger } = redeemLedgerEntry(updatedLedger[idx], {
+              amountCents: cents,
+              saleId: sale.id,
+              invoiceNumber: sale.invoiceNumber,
+              employeeId: sale.employeeId,
+              employeeName: sale.employeeName || currentEmployee?.name || '',
+            });
+            updatedLedger[idx] = nextLedger;
+            ledgerOps.push({
+              collection: 'storeCreditLedger',
+              id: nextLedger.id,
+              data: nextLedger as unknown as Record<string, unknown>,
+            });
+          } catch (err) {
+            console.warn('[POS §4e] redeemLedgerEntry rejected:', err);
+          }
+        }
+        if (ledgerOps.length > 0) {
+          storeCreditLedgerRef.current = updatedLedger;
+          setStoreCreditLedger(updatedLedger);
+          batchSave(ledgerOps);
+        }
+      }
+
       // 6. Clear cart and reset
       cartRef.current = [];
       setCart([]);
@@ -837,6 +906,35 @@ export default function POSModule() {
       setCart, settings, toast, lang,
     ],
   );
+
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: apply a redemption as a negative-priced
+  // cart line. handleCompleteSale post-processes any cart line carrying
+  // storeCreditLedgerId and appends a redemption to the ledger entry.
+  const handleApplyStoreCredit = useCallback((entry: StoreCreditLedger, amountCents: number) => {
+    const safe = Math.max(0, Math.round(amountCents));
+    if (safe <= 0) return;
+    // R-STORE-CREDIT-REDEMPTION-SYSTEM: compute the projected remaining at
+    // apply time so the receipt can show "Remaining: $X" without needing
+    // to re-resolve the ledger entry post-sale.
+    const projectedRemaining = Math.max(0, (entry.remainingAmount || 0) - safe);
+    const line: CartItem = {
+      id: generateId(),
+      name: t('storeCredit.cartLine.name', entry.certificateNumber),
+      category: 'exchange_credit',
+      price: -safe,
+      qty: 1,
+      taxable: false,
+      cbeEligible: false,
+      notes: t('storeCredit.cartLine.notesWithRemaining', entry.customerName, formatCurrency(projectedRemaining)),
+      storeCreditLedgerId: entry.id,
+      storeCreditCertNumber: entry.certificateNumber,
+    };
+    const nextCart = [...cartRef.current, line];
+    cartRef.current = nextCart;
+    setCart(nextCart);
+    setShowApplyStoreCredit(false);
+    toast(t('storeCredit.toasts.applied', entry.certificateNumber, formatCurrency(safe)), 'success');
+  }, [t, toast, setCart]);
 
   // ── Cart Checkout — Round R-POS-PAY-DEDUPE F4 ──────────
   //
@@ -1208,6 +1306,22 @@ export default function POSModule() {
           </div>
         )}
 
+        {/* R-STORE-CREDIT-REDEMPTION-SYSTEM: apply-credit button. Always
+            available when the cart has items so the cashier can pay all or
+            part of the sale with a previously-issued certificate. */}
+        {cart.length > 0 && (
+          <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', marginBottom: '-0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => setShowApplyStoreCredit(true)}
+              className="btn btn-secondary btn-sm"
+              style={{ borderColor: 'rgba(56,189,248,0.4)', color: '#38bdf8', fontWeight: 600 }}
+            >
+              🎫 {t('storeCredit.apply.openBtn')}
+            </button>
+          </div>
+        )}
+
         {/* Right: cart panel (only when items in cart) */}
         {cart.length > 0 && (
           <Cart
@@ -1484,6 +1598,16 @@ export default function POSModule() {
           onClose={() => setShowLabelPrinter(false)}
         />
       )}
+
+      {/* R-STORE-CREDIT-REDEMPTION-SYSTEM */}
+      <ApplyStoreCreditModal
+        open={showApplyStoreCredit}
+        onClose={() => setShowApplyStoreCredit(false)}
+        maxCartCents={Math.max(0, totals.total)}
+        ledger={storeCreditLedger}
+        alreadyAppliedLedgerIds={cart.map((c) => c.storeCreditLedgerId).filter((x): x is string => !!x)}
+        onConfirm={handleApplyStoreCredit}
+      />
 
       {/* International Top-Up */}
       {showTopUp && (

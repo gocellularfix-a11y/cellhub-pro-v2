@@ -674,6 +674,13 @@ export interface CartItem {
   // line-discount edits.
   lineDiscountReason?: string;
   lineDiscountApprovedBy?: string; // future-ready; not yet enforced
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: when this cart line was added by the
+  // Apply Store Credit modal, these IDs link the redemption to its ledger
+  // entry so POS post-sale can record the redemption. Category for these
+  // lines is 'exchange_credit' so existing exchange/refund handling treats
+  // them correctly (negative price, not taxable, cbe-exempt).
+  storeCreditLedgerId?: string;
+  storeCreditCertNumber?: string;
 }
 
 // ── Sale ──────────────────────────────────────────────────
@@ -712,6 +719,9 @@ export interface SaleItem {
   // reflect the post-line-discount `price` value above.
   lineDiscountReason?: string;
   lineDiscountApprovedBy?: string;
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: link line back to ledger entry.
+  storeCreditLedgerId?: string;
+  storeCreditCertNumber?: string;
 }
 
 export interface Sale {
@@ -810,6 +820,54 @@ export interface CustomerReturn {
   taxRefunded?: number;
   /** @deprecated use totalCents */
   total?: number;
+  // ── R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE (additive) ──
+  recipientCustomerId?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  certificateNumber?: string;
+  storeCreditStatus?: 'active' | 'redeemed' | 'voided';
+}
+
+// ── Store Credit Ledger (R-STORE-CREDIT-REDEMPTION-SYSTEM) ────
+// Append-only ledger for issued store credit certificates. Each entry is the
+// authoritative record of one cert: issuance, redemptions, current remaining,
+// status. The Customer.storeCredit aggregate is a derived counter — the
+// ledger is the source of truth for which cert holds what balance.
+
+export interface StoreCreditRedemption {
+  id: string;
+  redeemedAt: string;          // ISO
+  redeemedAmount: number;      // cents (positive)
+  remainingAfter: number;      // cents — ledger.remainingAmount after this entry
+  saleId?: string;
+  invoiceNumber?: string;
+  employeeId?: string;
+  employeeName: string;
+}
+
+export interface StoreCreditLedger {
+  id: string;
+  storeId?: string;
+  certificateNumber: string;   // unique — same id printed on certificate
+  customerId?: string;
+  customerName: string;
+  customerPhone?: string;
+  issuedAmount: number;        // cents — IMMUTABLE post-creation
+  redeemedAmount: number;      // cents — sum(redemptions[].redeemedAmount)
+  remainingAmount: number;     // cents — clamped to [0, issuedAmount]
+  status: 'active' | 'redeemed' | 'voided' | 'expired';
+  issuedAt: string;            // ISO
+  issuedByEmployeeId?: string;
+  issuedByEmployeeName: string;
+  sourceReturnId?: string;     // CustomerReturn.id link
+  sourceReturnNumber?: string;
+  redemptions: StoreCreditRedemption[];
+  voidedAt?: string;
+  voidedByEmployeeId?: string;
+  voidedByEmployeeName?: string;
+  voidReason?: string;
+  expiresAt?: string;          // ISO — reserved for future expiry policy; not enforced today
+  notes?: string;
 }
 
 // ── Vendor Return ────────────────────────────────────────
@@ -1277,6 +1335,8 @@ export interface AppState {
   appointments: Appointment[];
   customerReturns: CustomerReturn[];
   vendorReturns: VendorReturn[];
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM
+  storeCreditLedger: StoreCreditLedger[];
 
   // Cart
   cart: CartItem[];
@@ -1351,6 +1411,7 @@ export type AppAction =
   | { type: 'SET_APPOINTMENTS'; payload: Appointment[] }
   | { type: 'SET_CUSTOMER_RETURNS'; payload: CustomerReturn[] }
   | { type: 'SET_VENDOR_RETURNS'; payload: VendorReturn[] }
+  | { type: 'SET_STORE_CREDIT_LEDGER'; payload: StoreCreditLedger[] }
   | { type: 'SET_CART'; payload: CartItem[] }
   | { type: 'SET_SETTINGS'; payload: Partial<StoreSettings> }
   | { type: 'REPLACE_SETTINGS'; payload: StoreSettings }

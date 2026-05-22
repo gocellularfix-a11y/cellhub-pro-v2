@@ -247,4 +247,6 @@ export const COLLECTIONS = {
   vendorReturns: 'vendorReturns',
   // R-LOSSES-SHRINKAGE-V1: inventory shrinkage / business-loss audit.
   inventoryLosses: 'inventoryLosses',
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: append-only certificate ledger
+  storeCreditLedger: 'storeCreditLedger',
 } as const;

@@ -28,7 +28,7 @@ export default function CustomerModule() {
   // forced extra re-renders.
   const app = useApp();
   const { state, setCustomers, dispatch } = app;
-  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns } = state;
+  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns, storeCreditLedger } = state;
 
   // customerReturns now lives in AppState (hydrated at boot via SET_CUSTOMER_RETURNS).
   const returns_      = customerReturns || [];
@@ -231,6 +231,11 @@ export default function CustomerModule() {
         .filter((a: any) => normalizePhone(a.customerPhone || '') === phone)
         .sort((a: any, b: any) => new Date(b.date || b.scheduledAt || 0).getTime() - new Date(a.date || a.scheduledAt || 0).getTime());
 
+      // R-STORE-CREDIT-REDEMPTION-SYSTEM: ledger entries linked to this customer.
+      const customerCerts = (storeCreditLedger || [])
+        .filter((l) => l.customerId === id || (l.customerPhone && normalizePhone(l.customerPhone) === phone))
+        .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
+
       return {
         sales: customerSales,
         repairs: customerRepairs,
@@ -239,9 +244,10 @@ export default function CustomerModule() {
         specialOrders: customerSpecialOrders,
         returns: customerReturns,
         appointments: customerAppointments,
+        certificates: customerCerts,
       };
     },
-    [sales, repairs, layaways, unlocks, specialOrders, returns_, appointments_],
+    [sales, repairs, layaways, unlocks, specialOrders, returns_, appointments_, storeCreditLedger],
   );
 
   // ── Per-customer sales stats (precomputed for table columns) ──
@@ -764,6 +770,7 @@ export default function CustomerModule() {
             specialOrders={history.specialOrders}
             returns={history.returns}
             appointments={history.appointments}
+            certificates={history.certificates}
             onClose={() => setViewHistory(null)}
             settings={settings}
           />
@@ -1244,7 +1251,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
 
 // ── Customer History ──────────────────────────────────────
 
-function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, onClose, settings }: {
+function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, settings }: {
   customer: Customer;
   sales: Sale[];
   repairs: any[];
@@ -1253,6 +1260,7 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   specialOrders: any[];
   returns: any[];
   appointments: any[];
+  certificates?: any[];
   onClose: () => void;
   settings: any;
 }) {
@@ -1361,6 +1369,56 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
           <div className="text-xs text-amber-400/80 text-center -mt-2">
             {t('customers.history.coverageWarn', coveragePct)}
           </div>
+        )}
+
+        {/* 🎫 Store Credit Certificates (R-STORE-CREDIT-REDEMPTION-SYSTEM) */}
+        {certificates && certificates.length > 0 && (
+          <Section title={`🎫 ${t('storeCredit.profile.title')}`} count={certificates.length}>
+            <div className="flex flex-col gap-2">
+              {certificates.map((c: any) => (
+                <div key={c.id} className="rounded-lg bg-white/5 p-2.5 text-sm">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-sky-300 font-semibold">{c.certificateNumber}</span>
+                      <span className={`badge ${c.status === 'active' ? 'badge-success' : c.status === 'voided' ? 'badge-danger' : 'badge-neutral'}`}>
+                        {c.status}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500">{formatDate(c.issuedAt)}</span>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div className="text-slate-500">{t('storeCredit.fields.issued')}</div>
+                      <div className="text-slate-200 font-semibold">{formatCurrency(c.issuedAmount)}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">{t('storeCredit.fields.redeemed')}</div>
+                      <div className="text-slate-200 font-semibold">{formatCurrency(c.redeemedAmount)}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">{t('storeCredit.fields.remaining')}</div>
+                      <div className="text-emerald-400 font-bold">{formatCurrency(c.remainingAmount)}</div>
+                    </div>
+                  </div>
+                  {Array.isArray(c.redemptions) && c.redemptions.length > 0 && (
+                    <details className="mt-1.5">
+                      <summary className="text-xs text-slate-400 cursor-pointer">
+                        {t('storeCredit.profile.redemptionsLabel', c.redemptions.length)}
+                      </summary>
+                      <div className="mt-1 flex flex-col gap-1">
+                        {c.redemptions.map((r: any) => (
+                          <div key={r.id} className="flex justify-between text-xs text-slate-400">
+                            <span>{r.invoiceNumber || r.saleId?.slice(-6) || '—'} · {formatDate(r.redeemedAt)}</span>
+                            <span className="text-emerald-400">-{formatCurrency(r.redeemedAmount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Section>
         )}
 
         {/* 💰 Sales */}

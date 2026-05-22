@@ -94,6 +94,11 @@ const SYNC_MANIFEST: SyncEntry[] = [
   // R-LOSSES-SHRINKAGE-V1: append-only audit shape — losses are never
   // edited or hard-deleted in V1, so union merge mode mirrors sales/returns.
   { localKey: 'inventory_losses', collectionName: COLLECTIONS.inventoryLosses,actionType: 'SET_INVENTORY_LOSSES',  mergeMode: 'union' },
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: append-only ledger; ledger entries mutate
+  // (redemptions[] grows, remainingAmount decrements) so union mode is too
+  // permissive — but redemption writes use saveRecord which timestamps via
+  // updatedAt, and the listener reconciles via doc id, so 'timestamp' fits.
+  { localKey: 'store_credit_ledger', collectionName: COLLECTIONS.storeCreditLedger, actionType: 'SET_STORE_CREDIT_LEDGER', mergeMode: 'timestamp' },
 ];
 
 /**

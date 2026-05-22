@@ -30,7 +30,8 @@ import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModa
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 import { normalizeCarrier } from '@/utils/normalize';
 import { matchesSearchPhones } from '@/utils/search';
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
+import { summarizeLedger, voidLedgerEntry } from '@/services/storeCredit/ledger';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
 // R-REPORTS-EDIT-SALE-ITEM-V1: shared totals helper + audit trail helpers.
@@ -279,6 +280,11 @@ interface NormalizedReturn {
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE
+  employeeName?: string;
+  certificateNumber?: string;
+  recipientName?: string;
+  recipientPhone?: string;
 }
 
 function loadReturns(): NormalizedReturn[] {
@@ -306,8 +312,9 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses, storeCreditLedger },
     dispatch,
+    setStoreCreditLedger,
   } = useApp();
 
   const { t, locale } = useTranslation();
@@ -733,8 +740,37 @@ export default function ReportsModule() {
       subtotalCents: r.subtotalCents ?? Math.round((r.subtotal || 0) * 100),
       taxCents: r.taxCents ?? Math.round((r.taxRefunded || 0) * 100),
       totalCents: r.totalCents ?? Math.round((r.total || 0) * 100),
+      // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE (additive)
+      employeeName: r.employeeName || '',
+      certificateNumber: r.certificateNumber,
+      recipientName: r.recipientName,
+      recipientPhone: r.recipientPhone,
     }));
   }, [customerReturns]);
+
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: ledger summary + void wiring.
+  const ledgerSummary = useMemo(() => summarizeLedger(storeCreditLedger), [storeCreditLedger]);
+  const [voidCertTarget, setVoidCertTarget] = useState<StoreCreditLedger | null>(null);
+  const [voidCertReason, setVoidCertReason] = useState('');
+  const [voidCertPinOpen, setVoidCertPinOpen] = useState(false);
+
+  const handleVoidCertificate = useCallback((target: StoreCreditLedger, reason: string) => {
+    try {
+      const next = voidLedgerEntry(target, {
+        employeeId: currentEmployee?.id,
+        employeeName: currentEmployee?.name || '',
+        reason: reason.trim() || undefined,
+      });
+      const updated = (storeCreditLedger || []).map((l) => (l.id === target.id ? next : l));
+      setStoreCreditLedger(updated);
+      persist.storeCreditLedger(next.id, next as unknown as Record<string, unknown>);
+    } catch (err) {
+      console.warn('[Reports] void cert failed:', err);
+    }
+    setVoidCertPinOpen(false);
+    setVoidCertTarget(null);
+    setVoidCertReason('');
+  }, [storeCreditLedger, setStoreCreditLedger, currentEmployee]);
 
   /** Returns that happened during this period (net daily view). */
   const returnsInPeriod = useMemo(() =>
@@ -2400,7 +2436,17 @@ tr:last-child td { border-bottom: none; }
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
-                    {[t('reports.returnHash'), t('reports.originalInvoice'), t('reports.customer'), t('reports.reason'), t('reports.date'), t('reports.refundHeader')].map((h) => (
+                    {[
+                      t('reports.returnHash'),
+                      t('reports.originalInvoice'),
+                      t('reports.customer'),
+                      t('reports.returns.methodCol'),
+                      t('reports.returns.certificateCol'),
+                      t('reports.returns.employeeCol'),
+                      t('reports.reason'),
+                      t('reports.date'),
+                      t('reports.refundHeader'),
+                    ].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#94a3b8', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
@@ -2410,10 +2456,110 @@ tr:last-child td { border-bottom: none; }
                     <tr key={r.id} style={{ borderBottom: '1px solid rgba(239,68,68,0.08)' }}>
                       <td style={{ padding: '0.5rem 0.875rem', fontFamily: 'monospace', color: '#fca5a5', fontWeight: 600 }}>{r.returnNumber}</td>
                       <td style={{ padding: '0.5rem 0.875rem', fontFamily: 'monospace', color: '#94a3b8' }}>{r.originalInvoice}</td>
-                      <td style={{ padding: '0.5rem 0.875rem', color: '#e2e8f0' }}>{r.customerName}</td>
+                      <td style={{ padding: '0.5rem 0.875rem', color: '#e2e8f0' }}>
+                        {r.recipientName || r.customerName}
+                        {r.recipientPhone && <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{r.recipientPhone}</div>}
+                      </td>
+                      <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8', fontSize: '0.75rem' }}>{r.resolution}</td>
+                      <td style={{ padding: '0.5rem 0.875rem', fontFamily: 'monospace', color: r.certificateNumber ? '#38bdf8' : '#475569', fontSize: '0.72rem' }}>{r.certificateNumber || '—'}</td>
+                      <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8', fontSize: '0.75rem' }}>{r.employeeName || '—'}</td>
                       <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8', fontSize: '0.75rem' }}>{r.reason}</td>
                       <td style={{ padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.72rem' }}>{r.createdAt ? formatDate(r.createdAt) : '—'}</td>
                       <td style={{ padding: '0.5rem 0.875rem', textAlign: 'right', fontWeight: 700, color: '#ef4444' }}>-{formatCurrency(r.totalCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── R-STORE-CREDIT-REDEMPTION-SYSTEM: ledger metrics ── */}
+          {Array.isArray(storeCreditLedger) && storeCreditLedger.length > 0 && (
+            <div style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(56,189,248,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#7dd3fc' }}>
+                  🎫 {t('storeCredit.reports.title')}
+                </span>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                  {t('storeCredit.reports.activeLiability')}: <span style={{ color: '#10b981', fontWeight: 700 }}>{formatCurrency(ledgerSummary.activeLiabilityCents)}</span>
+                </span>
+              </div>
+              {/* Summary row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid rgba(56,189,248,0.1)', fontSize: '0.78rem' }}>
+                <div>
+                  <div style={{ color: '#64748b' }}>{t('storeCredit.reports.issuedCount')}</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{ledgerSummary.issuedCount}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b' }}>{t('storeCredit.reports.issuedTotal')}</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{formatCurrency(ledgerSummary.issuedTotalCents)}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b' }}>{t('storeCredit.reports.redeemed')}</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{formatCurrency(ledgerSummary.redeemedTotalCents)}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b' }}>{t('storeCredit.reports.redemptions')}</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{ledgerSummary.redemptionCount}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b' }}>{t('storeCredit.reports.voidedCount')}</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{ledgerSummary.voidedCount}</div>
+                </div>
+              </div>
+              {/* Detail table */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(56,189,248,0.18)' }}>
+                    {[
+                      t('storeCredit.reports.colCert'),
+                      t('storeCredit.reports.colCustomer'),
+                      t('storeCredit.reports.colIssued'),
+                      t('storeCredit.reports.colRedeemed'),
+                      t('storeCredit.reports.colRemaining'),
+                      t('storeCredit.reports.colStatus'),
+                      t('storeCredit.reports.colIssuedAt'),
+                      t('storeCredit.reports.colEmployee'),
+                      '',
+                    ].map((h, i) => (
+                      <th key={h + i} style={{ textAlign: 'left', padding: '0.5rem 0.7rem', color: '#94a3b8', fontSize: '0.66rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...storeCreditLedger]
+                    .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+                    .slice(0, 100)
+                    .map((c) => (
+                    <tr key={c.id} style={{ borderBottom: '1px solid rgba(56,189,248,0.06)' }}>
+                      <td style={{ padding: '0.4rem 0.7rem', fontFamily: 'monospace', color: '#7dd3fc', fontWeight: 600 }}>{c.certificateNumber}</td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: '#e2e8f0' }}>
+                        {c.customerName}
+                        {c.customerPhone && <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{c.customerPhone}</div>}
+                      </td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(c.issuedAmount)}</td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: '#94a3b8' }}>{formatCurrency(c.redeemedAmount)}</td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: c.remainingAmount > 0 && c.status === 'active' ? '#10b981' : '#64748b', fontWeight: 700 }}>{formatCurrency(c.remainingAmount)}</td>
+                      <td style={{ padding: '0.4rem 0.7rem' }}>
+                        <span style={{ padding: '0.1rem 0.45rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase',
+                          background: c.status === 'active' ? 'rgba(16,185,129,0.15)' : c.status === 'voided' ? 'rgba(239,68,68,0.15)' : 'rgba(148,163,184,0.15)',
+                          color: c.status === 'active' ? '#10b981' : c.status === 'voided' ? '#ef4444' : '#94a3b8' }}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: '#64748b', fontSize: '0.72rem' }}>{formatDate(c.issuedAt)}</td>
+                      <td style={{ padding: '0.4rem 0.7rem', color: '#94a3b8' }}>{c.issuedByEmployeeName || '—'}</td>
+                      <td style={{ padding: '0.4rem 0.7rem', textAlign: 'right' }}>
+                        {c.status === 'active' && (
+                          <button
+                            onClick={() => { setVoidCertTarget(c); setVoidCertReason(''); }}
+                            className="btn btn-sm"
+                            style={{ fontSize: '0.7rem', background: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}
+                          >
+                            {t('storeCredit.reports.voidBtn')}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -3254,6 +3400,54 @@ tr:last-child td { border-bottom: none; }
           if (voidTarget) handleVoidSale(voidTarget, voidReason);
         }}
         onCancel={() => setVoidPinOpen(false)}
+      />
+
+      {/* R-STORE-CREDIT-REDEMPTION-SYSTEM: void certificate flow.
+          Reason modal → PIN gate → voidLedgerEntry. */}
+      {voidCertTarget && (
+        <Modal open onClose={() => setVoidCertTarget(null)}
+          title={`🚫 ${t('storeCredit.void.title', voidCertTarget.certificateNumber)}`}
+          size="max-w-md"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ padding: '0.65rem 0.85rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '0.5rem', fontSize: '0.85rem', color: '#fca5a5' }}>
+              {t('storeCredit.void.warning', formatCurrency(voidCertTarget.remainingAmount))}
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: '0.3rem', fontWeight: 600 }}>
+                {t('storeCredit.void.reasonLabel')}
+              </label>
+              <input
+                className="input"
+                value={voidCertReason}
+                onChange={(e) => setVoidCertReason(e.target.value)}
+                placeholder={t('storeCredit.void.reasonPlaceholder')}
+                style={{ fontSize: '0.88rem' }}
+                autoFocus
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setVoidCertTarget(null)}>
+                {t('storeCredit.void.cancel')}
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ background: '#ef4444' }}
+                onClick={() => setVoidCertPinOpen(true)}
+              >
+                {t('storeCredit.void.continue')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <AdminPinGate
+        open={voidCertPinOpen && !!voidCertTarget}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => {
+          if (voidCertTarget) handleVoidCertificate(voidCertTarget, voidCertReason);
+        }}
+        onCancel={() => setVoidCertPinOpen(false)}
       />
 
       {/* R-REPORTS-EDIT-SALE-ITEM-V1: edit-item modal — picks an item from

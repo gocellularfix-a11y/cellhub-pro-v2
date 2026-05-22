@@ -45,6 +45,11 @@ const CompanionRuntimeMount = lazy(() => import('@/components/companion/Companio
 // COMPANION: always-on status push — keeps mobile data fresh even when the
 // operator is not on the Companion tab (StatusPanel only mounts on that tab).
 const StatusPushMount = lazy(() => import('@/components/companion/StatusPushMount'));
+// R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE: external payment verification card
+// next to the bubble. Was previously mounted inside IntelligenceModule, so
+// it never surfaced unless the cashier opened that tab. Module-level dedup
+// inside the component keeps the IntelligenceModule mount from doubling up.
+const PaymentVerificationNudge = lazy(() => import('@/components/PaymentVerificationNudge'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -315,6 +320,13 @@ export default function AppShell() {
       {/* COMPANION: invisible — pushes store snapshot to bridge always. */}
       <Suspense fallback={null}>
         <StatusPushMount />
+      </Suspense>
+      {/* R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE: external payment reminder
+          card mounted next to the operator bubble so it surfaces regardless
+          of which tab is open. Dedup with IntelligenceModule's mount is
+          handled module-internally — first mount wins. */}
+      <Suspense fallback={null}>
+        <PaymentVerificationNudge />
       </Suspense>
     </div>
   );

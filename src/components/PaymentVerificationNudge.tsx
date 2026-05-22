@@ -1,61 +1,135 @@
 // ============================================================
 // CellHub Intelligence — External Payment Verification Nudge
 // R-INTELLIGENCE-PAYMENT-VERIFY-V1
+// R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE (additive: bubble-level mount,
+//   2-min repeat pulse, t()-driven copy, dual-mount dedup guard).
 //
-// Small card rendered near the Intelligence bubble.
-// Surfaces 2 min after phone_payment checkout to remind
-// the cashier to confirm the carrier portal payment.
+// Small card rendered near the Floating Intelligence Bubble. Surfaces 2 min
+// after a phone_payment / external-portal checkout to remind the cashier
+// to confirm the carrier portal payment. Now mounted at AppShell level so
+// it's visible even when the Intelligence panel is closed.
 //
-// CRITICAL: No sale data is modified. Human-only reminder.
+// CRITICAL: No sale data is modified. Human-only reminder. Confirmation
+// just marks the reminder acknowledged in the existing localStorage
+// reminder store — it does NOT mark the underlying sale as paid (the sale
+// is already 'completed' from the moment POS posts it; the nudge only
+// audits whether the cashier completed the external portal step).
 // ============================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   getDueVerification,
   confirmVerification,
   dismissVerification,
   rescheduleVerification,
+  isAllowedVerificationSource,
   type PaymentVerification,
 } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { formatCurrency } from '@/utils/currency';
+import { useTranslation } from '@/i18n';
 
-const POLL_INTERVAL_MS = 15_000;  // check every 15 seconds
+const POLL_INTERVAL_MS = 15_000;        // check storage every 15 seconds
+const REPEAT_PULSE_MS  = 2 * 60 * 1000; // re-pulse every 2 minutes until confirmed
+
+// ── Module-level dedup guard ───────────────────────────────
+// AppShell mounts this nudge alongside the FloatingOperatorBubble so it's
+// visible on every tab. IntelligenceModule still mounts a second instance
+// for legacy reasons. To avoid two stacked cards, the first mount wins; the
+// second mount renders null until the first unmounts.
+let activeMountId: string | null = null;
 
 interface Props {
-  lang: 'en' | 'es' | 'pt';
+  /**
+   * Optional legacy prop kept for backward compat with the IntelligenceModule
+   * call site. AppShell omits it and the component uses useTranslation()
+   * locale instead.
+   */
+  lang?: 'en' | 'es' | 'pt';
 }
 
-export default function PaymentVerificationNudge({ lang }: Props) {
+export default function PaymentVerificationNudge(_props: Props) {
+  void _props; // lang prop intentionally vestigial — t() reads locale from context
+  const { t } = useTranslation();
   const [due, setDue] = useState<PaymentVerification | null>(null);
+  // R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE: pulseTick re-keys the card so
+  // the urgent flash animation restarts every REPEAT_PULSE_MS until the
+  // cashier acts. Pure visual cue — no state mutation on the reminder.
+  const [pulseTick, setPulseTick] = useState(0);
+  // Stable id for the dedup guard — registered on mount, released on unmount.
+  const mountIdRef = useRef<string>(`pv-mount-${Math.random().toString(36).slice(2, 10)}`);
+  const [isActiveMount, setIsActiveMount] = useState(false);
 
-  const checkDue = useCallback(() => {
-    setDue(getDueVerification());
+  // Claim the active-mount slot (additive dedup with no refactor).
+  useEffect(() => {
+    if (activeMountId === null) {
+      activeMountId = mountIdRef.current;
+      setIsActiveMount(true);
+    }
+    const id = mountIdRef.current;
+    return () => {
+      if (activeMountId === id) {
+        activeMountId = null;
+      }
+    };
   }, []);
 
-  // Poll localStorage every 15 s + listen for the checkout event.
+  const checkDue = useCallback(() => {
+    // R-EXTERNAL-PAYMENT-ONLY-NUDGE-GUARD: defensive display-time filter.
+    // The service already enforces the allowlist, but re-checking here
+    // guarantees that even if a future caller bypasses the service guard,
+    // the UI still refuses to surface a non-external-portal reminder.
+    const next = getDueVerification();
+    if (next) {
+      const src = (next.source ?? 'phone_payment') as string;
+      if (!isAllowedVerificationSource(src)) {
+        setDue(null);
+        return;
+      }
+    }
+    setDue(next);
+  }, []);
+
+  // Poll localStorage every 15s + listen for the checkout event.
   useEffect(() => {
+    if (!isActiveMount) return;
     checkDue();
     const interval = setInterval(checkDue, POLL_INTERVAL_MS);
-
     const onEvent = () => checkDue();
     window.addEventListener('cellhub:payment-verify-nudge', onEvent);
-
     return () => {
       clearInterval(interval);
       window.removeEventListener('cellhub:payment-verify-nudge', onEvent);
     };
-  }, [checkDue]);
+  }, [checkDue, isActiveMount]);
 
-  if (!due) return null;
+  // R-BUBBLE-EXTERNAL-PAYMENT-REMINDER-NUDGE: 2-minute repeat pulse — ticks
+  // ONLY while a card is on-screen and ONLY for the active mount.
+  useEffect(() => {
+    if (!isActiveMount || !due) return;
+    const t = setInterval(() => {
+      setPulseTick((n) => n + 1);
+    }, REPEAT_PULSE_MS);
+    return () => clearInterval(t);
+  }, [due, isActiveMount]);
+
+  if (!isActiveMount || !due) return null;
 
   const handleConfirm = () => {
+    // SAFETY: only marks the reminder acknowledged in the existing store.
+    // The underlying sale is already 'completed' — we do NOT mutate sale state.
     confirmVerification(due.verificationId);
     setDue(null);
+    try {
+      // Surface a non-blocking confirmation breadcrumb for any global listener.
+      window.dispatchEvent(new CustomEvent('cellhub:payment-verify-resolved', {
+        detail: { verificationId: due.verificationId, saleId: due.saleId },
+      }));
+    } catch { /* env without CustomEvent */ }
   };
 
   const handleNotYet = () => {
     rescheduleVerification(due.verificationId);
-    setDue(null);   // hide now; will re-surface in 2 min
+    setDue(null);
   };
 
   const handleDismiss = () => {
@@ -64,28 +138,19 @@ export default function PaymentVerificationNudge({ lang }: Props) {
   };
 
   const amountDisplay = formatCurrency(due.amountCents);
-
-  const txt = {
-    title:   lang === 'es' ? '¿Pago en portal confirmado?' : lang === 'pt' ? 'Pagamento no portal confirmado?' : 'Portal payment confirmed?',
-    body:
-      lang === 'es'
-        ? `${due.carrier} · ${due.customerName} · ${amountDisplay} — ¿Lo procesaste en el portal del carrier?`
-        : lang === 'pt'
-        ? `${due.carrier} · ${due.customerName} · ${amountDisplay} — Você processou no portal da operadora?`
-        : `${due.carrier} · ${due.customerName} · ${amountDisplay} — Did you complete it in the carrier portal?`,
-    confirm:  lang === 'es' ? '✓ Confirmado' : lang === 'pt' ? '✓ Confirmado' : '✓ Confirmed',
-    notYet:   lang === 'es' ? 'Aún no (2 min)' : lang === 'pt' ? 'Ainda não (2 min)' : 'Not yet (2 min)',
-    dismiss:  lang === 'es' ? 'Descartar' : lang === 'pt' ? 'Descartar' : 'Dismiss',
-  };
+  const minutesAgo = Math.max(0, Math.round((Date.now() - due.createdAt) / 60_000));
+  const stillWaiting = minutesAgo >= 4; // surface "still waiting" sublabel after at least one pulse
 
   return (
     <div
+      key={`pv-${due.verificationId}-${pulseTick}`}
       style={{
         position: 'fixed',
         bottom: 88,
         right: 24,
         zIndex: 9999,
         width: 320,
+        maxWidth: 'calc(100vw - 32px)',
         background: '#1F2937',
         border: '1px solid #F59E0B',
         borderRadius: 12,
@@ -94,20 +159,38 @@ export default function PaymentVerificationNudge({ lang }: Props) {
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
+        animation: 'cellhub-nudge-pulse 1.4s ease-out',
       }}
     >
+      {/* Inline keyframes — additive, scoped via name so no global CSS edits. */}
+      <style>{`
+        @keyframes cellhub-nudge-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.6); }
+          70%  { box-shadow: 0 0 0 18px rgba(245,158,11,0); }
+          100% { box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+        }
+      `}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 18 }}>📡</span>
         <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: 13 }}>
-          {txt.title}
+          {t('paymentVerify.bubble.title')}
         </span>
       </div>
 
       {/* Body */}
       <p style={{ margin: 0, color: '#D1D5DB', fontSize: 12, lineHeight: 1.5 }}>
-        {txt.body}
+        {t('paymentVerify.bubble.body', due.carrier, due.customerName, amountDisplay)}
       </p>
+      <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+        {t('paymentVerify.bubble.createdAgo', String(minutesAgo))}
+      </div>
+      {stillWaiting && (
+        <div style={{ fontSize: 11, color: '#FCD34D', fontWeight: 600 }}>
+          ⏳ {t('paymentVerify.bubble.stillWaiting')}
+        </div>
+      )}
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -121,12 +204,12 @@ export default function PaymentVerificationNudge({ lang }: Props) {
             borderRadius: 6,
             padding: '6px 10px',
             fontSize: 12,
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: 'pointer',
             whiteSpace: 'nowrap',
           }}
         >
-          {txt.confirm}
+          {t('paymentVerify.bubble.confirmBtn')}
         </button>
         <button
           onClick={handleNotYet}
@@ -143,7 +226,7 @@ export default function PaymentVerificationNudge({ lang }: Props) {
             whiteSpace: 'nowrap',
           }}
         >
-          {txt.notYet}
+          {t('paymentVerify.bubble.notYetBtn')}
         </button>
         <button
           onClick={handleDismiss}
@@ -155,8 +238,9 @@ export default function PaymentVerificationNudge({ lang }: Props) {
             fontSize: 11,
             cursor: 'pointer',
           }}
+          title={t('paymentVerify.bubble.dismissTitle')}
         >
-          {txt.dismiss}
+          {t('paymentVerify.bubble.dismissBtn')}
         </button>
       </div>
     </div>

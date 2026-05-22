@@ -25,7 +25,9 @@ import { forwardTaxFromBase } from '@/utils/depositTax';
 import { persist, batchSave } from '@/services/persist';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { COLLECTIONS } from '@/config/constants';
-import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem } from '@/store/types';
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { issueLedgerEntry } from '@/services/storeCredit/ledger';
+import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem, StoreCreditLedger } from '@/store/types';
 
 const rc = (n: number) => Math.round(n * 100) / 100;
 const fc = (n: number) => formatCurrency(n);
@@ -54,10 +56,10 @@ function normalizeStatus(s: string): string {
 export default function ReturnsModule() {
   const {
     state: { sales, inventory, customers, settings, employees, currentEmployee, cart, lang, pendingBarcodeInvoice, globalSearchTerm,
-             repairs, unlocks, specialOrders, layaways, customerReturns, vendorReturns },
+             repairs, unlocks, specialOrders, layaways, customerReturns, vendorReturns, storeCreditLedger },
     setSales, setInventory, setCustomers, setCart, setActiveTab, dispatch,
     setRepairs, setUnlocks, setSpecialOrders, setLayaways,
-    setCustomerReturns, setVendorReturns,
+    setCustomerReturns, setVendorReturns, setStoreCreditLedger,
   } = useApp();
 
   const { toast } = useToast();
@@ -85,6 +87,9 @@ export default function ReturnsModule() {
   const layawaysRef      = useRef(layaways);
   const customerReturnsRef = useRef(customerReturns);
   const vendorReturnsRef   = useRef(vendorReturns);
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM: ref for the ledger so mid-issuance writes
+  // see the freshest array if another station inserted a ledger entry between mount and commit.
+  const storeCreditLedgerRef = useRef(storeCreditLedger);
   useEffect(() => { salesRef.current = sales; }, [sales]);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
@@ -95,6 +100,7 @@ export default function ReturnsModule() {
   useEffect(() => { layawaysRef.current = layaways; }, [layaways]);
   useEffect(() => { customerReturnsRef.current = customerReturns; }, [customerReturns]);
   useEffect(() => { vendorReturnsRef.current = vendorReturns; }, [vendorReturns]);
+  useEffect(() => { storeCreditLedgerRef.current = storeCreditLedger; }, [storeCreditLedger]);
 
   // ── Tabs ──────────────────────────────────────────────────
   const [mainTab, setMainTab] = useState<'customer' | 'vendor'>('customer');
@@ -114,6 +120,14 @@ export default function ReturnsModule() {
   const [notes, setNotes] = useState('');
   const [showConfirmReturn, setShowConfirmReturn] = useState(false);
   const [returnSuccess, setReturnSuccess] = useState<CustomerReturn | null>(null);
+  // R-RETURNS-CREDIT-OWNER: required refund recipient. Pre-filled from foundSale
+  // (customerId-matched preferred, fallback to sale.customerName/Phone). The
+  // cashier can switch to manual entry when no customer record exists.
+  const [recipientCustomerId, setRecipientCustomerId] = useState<string>('');
+  const [recipientName, setRecipientName] = useState<string>('');
+  const [recipientPhone, setRecipientPhone] = useState<string>('');
+  const [recipientMode, setRecipientMode] = useState<'sale' | 'search' | 'manual'>('sale');
+  const [recipientSearch, setRecipientSearch] = useState<string>('');
   // r-pkg-b3: returnHistory now reads from AppState (hydrated at boot from
   // localStorage or Firestore), replacing the old loadLocal() init.
   const returnHistory = customerReturns;
@@ -223,7 +237,46 @@ export default function ReturnsModule() {
     setStep(1); setFoundSale(null); setSelectedItems({});
     setSearchQuery(''); setSearchResults([]); setNotes('');
     setReason('defective'); setResolution('cash');
+    // R-RETURNS-CREDIT-OWNER: clear recipient state too
+    setRecipientCustomerId(''); setRecipientName(''); setRecipientPhone('');
+    setRecipientMode('sale'); setRecipientSearch('');
   };
+
+  // R-RETURNS-CREDIT-OWNER: prefill recipient when a sale is picked.
+  // Preference order: linked customerId → sale.customerName/Phone → empty (forces manual entry).
+  useEffect(() => {
+    if (!foundSale) return;
+    const matched = foundSale.customerId
+      ? customersRef.current.find((c) => c.id === foundSale.customerId)
+      : null;
+    if (matched) {
+      setRecipientCustomerId(matched.id);
+      setRecipientName(matched.name || `${matched.firstName || ''} ${matched.lastName || ''}`.trim());
+      setRecipientPhone(matched.phone || '');
+      setRecipientMode('sale');
+    } else if (foundSale.customerName) {
+      setRecipientCustomerId('');
+      setRecipientName(foundSale.customerName);
+      setRecipientPhone(foundSale.customerPhone || '');
+      setRecipientMode('sale');
+    } else {
+      setRecipientCustomerId('');
+      setRecipientName('');
+      setRecipientPhone('');
+      setRecipientMode('manual');
+    }
+    setRecipientSearch('');
+  }, [foundSale]);
+
+  // R-RETURNS-CREDIT-OWNER: customer suggestions for the search picker.
+  const recipientResults = useMemo(() => {
+    if (recipientMode !== 'search') return [];
+    const q = recipientSearch.trim();
+    if (q.length < 2) return [];
+    return customers
+      .filter((c) => matchesSearch(q, c.name, c.phone, c.customerNumber))
+      .slice(0, 6);
+  }, [recipientMode, recipientSearch, customers]);
 
   const handleBarcodeKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -324,6 +377,14 @@ export default function ReturnsModule() {
   const processReturn = useCallback(async () => {
     if (selectedCount === 0) { toast(t('returns.selectAtLeastOne'), 'warning'); return; }
 
+    // R-RETURNS-CREDIT-OWNER: recipient is REQUIRED to complete a return.
+    const finalRecipientName = (recipientName || '').trim();
+    const finalRecipientPhone = (recipientPhone || '').trim();
+    if (!finalRecipientName) {
+      toast(t('returns.recipientNameRequired'), 'error');
+      return;
+    }
+
     // R-RETURNS-F1.4: hard guard — if the original sale was paid with store
     // credit, no cash/card money physically entered the drawer. Refunding
     // to cash or card would cash out money that was never collected.
@@ -381,13 +442,24 @@ export default function ReturnsModule() {
     });
     if (!refundApproval.approved) return;
 
+    // R-STORE-CREDIT-CERTIFICATE: mint certificate id only when issuing credit.
+    const certificateNumber = resolution === 'store_credit'
+      ? `SC-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+      : undefined;
+
     const returnRecord: CustomerReturn = {
       id: generateId(),
       returnNumber,
       originalInvoice: foundSale?.invoiceNumber || t('returns.na'),
       originalSaleId: foundSale?.id || null,
-      customerName: foundSale?.customerName || t('returns.noInvoice'),
-      customerPhone: foundSale?.customerPhone || '',
+      // R-RETURNS-CREDIT-OWNER: customerName/Phone now reflect the confirmed
+      // recipient, not just the sale snapshot. Recipient-specific fields are
+      // also persisted for explicit reporting/searchability.
+      customerName: finalRecipientName,
+      customerPhone: finalRecipientPhone,
+      recipientCustomerId: recipientCustomerId || undefined,
+      recipientName: finalRecipientName,
+      recipientPhone: finalRecipientPhone || undefined,
       employeeName: currentEmployee?.name || '',
       createdAt: nowIso,
       reason, resolution, notes,
@@ -398,6 +470,8 @@ export default function ReturnsModule() {
       subtotal: subtotalCents / 100,
       taxRefunded: taxCentsTotal / 100,
       total: totalCents / 100,
+      // R-STORE-CREDIT-CERTIFICATE: cert id + status, only on store_credit returns.
+      ...(certificateNumber ? { certificateNumber, storeCreditStatus: 'active' as const } : {}),
     };
 
     // Phase 2: update foundSale.items (returnedQty / fullyReturned / hasReturn).
@@ -526,39 +600,64 @@ export default function ReturnsModule() {
     }
 
     // Phase 6: store credit.
-    // Prefer exact customerId match; fallback to exact tail-10 phone match.
+    // R-RETURNS-CREDIT-OWNER: use the explicitly-confirmed recipientCustomerId
+    // when available (no more silent tail-10 phone-fallback that could route
+    // credit to the wrong customer). When no customer is linked (manual entry),
+    // the certificate is still issued and persisted — the cashier reconciles
+    // physically later. Certificate number remains discoverable via reports.
     if (resolution === 'store_credit' && totalCents > 0) {
       const refundCents = totalCents;
-      const saleCustomerId = foundSale?.customerId;
-      const rPhoneRaw = (foundSale?.customerPhone || '').replace(/\D/g, '');
-      const rTail = rPhoneRaw.length >= 10 ? rPhoneRaw.slice(-10) : '';
-
-      let matched = false;
-      const updatedCustomers = customersRef.current.map((c) => {
-        if (saleCustomerId && c.id === saleCustomerId) {
+      if (recipientCustomerId) {
+        let matched = false;
+        const updatedCustomers = customersRef.current.map((c) => {
+          if (c.id !== recipientCustomerId) return c;
           matched = true;
           const updated = { ...c, storeCredit: (c.storeCredit || 0) + refundCents };
           persist.customer(updated.id, updated as unknown as Record<string, unknown>);
           return updated;
+        });
+        if (matched) {
+          customersRef.current = updatedCustomers;
+          setCustomers(updatedCustomers);
+        } else {
+          toast(t('returns.creditApplyManually'), 'warning');
         }
-        if (!saleCustomerId && rTail) {
-          const cPhone = (c.phone || '').replace(/\D/g, '');
-          if (cPhone.length >= 10 && cPhone.slice(-10) === rTail) {
-            matched = true;
-            const updated = { ...c, storeCredit: (c.storeCredit || 0) + refundCents };
-            persist.customer(updated.id, updated as unknown as Record<string, unknown>);
-            return updated;
-          }
-        }
-        return c;
-      });
-
-      if (matched) {
-        customersRef.current = updatedCustomers;
-        setCustomers(updatedCustomers);
       } else {
         toast(t('returns.creditApplyManually'), 'warning');
       }
+    }
+
+    // R-STORE-CREDIT-CERTIFICATE: build an audit-only refund Sale for store
+    // credit returns so they surface in the main transactions table alongside
+    // cash/card refunds. status='voided' + isRefund:true matches the existing
+    // refundSale pattern (Round 11) — Reports already filters voided rows out
+    // of Gross math, so this is visibility-only with no drawer-reconcile impact.
+    if (resolution === 'store_credit' && totalCents > 0 && !refundSale) {
+      refundSale = {
+        id: generateId(),
+        invoiceNumber: `REF-${returnNumber}`,
+        customerId: recipientCustomerId || undefined,
+        customerName: returnRecord.customerName,
+        customerPhone: returnRecord.customerPhone,
+        employeeName: currentEmployee?.name || '',
+        createdAt: nowIso,
+        paymentMethod: 'Store Credit',
+        isRefund: true,
+        status: 'voided',
+        refundFor: foundSale?.invoiceNumber || '',
+        returnNumber,
+        certificateNumber,
+        items: returnItems.map((i) => ({ ...i, price: -i.priceCents })),
+        subtotal: -subtotalCents,
+        taxAmount: -taxCentsTotal,
+        cbeTotal: 0,
+        screenFeeTotal: 0,
+        creditCardFee: 0,
+        salesTax: 0,
+        utilityTax: 0,
+        mobileSurcharge: 0,
+        total: -totalCents,
+      };
     }
 
     // Phase 6b: loyalty points reversal.
@@ -782,6 +881,30 @@ export default function ReturnsModule() {
     customerReturnsRef.current = history;
     setReturnHistory(history);
     persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+
+    // R-STORE-CREDIT-REDEMPTION-SYSTEM: mint a ledger entry for the certificate
+    // we just printed. The certificate is now a traceable redeemable instrument.
+    if (resolution === 'store_credit' && certificateNumber && totalCents > 0) {
+      try {
+        const ledgerEntry: StoreCreditLedger = issueLedgerEntry({
+          certificateNumber,
+          amountCents: totalCents,
+          customerId: recipientCustomerId || undefined,
+          customerName: finalRecipientName,
+          customerPhone: finalRecipientPhone || undefined,
+          employeeId: currentEmployee?.id,
+          employeeName: currentEmployee?.name || '',
+          sourceReturnId: returnRecord.id,
+          sourceReturnNumber: returnRecord.returnNumber,
+        });
+        const ledgerNext = [ledgerEntry, ...storeCreditLedgerRef.current];
+        storeCreditLedgerRef.current = ledgerNext;
+        setStoreCreditLedger(ledgerNext);
+        persist.storeCreditLedger(ledgerEntry.id, ledgerEntry as unknown as Record<string, unknown>);
+      } catch (err) {
+        console.warn('[R-STORE-CREDIT] ledger issuance failed:', err);
+      }
+    }
     try {
       window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
         detail: { type: 'return.processed', payload: { amountCents: totalCents } },
@@ -797,9 +920,19 @@ export default function ReturnsModule() {
     toast(mainMsg + linkedMsg, 'success');
 
     setReturnSuccess(returnRecord);
+    // R-STORE-CREDIT-CERTIFICATE: auto-print certificate when store credit issued.
+    if (resolution === 'store_credit' && returnRecord.certificateNumber) {
+      try {
+        toast(t('returns.certificate.toastIssued', returnRecord.certificateNumber, fc(totalCents)), 'success');
+        // Defer to next tick so the success banner renders first.
+        setTimeout(() => printStoreCreditCertificate(returnRecord), 50);
+      } catch { /* print failure is non-fatal */ }
+    }
     resetSearch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
       currentEmployee, taxRate, t,
+      recipientCustomerId, recipientName, recipientPhone,
       setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
       setReturnHistory, toast, approvalGate.requestApproval]);
 
@@ -808,6 +941,47 @@ export default function ReturnsModule() {
   //   - Old code did `window.open('', '_blank')` placeholder + `w.close()` which
   //     flashed an empty tab. printHtml creates its own window — no placeholder needed.
   //   - escHtml replaces the partial-escape (only < and >) with full canonical escape.
+  // R-STORE-CREDIT-CERTIFICATE: dedicated certificate print. Includes the
+  // scannable certificate number as a CODE128 barcode (same renderer the
+  // POS receipt uses) so the cashier can scan it later to redeem.
+  const printStoreCreditCertificate = useCallback((rec: CustomerReturn) => {
+    const cert = rec.certificateNumber || rec.returnNumber;
+    const amount = `$${((rec.totalCents || 0) / 100).toFixed(2)}`;
+    const issued = new Date(rec.createdAt).toLocaleString();
+    const barcodeSvg = renderBarcodeSvg(cert);
+    const storeName = settings.storeName || 'GO CELLULAR';
+    const phoneLine = rec.recipientPhone || rec.customerPhone;
+    const html = `<!DOCTYPE html><html><head><title>Store Credit Certificate</title>
+<style>
+  body{font-family:monospace;font-size:12px;width:3in;margin:0;padding:8px;color:#000}
+  .title{text-align:center;font-weight:800;font-size:13px;margin:6px 0}
+  .row{display:flex;justify-content:space-between;margin:2px 0}
+  .label{color:#444}
+  .amount{font-size:18px;font-weight:800;text-align:center;border:2px solid #000;padding:6px;margin:8px 0}
+  .barcode{display:flex;justify-content:center;margin:8px 0}
+  .barcode svg{max-width:100%;height:50px}
+  .footer{text-align:center;font-weight:700;margin-top:6px}
+  .small{font-size:10px;color:#555;text-align:center}
+  hr{border:none;border-top:1px dashed #000;margin:6px 0}
+</style></head><body>
+<div style="text-align:center;font-weight:800">${escHtml(storeName)}</div>
+<div class="small">${escHtml(settings.storeAddress || '')}</div>
+<div class="small">${escHtml(settings.storePhone || '')}</div>
+<hr/>
+<div class="title">${escHtml(t('returns.certificate.title'))}</div>
+<div class="row"><span class="label">${escHtml(t('returns.certificate.no'))}</span><span><b>${escHtml(cert)}</b></span></div>
+<div class="row"><span class="label">${escHtml(t('returns.certificate.issued'))}</span><span>${escHtml(issued)}</span></div>
+<div class="row"><span class="label">${escHtml(t('returns.certificate.refTo'))}</span><span>${escHtml(rec.returnNumber)} / ${escHtml(rec.originalInvoice)}</span></div>
+<hr/>
+<div class="row"><span class="label">${escHtml(t('returns.certificate.holder'))}</span><span>${escHtml(rec.recipientName || rec.customerName)}</span></div>
+${phoneLine ? `<div class="row"><span class="label">${escHtml(t('returns.print.customer'))}</span><span>${escHtml(phoneLine)}</span></div>` : ''}
+<div class="amount">${escHtml(t('returns.certificate.amount'))}<br/>${escHtml(amount)}</div>
+<div class="barcode">${barcodeSvg}</div>
+<div class="footer">${escHtml(t('returns.certificate.storeCreditOnly'))}</div>
+</body></html>`;
+    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+  }, [settings, t, printHtml]);
+
   const printReturnReceipt = (rec: CustomerReturn) => {
     const lines = [
       settings.storeName || 'GO CELLULAR',
@@ -937,6 +1111,10 @@ export default function ReturnsModule() {
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn btn-secondary" style={{ fontSize: '0.8rem' }}
               onClick={() => printReturnReceipt(returnSuccess)}>🖨️ {t('returns.printBtn')}</button>
+            {returnSuccess.certificateNumber && (
+              <button className="btn btn-secondary" style={{ fontSize: '0.8rem', borderColor: 'rgba(56,189,248,0.4)', color: '#38bdf8' }}
+                onClick={() => printStoreCreditCertificate(returnSuccess)}>🎫 {t('returns.certificate.printBtn')}</button>
+            )}
             <button className="btn btn-secondary" style={{ fontSize: '0.8rem' }}
               onClick={() => setReturnSuccess(null)}>✕</button>
           </div>
@@ -1161,6 +1339,126 @@ export default function ReturnsModule() {
                 )}
               </div>
 
+              {/* R-RETURNS-CREDIT-OWNER: Recipient panel — required */}
+              {selectedCount > 0 && (
+                <div className="glass-card p-4">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
+                      👤 {t('returns.recipientPanelTitle')}
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      {foundSale?.customerName && (
+                        <button
+                          onClick={() => {
+                            const matched = foundSale.customerId
+                              ? customersRef.current.find((c) => c.id === foundSale.customerId)
+                              : null;
+                            setRecipientCustomerId(matched?.id || '');
+                            setRecipientName(matched?.name || foundSale.customerName || '');
+                            setRecipientPhone(matched?.phone || foundSale.customerPhone || '');
+                            setRecipientMode('sale');
+                            setRecipientSearch('');
+                          }}
+                          className={`btn btn-sm ${recipientMode === 'sale' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          {t('returns.recipientUseSale')}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setRecipientMode('search'); setRecipientSearch(''); }}
+                        className={`btn btn-sm ${recipientMode === 'search' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: '0.72rem' }}
+                      >
+                        🔍 {t('returns.recipientSearch')}
+                      </button>
+                      <button
+                        onClick={() => { setRecipientMode('manual'); setRecipientCustomerId(''); }}
+                        className={`btn btn-sm ${recipientMode === 'manual' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: '0.72rem' }}
+                      >
+                        ✍️ {t('returns.recipientUseManual')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {recipientMode === 'sale' && (
+                    <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '0.5rem' }}>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>{t('returns.recipientFromSale')}</div>
+                      <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{recipientName || '—'}</div>
+                      {recipientPhone && <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>📞 {recipientPhone}</div>}
+                      {recipientCustomerId && <div style={{ fontSize: '0.72rem', color: '#38bdf8', marginTop: '0.15rem' }}>🔗 {t('returns.recipientCustomerLink')}</div>}
+                    </div>
+                  )}
+
+                  {recipientMode === 'search' && (
+                    <div>
+                      <input
+                        className="input"
+                        autoFocus
+                        value={recipientSearch}
+                        onChange={(e) => setRecipientSearch(e.target.value)}
+                        placeholder={t('returns.recipientSearchPlaceholder')}
+                        style={{ fontSize: '0.85rem' }}
+                      />
+                      {recipientResults.length > 0 && (
+                        <div style={{ marginTop: '0.4rem', maxHeight: '180px', overflowY: 'auto', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          {recipientResults.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                setRecipientCustomerId(c.id);
+                                setRecipientName(c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim());
+                                setRecipientPhone(c.phone || '');
+                                setRecipientMode('sale');
+                              }}
+                              style={{ width: '100%', textAlign: 'left', padding: '0.45rem 0.7rem', background: 'rgba(255,255,255,0.04)', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.82rem' }}
+                            >
+                              <span style={{ fontWeight: 600 }}>{c.name}</span>
+                              <span style={{ marginLeft: '0.5rem', color: '#64748b', fontSize: '0.75rem' }}>{c.phone || ''} {c.customerNumber ? `· ${c.customerNumber}` : ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {recipientMode === 'manual' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                          {t('returns.recipientNameLabel')} *
+                        </label>
+                        <input
+                          className="input"
+                          value={recipientName}
+                          onChange={(e) => { setRecipientName(e.target.value); setRecipientCustomerId(''); }}
+                          autoFocus
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                          {t('returns.recipientPhoneLabel')}
+                        </label>
+                        <input
+                          className="input"
+                          value={recipientPhone}
+                          onChange={(e) => setRecipientPhone(e.target.value)}
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {!recipientName.trim() && (
+                    <div style={{ marginTop: '0.5rem', color: '#f87171', fontSize: '0.78rem' }}>
+                      ⚠️ {t('returns.recipientRequired')}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Reason + Resolution */}
               {selectedCount > 0 && (
                 <div className="glass-card p-4">
@@ -1252,7 +1550,12 @@ export default function ReturnsModule() {
                       <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'right' }}>{t('returns.toRefund')}</div>
                     </div>
                   </div>
-                  <button onClick={() => setShowConfirmReturn(true)} className="btn btn-primary" style={{ width: '100%', fontSize: '1rem', fontWeight: 700 }}>
+                  <button
+                    onClick={() => setShowConfirmReturn(true)}
+                    disabled={!recipientName.trim()}
+                    className="btn btn-primary"
+                    style={{ width: '100%', fontSize: '1rem', fontWeight: 700, opacity: recipientName.trim() ? 1 : 0.5, cursor: recipientName.trim() ? 'pointer' : 'not-allowed' }}
+                  >
                     ✅ {t('returns.processReturn', returnTotal.toFixed(2))}
                   </button>
                 </div>

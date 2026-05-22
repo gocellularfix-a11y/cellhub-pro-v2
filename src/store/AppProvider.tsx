@@ -27,6 +27,7 @@ import type {
   Appointment,
   CustomerReturn,
   VendorReturn,
+  StoreCreditLedger,
 } from './types';
 import { DEFAULT_SETTINGS } from '@/config/constants';
 import { normalizeCustomers } from '@/utils/customerNormalize';
@@ -53,6 +54,7 @@ const initialState: AppState = {
   appointments: [],
   customerReturns: [],
   vendorReturns: [],
+  storeCreditLedger: [],
   cart: [],
   settings: { ...DEFAULT_SETTINGS },
   loading: true,
@@ -117,6 +119,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, customerReturns: action.payload };
     case 'SET_VENDOR_RETURNS':
       return { ...state, vendorReturns: action.payload };
+    case 'SET_STORE_CREDIT_LEDGER':
+      return { ...state, storeCreditLedger: action.payload };
     case 'SET_CART':
       return { ...state, cart: action.payload };
     case 'SET_SETTINGS':
@@ -174,6 +178,7 @@ interface AppContextValue {
   setAppointments: (a: Appointment[]) => void;
   setCustomerReturns: (r: CustomerReturn[]) => void;
   setVendorReturns: (r: VendorReturn[]) => void;
+  setStoreCreditLedger: (l: StoreCreditLedger[]) => void;
   setCart: (c: CartItem[]) => void;
   setSettings: (s: Partial<StoreSettings>) => void;
 }
@@ -204,6 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setAppointments = useCallback((a: Appointment[]) => dispatch({ type: 'SET_APPOINTMENTS', payload: a }), []);
   const setCustomerReturns = useCallback((r: CustomerReturn[]) => dispatch({ type: 'SET_CUSTOMER_RETURNS', payload: r }), []);
   const setVendorReturns = useCallback((r: VendorReturn[]) => dispatch({ type: 'SET_VENDOR_RETURNS', payload: r }), []);
+  const setStoreCreditLedger = useCallback((l: StoreCreditLedger[]) => dispatch({ type: 'SET_STORE_CREDIT_LEDGER', payload: l }), []);
   const setCart = useCallback((c: CartItem[]) => dispatch({ type: 'SET_CART', payload: c }), []);
   const setSettings = useCallback((s: Partial<StoreSettings>) => dispatch({ type: 'SET_SETTINGS', payload: s }), []);
 
@@ -238,6 +244,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       purchaseOrders: state.purchaseOrders.filter((po) => belongs(po.storeId)),
       customerReturns: state.customerReturns.filter((r) => belongs(r.storeId)),
       vendorReturns: state.vendorReturns.filter((r) => belongs(r.storeId)),
+      storeCreditLedger: state.storeCreditLedger.filter((l) => belongs(l.storeId)),
       // Global collections — NOT filtered
       // customers: state.customers,     (inherited from ...state)
       // employees: state.employees,     (inherited from ...state)
@@ -265,6 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAppointments,
     setCustomerReturns,
     setVendorReturns,
+    setStoreCreditLedger,
     setCart,
     setSettings,
   };

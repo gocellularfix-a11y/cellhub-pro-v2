@@ -81,6 +81,8 @@ const LOCAL_KEYS: Record<string, string> = {
   [COLLECTIONS.vendorReturns]:    'vendor_returns',
   // R-LOSSES-SHRINKAGE-V1
   [COLLECTIONS.inventoryLosses]:  'inventory_losses',
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM
+  [COLLECTIONS.storeCreditLedger]: 'store_credit_ledger',
 };
 
 // ── Local helpers ─────────────────────────────────────────
@@ -233,6 +235,8 @@ export const persist = {
   vendorReturn:  (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.vendorReturns,   id, data),
   // R-LOSSES-SHRINKAGE-V1
   inventoryLoss: (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.inventoryLosses, id, data),
+  // R-STORE-CREDIT-REDEMPTION-SYSTEM
+  storeCreditLedger: (id: string, data: Record<string, unknown>) => saveRecord(COLLECTIONS.storeCreditLedger, id, data),
 };
 
 export const remove = {
