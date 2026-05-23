@@ -4031,6 +4031,8 @@ export const translations: TranslationDictionary = {
   'chat.whyDidSalesDrop.action.openRepairs':     { en: 'Open repairs',              es: 'Abrir reparaciones',       pt: 'Abrir reparos' },
   'chat.whyDidSalesDrop.action.openEmployees':   { en: 'Open employees',            es: 'Abrir empleados',          pt: 'Abrir funcionários' },
   'chat.whyDidSalesDrop.action.openInventory':   { en: 'Open inventory',            es: 'Abrir inventario',         pt: 'Abrir estoque' },
+  // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS
+  'chat.alerts.header':           { en: '🔔 Urgent alerts',                  es: '🔔 Alertas urgentes',              pt: '🔔 Alertas urgentes' },
   // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY
   'chat.focusToday.header':       { en: '🔥 Focus today',                    es: '🔥 Enfoque de hoy',                pt: '🔥 Foco de hoje' },
   'chat.focusToday.allClear':     { en: 'No major operational issues detected right now. Keep selling.', es: 'No hay problemas operativos importantes ahorita. Sigue vendiendo.', pt: 'Sem problemas operacionais importantes agora. Continue vendendo.' },

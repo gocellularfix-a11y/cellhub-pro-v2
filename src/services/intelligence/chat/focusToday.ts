@@ -50,6 +50,14 @@ import {
   renderWorkflowChainText,
   getWorkflowChatActions,
 } from '../workflows/workflowRecommendations';
+// R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: top 1-2 urgent alerts shown
+// as a small strip ABOVE the priority list. Uses PrecomputedSignals so
+// we do not re-run any of the source computes focusToday already ran.
+import {
+  getUrgentOperatorAlerts,
+  ALERT_SEVERITY_BADGE,
+  type OperatorAlert,
+} from '../alerts/operatorAlerts';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -477,12 +485,35 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
     };
   }
 
+  // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: top 2 urgent alerts strip.
+  // Passes already-computed signals so the alerts helper does not re-scan.
+  const urgentAlerts: OperatorAlert[] = getUrgentOperatorAlerts(
+    engine,
+    lang,
+    nowMs,
+    {
+      attentionItems,
+      lossSignals,
+      dropSignals,
+      restockRecs,
+      slowCauses,
+    },
+    2,
+  );
+
   const lines: string[] = [
     `**${t('chat.focusToday.header')}**`,
     '',
     `🕐 ${t(`chat.focusToday.shift.${tod}`)}`,
     '',
   ];
+  if (urgentAlerts.length > 0) {
+    lines.push(`**${t('chat.alerts.header')}**`);
+    for (const a of urgentAlerts) {
+      lines.push(`${ALERT_SEVERITY_BADGE[a.severity]} ${a.title}`);
+    }
+    lines.push('');
+  }
   for (let i = 0; i < filtered.length; i++) {
     const p = filtered[i];
     lines.push(`${i + 1}. ${URGENCY_BADGE[p.urgency]} **${p.headline}**`);

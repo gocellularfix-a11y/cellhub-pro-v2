@@ -36,6 +36,15 @@ import {
   renderWorkflowChainText,
   getWorkflowChatActions,
 } from '../workflows/workflowRecommendations';
+// R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: surface the top urgent
+// alerts as a compact strip between Status and Top Priorities. The
+// alerts helper consumes the same compute pipelines the brief already
+// runs, so we hand the pre-computed signals in to avoid duplicate scans.
+import {
+  getUrgentOperatorAlerts,
+  ALERT_SEVERITY_BADGE,
+  type OperatorAlert,
+} from '../alerts/operatorAlerts';
 
 // ── Time-of-day classification (deterministic) ───────────
 
@@ -272,6 +281,17 @@ export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lan
   const risks       = buildRisks(engine, lang, priorities.domainsSurfaced, t);
   const opportunities = buildOpportunities(engine, lang, attnItems, priorities.domainsSurfaced, risks.domainsSurfaced, t);
 
+  // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: top urgent alerts strip
+  // (severity >= 'high'). Re-uses the same compute pipelines via the
+  // PrecomputedSignals path so attnItems are not re-scanned.
+  const urgentAlerts: OperatorAlert[] = getUrgentOperatorAlerts(
+    engine,
+    lang,
+    nowMs,
+    { attentionItems: attnItems },
+    2,
+  );
+
   const top = attnItems[0];
   const focusSentence = buildSuggestedFocus(tod, top, t);
 
@@ -299,6 +319,16 @@ export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lan
   lines.push(`• ${status.paceLine}`);
   lines.push(`• ${status.repairLine}`);
   lines.push(`• ${status.alertsLine}`);
+
+  // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: urgent strip — only when
+  // at least one critical/high alert is active. Compact 1-line per alert.
+  if (urgentAlerts.length > 0) {
+    lines.push('');
+    lines.push(`**${t('chat.alerts.header')}**`);
+    for (const a of urgentAlerts) {
+      lines.push(`${ALERT_SEVERITY_BADGE[a.severity]} ${a.title}`);
+    }
+  }
 
   // Top priorities
   if (priorities.lines.length > 0) {
