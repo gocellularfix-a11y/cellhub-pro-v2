@@ -20,6 +20,7 @@ import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModa
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import { buildReceiptBarcodePayload, CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
+import { normalizePhone } from '@/utils/normalize';
 
 export default function BarcodeActionModal() {
   const { state, dispatch } = useApp();
@@ -57,6 +58,59 @@ export default function BarcodeActionModal() {
 
   const navigate = (tab: string) => {
     dispatch({ type: 'SET_ACTIVE_TAB', payload: tab });
+    close();
+  };
+
+  // R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX: resolve the
+  // customer linked to a scanned sale. Prefer the stored customerId; fall
+  // back to a phone-tail match against the customer DB. Returns null when
+  // the sale has no customer info at all — callers show a safe fallback.
+  const resolveSaleCustomer = (s: typeof sale) => {
+    if (!s) return null;
+    const cid = (s as any).customerId as string | undefined;
+    if (cid) {
+      const byId = (customers || []).find((c) => c.id === cid);
+      if (byId) return byId;
+    }
+    const phone = (s.customerPhone || '').trim();
+    if (phone) {
+      const phoneTail = normalizePhone(phone).slice(-10);
+      if (phoneTail.length === 10) {
+        const byPhone = (customers || []).find((c) => {
+          const candidates = [c.phone, ...((c as { phones?: string[] }).phones || [])];
+          return candidates.some((p) => normalizePhone(p || '').slice(-10) === phoneTail);
+        });
+        if (byPhone) return byPhone;
+      }
+    }
+    return null;
+  };
+
+  // R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX: open the actual
+  // CustomerHistoryModal via the existing 'cellhub:open-customer-history'
+  // event (CustomerModule.tsx:55-65). Navigates to the Customers tab so
+  // the module is mounted and the event handler can fire.
+  const openCustomerHistory = (customerId: string) => {
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
+    // Defer the event so the Customers module has time to mount + register
+    // its event listener if it wasn't already on screen.
+    const cid = customerId;
+    close();
+    setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:open-customer-history', { detail: { customerId: cid } }));
+      } catch { /* env without CustomEvent — silent */ }
+    }, 80);
+  };
+
+  // R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX: prefill Phone
+  // Payments with the scanned customer. Reuses the existing
+  // SET_PENDING_PHONE_PAYMENT_CUSTOMER → POSModule auto-open pipeline
+  // (AppShell.tsx:118 + POSModule.tsx:177). Modal autofills name / phone /
+  // carrier / typical amount from the customer record. No auto-charge.
+  const openPhonePaymentForCustomer = (customerId: string) => {
+    dispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: customerId });
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
     close();
   };
 
@@ -169,16 +223,23 @@ export default function BarcodeActionModal() {
                   </div>
                 </button>
                 <button
-                  onClick={() => {
-                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
-                    navigate('reports');
-                  }}
+                  onClick={() => openCustomerHistory(chCustomer.id)}
                   style={actionStyle('#0EA5E9')}
                 >
                   <span style={{ fontSize: '1.25rem' }}>📋</span>
                   <div style={{ textAlign: 'left' }}>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.custHistory')}</div>
                     <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.allTx')}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => openPhonePaymentForCustomer(chCustomer.id)}
+                  style={actionStyle('#F97316')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>📞</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.makePhonePayment')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.makePhonePaymentSub')}</div>
                   </div>
                 </button>
                 {chCustomer.phone && settings.waEnabled !== false && (
@@ -323,22 +384,46 @@ export default function BarcodeActionModal() {
             </button>
           )}
 
-          {/* Customer History */}
-          {sale?.customerId && (
-            <button
-              onClick={() => {
-                dispatch({ type: 'SET_GLOBAL_SEARCH', payload: sale.customerName || '' });
-                navigate('reports');
-              }}
-              style={actionStyle('#0EA5E9')}
-            >
-              <span style={{ fontSize: '1.25rem' }}>📋</span>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.custHistory')}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.allTx')}</div>
-              </div>
-            </button>
-          )}
+          {/* Customer History — R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX:
+              opens the actual CustomerHistoryModal instead of routing to Reports.
+              Resolves the customer by customerId, then falls back to phone match. */}
+          {sale && (() => {
+            const matched = resolveSaleCustomer(sale);
+            if (!matched) return null;
+            return (
+              <button
+                onClick={() => openCustomerHistory(matched.id)}
+                style={actionStyle('#0EA5E9')}
+              >
+                <span style={{ fontSize: '1.25rem' }}>📋</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.custHistory')}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.allTx')}</div>
+                </div>
+              </button>
+            );
+          })()}
+
+          {/* Make Phone Payment — R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX:
+              new menu option. Opens PhonePaymentModal prefilled with the
+              scanned customer (name / phone / carrier / typical amount).
+              No auto-charge — operator must confirm + submit inside the modal. */}
+          {sale && (() => {
+            const matched = resolveSaleCustomer(sale);
+            if (!matched) return null;
+            return (
+              <button
+                onClick={() => openPhonePaymentForCustomer(matched.id)}
+                style={actionStyle('#F97316')}
+              >
+                <span style={{ fontSize: '1.25rem' }}>📞</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.makePhonePayment')}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.makePhonePaymentSub')}</div>
+                </div>
+              </button>
+            );
+          })()}
 
           {/* WhatsApp */}
           {sale?.customerPhone && settings.waEnabled !== false && (

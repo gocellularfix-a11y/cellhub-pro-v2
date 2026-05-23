@@ -6058,6 +6058,8 @@ export const translations: TranslationDictionary = {
   'barcode.viewCustomer':   { en: 'View Customer',                    es: 'Ver Cliente',                         pt: 'Ver Cliente' },
   'barcode.custHistory':    { en: 'Customer History',                 es: 'Historial del Cliente',               pt: 'Histórico do Cliente' },
   'barcode.allTx':          { en: 'All transactions',                 es: 'Todas las transacciones',             pt: 'Todas as transações' },
+  'barcode.makePhonePayment':    { en: 'Make Phone Payment',          es: 'Hacer Pago de Teléfono',              pt: 'Fazer Pagamento de Telefone' },
+  'barcode.makePhonePaymentSub': { en: 'Open prefilled with customer',es: 'Abrir prellenado con el cliente',     pt: 'Abrir pré-preenchido com o cliente' },
   'barcode.waMessage':      { en: 'Message customer',                 es: 'Enviar mensaje al cliente',           pt: 'Enviar mensagem ao cliente' },
   'barcode.balance':        { en: 'Balance',                          es: 'Saldo',                               pt: 'Saldo' },
   'barcode.cancel':         { en: 'Cancel',                           es: 'Cancelar',                            pt: 'Cancelar' },
