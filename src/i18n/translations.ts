@@ -4053,6 +4053,55 @@ export const translations: TranslationDictionary = {
   'chat.focusToday.action.openPos':         { en: 'Open POS',              es: 'Abrir POS',               pt: 'Abrir POS' },
   'chat.focusToday.action.openReports':     { en: 'Open Reports',          es: 'Abrir Reportes',          pt: 'Abrir Relatórios' },
   'chat.focusToday.action.restockGeneric':  { en: 'Reorder this item.',    es: 'Reordena este artículo.', pt: 'Faça pedido deste item.' },
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING — section header + per-step labels
+  'workflow.suggestedNextSteps':                       { en: 'Suggested next steps',         es: 'Siguientes pasos sugeridos',  pt: 'Próximos passos sugeridos' },
+  // Repair workflows
+  'workflow.repair.contactCustomer.label':             { en: 'Contact the customer',         es: 'Contacta al cliente',         pt: 'Contate o cliente' },
+  'workflow.repair.confirmPickup.label':               { en: 'Confirm pickup in the repair ticket', es: 'Confirma la recogida en el ticket', pt: 'Confirme a retirada no ticket' },
+  'workflow.repair.upsellAccessory.label':             { en: 'Offer a case/charger at pickup', es: 'Ofrece case/cargador al recoger', pt: 'Ofereça case/carregador na retirada' },
+  'workflow.repair.promoteSpecial.label':              { en: 'Promote a repair special today', es: 'Promueve un especial de reparación hoy', pt: 'Promova uma oferta de reparo hoje' },
+  'workflow.repair.checkDropoffSrc.label':             { en: 'Check intake channels (referrals, social posts)', es: 'Revisa canales de entrada (referidos, redes)', pt: 'Verifique canais de entrada (indicações, redes)' },
+  // Customer workflows
+  'workflow.customer.whatsappOutreach.label':          { en: 'Send a WhatsApp check-in',     es: 'Envía un saludo por WhatsApp', pt: 'Envie uma mensagem por WhatsApp' },
+  'workflow.customer.offerPromo.label':                { en: 'Offer a comeback promo',       es: 'Ofrece una promo de regreso',  pt: 'Ofereça uma promoção de retorno' },
+  'workflow.customer.scheduleFollowup.label':          { en: 'Schedule a follow-up reminder', es: 'Programa un recordatorio de seguimiento', pt: 'Agende um lembrete de acompanhamento' },
+  // Inventory workflows
+  'workflow.inventory.discount.label':                 { en: 'Apply a clearance discount',    es: 'Aplica un descuento de liquidación', pt: 'Aplique um desconto de liquidação' },
+  'workflow.inventory.bundle.label':                   { en: 'Bundle with a fast-mover',      es: 'Empaqueta con un producto que sí se vende', pt: 'Combine com um produto que vende bem' },
+  'workflow.inventory.feature.label':                  { en: 'Feature it in outreach today',  es: 'Destácalo en outreach hoy',    pt: 'Destaque no outreach de hoje' },
+  'workflow.inventory.reorder.label':                  { en: 'Place a reorder',               es: 'Coloca un pedido de reposición', pt: 'Faça um pedido de reposição' },
+  'workflow.inventory.verifySupplier.label':           { en: 'Verify supplier lead time',     es: 'Verifica tiempo de entrega del proveedor', pt: 'Verifique prazo de entrega do fornecedor' },
+  'workflow.inventory.substituteSku.label':            { en: 'Find a substitute SKU',         es: 'Busca un SKU sustituto',       pt: 'Encontre um SKU substituto' },
+  'workflow.inventory.reviewPricing.label':            { en: 'Review pricing on this item',   es: 'Revisa el precio de este artículo', pt: 'Revise o preço deste item' },
+  'workflow.inventory.switchSupplier.label':           { en: 'Compare alternate suppliers',   es: 'Compara proveedores alternativos', pt: 'Compare fornecedores alternativos' },
+  'workflow.inventory.checkAvailability.label':        { en: 'Check current stock + inbound', es: 'Verifica stock actual + entrante', pt: 'Verifique estoque atual + entrada' },
+  // Phone payment workflows
+  'workflow.phonePay.verifyPortal.label':              { en: 'Verify the carrier portal',     es: 'Verifica el portal del operador', pt: 'Verifique o portal da operadora' },
+  'workflow.phonePay.confirmInBubble.label':           { en: 'Tap "Confirm payment" on the bubble nudge', es: 'Presiona "Confirmar pago" en el bubble', pt: 'Toque em "Confirmar pagamento" no bubble' },
+  'workflow.phonePay.checkUnresolved.label':           { en: 'Check other unresolved portal payments', es: 'Revisa otros pagos sin resolver', pt: 'Verifique outros pagamentos não resolvidos' },
+  'workflow.phonePay.collectNextLine.label':           { en: 'Collect the next phone line payment', es: 'Cobra el siguiente pago de línea', pt: 'Cobre o próximo pagamento de linha' },
+  'workflow.phonePay.offerAccessories.label':          { en: 'Offer accessories during activation', es: 'Ofrece accesorios durante la activación', pt: 'Ofereça acessórios durante a ativação' },
+  // Attachment workflows
+  'workflow.attach.staffCoaching.label':               { en: 'Coach staff on attach upsell',  es: 'Entrena al equipo en venta de accesorios', pt: 'Treine a equipe em vendas de anexos' },
+  'workflow.attach.bundleReminder.label':              { en: 'Print bundle reminder card for register', es: 'Imprime tarjeta recordatoria de bundle', pt: 'Imprima cartão de lembrete de bundle' },
+  'workflow.attach.promoteAccessories.label':          { en: 'Feature accessories on the floor', es: 'Destaca accesorios en el piso', pt: 'Destaque acessórios na loja' },
+  // Layaway workflows
+  'workflow.layaway.balanceReminder.label':            { en: 'Remind the customer of their balance', es: 'Recuérdale al cliente su saldo', pt: 'Lembre o cliente do saldo' },
+  'workflow.layaway.confirmHold.label':                { en: 'Confirm hold is still valid',  es: 'Confirma que el apartado sigue activo', pt: 'Confirme que o layaway ainda está ativo' },
+  'workflow.layaway.reachActiveHolders.label':         { en: 'Reach active layaway holders before they go cold', es: 'Contacta a clientes con apartados activos', pt: 'Contate clientes com layaways ativos' },
+  'workflow.layaway.reviewPolicy.label':               { en: 'Review layaway abandon-risk policy', es: 'Revisa la política de apartados',  pt: 'Revise a política de layaways' },
+  // Special order workflows
+  'workflow.so.notifyCustomer.label':                  { en: 'Notify the customer their order is in', es: 'Notifica al cliente que su pedido llegó', pt: 'Notifique o cliente que o pedido chegou' },
+  'workflow.so.confirmPickup.label':                   { en: 'Confirm pickup window',         es: 'Confirma la ventana de recogida', pt: 'Confirme a janela de retirada' },
+  // Store credit workflows
+  'workflow.credit.reachHolders.label':                { en: 'Remind credit holders their balance is active', es: 'Recuérdale a los clientes que su crédito está activo', pt: 'Lembre os titulares que o crédito está ativo' },
+  'workflow.credit.reminderMsg.label':                 { en: 'Send a short credit reminder',  es: 'Envía un recordatorio corto de crédito', pt: 'Envie um lembrete curto de crédito' },
+  // Reports / employee workflows
+  'workflow.reports.reviewBreakdown.label':            { en: 'Review per-category breakdown in Reports', es: 'Revisa el desglose por categoría en Reportes', pt: 'Revise o detalhamento por categoria em Relatórios' },
+  'workflow.employees.checkSchedule.label':            { en: 'Check the schedule + recent shifts', es: 'Revisa el horario + turnos recientes', pt: 'Verifique a escala + turnos recentes' },
+  'workflow.employees.coachUpsell.label':              { en: 'Coach on missed upsell opportunities', es: 'Entrena en oportunidades de venta perdidas', pt: 'Treine em oportunidades de venda perdidas' },
+  // POS workflows
+  'workflow.pos.checkFloor.label':                     { en: 'Check the floor — is anyone free to help walk-ins?', es: 'Revisa el piso — ¿hay alguien para atender clientes?', pt: 'Verifique a loja — alguém disponível para atender?' },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

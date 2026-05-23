@@ -1385,6 +1385,12 @@ const FOLLOWUP_PHRASES = new Set([
   'show more', 'give me more', 'more results', 'see more',
   'ver más', 'dame más', 'muéstrame más', 'muestrame mas',
   'ver mais', 'mostrar mais', 'me dê mais',
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: workflow chaining phrases
+  'do the next one', 'what after that', 'continue workflow', 'next step',
+  'haz el siguiente', 'qué sigue después', 'que sigue despues',
+  'continuar flujo', 'siguiente paso',
+  'faça o próximo', 'faca o proximo', 'o que vem depois', 'continuar fluxo',
+  'próximo passo', 'proximo passo',
 ]);
 
 export function isFollowUpQuery(query: string): boolean {

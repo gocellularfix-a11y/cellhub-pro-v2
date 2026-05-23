@@ -15,6 +15,11 @@ import type { Sale, Repair, Layaway, InventoryItem, StoreCreditLedger } from '@/
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
 import { loadLocal } from '@/services/storage';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
+import {
+  getWorkflowSteps,
+  renderWorkflowChainText,
+  getWorkflowChatActions,
+} from '../workflows/workflowRecommendations';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -505,10 +510,28 @@ export function handleWhatIsLosingMoney(engine: IntelligenceEngine, lang: Lang3)
   // the handler then returns NO establishesContext rather than fabricate one.
   const topEntityRef = filtered[0]?.entityRef;
 
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append next-step guidance.
+  // Map LossCategory → workflow domain key.
+  const LOSS_TO_WORKFLOW: Record<LossCategory, string> = {
+    dead_stock:             'dead_stock',
+    attachment_low:         'accessory_attach',
+    repairs_stalled:        'repair_pickup',
+    layaway_abandoned:      'layaway_abandoned',
+    ext_payment_risk:       'ext_payment',
+    low_margin_items:       'low_margin_items',
+    store_credit_liability: 'store_credit_liability',
+  };
+  const workflowKey = filtered[0] ? LOSS_TO_WORKFLOW[filtered[0].category] : undefined;
+  const workflowRecs = getWorkflowSteps({ priorityDomain: workflowKey }, t);
+  const workflowText = renderWorkflowChainText(workflowRecs, t);
+  const workflowActions = getWorkflowChatActions(workflowRecs, topEntityRef);
+
   return {
     kind: 'answer',
-    text: lines.join('\n'),
-    ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 6) } : {}),
+    text: lines.join('\n') + workflowText,
+    ...(rawActions.length + workflowActions.length > 0
+      ? { actions: [...rawActions, ...workflowActions].slice(0, 8) }
+      : {}),
     ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }

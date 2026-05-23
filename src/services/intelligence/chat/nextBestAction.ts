@@ -20,6 +20,11 @@ import {
   type AttentionItem,
   type AttentionDomain,
 } from './whoNeedsAttentionToday';
+import {
+  getWorkflowSteps,
+  renderWorkflowChainText,
+  getWorkflowChatActions,
+} from '../workflows/workflowRecommendations';
 
 /**
  * Map a scored AttentionItem to the four lines the operator sees:
@@ -130,10 +135,25 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
     top.domain === 'repair' ? top.entityId
     : top.customerId || top.entityId;
 
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append next-step guidance.
+  const ATTN_TO_WORKFLOW: Record<AttentionDomain, string> = {
+    repair: 'repair_pickup',
+    layaway: 'layaway_stale',
+    special_order: 'special_order',
+    external_payment: 'ext_payment',
+    customer_churn: 'customer_churn',
+    store_credit: 'store_credit_liability',
+  };
+  const workflowRecs = getWorkflowSteps({ priorityDomain: ATTN_TO_WORKFLOW[top.domain] }, t);
+  const workflowText = renderWorkflowChainText(workflowRecs, t);
+  const workflowActions = getWorkflowChatActions(workflowRecs, { type: ctxType, value: ctxValue });
+
   return {
     kind: 'answer',
-    text,
-    ...(actions.length > 0 ? { actions } : {}),
+    text: text + workflowText,
+    ...(actions.length + workflowActions.length > 0
+      ? { actions: [...actions, ...workflowActions].slice(0, 8) }
+      : {}),
     establishesContext: { type: ctxType, value: ctxValue },
   };
 }

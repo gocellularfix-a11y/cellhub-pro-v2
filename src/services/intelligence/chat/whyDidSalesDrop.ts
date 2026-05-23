@@ -14,6 +14,11 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Sale, Repair, InventoryItem } from '@/store/types';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
+import {
+  getWorkflowSteps,
+  renderWorkflowChainText,
+  getWorkflowChatActions,
+} from '../workflows/workflowRecommendations';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -652,10 +657,29 @@ export function handleWhyDidSalesDrop(engine: IntelligenceEngine, lang: Lang3): 
   // leave it undefined and the handler returns no establishesContext.
   const topEntityRef = filtered[0]?.entityRef;
 
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append next-step guidance.
+  // Map DropSignalCategory → workflow domain key.
+  const DROP_TO_WORKFLOW: Record<DropSignalCategory, string> = {
+    overall_revenue:          'period_drop_overall',
+    category_drop:            'period_drop_category',
+    customer_disappearance:   'period_drop_customer',
+    accessory_attach_drop:    'accessory_attach',
+    activation_decline:       'activation_flow',
+    repair_decline:           'repair_intake',
+    employee_decline:         'period_drop_employee',
+    product_movement_decline: 'period_drop_product',
+  };
+  const workflowKey = filtered[0] ? DROP_TO_WORKFLOW[filtered[0].category] : undefined;
+  const workflowRecs = getWorkflowSteps({ priorityDomain: workflowKey }, t);
+  const workflowText = renderWorkflowChainText(workflowRecs, t);
+  const workflowActions = getWorkflowChatActions(workflowRecs, topEntityRef);
+
   return {
     kind: 'answer',
-    text: lines.join('\n'),
-    ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 6) } : {}),
+    text: lines.join('\n') + workflowText,
+    ...(rawActions.length + workflowActions.length > 0
+      ? { actions: [...rawActions, ...workflowActions].slice(0, 8) }
+      : {}),
     ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }

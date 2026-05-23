@@ -18,6 +18,11 @@ import type { Repair, Layaway, SpecialOrder, StoreCreditLedger, Customer } from 
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
 import { loadLocal } from '@/services/storage';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
+import {
+  getWorkflowSteps,
+  renderWorkflowChainText,
+  getWorkflowChatActions,
+} from '../workflows/workflowRecommendations';
 
 // ── Tunable thresholds (all deterministic) ────────────────
 
@@ -527,10 +532,28 @@ export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: L
     for (const a of actionsFor(it, t)) rawActions.push(a);
   }
 
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append next-step guidance for
+  // the TOP item's domain. Map AttentionDomain → workflow domain key (the
+  // workflow rules table uses FocusDomain-style strings).
+  const ATTN_TO_WORKFLOW: Record<AttentionDomain, string> = {
+    repair: 'repair_pickup',
+    layaway: 'layaway_stale',
+    special_order: 'special_order',
+    external_payment: 'ext_payment',
+    customer_churn: 'customer_churn',
+    store_credit: 'store_credit_liability',
+  };
+  const workflowKey = ATTN_TO_WORKFLOW[first.domain];
+  const workflowRecs = getWorkflowSteps({ priorityDomain: workflowKey }, t);
+  const workflowText = renderWorkflowChainText(workflowRecs, t);
+  const workflowActions = getWorkflowChatActions(workflowRecs, { type: ctxType, value: ctxValue });
+
   return {
     kind: 'answer',
-    text: lines.join('\n'),
-    ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 8) } : {}),
+    text: lines.join('\n') + workflowText,
+    ...(rawActions.length + workflowActions.length > 0
+      ? { actions: [...rawActions, ...workflowActions].slice(0, 10) }
+      : {}),
     establishesContext: { type: ctxType, value: ctxValue },
   };
 }

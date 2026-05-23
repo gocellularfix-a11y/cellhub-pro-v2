@@ -45,6 +45,11 @@ import {
   type DropSignalCategory,
 } from './whyDidSalesDrop';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
+import {
+  getWorkflowSteps,
+  renderWorkflowChainText,
+  getWorkflowChatActions,
+} from '../workflows/workflowRecommendations';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -500,10 +505,19 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   // establishesContext rather than fabricate one.
   const topEntityRef = filtered[0]?.entityRef;
 
+  // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append deterministic next-step
+  // guidance based on the TOP priority's domain. Renders a "Suggested next
+  // steps" section + executable buttons. Empty when the domain has no rules.
+  const workflowRecs = getWorkflowSteps({ priorityDomain: filtered[0]?.domain }, t);
+  const workflowText = renderWorkflowChainText(workflowRecs, t);
+  const workflowActions = getWorkflowChatActions(workflowRecs, topEntityRef);
+
   return {
     kind: 'answer',
-    text: lines.join('\n'),
-    ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 8) } : {}),
+    text: lines.join('\n') + workflowText,
+    ...(rawActions.length + workflowActions.length > 0
+      ? { actions: [...rawActions, ...workflowActions].slice(0, 10) }
+      : {}),
     ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }
