@@ -133,6 +133,8 @@ export type IntentId =
   | 'why_did_sales_drop'
   // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization
   | 'focus_today'
+  // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing
+  | 'daily_operator_brief_v3'
   | 'fallback_question'
   | 'unknown';
 
@@ -917,6 +919,28 @@ const PRODUCT_OPPORTUNITY_KEYWORDS = [
 // next_best_action / what_to_do_today / daily_revenue_missions so anchored
 // "focus today" / "prioridades de hoy" / "en qué debo enfocarme" phrases
 // route to the cross-engine aggregator instead of the single-engine handlers.
+// R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
+// Listed in the scores array BEFORE focus_today / operator_daily_brief_v2 /
+// daily_operator_brief / daily_brief / operator_mode / daily_revenue_missions
+// so the anchored "daily brief" / "brief me" / "store status" / "qué está
+// pasando hoy" phrases route to the new compressed brief. Existing
+// long-form briefing handlers keep their own keyword phrases.
+const DAILY_OPERATOR_BRIEF_V3_KEYWORDS = [
+  // EN
+  'daily brief', 'brief me', 'store status', 'operator brief',
+  'how are we today', 'how are we doing today',
+  'morning brief', 'morning briefing',
+  // ES
+  'resumen de hoy', 'resumen diario',
+  'qué está pasando hoy', 'que esta pasando hoy',
+  'estado de la tienda', 'cómo va la tienda', 'como va la tienda',
+  'cómo estamos hoy', 'como estamos hoy',
+  // PT
+  'resumo de hoje', 'resumo do dia',
+  'o que está acontecendo hoje', 'o que esta acontecendo hoje',
+  'status da loja', 'como está a loja', 'como esta a loja',
+];
+
 const FOCUS_TODAY_KEYWORDS = [
   // EN — explicit focus + today
   'what should i focus on today', 'what should i focus on',
@@ -1812,6 +1836,13 @@ export function classifyIntent(
     // higher on those specific banks). Bare "continue" wins when analytics
     // banks score 0.
     { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
+    // Listed BEFORE focus_today + all legacy daily-brief variants so anchored
+    // "daily brief / brief me / store status / resumen de hoy / how are we
+    // today" route to the new compact format. Plain "today" / "hoy" still
+    // falls to today_summary downstream (no overlap — this bank requires
+    // anchored multi-word phrases).
+    { id: 'daily_operator_brief_v3', score: scoreKeywords(query, DAILY_OPERATOR_BRIEF_V3_KEYWORDS) },
     // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: listed BEFORE recommended_
     // next_best_action / who_needs_attention_today so the cross-engine
     // aggregator wins "focus today" / "prioridades de hoy" anchored phrases.

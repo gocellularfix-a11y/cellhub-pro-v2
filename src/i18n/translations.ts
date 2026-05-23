@@ -4102,6 +4102,90 @@ export const translations: TranslationDictionary = {
   'workflow.employees.coachUpsell.label':              { en: 'Coach on missed upsell opportunities', es: 'Entrena en oportunidades de venta perdidas', pt: 'Treine em oportunidades de venda perdidas' },
   // POS workflows
   'workflow.pos.checkFloor.label':                     { en: 'Check the floor — is anyone free to help walk-ins?', es: 'Revisa el piso — ¿hay alguien para atender clientes?', pt: 'Verifique a loja — alguém disponível para atender?' },
+  // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF
+  'chat.operatorBriefV3.header':              { en: 'Daily Operator Brief',           es: 'Resumen Operativo Diario',       pt: 'Briefing Operacional Diário' },
+  'chat.operatorBriefV3.shift.morning':       { en: 'Morning shift — prep + outreach focus', es: 'Turno de mañana — prep + outreach',   pt: 'Turno da manhã — prep + outreach' },
+  'chat.operatorBriefV3.shift.afternoon':     { en: 'Afternoon — attach + active sales',     es: 'Tarde — accesorios + ventas activas', pt: 'Tarde — anexos + vendas ativas' },
+  'chat.operatorBriefV3.shift.evening':       { en: 'Evening — close pickups + payments',    es: 'Noche — cerrar recogidas + pagos',    pt: 'Noite — fechar retiradas + pagamentos' },
+  'chat.operatorBriefV3.shift.late':          { en: 'Late hours — closeout tasks',           es: 'Hora tardía — cierre',                pt: 'Hora tardia — encerramento' },
+  'chat.operatorBriefV3.allHealthy':          { en: 'Everything looks healthy. No major issues detected. Run the floor as usual.', es: 'Todo se ve sano. Sin problemas mayores. Sigue tu plan normal.', pt: 'Tudo parece saudável. Sem problemas importantes. Siga seu plano normal.' },
+  'chat.operatorBriefV3.statusHeader':        { en: 'Store status',                          es: 'Estado de la tienda',                pt: 'Status da loja' },
+  'chat.operatorBriefV3.prioritiesHeader':    { en: 'Top priorities',                        es: 'Prioridades principales',             pt: 'Prioridades principais' },
+  'chat.operatorBriefV3.risksHeader':         { en: 'Risks',                                 es: 'Riesgos',                              pt: 'Riscos' },
+  'chat.operatorBriefV3.opportunitiesHeader': { en: 'Opportunities',                         es: 'Oportunidades',                        pt: 'Oportunidades' },
+  'chat.operatorBriefV3.focusHeader':         { en: 'Suggested focus:',                      es: 'Enfoque sugerido:',                    pt: 'Foco sugerido:' },
+  // Status lines
+  'chat.operatorBriefV3.status.paceHealthy':  { en: 'Revenue pace looks healthy',            es: 'El ritmo de ventas se ve sano',        pt: 'O ritmo de vendas está saudável' },
+  'chat.operatorBriefV3.status.paceDownMild': {
+    en: (pct: number) => `Revenue pace slightly below normal (${pct}% drop vs prior 7d)`,
+    es: (pct: number) => `Ritmo ligeramente bajo (${pct}% menos vs 7d anteriores)`,
+    pt: (pct: number) => `Ritmo ligeiramente abaixo (${pct}% menos vs 7d anteriores)`,
+  },
+  'chat.operatorBriefV3.status.paceDownSharp': {
+    en: (pct: number) => `Revenue pace down sharply — ${pct}% drop vs prior 7d`,
+    es: (pct: number) => `Ritmo cayó fuerte — ${pct}% menos vs 7d anteriores`,
+    pt: (pct: number) => `Ritmo caiu forte — ${pct}% menos vs 7d anteriores`,
+  },
+  'chat.operatorBriefV3.status.repairsHealthy': { en: 'Repair queue healthy',                 es: 'Cola de reparaciones sana',           pt: 'Fila de reparos saudável' },
+  'chat.operatorBriefV3.status.repairsWaiting': {
+    en: (n: number) => `${n} repair${n === 1 ? '' : 's'} waiting attention`,
+    es: (n: number) => `${n} reparación${n === 1 ? '' : 'es'} esperando atención`,
+    pt: (n: number) => `${n} reparo${n === 1 ? '' : 's'} esperando atenção`,
+  },
+  'chat.operatorBriefV3.status.alertsClear':  { en: 'No urgent alerts',                       es: 'Sin alertas urgentes',                pt: 'Sem alertas urgentes' },
+  'chat.operatorBriefV3.status.alertsCount': {
+    en: (n: number) => `${n} priority alert${n === 1 ? '' : 's'} pending`,
+    es: (n: number) => `${n} alerta${n === 1 ? '' : 's'} de prioridad pendiente${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `${n} alerta${n === 1 ? '' : 's'} de prioridade pendente${n === 1 ? '' : 's'}`,
+  },
+  // Opportunities templates
+  'chat.operatorBriefV3.opp.restock': {
+    en: (name: string) => `Restock fast mover: ${name}`,
+    es: (name: string) => `Reordena producto activo: ${name}`,
+    pt: (name: string) => `Reabastecer produto ativo: ${name}`,
+  },
+  'chat.operatorBriefV3.opp.contactCustomer': {
+    en: (name: string) => `Reach out to ${name}`,
+    es: (name: string) => `Contacta a ${name}`,
+    pt: (name: string) => `Contate ${name}`,
+  },
+  'chat.operatorBriefV3.opp.repairPickup': {
+    en: (name: string) => `Close pickup with ${name}`,
+    es: (name: string) => `Cierra recogida con ${name}`,
+    pt: (name: string) => `Feche retirada com ${name}`,
+  },
+  // Suggested focus templates — keyed on time-of-day × domain bucket
+  'chat.operatorBriefV3.focus.allClear':                              { en: 'Stick to the floor plan — nothing urgent.', es: 'Sigue tu plan — nada urgente.', pt: 'Siga seu plano — nada urgente.' },
+  // morning
+  'chat.operatorBriefV3.focus.morning.repair_pickup':                 { en: 'Start the day with pickup calls — close completed repairs first.', es: 'Empieza el día llamando a clientes con reparaciones listas.', pt: 'Comece o dia ligando para clientes com reparos prontos.' },
+  'chat.operatorBriefV3.focus.morning.layaway_stale':                 { en: 'Send layaway balance reminders this morning.', es: 'Envía recordatorios de saldos de apartado esta mañana.', pt: 'Envie lembretes de saldo de layaway esta manhã.' },
+  'chat.operatorBriefV3.focus.morning.special_order':                 { en: 'Notify customers their special orders arrived.', es: 'Avisa a clientes que sus pedidos llegaron.', pt: 'Avise os clientes que seus pedidos chegaram.' },
+  'chat.operatorBriefV3.focus.morning.ext_payment':                   { en: 'Confirm yesterday\'s carrier portal payments before the morning rush.', es: 'Confirma los pagos del portal antes del rush matutino.', pt: 'Confirme os pagamentos do portal antes do movimento matinal.' },
+  'chat.operatorBriefV3.focus.morning.customer_churn':                { en: 'Reach out to inactive VIPs first thing.', es: 'Contacta a los VIPs inactivos primero.', pt: 'Contate VIPs inativos logo cedo.' },
+  'chat.operatorBriefV3.focus.morning.store_credit_liability':        { en: 'Remind credit holders before they forget.', es: 'Recuérdale a los clientes con crédito antes que olviden.', pt: 'Lembre os titulares de crédito antes que esqueçam.' },
+  // afternoon
+  'chat.operatorBriefV3.focus.afternoon.repair_pickup':               { en: 'Close repair pickups this afternoon — drawer first.', es: 'Cierra recogidas de reparación esta tarde — caja primero.', pt: 'Feche retiradas de reparo esta tarde — caixa primeiro.' },
+  'chat.operatorBriefV3.focus.afternoon.layaway_stale':               { en: 'Follow up on stale layaways while customers are around.', es: 'Da seguimiento a apartados sin actividad mientras hay clientes.', pt: 'Acompanhe layaways parados enquanto há clientes na loja.' },
+  'chat.operatorBriefV3.focus.afternoon.special_order':               { en: 'Push pickup confirmations for special orders.', es: 'Empuja confirmaciones de recogida de pedidos especiales.', pt: 'Empurre confirmações de retirada de pedidos especiais.' },
+  'chat.operatorBriefV3.focus.afternoon.ext_payment':                 { en: 'Resolve unresolved carrier portal payments now.', es: 'Resuelve pagos del portal pendientes ahora.', pt: 'Resolva pagamentos pendentes do portal agora.' },
+  'chat.operatorBriefV3.focus.afternoon.customer_churn':              { en: 'Send WhatsApp check-ins to inactive customers.', es: 'Envía WhatsApp a clientes inactivos.', pt: 'Envie WhatsApp para clientes inativos.' },
+  'chat.operatorBriefV3.focus.afternoon.store_credit_liability':      { en: 'Mention store credit at checkout when relevant.', es: 'Menciona el crédito en tienda al cobrar.', pt: 'Mencione o crédito da loja no caixa.' },
+  // evening
+  'chat.operatorBriefV3.focus.evening.repair_pickup':                 { en: 'Close out pickups before end of day.', es: 'Cierra recogidas antes del cierre.', pt: 'Feche retiradas antes do encerramento.' },
+  'chat.operatorBriefV3.focus.evening.layaway_stale':                 { en: 'Send end-of-day reminders to stale layaway holders.', es: 'Envía recordatorios de fin de día a apartados sin actividad.', pt: 'Envie lembretes de fim do dia para layaways parados.' },
+  'chat.operatorBriefV3.focus.evening.special_order':                 { en: 'Confirm pickup windows before close.', es: 'Confirma ventanas de recogida antes del cierre.', pt: 'Confirme janelas de retirada antes do fechamento.' },
+  'chat.operatorBriefV3.focus.evening.ext_payment':                   { en: 'Verify all carrier portal payments before close.', es: 'Verifica todos los pagos del portal antes del cierre.', pt: 'Verifique todos os pagamentos do portal antes do fechamento.' },
+  'chat.operatorBriefV3.focus.evening.customer_churn':                { en: 'Send evening check-in messages to inactive customers.', es: 'Envía mensajes de noche a clientes inactivos.', pt: 'Envie mensagens noturnas para clientes inativos.' },
+  'chat.operatorBriefV3.focus.evening.store_credit_liability':        { en: 'Remind credit holders of their balance before close.', es: 'Recuérdale a clientes con crédito de su saldo antes del cierre.', pt: 'Lembre os titulares de crédito do saldo antes do fechamento.' },
+  // late
+  'chat.operatorBriefV3.focus.late.repair_pickup':                    { en: 'Wrap up any remaining pickup follow-ups.', es: 'Termina los seguimientos de recogida pendientes.', pt: 'Encerre os acompanhamentos de retirada pendentes.' },
+  'chat.operatorBriefV3.focus.late.layaway_stale':                    { en: 'Note stale layaways for tomorrow\'s outreach.', es: 'Anota apartados sin actividad para outreach de mañana.', pt: 'Anote layaways parados para outreach de amanhã.' },
+  'chat.operatorBriefV3.focus.late.special_order':                    { en: 'Defer special-order calls to tomorrow.', es: 'Pospón llamadas de pedidos especiales para mañana.', pt: 'Adie ligações de pedidos especiais para amanhã.' },
+  'chat.operatorBriefV3.focus.late.ext_payment':                      { en: 'Resolve carrier portal payments NOW before close.', es: 'Resuelve pagos del portal AHORA antes del cierre.', pt: 'Resolva pagamentos do portal AGORA antes do fechamento.' },
+  'chat.operatorBriefV3.focus.late.customer_churn':                   { en: 'Queue VIP outreach for tomorrow morning.', es: 'Programa outreach VIP para mañana en la mañana.', pt: 'Agende outreach VIP para amanhã de manhã.' },
+  'chat.operatorBriefV3.focus.late.store_credit_liability':           { en: 'Carry over credit-holder outreach to tomorrow.', es: 'Pasa el outreach de crédito a mañana.', pt: 'Adie o outreach de crédito para amanhã.' },
+  // Buttons
+  'chat.operatorBriefV3.action.openReports':  { en: 'Open Reports',     es: 'Abrir Reportes',     pt: 'Abrir Relatórios' },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

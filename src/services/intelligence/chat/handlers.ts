@@ -126,6 +126,8 @@ import { handleWhatIsLosingMoney } from './whatIsLosingMoney';
 import { handleWhyDidSalesDrop } from './whyDidSalesDrop';
 // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization.
 import { handleFocusToday } from './focusToday';
+// R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
+import { handleOperatorDailyBriefV3 } from './dailyBrief';
 // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY: deterministic behavioral context.
 import { buildCustomerTimeline, formatTimelineContext, formatTimelineTagLabel } from '../customerTimeline/customerTimelineEngine';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
@@ -505,6 +507,10 @@ export function handleIntent(
     // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization.
     case 'focus_today':
       return handleFocusToday(engine, lang);
+
+    // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
+    case 'daily_operator_brief_v3':
+      return handleOperatorDailyBriefV3(engine, lang);
 
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':
