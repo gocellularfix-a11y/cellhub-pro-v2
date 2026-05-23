@@ -508,7 +508,19 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append deterministic next-step
   // guidance based on the TOP priority's domain. Renders a "Suggested next
   // steps" section + executable buttons. Empty when the domain has no rules.
-  const workflowRecs = getWorkflowSteps({ priorityDomain: filtered[0]?.domain }, t);
+  //
+  // R-INTELLIGENCE-WORKFLOW-CHAIN-DEDUPE-AND-FATIGUE-GUARD: opt into the
+  // session-scoped dedupe so repeated "focus today" queries don't surface
+  // identical step lists. Urgent domains (ext_payment / repair_pickup /
+  // customer_churn) still repeat when the entityKey changes.
+  const focusEntityKey = topEntityRef
+    ? `${topEntityRef.type}:${topEntityRef.value}`
+    : undefined;
+  const workflowRecs = getWorkflowSteps(
+    { priorityDomain: filtered[0]?.domain },
+    t,
+    { suppressRecentlyShown: true, entityKey: focusEntityKey },
+  );
   const workflowText = renderWorkflowChainText(workflowRecs, t);
   const workflowActions = getWorkflowChatActions(workflowRecs, topEntityRef);
 

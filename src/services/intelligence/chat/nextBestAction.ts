@@ -144,7 +144,15 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
     customer_churn: 'customer_churn',
     store_credit: 'store_credit_liability',
   };
-  const workflowRecs = getWorkflowSteps({ priorityDomain: ATTN_TO_WORKFLOW[top.domain] }, t);
+  // R-INTELLIGENCE-WORKFLOW-CHAIN-DEDUPE-AND-FATIGUE-GUARD: session-scoped
+  // dedupe so repeated "next best action" queries don't surface identical
+  // step lists. Urgent domains still repeat per-entity.
+  const nbaEntityKey = `${ctxType}:${ctxValue}`;
+  const workflowRecs = getWorkflowSteps(
+    { priorityDomain: ATTN_TO_WORKFLOW[top.domain] },
+    t,
+    { suppressRecentlyShown: true, entityKey: nbaEntityKey },
+  );
   const workflowText = renderWorkflowChainText(workflowRecs, t);
   const workflowActions = getWorkflowChatActions(workflowRecs, { type: ctxType, value: ctxValue });
 

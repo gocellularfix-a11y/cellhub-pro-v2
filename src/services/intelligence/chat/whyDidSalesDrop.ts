@@ -670,7 +670,16 @@ export function handleWhyDidSalesDrop(engine: IntelligenceEngine, lang: Lang3): 
     product_movement_decline: 'period_drop_product',
   };
   const workflowKey = filtered[0] ? DROP_TO_WORKFLOW[filtered[0].category] : undefined;
-  const workflowRecs = getWorkflowSteps({ priorityDomain: workflowKey }, t);
+  // R-INTELLIGENCE-WORKFLOW-CHAIN-DEDUPE-AND-FATIGUE-GUARD: session-scoped
+  // dedupe so back-to-back drop queries don't surface identical step lists.
+  const dropEntityKey = topEntityRef
+    ? `${topEntityRef.type}:${topEntityRef.value}`
+    : undefined;
+  const workflowRecs = getWorkflowSteps(
+    { priorityDomain: workflowKey },
+    t,
+    { suppressRecentlyShown: true, entityKey: dropEntityKey },
+  );
   const workflowText = renderWorkflowChainText(workflowRecs, t);
   const workflowActions = getWorkflowChatActions(workflowRecs, topEntityRef);
 

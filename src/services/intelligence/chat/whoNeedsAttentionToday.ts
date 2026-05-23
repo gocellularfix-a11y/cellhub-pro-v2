@@ -544,7 +544,15 @@ export function handleWhoNeedsAttentionToday(engine: IntelligenceEngine, lang: L
     store_credit: 'store_credit_liability',
   };
   const workflowKey = ATTN_TO_WORKFLOW[first.domain];
-  const workflowRecs = getWorkflowSteps({ priorityDomain: workflowKey }, t);
+  // R-INTELLIGENCE-WORKFLOW-CHAIN-DEDUPE-AND-FATIGUE-GUARD: session-scoped
+  // dedupe so back-to-back "who needs attention today" queries don't surface
+  // identical step lists. Urgent domains still repeat per-entity.
+  const attnEntityKey = `${ctxType}:${ctxValue}`;
+  const workflowRecs = getWorkflowSteps(
+    { priorityDomain: workflowKey },
+    t,
+    { suppressRecentlyShown: true, entityKey: attnEntityKey },
+  );
   const workflowText = renderWorkflowChainText(workflowRecs, t);
   const workflowActions = getWorkflowChatActions(workflowRecs, { type: ctxType, value: ctxValue });
 

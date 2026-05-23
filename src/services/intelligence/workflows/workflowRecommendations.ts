@@ -178,24 +178,161 @@ export interface RecommendedWorkflowAction {
   priorityScore: number;
 }
 
+// ── R-INTELLIGENCE-WORKFLOW-CHAIN-DEDUPE-AND-FATIGUE-GUARD ────
+//
+// Tiny localStorage-backed session memory of recently-shown (domain, stepId,
+// entityKey, ts) tuples so back-to-back Intelligence responses don't repeat
+// the same workflow suggestions. Pure deterministic — no LLM, no inference.
+// Stores ONLY non-sensitive identifiers (domain + step id + optional
+// entity-type:value string; no customer names, no balances).
+
+const FATIGUE_STORAGE_KEY = 'cellhub.intelligence.workflow.recent.v1';
+const FATIGUE_TTL_MS = 30 * 60 * 1000;   // 30 minutes
+const FATIGUE_MAX_ENTRIES = 20;
+
+/**
+ * Urgent domains keep repeating when the ENTITY changes — only same
+ * (domain + stepId + entityKey) within the TTL is suppressed. Operator
+ * still sees critical follow-up sequences for each new customer / repair /
+ * portal payment, even if a peer entity was recently shown.
+ */
+const URGENT_DOMAINS_FOR_FATIGUE = new Set<string>([
+  'ext_payment',
+  'repair_pickup',
+  'customer_churn',
+]);
+
+interface FatigueEntry {
+  domain: string;
+  stepId: string;
+  entityKey?: string;
+  ts: number;
+}
+
+function readFatigue(nowMs: number): FatigueEntry[] {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FATIGUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Drop expired + malformed; keep newest order.
+    const out: FatigueEntry[] = [];
+    for (const e of parsed) {
+      if (!e || typeof e !== 'object') continue;
+      const ent = e as Partial<FatigueEntry>;
+      if (typeof ent.domain !== 'string' || typeof ent.stepId !== 'string' || typeof ent.ts !== 'number') continue;
+      if (nowMs - ent.ts > FATIGUE_TTL_MS) continue;
+      out.push({
+        domain: ent.domain,
+        stepId: ent.stepId,
+        entityKey: typeof ent.entityKey === 'string' ? ent.entityKey : undefined,
+        ts: ent.ts,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function writeFatigue(entries: FatigueEntry[]): void {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return;
+  try {
+    const trimmed = entries.slice(-FATIGUE_MAX_ENTRIES);
+    window.localStorage.setItem(FATIGUE_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* storage quota or disabled — non-fatal */
+  }
+}
+
+/**
+ * Reads the recent-step set, builds an O(1) lookup map for the suppression
+ * check. Two key shapes:
+ *   - "{domain}|{stepId}"                 — for normal domains
+ *   - "{domain}|{stepId}|{entityKey}"     — for urgent domains
+ * Both shapes are inserted on every recorded entry so the caller can pick
+ * which match to look up.
+ */
+function buildFatigueIndex(entries: FatigueEntry[]): Set<string> {
+  const out = new Set<string>();
+  for (const e of entries) {
+    out.add(`${e.domain}|${e.stepId}`);
+    if (e.entityKey) out.add(`${e.domain}|${e.stepId}|${e.entityKey}`);
+  }
+  return out;
+}
+
+function isSuppressed(
+  domain: string,
+  stepId: string,
+  entityKey: string | undefined,
+  idx: Set<string>,
+): boolean {
+  if (URGENT_DOMAINS_FOR_FATIGUE.has(domain)) {
+    // Urgent domains: only suppress when SAME entity was recently shown.
+    if (!entityKey) return false; // no entity → can't match an urgent suppression
+    return idx.has(`${domain}|${stepId}|${entityKey}`);
+  }
+  // Normal domains: suppress on same (domain, stepId) regardless of entity.
+  return idx.has(`${domain}|${stepId}`);
+}
+
 // ── Public helpers ───────────────────────────────────────
 
 const MAX_STEPS = 3;
+
+export interface GetWorkflowStepsOptions {
+  /** Opt-in fatigue guard. Default false (preserves original behavior). */
+  suppressRecentlyShown?: boolean;
+  /**
+   * Compact "type:value" identifier of the active operational entity (e.g.,
+   * "customer:abc-123" or "repair:xyz-789"). Used by urgent-domain suppression
+   * to allow critical sequences to repeat for different entities. Optional.
+   */
+  entityKey?: string;
+}
 
 /**
  * Look up the next 1–3 deterministic operational steps for a domain.
  * Returns an empty array when:
  *   - the domain is unrecognized
  *   - the domain has no rules entry
- * Pure — no side effects, no engine reads.
+ *   - opt-in fatigue suppression removed every candidate step
+ *
+ * Side effects:
+ *   - When `suppressRecentlyShown: true`, the surfaced steps are recorded
+ *     in localStorage so the next call within the TTL window can suppress
+ *     duplicates. Storage failures are non-fatal — falls back to no-op.
  */
 export function getWorkflowSteps(
   ctx: WorkflowContext,
   t: (key: string, ...args: unknown[]) => string,
+  options?: GetWorkflowStepsOptions,
 ): RecommendedWorkflowAction[] {
   const key = ctx.priorityDomain || '';
   const steps = STEPS_BY_DOMAIN[key] || [];
-  return steps.slice(0, MAX_STEPS).map((s) => ({
+  if (steps.length === 0) return [];
+
+  let surface = steps;
+  if (options?.suppressRecentlyShown) {
+    const nowMs = Date.now();
+    const recent = readFatigue(nowMs);
+    const idx = buildFatigueIndex(recent);
+    surface = steps.filter((s) => !isSuppressed(key, s.id, options.entityKey, idx));
+    // After filtering, record the steps we WILL surface so the next call
+    // within TTL knows about them. Append to existing entries and let
+    // writeFatigue trim to MAX_ENTRIES.
+    const newEntries: FatigueEntry[] = surface.slice(0, MAX_STEPS).map((s) => ({
+      domain: key,
+      stepId: s.id,
+      entityKey: options.entityKey,
+      ts: nowMs,
+    }));
+    if (newEntries.length > 0) writeFatigue([...recent, ...newEntries]);
+  }
+
+  return surface.slice(0, MAX_STEPS).map((s) => ({
     id: `wf-${key}-${s.id}`,
     label: t(s.labelKey),
     executionTarget: s.executionTarget,
