@@ -68,6 +68,7 @@ const initialState: AppState = {
   pendingBarcodeInvoice: '',
   pendingReportDate: '',
   pendingPhonePaymentCustomerId: '',
+  pendingCustomerHistoryId: '',
   pendingPosCustomer: '',
   highlightRecordId: '',  // set by global scanner → consumed by ReturnsModule
 };
@@ -139,6 +140,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, pendingReportDate: action.payload };
     case 'SET_PENDING_PHONE_PAYMENT_CUSTOMER':
       return { ...state, pendingPhonePaymentCustomerId: action.payload };
+    case 'SET_PENDING_CUSTOMER_HISTORY':
+      return { ...state, pendingCustomerHistoryId: action.payload };
     case 'SET_PENDING_POS_CUSTOMER':
       return { ...state, pendingPosCustomer: action.payload };
     case 'SET_HIGHLIGHT_RECORD':

@@ -86,21 +86,16 @@ export default function BarcodeActionModal() {
     return null;
   };
 
-  // R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX: open the actual
-  // CustomerHistoryModal via the existing 'cellhub:open-customer-history'
-  // event (CustomerModule.tsx:55-65). Navigates to the Customers tab so
-  // the module is mounted and the event handler can fire.
+  // R-BARCODE-CUSTOMER-HISTORY-FIRST-CLICK-RACE-FIX-V1: switch from a
+  // blind 80 ms CustomEvent dispatch (lost when CustomerModule has not
+  // mounted yet on first click) to the canonical store-based pending
+  // pattern, mirroring pendingPhonePaymentCustomerId. CustomerModule reads
+  // pendingCustomerHistoryId on mount and opens the history modal, then
+  // clears the pending id. Race-free regardless of current tab.
   const openCustomerHistory = (customerId: string) => {
+    dispatch({ type: 'SET_PENDING_CUSTOMER_HISTORY', payload: customerId });
     dispatch({ type: 'SET_ACTIVE_TAB', payload: 'customers' });
-    // Defer the event so the Customers module has time to mount + register
-    // its event listener if it wasn't already on screen.
-    const cid = customerId;
     close();
-    setTimeout(() => {
-      try {
-        window.dispatchEvent(new CustomEvent('cellhub:open-customer-history', { detail: { customerId: cid } }));
-      } catch { /* env without CustomEvent — silent */ }
-    }, 80);
   };
 
   // R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX: prefill Phone

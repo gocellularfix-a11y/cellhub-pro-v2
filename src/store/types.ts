@@ -1368,6 +1368,7 @@ export interface AppState {
   pendingBarcodeInvoice: string;
   pendingReportDate: string;              // set by BarcodeActionModal → Reports navigates to the sale's date, not today
   pendingPhonePaymentCustomerId: string;  // set by scanner when customer credential scanned → opens PhonePaymentModal pre-filled
+  pendingCustomerHistoryId: string;       // R-BARCODE-CUSTOMER-HISTORY-FIRST-CLICK-RACE-FIX-V1: set by BarcodeActionModal Customer History → CustomerModule reads on mount and opens history modal (race-free vs CustomEvent dispatch when module not yet mounted)
   pendingPosCustomer: string;             // set by RepairModule cart-add → POSModule picks up and sets selectedCustomer
   highlightRecordId: string;    // set by GlobalSearch navigate → consumed by list modules to flash+scroll
 }
@@ -1429,6 +1430,7 @@ export type AppAction =
   | { type: 'SET_PENDING_BARCODE_INVOICE'; payload: string }
   | { type: 'SET_PENDING_REPORT_DATE'; payload: string }
   | { type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER'; payload: string }
+  | { type: 'SET_PENDING_CUSTOMER_HISTORY'; payload: string }
   | { type: 'SET_PENDING_POS_CUSTOMER'; payload: string }
   | { type: 'SET_HIGHLIGHT_RECORD'; payload: string }
   | { type: 'SET_CURRENT_STORE_ID'; payload: string }

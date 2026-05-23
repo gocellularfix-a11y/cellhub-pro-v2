@@ -28,7 +28,7 @@ export default function CustomerModule() {
   // forced extra re-renders.
   const app = useApp();
   const { state, setCustomers, dispatch } = app;
-  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns, storeCreditLedger } = state;
+  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns, storeCreditLedger, pendingCustomerHistoryId } = state;
 
   // customerReturns now lives in AppState (hydrated at boot via SET_CUSTOMER_RETURNS).
   const returns_      = customerReturns || [];
@@ -63,6 +63,19 @@ export default function CustomerModule() {
     window.addEventListener('cellhub:open-customer-history', handler);
     return () => window.removeEventListener('cellhub:open-customer-history', handler);
   }, []);
+
+  // R-BARCODE-CUSTOMER-HISTORY-FIRST-CLICK-RACE-FIX-V1: store-based handoff
+  // that survives a tab switch from an unmounted Customers module. When
+  // BarcodeActionModal sets pendingCustomerHistoryId + navigates here, this
+  // effect fires on initial mount (and on any later re-dispatch) and opens
+  // the same history modal the CustomEvent path opens, then clears the
+  // pending id so a subsequent navigation does not re-open it.
+  useEffect(() => {
+    if (!pendingCustomerHistoryId) return;
+    const cust = customersRef.current.find((c) => c && c.id === pendingCustomerHistoryId);
+    if (cust) setViewHistory(cust);
+    dispatch({ type: 'SET_PENDING_CUSTOMER_HISTORY', payload: '' });
+  }, [pendingCustomerHistoryId, dispatch]);
 
   // R-OPERATOR-AMBIENT-AWARENESS-V1: open the create-mode CustomerForm
   // with an optional phone prefill. Triggered by the Operator bubble's
