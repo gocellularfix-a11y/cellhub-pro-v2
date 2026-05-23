@@ -135,6 +135,8 @@ export type IntentId =
   | 'focus_today'
   // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing
   | 'daily_operator_brief_v3'
+  // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer retrospective
+  | 'customer_retention_insights'
   | 'fallback_question'
   | 'unknown';
 
@@ -925,6 +927,39 @@ const PRODUCT_OPPORTUNITY_KEYWORDS = [
 // so the anchored "daily brief" / "brief me" / "store status" / "qué está
 // pasando hoy" phrases route to the new compressed brief. Existing
 // long-form briefing handlers keep their own keyword phrases.
+// R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: deterministic returning-
+// customer retrospective. Multi-word anchored phrases — none collide
+// with bare 'cliente' / 'customer' (CUSTOMER_KEYWORDS bank) because every
+// trigger here pairs the noun with a return verb (regresaron / came back /
+// returned / volveram / recovered / recuperados / recorrentes). Listed
+// BEFORE customer_history + recover_customer in the scores array.
+const CUSTOMER_RETENTION_INSIGHTS_KEYWORDS = [
+  // EN
+  'returning customers',
+  'who came back',
+  'who returned',
+  'recovered customers',
+  'repeat customers this month',
+  'which customers returned',
+  'which customers came back',
+  'customers that returned',
+  // ES
+  'que clientes regresaron',
+  'qué clientes regresaron',
+  'clientes que regresaron',
+  'clientes recuperados',
+  'clientes que volvieron',
+  'quienes regresaron',
+  'quiénes regresaron',
+  'que clientes volvieron',
+  // PT
+  'clientes que voltaram',
+  'clientes recuperados',
+  'quem voltou',
+  'clientes recorrentes',
+  'que clientes voltaram',
+];
+
 const DAILY_OPERATOR_BRIEF_V3_KEYWORDS = [
   // EN
   'daily brief', 'brief me', 'store status', 'operator brief',
@@ -1881,6 +1916,12 @@ export function classifyIntent(
     // customer_history so "show customer X" / "open repair Y" routes here.
     // Listed AFTER repair_follow_up so "follow up repair" stays in its handler.
     { id: 'entity_operational_command', score: scoreKeywords(query, ENTITY_COMMAND_KEYWORDS) },
+    // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: retrospective "which
+    // customers came back" view. Listed BEFORE customer_history (CUSTOMER_
+    // KEYWORDS bank's bare 'cliente'/'customer' tokens would otherwise win)
+    // and BEFORE recover_customer (the proactive variant). All triggers are
+    // multi-word anchored phrases pairing the noun with a return verb.
+    { id: 'customer_retention_insights', score: scoreKeywords(query, CUSTOMER_RETENTION_INSIGHTS_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks
     // for today. Listed ABOVE daily_operator_brief + daily_brief so the

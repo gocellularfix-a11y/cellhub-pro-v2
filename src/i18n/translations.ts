@@ -4033,6 +4033,67 @@ export const translations: TranslationDictionary = {
   'chat.whyDidSalesDrop.action.openInventory':   { en: 'Open inventory',            es: 'Abrir inventario',         pt: 'Abrir estoque' },
   // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS
   'chat.alerts.header':           { en: '🔔 Urgent alerts',                  es: '🔔 Alertas urgentes',              pt: '🔔 Alertas urgentes' },
+  // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS
+  'chat.retention.header':            { en: 'Returning customers',           es: 'Clientes que regresaron',         pt: 'Clientes que voltaram' },
+  'chat.retention.noActivity':        { en: 'No significant returning customer activity detected.', es: 'No se detectó actividad significativa de clientes que regresan.', pt: 'Nenhuma atividade significativa de clientes recorrentes detectada.' },
+  'chat.retention.summary': {
+    en: (count: number, days: number) => `${count} customer${count === 1 ? '' : 's'} returned this month after ${days}+ days inactive.`,
+    es: (count: number, days: number) => `${count} cliente${count === 1 ? '' : 's'} regresaron este mes tras ${days}+ días inactivos.`,
+    pt: (count: number, days: number) => `${count} cliente${count === 1 ? '' : 's'} voltaram este mês após ${days}+ dias inativos.`,
+  },
+  'chat.retention.topReturnsHeader':  { en: 'Top returns:',                  es: 'Mejores regresos:',                pt: 'Principais retornos:' },
+  'chat.retention.spent': {
+    en: (amount: string) => `${amount} spent`,
+    es: (amount: string) => `${amount} gastados`,
+    pt: (amount: string) => `${amount} gastos`,
+  },
+  'chat.retention.returnedAfter': {
+    en: (days: number) => `Returned after ${days} days inactive`,
+    es: (days: number) => `Regresó tras ${days} días inactivo`,
+    pt: (days: number) => `Voltou após ${days} dias inativo`,
+  },
+  'chat.retention.cat.repair':        { en: 'Repair + parts',                es: 'Reparación + repuestos',          pt: 'Reparo + peças' },
+  'chat.retention.cat.phone':         { en: 'Phone purchase',                es: 'Compra de teléfono',              pt: 'Compra de celular' },
+  'chat.retention.cat.accessory':     { en: 'Accessories',                   es: 'Accesorios',                       pt: 'Acessórios' },
+  'chat.retention.cat.phone_payment': { en: 'Phone payment',                 es: 'Pago de teléfono',                 pt: 'Pagamento de telefone' },
+  'chat.retention.cat.other':         { en: 'Mixed purchase',                es: 'Compra variada',                   pt: 'Compra variada' },
+  'chat.retention.recoveredHeader':   { en: 'Revenue recovered:',            es: 'Ingresos recuperados:',            pt: 'Receita recuperada:' },
+  'chat.retention.avgInactiveHeader': { en: 'Average inactive time:',        es: 'Inactividad promedio:',            pt: 'Inatividade média:' },
+  'chat.retention.daysValue': {
+    en: (days: number) => `${days} days`,
+    es: (days: number) => `${days} días`,
+    pt: (days: number) => `${days} dias`,
+  },
+  'chat.retention.bestSourceHeader':  { en: 'Best recovery source:',         es: 'Mejor fuente de recuperación:',   pt: 'Melhor fonte de recuperação:' },
+  'chat.retention.source.repair':        { en: 'Repair follow-ups',          es: 'Seguimiento de reparaciones',     pt: 'Acompanhamento de reparos' },
+  'chat.retention.source.phone':         { en: 'Phone upgrades',             es: 'Cambios de teléfono',             pt: 'Trocas de celular' },
+  'chat.retention.source.accessory':     { en: 'Accessory attach',           es: 'Venta de accesorios',             pt: 'Venda de acessórios' },
+  'chat.retention.source.phone_payment': { en: 'Phone payment activity',     es: 'Pagos de teléfono',               pt: 'Pagamentos de telefone' },
+  'chat.retention.source.other':         { en: 'Mixed activity',             es: 'Actividad variada',                pt: 'Atividade variada' },
+  'chat.retention.nextStepHeader':    { en: 'Suggested next step:',          es: 'Próximo paso sugerido:',           pt: 'Próximo passo sugerido:' },
+  'chat.retention.nextStepBody': {
+    en: (count: number) => `Reach out to ${count} inactive VIP customers.`,
+    es: (count: number) => `Contacta a ${count} clientes VIP inactivos.`,
+    pt: (count: number) => `Contate ${count} clientes VIP inativos.`,
+  },
+  'chat.retention.action.openCustomer': { en: 'Open top returning customer', es: 'Abrir cliente principal',         pt: 'Abrir cliente principal' },
+  // R-INTELLIGENCE-CUSTOMER-RETENTION-RANKING-ACTIONS: per-row buttons
+  'chat.retention.action.openRow': {
+    en: (name: string) => `Open ${name}`,
+    es: (name: string) => `Abrir ${name}`,
+    pt: (name: string) => `Abrir ${name}`,
+  },
+  'chat.retention.action.waRow': {
+    en: (name: string) => `WhatsApp ${name}`,
+    es: (name: string) => `WhatsApp ${name}`,
+    pt: (name: string) => `WhatsApp ${name}`,
+  },
+  'chat.retention.action.historyRow': {
+    en: (name: string) => `View history of ${name}`,
+    es: (name: string) => `Ver historial de ${name}`,
+    pt: (name: string) => `Ver histórico de ${name}`,
+  },
+  'chat.retention.action.openAll':      { en: 'Open customers',              es: 'Abrir clientes',                   pt: 'Abrir clientes' },
   // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY
   'chat.focusToday.header':       { en: '🔥 Focus today',                    es: '🔥 Enfoque de hoy',                pt: '🔥 Foco de hoje' },
   'chat.focusToday.allClear':     { en: 'No major operational issues detected right now. Keep selling.', es: 'No hay problemas operativos importantes ahorita. Sigue vendiendo.', pt: 'Sem problemas operacionais importantes agora. Continue vendendo.' },
