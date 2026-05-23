@@ -116,6 +116,12 @@ import type { AttentionAction } from '../attention/entityPriorityTypes';
 import { handleWhoNeedsAttentionToday } from './whoNeedsAttentionToday';
 // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
 import { handleRecommendedNextBestAction } from './nextBestAction';
+// R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis.
+import { handleWhyIsTodaySlow } from './whyIsTodaySlow';
+// R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: deterministic restock list.
+import { handleRestockOpportunity } from './restockOpportunity';
+// R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic money-leak detector.
+import { handleWhatIsLosingMoney } from './whatIsLosingMoney';
 // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY: deterministic behavioral context.
 import { buildCustomerTimeline, formatTimelineContext, formatTimelineTagLabel } from '../customerTimeline/customerTimelineEngine';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
@@ -475,6 +481,18 @@ export function handleIntent(
     // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top action.
     case 'recommended_next_best_action':
       return handleRecommendedNextBestAction(engine, lang);
+
+    // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis.
+    case 'why_is_today_slow':
+      return handleWhyIsTodaySlow(engine, lang);
+
+    // R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: deterministic restock list.
+    case 'restock_opportunity':
+      return handleRestockOpportunity(engine, lang);
+
+    // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic money-leak detector.
+    case 'what_is_losing_money':
+      return handleWhatIsLosingMoney(engine, lang);
 
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':

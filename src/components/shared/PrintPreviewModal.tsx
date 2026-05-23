@@ -515,6 +515,12 @@ export default function PrintPreviewModal({
               srcDoc={scaledHtml}
               title="Print preview"
               sandbox="allow-same-origin"
+              // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: suppress the
+              // iframe's own scrollbar/down-arrow. The outer Preview Area
+              // already scrolls (overflow:auto), so duplicate scroll
+              // controls on the iframe are pure noise on the receipt
+              // surface.
+              scrolling="no"
               style={{
                 width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
                 height: landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
@@ -525,6 +531,7 @@ export default function PrintPreviewModal({
                 borderRadius: '4px',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
                 display: 'block',
+                overflow: 'hidden',
               }}
             />
           </div>

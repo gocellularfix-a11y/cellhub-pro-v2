@@ -16,6 +16,9 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+// R-SPECIAL-ORDERS-TAX-SEPARATED-REPORTING-FIX: reverse-tax helper to split
+// a tax-inclusive cart-line price into base + tax for reporting only.
+import { reverseTaxFromPayment } from '@/utils/depositTax';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { SearchInput, Modal, useToast } from '@/components/ui';
@@ -1072,7 +1075,11 @@ export default function ReportsModule() {
       employeeStats[emp].revenueCents += saleTotal;
 
       for (const item of (sale.items || [])) {
-        const revenueCents = lineRevenueCents(item);
+        // R-SPECIAL-ORDERS-TAX-SEPARATED-REPORTING-FIX: changed const → let so
+        // the SO branch below can reverse-tax a tax-inclusive cart line into
+        // base for revenue reporting. No other branch reassigns this — pure
+        // scope change, no semantic impact on other kinds.
+        let revenueCents = lineRevenueCents(item);
         const qty = item.qty || (item as any).quantity || 1;
 
         if (!itemStats[item.name]) itemStats[item.name] = { quantity: 0, revenueCents: 0 };
@@ -1182,6 +1189,29 @@ export default function ReportsModule() {
           profitCents = revenueCents - costCents;
         } else if (kind === 'special_order') {
           catName = 'Special Orders';
+          // R-SPECIAL-ORDERS-TAX-SEPARATED-REPORTING-FIX:
+          // When the SO deposit/balance cart line was added with
+          // `taxable: false` but the underlying SpecialOrder entity is
+          // marked taxable, the line's `price` is a tax-INCLUSIVE total
+          // and sale.salesTax is $0 for it. That inflates the SO category
+          // revenue (and profit) by the tax portion. Reverse-calc the
+          // base + tax using the canonical helper, then route the
+          // extracted tax to the existing productSalesTax bucket so it
+          // lands in "Sales Tax / Total Taxes & Fees".
+          //
+          // Conservative trigger: only kicks in when BOTH (a) the cart
+          // line is non-taxable (so its tax wasn't already split into
+          // sale.salesTax) AND (b) the linked SpecialOrder record was
+          // marked taxable. If the SO record has no taxable field, we
+          // do NOT fabricate tax — revenue stays as-is.
+          const linkedSO = item.specialOrderId ? ordersById.get(item.specialOrderId) : undefined;
+          const linkedSoTaxable = !!(linkedSO as unknown as { taxable?: boolean } | undefined)?.taxable;
+          if (!item.taxable && linkedSoTaxable && revenueCents > 0) {
+            const rate = settings.taxRate ?? 0.0925;
+            const split = reverseTaxFromPayment(revenueCents, rate, true);
+            revenueCents = split.baseCents;
+            productSalesTaxCents += split.taxCents;
+          }
           costCents = (item.cost || 0) * qty;
           profitCents = revenueCents - costCents;
         } else if (kind === 'cc_fee') {

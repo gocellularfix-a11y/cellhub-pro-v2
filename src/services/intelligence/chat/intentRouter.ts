@@ -123,6 +123,12 @@ export type IntentId =
   | 'who_needs_attention_today'
   // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action
   | 'recommended_next_best_action'
+  // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis
+  | 'why_is_today_slow'
+  // R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: deterministic restock list
+  | 'restock_opportunity'
+  // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: operational money-leak detector
+  | 'what_is_losing_money'
   | 'fallback_question'
   | 'unknown';
 
@@ -583,6 +589,30 @@ const SALES_KEYWORDS = [
   'van las ventas', 'how are sales',
 ];
 
+// R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: deterministic restock list.
+// Listed BEFORE inventory_low so action-anchored "restock / ordenar /
+// reponer / repor" phrases route to the opportunity engine. Plain
+// "low stock" / "stock bajo" / "estoque baixo" still goes to inventory_low
+// (this bank excludes those tokens by design).
+const RESTOCK_OPPORTUNITY_KEYWORDS = [
+  // EN
+  'what should i restock', 'what am i running out of',
+  'low stock opportunities', 'what inventory should i buy',
+  'what should i order', 'what to restock', 'restock opportunities',
+  'restock recommendations',
+  // ES
+  'qué debo ordenar', 'que debo ordenar',
+  'qué inventario compro', 'que inventario compro',
+  'qué se está acabando', 'que se esta acabando',
+  'qué debo reponer', 'que debo reponer',
+  'qué tengo que reordenar', 'que tengo que reordenar',
+  'recomendaciones de reorden',
+  // PT
+  'o que devo repor', 'o que reponho',
+  'o que devo encomendar', 'o que devo pedir',
+  'recomendações de reposição', 'recomendacoes de reposicao',
+];
+
 const INVENTORY_LOW_KEYWORDS = [
   'falta', 'faltan', 'low stock', 'stock bajo',
   'reorden', 'reorder', 'running out', 'por acabar',
@@ -903,6 +933,33 @@ const SLOW_DAY_ROOT_CAUSE_KEYWORDS = [
 // Distinct from slow_day_root_cause (which answers why a specific weekday is
 // historically weak). Listed AFTER slow_day_root_cause so "slow day reason"
 // still routes to the historical root-cause handler.
+// R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis.
+// Listed in the scores array BEFORE slow_day_diagnostic so the richer
+// diagnosis handler wins for shared phrases. Extra Mexican-Spanish + PT
+// variants the existing bank doesn't catch.
+const WHY_IS_TODAY_SLOW_KEYWORDS = [
+  // EN
+  'why is today slow', 'why are sales slow', 'why is business slow',
+  'slow day', 'business is slow', 'why slow today', 'sales are slow today',
+  'what is happening today',
+  'why is it dead today', 'why is traffic dead',
+  // ES — Mexican variants explicitly listed
+  'por qué está lento hoy', 'por que esta lento hoy',
+  'por qué no hay ventas', 'por que no hay ventas',
+  'día lento', 'dia lento',
+  'porque esta lento', 'porque está lento',
+  'por que esta flojo', 'porque esta flojo',
+  'porque no se vende', 'por que no se vende',
+  'por que no entra gente', 'porque no entra gente',
+  'por que esta muerto', 'porque esta muerto',
+  'por que no vendo', 'porque no vendo',
+  'porque no hay clientes', 'por que no hay clientes',
+  // PT
+  'negócio lento', 'negocio lento',
+  'por que está fraco', 'por que esta fraco',
+  'por que não vende', 'por que nao vende',
+];
+
 const SLOW_DAY_DIAGNOSTIC_KEYWORDS = [
   // EN
   'why is today slow', 'why are sales slow', 'why am i slow today',
@@ -1392,6 +1449,32 @@ const WHAT_TO_DO_TODAY_KEYWORDS = [
   'acoes prioritarias', 'minhas prioridades hoje',
 ];
 
+// R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic operational
+// money-leak detection. Listed in the scores array BEFORE the legacy
+// where_losing_money bank so anchored "what is losing me money / qué me
+// está haciendo perder / onde estou perdendo" phrases route to the new
+// engine. Generic "losing money" (single token, no anchor) still falls
+// to the existing handler.
+const WHAT_IS_LOSING_MONEY_KEYWORDS = [
+  // EN
+  'what is losing me money', 'what is costing me money',
+  'money leak', 'losing profit',
+  'what is hurting profits', 'what is hurting profit',
+  'where are losses coming from', 'where am i losing money',
+  'where do i lose money',
+  // ES
+  'qué me está haciendo perder dinero', 'que me esta haciendo perder dinero',
+  'dónde pierdo dinero', 'donde pierdo dinero',
+  'qué está afectando ganancias', 'que esta afectando ganancias',
+  'fuga de dinero', 'fugas de dinero',
+  'por qué gano menos', 'por que gano menos',
+  // PT
+  'onde estou perdendo dinheiro',
+  'o que está me fazendo perder dinheiro', 'o que esta me fazendo perder dinheiro',
+  'o que está prejudicando o lucro', 'o que esta prejudicando o lucro',
+  'vazamento de dinheiro',
+];
+
 const WHERE_LOSING_MONEY_KEYWORDS = [
   // EN
   'where am i losing money', 'where losing money', 'money leaks',
@@ -1720,6 +1803,11 @@ export function classifyIntent(
     // Both banks include 'hoy'/'today' — list-order tie-break wins for TODAY.
     { id: 'today_summary', score: scoreKeywords(query, TODAY_SUMMARY_KEYWORDS) },
     { id: 'sales_summary', score: scoreKeywords(query, SALES_KEYWORDS) },
+    // R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: listed BEFORE inventory_low
+    // so "restock / ordenar / reponer / repor" action phrases route to the
+    // opportunity engine. Plain "low stock" / "stock bajo" still falls to
+    // inventory_low because this bank excludes those tokens.
+    { id: 'restock_opportunity', score: scoreKeywords(query, RESTOCK_OPPORTUNITY_KEYWORDS) },
     { id: 'inventory_low', score: scoreKeywords(query, INVENTORY_LOW_KEYWORDS) },
     { id: 'inventory_dead', score: scoreKeywords(query, INVENTORY_DEAD_KEYWORDS) },
     { id: 'inventory_dying', score: scoreKeywords(query, INVENTORY_DYING_KEYWORDS) },
@@ -1740,6 +1828,12 @@ export function classifyIntent(
     { id: 'anomaly_days', score: scoreKeywords(query, ANOMALY_KEYWORDS) },
     { id: 'who_to_contact', score: scoreKeywords(query, WHO_TO_CONTACT_KEYWORDS) },
     { id: 'what_hurting_profit', score: scoreKeywords(query, WHAT_HURTING_PROFIT_KEYWORDS) },
+    // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: listed BEFORE where_losing_money
+    // so anchored "what is losing me money / qué me está haciendo perder /
+    // onde estou perdendo" phrases route to the deterministic leak detector.
+    // The legacy where_losing_money handler stays as fallback for shorter
+    // phrasings.
+    { id: 'what_is_losing_money', score: scoreKeywords(query, WHAT_IS_LOSING_MONEY_KEYWORDS) },
     { id: 'where_losing_money', score: scoreKeywords(query, WHERE_LOSING_MONEY_KEYWORDS) },
     // R-INTELLIGENCE-PUSH-RIGHT-NOW-V1: listed BEFORE proactive_opportunities so
     // urgency phrases ("right now", "today", "what should i push right now") win
@@ -1775,6 +1869,11 @@ export function classifyIntent(
     { id: 'trend_direction', score: scoreKeywords(query, TREND_DIRECTION_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
+    // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: listed BEFORE slow_day_diagnostic so
+    // the deterministic diagnosis engine wins shared "why slow today" phrases.
+    // slow_day_diagnostic keeps the legacy weekday explanation path for any
+    // phrasing not in the new bank.
+    { id: 'why_is_today_slow', score: scoreKeywords(query, WHY_IS_TODAY_SLOW_KEYWORDS) },
     { id: 'slow_day_diagnostic', score: scoreKeywords(query, SLOW_DAY_DIAGNOSTIC_KEYWORDS) },
     { id: 'dead_stock_root_cause', score: scoreKeywords(query, DEAD_STOCK_ROOT_CAUSE_KEYWORDS) },
     { id: 'customer_churn_root_cause', score: scoreKeywords(query, CUSTOMER_CHURN_KEYWORDS) },

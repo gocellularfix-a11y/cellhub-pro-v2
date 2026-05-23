@@ -3729,6 +3729,204 @@ export const translations: TranslationDictionary = {
     es: (name: string) => `Abre la ficha${name ? ' de ' + name : ''} y avisa que el crédito sigue activo.`,
     pt: (name: string) => `Abra a ficha${name ? ' de ' + name : ''} e avise que o crédito ainda está ativo.`,
   },
+  // R-INTELLIGENCE-WHY-IS-TODAY-SLOW
+  'chat.whyIsTodaySlow.header':       { en: '🔍 Why is today slow',                   es: '🔍 Por qué está lento hoy',               pt: '🔍 Por que está lento hoje' },
+  'chat.whyIsTodaySlow.earlyDay':     { en: "Too early to diagnose — let's check back after 11am.", es: 'Es muy temprano para diagnosticar — revisa de nuevo después de las 11am.', pt: 'Muito cedo para diagnosticar — verifique novamente após as 11h.' },
+  'chat.whyIsTodaySlow.noBaseline':   { en: 'Not enough recent days to compare against. Keep selling and check back tomorrow.', es: 'No hay suficientes días recientes para comparar. Sigue vendiendo y revisa mañana.', pt: 'Sem dias recentes suficientes para comparar. Continue vendendo e verifique amanhã.' },
+  'chat.whyIsTodaySlow.noClearCause': { en: "No clear operational cause — today's pace looks within normal range.", es: 'Sin causa operativa clara — el ritmo de hoy luce dentro del rango normal.', pt: 'Sem causa operacional clara — o ritmo de hoje está na faixa normal.' },
+  'chat.whyIsTodaySlow.earlyDayCaveat': { en: "It's still early — confidence may improve later in the day.", es: 'Aún es temprano — la confianza puede mejorar más tarde.', pt: 'Ainda é cedo — a confiança pode melhorar mais tarde.' },
+  // Per-cause headlines + evidence + actions
+  'chat.whyIsTodaySlow.headline.traffic':       { en: 'Traffic is lower than normal today',     es: 'El tráfico está más bajo que lo normal hoy', pt: 'O tráfego está mais baixo que o normal hoje' },
+  'chat.whyIsTodaySlow.evidence.traffic': {
+    en: (today: number, baseline: string, dropPct: number) => `${today} transactions today vs ${baseline} average — ${dropPct}% drop`,
+    es: (today: number, baseline: string, dropPct: number) => `${today} transacciones hoy vs ${baseline} en promedio — bajón de ${dropPct}%`,
+    pt: (today: number, baseline: string, dropPct: number) => `${today} transações hoje vs ${baseline} média — queda de ${dropPct}%`,
+  },
+  'chat.whyIsTodaySlow.action.traffic':         { en: 'Run customer outreach to bring people in.', es: 'Lanza outreach a clientes para traer gente.', pt: 'Faça contato com clientes para trazer pessoas.' },
+
+  'chat.whyIsTodaySlow.headline.repairsPickup': { en: 'Repair pickups are stalled',              es: 'Las recogidas de reparaciones están detenidas', pt: 'As retiradas de reparos estão paradas' },
+  'chat.whyIsTodaySlow.evidence.repairsPickup': {
+    en: (n: number) => `${n} completed repair${n === 1 ? '' : 's'} waiting over 5 days`,
+    es: (n: number) => `${n} reparación${n === 1 ? '' : 'es'} terminada${n === 1 ? '' : 's'} esperando más de 5 días`,
+    pt: (n: number) => `${n} reparo${n === 1 ? '' : 's'} concluído${n === 1 ? '' : 's'} esperando há mais de 5 dias`,
+  },
+  'chat.whyIsTodaySlow.action.repairsPickup':   { en: 'Send pickup WhatsApp reminders.',          es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada por WhatsApp.' },
+
+  'chat.whyIsTodaySlow.headline.repairsIntake': { en: 'Repair intake is unusually low',            es: 'La entrada de reparaciones está muy baja',   pt: 'A entrada de reparos está muito baixa' },
+  'chat.whyIsTodaySlow.evidence.repairsIntake': {
+    en: (today: number, baseline: string) => `${today} new repairs today vs ${baseline} average`,
+    es: (today: number, baseline: string) => `${today} reparaciones nuevas hoy vs ${baseline} en promedio`,
+    pt: (today: number, baseline: string) => `${today} reparos novos hoje vs ${baseline} média`,
+  },
+  'chat.whyIsTodaySlow.action.repairsIntake':   { en: 'Promote repair walk-ins or check intake channels.', es: 'Promueve recepción de reparaciones o revisa canales de entrada.', pt: 'Promova entrada de reparos ou revise canais de entrada.' },
+
+  'chat.whyIsTodaySlow.headline.phonePaymentOverdue': { en: 'External portal payment unresolved', es: 'Pago externo del portal sin resolver',       pt: 'Pagamento externo do portal não resolvido' },
+  'chat.whyIsTodaySlow.evidence.phonePaymentOverdue': {
+    en: (carrier: string, mins: number, amount: string) => `${carrier} payment unresolved ${mins} min (${amount})`,
+    es: (carrier: string, mins: number, amount: string) => `Pago ${carrier} sin resolver ${mins} min (${amount})`,
+    pt: (carrier: string, mins: number, amount: string) => `Pagamento ${carrier} não resolvido há ${mins} min (${amount})`,
+  },
+  'chat.whyIsTodaySlow.action.phonePaymentOverdue':   { en: 'Open the carrier portal and confirm the transaction.', es: 'Abre el portal del operador y confirma la transacción.', pt: 'Abra o portal da operadora e confirme a transação.' },
+
+  'chat.whyIsTodaySlow.headline.phonePaymentFlow':    { en: 'Phone payment volume is down',       es: 'El volumen de pagos de teléfono está bajo',   pt: 'O volume de pagamentos de telefone está baixo' },
+  'chat.whyIsTodaySlow.evidence.phonePaymentFlow': {
+    en: (today: number, baseline: string) => `${today} phone payments today vs ${baseline} average`,
+    es: (today: number, baseline: string) => `${today} pagos de teléfono hoy vs ${baseline} en promedio`,
+    pt: (today: number, baseline: string) => `${today} pagamentos de telefone hoje vs ${baseline} média`,
+  },
+  'chat.whyIsTodaySlow.action.phonePaymentFlow':      { en: 'Remind customers their carrier bill is due.', es: 'Recuérdale a los clientes que su factura vence.', pt: 'Lembre os clientes de que a fatura está vencendo.' },
+
+  'chat.whyIsTodaySlow.headline.inventoryDead':       { en: 'Dead stock is high',                  es: 'Hay mucho inventario muerto',                 pt: 'Há muito estoque parado' },
+  'chat.whyIsTodaySlow.evidence.inventoryDead': {
+    en: (n: number, days: number) => `${n} items with stock haven't sold in ${days}+ days`,
+    es: (n: number, days: number) => `${n} artículos con stock no se han vendido en ${days}+ días`,
+    pt: (n: number, days: number) => `${n} itens com estoque não vendem há ${days}+ dias`,
+  },
+  'chat.whyIsTodaySlow.action.inventoryDead':         { en: 'Open dead-stock list and run a discount push.', es: 'Abre la lista de inventario muerto y lanza un descuento.', pt: 'Abra a lista de estoque parado e faça um desconto.' },
+
+  'chat.whyIsTodaySlow.headline.accessoryAttach':     { en: 'Accessory attachment is unusually low today', es: 'La venta de accesorios está muy baja hoy', pt: 'A venda de acessórios está muito baixa hoje' },
+  'chat.whyIsTodaySlow.evidence.accessoryAttach': {
+    en: (acc: number, phones: number, pct: number) => `${acc} accessories sold across ${phones} phone sales (${pct}% attach rate)`,
+    es: (acc: number, phones: number, pct: number) => `${acc} accesorios en ${phones} ventas de teléfono (${pct}% de adjunto)`,
+    pt: (acc: number, phones: number, pct: number) => `${acc} acessórios em ${phones} vendas de telefone (${pct}% de anexo)`,
+  },
+  'chat.whyIsTodaySlow.action.accessoryAttach':       { en: 'Remind staff to offer cases/chargers/screen protectors at checkout.', es: 'Recuerda al equipo ofrecer cases/cargadores/micas al cobrar.', pt: 'Lembre a equipe de oferecer cases/carregadores/películas no caixa.' },
+
+  'chat.whyIsTodaySlow.headline.layawayAbandon':      { en: 'Multiple layaways were abandoned recently', es: 'Se abandonaron varios apartados recientemente', pt: 'Vários layaways foram abandonados recentemente' },
+  'chat.whyIsTodaySlow.evidence.layawayAbandon': {
+    en: (n: number, days: number) => `${n} layaways cancelled or forfeited in the last ${days}d`,
+    es: (n: number, days: number) => `${n} apartados cancelados o perdidos en los últimos ${days}d`,
+    pt: (n: number, days: number) => `${n} layaways cancelados ou perdidos nos últimos ${days}d`,
+  },
+  'chat.whyIsTodaySlow.action.layawayAbandon':        { en: 'Review layaway flow and reach out to fresh holders.', es: 'Revisa el flujo de apartados y contacta a clientes activos.', pt: 'Revise o fluxo de layaway e contate clientes ativos.' },
+
+  'chat.whyIsTodaySlow.headline.activityGap':         { en: 'Long gap since last sale',             es: 'Largo periodo desde la última venta',         pt: 'Longo intervalo desde a última venda' },
+  'chat.whyIsTodaySlow.evidence.activityGap': {
+    en: (mins: number) => `No sale has been rung up for ${mins} min`,
+    es: (mins: number) => `No se ha registrado venta en ${mins} min`,
+    pt: (mins: number) => `Sem venda registrada há ${mins} min`,
+  },
+  'chat.whyIsTodaySlow.action.activityGap':           { en: 'Check the floor and POS — is anyone available to help walk-ins?', es: 'Revisa el piso y el POS — ¿hay alguien disponible para atender?', pt: 'Verifique a loja e o POS — há alguém disponível para atender?' },
+
+  // Action button labels (reused across causes)
+  'chat.whyIsTodaySlow.action.openOutreach':       { en: 'Run outreach',         es: 'Lanzar outreach',      pt: 'Fazer outreach' },
+  'chat.whyIsTodaySlow.action.openLayaways':       { en: 'Open layaways',         es: 'Abrir apartados',      pt: 'Abrir layaways' },
+  'chat.whyIsTodaySlow.action.openInventory':      { en: 'Open inventory',        es: 'Abrir inventario',     pt: 'Abrir estoque' },
+  'chat.whyIsTodaySlow.action.openRepairs':        { en: 'Open repairs',          es: 'Abrir reparaciones',   pt: 'Abrir reparos' },
+  'chat.whyIsTodaySlow.action.openPhonePayments':  { en: 'Open phone payments',   es: 'Abrir pagos telefónicos', pt: 'Abrir pagamentos de telefone' },
+  'chat.whyIsTodaySlow.action.openDeadStock':      { en: 'Open dead stock',       es: 'Abrir inventario muerto', pt: 'Abrir estoque parado' },
+  'chat.whyIsTodaySlow.action.openPos':            { en: 'Open POS',              es: 'Abrir POS',            pt: 'Abrir POS' },
+  // R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE
+  'chat.restock.header':                  { en: '📦 What to restock', es: '📦 Qué reponer',         pt: '📦 O que repor' },
+  'chat.restock.emptyInventory':          { en: 'No inventory data available.', es: 'No hay datos de inventario.', pt: 'Sem dados de estoque.' },
+  'chat.restock.noOpportunity':           { en: "No restock opportunities right now — recent sales don't show urgent reorders.", es: 'No hay oportunidades de reorden ahora — las ventas recientes no muestran reordenes urgentes.', pt: 'Sem oportunidades de reposição agora — as vendas recentes não mostram pedidos urgentes.' },
+  'chat.restock.reason.outOfStock': {
+    en: (sold: number, days: number) => `Out of stock — sold ${sold} in ${days}d`,
+    es: (sold: number, days: number) => `Sin inventario — vendió ${sold} en ${days}d`,
+    pt: (sold: number, days: number) => `Sem estoque — vendeu ${sold} em ${days}d`,
+  },
+  'chat.restock.reason.critical': {
+    en: (qty: number, sold: number, days: number, doc: number) => `${qty} left, sold ${sold} in ${days}d (~${doc}d cover)`,
+    es: (qty: number, sold: number, days: number, doc: number) => `${qty} restantes, vendió ${sold} en ${days}d (~${doc}d de cobertura)`,
+    pt: (qty: number, sold: number, days: number, doc: number) => `${qty} restantes, vendeu ${sold} em ${days}d (~${doc}d de cobertura)`,
+  },
+  'chat.restock.reason.belowMin': {
+    en: (qty: number, minQty: number, sold: number, days: number) => `${qty} left (below min ${minQty}) — sold ${sold} in ${days}d`,
+    es: (qty: number, minQty: number, sold: number, days: number) => `${qty} restantes (bajo mínimo ${minQty}) — vendió ${sold} en ${days}d`,
+    pt: (qty: number, minQty: number, sold: number, days: number) => `${qty} restantes (abaixo do mínimo ${minQty}) — vendeu ${sold} em ${days}d`,
+  },
+  'chat.restock.reason.lowCover': {
+    en: (qty: number, sold: number, days: number) => `${qty} left, sold ${sold} in ${days}d`,
+    es: (qty: number, sold: number, days: number) => `${qty} restantes, vendió ${sold} en ${days}d`,
+    pt: (qty: number, sold: number, days: number) => `${qty} restantes, vendeu ${sold} em ${days}d`,
+  },
+  'chat.restock.marginLabel': {
+    en: (m: string, pct: number) => `margin ${m} (${pct}%)`,
+    es: (m: string, pct: number) => `margen ${m} (${pct}%)`,
+    pt: (m: string, pct: number) => `margem ${m} (${pct}%)`,
+  },
+  'chat.restock.action.reorderNow':    { en: 'Reorder now',           es: 'Ordena ahora',        pt: 'Faça pedido agora' },
+  'chat.restock.action.reorderSoon':   { en: 'Reorder this week',     es: 'Ordena esta semana',  pt: 'Faça pedido esta semana' },
+  'chat.restock.action.replenish':     { en: 'Plan replenishment',    es: 'Planea reposición',   pt: 'Planeje reposição' },
+  'chat.restock.action.openItem':      { en: 'Open item',             es: 'Abrir artículo',      pt: 'Abrir item' },
+  'chat.restock.action.openModule':    { en: 'Open inventory',        es: 'Abrir inventario',    pt: 'Abrir estoque' },
+  // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY
+  'chat.whatIsLosing.header':       { en: '💸 What is losing money',           es: '💸 Qué te está costando dinero',         pt: '💸 O que está custando dinheiro' },
+  'chat.whatIsLosing.empty':        { en: 'No clear operational money leaks right now.', es: 'No hay fugas operativas claras ahorita.',         pt: 'Sem vazamentos operacionais claros agora.' },
+  'chat.whatIsLosing.exposureLabel': {
+    en: (amount: string) => `Estimated exposure: ${amount}`,
+    es: (amount: string) => `Exposición estimada: ${amount}`,
+    pt: (amount: string) => `Exposição estimada: ${amount}`,
+  },
+  // dead stock
+  'chat.whatIsLosing.headline.deadStock':       { en: 'Dead stock is tying up cash',        es: 'Inventario muerto te tiene el dinero atorado', pt: 'Estoque parado está prendendo dinheiro' },
+  'chat.whatIsLosing.evidence.deadStock': {
+    en: (value: string, count: number, days: number) => `${value} stuck in ${count} items unsold for ${days}+ days`,
+    es: (value: string, count: number, days: number) => `${value} atorado en ${count} artículos sin vender en ${days}+ días`,
+    pt: (value: string, count: number, days: number) => `${value} preso em ${count} itens sem vender há ${days}+ dias`,
+  },
+  'chat.whatIsLosing.action.deadStock':         { en: 'Run a discount push on the worst offenders.', es: 'Lanza una promoción de descuento en los peores.', pt: 'Faça uma promoção nos piores casos.' },
+  // attachment
+  'chat.whatIsLosing.headline.attachment':      { en: 'Accessory attachment is weak today', es: 'Adjunto de accesorios débil hoy',           pt: 'Anexo de acessórios fraco hoje' },
+  'chat.whatIsLosing.evidence.attachment': {
+    en: (acc: number, phones: number, pct: number) => `${acc} accessories on ${phones} phone sales (${pct}% attach rate)`,
+    es: (acc: number, phones: number, pct: number) => `${acc} accesorios en ${phones} ventas de teléfono (${pct}% adjunto)`,
+    pt: (acc: number, phones: number, pct: number) => `${acc} acessórios em ${phones} vendas de telefone (${pct}% anexo)`,
+  },
+  'chat.whatIsLosing.action.attachment':        { en: 'Remind staff to bundle cases / chargers / screen protectors.', es: 'Recuerda al equipo ofrecer cases / cargadores / micas.', pt: 'Lembre a equipe de oferecer cases / carregadores / películas.' },
+  // repairs stalled
+  'chat.whatIsLosing.headline.repairsStalled':  { en: 'Repair pickups are stalled',         es: 'Las recogidas de reparaciones están detenidas', pt: 'As retiradas de reparos estão paradas' },
+  'chat.whatIsLosing.evidence.repairsStalled': {
+    en: (count: number, value: string) => `${count} ready repair${count === 1 ? '' : 's'} waiting — ${value} uncollected`,
+    es: (count: number, value: string) => `${count} reparación${count === 1 ? '' : 'es'} lista${count === 1 ? '' : 's'} esperando — ${value} sin cobrar`,
+    pt: (count: number, value: string) => `${count} reparo${count === 1 ? '' : 's'} pronto${count === 1 ? '' : 's'} esperando — ${value} não coletado`,
+  },
+  'chat.whatIsLosing.action.repairsStalled':    { en: 'Send pickup WhatsApp reminders.',     es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada por WhatsApp.' },
+  // layaway abandoned
+  'chat.whatIsLosing.headline.layawayAbandoned':{ en: 'Layaways are getting abandoned',     es: 'Apartados se están abandonando',           pt: 'Layaways estão sendo abandonados' },
+  'chat.whatIsLosing.evidence.layawayAbandoned': {
+    en: (count: number, days: number) => `${count} layaways cancelled or forfeited in the last ${days}d`,
+    es: (count: number, days: number) => `${count} apartados cancelados o perdidos en los últimos ${days}d`,
+    pt: (count: number, days: number) => `${count} layaways cancelados ou perdidos nos últimos ${days}d`,
+  },
+  'chat.whatIsLosing.evidence.layawayAbandonedWithDeposit': {
+    en: (count: number, days: number, kept: string) => `${count} forfeited in ${days}d — ${kept} kept but ${count} sales lost`,
+    es: (count: number, days: number, kept: string) => `${count} perdidos en ${days}d — ${kept} retenido pero ${count} ventas perdidas`,
+    pt: (count: number, days: number, kept: string) => `${count} perdidos em ${days}d — ${kept} retido mas ${count} vendas perdidas`,
+  },
+  'chat.whatIsLosing.action.layawayAbandoned':  { en: 'Reach out to active layaway holders before they go cold.', es: 'Contacta a clientes con apartados activos antes que se enfríen.', pt: 'Contate clientes com layaways ativos antes que esfriem.' },
+  // external payment risk
+  'chat.whatIsLosing.headline.extPayment':      { en: 'Carrier portal payment unresolved',  es: 'Pago de portal sin resolver',              pt: 'Pagamento de portal não resolvido' },
+  'chat.whatIsLosing.evidence.extPayment': {
+    en: (carrier: string, mins: number, amount: string) => `${carrier} payment unresolved ${mins} min (${amount})`,
+    es: (carrier: string, mins: number, amount: string) => `Pago ${carrier} sin resolver ${mins} min (${amount})`,
+    pt: (carrier: string, mins: number, amount: string) => `Pagamento ${carrier} não resolvido há ${mins} min (${amount})`,
+  },
+  'chat.whatIsLosing.action.extPayment':        { en: 'Open the carrier portal and confirm the transaction.', es: 'Abre el portal del operador y confirma la transacción.', pt: 'Abra o portal da operadora e confirme a transação.' },
+  // low margin items
+  'chat.whatIsLosing.headline.lowMargin':       { en: 'Low-margin product is selling repeatedly', es: 'Producto de bajo margen se vende repetidamente', pt: 'Produto de baixa margem vende repetidamente' },
+  'chat.whatIsLosing.evidence.lowMargin': {
+    en: (name: string, units: number, marginPct: number, days: number) => `${name} sold ${units} units in ${days}d at ${marginPct}% margin`,
+    es: (name: string, units: number, marginPct: number, days: number) => `${name} vendió ${units} unidades en ${days}d con ${marginPct}% de margen`,
+    pt: (name: string, units: number, marginPct: number, days: number) => `${name} vendeu ${units} unidades em ${days}d com ${marginPct}% de margem`,
+  },
+  'chat.whatIsLosing.action.lowMargin':         { en: 'Review pricing or switch supplier — margin is below floor.', es: 'Revisa el precio o cambia de proveedor — el margen está por debajo del piso.', pt: 'Revise o preço ou troque de fornecedor — a margem está abaixo do piso.' },
+  // store credit liability
+  'chat.whatIsLosing.headline.storeCredit':     { en: 'Store credit liability sitting idle', es: 'Pasivo de crédito en tienda sin moverse',  pt: 'Passivo de crédito da loja parado' },
+  'chat.whatIsLosing.evidence.storeCredit': {
+    en: (amount: string, count: number, oldest: number) => `${amount} on ${count} active certificate${count === 1 ? '' : 's'} — oldest ${oldest}d`,
+    es: (amount: string, count: number, oldest: number) => `${amount} en ${count} certificado${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} — más antiguo ${oldest}d`,
+    pt: (amount: string, count: number, oldest: number) => `${amount} em ${count} certificado${count === 1 ? '' : 's'} ativo${count === 1 ? '' : 's'} — mais antigo ${oldest}d`,
+  },
+  'chat.whatIsLosing.action.storeCredit':       { en: 'Reach out to credit holders before they forget the balance exists.', es: 'Contacta a los clientes con crédito antes que olviden el saldo.', pt: 'Contate os titulares de crédito antes que esqueçam do saldo.' },
+  // Action button labels
+  'chat.whatIsLosing.action.openDeadStock':     { en: 'Open dead stock',           es: 'Abrir inventario muerto',  pt: 'Abrir estoque parado' },
+  'chat.whatIsLosing.action.openAccessories':   { en: 'Open accessories',          es: 'Abrir accesorios',         pt: 'Abrir acessórios' },
+  'chat.whatIsLosing.action.openRepairs':       { en: 'Open repairs',              es: 'Abrir reparaciones',       pt: 'Abrir reparos' },
+  'chat.whatIsLosing.action.openLayaways':      { en: 'Open layaways',             es: 'Abrir apartados',          pt: 'Abrir layaways' },
+  'chat.whatIsLosing.action.openPos':           { en: 'Open POS',                  es: 'Abrir POS',                pt: 'Abrir POS' },
+  'chat.whatIsLosing.action.openInventory':    { en: 'Open inventory',            es: 'Abrir inventario',         pt: 'Abrir estoque' },
+  'chat.whatIsLosing.action.openCredits':       { en: 'Review credits',            es: 'Revisar créditos',         pt: 'Revisar créditos' },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

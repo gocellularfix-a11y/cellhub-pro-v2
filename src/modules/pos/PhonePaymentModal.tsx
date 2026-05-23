@@ -1572,6 +1572,11 @@ export default function PhonePaymentModal({
         notes: [customerNote, actNotes.trim()].filter(Boolean).join(' — '),
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
         commissionRate: commRate,
+        // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: mark the plan line
+        // as part of the activation flow so the receipt's NEW PHONE NUMBER
+        // block triggers even when activation fee = $0 (no separate
+        // 'activation'-category item exists in that case).
+        isActivation: true,
       });
     }
 
@@ -1593,6 +1598,8 @@ export default function PhonePaymentModal({
         carrier: normalizedCarrier,
         phoneNumber: phoneNorm,
         notes: [customerNote, actNotes.trim()].filter(Boolean).join(' — '),
+        // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX
+        isActivation: true,
       });
     }
 
@@ -1659,6 +1666,31 @@ export default function PhonePaymentModal({
         return phonesToCheck.some((p) => normalizePhone(p || '') === phoneNorm);
       });
       if (existing) resolvedCustomer = existing;
+    }
+    // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: even when an EXISTING
+    // customer is matched by phone, ensure the activation's carrier is
+    // recorded on their record so future lookups know which provider this
+    // line is on. Pure additive — never overwrites name/email; only extends
+    // carriers[] when the new one isn't already there. Persists immediately
+    // so a $0-fee activation still leaves a fresh customer-DB trail.
+    if (resolvedCustomer && phoneNorm) {
+      const existingCarriers = Array.isArray((resolvedCustomer as any).carriers)
+        ? ((resolvedCustomer as any).carriers as string[])
+        : ((resolvedCustomer as any).carrier ? [(resolvedCustomer as any).carrier] : []);
+      const nextCarriers = existingCarriers.includes(normalizedCarrier)
+        ? existingCarriers
+        : [...existingCarriers, normalizedCarrier];
+      const updated: Customer = {
+        ...resolvedCustomer,
+        carriers: nextCarriers,
+        carrier: (resolvedCustomer as any).carrier || normalizedCarrier,
+        updatedAt: new Date().toISOString(),
+      } as Customer;
+      const nextCustomersArr = customersRef.current.map((c) => c.id === updated.id ? updated : c);
+      customersRef.current = nextCustomersArr;
+      setCustomers(nextCustomersArr);
+      persist.customer(updated.id, updated as unknown as Record<string, unknown>);
+      resolvedCustomer = updated;
     }
     if (!resolvedCustomer && nameTrim && phoneNorm) {
       const newCust: Customer = {

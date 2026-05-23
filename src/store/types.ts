@@ -681,6 +681,12 @@ export interface CartItem {
   // them correctly (negative price, not taxable, cbe-exempt).
   storeCreditLedgerId?: string;
   storeCreditCertNumber?: string;
+  // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: hint that this line was
+  // produced by the Phone Payments ACTIVATION flow (not a recurring bill
+  // payment). Receipt rendering uses it to surface the "NEW PHONE NUMBER"
+  // block even when no separate 'activation' / 'sim' line exists (which
+  // happens when activation fee = $0 and no SIM was picked).
+  isActivation?: boolean;
 }
 
 // ── Sale ──────────────────────────────────────────────────
@@ -722,6 +728,8 @@ export interface SaleItem {
   // R-STORE-CREDIT-REDEMPTION-SYSTEM: link line back to ledger entry.
   storeCreditLedgerId?: string;
   storeCreditCertNumber?: string;
+  // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX
+  isActivation?: boolean;
 }
 
 export interface Sale {

@@ -277,19 +277,28 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [previewIframeHeight, setPreviewIframeHeight] = useState<number>(600);
   const handlePreviewLoad = () => {
-    const f = previewIframeRef.current;
-    if (!f) return;
-    try {
-      const doc = f.contentDocument;
-      if (!doc) return;
-      const h = Math.max(
-        doc.documentElement?.scrollHeight || 0,
-        doc.body?.scrollHeight || 0,
-      );
-      if (h > 0) setPreviewIframeHeight(h);
-    } catch {
-      // opaque origin or cross-origin block — keep default height
-    }
+    const measure = () => {
+      const f = previewIframeRef.current;
+      if (!f) return;
+      try {
+        const doc = f.contentDocument;
+        if (!doc) return;
+        const h = Math.max(
+          doc.documentElement?.scrollHeight || 0,
+          doc.body?.scrollHeight || 0,
+        );
+        if (h > 0) setPreviewIframeHeight(h);
+      } catch {
+        // opaque origin or cross-origin block — keep default height
+      }
+    };
+    // Immediate measurement.
+    measure();
+    // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: re-measure after a
+    // tick so late-rendering content (Google Review QR <img>, web fonts,
+    // CODE128 SVG layout) is included. Without this, the iframe can land
+    // shorter than the actual content and produce a scroll arrow.
+    setTimeout(measure, 250);
   };
 
   // ── Deps extraction: primitive fields that generateReceiptHtml reads ──
@@ -759,7 +768,15 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   const actSeen = new Set<string>();
   const activationLines: string[] = [];
   for (const item of sale.items) {
-    if ((item.category === 'activation' || item.category === 'sim') && item.phoneNumber) {
+    // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: also accept the
+    // explicit `isActivation` flag stamped by PhonePaymentModal's activation
+    // flow so the NEW PHONE NUMBER block surfaces even when the cart has
+    // only a 'phone_payment' line (activation fee = $0 and no SIM picked).
+    const isActivationFlow =
+      item.category === 'activation' ||
+      item.category === 'sim' ||
+      (item as any).isActivation === true;
+    if (isActivationFlow && item.phoneNumber) {
       if (!actSeen.has(item.phoneNumber)) {
         actSeen.add(item.phoneNumber);
         activationLines.push(item.phoneNumber);
@@ -793,8 +810,13 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ? `@page { size: 85.6mm 54mm; margin: 0; }
   html, body { width: 85.6mm; height: 54mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 8px; color: #000; background: #fff; overflow: hidden; }
   body { padding: 1.5mm 2mm; box-sizing: border-box; }`
+    // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: remove fixed body
+    // height so the preview iframe's dynamic measurement can match the
+    // actual content. 4×6 stays the print page size via @page; body grows
+    // naturally when content exceeds 6in (multi-page print) without
+    // producing a scroll arrow in the preview.
     : `@page { size: 4in 6in; margin: 0; }
-  html, body { width: 4in; height: 6in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+  html, body { width: 4in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
   body { padding: 0.1in 0.15in; box-sizing: border-box; }`;
 
   // R-RECEIPT-BARCODE-MATCH-WORKING-V1: barcode goes in its own row below
