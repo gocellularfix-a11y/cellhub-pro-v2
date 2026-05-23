@@ -422,7 +422,13 @@ function actionsFor(signal: LossSignal, t: ReturnType<typeof tChat>): ChatAction
  * with no surface-able evidence are silently dropped. Empty state stays
  * honest when no signal is strong enough.
  */
-export function handleWhatIsLosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+/**
+ * R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: structured-signal export so the
+ * focus-today aggregator can consume the same scoring pipeline without
+ * duplicating logic. Returns sorted + score-filtered signals ready for
+ * priority merging. Pure — no rendering, no side effects.
+ */
+export function computeLossSignals(engine: IntelligenceEngine, lang: Lang3): LossSignal[] {
   const t = tChat(lang);
   const nowMs = Date.now();
 
@@ -440,10 +446,15 @@ export function handleWhatIsLosingMoney(engine: IntelligenceEngine, lang: Lang3)
   const f = collectLowMarginItems(inventory, sales, t, nowMs);         if (f) allSignals.push(f);
   const g = collectStoreCreditLiability(t, nowMs);                     if (g) allSignals.push(g);
 
-  const filtered = allSignals
+  return allSignals
     .filter((s) => s.score >= MIN_SCORE_THRESHOLD)
     .sort((x, y) => y.score - x.score)
     .slice(0, MAX_LOSSES);
+}
+
+export function handleWhatIsLosingMoney(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const filtered = computeLossSignals(engine, lang);
 
   if (filtered.length === 0) {
     return {

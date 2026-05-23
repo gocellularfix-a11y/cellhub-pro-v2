@@ -129,6 +129,10 @@ export type IntentId =
   | 'restock_opportunity'
   // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: operational money-leak detector
   | 'what_is_losing_money'
+  // R-INTELLIGENCE-WHY-DID-SALES-DROP: period-over-period drop diagnosis
+  | 'why_did_sales_drop'
+  // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization
+  | 'focus_today'
   | 'fallback_question'
   | 'unknown';
 
@@ -901,6 +905,63 @@ const PRODUCT_OPPORTUNITY_KEYWORDS = [
   'high margin', 'alto margen',
   'what products', 'qué productos', 'que productos',
   'product opportunity', 'oportunidad de producto',
+];
+
+// R-INTELLIGENCE-WHY-DID-SALES-DROP: period-over-period operational drop
+// diagnosis. Listed in the scores array BEFORE root_cause so anchored
+// "why DID sales drop" / "what changed this week" / "why are profits down"
+// phrases route to the comparative engine. Existing root_cause /
+// slow_day_root_cause / why_is_today_slow banks keep their phrasings.
+// R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization.
+// Listed in the scores array BEFORE who_needs_attention_today / recommended_
+// next_best_action / what_to_do_today / daily_revenue_missions so anchored
+// "focus today" / "prioridades de hoy" / "en qué debo enfocarme" phrases
+// route to the cross-engine aggregator instead of the single-engine handlers.
+const FOCUS_TODAY_KEYWORDS = [
+  // EN — explicit focus + today
+  'what should i focus on today', 'what should i focus on',
+  'today priorities', 'where should i focus',
+  'what matters most right now', 'what needs attention today',
+  'focus today', 'today focus', 'my priorities today',
+  'what should i prioritize today',
+  // ES
+  'prioridades de hoy',
+  'en qué debo enfocarme', 'en que debo enfocarme',
+  'en qué enfocarse hoy', 'en que enfocarse hoy',
+  'qué necesita atención hoy', 'que necesita atencion hoy',
+  'qué priorizar hoy', 'que priorizar hoy',
+  'mi enfoque de hoy',
+  // PT
+  'prioridades de hoje',
+  'em que devo focar hoje',
+  'no que devo focar hoje',
+  'meu foco de hoje',
+  'o que precisa de atenção hoje', 'o que precisa de atencao hoje',
+];
+
+const WHY_DID_SALES_DROP_KEYWORDS = [
+  // EN — anchored on past-tense drop / less / lower / worse / changed
+  'why did sales drop', 'why are we making less money',
+  'why is revenue lower', 'what changed this week',
+  'why are profits down', 'why are sales worse today',
+  'why are sales down', 'why is revenue down',
+  'why is profit down', 'why are profits lower',
+  'sales dropped', 'revenue dropped', 'profits dropped',
+  'what changed this month', 'what changed today',
+  // ES
+  'por qué bajaron las ventas', 'por que bajaron las ventas',
+  'por qué estoy ganando menos', 'por que estoy ganando menos',
+  'por qué cayeron las ventas', 'por que cayeron las ventas',
+  'por qué hay menos ventas', 'por que hay menos ventas',
+  'qué cambió esta semana', 'que cambio esta semana',
+  'qué cambió este mes', 'que cambio este mes',
+  'por qué hay menos dinero', 'por que hay menos dinero',
+  'por qué las ganancias bajaron', 'por que las ganancias bajaron',
+  // PT
+  'por que as vendas caíram', 'por que as vendas cairam',
+  'por que estou ganhando menos', 'por que o lucro caiu',
+  'o que mudou esta semana', 'o que mudou este mês', 'o que mudou este mes',
+  'por que tem menos vendas', 'por que tem menos dinheiro',
 ];
 
 const ROOT_CAUSE_KEYWORDS = [
@@ -1745,6 +1806,13 @@ export function classifyIntent(
     // higher on those specific banks). Bare "continue" wins when analytics
     // banks score 0.
     { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: listed BEFORE recommended_
+    // next_best_action / who_needs_attention_today so the cross-engine
+    // aggregator wins "focus today" / "prioridades de hoy" anchored phrases.
+    // Single-engine handlers still win their narrower phrases (e.g., "next
+    // best action", "who needs attention today" — both retain their banks
+    // and remain above attention_feed / customer_history).
+    { id: 'focus_today', score: scoreKeywords(query, FOCUS_TODAY_KEYWORDS) },
     // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
     // Listed BEFORE who_needs_attention_today / attention_feed / proactive_
     // operations / decision_recommendation so anchored "next move / siguiente
@@ -1867,6 +1935,11 @@ export function classifyIntent(
     // trend" / "tendencia de ventas" routes to the direction report, not the
     // revenue-decline root cause (which overlaps on 'sales decline').
     { id: 'trend_direction', score: scoreKeywords(query, TREND_DIRECTION_KEYWORDS) },
+    // R-INTELLIGENCE-WHY-DID-SALES-DROP: listed BEFORE root_cause so anchored
+    // "why DID sales drop" / "what changed this week" / "why are profits down"
+    // phrases route to the comparative engine. root_cause still owns the
+    // weekday / generic-decline phrasings.
+    { id: 'why_did_sales_drop', score: scoreKeywords(query, WHY_DID_SALES_DROP_KEYWORDS) },
     { id: 'root_cause', score: scoreKeywords(query, ROOT_CAUSE_KEYWORDS) },
     { id: 'slow_day_root_cause', score: scoreKeywords(query, SLOW_DAY_ROOT_CAUSE_KEYWORDS) },
     // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: listed BEFORE slow_day_diagnostic so

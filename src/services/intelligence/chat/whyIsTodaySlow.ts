@@ -525,7 +525,13 @@ const CONFIDENCE_BADGE: Record<DiagnosisConfidence, string> = {
  * one action recommendation, plus executable buttons. Empty state stays
  * calm and honest when no signal is strong enough.
  */
-export function handleWhyIsTodaySlow(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+/**
+ * R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: structured-signal export so the
+ * focus-today aggregator can consume the same diagnosis pipeline. Returns
+ * the filtered + sorted causes; empty array when the early-day or
+ * no-baseline guards trip (silent — caller decides what to render).
+ */
+export function computeTodaySlowCauses(engine: IntelligenceEngine, lang: Lang3): DiagnosisCause[] {
   const t = tChat(lang);
   const nowMs = Date.now();
   const hour = new Date(nowMs).getHours();
@@ -535,6 +541,47 @@ export function handleWhyIsTodaySlow(engine: IntelligenceEngine, lang: Lang3): C
   const repairs    = engine.getRepairs();
   const layaways   = engine.getLayaways();
   const inventory  = engine.getInventory();
+
+  const daily      = buildDailyMetrics(sales, repairs, nowMs);
+  const todayKey   = localDayKey(nowMs);
+  const today      = daily.get(todayKey) || emptyMetric();
+  const baseline   = computeBaseline(daily, todayKey);
+
+  if (earlyDay && today.transactions === 0) return [];
+  if (baseline.totalDaysSampled === 0) return [];
+
+  const allCauses: DiagnosisCause[] = [];
+  const trafficCause          = collectTrafficCause(today, baseline, t, earlyDay);
+  if (trafficCause)          allCauses.push(trafficCause);
+  const repairsPickupCause    = collectRepairsPickupCause(repairs, t, nowMs);
+  if (repairsPickupCause)    allCauses.push(repairsPickupCause);
+  const repairsIntakeCause    = collectRepairsIntakeCause(today, baseline, t);
+  if (repairsIntakeCause)    allCauses.push(repairsIntakeCause);
+  const phonePaymentCause     = collectPhonePaymentCause(today, baseline, t, nowMs);
+  if (phonePaymentCause)     allCauses.push(phonePaymentCause);
+  const inventoryCause        = collectInventoryCause(inventory, sales, t, nowMs);
+  if (inventoryCause)        allCauses.push(inventoryCause);
+  const accessoryCause        = collectAccessoryAttachCause(today, t);
+  if (accessoryCause)        allCauses.push(accessoryCause);
+  const layawayCause          = collectAbandonedLayawayCause(layaways, t, nowMs);
+  if (layawayCause)          allCauses.push(layawayCause);
+  const activityCause         = collectActivityGapCause(sales, t, nowMs);
+  if (activityCause)         allCauses.push(activityCause);
+
+  return allCauses
+    .filter((c) => c.score >= MIN_SCORE_THRESHOLD)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CAUSES);
+}
+
+export function handleWhyIsTodaySlow(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const nowMs = Date.now();
+  const hour = new Date(nowMs).getHours();
+  const earlyDay = hour < EARLY_DAY_HOUR_THRESHOLD;
+
+  const sales      = engine.getSales();
+  const repairs    = engine.getRepairs();
 
   const daily      = buildDailyMetrics(sales, repairs, nowMs);
   const todayKey   = localDayKey(nowMs);
@@ -556,29 +603,8 @@ export function handleWhyIsTodaySlow(engine: IntelligenceEngine, lang: Lang3): C
     };
   }
 
-  const allCauses: DiagnosisCause[] = [];
-  const trafficCause          = collectTrafficCause(today, baseline, t, earlyDay);
-  if (trafficCause)          allCauses.push(trafficCause);
-  const repairsPickupCause    = collectRepairsPickupCause(repairs, t, nowMs);
-  if (repairsPickupCause)    allCauses.push(repairsPickupCause);
-  const repairsIntakeCause    = collectRepairsIntakeCause(today, baseline, t);
-  if (repairsIntakeCause)    allCauses.push(repairsIntakeCause);
-  const phonePaymentCause     = collectPhonePaymentCause(today, baseline, t, nowMs);
-  if (phonePaymentCause)     allCauses.push(phonePaymentCause);
-  const inventoryCause        = collectInventoryCause(inventory, sales, t, nowMs);
-  if (inventoryCause)        allCauses.push(inventoryCause);
-  const accessoryCause        = collectAccessoryAttachCause(today, t);
-  if (accessoryCause)        allCauses.push(accessoryCause);
-  const layawayCause          = collectAbandonedLayawayCause(layaways, t, nowMs);
-  if (layawayCause)          allCauses.push(layawayCause);
-  const activityCause         = collectActivityGapCause(sales, t, nowMs);
-  if (activityCause)         allCauses.push(activityCause);
-
-  // Score, threshold, sort.
-  const filtered = allCauses
-    .filter((c) => c.score >= MIN_SCORE_THRESHOLD)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CAUSES);
+  // Reuse the structured-signal pipeline so we don't duplicate scoring.
+  const filtered = computeTodaySlowCauses(engine, lang);
 
   if (filtered.length === 0) {
     return {

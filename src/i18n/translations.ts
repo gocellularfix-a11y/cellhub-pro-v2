@@ -3927,6 +3927,132 @@ export const translations: TranslationDictionary = {
   'chat.whatIsLosing.action.openPos':           { en: 'Open POS',                  es: 'Abrir POS',                pt: 'Abrir POS' },
   'chat.whatIsLosing.action.openInventory':    { en: 'Open inventory',            es: 'Abrir inventario',         pt: 'Abrir estoque' },
   'chat.whatIsLosing.action.openCredits':       { en: 'Review credits',            es: 'Revisar créditos',         pt: 'Revisar créditos' },
+  // R-INTELLIGENCE-WHY-DID-SALES-DROP
+  'chat.whyDidSalesDrop.header':       { en: '📉 Why sales dropped',             es: '📉 Por qué bajaron las ventas',          pt: '📉 Por que as vendas caíram' },
+  'chat.whyDidSalesDrop.noBaseline':   { en: 'Not enough prior-period sales to compare against. Try again after another week of activity.', es: 'No hay suficientes ventas del período anterior para comparar. Intenta de nuevo después de otra semana de actividad.', pt: 'Sem vendas suficientes do período anterior para comparar. Tente novamente após mais uma semana de atividade.' },
+  'chat.whyDidSalesDrop.lowConfidence': { en: 'No clear operational reason detected. Revenue is down but no single signal stands out.', es: 'No se detectó una causa operativa clara. Las ventas bajaron pero ningún signo se destaca.', pt: 'Nenhuma causa operacional clara detectada. As vendas caíram mas nenhum sinal se destaca.' },
+  'chat.whyDidSalesDrop.notDown': {
+    en: (cur: string, base: string) => `Revenue is not down vs baseline (${cur} vs ${base}). No drop to explain.`,
+    es: (cur: string, base: string) => `Los ingresos no bajaron vs la base (${cur} vs ${base}). No hay caída que explicar.`,
+    pt: (cur: string, base: string) => `A receita não caiu vs base (${cur} vs ${base}). Sem queda para explicar.`,
+  },
+  'chat.whyDidSalesDrop.comparisonLine': {
+    en: (cur: string, base: string, pct: number) => `Last 7d: ${cur} vs prior 7d: ${base} — down ${pct}%`,
+    es: (cur: string, base: string, pct: number) => `Últimos 7d: ${cur} vs anteriores 7d: ${base} — bajó ${pct}%`,
+    pt: (cur: string, base: string, pct: number) => `Últimos 7d: ${cur} vs anteriores 7d: ${base} — caiu ${pct}%`,
+  },
+  'chat.whyDidSalesDrop.impactLabel': {
+    en: (amount: string) => `Estimated missed revenue: ${amount}`,
+    es: (amount: string) => `Ingresos perdidos estimados: ${amount}`,
+    pt: (amount: string) => `Receita perdida estimada: ${amount}`,
+  },
+  // overall
+  'chat.whyDidSalesDrop.headline.overall':       { en: 'Overall revenue is down',          es: 'Los ingresos generales bajaron',          pt: 'A receita geral caiu' },
+  'chat.whyDidSalesDrop.evidence.overall': {
+    en: (cur: string, base: string, pct: number) => `${cur} this period vs ${base} prior — ${pct}% drop`,
+    es: (cur: string, base: string, pct: number) => `${cur} este período vs ${base} anterior — ${pct}% de caída`,
+    pt: (cur: string, base: string, pct: number) => `${cur} neste período vs ${base} anterior — queda de ${pct}%`,
+  },
+  'chat.whyDidSalesDrop.action.overall':         { en: 'Review per-category breakdown in Reports.', es: 'Revisa el desglose por categoría en Reportes.', pt: 'Revise o detalhamento por categoria em Relatórios.' },
+  // category
+  'chat.whyDidSalesDrop.headline.category': {
+    en: (name: string) => `${name} revenue is down`,
+    es: (name: string) => `Los ingresos de ${name} bajaron`,
+    pt: (name: string) => `A receita de ${name} caiu`,
+  },
+  'chat.whyDidSalesDrop.evidence.category': {
+    en: (name: string, pct: number) => `${name} dropped ${pct}% vs prior 7 days`,
+    es: (name: string, pct: number) => `${name} bajó ${pct}% vs los 7 días anteriores`,
+    pt: (name: string, pct: number) => `${name} caiu ${pct}% vs os 7 dias anteriores`,
+  },
+  'chat.whyDidSalesDrop.action.category': {
+    en: (name: string) => `Focus today's effort on ${name} — promotions, outreach, or staffing.`,
+    es: (name: string) => `Enfoca el esfuerzo de hoy en ${name} — promociones, outreach o personal.`,
+    pt: (name: string) => `Foque o esforço de hoje em ${name} — promoções, outreach ou equipe.`,
+  },
+  // customers
+  'chat.whyDidSalesDrop.headline.customers':     { en: 'Top customers stopped coming',      es: 'Los mejores clientes dejaron de venir',    pt: 'Os melhores clientes pararam de vir' },
+  'chat.whyDidSalesDrop.evidence.customers': {
+    en: (missing: number, totalTop: number) => `${missing} of last week's top ${totalTop} customers made no purchases this period`,
+    es: (missing: number, totalTop: number) => `${missing} de los ${totalTop} mejores clientes de la semana pasada no compraron este período`,
+    pt: (missing: number, totalTop: number) => `${missing} dos ${totalTop} melhores clientes da semana passada não compraram neste período`,
+  },
+  'chat.whyDidSalesDrop.action.customers':       { en: 'Reach out with personal WhatsApp follow-ups.', es: 'Contacta con seguimientos personales por WhatsApp.', pt: 'Contate com follow-ups pessoais por WhatsApp.' },
+  // attachment
+  'chat.whyDidSalesDrop.headline.attachment':    { en: 'Accessory attachment dropped',     es: 'El adjunto de accesorios cayó',           pt: 'O anexo de acessórios caiu' },
+  'chat.whyDidSalesDrop.evidence.attachment': {
+    en: (basePct: number, curPct: number) => `Attach rate fell from ${basePct}% → ${curPct}%`,
+    es: (basePct: number, curPct: number) => `La tasa de adjunto cayó de ${basePct}% → ${curPct}%`,
+    pt: (basePct: number, curPct: number) => `A taxa de anexo caiu de ${basePct}% → ${curPct}%`,
+  },
+  'chat.whyDidSalesDrop.action.attachment':      { en: 'Remind staff to bundle accessories during activations.', es: 'Recuerda al equipo ofrecer accesorios durante las activaciones.', pt: 'Lembre a equipe de oferecer acessórios durante as ativações.' },
+  // activations
+  'chat.whyDidSalesDrop.headline.activations':   { en: 'Phone payments / activations dropped', es: 'Pagos de teléfono / activaciones cayeron', pt: 'Pagamentos de telefone / ativações caíram' },
+  'chat.whyDidSalesDrop.evidence.activations': {
+    en: (cur: number, base: number, pct: number) => `${cur} this period vs ${base} prior — ${pct}% drop`,
+    es: (cur: number, base: number, pct: number) => `${cur} este período vs ${base} anterior — ${pct}% de caída`,
+    pt: (cur: number, base: number, pct: number) => `${cur} neste período vs ${base} anterior — queda de ${pct}%`,
+  },
+  'chat.whyDidSalesDrop.action.activations':     { en: 'Remind regular bill-pay customers their carrier bill is due.', es: 'Recuerda a los clientes regulares que su factura vence.', pt: 'Lembre os clientes regulares de que a fatura está vencendo.' },
+  // repairs
+  'chat.whyDidSalesDrop.headline.repairs':       { en: 'Repair intake slowed down',        es: 'La entrada de reparaciones se desaceleró',  pt: 'A entrada de reparos desacelerou' },
+  'chat.whyDidSalesDrop.evidence.repairs': {
+    en: (cur: number, base: number, pct: number) => `${cur} new repairs this period vs ${base} prior — ${pct}% drop`,
+    es: (cur: number, base: number, pct: number) => `${cur} reparaciones nuevas este período vs ${base} anterior — ${pct}% de caída`,
+    pt: (cur: number, base: number, pct: number) => `${cur} reparos novos neste período vs ${base} anterior — queda de ${pct}%`,
+  },
+  'chat.whyDidSalesDrop.action.repairs':         { en: 'Promote repair specials today (screen + battery).', es: 'Promueve especiales de reparación hoy (pantalla + batería).', pt: 'Promova ofertas de reparo hoje (tela + bateria).' },
+  // employee
+  'chat.whyDidSalesDrop.headline.employee': {
+    en: (name: string) => `${name}'s revenue is down`,
+    es: (name: string) => `Los ingresos de ${name} bajaron`,
+    pt: (name: string) => `A receita de ${name} caiu`,
+  },
+  'chat.whyDidSalesDrop.evidence.employee': {
+    en: (name: string, pct: number) => `${name} brought in ${pct}% less revenue vs prior 7 days`,
+    es: (name: string, pct: number) => `${name} generó ${pct}% menos ingresos vs los 7 días anteriores`,
+    pt: (name: string, pct: number) => `${name} trouxe ${pct}% menos receita vs os 7 dias anteriores`,
+  },
+  'chat.whyDidSalesDrop.action.employee':        { en: 'Check schedule + coach on missed upsell opportunities.', es: 'Revisa el horario + entrena en oportunidades de venta perdidas.', pt: 'Revise a escala + treine em oportunidades de venda perdidas.' },
+  // product movement
+  'chat.whyDidSalesDrop.headline.product':       { en: 'Top movers stopped moving',         es: 'Los productos más vendidos dejaron de moverse', pt: 'Os produtos mais vendidos pararam de se mover' },
+  'chat.whyDidSalesDrop.evidence.product': {
+    en: (n: number, names: string, units: number) => `${n} item${n === 1 ? '' : 's'} that sold ${units} unit${units === 1 ? '' : 's'} last week: ${names}`,
+    es: (n: number, names: string, units: number) => `${n} artículo${n === 1 ? '' : 's'} que vendieron ${units} unidad${units === 1 ? '' : 'es'} la semana pasada: ${names}`,
+    pt: (n: number, names: string, units: number) => `${n} item${n === 1 ? '' : 's'} que vendeu ${units} unidade${units === 1 ? '' : 's'} na semana passada: ${names}`,
+  },
+  'chat.whyDidSalesDrop.action.product':         { en: 'Check stock + reorder the top movers — they may be out of stock.', es: 'Revisa stock + reordena los más vendidos — pueden estar agotados.', pt: 'Verifique estoque + reabasteça os mais vendidos — podem estar esgotados.' },
+  // Action button labels
+  'chat.whyDidSalesDrop.action.openReports':     { en: 'Open Reports',              es: 'Abrir Reportes',           pt: 'Abrir Relatórios' },
+  'chat.whyDidSalesDrop.action.openCustomers':   { en: 'Open customers',            es: 'Abrir clientes',           pt: 'Abrir clientes' },
+  'chat.whyDidSalesDrop.action.runOutreach':     { en: 'Run outreach',              es: 'Lanzar outreach',          pt: 'Fazer outreach' },
+  'chat.whyDidSalesDrop.action.openAccessories': { en: 'Open accessories',          es: 'Abrir accesorios',         pt: 'Abrir acessórios' },
+  'chat.whyDidSalesDrop.action.openPos':         { en: 'Open POS',                  es: 'Abrir POS',                pt: 'Abrir POS' },
+  'chat.whyDidSalesDrop.action.openRepairs':     { en: 'Open repairs',              es: 'Abrir reparaciones',       pt: 'Abrir reparos' },
+  'chat.whyDidSalesDrop.action.openEmployees':   { en: 'Open employees',            es: 'Abrir empleados',          pt: 'Abrir funcionários' },
+  'chat.whyDidSalesDrop.action.openInventory':   { en: 'Open inventory',            es: 'Abrir inventario',         pt: 'Abrir estoque' },
+  // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY
+  'chat.focusToday.header':       { en: '🔥 Focus today',                    es: '🔥 Enfoque de hoy',                pt: '🔥 Foco de hoje' },
+  'chat.focusToday.allClear':     { en: 'No major operational issues detected right now. Keep selling.', es: 'No hay problemas operativos importantes ahorita. Sigue vendiendo.', pt: 'Sem problemas operacionais importantes agora. Continue vendendo.' },
+  'chat.focusToday.impactLabel': {
+    en: (amount: string) => `Estimated impact: ${amount}`,
+    es: (amount: string) => `Impacto estimado: ${amount}`,
+    pt: (amount: string) => `Impacto estimado: ${amount}`,
+  },
+  // Shift labels
+  'chat.focusToday.shift.morning':   { en: 'Morning shift — prioritize outreach + restock prep.', es: 'Turno de mañana — prioriza outreach + reabastecimiento.', pt: 'Turno da manhã — priorize outreach + reposição.' },
+  'chat.focusToday.shift.afternoon': { en: 'Afternoon — focus on attach rate + sales-floor coaching.', es: 'Tarde — enfócate en accesorios + coaching en piso.', pt: 'Tarde — foque em anexos + coaching de loja.' },
+  'chat.focusToday.shift.evening':   { en: 'Evening — close out pickups + confirm carrier payments.', es: 'Noche — cierra recogidas + confirma pagos de portal.', pt: 'Noite — feche retiradas + confirme pagamentos do portal.' },
+  'chat.focusToday.shift.late':      { en: 'Late hours — handle any unresolved carrier payments before close.', es: 'Hora tardía — resuelve pagos de portal pendientes antes de cerrar.', pt: 'Hora tardia — resolva pagamentos pendentes antes de fechar.' },
+  // Action button labels
+  'chat.focusToday.action.openRepairs':     { en: 'Open repairs',          es: 'Abrir reparaciones',      pt: 'Abrir reparos' },
+  'chat.focusToday.action.openCustomers':   { en: 'Open customers',        es: 'Abrir clientes',          pt: 'Abrir clientes' },
+  'chat.focusToday.action.openInventory':   { en: 'Open inventory',        es: 'Abrir inventario',        pt: 'Abrir estoque' },
+  'chat.focusToday.action.openAccessories': { en: 'Open accessories',      es: 'Abrir accesorios',        pt: 'Abrir acessórios' },
+  'chat.focusToday.action.openLayaways':    { en: 'Open layaways',         es: 'Abrir apartados',         pt: 'Abrir layaways' },
+  'chat.focusToday.action.openPos':         { en: 'Open POS',              es: 'Abrir POS',               pt: 'Abrir POS' },
+  'chat.focusToday.action.openReports':     { en: 'Open Reports',          es: 'Abrir Reportes',          pt: 'Abrir Relatórios' },
+  'chat.focusToday.action.restockGeneric':  { en: 'Reorder this item.',    es: 'Reordena este artículo.', pt: 'Faça pedido deste item.' },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

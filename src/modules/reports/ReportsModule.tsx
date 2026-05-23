@@ -16,9 +16,6 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-// R-SPECIAL-ORDERS-TAX-SEPARATED-REPORTING-FIX: reverse-tax helper to split
-// a tax-inclusive cart-line price into base + tax for reporting only.
-import { reverseTaxFromPayment } from '@/utils/depositTax';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { SearchInput, Modal, useToast } from '@/components/ui';
@@ -1082,11 +1079,37 @@ export default function ReportsModule() {
         let revenueCents = lineRevenueCents(item);
         const qty = item.qty || (item as any).quantity || 1;
 
+        // R-SPECIAL-ORDERS-REPORT-PROFIT-FIX: hoisted classification + SO
+        // override above the Top Selling Items aggregation so the item row
+        // also reflects the SO's locked base price (not the tax-inclusive
+        // deposit). For SO-linked sale items we use the linked SpecialOrder
+        // record's `price` and `cost` as the source of truth — the cart
+        // line price can be inflated by tax or be a partial deposit, neither
+        // of which represents the SO's revenue/profit math correctly.
+        // Tax excess between the cart line and the SO's locked price is
+        // routed to the existing productSalesTax bucket so it lands in
+        // "Sales Tax / Total Taxes & Fees".
+        const kind = classifyItem(item);
+        let soOverrideCostCents: number | null = null;
+        if (kind === 'special_order' && item.specialOrderId) {
+          const linkedSO = ordersById.get(item.specialOrderId);
+          if (linkedSO && (linkedSO.price || 0) > 0) {
+            const soPrice = linkedSO.price;
+            const soCost  = linkedSO.cost || 0;
+            // Any excess above SO.price on this line is tax embedded in
+            // the cart line — extract it to the canonical bucket.
+            if (revenueCents > soPrice) {
+              productSalesTaxCents += (revenueCents - soPrice);
+            }
+            revenueCents = soPrice;
+            soOverrideCostCents = soCost;
+          }
+        }
+
         if (!itemStats[item.name]) itemStats[item.name] = { quantity: 0, revenueCents: 0 };
         itemStats[item.name].quantity += qty;
         itemStats[item.name].revenueCents += revenueCents;
 
-        const kind = classifyItem(item);
         let catName = 'Other';
         let costCents = 0;
         let profitCents = 0;
@@ -1189,30 +1212,14 @@ export default function ReportsModule() {
           profitCents = revenueCents - costCents;
         } else if (kind === 'special_order') {
           catName = 'Special Orders';
-          // R-SPECIAL-ORDERS-TAX-SEPARATED-REPORTING-FIX:
-          // When the SO deposit/balance cart line was added with
-          // `taxable: false` but the underlying SpecialOrder entity is
-          // marked taxable, the line's `price` is a tax-INCLUSIVE total
-          // and sale.salesTax is $0 for it. That inflates the SO category
-          // revenue (and profit) by the tax portion. Reverse-calc the
-          // base + tax using the canonical helper, then route the
-          // extracted tax to the existing productSalesTax bucket so it
-          // lands in "Sales Tax / Total Taxes & Fees".
-          //
-          // Conservative trigger: only kicks in when BOTH (a) the cart
-          // line is non-taxable (so its tax wasn't already split into
-          // sale.salesTax) AND (b) the linked SpecialOrder record was
-          // marked taxable. If the SO record has no taxable field, we
-          // do NOT fabricate tax — revenue stays as-is.
-          const linkedSO = item.specialOrderId ? ordersById.get(item.specialOrderId) : undefined;
-          const linkedSoTaxable = !!(linkedSO as unknown as { taxable?: boolean } | undefined)?.taxable;
-          if (!item.taxable && linkedSoTaxable && revenueCents > 0) {
-            const rate = settings.taxRate ?? 0.0925;
-            const split = reverseTaxFromPayment(revenueCents, rate, true);
-            revenueCents = split.baseCents;
-            productSalesTaxCents += split.taxCents;
-          }
-          costCents = (item.cost || 0) * qty;
+          // R-SPECIAL-ORDERS-REPORT-PROFIT-FIX: revenue already overridden
+          // to linkedSO.price by the hoisted block above (and any tax
+          // excess routed to productSalesTax). Cost comes from the linked
+          // SO's locked `cost` field; falls back to the cart line's
+          // stamped cost only when no SO record exists.
+          costCents = soOverrideCostCents !== null
+            ? soOverrideCostCents
+            : (item.cost || 0) * qty;
           profitCents = revenueCents - costCents;
         } else if (kind === 'cc_fee') {
           catName = 'CC Fees';

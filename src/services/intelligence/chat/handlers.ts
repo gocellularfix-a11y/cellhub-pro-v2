@@ -122,6 +122,10 @@ import { handleWhyIsTodaySlow } from './whyIsTodaySlow';
 import { handleRestockOpportunity } from './restockOpportunity';
 // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic money-leak detector.
 import { handleWhatIsLosingMoney } from './whatIsLosingMoney';
+// R-INTELLIGENCE-WHY-DID-SALES-DROP: period-over-period drop diagnosis.
+import { handleWhyDidSalesDrop } from './whyDidSalesDrop';
+// R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization.
+import { handleFocusToday } from './focusToday';
 // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY: deterministic behavioral context.
 import { buildCustomerTimeline, formatTimelineContext, formatTimelineTagLabel } from '../customerTimeline/customerTimelineEngine';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
@@ -493,6 +497,14 @@ export function handleIntent(
     // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic money-leak detector.
     case 'what_is_losing_money':
       return handleWhatIsLosingMoney(engine, lang);
+
+    // R-INTELLIGENCE-WHY-DID-SALES-DROP: period-over-period drop diagnosis.
+    case 'why_did_sales_drop':
+      return handleWhyDidSalesDrop(engine, lang);
+
+    // R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: cross-engine prioritization.
+    case 'focus_today':
+      return handleFocusToday(engine, lang);
 
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':

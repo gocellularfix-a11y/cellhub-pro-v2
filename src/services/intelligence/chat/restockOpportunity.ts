@@ -197,18 +197,21 @@ function actionsForItem(rec: RestockRecommendation, t: ReturnType<typeof tChat>)
  * with >60 days of cover are excluded — no over-recommendation. Output
  * is sorted by priority score; tie-break by entity id (lexical).
  */
-export function handleRestockOpportunity(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+/**
+ * R-INTELLIGENCE-WHAT-SHOULD-I-FOCUS-ON-TODAY: structured-signal export so the
+ * focus-today aggregator can consume restock candidates without rebuilding
+ * the index. Returns up to MAX_RECS already-ranked recommendations. Reason
+ * and recommendedAction strings are pre-rendered for downstream display.
+ */
+export function computeRestockRecommendations(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): RestockRecommendation[] {
   const t = tChat(lang);
   const nowMs = Date.now();
   const inventory = engine.getInventory() || [];
   const sales = engine.getSales() || [];
-
-  if (inventory.length === 0) {
-    return {
-      kind: 'answer',
-      text: `**${t('chat.restock.header')}**\n\n${t('chat.restock.emptyInventory')}`,
-    };
-  }
+  if (inventory.length === 0) return [];
 
   const idx = buildSalesIndex(sales, nowMs);
 
@@ -251,21 +254,56 @@ export function handleRestockOpportunity(engine: IntelligenceEngine, lang: Lang3
       recommendedAction: '',
     });
   }
+  if (recs.length === 0) return [];
 
-  if (recs.length === 0) {
+  recs.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const top = recs.slice(0, MAX_RECS);
+
+  for (const r of top) {
+    r.reason = r.qty === 0
+      ? t('chat.restock.reason.outOfStock', r.recentSales14d, VELOCITY_WINDOW_DAYS)
+      : r.daysOfCover !== null && r.daysOfCover <= DAYS_OF_COVER_CRITICAL
+      ? t('chat.restock.reason.critical', r.qty, r.recentSales14d, VELOCITY_WINDOW_DAYS, r.daysOfCover)
+      : r.minQty !== null && r.qty <= r.minQty
+      ? t('chat.restock.reason.belowMin', r.qty, r.minQty, r.recentSales14d, VELOCITY_WINDOW_DAYS)
+      : t('chat.restock.reason.lowCover', r.qty, r.recentSales14d, VELOCITY_WINDOW_DAYS);
+    r.recommendedAction = r.qty === 0
+      ? t('chat.restock.action.reorderNow')
+      : r.daysOfCover !== null && r.daysOfCover <= DAYS_OF_COVER_CRITICAL
+      ? t('chat.restock.action.reorderSoon')
+      : t('chat.restock.action.replenish');
+  }
+
+  return top;
+}
+
+export function handleRestockOpportunity(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+  const t = tChat(lang);
+  const inventory = engine.getInventory() || [];
+
+  if (inventory.length === 0) {
+    return {
+      kind: 'answer',
+      text: `**${t('chat.restock.header')}**\n\n${t('chat.restock.emptyInventory')}`,
+    };
+  }
+
+  const top = computeRestockRecommendations(engine, lang);
+
+  if (top.length === 0) {
     return {
       kind: 'answer',
       text: `**${t('chat.restock.header')}**\n\n${t('chat.restock.noOpportunity')}`,
     };
   }
 
-  recs.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-
-  const top = recs.slice(0, MAX_RECS);
-
+  // After-compute placeholder loop so this branch keeps the same surface as
+  // before — `top` is now already pre-filled with reason/recommendedAction
+  // by computeRestockRecommendations. No-op for backward compat readers
+  // that grep this site.
   for (const r of top) {
     r.reason = r.qty === 0
       ? t('chat.restock.reason.outOfStock', r.recentSales14d, VELOCITY_WINDOW_DAYS)
