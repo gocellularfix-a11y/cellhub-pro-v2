@@ -930,15 +930,21 @@ const DAILY_OPERATOR_BRIEF_V3_KEYWORDS = [
   'daily brief', 'brief me', 'store status', 'operator brief',
   'how are we today', 'how are we doing today',
   'morning brief', 'morning briefing',
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-TRIGGER-EXPANSION-V1
+  'what is the status today',
   // ES
   'resumen de hoy', 'resumen diario',
   'qué está pasando hoy', 'que esta pasando hoy',
   'estado de la tienda', 'cómo va la tienda', 'como va la tienda',
   'cómo estamos hoy', 'como estamos hoy',
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-TRIGGER-EXPANSION-V1
+  'reporte operativo', 'cómo vamos hoy', 'como vamos hoy',
   // PT
   'resumo de hoje', 'resumo do dia',
   'o que está acontecendo hoje', 'o que esta acontecendo hoje',
   'status da loja', 'como está a loja', 'como esta a loja',
+  // R-INTELLIGENCE-DAILY-OPERATOR-BRIEF-TRIGGER-EXPANSION-V1
+  'briefing operacional', 'como estamos hoje', 'estado da loja',
 ];
 
 const FOCUS_TODAY_KEYWORDS = [
