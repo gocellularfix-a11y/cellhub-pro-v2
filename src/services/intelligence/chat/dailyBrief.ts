@@ -384,6 +384,17 @@ export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lan
     ctxValue = top.domain === 'repair' ? top.entityId : (top.customerId || top.entityId);
     if (ctxValue) topEntityRef = { type: ctxType, value: ctxValue };
   }
+
+  // R-INTELLIGENCE-ALERT-CONTINUITY-CONTEXT: alert-first context selection.
+  // When the urgent strip surfaces an alert with a concrete entityRef, that
+  // entity becomes the operational context so follow-ups ("open first one",
+  // "contact them", "show evidence", "what next") land on the most-
+  // emphasized item. Aggregate alerts (no entityRef) fall through to the
+  // existing top attention-item entityRef. Workflow chaining keeps its
+  // domain-based routing — only context selection shifts.
+  const alertEntityRef = urgentAlerts[0]?.entityRef;
+  const contextEntityRef: { type: 'product' | 'customer' | 'repair'; value: string } | undefined =
+    alertEntityRef ?? topEntityRef;
   let workflowText = '';
   let workflowActions: ChatActionUI[] = [];
   if (top) {
@@ -408,7 +419,7 @@ export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lan
     kind: 'answer',
     text: lines.join('\n') + workflowText,
     ...(actions.length > 0 ? { actions: actions.slice(0, 8) } : {}),
-    ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
+    ...(contextEntityRef ? { establishesContext: { type: contextEntityRef.type, value: contextEntityRef.value } } : {}),
   };
 }
 

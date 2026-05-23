@@ -536,6 +536,15 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   // establishesContext rather than fabricate one.
   const topEntityRef = filtered[0]?.entityRef;
 
+  // R-INTELLIGENCE-ALERT-CONTINUITY-CONTEXT: alert-first context selection.
+  // When the response includes an urgent alert with a concrete entityRef,
+  // follow-ups should land on THAT entity (it's the most emphasized item in
+  // the response). Aggregate alerts without entityRef fall through to the
+  // top priority's entityRef. Never fabricate. Workflow chaining intentionally
+  // stays on the priority domain — only operational context shifts.
+  const alertEntityRef = urgentAlerts[0]?.entityRef;
+  const contextEntityRef = alertEntityRef ?? topEntityRef;
+
   // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append deterministic next-step
   // guidance based on the TOP priority's domain. Renders a "Suggested next
   // steps" section + executable buttons. Empty when the domain has no rules.
@@ -561,6 +570,6 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
     ...(rawActions.length + workflowActions.length > 0
       ? { actions: [...rawActions, ...workflowActions].slice(0, 10) }
       : {}),
-    ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
+    ...(contextEntityRef ? { establishesContext: { type: contextEntityRef.type, value: contextEntityRef.value } } : {}),
   };
 }
