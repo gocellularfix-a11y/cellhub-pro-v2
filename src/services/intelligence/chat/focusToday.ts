@@ -79,6 +79,18 @@ export type FocusDomain =
 
 export type FocusUrgency = 'critical' | 'high' | 'medium' | 'low';
 
+/**
+ * R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: optional entity link.
+ * Carried forward from the underlying source signal. The handler uses the
+ * TOP priority's entityRef (when present) to set establishesContext so
+ * follow-ups like "open first one" / "contact him" / "show evidence"
+ * route through the existing operational-context pipeline.
+ */
+export interface FocusEntityRef {
+  type: 'customer' | 'repair' | 'product';
+  value: string;
+}
+
 export interface FocusPriority {
   id: string;
   domain: FocusDomain;
@@ -93,6 +105,8 @@ export interface FocusPriority {
   /** Final score after time-of-day boost. */
   score: number;
   actions: ChatActionUI[];
+  /** R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY */
+  entityRef?: FocusEntityRef;
 }
 
 // ── Time-of-day weights ───────────────────────────────────
@@ -202,6 +216,22 @@ function severityToUrgency(s: 'critical' | 'high' | 'medium' | 'low'): FocusUrge
 // ── Source adapters: turn each engine's signal into FocusPriority ──
 
 function fromAttentionItem(a: AttentionItem, lang: Lang3): FocusPriority {
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: derive entityRef from the
+  // attention item's domain. Conservative — only sets entityRef when the
+  // mapping to an OperationalContext type is unambiguous.
+  let entityRef: FocusEntityRef | undefined;
+  if (a.domain === 'repair' && a.entityId) {
+    entityRef = { type: 'repair', value: a.entityId };
+  } else if (a.domain === 'customer_churn') {
+    const v = a.customerId || a.entityId;
+    if (v) entityRef = { type: 'customer', value: v };
+  } else if (a.domain === 'store_credit' && a.customerId) {
+    entityRef = { type: 'customer', value: a.customerId };
+  } else if ((a.domain === 'layaway' || a.domain === 'special_order') && a.customerId) {
+    // Layaway / SO don't have their own OperationalContext type — map to
+    // the linked customer when known so "contact them" still works.
+    entityRef = { type: 'customer', value: a.customerId };
+  }
   return {
     id: `focus-att-${a.id}`,
     domain: attentionDomainToFocus(a.domain),
@@ -213,10 +243,17 @@ function fromAttentionItem(a: AttentionItem, lang: Lang3): FocusPriority {
     baseScore: a.priorityScore,
     score: a.priorityScore,
     actions: actionsForAttentionItem(a, lang),
+    ...(entityRef ? { entityRef } : {}),
   };
 }
 
 function fromLossSignal(l: LossSignal, t: ReturnType<typeof tChat>): FocusPriority {
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: LossSignal already carries
+  // entityRef when the underlying signal points to one concrete entity
+  // (e.g., low_margin_items → product). Pass it through.
+  const entityRef: FocusEntityRef | undefined = l.entityRef
+    ? { type: l.entityRef.type, value: l.entityRef.value }
+    : undefined;
   return {
     id: `focus-loss-${l.id}`,
     domain: lossDomainToFocus(l.category),
@@ -233,6 +270,7 @@ function fromLossSignal(l: LossSignal, t: ReturnType<typeof tChat>): FocusPriori
     score: l.score,
     // Loss signals already carry their own action buttons.
     actions: l.actions.length > 0 ? l.actions : actionsForLossDomain(l, t),
+    ...(entityRef ? { entityRef } : {}),
   };
 }
 
@@ -257,6 +295,9 @@ function fromRestockRec(r: RestockRecommendation, t: ReturnType<typeof tChat>): 
         payload: { type: 'operator_action', executable: true, executionTarget: 'open_inventory', entityId: r.id, productName: r.name },
       },
     ],
+    // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: restock items are
+    // inventory entities — clear single-product link.
+    entityRef: { type: 'product', value: r.id },
   };
 }
 
@@ -280,6 +321,13 @@ function fromSlowCause(c: DiagnosisCause, t: ReturnType<typeof tChat>): FocusPri
 }
 
 function fromDropSignal(d: DropSignal, t: ReturnType<typeof tChat>): FocusPriority {
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: pass through entityRef
+  // when the underlying drop collector pinned a single entity
+  // (customer_disappearance → top absent customer, product_movement_decline
+  // → worst missing mover). All other drop categories leave it undefined.
+  const entityRef: FocusEntityRef | undefined = d.entityRef
+    ? { type: d.entityRef.type, value: d.entityRef.value }
+    : undefined;
   return {
     id: `focus-drop-${d.id}`,
     domain: dropDomainToFocus(d.category),
@@ -296,6 +344,7 @@ function fromDropSignal(d: DropSignal, t: ReturnType<typeof tChat>): FocusPriori
       label: t('chat.focusToday.action.openReports'),
       payload: { type: 'review', executable: true, executionTarget: 'queue_manager_review' },
     }],
+    ...(entityRef ? { entityRef } : {}),
   };
 }
 
@@ -442,12 +491,19 @@ export function handleFocusToday(engine: IntelligenceEngine, lang: Lang3): ChatR
   const rawActions: ChatActionUI[] = [];
   for (const p of filtered) for (const a of p.actions) rawActions.push(a);
 
-  // Set context to the first priority's entity if it has a customer/repair link.
-  // Falls through silently when no link — the existing FOLLOWUP_PHRASES still
-  // route "open the first one" / "what next" via the active context layer.
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: the TOP priority's
+  // entityRef (when present) becomes the active operational context so
+  // follow-ups like "open first one" / "contact him" / "show evidence"
+  // route through the existing pronoun-rewrite + entity_operational_command
+  // pipelines. Aggregate priorities (overall drop, attach rate, dead stock
+  // as a whole, etc.) leave entityRef undefined — we return no
+  // establishesContext rather than fabricate one.
+  const topEntityRef = filtered[0]?.entityRef;
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
     ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 8) } : {}),
+    ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }

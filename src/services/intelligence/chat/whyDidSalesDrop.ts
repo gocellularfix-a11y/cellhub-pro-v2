@@ -29,6 +29,18 @@ export type DropSignalCategory =
 
 export type DropSeverity = 'critical' | 'high' | 'medium' | 'low';
 
+/**
+ * R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: optional entity link.
+ * Populated ONLY for signals that point to a single concrete entity
+ * (e.g., top-revenue absent customer, worst missing-mover inventory item).
+ * Aggregate signals (overall_revenue, category, attachment, etc.) leave
+ * this undefined so follow-ups never open a fabricated entity.
+ */
+export interface DropEntityRef {
+  type: 'product' | 'customer';
+  value: string;
+}
+
 export interface DropSignal {
   id: string;
   category: DropSignalCategory;
@@ -40,6 +52,8 @@ export interface DropSignal {
   confidence: 'high' | 'medium' | 'low';
   score: number;
   actions: ChatActionUI[];
+  /** R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY */
+  entityRef?: DropEntityRef;
 }
 
 // ── Tunable constants (deterministic) ─────────────────────
@@ -272,10 +286,15 @@ function collectCustomerDisappearance(current: PeriodMetrics, baseline: PeriodMe
   if (top.length === 0) return null;
   let missingCount = 0;
   let missingRevenue = 0;
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: track the highest-revenue
+  // absentee so the handler can stamp them as the active context. The list
+  // is already sorted by revenue desc, so the first missing entry wins.
+  let topMissingCustomerId: string | undefined;
   for (const [custId, rev] of top) {
     if (!current.revenueByCustomer.has(custId)) {
       missingCount++;
       missingRevenue += rev;
+      if (topMissingCustomerId === undefined) topMissingCustomerId = custId;
     }
   }
   if (missingCount < CUSTOMER_DISAPPEARANCE_MIN) return null;
@@ -290,6 +309,7 @@ function collectCustomerDisappearance(current: PeriodMetrics, baseline: PeriodMe
     confidence: missingCount >= 3 ? 'high' : 'medium',
     score: 40 + missingCount * 8 + Math.min(60, Math.floor(missingRevenue / 1000)),
     actions: [],
+    ...(topMissingCustomerId ? { entityRef: { type: 'customer' as const, value: topMissingCustomerId } } : {}),
   };
 }
 
@@ -423,6 +443,9 @@ function collectProductMovementDecline(current: PeriodMetrics, baseline: PeriodM
     confidence: 'medium',
     score: 30 + Math.min(50, totalLostUnits * 3) + Math.min(40, Math.floor(estImpact / 1000)),
     actions: [],
+    // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: shown[] is sorted by
+    // baseline impact desc; the top item is the highest-stake missing mover.
+    entityRef: { type: 'product', value: shown[0].id },
   };
 }
 
@@ -622,9 +645,17 @@ export function handleWhyDidSalesDrop(engine: IntelligenceEngine, lang: Lang3): 
   const rawActions: ChatActionUI[] = [];
   for (const s of filtered) for (const a of s.actions) rawActions.push(a);
 
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: top signal's entity link
+  // (when present) becomes the active operational context. Only the
+  // customer-disappearance and product-movement-decline collectors populate
+  // entityRef — aggregate signals (overall, category, attachment, etc.)
+  // leave it undefined and the handler returns no establishesContext.
+  const topEntityRef = filtered[0]?.entityRef;
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
     ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 6) } : {}),
+    ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }

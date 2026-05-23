@@ -27,6 +27,18 @@ export type LossCategory =
   | 'low_margin_items'
   | 'store_credit_liability';
 
+/**
+ * R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: optional entity link.
+ * Populated ONLY when a single concrete entity (product, customer, repair)
+ * is identifiable from the signal. Aggregate signals (e.g., dead_stock as
+ * a whole) leave this undefined so the follow-up layer never opens a
+ * fabricated entity.
+ */
+export interface LossEntityRef {
+  type: 'product' | 'customer' | 'repair';
+  value: string;
+}
+
 export interface LossSignal {
   id: string;
   category: LossCategory;
@@ -41,6 +53,8 @@ export interface LossSignal {
   recommendedAction: string; // pre-translated
   score: number;
   actions: ChatActionUI[];
+  /** R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY */
+  entityRef?: LossEntityRef;
 }
 
 // ── Tunable thresholds (all deterministic) ────────────────
@@ -313,6 +327,9 @@ function collectLowMarginItems(inventory: InventoryItem[], sales: Sale[], t: Ret
     recommendedAction: t('chat.whatIsLosing.action.lowMargin'),
     score,
     actions: [],
+    // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: clear single-entity link
+    // — the worst-margin inventory item. Safe for follow-up "open it".
+    entityRef: { type: 'product', value: worstId },
   };
 }
 
@@ -479,9 +496,19 @@ export function handleWhatIsLosingMoney(engine: IntelligenceEngine, lang: Lang3)
   const rawActions: ChatActionUI[] = [];
   for (const s of filtered) for (const a of s.actions) rawActions.push(a);
 
+  // R-INTELLIGENCE-AGGREGATOR-CONTEXT-CONTINUITY: when the TOP loss signal
+  // points to a single concrete entity (e.g., the worst low-margin product),
+  // stamp it as the active operational context so follow-ups like
+  // "open it" / "show evidence" route through the existing pronoun-rewrite
+  // and entity_operational_command pipelines. Aggregate signals (dead
+  // stock, attach rate, layaway abandon, etc.) leave entityRef undefined —
+  // the handler then returns NO establishesContext rather than fabricate one.
+  const topEntityRef = filtered[0]?.entityRef;
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
     ...(rawActions.length > 0 ? { actions: rawActions.slice(0, 6) } : {}),
+    ...(topEntityRef ? { establishesContext: { type: topEntityRef.type, value: topEntityRef.value } } : {}),
   };
 }
