@@ -130,6 +130,8 @@ import { handleFocusToday } from './focusToday';
 import { handleOperatorDailyBriefV3 } from './dailyBrief';
 // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer retrospective.
 import { handleCustomerRetentionInsights } from './customerRetentionInsights';
+// R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer 360° snapshot composer.
+import { buildCustomer360Snapshot, type Customer360Snapshot } from '../customer360/customer360Composer';
 // R-INTELLIGENCE-CUSTOMER-TIMELINE-MEMORY: deterministic behavioral context.
 import { buildCustomerTimeline, formatTimelineContext, formatTimelineTagLabel } from '../customerTimeline/customerTimelineEngine';
 // INTELLIGENCE-ATTENTION-FEED-INTEGRATION-V1
@@ -518,6 +520,10 @@ export function handleIntent(
     case 'customer_retention_insights':
       return handleCustomerRetentionInsights(engine, lang);
 
+    // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer snapshot.
+    case 'customer_360':
+      return handleCustomer360(match, engine, lang);
+
     // R-FUSION-CHAT-INTEGRATION-V1
     case 'fusion_insights':
       return handleFusionInsights(lang);
@@ -754,6 +760,166 @@ function handleCustomerHistory(
     // customer on the next turn. V1 enrichment rules only target product
     // context; customer context is recorded for symmetry / future use.
     establishesContext: { type: 'customer', value: match.matchedCustomer.name },
+  };
+}
+
+// ── Customer 360 (R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT) ─
+//
+// Thin rendering layer over buildCustomer360Snapshot. Reuses the existing
+// name-extraction + matchedCustomer / candidateCustomers plumbing populated
+// by intentRouter (same path customer_history uses). Zero new scoring logic
+// here — every value rendered is pulled from a field already computed by
+// an existing canonical engine and exposed via the composer.
+function handleCustomer360(
+  match: IntentMatch,
+  engine: IntelligenceEngine,
+  lang: Lang3,
+): ChatResponse {
+  const t = tChat(lang);
+
+  // Disambiguation when fuzzy match returned >1 customer.
+  if (match.candidateCustomers && match.candidateCustomers.length > 1) {
+    const list = match.candidateCustomers
+      .map((c) => `• ${c.name}${c.phone ? ` (${c.phone})` : ''}`)
+      .join('\n');
+    return {
+      kind: 'disambiguation',
+      text: `${t('chat.customer360.disambiguation', match.extractedName || '')}\n${list}`,
+    };
+  }
+
+  // Not-found / no-name responses.
+  if (!match.matchedCustomer) {
+    if (match.extractedName) {
+      return { kind: 'error', text: t('chat.customer360.notFound', match.extractedName) };
+    }
+    return { kind: 'error', text: t('chat.customer360.specifyName') };
+  }
+
+  const snapshot: Customer360Snapshot | null = buildCustomer360Snapshot(
+    engine,
+    match.matchedCustomer.id,
+    lang,
+  );
+  if (!snapshot) {
+    return { kind: 'error', text: t('chat.customer360.notFound', match.matchedCustomer.name) };
+  }
+
+  // ── Render ─────────────────────────────────────────────
+  const lines: string[] = [];
+  lines.push(`**👤 ${t('chat.customer360.header', snapshot.customerName)}**`);
+
+  // Tier / value line — from canonical profile.
+  const profileLineParts: string[] = [
+    `${t('chat.customer360.tierLabel')} **${snapshot.profile.estimatedCustomerTier}**`,
+    `${t('chat.customer360.vipScoreLabel')} ${snapshot.profile.vipScore}`,
+    `${t('chat.customer360.churnLabel')} ${snapshot.profile.churnRisk}`,
+  ];
+  lines.push(`• ${profileLineParts.join(' · ')}`);
+
+  // Timeline summary — from canonical CustomerHistorySummary.
+  if (snapshot.timeline) {
+    const last = snapshot.timeline.lastVisitDate;
+    const lastStr = last ? last.toISOString().slice(0, 10) : t('chat.customer360.never');
+    lines.push(`• ${t('chat.customer360.timelineLine', snapshot.timeline.visitCount, COP(snapshot.timeline.totalSpentCents), lastStr)}`);
+  }
+
+  // Buy Today opportunity — only when present.
+  if (snapshot.buyToday) {
+    lines.push('');
+    lines.push(`**🛒 ${t('chat.customer360.opportunityHeader')}**`);
+    lines.push(`• ${t(`chat.customer360.opp.${snapshot.buyToday.opportunityType}`)} · ${t('chat.customer360.scoreLabel')} ${snapshot.buyToday.opportunityScore}${snapshot.buyToday.urgency ? ` · ${snapshot.buyToday.urgency}` : ''}`);
+  }
+
+  // Retention — only when present.
+  if (snapshot.retention) {
+    lines.push('');
+    lines.push(`**🔁 ${t('chat.customer360.retentionHeader')}**`);
+    lines.push(`• ${t('chat.customer360.retentionLine', snapshot.retention.inactiveDaysBeforeReturn, COP(snapshot.retention.recoveredRevenueCents))}`);
+  }
+
+  // Attention — only when present.
+  if (snapshot.attention) {
+    lines.push('');
+    lines.push(`**⚠️ ${t('chat.customer360.attentionHeader')}**`);
+    lines.push(`• ${t('chat.customer360.attentionLevelLabel')} ${snapshot.attention.attentionLevel}`);
+    for (const reason of snapshot.attention.attentionReasons.slice(0, 3)) {
+      lines.push(`  – ${reason}`);
+    }
+  }
+
+  // Open operations — always present (counts may be zero).
+  const ops = snapshot.openOperations;
+  const opsCount = ops.openRepairIds.length + ops.activeLayawayIds.length + ops.pendingUnlockIds.length + ops.pendingSpecialOrderIds.length + ops.pendingWorkflowIds.length;
+  if (opsCount > 0 || ops.unpaidBalanceCents > 0) {
+    lines.push('');
+    lines.push(`**📋 ${t('chat.customer360.openOpsHeader')}**`);
+    if (ops.openRepairIds.length > 0)        lines.push(`• ${t('chat.customer360.openOps.repairs', ops.openRepairIds.length)}`);
+    if (ops.activeLayawayIds.length > 0)     lines.push(`• ${t('chat.customer360.openOps.layaways', ops.activeLayawayIds.length)}`);
+    if (ops.pendingUnlockIds.length > 0)     lines.push(`• ${t('chat.customer360.openOps.unlocks', ops.pendingUnlockIds.length)}`);
+    if (ops.pendingSpecialOrderIds.length > 0) lines.push(`• ${t('chat.customer360.openOps.specialOrders', ops.pendingSpecialOrderIds.length)}`);
+    if (ops.pendingWorkflowIds.length > 0)   lines.push(`• ${t('chat.customer360.openOps.workflows', ops.pendingWorkflowIds.length)}`);
+    if (ops.unpaidBalanceCents > 0)          lines.push(`• ${t('chat.customer360.openOps.balance', COP(ops.unpaidBalanceCents))}`);
+  }
+
+  // Recommended actions — from canonical profile.
+  if (snapshot.profile.recommendedActions.length > 0) {
+    lines.push('');
+    lines.push(`**💡 ${t('chat.customer360.recommendedHeader')}**`);
+    for (const action of snapshot.profile.recommendedActions.slice(0, 3)) {
+      lines.push(`• ${action}`);
+    }
+  }
+
+  // ── Actions ────────────────────────────────────────────
+  const phone = match.matchedCustomer.phone || '';
+  const actions: ChatActionUI[] = [
+    {
+      id: `c360-open-${snapshot.customerId}`,
+      label: t('chat.customer360.action.openCustomer', snapshot.customerName),
+      payload: {
+        type: 'review',
+        executable: true,
+        executionTarget: 'open_customer',
+        entityId: snapshot.customerId,
+        customerId: snapshot.customerId,
+        customerName: snapshot.customerName,
+      },
+    },
+    {
+      id: `c360-wa-${snapshot.customerId}`,
+      label: t('chat.customer360.action.whatsapp', snapshot.customerName),
+      actionType: 'whatsapp',
+      payload: {
+        type: 'whatsapp',
+        messageKey: 'whatsapp.template.reconnect',
+        customerId: snapshot.customerId,
+        customerName: snapshot.customerName,
+        customerPhone: phone,
+        executable: true,
+        executionTarget: 'whatsapp_url',
+      },
+    },
+    {
+      id: `c360-history-${snapshot.customerId}`,
+      label: t('chat.customer360.action.history', snapshot.customerName),
+      payload: {
+        type: 'review',
+        executable: true,
+        executionTarget: 'open_customer',
+        entityId: snapshot.customerId,
+        customerId: snapshot.customerId,
+        customerName: snapshot.customerName,
+      },
+      triggerQuery: `history of ${snapshot.customerName}`,
+    },
+  ];
+
+  return {
+    kind: 'answer',
+    text: lines.join('\n'),
+    actions,
+    establishesContext: { type: 'customer', value: snapshot.customerId },
   };
 }
 

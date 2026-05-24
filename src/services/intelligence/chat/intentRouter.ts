@@ -137,6 +137,8 @@ export type IntentId =
   | 'daily_operator_brief_v3'
   // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer retrospective
   | 'customer_retention_insights'
+  // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer 360° snapshot
+  | 'customer_360'
   | 'fallback_question'
   | 'unknown';
 
@@ -927,6 +929,28 @@ const PRODUCT_OPPORTUNITY_KEYWORDS = [
 // so the anchored "daily brief" / "brief me" / "store status" / "qué está
 // pasando hoy" phrases route to the new compressed brief. Existing
 // long-form briefing handlers keep their own keyword phrases.
+// R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: deterministic per-customer
+// snapshot composer surface. Triggers explicit profile/360 phrasings only;
+// every keyword is an anchored multi-word phrase that does NOT substring-
+// overlap with BEST_CUSTOMER_KEYWORDS ('best customer' / 'top customer'),
+// RECOVER_CUSTOMER_KEYWORDS ('recover customer' / 'lost customer'), or
+// CUSTOMER_RETENTION_INSIGHTS_KEYWORDS (return-verb phrases). 'tell me
+// about' is broad-by-design — when the noun after it is a product or
+// inventory item, other banks (product_push, product_opportunities)
+// outscore this one. Bare 'cliente' / 'customer' tokens are not in this
+// bank, so the generic customer_history fallback is preserved.
+const CUSTOMER_360_KEYWORDS = [
+  // EN — explicit 360/profile phrasings
+  'customer 360', 'customer profile', 'show customer profile', 'show customer 360',
+  'tell me about', 'what do we know about', 'profile of',
+  // ES
+  'perfil del cliente', 'perfil de cliente', 'dime sobre',
+  'qué sabemos de', 'que sabemos de', 'qué sabemos del cliente', 'que sabemos del cliente',
+  // PT
+  'perfil do cliente', 'o que sabemos sobre', 'o que sabemos do cliente',
+  'me fale sobre', 'me fale do cliente',
+];
+
 // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: deterministic returning-
 // customer retrospective. Multi-word anchored phrases — none collide
 // with bare 'cliente' / 'customer' (CUSTOMER_KEYWORDS bank) because every
@@ -1922,6 +1946,12 @@ export function classifyIntent(
     // and BEFORE recover_customer (the proactive variant). All triggers are
     // multi-word anchored phrases pairing the noun with a return verb.
     { id: 'customer_retention_insights', score: scoreKeywords(query, CUSTOMER_RETENTION_INSIGHTS_KEYWORDS) },
+    // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer snapshot. Listed
+    // AFTER best_customer (line near top) and AFTER recover_customer (their
+    // own anchored phrases win), and BEFORE customer_history so explicit
+    // "tell me about <name>" / "perfil del cliente <name>" route here while
+    // bare "<name> history" / "historial de <name>" still hit customer_history.
+    { id: 'customer_360', score: scoreKeywords(query, CUSTOMER_360_KEYWORDS) },
     { id: 'customer_history', score: scoreKeywords(query, CUSTOMER_KEYWORDS) },
     // R-INTELLIGENCE-DAILY-REVENUE-MISSIONS-V1: top-N money-making tasks
     // for today. Listed ABOVE daily_operator_brief + daily_brief so the
@@ -2115,7 +2145,10 @@ export function classifyIntent(
   }
 
   // For customer_history intent, resolve the name.
-  if (winner.id === 'customer_history') {
+  // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: customer_360 reuses the exact
+  // same name-extraction + fuzzy-match path. No new resolver — same
+  // extractedName / matchedCustomer / candidateCustomers fields on IntentMatch.
+  if (winner.id === 'customer_history' || winner.id === 'customer_360') {
     const allBanks = [
       BEST_CUSTOMER_KEYWORDS, LEAST_PROFITABLE_KEYWORDS, MULTI_PHONE_CUSTOMERS_KEYWORDS, CUSTOMER_KEYWORDS, DAILY_BRIEF_KEYWORDS, DAILY_OPERATOR_BRIEF_KEYWORDS, DAILY_REVENUE_MISSIONS_KEYWORDS, TODAY_MONEY_MAP_KEYWORDS, OPERATOR_MODE_KEYWORDS, PROPOSAL_FOLLOWUP_KEYWORDS, DEAL_PIPELINE_KEYWORDS, MARK_DEAL_STAGE_KEYWORDS, CLOSE_TODAY_KEYWORDS, ACTION_IMPACT_KEYWORDS, ACTION_LEARNING_KEYWORDS, PROPOSE_DEAL_KEYWORDS, DEAL_PERFORMANCE_KEYWORDS, PROACTIVE_OPPORTUNITIES_KEYWORDS, CONVERSATION_RUNNER_KEYWORDS, TODAY_SALES_KEYWORDS, TODAY_SUMMARY_KEYWORDS, SALES_KEYWORDS, INVENTORY_LOW_KEYWORDS,
       INVENTORY_DEAD_KEYWORDS, INVENTORY_DYING_KEYWORDS, TOP_ITEMS_KEYWORDS,
@@ -2124,6 +2157,10 @@ export function classifyIntent(
       PRODUCT_OPPORTUNITY_KEYWORDS, ROOT_CAUSE_KEYWORDS, SLOW_DAY_ROOT_CAUSE_KEYWORDS,
       DEAD_STOCK_ROOT_CAUSE_KEYWORDS, CUSTOMER_CHURN_KEYWORDS, DATA_QUERY_KEYWORDS, HELP_KEYWORDS,
       RECOVER_CUSTOMER_KEYWORDS, VIP_OUTREACH_KEYWORDS, REPAIR_FOLLOW_UP_KEYWORDS, REPAIR_ESCALATE_KEYWORDS,
+      // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: include the new bank's
+      // tokens as stop-words so "tell me about", "perfil del cliente", etc.
+      // are stripped from the extracted name fragment.
+      CUSTOMER_360_KEYWORDS,
     ];
     const nameFragment = extractName(query, allBanks);
     if (nameFragment) {
