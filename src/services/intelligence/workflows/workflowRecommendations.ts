@@ -329,7 +329,13 @@ export function getWorkflowSteps(
       entityKey: options.entityKey,
       ts: nowMs,
     }));
-    if (newEntries.length > 0) writeFatigue([...recent, ...newEntries]);
+    if (newEntries.length > 0) {
+      const combined = [...recent, ...newEntries];
+      const trimmed = combined.length > FATIGUE_MAX_ENTRIES
+        ? combined.slice(combined.length - FATIGUE_MAX_ENTRIES)
+        : combined;
+      writeFatigue(trimmed);
+    }
   }
 
   return surface.slice(0, MAX_STEPS).map((s) => ({

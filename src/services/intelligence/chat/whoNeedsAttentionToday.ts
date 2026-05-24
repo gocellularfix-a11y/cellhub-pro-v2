@@ -79,16 +79,16 @@ export interface AttentionItem {
 
 // ── Helpers ───────────────────────────────────────────────
 
-function tsOf(d: unknown): number {
-  if (!d) return 0;
-  if (typeof d === 'string') { const n = new Date(d).getTime(); return Number.isFinite(n) ? n : 0; }
+function tsOf(d: unknown): number | null {
+  if (!d) return null;
+  if (typeof d === 'string') { const n = new Date(d).getTime(); return Number.isFinite(n) ? n : null; }
   if (d instanceof Date) return d.getTime();
   if (typeof d === 'object' && d !== null) {
     const obj = d as { toDate?: () => Date; seconds?: number };
-    if (typeof obj.toDate === 'function') { try { return obj.toDate().getTime(); } catch { return 0; } }
+    if (typeof obj.toDate === 'function') { try { return obj.toDate().getTime(); } catch { return null; } }
     if (typeof obj.seconds === 'number') return obj.seconds * 1000;
   }
-  return 0;
+  return null;
 }
 
 function daysBetween(aMs: number, bMs: number): number {
@@ -116,7 +116,7 @@ function collectRepairs(engine: IntelligenceEngine, t: ReturnType<typeof tChat>,
     const status = statusKey(r.status);
     if (status !== 'ready' && status !== 'complete' && status !== 'completed') continue;
     const readyAtMs = tsOf((r as any).completedAt) || tsOf(r.updatedAt) || tsOf(r.createdAt);
-    if (!readyAtMs) continue;
+    if (!readyAtMs) { console.warn('[intelligence] record has no usable timestamp', { id: r.id, type: 'repair' }); continue; }
     const days = daysBetween(readyAtMs, nowMs);
     if (days < REPAIR_MIN_DAYS_READY) continue;
     const valueCents = r.estimatedCost || r.total || 0;
@@ -151,7 +151,7 @@ function collectLayaways(engine: IntelligenceEngine, t: ReturnType<typeof tChat>
     const status = statusKey(l.status);
     if (status === 'completed' || status === 'cancelled' || status === 'forfeited' || status === 'refunded') continue;
     const lastActivityMs = tsOf(l.updatedAt) || tsOf(l.createdAt);
-    if (!lastActivityMs) continue;
+    if (!lastActivityMs) { console.warn('[intelligence] record has no usable timestamp', { id: l.id, type: 'layaway' }); continue; }
     const days = daysBetween(lastActivityMs, nowMs);
     if (days < LAYAWAY_STALE_DAYS) continue;
     const balance = Math.max(0, l.balance || 0);
@@ -187,7 +187,7 @@ function collectSpecialOrders(engine: IntelligenceEngine, t: ReturnType<typeof t
     const status = statusKey(o.status);
     if (status !== 'received' && status !== 'ready' && status !== 'ordered') continue;
     const lastActivityMs = tsOf(o.updatedAt) || tsOf(o.createdAt);
-    if (!lastActivityMs) continue;
+    if (!lastActivityMs) { console.warn('[intelligence] record has no usable timestamp', { id: o.id, type: 'special_order' }); continue; }
     const days = daysBetween(lastActivityMs, nowMs);
     if (days < SO_STALE_DAYS) continue;
     const balance = Math.max(0, o.balance || 0);
@@ -303,9 +303,13 @@ function collectStoreCredit(t: ReturnType<typeof tChat>, nowMs: number): Attenti
     if (c.status !== 'active') continue;
     const remaining = Math.max(0, c.remainingAmount || 0);
     if (remaining < STORE_CREDIT_MIN_CENTS) continue;
-    const lastActivityMs = c.redemptions && c.redemptions.length > 0
-      ? c.redemptions.reduce((m, r) => Math.max(m, tsOf(r.redeemedAt)), 0)
+    const lastActivityMs: number | null = c.redemptions && c.redemptions.length > 0
+      ? c.redemptions.reduce((m: number, r) => {
+          const t = tsOf(r.redeemedAt);
+          return t !== null ? Math.max(m, t) : m;
+        }, 0) || null
       : tsOf(c.issuedAt);
+    if (!lastActivityMs) { console.warn('[intelligence] record has no usable timestamp', { id: c.id, type: 'store_credit' }); continue; }
     const days = daysBetween(lastActivityMs, nowMs);
     if (days < STORE_CREDIT_IDLE_DAYS) continue;
     const valueWeight    = Math.floor(remaining / 100);

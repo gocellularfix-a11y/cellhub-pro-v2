@@ -144,7 +144,7 @@ function collectDeadStock(inventory: InventoryItem[], sales: Sale[], t: ReturnTy
     itemCount++;
     valueCents += Math.max(0, (inv.qty || 0) * (inv.cost || 0));
   }
-  if (valueCents < DEAD_STOCK_MIN_VALUE_CENTS && itemCount < DEAD_STOCK_MIN_ITEM_COUNT) return null;
+  if (valueCents < DEAD_STOCK_MIN_VALUE_CENTS || itemCount < DEAD_STOCK_MIN_ITEM_COUNT) return null; // surface only when BOTH thresholds met
   const score = Math.min(200, Math.floor(valueCents / 1000))   // $ exposure / 10 (cap 200)
               + Math.min(60, itemCount)                          // count weight
               + 40;                                              // urgency constant
