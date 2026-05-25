@@ -89,10 +89,10 @@ function dominantCategory(items: SaleItem[] | undefined): DominantCategory {
   return pairs[0][0];
 }
 
-function customerDisplayName(c: Customer | undefined, fallback: string): string {
-  if (!c) return fallback;
+function customerDisplayName(c: Customer | undefined, t: (k: string) => string): string {
+  if (!c) return t('chat.retention.unknownCustomer');
   const composed = `${c.firstName || ''} ${c.lastName || ''}`.trim();
-  return c.name || composed || c.phone || fallback;
+  return c.name || composed || c.phone || c.email || t('chat.retention.unknownCustomer');
 }
 
 // ── Public types ──────────────────────────────────────────
@@ -145,9 +145,11 @@ export function computeRetentionInsight(
   engine: IntelligenceEngine,
   nowMs: number = Date.now(),
   inactiveDays: number = DEFAULT_INACTIVE_DAYS,
-  periodStartMs?: number,
-  periodEndMs?: number,
+  periodStartMs: number | undefined = undefined,
+  periodEndMs: number | undefined = undefined,
+  lang: Lang3,
 ): RetentionInsight {
+  const t = tChat(lang);
   const sales: Sale[] = engine.getSales() || [];
   const customers: Customer[] = engine.getCustomers() || [];
 
@@ -197,7 +199,7 @@ export function computeRetentionInsight(
     const cust = customerById.get(cid);
     returns.push({
       customerId: cid,
-      customerName: customerDisplayName(cust, firstReturn.s.customerName || cid),
+      customerName: firstReturn.s.customerName || customerDisplayName(cust, t),
       // R-INTELLIGENCE-CUSTOMER-RETENTION-RANKING-ACTIONS: prefer the
       // canonical Customer.phone; fall back to the sale's snapshot phone.
       customerPhone: (cust?.phone || firstReturn.s.customerPhone || '').trim(),
@@ -246,7 +248,7 @@ export function handleCustomerRetentionInsights(
   lang: Lang3,
 ): ChatResponse {
   const t = tChat(lang);
-  const insight = computeRetentionInsight(engine);
+  const insight = computeRetentionInsight(engine, Date.now(), DEFAULT_INACTIVE_DAYS, undefined, undefined, lang);
 
   // Empty / quiet-period state — never fabricate. Spec: explicit
   // "No significant returning customer activity detected." line.

@@ -98,8 +98,7 @@ function buildStatusLines(
   if (!overall) {
     paceLine = t('chat.operatorBriefV3.status.paceHealthy');
   } else {
-    const m = overall.evidence.match(/(\d+)% drop/i);
-    const pct = m ? parseInt(m[1], 10) : 0;
+    const pct = Math.round(overall.dropPct ?? 0);
     if (pct >= 25) paceLine = t('chat.operatorBriefV3.status.paceDownSharp', pct);
     else if (pct >= 10) paceLine = t('chat.operatorBriefV3.status.paceDownMild', pct);
     else paceLine = t('chat.operatorBriefV3.status.paceHealthy');

@@ -345,7 +345,7 @@ export function buildCustomer360Snapshot(
   // returning-customer set. computeRetentionInsight already enforces
   // the inactive-≥30d + bought-in-period contract.
   const retentionInsight: RetentionInsight =
-    pre.retentionInsight ?? computeRetentionInsight(engine, nowMs);
+    pre.retentionInsight ?? computeRetentionInsight(engine, nowMs, undefined, undefined, undefined, lang);
   const ret: ReturningCustomerSummary | undefined =
     retentionInsight.topReturns.find((r) => r.customerId === customerId);
   const retention: Customer360Retention | undefined = ret

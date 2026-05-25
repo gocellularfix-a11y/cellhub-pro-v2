@@ -53,6 +53,7 @@ export interface DropSignal {
   evidence: string;
   recommendedAction: string;
   estimatedImpactCents?: number;
+  dropPct?: number;
   severity: DropSeverity;
   confidence: 'high' | 'medium' | 'low';
   score: number;
@@ -249,6 +250,7 @@ function collectOverallRevenue(current: PeriodMetrics, baseline: PeriodMetrics, 
       COP(current.totalRevenueCents), COP(baseline.totalRevenueCents), drop),
     recommendedAction: t('chat.whyDidSalesDrop.action.overall'),
     estimatedImpactCents: impact,
+    dropPct: drop,
     severity: severityFromDropPct(drop),
     confidence: 'high',
     score: drop + Math.min(80, Math.floor(impact / 1000)) + 30,

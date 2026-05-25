@@ -317,7 +317,7 @@ function collectLowMarginItems(inventory: InventoryItem[], sales: Sale[], t: Ret
     if (ratio < worstRatio) { worstRatio = ratio; worstId = id; worstAgg = agg; }
   }
   if (!worstAgg || !worstId) return null;
-  const lostMarginCents = Math.max(0, Math.round(worstAgg.revenueCents * LOW_MARGIN_RATIO_FLOOR) - (worstAgg.revenueCents - worstAgg.costCents));
+  const exposureCents = Math.max(0, worstAgg.costCents);
   const score = 35
     + Math.min(40, Math.round((LOW_MARGIN_RATIO_FLOOR - worstRatio) * 200))
     + Math.min(40, worstAgg.units * 4);
@@ -327,7 +327,7 @@ function collectLowMarginItems(inventory: InventoryItem[], sales: Sale[], t: Ret
     headline: t('chat.whatIsLosing.headline.lowMargin'),
     evidence: t('chat.whatIsLosing.evidence.lowMargin',
       worstAgg.name, worstAgg.units, Math.round(Math.max(0, worstRatio) * 100), LOW_MARGIN_WINDOW_DAYS),
-    exposureCents: lostMarginCents > 0 ? lostMarginCents : undefined,
+    exposureCents: exposureCents > 0 ? exposureCents : undefined,
     recommendedAction: t('chat.whatIsLosing.action.lowMargin'),
     score,
     actions: [],

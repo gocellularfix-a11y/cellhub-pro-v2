@@ -4036,6 +4036,7 @@ export const translations: TranslationDictionary = {
   // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS
   'chat.retention.header':            { en: 'Returning customers',           es: 'Clientes que regresaron',         pt: 'Clientes que voltaram' },
   'chat.retention.noActivity':        { en: 'No significant returning customer activity detected.', es: 'No se detectó actividad significativa de clientes que regresan.', pt: 'Nenhuma atividade significativa de clientes recorrentes detectada.' },
+  'chat.retention.unknownCustomer':   { en: 'Unknown customer',              es: 'Cliente desconocido',             pt: 'Cliente desconhecido' },
   'chat.retention.summary': {
     en: (count: number, days: number) => `${count} customer${count === 1 ? '' : 's'} returned this month after ${days}+ days inactive.`,
     es: (count: number, days: number) => `${count} cliente${count === 1 ? '' : 's'} regresaron este mes tras ${days}+ días inactivos.`,
