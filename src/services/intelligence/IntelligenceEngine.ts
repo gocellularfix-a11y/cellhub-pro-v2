@@ -286,10 +286,21 @@ export class IntelligenceEngine {
       this.config.lang,
       this.config.storeId
     );
+    // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG: customers are GLOBAL per
+    // AppProvider's filteredState contract (see AppProvider.tsx:221 —
+    // "Customers, employees, cart, and settings are GLOBAL (never
+    // filtered)"). Customer records do NOT carry a storeId, so passing
+    // this.config.storeId here causes CustomerScorer.filterByStore (strict
+    // equality) to wipe the entire customer set → handleBestCustomer
+    // returns "No customer data available yet." while engine.getCustomers()
+    // (used by Customer 360 / customer_history) returns the same records
+    // unfiltered. Sales attached to scoring are already store-filtered
+    // upstream via filteredState, so dropping storeId here only affects
+    // the customer-set filter, not the sales-per-customer index.
     this.customerScorer = new CustomerScorer(
       this.customers,
       this.sales,
-      this.config.storeId,
+      undefined,
       this.config.lang
     );
     this.inventoryScorer = new InventoryScorer(
@@ -723,7 +734,9 @@ export class IntelligenceEngine {
     this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
     this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, this.config.storeId, this.config.lang);
     this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
-    this.customerScorer = new CustomerScorer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG: customers are global — see
+    // detailed note above the matching call in the constructor.
+    this.customerScorer = new CustomerScorer(this.customers, this.sales, undefined, this.config.lang);
     this.inventoryScorer = new InventoryScorer(this.inventory, this.sales, this.config.storeId, this.config.lang);
     this.repairScorer = new RepairScorer(this.repairs, this.config.storeId, this.config.lang);
     // alertEngine does not hold data refs (only thresholds + lang) — keep.
