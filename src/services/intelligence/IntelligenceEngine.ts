@@ -267,10 +267,15 @@ export class IntelligenceEngine {
       this.config.lang
     );
     this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
+    // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG-EXTEND: customers are
+    // GLOBAL per AppProvider's filteredState contract — see detailed
+    // note above the CustomerScorer instantiation. Same pattern,
+    // same reasoning: CustomerAnalyzer.filterByStore would silently
+    // wipe the entire customer set when storeId is set.
     this.customerAnalyzer = new CustomerAnalyzer(
       this.customers,
       this.sales,
-      this.config.storeId,
+      undefined,
       this.config.lang
     );
     this.financialAnalyzer = new FinancialAnalyzer(
@@ -732,7 +737,8 @@ export class IntelligenceEngine {
     this.salesAnalyzer = new SalesAnalyzer(this.sales, this.customers, this.config.storeId, this.config.lang);
     this.inventoryAnalyzer = new InventoryAnalyzer(this.inventory, this.sales, undefined, this.config.lang);
     this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
-    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, this.config.storeId, this.config.lang);
+    // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG-EXTEND: customers are global — see CustomerScorer note above.
+    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, undefined, this.config.lang);
     this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
     // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG: customers are global — see
     // detailed note above the matching call in the constructor.
