@@ -734,7 +734,7 @@ function handleCustomerHistory(
       sales: engine.getSales(),
       repairs: engine.getRepairs(),
       layaways: engine.getLayaways(),
-      // storeCreditLedger pulled from localStorage by the engine when omitted.
+      storeCreditLedger: engine.getStoreCreditLedger(),
     });
     const lines = formatTimelineContext(timeline, t as unknown as (k: string, ...a: unknown[]) => string);
     const tagsLabel = timeline.tags

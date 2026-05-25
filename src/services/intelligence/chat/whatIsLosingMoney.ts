@@ -13,7 +13,6 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Sale, Repair, Layaway, InventoryItem, StoreCreditLedger } from '@/store/types';
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
-import { loadLocal } from '@/services/storage';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
 import {
   getWorkflowSteps,
@@ -340,10 +339,7 @@ function collectLowMarginItems(inventory: InventoryItem[], sales: Sale[], t: Ret
 
 // ── Signal: store credit liability sitting idle ───────────
 
-function collectStoreCreditLiability(t: ReturnType<typeof tChat>, nowMs: number): LossSignal | null {
-  let ledger: StoreCreditLedger[] = [];
-  try { ledger = loadLocal<StoreCreditLedger[]>('store_credit_ledger', []) || []; }
-  catch { ledger = []; }
+function collectStoreCreditLiability(ledger: StoreCreditLedger[], t: ReturnType<typeof tChat>, nowMs: number): LossSignal | null {
   if (!Array.isArray(ledger) || ledger.length === 0) return null;
   let totalRemainingCents = 0;
   let count = 0;
@@ -466,7 +462,7 @@ export function computeLossSignals(engine: IntelligenceEngine, lang: Lang3): Los
   const d = collectLayawayAbandoned(layaways, t, nowMs);               if (d) allSignals.push(d);
   const e = collectExternalPaymentRisk(t, nowMs);                       if (e) allSignals.push(e);
   const f = collectLowMarginItems(inventory, sales, t, nowMs);         if (f) allSignals.push(f);
-  const g = collectStoreCreditLiability(t, nowMs);                     if (g) allSignals.push(g);
+  const g = collectStoreCreditLiability(engine.getStoreCreditLedger(), t, nowMs); if (g) allSignals.push(g);
 
   return allSignals
     .filter((s) => s.score >= MIN_SCORE_THRESHOLD)

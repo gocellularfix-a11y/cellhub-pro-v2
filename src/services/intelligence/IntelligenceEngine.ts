@@ -1,5 +1,5 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment } from '@/store/types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment, StoreCreditLedger } from '@/store/types';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
 import { computeContextualBaseline } from './baseline/contextualBaseline';
 import { computeTrendDirectionReport } from './trends/trendDirection';
@@ -113,6 +113,9 @@ export interface EngineExtras {
   // pass-through portion of phone payments — the bug Jorge spotted
   // where Juan's 4 Verizon payments showed 91% margin.
   settings?: ProfitAdjustmentSettings;
+  // R-INTEL-CROSS-001: store credit ledger — global (no storeId filter),
+  // same contract as customers. Consumers call getStoreCreditLedger().
+  storeCreditLedger?: StoreCreditLedger[];
 }
 
 export class IntelligenceEngine {
@@ -135,6 +138,9 @@ export class IntelligenceEngine {
   private employees: Employee[];
   // R-DATA-APPOINTMENT-ACCESS-V1
   private appointments: Appointment[];
+  // R-INTEL-CROSS-001: global ledger — no storeId filter (certs belong to
+  // customers, not stores; same scope contract as customers).
+  private storeCreditLedger: StoreCreditLedger[];
   // R-CUSTOMER-PROFIT-PARITY-V1: store settings for per-customer
   // profit adjustment (phone payment commission, repair fallback).
   private profitSettings: ProfitAdjustmentSettings;
@@ -205,6 +211,8 @@ export class IntelligenceEngine {
   private _rawEmployees: Employee[] = [];
   // R-DATA-APPOINTMENT-ACCESS-V1
   private _rawAppointments: Appointment[] = [];
+  // R-INTEL-CROSS-001
+  private _rawStoreCreditLedger: StoreCreditLedger[] = [];
 
   constructor(
     sales: Sale[],
@@ -234,6 +242,7 @@ export class IntelligenceEngine {
     this.expenses = extras.expenses ?? [];
     this.employees = extras.employees ?? [];
     this.appointments = extras.appointments ?? [];
+    this.storeCreditLedger = extras.storeCreditLedger ?? [];
     // R-CUSTOMER-PROFIT-PARITY-V1: empty {} when omitted ⇒ adjustSalesItemCosts
     // falls back to defaultRate=0 (no profit fabricated; just clears the
     // 100% margin bug for items where the stamped commissionRate is missing).
@@ -253,6 +262,7 @@ export class IntelligenceEngine {
     this._rawExpenses = this.expenses;
     this._rawEmployees = this.employees;
     this._rawAppointments = this.appointments;
+    this._rawStoreCreditLedger = this.storeCreditLedger;
 
     this.salesAnalyzer = new SalesAnalyzer(
       this.sales,
@@ -585,6 +595,8 @@ export class IntelligenceEngine {
   getEmployees(): Employee[] { return this.employees; }
   // R-DATA-APPOINTMENT-ACCESS-V1
   getAppointments(): Appointment[] { return this.appointments; }
+  // R-INTEL-CROSS-001: global ledger — no storeId filter, same contract as getCustomers().
+  getStoreCreditLedger(): StoreCreditLedger[] { return this.storeCreditLedger; }
 
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
   // today_summary intent. Filters sales by createdAt >= midnight + status
@@ -685,6 +697,7 @@ export class IntelligenceEngine {
     const newExpenses = extras.expenses ?? this._rawExpenses;
     const newEmployees = extras.employees ?? this._rawEmployees;
     const newAppointments = extras.appointments ?? this._rawAppointments;
+    const newStoreCreditLedger = extras.storeCreditLedger ?? this._rawStoreCreditLedger;
     // R-CUSTOMER-PROFIT-PARITY-V1: keep settings live across re-renders.
     // Caller passes the latest settings each updateData() so commission
     // rate edits in Settings reflect immediately in customer history.
@@ -702,6 +715,7 @@ export class IntelligenceEngine {
       && newExpenses === this._rawExpenses
       && newEmployees === this._rawEmployees
       && newAppointments === this._rawAppointments
+      && newStoreCreditLedger === this._rawStoreCreditLedger
     ) {
       return; // ref-equality: no work
     }
@@ -717,6 +731,8 @@ export class IntelligenceEngine {
     this._rawExpenses = newExpenses;
     this._rawEmployees = newEmployees;
     this._rawAppointments = newAppointments;
+    this._rawStoreCreditLedger = newStoreCreditLedger;
+    this.storeCreditLedger = newStoreCreditLedger;
 
     this.inventory = adaptInventory(inventory as unknown as unknown[]);
     this.sales = adaptSale(sales as unknown as unknown[], this.inventory);

@@ -17,7 +17,6 @@ import type {
   Sale, Repair, Layaway, CustomerReturn, SpecialOrder, StoreCreditLedger,
 } from '@/store/types';
 import { normalizePhone } from '@/utils/normalize';
-import { loadLocal } from '@/services/storage';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -437,8 +436,7 @@ export interface BuildTimelineInput {
   layaways: Layaway[];
   customerReturns?: CustomerReturn[];
   specialOrders?: SpecialOrder[];
-  /** Optional — when omitted, the engine falls back to localStorage. */
-  storeCreditLedger?: StoreCreditLedger[];
+  storeCreditLedger: StoreCreditLedger[];
   nowMs?: number;
 }
 
@@ -460,15 +458,8 @@ export function buildCustomerTimeline(input: BuildTimelineInput): CustomerTimeli
   // Layaway profile
   const layawayProfile = computeLayawayProfile(input.layaways, input.customerId, nowMs);
 
-  // Store credit profile — accepts injected ledger or falls back to local
-  // storage (where AppState hydrates from) so callers without an explicit
-  // ledger reference still get a real snapshot.
-  let ledger: StoreCreditLedger[] = input.storeCreditLedger || [];
-  if (!input.storeCreditLedger) {
-    try { ledger = loadLocal<StoreCreditLedger[]>('store_credit_ledger', []) || []; }
-    catch { ledger = []; }
-  }
-  const storeCreditProfile = computeStoreCreditProfile(ledger, input.customerId, nowMs);
+  // Store credit profile — ledger injected by caller (required).
+  const storeCreditProfile = computeStoreCreditProfile(input.storeCreditLedger, input.customerId, nowMs);
 
   // Lifetime spend (excludes voided/refunded — same convention as Reports).
   let totalSpendCents = 0;

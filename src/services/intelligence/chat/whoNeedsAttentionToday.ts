@@ -16,7 +16,6 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Repair, Layaway, SpecialOrder, StoreCreditLedger, Customer } from '@/store/types';
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
-import { loadLocal } from '@/services/storage';
 import { tChat, type Lang3, type ChatResponse, type ChatActionUI, COP } from './handlers';
 import {
   getWorkflowSteps,
@@ -292,12 +291,9 @@ function collectChurnRisk(engine: IntelligenceEngine, t: ReturnType<typeof tChat
   return out;
 }
 
-function collectStoreCredit(t: ReturnType<typeof tChat>, nowMs: number): AttentionItem[] {
+function collectStoreCredit(engine: IntelligenceEngine, t: ReturnType<typeof tChat>, nowMs: number): AttentionItem[] {
   const out: AttentionItem[] = [];
-  let ledger: StoreCreditLedger[] = [];
-  try {
-    ledger = loadLocal<StoreCreditLedger[]>('store_credit_ledger', []) || [];
-  } catch { ledger = []; }
+  const ledger = engine.getStoreCreditLedger();
   if (!Array.isArray(ledger) || ledger.length === 0) return out;
   for (const c of ledger) {
     if (c.status !== 'active') continue;
@@ -453,7 +449,7 @@ export function computeAttentionItemsForToday(
     ...collectLayaways(engine, t, nowMs),
     ...collectSpecialOrders(engine, t, nowMs),
     ...collectChurnRisk(engine, t, nowMs),
-    ...collectStoreCredit(t, nowMs),
+    ...collectStoreCredit(engine, t, nowMs),
   ];
 
   const ext = collectExternalPaymentReminder(t, nowMs);
