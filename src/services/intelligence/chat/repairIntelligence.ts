@@ -13,6 +13,21 @@ import { tChat } from './handlers';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
 import { scoreRepairFollowUp, scoreRepairEscalate } from '../operatorQueue/priorityScoring';
 
+// R-INTEL-FIX-ROUND-5 BLOCKER-025: Repair.createdAt is Timestamp|Date|string.
+// raw `new Date(obj as string)` yields NaN when createdAt is a Firebase Timestamp.
+// tsOf() is file-local in every other module — not exported. Mirror the contract here.
+function parseTimestampSafe(v: unknown): number | null {
+  if (!v) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  try {
+    if (typeof (v as { toDate?: () => Date }).toDate === 'function') {
+      return (v as { toDate: () => Date }).toDate().getTime();
+    }
+    const t = new Date(v as string | Date).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch { return null; }
+}
+
 function findActiveRepairByName(engine: IntelligenceEngine, nameFragment: string) {
   const nameLower = nameFragment.toLowerCase();
   const active = engine.getRepairs().filter((r) => !isDoneRepairStatus(r.status));
@@ -27,9 +42,11 @@ function findActiveRepairByName(engine: IntelligenceEngine, nameFragment: string
 function oldestActiveRepair(engine: IntelligenceEngine) {
   const active = engine.getRepairs().filter((r) => !isDoneRepairStatus(r.status));
   if (active.length === 0) return null;
-  return active.slice().sort(
-    (a, b) => new Date(a.createdAt as string).getTime() - new Date(b.createdAt as string).getTime(),
-  )[0];
+  return active.slice().sort((a, b) => {
+    const ta = parseTimestampSafe(a.createdAt) ?? Number.MAX_SAFE_INTEGER;
+    const tb = parseTimestampSafe(b.createdAt) ?? Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  })[0];
 }
 
 export function handleRepairFollowUp(
@@ -48,10 +65,10 @@ export function handleRepairFollowUp(
 
   const firstName = repair.customerName.split(' ')[0] || repair.customerName;
   const deviceLabel = repair.device || repair.issue || 'device';
-  const days = Math.max(
-    0,
-    Math.floor((now - new Date(repair.createdAt as string).getTime()) / 86400000),
-  );
+  const createdMs = parseTimestampSafe(repair.createdAt);
+  const days = createdMs !== null
+    ? Math.max(0, Math.floor((now - createdMs) / 86400000))
+    : 0;
 
   const message = t('chat.repairFollowUp.message', firstName, deviceLabel);
 
@@ -151,10 +168,10 @@ export function handleRepairEscalate(
 
   const firstName = repair.customerName.split(' ')[0] || repair.customerName;
   const deviceLabel = repair.device || repair.issue || 'device';
-  const days = Math.max(
-    0,
-    Math.floor((now - new Date(repair.createdAt as string).getTime()) / 86400000),
-  );
+  const createdMs = parseTimestampSafe(repair.createdAt);
+  const days = createdMs !== null
+    ? Math.max(0, Math.floor((now - createdMs) / 86400000))
+    : 0;
 
   const message = t('chat.repairEscalate.message', firstName, deviceLabel);
 
