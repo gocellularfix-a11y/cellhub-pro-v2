@@ -222,12 +222,20 @@ function buildEntityCustomerIndex(engine: IntelligenceEngine): EntityCustomerInd
   const repairCustomerByRepairId = new Map<string, string>();
   for (const r of engine.getRepairs() || []) {
     const cid = (r.customerId || '').trim();
-    if (cid && r.id) repairCustomerByRepairId.set(r.id, cid);
+    if (cid && r.id) {
+      repairCustomerByRepairId.set(r.id, cid);
+    } else if (r.id) {
+      console.warn('[customer360] entity missing customerId, skipped from index', { id: r.id, type: 'repair' });
+    }
   }
   const layawayCustomerByLayawayId = new Map<string, string>();
   for (const l of engine.getLayaways() || []) {
     const cid = (l.customerId || '').trim();
-    if (cid && l.id) layawayCustomerByLayawayId.set(l.id, cid);
+    if (cid && l.id) {
+      layawayCustomerByLayawayId.set(l.id, cid);
+    } else if (l.id) {
+      console.warn('[customer360] entity missing customerId, skipped from index', { id: l.id, type: 'layaway' });
+    }
   }
   return { repairCustomerByRepairId, layawayCustomerByLayawayId };
 }

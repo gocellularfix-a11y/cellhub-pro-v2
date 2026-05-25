@@ -195,11 +195,20 @@ function fromAttentionItem(
   t: ReturnType<typeof tChat>,
 ): OperatorAlert {
   const category = ATTENTION_TO_CATEGORY[a.domain];
-  const entityRef: OperatorAlertEntityRef | undefined = a.customerId
-    ? { type: 'customer', value: a.customerId }
-    : a.domain === 'repair'
-      ? { type: 'repair', value: a.entityId }
-      : { type: 'customer', value: a.entityId };
+  // CLASS-ENT: entityId for store_credit/external_payment is cert/payment ID,
+  // not a customer ID. No valid EntityRef type exists for those — emit
+  // undefined + warn. repair uses its own type; all other domains use customerId.
+  let entityRef: OperatorAlertEntityRef | undefined;
+  if (a.customerId) {
+    entityRef = { type: 'customer', value: a.customerId };
+  } else if (a.domain === 'repair') {
+    entityRef = { type: 'repair', value: a.entityId };
+  } else if (a.domain === 'store_credit' || a.domain === 'external_payment') {
+    console.warn('[intelligence] operatorAlerts: missing customerId on cert/payment domain', { domain: a.domain, entityId: a.entityId });
+    entityRef = undefined;
+  } else {
+    entityRef = { type: 'customer', value: a.entityId };
+  }
   return {
     id: `attn-${a.id}`,
     category,

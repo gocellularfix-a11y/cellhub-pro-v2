@@ -131,9 +131,19 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
 
   const ctxType: 'customer' | 'repair' =
     top.domain === 'repair' ? 'repair' : 'customer';
+  // CLASS-ENT: never use entityId as customer ref — for store_credit the entityId
+  // is a cert ID, for external_payment it's a payment ID. Missing customerId on a
+  // non-repair item means we suppress context rather than fabricate a wrong ref.
   const ctxValue =
-    top.domain === 'repair' ? top.entityId
-    : top.customerId || top.entityId;
+    top.domain === 'repair'
+      ? top.entityId
+      : top.customerId || '';
+  if (!ctxValue && top.domain !== 'repair') {
+    console.warn('[intelligence] nextBestAction: attention item missing customerId, context suppressed', {
+      domain: top.domain,
+      entityId: top.entityId,
+    });
+  }
 
   // R-INTELLIGENCE-OPERATOR-WORKFLOW-CHAINING: append next-step guidance.
   const ATTN_TO_WORKFLOW: Record<AttentionDomain, string> = {
@@ -162,6 +172,6 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
     ...(actions.length + workflowActions.length > 0
       ? { actions: [...actions, ...workflowActions].slice(0, 8) }
       : {}),
-    establishesContext: { type: ctxType, value: ctxValue },
+    ...(ctxValue ? { establishesContext: { type: ctxType, value: ctxValue } } : {}),
   };
 }
