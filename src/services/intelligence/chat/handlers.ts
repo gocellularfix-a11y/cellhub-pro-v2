@@ -778,13 +778,40 @@ function handleCustomer360(
   const t = tChat(lang);
 
   // Disambiguation when fuzzy match returned >1 customer.
+  //
+  // R-INTELLIGENCE-CUSTOMER-360-DISAMBIGUATION-ACTIONS: every candidate is
+  // attached as an executable button so the operator clicks instead of
+  // retyping. Reuses the existing ChatActionUI.triggerQuery chat-replay
+  // hook (no new routing layer). When the candidate has a phone, the
+  // trigger is anchored on the phone digits — matchesSearch uniquely
+  // resolves a single customer by phone substring, so the click does NOT
+  // re-fuzzy-match. Falls back to name when phone is absent (rare path —
+  // a second disambiguation may still surface, which is acceptable).
+  // Text fallback is preserved verbatim under the action buttons.
   if (match.candidateCustomers && match.candidateCustomers.length > 1) {
-    const list = match.candidateCustomers
+    const top = match.candidateCustomers.slice(0, 8);
+    const list = top
       .map((c) => `• ${c.name}${c.phone ? ` (${c.phone})` : ''}`)
       .join('\n');
+    const disambigActions: ChatActionUI[] = top.map((c) => ({
+      id: `c360-disambig-${c.id}`,
+      label: `${c.name}${c.phone ? ` (${c.phone})` : ''}`,
+      payload: {
+        type: 'review',
+        executable: true,
+        executionTarget: 'open_customer',
+        entityId: c.id,
+        customerId: c.id,
+        customerName: c.name,
+      },
+      triggerQuery: c.phone
+        ? `tell me about ${c.phone}`
+        : `tell me about ${c.name}`,
+    }));
     return {
       kind: 'disambiguation',
       text: `${t('chat.customer360.disambiguation', match.extractedName || '')}\n${list}`,
+      actions: disambigActions,
     };
   }
 
