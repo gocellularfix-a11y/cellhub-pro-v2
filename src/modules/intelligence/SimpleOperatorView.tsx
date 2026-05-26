@@ -219,6 +219,7 @@ export default function SimpleOperatorView({
   const seqRef = useRef(0);
   const [chatQuery, setChatQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
   const [inputText, setInputText] = useState('');
+  const [clearSeq, setClearSeq] = useState(0);
 
   useEffect(() => {
     if (externalQuery) setChatQuery(externalQuery);
@@ -452,8 +453,20 @@ export default function SimpleOperatorView({
           borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
         }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
-            Intelligence
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_PRIMARY }}>
+              Intelligence
+            </div>
+            <button
+              onClick={() => setClearSeq((n) => n + 1)}
+              style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 5,
+                background: 'transparent', border: `1px solid ${BORDER}`,
+                color: TEXT_DIM, cursor: 'pointer',
+              }}
+            >
+              {es ? 'Nueva sesión' : 'New session'}
+            </button>
           </div>
           <div style={{ fontSize: 13, color: '#7b8794' }}>
             {es ? 'Pregunta sobre tu tienda' : 'Ask about your store'}
@@ -468,6 +481,8 @@ export default function SimpleOperatorView({
           onPanelCampaign={onPanelCampaign}
           chipData={chipData}
           compact
+          hideInput
+          clearSeq={clearSeq}
         />
       </div>
     </div>

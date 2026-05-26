@@ -16,6 +16,7 @@ export interface OperatorChatShellProps {
   chipData?: ChipData;
   compact?: boolean;
   hideInput?: boolean;
+  clearSeq?: number;
 }
 
 export default function OperatorChatShell({
@@ -28,6 +29,7 @@ export default function OperatorChatShell({
   chipData,
   compact,
   hideInput,
+  clearSeq,
 }: OperatorChatShellProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: compact ? 0 : 'calc(100vh - 7rem)', flex: compact ? 1 : undefined, overflow: 'hidden' }}>
@@ -41,6 +43,7 @@ export default function OperatorChatShell({
         chipData={chipData}
         compact={compact}
         hideInput={hideInput}
+        clearSeq={clearSeq}
       />
     </div>
   );

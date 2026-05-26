@@ -39,7 +39,7 @@ import ResponseCard from './ResponseCard';
 import SuggestionChips, { type ChipData } from './SuggestionChips';
 import OperatorContinuityBar from './OperatorContinuityBar';
 import { getPendingResumeContexts } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
-import { pushSessionContext, getSessionContext } from '@/services/intelligence/chat/sessionContext';
+import { pushSessionContext, getSessionContext, clearSessionContext } from '@/services/intelligence/chat/sessionContext';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -73,6 +73,7 @@ interface Props {
   chipData?: ChipData;
   compact?: boolean;
   hideInput?: boolean;
+  clearSeq?: number;
 }
 
 interface ChatMessage {
@@ -87,7 +88,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact, hideInput }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact, hideInput, clearSeq }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -886,7 +887,20 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     fireQuery(suggestion);
   }, [fireQuery]);
 
-  const clearChat = () => setMessages([]);
+  const clearChat = () => {
+    setMessages([]);
+    lastIntentRef.current = null;
+    operationalContextRef.current = null;
+    clearSessionContext();
+  };
+
+  const prevClearSeqRef = useRef(-1);
+  useEffect(() => {
+    if (clearSeq === undefined || clearSeq === prevClearSeqRef.current) return;
+    prevClearSeqRef.current = clearSeq;
+    clearChat();
+  // clearChat is stable (only refs + setMessages) — no dep needed
+  }, [clearSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: compute peek item once on
   // mount (ref lazy init). No re-compute on keystrokes, no polling.
