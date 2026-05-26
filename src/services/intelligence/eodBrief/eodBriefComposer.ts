@@ -157,6 +157,7 @@ function buildExternalPaymentsPending(nowMs: number): EODOpenExternalPayment[] {
       customerName: due.customerName || '',
       amountCents: due.amountCents,
       daysSinceCreated,
+      carrier: due.carrier || '',
     },
   ];
 }

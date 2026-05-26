@@ -135,6 +135,8 @@ export type IntentId =
   | 'focus_today'
   // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing
   | 'daily_operator_brief_v3'
+  // R-EOD-BRIEF F2: end-of-day operator digest (open items + money placeholder)
+  | 'end_of_day_brief'
   // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer retrospective
   | 'customer_retention_insights'
   // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer 360° snapshot
@@ -982,6 +984,27 @@ const CUSTOMER_RETENTION_INSIGHTS_KEYWORDS = [
   'quem voltou',
   'clientes recorrentes',
   'que clientes voltaram',
+];
+
+// R-EOD-BRIEF F2: end-of-day digest. Listed in scores array BEFORE
+// daily_operator_brief_v3 / OPERATOR_DAILY_BRIEF_V2 / daily_brief so
+// EOD-anchored phrases ("end of day", "fin del día", "fim do dia",
+// "how was today", "como fue mi día") route to the closing digest
+// instead of the in-progress operator brief. Phrases that overlap
+// with v3 ('resumen del día', 'resumo do dia') route to EOD via
+// position tie-break — intent is end-of-shift recap, not mid-shift
+// status. Plain "today" / "hoy" / "hoje" remain on today_summary.
+const END_OF_DAY_BRIEF_KEYWORDS = [
+  // EN
+  'end of day', 'eod brief', 'how was today', 'today summary',
+  'how was my day', 'recap today', 'end-of-day brief',
+  // ES
+  'fin del día', 'fin del dia', 'resumen del día', 'resumen del dia',
+  'como fue mi día', 'como fue mi dia', 'cómo fue mi día', 'cómo fue mi dia',
+  'cómo fue el día', 'como fue el dia',
+  // PT
+  'fim do dia', 'resumo do dia',
+  'como foi meu dia', 'como foi o meu dia', 'como foi o dia',
 ];
 
 const DAILY_OPERATOR_BRIEF_V3_KEYWORDS = [
@@ -1901,6 +1924,12 @@ export function classifyIntent(
     // higher on those specific banks). Bare "continue" wins when analytics
     // banks score 0.
     { id: 'workflow_continuity', score: scoreKeywords(query, WORKFLOW_CONTINUITY_KEYWORDS) },
+    // R-EOD-BRIEF F2: end-of-day digest. Listed BEFORE daily_operator_brief_v3
+    // (and all legacy daily-brief variants) so EOD-anchored phrases beat the
+    // in-progress brief on shared substrings ("resumen del día", "resumo do
+    // dia") via position tie-break. Truly unique EOD anchors ("end of day",
+    // "fin del día", "fim do dia", "how was today") win on raw score.
+    { id: 'end_of_day_brief', score: scoreKeywords(query, END_OF_DAY_BRIEF_KEYWORDS) },
     // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
     // Listed BEFORE focus_today + all legacy daily-brief variants so anchored
     // "daily brief / brief me / store status / resumen de hoy / how are we

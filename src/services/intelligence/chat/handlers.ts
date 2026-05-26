@@ -128,6 +128,8 @@ import { handleWhyDidSalesDrop } from './whyDidSalesDrop';
 import { handleFocusToday } from './focusToday';
 // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
 import { handleOperatorDailyBriefV3 } from './dailyBrief';
+// R-EOD-BRIEF F2: end-of-day operator digest (open items + money placeholder).
+import { handleEndOfDayBrief } from '../eodBrief/handleEndOfDayBrief';
 // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer retrospective.
 import { handleCustomerRetentionInsights } from './customerRetentionInsights';
 // R-INTELLIGENCE-CUSTOMER-360-CHAT-INTENT: per-customer 360° snapshot composer.
@@ -515,6 +517,10 @@ export function handleIntent(
     // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
     case 'daily_operator_brief_v3':
       return handleOperatorDailyBriefV3(engine, lang);
+
+    // R-EOD-BRIEF F2: end-of-day operator digest.
+    case 'end_of_day_brief':
+      return handleEndOfDayBrief(engine, lang);
 
     // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer view.
     case 'customer_retention_insights':

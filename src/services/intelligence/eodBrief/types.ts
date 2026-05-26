@@ -77,6 +77,10 @@ export interface EODOpenExternalPayment {
   customerName: string;
   amountCents: number;
   daysSinceCreated: number;
+  // R-EOD-BRIEF F2: surfaced from PaymentVerification.carrier for the
+  // chat formatter. Optional — pre-F2 records (none in production today
+  // since composer is unwired) may omit it.
+  carrier?: string;
 }
 
 export interface EODOpenStoreCredit {

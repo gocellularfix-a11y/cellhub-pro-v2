@@ -4339,6 +4339,40 @@ export const translations: TranslationDictionary = {
   'chat.operatorBriefV3.focus.late.store_credit_liability':           { en: 'Carry over credit-holder outreach to tomorrow.', es: 'Pasa el outreach de crédito a mañana.', pt: 'Adie o outreach de crédito para amanhã.' },
   // Buttons
   'chat.operatorBriefV3.action.openReports':  { en: 'Open Reports',     es: 'Abrir Reportes',     pt: 'Abrir Relatórios' },
+  // R-EOD-BRIEF F2: end-of-day operator digest. Headers + per-section
+  // labels + action button labels. Per-item line bullets are formatted
+  // inline by the handler (universal "d" day-suffix, COP() for cents).
+  'chat.eodBrief.header':              { en: 'End of Day Brief',       es: 'Resumen del Día',         pt: 'Resumo do Dia' },
+  'chat.eodBrief.headerDate': {
+    en: (date: string) => `End of day — ${date}`,
+    es: (date: string) => `Fin del día — ${date}`,
+    pt: (date: string) => `Fim do dia — ${date}`,
+  },
+  'chat.eodBrief.moneyPending': {
+    en: (count: number) => `📊 ${count} sale${count === 1 ? '' : 's'} today — detailed numbers coming soon`,
+    es: (count: number) => `📊 ${count} venta${count === 1 ? '' : 's'} hoy — números detallados próximamente`,
+    pt: (count: number) => `📊 ${count} venda${count === 1 ? '' : 's'} hoje — números detalhados em breve`,
+  },
+  'chat.eodBrief.repairsHeader': {
+    en: (count: number) => `🔧 Repairs pending tomorrow (${count}):`,
+    es: (count: number) => `🔧 Reparaciones pendientes para mañana (${count}):`,
+    pt: (count: number) => `🔧 Reparos pendentes para amanhã (${count}):`,
+  },
+  'chat.eodBrief.layawaysHeader': {
+    en: (count: number) => `📦 Layaways due this week (${count}):`,
+    es: (count: number) => `📦 Apartados que vencen esta semana (${count}):`,
+    pt: (count: number) => `📦 Layaways vencendo esta semana (${count}):`,
+  },
+  'chat.eodBrief.externalHeader':      { en: '💳 External payments pending:', es: '💳 Pagos externos pendientes:', pt: '💳 Pagamentos externos pendentes:' },
+  'chat.eodBrief.creditExpiryHeader': {
+    en: (count: number) => `🎟️ Store credit expiring soon (${count}):`,
+    es: (count: number) => `🎟️ Crédito de tienda por expirar (${count}):`,
+    pt: (count: number) => `🎟️ Crédito da loja expirando em breve (${count}):`,
+  },
+  'chat.eodBrief.allClear':            { en: '✅ Nothing pending for tomorrow', es: '✅ Sin pendientes para mañana', pt: '✅ Sem pendências para amanhã' },
+  'chat.eodBrief.actionViewRepair':    { en: 'View repair',                   es: 'Ver reparación',               pt: 'Ver reparo' },
+  'chat.eodBrief.actionViewLayaway':   { en: 'View layaway',                  es: 'Ver apartado',                  pt: 'Ver layaway' },
+  'chat.eodBrief.actionVerifyPayment': { en: 'Verify payment',                es: 'Verificar pago',                pt: 'Verificar pagamento' },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },
