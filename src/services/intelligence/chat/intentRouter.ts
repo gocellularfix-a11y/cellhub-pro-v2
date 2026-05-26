@@ -995,16 +995,60 @@ const CUSTOMER_RETENTION_INSIGHTS_KEYWORDS = [
 // position tie-break — intent is end-of-shift recap, not mid-shift
 // status. Plain "today" / "hoy" / "hoje" remain on today_summary.
 const END_OF_DAY_BRIEF_KEYWORDS = [
-  // EN
-  'end of day', 'eod brief', 'how was today', 'today summary',
-  'how was my day', 'recap today', 'end-of-day brief',
-  // ES
-  'fin del día', 'fin del dia', 'resumen del día', 'resumen del dia',
-  'como fue mi día', 'como fue mi dia', 'cómo fue mi día', 'cómo fue mi dia',
-  'cómo fue el día', 'como fue el dia',
-  // PT
-  'fim do dia', 'resumo do dia',
-  'como foi meu dia', 'como foi o meu dia', 'como foi o dia',
+  // ────────── EN: direct ──────────
+  'end of day', 'end-of-day', 'eod', 'eod brief', 'end of day brief',
+  'closing brief', 'closing summary', 'closing report', 'closing time',
+  'day recap', 'day summary', 'today recap', 'today summary',
+  'daily wrap up', 'daily wrap-up', 'wrap up', 'wrap-up', 'wrap up today',
+
+  // ────────── EN: casual ──────────
+  'how was today', 'how was my day', 'how did today go',
+  'how did we do today', 'how did i do today', 'how am i doing today',
+  'summary please', 'recap today', 'recap please',
+  'close out the day', 'close the day', 'close day',
+  'end the day', 'ending the day',
+
+  // ────────── ES: directo ──────────
+  'final del día', 'final del dia', 'final de hoy',
+  'fin del día', 'fin del dia', 'fin de hoy',
+  'cierre del día', 'cierre del dia', 'cierre de hoy', 'cierre',
+  'resumen del día', 'resumen del dia', 'resumen de hoy',
+  'resumen final', 'recap del día', 'recap del dia',
+
+  // ────────── ES: casual mexicano ──────────
+  // R-EOD-BRIEF F2.1 collision review:
+  //   - 'qué tal hoy' / 'que tal hoy' dropped (would steal from today_summary;
+  //     phrase is ambiguous AM vs PM — preserved on today_summary).
+  //   - bare 'a cerrar' dropped (substring of OPERATOR_MODE_KEYWORDS
+  //     'ayúdame a cerrar ventas hoy' — would steal operator_mode via
+  //     position tie-break). Specific variants 'vamos a cerrar' / 'pa
+  //     cerrar' / 'ya pa cerrar' / 'vamos cerrando' / 'ya cerramos'
+  //     retained — none substring-match other banks.
+  'como me fue hoy', 'cómo me fue hoy', 'como me fue', 'cómo me fue',
+  'como estuvo el día', 'cómo estuvo el día',
+  'como estuvo hoy', 'cómo estuvo hoy',
+  'qué tal el día', 'que tal el día', 'que tal el dia',
+  'cómo nos fue hoy', 'como nos fue hoy', 'cómo nos fue', 'como nos fue',
+  'cómo va el día', 'como va el día', 'como va el dia',
+  'como vamos hoy', 'cómo vamos hoy',
+  'ya pa cerrar', 'ya pa cerrar caja', 'pa cerrar',
+  'vamos a cerrar', 'vamos cerrando', 'ya cerramos',
+  'vamos a ver el día', 'a ver el día', 'a ver cómo me fue',
+  'qué hicimos hoy', 'que hicimos hoy',
+  'qué se hizo hoy', 'que se hizo hoy',
+  'cuánto hicimos hoy', 'cuanto hicimos hoy',
+  'cuánto vendí hoy', 'cuanto vendi hoy',
+
+  // ────────── Spanglish ──────────
+  'recap compa', 'end of day compa', 'como va el day',
+  'closing the day', 'como cerramos hoy', 'ya casi cerramos',
+
+  // ────────── PT ──────────
+  'fim do dia', 'final do dia',
+  'fechamento do dia', 'fechamento',
+  'resumo do dia', 'resumo de hoje', 'recap do dia',
+  'como foi meu dia', 'como foi o meu dia',
+  'como foi o dia', 'como foi hoje',
 ];
 
 const DAILY_OPERATOR_BRIEF_V3_KEYWORDS = [
