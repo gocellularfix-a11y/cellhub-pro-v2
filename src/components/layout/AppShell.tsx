@@ -6,6 +6,7 @@ import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/u
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
 import { useLicense } from '@/contexts/LicenseContext';
@@ -114,10 +115,11 @@ export default function AppShell() {
       dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
       return;
     }
-    // Stash customer ID for PhonePaymentModal to consume on mount
-    dispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: match.id });
-    // Navigate to POS (PhonePaymentModal lives there)
-    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+    // R-CREDENTIAL-BARCODE-SCAN-V1: route through BarcodeActionModal's
+    // existing CH:CUST: branch so the operator sees the full customer
+    // action sheet (open, start sale, history, repairs, layaways, WA)
+    // instead of auto-opening PhonePaymentModal.
+    dispatch({ type: 'SET_PENDING_BARCODE_INVOICE', payload: `${CH_CUST_PREFIX}${match.id}` });
   }, [customers, dispatch]);
 
   const handleInventoryScan = useCallback((code: string) => {

@@ -6250,6 +6250,13 @@ export const translations: TranslationDictionary = {
   'barcode.waMessage':      { en: 'Message customer',                 es: 'Enviar mensaje al cliente',           pt: 'Enviar mensagem ao cliente' },
   'barcode.balance':        { en: 'Balance',                          es: 'Saldo',                               pt: 'Saldo' },
   'barcode.cancel':         { en: 'Cancel',                           es: 'Cancelar',                            pt: 'Cancelar' },
+  'barcode.customerScan':   { en: 'Customer Card Scanned',            es: 'Tarjeta de Cliente Escaneada',        pt: 'Cartão de Cliente Escaneado' },
+  'barcode.startSale':      { en: 'Start Sale',                       es: 'Iniciar Venta',                       pt: 'Iniciar Venda' },
+  'barcode.startSaleSub':   { en: 'Open POS with customer selected',  es: 'Abrir POS con cliente seleccionado',  pt: 'Abrir POS com cliente selecionado' },
+  'barcode.checkRepairs':   { en: 'Check Repairs',                    es: 'Ver Reparaciones',                    pt: 'Ver Reparações' },
+  'barcode.checkRepairsSub':{ en: 'View customer repairs',            es: 'Ver reparaciones del cliente',        pt: 'Ver reparações do cliente' },
+  'barcode.checkLayaways':  { en: 'Check Layaways',                   es: 'Ver Apartados',                       pt: 'Ver Reservas' },
+  'barcode.checkLayawaysSub':{ en: 'View customer layaways',          es: 'Ver apartados del cliente',           pt: 'Ver reservas do cliente' },
 
   // ── AI Assistant ─────────────────────────────────────────
   'ai.noApiKey':         { en: 'No API key — configure in Settings',    es: 'Sin API key — configura en Ajustes',    pt: 'Sem API key — configure em Configurações' },

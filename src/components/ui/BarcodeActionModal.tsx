@@ -188,7 +188,7 @@ export default function BarcodeActionModal() {
               borderRadius: '0.75rem',
             }}>
               <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                {locale === 'es' ? 'Cliente Detectado' : 'Customer Scan'}
+                {t('barcode.customerScan')}
               </div>
               {chCustomer ? (
                 <>
@@ -235,6 +235,45 @@ export default function BarcodeActionModal() {
                   <div style={{ textAlign: 'left' }}>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.makePhonePayment')}</div>
                     <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.makePhonePaymentSub')}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: chCustomer.id });
+                    navigate('pos');
+                  }}
+                  style={actionStyle('#22C55E')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>🛒</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.startSale')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.startSaleSub')}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
+                    navigate('repairs');
+                  }}
+                  style={actionStyle('#6366F1')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>🔧</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.checkRepairs')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.checkRepairsSub')}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
+                    navigate('layaways');
+                  }}
+                  style={actionStyle('#EC4899')}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>📦</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.checkLayaways')}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{t('barcode.checkLayawaysSub')}</div>
                   </div>
                 </button>
                 {chCustomer.phone && settings.waEnabled !== false && (
