@@ -12,21 +12,11 @@ import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
 import { tChat } from './handlers';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
 import { scoreRepairFollowUp, scoreRepairEscalate } from '../operatorQueue/priorityScoring';
-
-// R-INTEL-FIX-ROUND-5 BLOCKER-025: Repair.createdAt is Timestamp|Date|string.
-// raw `new Date(obj as string)` yields NaN when createdAt is a Firebase Timestamp.
-// tsOf() is file-local in every other module — not exported. Mirror the contract here.
-function parseTimestampSafe(v: unknown): number | null {
-  if (!v) return null;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  try {
-    if (typeof (v as { toDate?: () => Date }).toDate === 'function') {
-      return (v as { toDate: () => Date }).toDate().getTime();
-    }
-    const t = new Date(v as string | Date).getTime();
-    return Number.isFinite(t) ? t : null;
-  } catch { return null; }
-}
+// R-EOD-BRIEF F1: parseTimestampSafe extracted to shared util so EOD brief
+// composer and future intelligence modules can reuse the same parsing contract.
+// Origin context preserved: Repair.createdAt is Timestamp|Date|string; raw
+// `new Date(obj as string)` yields NaN when the value is a Firebase Timestamp.
+import { parseTimestampSafe } from '../utils/timestamps';
 
 function findActiveRepairByName(engine: IntelligenceEngine, nameFragment: string) {
   const nameLower = nameFragment.toLowerCase();
