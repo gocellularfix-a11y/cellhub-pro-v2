@@ -28,7 +28,7 @@
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Lang3 } from '../chat/handlers';
-import type { Repair, Layaway, StoreCreditLedger } from '@/store/types';
+import type { Sale, Repair, Layaway, StoreCreditLedger } from '@/store/types';
 import { parseTimestampSafe, startOfDayMs } from '../utils/timestamps';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
@@ -53,13 +53,54 @@ const STORE_CREDIT_EXPIRY_DAYS   = 30;
 
 // ── Money placeholder ────────────────────────────────────
 
-function emptyMoneySection(): EODMoneySection {
+/**
+ * R-EOD-BRIEF F2.2: countable-sale check mirrors ReportsModule.isCountableSale
+ * verbatim — voided and refunded sales are excluded from the daily count.
+ * Status comparison case-sensitive on the canonical lowercase enum values
+ * the rest of the codebase writes.
+ */
+function isCountableSale(s: Sale): boolean {
+  return s.status !== 'voided' && s.status !== 'refunded';
+}
+
+/**
+ * R-EOD-BRIEF F2.2 — Today-anchored sale count.
+ *
+ * Replicates ReportsModule's "today" date filter pattern exactly:
+ *   - parseTimestampSafe handles all four createdAt shapes (number,
+ *     Firestore-like .toDate(), ISO string, Date instance)
+ *   - boundary is local-midnight inclusive → now inclusive
+ *   - voided / refunded sales excluded via isCountableSale
+ *
+ * Other money fields stay 0 because confidence='placeholder' is still
+ * the published guarantee — only the count is canonical. The i18n
+ * string consuming this value is the transparency line
+ * "{count} sales today — detailed numbers coming soon", which is
+ * truthful as long as count matches Reports.
+ */
+function countTodaySales(
+  engine: IntelligenceEngine,
+  dayStartMs: number,
+  dayEndMs: number,
+): number {
+  const sales = engine.getSales() || [];
+  let count = 0;
+  for (const s of sales) {
+    if (!isCountableSale(s)) continue;
+    const ms = parseTimestampSafe(s.createdAt);
+    if (ms === null) continue;
+    if (ms >= dayStartMs && ms <= dayEndMs) count += 1;
+  }
+  return count;
+}
+
+function placeholderMoneySection(saleCount: number): EODMoneySection {
   return {
     grossRevenueCents: 0,
     netRevenueCents: 0,
     grossProfitCents: 0,
     profitMarginPct: 0,
-    saleCount: 0,
+    saleCount,
     returnCount: 0,
     returnedAmountCents: 0,
     tenderBreakdown: {
@@ -213,11 +254,15 @@ export function composeEODBrief(
   nowMs?: number,
 ): EODBriefResult {
   const now = nowMs ?? Date.now();
+  const dayStartMs = startOfDayMs(now);
+  const dayEndMs   = now;
+  const saleCount  = countTodaySales(engine, dayStartMs, dayEndMs);
+
   return {
     generatedAtMs: now,
-    dayStartMs: startOfDayMs(now),
-    dayEndMs: now,
-    money: emptyMoneySection(),
+    dayStartMs,
+    dayEndMs,
+    money: placeholderMoneySection(saleCount),
     openItems: buildOpenItemsSection(engine, now),
     lang,
   };
