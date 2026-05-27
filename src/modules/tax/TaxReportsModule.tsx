@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { toDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { normalizeCarrier } from '@/utils/normalize';
@@ -117,12 +118,24 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════
 export default function TaxReportsModule() {
-  const { state: { sales, repairs, unlocks, inventory, employees, settings, lang, expenses }, setExpenses } = useApp();
+  const { state: { sales, repairs, unlocks, inventory, employees, settings, lang, expenses, isAdminMode, currentEmployee }, setExpenses } = useApp();
   const { toast } = useToast();
   const L = getLabels(lang);
   const { t, locale } = useTranslation();
   const es = locale === 'es';
   const { printHtml } = usePrint();
+
+  // R-FINANCIAL-PRIVACY-V4: the entire Tax module exposes net income,
+  // COGS, profit, partnership K-1 allocations, owner tax summaries —
+  // every tab is owner-only by nature. Module-level gate instead of
+  // field-by-field: if the viewer can't see owner financials we render
+  // a short notice and skip the rest of the screen. Aggregation logic
+  // above this hook still runs only because hooks-rule requires fixed
+  // order; the gated return below means the result is never displayed.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   // r-print-audit: print the current section in a standalone window instead
   // of window.print() which would print the entire CellHub Pro UI.
@@ -774,6 +787,38 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
     { id: 'f1065',   icon: '📊', label: '1065 / K-1 / 1040',  sub: t('tax.federalReturnsSub') },
     { id: 'w9',      icon: '📋', label: 'W-9 Form',            sub: t('tax.contractorTinSub') },
   ];
+
+  // R-FINANCIAL-PRIVACY-V4: hard module-level gate. Returning before the
+  // sidebar/section renders blocks all tabs (Income, Expenses, Inventory,
+  // Members, 1065, K-1, Schedules L/M/C/SE, 1040 Sched C, CA 540, W-9
+  // contractor info, partnership K-1 allocation) in one shot.
+  if (!canSeeOwnerFinancials) {
+    return (
+      <div style={{ padding: '2rem' }}>
+        <div style={{
+          borderRadius: '0.75rem',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          background: 'rgba(245, 158, 11, 0.10)',
+          padding: '1rem 1.25rem',
+          color: '#fbbf24',
+          maxWidth: '640px',
+        }}>
+          <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+            🔒 {lang === 'es' ? 'Privacidad financiera activa'
+                : lang === 'pt' ? 'Privacidade financeira ativa'
+                : 'Financial Privacy is enabled'}
+          </div>
+          <div style={{ fontSize: '0.82rem', color: '#fcd34d', lineHeight: 1.5 }}>
+            {lang === 'es'
+              ? 'Este módulo de impuestos es solo para el propietario. Pide al Admin que desactive la privacidad financiera si necesitas verlo.'
+              : lang === 'pt'
+              ? 'Este módulo de impostos é apenas para o proprietário. Peça ao Admin para desativar a privacidade financeira se precisar acessar.'
+              : 'This tax report module is owner-only. Ask the Admin to disable Financial Privacy if you need access.'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', gap: '1rem', minHeight: 0 }}>

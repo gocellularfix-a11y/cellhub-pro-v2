@@ -27,6 +27,10 @@ interface SuggestionChipsProps {
   onFireChat: (query: string) => void;
   locale: string;
   mode?: 'row' | 'welcome';
+  // R-FINANCIAL-PRIVACY-V3: when false, the profit-leak + dead-stock signals
+  // (and any future signals labelled with profit/cost numbers) are filtered
+  // out so the chip row doesn't surface owner-only financial data.
+  canSeeOwnerFinancials?: boolean;
 }
 
 // ── Build live signals from store data ───────────────────────
@@ -165,8 +169,16 @@ function SuggestionChips({
   onFireChat,
   locale,
   mode = 'row',
+  canSeeOwnerFinancials = true,
 }: SuggestionChipsProps) {
-  const signals = buildSignals(chipData, locale);
+  // R-FINANCIAL-PRIVACY-V3: when employees cannot see owner financials,
+  // zero out the profit-leak + dead-stock cents so buildSignals skips those
+  // chips entirely (they're gated on > 0). Operational chips (outreach,
+  // repairs, product promotions) keep firing.
+  const effectiveChipData: ChipData = canSeeOwnerFinancials
+    ? chipData
+    : { ...chipData, biggestLeakCents: 0, deadStockLockedCents: 0 };
+  const signals = buildSignals(effectiveChipData, locale);
 
   if (mode === 'welcome') {
     return (

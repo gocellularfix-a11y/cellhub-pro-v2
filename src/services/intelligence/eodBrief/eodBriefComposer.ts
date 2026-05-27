@@ -69,6 +69,14 @@ function countTodaySales(engine: IntelligenceEngine): number {
   return engine.getTodayMetrics().transactions;
 }
 
+// R-FINANCIAL-PRIVACY-V4: TODO — once placeholderMoneySection is replaced
+// with the real EOD aggregation (currently placeholder zeros) the populated
+// branch MUST consult canViewOwnerFinancials and zero out grossProfitCents
+// + profitMarginPct for non-admin viewers. The EOD brief route is already
+// short-circuited at the IntelligenceChat dispatch gate for the
+// 'end_of_day_brief' intent path that mentions profit, but a direct call
+// (operator brief widget, scheduled push, etc.) would bypass the gate.
+// Wire the helper here when settings + role become accessible.
 function placeholderMoneySection(saleCount: number): EODMoneySection {
   return {
     grossRevenueCents: 0,

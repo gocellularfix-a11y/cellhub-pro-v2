@@ -6,6 +6,35 @@
 // match + lang and returns a markdown-ish string for display.
 // Reuses summarizeDashboard / summarizeCustomerHistory from nlg.ts
 // so chat responses have the same prose style as the dashboard card.
+//
+// ── R-FINANCIAL-PRIVACY-V2/V3/V4 gate architecture ────────────
+// Handlers in this file have NO direct access to StoreSettings or
+// the current employee role. Profit/cost/margin redaction therefore
+// happens at the DISPATCH layer (src/modules/intelligence/
+// IntelligenceChat.tsx, fireQuery + the secondary onSubmit path):
+//
+//   const PROFIT_SENSITIVE_INTENTS = new Set([
+//     'best_customer', 'least_profitable_customers',
+//     'what_hurting_profit', 'what_is_losing_money',
+//   ]);
+//   if (!canSeeOwnerFinancialsRef.current && PROFIT_SENSITIVE_INTENTS.has(match.id)) {
+//     // short-circuit BEFORE handleIntent runs → handler never sees the query
+//     return safeBilingualMessage;
+//   }
+//
+// Handlers below that DIRECTLY emit profit/margin/cost strings are
+// the four intents in that set: handleBestCustomer,
+// handleLeastProfitableCustomers, handleWhatHurtingProfit, and the
+// what_is_losing_money flow in whatIsLosingMoney.ts. Each is invoked
+// only when the dispatch gate has already cleared the viewer.
+//
+// Handlers that mention $ amounts but NOT profit/cost (sales totals,
+// transaction counts, repair counts, etc.) are NOT gated and remain
+// visible to employees — sales totals were explicitly listed as
+// allowed by the spec.
+//
+// Adding a new handler that surfaces profit/cost/margin? Add the
+// intent id to PROFIT_SENSITIVE_INTENTS in IntelligenceChat.tsx.
 // ============================================================
 
 import type { IntelligenceEngine } from '../IntelligenceEngine';
@@ -4859,159 +4888,28 @@ function handleEntityLookup(
 // never mutates queue, never executes actions. engine.refresh() hits the
 // 60s cache, so cost is near-zero on hot path.
 function handleFallbackQuestion(match: IntentMatch, engine: IntelligenceEngine, lang: Lang3): ChatResponse {
-  void lang;
-  // EN-only inline strings — fallback is meta-content (data summary +
-  // routing hints to specific intents); spec did not list translations.ts.
-  const rawQuery = (match.query || '').toLowerCase();
-
-  // ── Topic detection ────────────────────────────────────────
-  // Cheap substring/regex checks. EN + ES + PT keyword variants where
-  // overlap with existing keyword banks is minimal (otherwise the query
-  // would have hit a deterministic intent and never landed here).
-  const WEEKDAYS = [
-    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-    'lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo',
-    'segunda', 'terça', 'terca', 'quarta', 'quinta', 'sexta',
-  ];
-  let weekdayHit: string | null = null;
-  for (const d of WEEKDAYS) {
-    if (rawQuery.includes(d)) { weekdayHit = d; break; }
-  }
-  const hasDay = weekdayHit !== null || /\bday\b|\bd[íi]a\b|\bdia\b/.test(rawQuery);
-  const hasProduct = /\bproduct\b|\bsku\b|\bitem\b|\bproducto\b|\bproduto\b/.test(rawQuery);
-  const hasCustomer = /\bcustomer\b|\bbuyer\b|\bcliente\b/.test(rawQuery);
-  const hasWhy = /\bwhy\b|\bpor\s*qu[ée]\b|\bporque\b|\bcausa\b|\breason\b/.test(rawQuery);
-  const timeWindow: 'today' | 'week' | 'month' | null = (() => {
-    if (rawQuery.includes('today') || rawQuery.includes('hoy') || rawQuery.includes('hoje')) return 'today';
-    if (rawQuery.includes('week') || rawQuery.includes('semana')) return 'week';
-    if (rawQuery.includes('month') || rawQuery.includes('mes') || rawQuery.includes('mês')) return 'month';
-    return null;
-  })();
-
-  const insights: string[] = [];
-  const actions: string[] = [];
-
-  // ── Day / weekday / traffic pattern ──────────────────────
-  if (hasDay) {
-    const slow = engine.getSlowDayRootCause();
-    if (slow) {
-      insights.push(`📅 Slowest day is ${slow.slowestDayName} (${COP(slow.slowDayRevenueCents)} avg); best day is ${slow.bestDayName} (${COP(slow.bestDayRevenueCents)} avg).`);
-      if (slow.weeklyGapCents > 0) {
-        insights.push(`📉 Weekly gap between best and slowest day: ${COP(slow.weeklyGapCents)}.`);
-      }
-      actions.push(`Run "why is ${slow.slowestDayName.toLowerCase()} slow" for the full slow-day diagnosis`);
-    }
-  }
-
-  // ── Product focus ────────────────────────────────────────
-  if (hasProduct) {
-    const opps = engine.getProductOpportunities();
-    if (opps.length > 0) {
-      const top = opps[0];
-      const oppType = top.type.toLowerCase().replace(/_/g, ' ');
-      insights.push(`📦 Top product signal: ${top.action.toLowerCase()} "${top.name}" — ${oppType}, impact ~${COP(top.impactCents)}.`);
-      if (opps.length > 1) {
-        insights.push(`📦 ${opps.length - 1} more product opportunit${opps.length - 1 === 1 ? 'y' : 'ies'} surfaced.`);
-      }
-      actions.push(`Run "promote this product ${top.name}" to draft outreach to top buyers`);
-    }
-  }
-
-  // ── Customer focus ───────────────────────────────────────
-  if (hasCustomer) {
-    const scores = engine.getCustomerScores();
-    if (scores.length > 0) {
-      const sorted = scores.slice().sort((a, b) => b.score - a.score);
-      const top = sorted[0];
-      insights.push(`👤 ${scores.length} customer${scores.length === 1 ? '' : 's'} scored — top tier is "${top.tier}" (score ${Math.round(top.score)}).`);
-      const atRisk = sorted.filter((s) => s.tier === 'bronze' || s.riskScore > 50);
-      if (atRisk.length > 0) {
-        insights.push(`⚠️ ${atRisk.length} customer${atRisk.length === 1 ? '' : 's'} flagged as at-risk by score.`);
-      }
-      actions.push(`Run "who should I contact today" for the ranked top-3 outreach list`);
-    }
-  }
-
-  // ── Why / root cause ─────────────────────────────────────
-  if (hasWhy) {
-    const revRC = engine.getRevenueRootCause();
-    if (revRC && revRC.revDropCents > 0) {
-      insights.push(`📉 Revenue diagnosis: ${revRC.diagnosis} — drop of ${COP(revRC.revDropCents)} (${revRC.txDropPct}% tx drop, ${revRC.ticketDropPct}% ticket drop).`);
-      actions.push(`Run "why are sales down" for the full breakdown`);
-    } else {
-      const missed = engine.getMissedRevenue();
-      if (missed) {
-        const losses = [missed.deadStockLockedCents ?? 0, missed.slowDayLossCents ?? 0, missed.slowHourLossCents ?? 0];
-        const biggest = Math.max(...losses);
-        if (biggest > 0) {
-          insights.push(`🔍 Largest missed-revenue signal is ${COP(biggest)}.`);
-          actions.push(`Run "what is hurting my profit" for the breakdown`);
-        }
-      }
-    }
-  }
-
-  // ── Time window only (no other topic) ────────────────────
-  // If the query is purely time-scoped (e.g. "anything for today")
-  // and no other category fired, surface the today/week KPI snapshot.
-  if (timeWindow && insights.length === 0) {
-    const kpi = engine.refresh().kpiDashboard;
-    if (kpi) {
-      const rev = kpi.revenue?.current ?? 0;
-      const tx = kpi.transactions?.count ?? 0;
-      if (rev > 0 || tx > 0) {
-        insights.push(`📊 ${kpi.period}: ${COP(rev)} revenue across ${tx} transaction${tx === 1 ? '' : 's'}.`);
-      }
-    }
-  }
-
-  // ── Generic mini-summary fallback ────────────────────────
-  // Only when NOTHING topic-specific fired. Trimmed to the most actionable
-  // signals (reorder + missed-revenue) — no full dashboard dump.
-  if (insights.length === 0) {
-    const reorderRecs = engine.getReorderRecommendations();
-    if (reorderRecs.length > 0) {
-      const top = reorderRecs[0];
-      const days = Number.isFinite(top.daysLeft) ? Math.round(top.daysLeft) : 0;
-      insights.push(`📦 Most urgent reorder: "${top.name}" (${top.priority}, ~${days} day(s) of stock left).`);
-      actions.push(`Run "what should I reorder" for the full list`);
-    }
-    const missed = engine.getMissedRevenue();
-    if (missed) {
-      const losses = [missed.deadStockLockedCents ?? 0, missed.slowDayLossCents ?? 0, missed.slowHourLossCents ?? 0];
-      const biggest = Math.max(...losses);
-      if (biggest > 0) {
-        insights.push(`💸 Largest missed-revenue signal is ${COP(biggest)}.`);
-        actions.push(`Run "what is hurting my profit" for the breakdown`);
-      }
-    }
-  }
-
-  // ── Compose response ─────────────────────────────────────
-  const finalInsights = insights.slice(0, 3);
-  const finalActions = actions.slice(0, 3);
-
-  if (finalInsights.length === 0 && finalActions.length === 0) {
-    return {
-      kind: 'answer',
-      text: 'Not enough data yet to answer specifically. Try a deterministic intent like "who should I contact today", "what is hurting my profit", "marketing", or "what should I reorder".',
-    };
-  }
-
-  const lines: string[] = [];
-  lines.push('Based on your question and store data:');
-  lines.push('');
-  if (finalInsights.length > 0) {
-    lines.push('📊 What I see:');
-    finalInsights.forEach((i) => lines.push(`  ${i}`));
-  }
-  if (finalActions.length > 0) {
-    if (finalInsights.length > 0) lines.push('');
-    lines.push('💡 Suggested next steps:');
-    finalActions.forEach((a, idx) => lines.push(`  ${idx + 1}. ${a}`));
-  }
-
-  return { kind: 'answer', text: lines.join('\n') };
+  // R-INTELLIGENCE-STABILIZATION-V1 TASK 1 — Intent Guard.
+  //
+  // Previous implementation composed an answer by sampling unrelated
+  // engines (slow-day root cause, missed revenue, customer scores,
+  // reorder list, KPI dashboard) whenever a query weakly matched a
+  // topic keyword. That made off-topic and ambiguous queries feel
+  // like a generic chatbot — the chat would invent a "📊 What I see"
+  // summary out of unrelated data.
+  //
+  // New behavior: when no deterministic intent matched AND entity-
+  // first routing in the case statement also failed, respond with a
+  // capability menu instead of inventing analytics. Spec requires:
+  //   - do NOT invent answer
+  //   - do NOT generate generic chatbot text
+  //   - respond with a safe CellHub-focused message.
+  void match; void engine;
+  const safe = {
+    en: 'I can help with sales, customers, repairs, inventory, payments, reports, and follow-ups. Try: "sales today", "best customer", "overdue repairs", "low stock", or "who should I contact today".',
+    es: 'Puedo ayudarte con ventas, clientes, reparaciones, inventario, pagos, reportes y seguimiento. Prueba: "ventas de hoy", "mejor cliente", "reparaciones atrasadas", "inventario bajo" o "a quién contacto hoy".',
+    pt: 'Posso ajudar com vendas, clientes, consertos, estoque, pagamentos, relatórios e follow-ups. Tente: "vendas hoje", "melhor cliente", "consertos atrasados", "estoque baixo" ou "quem devo contatar hoje".',
+  };
+  return { kind: 'answer', text: safe[lang] };
 }
 
 // ── Unknown fallback ────────────────────────────────────────

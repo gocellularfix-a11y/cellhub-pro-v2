@@ -14,6 +14,7 @@ import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
 import { isElectron, getElectronAPI } from '@/utils/platform';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import {
   readDashboardTheme,
   dashboardThemeLabel,
@@ -324,11 +325,15 @@ export default function SettingsModule() {
   const {
     // r-settings-1 B-08: sales added so Export Today reads live AppState
     // instead of stale localStorage cache.
-    state: { settings, employees, lang, currentEmployee, sales,
+    state: { settings, employees, lang, currentEmployee, isAdminMode, sales,
       customers, inventory, repairs, unlocks, specialOrders, layaways,
       purchaseOrders, appointments, expenses, customerReturns, vendorReturns },
     setSettings, setEmployees, dispatch,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V4.1: component-local preview toggle. Does NOT
+  // change auth state or settings — purely renders the "what employees
+  // can't see" list expanded. Resets on every Settings unmount.
+  const [previewAsEmployee, setPreviewAsEmployee] = useState(false);
 
   const { toast } = useToast();
 
@@ -353,6 +358,16 @@ export default function SettingsModule() {
     { id: 'whatsapp',    icon: '💬',  label: t('settings.nav.whatsapp') },
     { id: 'ai',          icon: '🤖',  label: t('settings.nav.ai') },
     { id: 'employees',   icon: '👥',  label: t('settings.nav.employees') },
+    // R-FINANCIAL-PRIVACY-V1: owner-only financial visibility toggle.
+    // Inline label (no translations.ts touch — additive-only spec).
+    {
+      id: 'privacy',
+      icon: '🔒',
+      label:
+        lang === 'es' ? 'Privacidad financiera'
+        : lang === 'pt' ? 'Privacidade financeira'
+        : 'Financial privacy',
+    },
     { id: 'backup',      icon: '💾',  label: t('settings.nav.backup') },
   ];
 
@@ -1784,6 +1799,221 @@ export default function SettingsModule() {
               <EmployeeSection employees={employees} setEmployees={setEmployees} settings={settings} currentEmployee={currentEmployee} />
             </>
           )}
+
+          {/* R-FINANCIAL-PRIVACY-V1 / V4.1: owner-only financial visibility.
+              V4.1 refreshes the copy to reflect that hiding is now actually
+              enforced (V2/V3/V4 shipped), adds an Admin badge, and exposes
+              a component-local "Preview as employee" expand panel so the
+              owner can audit what employees lose without clocking out. */}
+          {activeSection === 'privacy' && (() => {
+            // Probe the flag via the helper with a forced non-admin second
+            // arg — false result means the flag is ON. Avoids a direct
+            // StoreSettings → Record cast (which tsc rejects without
+            // double-unknown) while staying additive.
+            const flagOn = !canViewOwnerFinancials(settings, false);
+            const isAdminOrOwner = isAdminMode || currentEmployee?.role === 'owner';
+            return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <h2 className="text-lg font-semibold text-white mb-1">
+                🔒 {lang === 'es' ? 'Privacidad financiera'
+                  : lang === 'pt' ? 'Privacidade financeira'
+                  : 'Financial privacy'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {lang === 'es'
+                  ? 'Controla qué datos financieros sensibles ven los empleados. El propietario (Admin) siempre ve todo.'
+                  : lang === 'pt'
+                  ? 'Controle quais dados financeiros sensíveis os funcionários veem. O proprietário (Admin) sempre vê tudo.'
+                  : 'Control which sensitive financial data your employees see. The owner (Admin) always sees everything.'}
+              </p>
+
+              <div className="border-t border-white/10 pt-4 space-y-3">
+                <Toggle
+                  settings={settings}
+                  update={update}
+                  label={
+                    lang === 'es'
+                      ? 'Ocultar ganancia y costo a empleados'
+                      : lang === 'pt'
+                      ? 'Ocultar lucro e custo dos funcionários'
+                      : 'Hide profit and cost from employees'
+                  }
+                  settingsKey="hideOwnerFinancialsFromEmployees"
+                />
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {lang === 'es'
+                    ? 'Cuando está activado, los empleados pueden ver ventas y operaciones, pero no pueden ver ganancia, costo, margen, markup ni ingreso neto. El Admin sigue viendo todos los datos financieros.'
+                    : lang === 'pt'
+                    ? 'Quando ativado, os funcionários podem ver vendas e operações, mas não podem ver lucro, custo, margem, markup ou receita líquida. O Admin continua vendo todos os dados financeiros.'
+                    : 'When enabled, employees can see sales and operations, but cannot see profit, cost, margin, markup, or net income. Admin still sees all financial data.'}
+                </p>
+
+                {/* V4.1: active-state notice (replaces stale amber "follow-up update" copy). */}
+                {flagOn && (
+                  <div style={{
+                    borderRadius: '0.5rem',
+                    border: '1px solid rgba(34,197,94,0.3)',
+                    background: 'rgba(34,197,94,0.08)',
+                    padding: '0.65rem 0.85rem',
+                  }}>
+                    <p style={{ fontSize: '0.75rem', color: '#86efac', fontWeight: 700, marginBottom: '0.25rem' }}>
+                      ✓ {lang === 'es' ? 'Activo'
+                        : lang === 'pt' ? 'Ativo'
+                        : 'Active'}
+                    </p>
+                    <p style={{ fontSize: '0.72rem', color: '#bbf7d0', lineHeight: 1.5, margin: 0 }}>
+                      {lang === 'es'
+                        ? 'Ganancia, costo, margen, markup, COGS e ingreso neto se ocultan a empleados no propietarios en Dashboard, Reportes, Inventario, Impuestos, Órdenes de Compra, Historial de Clientes, Intelligence chat y el AI Assistant.'
+                        : lang === 'pt'
+                        ? 'Lucro, custo, margem, markup, COGS e receita líquida ficam ocultos para funcionários não-proprietários em Painel, Relatórios, Estoque, Impostos, Ordens de Compra, Histórico de Clientes, Intelligence chat e AI Assistant.'
+                        : 'Profit, cost, margin, markup, COGS, and net income are hidden from non-owner employees across Dashboard, Reports, Inventory, Tax, Purchase Orders, Customer History, Intelligence chat, and AI Assistant.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* V4.1: Admin badge — only shows when the toggle is ON AND
+                    the current viewer is the admin/owner who would otherwise
+                    wonder why they still see profit on every surface. */}
+                {flagOn && isAdminOrOwner && (
+                  <div style={{
+                    borderRadius: '0.5rem',
+                    border: '1px solid rgba(96,165,250,0.3)',
+                    background: 'rgba(96,165,250,0.08)',
+                    padding: '0.6rem 0.85rem',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.5rem',
+                  }}>
+                    <span style={{ fontSize: '1rem', lineHeight: 1 }}>🛡️</span>
+                    <div>
+                      <p style={{ fontSize: '0.78rem', color: '#bfdbfe', fontWeight: 700, margin: 0 }}>
+                        {lang === 'es'
+                          ? 'Vista admin: la ganancia sigue visible para ti'
+                          : lang === 'pt'
+                          ? 'Visão admin: o lucro continua visível para você'
+                          : 'Admin view: profit remains visible to you'}
+                      </p>
+                      <p style={{ fontSize: '0.7rem', color: '#93c5fd', margin: '0.2rem 0 0', lineHeight: 1.5 }}>
+                        {lang === 'es'
+                          ? 'Tu rol de propietario/Admin no se ve afectado por esta configuración.'
+                          : lang === 'pt'
+                          ? 'Seu papel de proprietário/Admin não é afetado por esta configuração.'
+                          : 'Your owner/Admin role is not affected by this setting.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* V4.1: Preview-as-Employee expand panel. Component-local
+                  state only — does NOT touch auth, isAdminMode, currentEmployee,
+                  or the helper. Lets the owner verify the employee experience
+                  without clocking out. */}
+              {isAdminOrOwner && (
+                <div className="border-t border-white/10 pt-4 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewAsEmployee((v) => !v)}
+                    className="text-sm"
+                    style={{
+                      background: 'rgba(99,102,241,0.12)',
+                      border: '1px solid rgba(99,102,241,0.3)',
+                      color: '#a5b4fc',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {previewAsEmployee
+                      ? (lang === 'es' ? '🙈 Ocultar vista previa de empleado'
+                        : lang === 'pt' ? '🙈 Ocultar prévia de funcionário'
+                        : '🙈 Hide employee preview')
+                      : (lang === 'es' ? '👁 Ver lo que pierde un empleado'
+                        : lang === 'pt' ? '👁 Ver o que um funcionário perde'
+                        : '👁 Preview what an employee will lose')}
+                  </button>
+                  <p className="text-xs text-slate-500" style={{ lineHeight: 1.5 }}>
+                    {lang === 'es'
+                      ? 'Solo informativo — no cambia tu sesión ni la de nadie más.'
+                      : lang === 'pt'
+                      ? 'Apenas informativo — não altera sua sessão nem a de ninguém.'
+                      : 'Informational only — does not change your session or anyone else’s.'}
+                  </p>
+                  {previewAsEmployee && (
+                    <div style={{
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(99,102,241,0.25)',
+                      background: 'rgba(99,102,241,0.06)',
+                      padding: '0.75rem 1rem',
+                      marginTop: '0.5rem',
+                    }}>
+                      <p style={{ fontSize: '0.78rem', color: '#a5b4fc', fontWeight: 700, marginBottom: '0.4rem' }}>
+                        {lang === 'es'
+                          ? 'Lo que NO verá un empleado (rol cashier / sales / technician):'
+                          : lang === 'pt'
+                          ? 'O que um funcionário (cashier / sales / technician) NÃO verá:'
+                          : 'What an employee (role cashier / sales / technician) will NOT see:'}
+                      </p>
+                      <ul style={{
+                        fontSize: '0.72rem',
+                        color: '#cbd5e1',
+                        lineHeight: 1.7,
+                        paddingLeft: '1.1rem',
+                        margin: 0,
+                        listStyle: 'disc',
+                      }}>
+                        {(lang === 'es' ? [
+                          'Dashboard: tile "Ganancia Bruta Estimada" + margen %',
+                          'Inventario: columna Costo, tile "Potencial de Ganancia", margen en el formulario',
+                          'Reportes: stat card de Ganancia, columnas Ganancia/Margen, exports JSON sin claves de profit',
+                          'Historial de Clientes: tiles de Ganancia y Margen',
+                          'Impuestos: módulo completo bloqueado con aviso',
+                          'Órdenes de Compra: costos, totales por orden, "Pending Cost", "Total Spend"',
+                          'Intelligence chat: 4 intents de ganancia responden mensaje seguro',
+                          'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
+                          'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
+                          'AI Assistant: líneas de ganancia/margen stripped del prompt',
+                        ] : lang === 'pt' ? [
+                          'Painel: tile "Lucro Bruto Estimado" + margem %',
+                          'Estoque: coluna Custo, tile "Potencial de Lucro", margem no formulário',
+                          'Relatórios: stat card de Lucro, colunas Lucro/Margem, exports JSON sem chaves de lucro',
+                          'Histórico de Clientes: tiles de Lucro e Margem',
+                          'Impostos: módulo inteiro bloqueado com aviso',
+                          'Ordens de Compra: custos, totais por ordem, "Pending Cost", "Total Spend"',
+                          'Intelligence chat: 4 intents de lucro respondem mensagem segura',
+                          'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
+                          'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
+                          'AI Assistant: linhas de lucro/margem removidas do prompt',
+                        ] : [
+                          'Dashboard: "Estimated Gross Profit" tile + margin %',
+                          'Inventory: Cost column, "Profit Potential" stat, margin in form modal',
+                          'Reports: Profit stat card, Profit/Margin columns, JSON export without profit keys',
+                          'Customer History: Profit and Margin tiles',
+                          'Tax: entire module replaced with privacy notice',
+                          'Purchase Orders: costs, per-PO totals, "Pending Cost", "Total Spend" stats',
+                          'Intelligence chat: 4 profit intents return a safe message',
+                          'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
+                          'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
+                          'AI Assistant: profit/margin lines stripped from the LLM prompt',
+                        ]).map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                      <p style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.6rem', marginBottom: 0, fontStyle: 'italic' }}>
+                        {lang === 'es'
+                          ? 'Para probar realmente: Clock Out → entra como empleado con rol cashier / sales / technician.'
+                          : lang === 'pt'
+                          ? 'Para testar realmente: Clock Out → entre como funcionário com papel cashier / sales / technician.'
+                          : 'To actually test: Clock Out → log in as an employee with role cashier / sales / technician.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            );
+          })()}
 
           {activeSection === 'backup' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

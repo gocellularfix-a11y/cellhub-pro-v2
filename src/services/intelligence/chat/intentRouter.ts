@@ -389,11 +389,23 @@ const TODAY_SALES_KEYWORDS = [
   // EN
   'today sales', 'todays sales', "today's sales", 'sales today',
   'revenue today', 'today revenue', 'how much did i sell today',
+  // R-INTELLIGENCE-STABILIZATION-V1 TASK 4 — Report Consistency Guard.
+  // Report-shaped queries must route to the sales-of-record handler
+  // so they never fall to the strict fallback guard. Added EN/ES/PT
+  // variants for "today's report", "daily report", "sales report".
+  'today report', 'todays report', "today's report",
+  'daily report', 'report today', 'sales report', 'sales report today',
   // ES
   'ventas hoy', 'ventas de hoy', 'cuanto vendi hoy', 'cuánto vendí hoy',
   'cuanto vendí hoy', 'ingresos hoy', 'ingresos de hoy',
+  // R-INTELLIGENCE-STABILIZATION-V1 TASK 4:
+  'reporte de hoy', 'reporte hoy', 'reporte diario', 'reporte de ventas',
+  'reporte de ventas de hoy', 'informe de ventas', 'informe de hoy',
   // PT
   'vendas hoje', 'vendas de hoje', 'quanto vendi hoje', 'receita hoje',
+  // R-INTELLIGENCE-STABILIZATION-V1 TASK 4:
+  'relatório de hoje', 'relatorio de hoje', 'relatório diário', 'relatorio diario',
+  'relatório de vendas', 'relatorio de vendas',
 ];
 
 // R-DAILY-BRIEF-HANDLER-V1: composer intent — anchored phrases route here

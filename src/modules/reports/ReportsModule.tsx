@@ -16,6 +16,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { SearchInput, Modal, useToast } from '@/components/ui';
@@ -312,10 +313,18 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses, storeCreditLedger },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses, storeCreditLedger, isAdminMode },
     dispatch,
     setStoreCreditLedger,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V3: gate profit/margin/cost columns in stat cards,
+  // category/provider tables, printable HTML report, and JSON export.
+  // Aggregation logic and stats math are unchanged — only the surfaces
+  // that ship values to the screen, printer, or disk.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   const { t, locale } = useTranslation();
   const { printHtml } = usePrint();
@@ -1947,11 +1956,17 @@ export default function ReportsModule() {
 
     // All user-controlled strings below MUST go through escHtml (round 17 XSS fix).
     // formatCurrency output is safe (pure numeric), same for quantities and percentages.
+    // R-FINANCIAL-PRIVACY-V3: omit profit + margin cells from each row so the
+    // printable HTML never serializes owner-only financials. The math behind
+    // ppTotal/catTotal still runs (unchanged) for the totals row in admin mode.
     const ppRows = Object.entries(stats.phonePaymentsByProvider)
       .sort((a, b) => b[1].totalCents - a[1].totalCents)
       .map(([c, d]) => {
         const margin = d.totalCents > 0 ? (d.profitCents / d.totalCents) * 100 : 0;
-        return `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td><td class="text-right text-green">${formatCurrency(d.profitCents)}</td><td class="text-right">${margin.toFixed(1)}%</td></tr>`;
+        const profitCells = canSeeOwnerFinancials
+          ? `<td class="text-right text-green">${formatCurrency(d.profitCents)}</td><td class="text-right">${margin.toFixed(1)}%</td>`
+          : '';
+        return `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td>${profitCells}</tr>`;
       })
       .join('');
     const ppTotal = {
@@ -1960,10 +1975,18 @@ export default function ReportsModule() {
       profit: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.profitCents, 0),
     };
     const ppMargin = ppTotal.revenue > 0 ? (ppTotal.profit / ppTotal.revenue) * 100 : 0;
-    const ppTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${ppTotal.count}</td><td class="text-right text-green">${formatCurrency(ppTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(ppTotal.profit)}</td><td class="text-right">${ppMargin.toFixed(1)}%</td></tr>`;
+    const ppTotalProfitCells = canSeeOwnerFinancials
+      ? `<td class="text-right text-green">${formatCurrency(ppTotal.profit)}</td><td class="text-right">${ppMargin.toFixed(1)}%</td>`
+      : '';
+    const ppTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${ppTotal.count}</td><td class="text-right text-green">${formatCurrency(ppTotal.revenue)}</td>${ppTotalProfitCells}</tr>`;
 
     const catRows = stats.categoriesByRevenue
-      .map((c) => `<tr><td>${escHtml(c.name)}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td><td class="text-right text-green">${formatCurrency(c.profitCents)}</td><td class="text-right">${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td></tr>`)
+      .map((c) => {
+        const profitCells = canSeeOwnerFinancials
+          ? `<td class="text-right text-green">${formatCurrency(c.profitCents)}</td><td class="text-right">${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td>`
+          : '';
+        return `<tr><td>${escHtml(c.name)}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td>${profitCells}</tr>`;
+      })
       .join('');
     // R-REPORT-PRINT-REDESIGN: TOTAL row for Sales by Category. Margin uses
     // revenue as denominator (consistent with phone payments TOTAL above);
@@ -1978,7 +2001,10 @@ export default function ReportsModule() {
       { qty: 0, revenue: 0, profit: 0 },
     );
     const catMargin = catTotal.revenue > 0 ? (catTotal.profit / catTotal.revenue) * 100 : 0;
-    const catTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${catTotal.qty}</td><td class="text-right text-green">${formatCurrency(catTotal.revenue)}</td><td class="text-right text-green">${formatCurrency(catTotal.profit)}</td><td class="text-right">${catMargin.toFixed(1)}%</td></tr>`;
+    const catTotalProfitCells = canSeeOwnerFinancials
+      ? `<td class="text-right text-green">${formatCurrency(catTotal.profit)}</td><td class="text-right">${catMargin.toFixed(1)}%</td>`
+      : '';
+    const catTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${catTotal.qty}</td><td class="text-right text-green">${formatCurrency(catTotal.revenue)}</td>${catTotalProfitCells}</tr>`;
 
     const empRows = stats.topEmployees
       .map((e) => `<tr><td>${escHtml(e.name)}</td><td class="text-right">${e.transactions}</td><td class="text-right text-green">${formatCurrency(e.revenueCents)}</td></tr>`)
@@ -2063,11 +2089,11 @@ tr:last-child td { border-bottom: none; }
     <div class="value value-green">${formatCurrency(stats.netRevenueCents)}</div>
     <div class="sub">${retainedPct}% ${L.retained}</div>
   </div>
-  <div class="summary-card">
+  ${canSeeOwnerFinancials ? `<div class="summary-card">
     <div class="label">↗ ${escHtml(L.profit)}</div>
     <div class="value value-green">${formatCurrency(stats.totalProfitCents)}</div>
     <div class="sub">${marginPct}% ${L.marginLower}</div>
-  </div>
+  </div>` : ''}
 </div>
 
 <!-- META ROW -->
@@ -2091,8 +2117,7 @@ tr:last-child td { border-bottom: none; }
         <th>${escHtml(L.provider)}</th>
         <th class="text-right">${escHtml(L.count)}</th>
         <th class="text-right">Total</th>
-        <th class="text-right">${escHtml(L.profit)}</th>
-        <th class="text-right">${escHtml(L.marginCol)}</th>
+        ${canSeeOwnerFinancials ? `<th class="text-right">${escHtml(L.profit)}</th><th class="text-right">${escHtml(L.marginCol)}</th>` : ''}
       </tr>
     </thead>
     <tbody>${ppRows}${ppTotalRow}</tbody>
@@ -2108,8 +2133,7 @@ tr:last-child td { border-bottom: none; }
         <th>${escHtml(L.category)}</th>
         <th class="text-right">${L.qty}</th>
         <th class="text-right">${escHtml(L.revenue)}</th>
-        <th class="text-right">${escHtml(L.profit)}</th>
-        <th class="text-right">${escHtml(L.marginCol)}</th>
+        ${canSeeOwnerFinancials ? `<th class="text-right">${escHtml(L.profit)}</th><th class="text-right">${escHtml(L.marginCol)}</th>` : ''}
       </tr>
     </thead>
     <tbody>${catRows}${catTotalRow}</tbody>
@@ -2157,9 +2181,15 @@ tr:last-child td { border-bottom: none; }
 
 </body></html>`;
     openPrintWindow(html);
-  }, [stats, settings, startDate, endDate, locale]);
+  }, [stats, settings, startDate, endDate, locale, canSeeOwnerFinancials]);
 
   // ── Export Report (JSON) ──────────────────────────────────
+  // R-FINANCIAL-PRIVACY-V3: build the JSON payload with owner-only keys
+  // (profit, profitMargin, cost, perCategory cost/profit/margin,
+  // perProvider profit/marginPct) omitted entirely when the viewer can't
+  // see them. Object spread with conditional rest preserves the same key
+  // order for admins. Sales totals, tax, fees, cash, repairs, unlocks,
+  // transaction counts all remain.
   const exportReport = useCallback(() => {
     const report = {
       reportType,
@@ -2169,8 +2199,10 @@ tr:last-child td { border-bottom: none; }
         gross: formatCurrency(stats.grossRevenueCents),
         returns: formatCurrency(stats.totalReturnsCents),
         net: formatCurrency(stats.netRevenueCents),
-        profit: formatCurrency(stats.totalProfitCents),
-        profitMargin: `${stats.profitMargin.toFixed(2)}%`,
+        ...(canSeeOwnerFinancials ? {
+          profit: formatCurrency(stats.totalProfitCents),
+          profitMargin: `${stats.profitMargin.toFixed(2)}%`,
+        } : {}),
         tax: formatCurrency(stats.taxCollectedCents),
         salesTax: formatCurrency(stats.productSalesTaxCents),
         utilityTax: formatCurrency(stats.utilityTaxCents),
@@ -2191,16 +2223,20 @@ tr:last-child td { border-bottom: none; }
         name: c.name,
         quantity: c.quantity,
         revenue: formatCurrency(c.revenueCents),
-        cost: formatCurrency(c.costCents),
-        profit: formatCurrency(c.profitCents),
-        margin: c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`,
+        ...(canSeeOwnerFinancials ? {
+          cost: formatCurrency(c.costCents),
+          profit: formatCurrency(c.profitCents),
+          margin: c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`,
+        } : {}),
       })),
       phonePaymentsByProvider: Object.entries(stats.phonePaymentsByProvider).map(([provider, d]) => ({
         provider,
         count: d.count,
         total: formatCurrency(d.totalCents),
-        profit: formatCurrency(d.profitCents),
-        marginPct: d.totalCents > 0 ? Number(((d.profitCents / d.totalCents) * 100).toFixed(2)) : 0,
+        ...(canSeeOwnerFinancials ? {
+          profit: formatCurrency(d.profitCents),
+          marginPct: d.totalCents > 0 ? Number(((d.profitCents / d.totalCents) * 100).toFixed(2)) : 0,
+        } : {}),
         uniqueNumbers: d.numbers.size,
       })),
       employees: stats.topEmployees.map((e) => ({
@@ -2219,7 +2255,7 @@ tr:last-child td { border-bottom: none; }
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [stats, reportType, startDate, endDate]);
+  }, [stats, reportType, startDate, endDate, canSeeOwnerFinancials]);
 
   // ============================================================
   //  RENDER
@@ -2354,7 +2390,8 @@ tr:last-child td { border-bottom: none; }
             {statCard(t('reports.grossRevenue'), stats.grossRevenueCents, `${stats.cleanSalesCount} ${pluralize(stats.cleanSalesCount, t('reports.saleSingular'), t('reports.salePlural'))}`, '#e2e8f0')}
             {statCard(t('reports.returns'), stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${pluralize(returnsFromPeriodSales.length, t('reports.returnSingular'), t('reports.returnPlural'))}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
             {statCard(t('reports.netRevenue'), stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${t('reports.retained')}` : '—', '#22c55e')}
-            {statCard(t('reports.profit'), stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
+            {/* R-FINANCIAL-PRIVACY-V3: profit stat card owner-only. */}
+            {canSeeOwnerFinancials && statCard(t('reports.profit'), stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
             {statCard(t('reports.taxStat'), stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
             {/* Round 10 fix 1: Cash tripartite (In / Out / Net) single card — amber chrome preserved. */}
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
@@ -2613,12 +2650,14 @@ tr:last-child td { border-bottom: none; }
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* R-FINANCIAL-PRIVACY-V3: omit Profit + Margin columns when
+                        viewer cannot see owner financials. Header list rebuilt
+                        dynamically so layout stays correct. */}
                     {[
                       t('reports.provider'),
                       t('reports.paymentCount'),
                       'Total',
-                      t('reports.profit'),
-                      t('reports.margin'),
+                      ...(canSeeOwnerFinancials ? [t('reports.profit'), t('reports.margin')] : []),
                       t('reports.uniqueNumbers'),
                     ].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.875rem', color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
@@ -2640,12 +2679,16 @@ tr:last-child td { border-bottom: none; }
                           <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{provider}</td>
                           <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
                           <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
-                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: d.profitCents < 0 ? '#ef4444' : '#86efac' }}>
-                            {formatCurrency(d.profitCents)}
-                          </td>
-                          <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.75rem', color: marginPct >= 5 ? '#86efac' : marginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
-                            {marginPct.toFixed(1)}%
-                          </td>
+                          {canSeeOwnerFinancials && (
+                            <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: d.profitCents < 0 ? '#ef4444' : '#86efac' }}>
+                              {formatCurrency(d.profitCents)}
+                            </td>
+                          )}
+                          {canSeeOwnerFinancials && (
+                            <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.75rem', color: marginPct >= 5 ? '#86efac' : marginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
+                              {marginPct.toFixed(1)}%
+                            </td>
+                          )}
                           <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
                             <span style={{ color: '#94a3b8', fontWeight: 700 }}>{uniqueNums.length}</span>
                             {uniqueNums.length > 0 && <span style={{ marginLeft: '0.5rem' }}>— {preview}{more}</span>}
@@ -2669,12 +2712,16 @@ tr:last-child td { border-bottom: none; }
                         <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: '#22c55e', fontSize: '0.95rem' }}>
                           {formatCurrency(totalRevenue)}
                         </td>
-                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: totalProfit < 0 ? '#ef4444' : '#86efac', fontSize: '0.95rem' }}>
-                          {formatCurrency(totalProfit)}
-                        </td>
-                        <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: totalMarginPct >= 5 ? '#86efac' : totalMarginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
-                          {totalMarginPct.toFixed(1)}%
-                        </td>
+                        {canSeeOwnerFinancials && (
+                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 800, color: totalProfit < 0 ? '#ef4444' : '#86efac', fontSize: '0.95rem' }}>
+                            {formatCurrency(totalProfit)}
+                          </td>
+                        )}
+                        {canSeeOwnerFinancials && (
+                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: totalMarginPct >= 5 ? '#86efac' : totalMarginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
+                            {totalMarginPct.toFixed(1)}%
+                          </td>
+                        )}
                         <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>
                           {allUnique.size} {t('reports.unique')}
                         </td>
@@ -2747,10 +2794,13 @@ tr:last-child td { border-bottom: none; }
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>{formatCurrency(cat.revenueCents)}</div>
-                          {/* Round 10 fix 3: null marginPct → all items in this category were pseudo-items. */}
-                          <div style={{ fontSize: '0.68rem', color: cat.marginPct === null ? '#64748b' : (cat.marginPct > 40 ? '#22c55e' : '#f59e0b') }}>
-                            {cat.marginPct === null ? '—' : `${cat.marginPct.toFixed(1)}% margin`}
-                          </div>
+                          {/* Round 10 fix 3: null marginPct → all items in this category were pseudo-items.
+                              R-FINANCIAL-PRIVACY-V3: margin% sublabel owner-only. */}
+                          {canSeeOwnerFinancials && (
+                            <div style={{ fontSize: '0.68rem', color: cat.marginPct === null ? '#64748b' : (cat.marginPct > 40 ? '#22c55e' : '#f59e0b') }}>
+                              {cat.marginPct === null ? '—' : `${cat.marginPct.toFixed(1)}% margin`}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>

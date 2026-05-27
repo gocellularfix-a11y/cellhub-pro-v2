@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { isToday } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { REPAIR_STATUS, normalizeRepairStatus, isDoneRepairStatus } from '@/utils/repairStatus';
@@ -73,9 +74,17 @@ function formatTime(ts: number): string {
 // ── Build System Prompt ───────────────────────────────────
 
 function buildSystemPrompt(state: ReturnType<typeof useApp>['state']): string {
-  const { sales, repairs, inventory, customers, unlocks, specialOrders, layaways, settings, lang: locale, employees, purchaseOrders, appointments } = state;
+  const { sales, repairs, inventory, customers, unlocks, specialOrders, layaways, settings, lang: locale, employees, purchaseOrders, appointments, isAdminMode, currentEmployee } = state;
   const isEs = locale === 'es';
   const now = new Date();
+  // R-FINANCIAL-PRIVACY-V2: when the owner-financial-privacy flag is ON and
+  // the viewer is not admin/owner, strip profit/margin from the prompt sent
+  // to the external LLM. This is the most-sensitive surface: the snapshot
+  // ends up in Anthropic-hosted conversation logs.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   // Load Returns from localStorage — Returns module has not yet been migrated
   // to AppState (pre-r25 architectural debt). Read directly from its storage keys.
@@ -335,7 +344,7 @@ You have FULL real-time access to the store's data in the snapshot below. You ar
 TODAY:
 - Transactions: ${todaySales.length}
 - Revenue: ${formatCurrency(todayRevenue)}
-- Gross profit: ${formatCurrency(todayProfit)} (margin: ${todayRevenue > 0 ? ((todayProfit / todayRevenue) * 100).toFixed(1) : 0}%)
+${canSeeOwnerFinancials ? `- Gross profit: ${formatCurrency(todayProfit)} (margin: ${todayRevenue > 0 ? ((todayProfit / todayRevenue) * 100).toFixed(1) : 0}%)` : '- (Profit and margin hidden by Financial Privacy setting — do not infer or estimate.)'}
 - Peak hour (last 30d): ${peakHourStr}
 - Top 3 busiest hours (last 30d): ${top3Hours}
 
@@ -354,11 +363,11 @@ REPAIRS (${pendingRepairs.length} active):
 - Diagnosis conversion rate: ${conversionRate !== null ? `${conversionRate}%` : 'n/a'} (${acceptedRepairs.length}/${repairsWithOutcome.length} with outcome) — ${conversionHealth}
 
 INVENTORY:
-- Total SKUs: ${inventory.length} | Cost value: ${formatCurrency(totalInventoryValue)} | Retail value: ${formatCurrency(totalInventoryRetail)}
+- Total SKUs: ${inventory.length}${canSeeOwnerFinancials ? ` | Cost value: ${formatCurrency(totalInventoryValue)} | Retail value: ${formatCurrency(totalInventoryRetail)}` : ''}
 - Low stock (≤${settings.lowStockThreshold || 2}): ${lowStock.length}${lowStock.length > 0 ? ` → ${lowStock.slice(0,5).map(i => `${i.name} (${i.qty})`).join(', ')}` : ''}
 - Out of stock: ${outOfStock.length}${outOfStock.length > 0 ? ` → ${outOfStock.slice(0,5).map(i => i.name).join(', ')}` : ''}
 - Slow movers (0 sales 30d): ${slowMovers.length > 0 ? slowMovers.join('; ') : 'none'}
-- Dead inventory (60+ days no sale, cost ≥$50): ${deadInventory.length} items, ${formatCurrency(deadInventoryValue)} tied up${deadInventory.length > 0 ? `\n  · ${deadInventory.join('\n  · ')}` : ''}
+${canSeeOwnerFinancials ? `- Dead inventory (60+ days no sale, cost ≥$50): ${deadInventory.length} items, ${formatCurrency(deadInventoryValue)} tied up${deadInventory.length > 0 ? `\n  · ${deadInventory.join('\n  · ')}` : ''}` : `- Dead inventory (60+ days no sale): ${deadInventory.length} items (cost details hidden by Financial Privacy)`}
 
 TOP SELLERS (last 30 days by revenue):
 ${topSellers.length > 0 ? topSellers.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Not enough sales data yet'}

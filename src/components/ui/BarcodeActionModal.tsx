@@ -206,8 +206,13 @@ export default function BarcodeActionModal() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <button
                   onClick={() => {
-                    dispatch({ type: 'SET_GLOBAL_SEARCH', payload: chCustomer.name || chCustomer.phone || '' });
-                    navigate('customers');
+                    // R-BARCODE-VIEW-CUSTOMER-EXACT-FIX-V1: dispatch the same
+                    // event Intelligence uses (caught by AppShell coordinator
+                    // which navigates + fires _intel-open-customer after the
+                    // module mounts) so the exact customer profile opens —
+                    // not a name-search that could match the wrong record.
+                    window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: chCustomer.id } }));
+                    close();
                   }}
                   style={actionStyle('#8B5CF6')}
                 >
@@ -401,22 +406,31 @@ export default function BarcodeActionModal() {
             </button>
           )}
 
-          {/* Customer Profile */}
-          {sale?.customerName && sale.customerName !== 'Walk-in' && (
-            <button
-              onClick={() => {
-                dispatch({ type: 'SET_GLOBAL_SEARCH', payload: sale.customerName || '' });
-                navigate('customers');
-              }}
-              style={actionStyle('#8B5CF6')}
-            >
-              <span style={{ fontSize: '1.25rem' }}>👤</span>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.viewCustomer')}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{sale.customerName}</div>
-              </div>
-            </button>
-          )}
+          {/* Customer Profile — R-BARCODE-VIEW-CUSTOMER-EXACT-FIX-V1:
+              resolve the sale's customer (by id, then phone-tail) and only
+              render this button when a real customer record exists. Walk-in
+              and unresolved sales hide the button so we never open the wrong
+              profile via a name-search match. */}
+          {(() => {
+            if (!sale || !sale.customerName || sale.customerName === 'Walk-in') return null;
+            const matched = resolveSaleCustomer(sale);
+            if (!matched) return null;
+            return (
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: matched.id } }));
+                  close();
+                }}
+                style={actionStyle('#8B5CF6')}
+              >
+                <span style={{ fontSize: '1.25rem' }}>👤</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('barcode.viewCustomer')}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{matched.name}</div>
+                </div>
+              </button>
+            );
+          })()}
 
           {/* Customer History — R-BARCODE-MENU-CUSTOMER-HISTORY-AND-PHONE-PAYMENT-FIX:
               opens the actual CustomerHistoryModal instead of routing to Reports.

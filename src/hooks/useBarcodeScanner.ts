@@ -9,8 +9,17 @@
 //   1. Structured receipt (CHP|SALE|...) → unwrap → onInvoiceScan(saleRef)
 //      [R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1]
 //   2. Invoice (INV-xxxx)                → Returns module + auto-search
-//   3. Customer (GC-xxxx)                → PhonePaymentModal pre-filled
+//   3. Customer (GC-xxxx or GCxxxx)      → onCustomerScan
+//      [R-CREDENTIAL-BARCODE-SCAN-V2: accept with OR without hyphen so
+//       physical credentials printed without the separator still resolve]
 //   4. Anything else                     → POS search (inventory barcode)
+//
+// Input-focus behavior:
+//   Scanner detection runs even when an input/textarea/select is focused,
+//   but only routes when the buffered code matches a KNOWN barcode shape
+//   (CH:, CHP|, INV-, GC-?digit). Anything else inside an input is treated
+//   as fast human typing and ignored — so manual typing keeps its normal
+//   search behavior. [R-CREDENTIAL-BARCODE-SCAN-V2]
 //
 // Usage: call once at AppShell level.
 // ============================================================
@@ -47,10 +56,55 @@ export function useBarcodeScanner({
   const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // R-CREDENTIAL-BARCODE-SCAN-V3: classifier-first router.
+    //
+    // Two regexes — configured + generic. Codes that match EITHER are
+    // routed to onCustomerScan; AppShell's handleCustomerScan does the
+    // actual lookup (and only falls back to inventory search when no
+    // customer can be resolved). This separates classification from
+    // resolution so the scanner can't silently misroute a credential
+    // just because the store's customerNumberPrefix setting was
+    // changed/cleared.
+    const upperCust = (customerPrefix || 'GC').toUpperCase();
+    const upperInv  = (invoicePrefix  || 'INV').toUpperCase();
+    const custRe = new RegExp(`^${upperCust.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-?\\d`);
+    // Generic credential shape: 1–4 uppercase letters + optional hyphen
+    // + 3+ digits. Catches "GC480055", "CH-1234", "GOC480055" regardless
+    // of the configured prefix. Won't match pure-digit UPC barcodes or
+    // structured CHP|/CH: receipts (those are handled before this check).
+    const genericCredRe = /^[A-Z]{1,4}-?\d{3,}/;
+
+    // Recognises any payload that the router would intentionally consume.
+    // Used to gate routing when an input/textarea/select is focused so we
+    // never grab arbitrary fast-typed search text.
+    const matchesKnownBarcode = (raw: string): boolean => {
+      if (isChBarcode(raw) || isStructuredReceiptBarcode(raw)) return true;
+      const upper = raw.toUpperCase();
+      return upper.startsWith(`${upperInv}-`) || custRe.test(upper) || genericCredRe.test(upper);
+    };
+
+    // Clear a scanned payload that landed in an input before opening the
+    // action modal so the search/results UI doesn't linger underneath.
+    const clearScannedFromInput = (input: HTMLInputElement | HTMLTextAreaElement, code: string) => {
+      try {
+        const val = input.value;
+        if (typeof val !== 'string' || !val.endsWith(code)) return;
+        const next = val.slice(0, val.length - code.length);
+        const proto = input instanceof HTMLTextAreaElement
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) {
+          setter.call(input, next);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch { /* best-effort cleanup; ignore */ }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when typing in an input, textarea, or select
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
       const now = Date.now();
       const gap = now - lastKeyRef.current;
@@ -62,6 +116,14 @@ export function useBarcodeScanner({
         bufferRef.current = '';
         if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
         if (code.length >= minLength) {
+          // Inside a focused input, only route if the code looks like a real
+          // barcode payload. Otherwise it's a fast human typing — let the
+          // normal Enter/search flow proceed.
+          if (isInput && !matchesKnownBarcode(code)) return;
+          if (isInput && target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+            clearScannedFromInput(target, code);
+            e.preventDefault();
+          }
           routeScan(code);
         }
         return;
@@ -83,6 +145,15 @@ export function useBarcodeScanner({
         const code = bufferRef.current.trim();
         bufferRef.current = '';
         if (code.length >= minLength && gap <= maxInterval) {
+          // Auto-flush has no triggering event — use document.activeElement
+          // to detect a focused input.
+          const ae = document.activeElement as HTMLElement | null;
+          const aeTag = ae?.tagName;
+          const aeIsInput = aeTag === 'INPUT' || aeTag === 'TEXTAREA' || aeTag === 'SELECT';
+          if (aeIsInput && !matchesKnownBarcode(code)) return;
+          if (aeIsInput && ae && (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) {
+            clearScannedFromInput(ae, code);
+          }
           routeScan(code);
         }
       }, 200);
@@ -126,15 +197,23 @@ export function useBarcodeScanner({
       }
 
       const upper = code.toUpperCase();
-      const invPrefix  = (invoicePrefix  || 'INV').toUpperCase();
-      const custPrefix = (customerPrefix || 'GC').toUpperCase();
-      // Priority: invoice → customer → inventory
-      if (upper.startsWith(`${invPrefix}-`)) {
+      // Priority: invoice → customer → inventory.
+      // R-CREDENTIAL-BARCODE-SCAN-V3: customer detection accepts the
+      // configured prefix OR the generic letters-then-digits credential
+      // shape, so a misconfigured/stale customerNumberPrefix setting
+      // can't silently demote a credential scan to inventory search.
+      if (upper.startsWith(`${upperInv}-`)) {
+        // eslint-disable-next-line no-console
+        console.info('[cellhub] scanner: invoice route ←', code);
         onInvoiceScan(code);
-      } else if (upper.startsWith(`${custPrefix}-`)) {
+      } else if (custRe.test(upper) || genericCredRe.test(upper)) {
+        // eslint-disable-next-line no-console
+        console.info('[cellhub] scanner: customer credential route ←', code,
+          custRe.test(upper) ? '(prefix match)' : '(generic match)');
         onCustomerScan(code);
       } else {
-        // Anything else → inventory barcode
+        // eslint-disable-next-line no-console
+        console.info('[cellhub] scanner: inventory route ←', code);
         onInventoryScan(code);
       }
     };

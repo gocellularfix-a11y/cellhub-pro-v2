@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { persist, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
 import { generateId } from '@/utils/dates';
@@ -23,11 +24,18 @@ interface Props {
 
 export default function POReceiveModal({ po, onClose, onSave }: Props) {
   const {
-    state: { inventory },
+    state: { inventory, settings, isAdminMode, currentEmployee },
     setInventory,
     setPurchaseOrders,
     state,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V3: hide supplier cost label in the receiving modal
+  // when the viewer cannot see owner financials. Employees still receive
+  // inventory, see ordered qty, mark received qty, etc.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -311,7 +319,10 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
                       <div className="text-xs text-slate-400">SKU: {item.sku}</div>
                     )}
                     <div className="text-xs text-slate-400 mt-1">
-                      {t('po.costLabel')}: {formatCurrency(item.cost)}
+                      {/* R-FINANCIAL-PRIVACY-V3: supplier cost owner-only. */}
+                      {canSeeOwnerFinancials && (
+                        <>{t('po.costLabel')}: {formatCurrency(item.cost)} </>
+                      )}
                       {item.inventoryId && (
                         <span className="ml-2 text-emerald-400">
                           🔗 {t('po.linked')}

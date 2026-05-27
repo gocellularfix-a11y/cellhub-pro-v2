@@ -114,6 +114,16 @@ export function buildSale(input: BuildSaleInput): Sale {
       specialOrderId: item.specialOrderId,
       unlockId: item.unlockId,
       layawayId: item.layawayId,
+      // R-RECEIPT-PHONE-NUMBER-LOGIC: preserve the activation marker stamped
+      // by PhonePaymentModal.handleAddActivation. Without this, the flag
+      // gets stripped on checkout, and the receipt's "NEW PHONE NUMBER"
+      // block only printed for activations that ALSO had a SIM line
+      // (category='sim') or an Activation Fee line (category='activation').
+      // Device + activation flows where the Plan line was the only carrier
+      // of the new number (zero-fee eSIM, BYOD with no SIM picked, etc.)
+      // silently dropped the highlight. Field already exists on SaleItem
+      // (store/types.ts:732); we were just not assigning it.
+      isActivation: item.isActivation,
     })),
     subtotal: totals.subtotal,
     subtotalAfterDiscount: totals.subtotalAfterDiscount,

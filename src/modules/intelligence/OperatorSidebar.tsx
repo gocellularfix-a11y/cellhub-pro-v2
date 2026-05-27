@@ -18,6 +18,10 @@ export interface OperatorSidebarProps {
   staleRepairCount: number;
   biggestLeak: number;
   onFireChat: (text: string) => void;
+  // R-FINANCIAL-PRIVACY-V3: when false the "Fix profit" button is hidden
+  // entirely. Default true so callers that don't pass the prop keep
+  // the existing behavior.
+  canSeeOwnerFinancials?: boolean;
 }
 
 export default function OperatorSidebar({
@@ -32,6 +36,7 @@ export default function OperatorSidebar({
   staleRepairCount,
   biggestLeak,
   onFireChat,
+  canSeeOwnerFinancials = true,
 }: OperatorSidebarProps) {
   const { t, locale } = useTranslation();
 
@@ -118,13 +123,19 @@ export default function OperatorSidebar({
           accent="#F59E0B"
           onClick={() => onFireChat(t('intelligence.console.queryReadyRepairs') || 'repairs ready for pickup')}
         />
-        <SidebarBtn
-          icon="💸"
-          label={t('intelligence.console.fixProfitTitle')}
-          stat={biggestLeak > 0 ? formatCurrency(biggestLeak) : undefined}
-          accent="#EF4444"
-          onClick={() => onFireChat(t('intelligence.dash.quickProfit') || 'where am I losing profit')}
-        />
+        {/* R-FINANCIAL-PRIVACY-V3: hide the "Fix profit" quick-chat button
+            when the viewer is not admin/owner. The chat itself still
+            short-circuits the underlying intent, but hiding the entry
+            point removes the temptation. */}
+        {canSeeOwnerFinancials && (
+          <SidebarBtn
+            icon="💸"
+            label={t('intelligence.console.fixProfitTitle')}
+            stat={biggestLeak > 0 ? formatCurrency(biggestLeak) : undefined}
+            accent="#EF4444"
+            onClick={() => onFireChat(t('intelligence.dash.quickProfit') || 'where am I losing profit')}
+          />
+        )}
       </div>
 
       {/* Phase 2 placeholder */}

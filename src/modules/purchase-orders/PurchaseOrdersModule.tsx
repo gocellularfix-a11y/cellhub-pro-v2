@@ -12,6 +12,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { persist, remove, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -38,11 +39,18 @@ function statusBadge(status: string): string {
 
 export default function PurchaseOrdersModule() {
   const {
-    state: { purchaseOrders, inventory, settings, globalSearchTerm, currentStoreId },
+    state: { purchaseOrders, inventory, settings, globalSearchTerm, currentStoreId, isAdminMode, currentEmployee },
     setPurchaseOrders,
     setInventory,
     dispatch,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V3: PO cost surfaces are owner-only. Employees
+  // can still create/edit/receive POs and see qty + supplier names; cost
+  // inputs, per-PO totals, and aggregated cost stats are hidden.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLDivElement>();
@@ -394,8 +402,9 @@ export default function PurchaseOrdersModule() {
         </button>
       </div>
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* ── Stats — R-FINANCIAL-PRIVACY-V3: hide aggregated cost stats.
+          Grid drops to 2 cols when both cost cards are hidden. ── */}
+      <div className={`grid grid-cols-2 ${canSeeOwnerFinancials ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-4`}>
         <StatCard
           label={t('po.totalPOs')}
           value={String(stats.total)}
@@ -407,16 +416,20 @@ export default function PurchaseOrdersModule() {
           icon="⏳"
           highlight={stats.open > 0}
         />
-        <StatCard
-          label={t('po.pendingCost')}
-          value={formatCurrency(stats.pendingCost)}
-          icon="💸"
-        />
-        <StatCard
-          label={t('po.totalSpend')}
-          value={formatCurrency(stats.totalSpend)}
-          icon="📊"
-        />
+        {canSeeOwnerFinancials && (
+          <StatCard
+            label={t('po.pendingCost')}
+            value={formatCurrency(stats.pendingCost)}
+            icon="💸"
+          />
+        )}
+        {canSeeOwnerFinancials && (
+          <StatCard
+            label={t('po.totalSpend')}
+            value={formatCurrency(stats.totalSpend)}
+            icon="📊"
+          />
+        )}
       </div>
 
       {/* ── Filters ── */}
@@ -475,6 +488,7 @@ export default function PurchaseOrdersModule() {
                 onMarkOrdered={() => markOrdered(po)}
                 onCancel={() => setDeleteConfirm(po.id)}
                 translateStatus={translateStatus}
+                canSeeOwnerFinancials={canSeeOwnerFinancials}
               />
             </div>
           ))}
@@ -624,21 +638,25 @@ export default function PurchaseOrdersModule() {
                     </div>
 
                     <div className="flex gap-2 items-center flex-wrap">
-                      {/* Cost */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-400 text-xs">{t('po.cost')}</span>
-                        <input
-                          className="input text-sm w-24"
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          placeholder="0.00"
-                          value={(item.cost / 100).toFixed(2)}
-                          onChange={(e) =>
-                            updateLineItem(item.id, 'cost', Math.round(parseFloat(e.target.value || '0') * 100))
-                          }
-                        />
-                      </div>
+                      {/* Cost — R-FINANCIAL-PRIVACY-V3: hide the supplier
+                          cost input + computed line total for employees.
+                          They can still edit qty + supplier + inventory link. */}
+                      {canSeeOwnerFinancials && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-400 text-xs">{t('po.cost')}</span>
+                          <input
+                            className="input text-sm w-24"
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            placeholder="0.00"
+                            value={(item.cost / 100).toFixed(2)}
+                            onChange={(e) =>
+                              updateLineItem(item.id, 'cost', Math.round(parseFloat(e.target.value || '0') * 100))
+                            }
+                          />
+                        </div>
+                      )}
                       {/* Qty */}
                       <div className="flex items-center gap-1">
                         <span className="text-slate-400 text-xs">{t('po.qtyOrdered')}</span>
@@ -652,10 +670,12 @@ export default function PurchaseOrdersModule() {
                           }
                         />
                       </div>
-                      {/* Line total */}
-                      <div className="text-slate-300 text-xs ml-auto">
-                        = {formatCurrency(item.cost * item.qtyOrdered)}
-                      </div>
+                      {/* Line total — R-FINANCIAL-PRIVACY-V3 */}
+                      {canSeeOwnerFinancials && (
+                        <div className="text-slate-300 text-xs ml-auto">
+                          = {formatCurrency(item.cost * item.qtyOrdered)}
+                        </div>
+                      )}
 
                       {/* Link to inventory */}
                       <div className="relative">
@@ -783,9 +803,12 @@ interface POCardProps {
   onMarkOrdered: () => void;
   onCancel: () => void;
   translateStatus: (s: string) => string;
+  // R-FINANCIAL-PRIVACY-V3: derived in the parent and threaded through so the
+  // per-PO total + shipping cost lines hide for employees.
+  canSeeOwnerFinancials: boolean;
 }
 
-function POCard({ po, onEdit, onReceive, onMarkOrdered, onCancel, translateStatus }: POCardProps) {
+function POCard({ po, onEdit, onReceive, onMarkOrdered, onCancel, translateStatus, canSeeOwnerFinancials }: POCardProps) {
   const { t } = useTranslation();
   const isClosed = ['received', 'cancelled'].includes(po.status);
   const canReceive = ['ordered', 'partial'].includes(po.status);
@@ -842,16 +865,20 @@ function POCard({ po, onEdit, onReceive, onMarkOrdered, onCancel, translateStatu
           )}
         </div>
 
-        {/* Right — totals + actions */}
+        {/* Right — totals + actions.
+            R-FINANCIAL-PRIVACY-V3: PO total + shipping cost are owner-only;
+            actions (mark ordered / receive / edit / cancel) still render. */}
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <div className="text-right">
-            <div className="text-emerald-400 font-bold text-lg">{formatCurrency(po.total)}</div>
-            {po.shippingCost > 0 && (
-              <div className="text-xs text-slate-400">
-                {t('po.shipping')}: {formatCurrency(po.shippingCost)}
-              </div>
-            )}
-          </div>
+          {canSeeOwnerFinancials && (
+            <div className="text-right">
+              <div className="text-emerald-400 font-bold text-lg">{formatCurrency(po.total)}</div>
+              {po.shippingCost > 0 && (
+                <div className="text-xs text-slate-400">
+                  {t('po.shipping')}: {formatCurrency(po.shippingCost)}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-2 flex-wrap justify-end">
             {canMarkOrdered && (

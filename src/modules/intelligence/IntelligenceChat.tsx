@@ -43,6 +43,7 @@ import { pushSessionContext, getSessionContext, clearSessionContext } from '@/se
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
 import { recordOperatorAction } from '@/services/intelligence/history/operatorActionHistory';
@@ -94,10 +95,23 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // for converting approved deals into POS cart lines. Mirrors the pattern
   // used by RepairModule, UnlockModule, SpecialOrdersModule, ReturnsModule.
   const {
-    state: { cart, inventory },
+    state: { cart, inventory, settings, isAdminMode, currentEmployee },
     setCart,
     dispatch,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V2: intercept dispatch of profit-intent queries so
+  // employees see a redacted operational reply instead of profit/margin/cost
+  // numbers. Owner/admin remain unaffected.
+  const canSeeOwnerFinancialsRef = useRef(canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  ));
+  useEffect(() => {
+    canSeeOwnerFinancialsRef.current = canViewOwnerFinancials(
+      settings,
+      isAdminMode || currentEmployee?.role === 'owner',
+    );
+  }, [settings, isAdminMode, currentEmployee]);
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -285,9 +299,28 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const queryToRoute = enrichedQuery ?? query;
       const match = perfTime('intel.chat.classifyIntent',
         () => classifyIntent(queryToRoute, customersRef.current, langRef.current));
-      response = perfTime(`intel.chat.handleIntent.${match.id}`,
-        () => handleIntent(match, engineRef.current, langRef.current));
-      matchedIntentId = match.id;
+      // R-FINANCIAL-PRIVACY-V2: intercept profit-intent queries when the
+      // viewer cannot see owner financials. We never invoke the handler so
+      // its profit/margin/cost numbers cannot leak. Operational intents are
+      // unaffected.
+      const PROFIT_SENSITIVE_INTENTS: ReadonlySet<string> = new Set([
+        'best_customer', 'least_profitable_customers',
+        'what_hurting_profit', 'what_is_losing_money',
+      ]);
+      if (!canSeeOwnerFinancialsRef.current && PROFIT_SENSITIVE_INTENTS.has(match.id)) {
+        const es = langRef.current === 'es';
+        response = {
+          kind: 'answer' as const,
+          text: es
+            ? 'Esta vista (ganancia, costo, margen) está oculta por la configuración de Privacidad Financiera. Pídele al propietario que la active si la necesitas.'
+            : 'This view (profit, cost, margin) is hidden by the Financial Privacy setting. Ask the owner to grant access if you need it.',
+        };
+        matchedIntentId = match.id;
+      } else {
+        response = perfTime(`intel.chat.handleIntent.${match.id}`,
+          () => handleIntent(match, engineRef.current, langRef.current));
+        matchedIntentId = match.id;
+      }
     }
     perfLog('intel.chat.fireQuery.total', _fireT0);
     const now = Date.now();
@@ -491,7 +524,23 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       matchedIntentId = 'followup_no_context';
     } else {
       const match = classifyIntent(query, customers, lang);
-      response = handleIntent(match, engine, lang);
+      // R-FINANCIAL-PRIVACY-V2: same gate as fireQuery — short-circuit
+      // profit-intent dispatches when the viewer is not admin/owner.
+      const PROFIT_SENSITIVE_INTENTS: ReadonlySet<string> = new Set([
+        'best_customer', 'least_profitable_customers',
+        'what_hurting_profit', 'what_is_losing_money',
+      ]);
+      if (!canSeeOwnerFinancialsRef.current && PROFIT_SENSITIVE_INTENTS.has(match.id)) {
+        const es = lang === 'es';
+        response = {
+          kind: 'answer' as const,
+          text: es
+            ? 'Esta vista (ganancia, costo, margen) está oculta por la configuración de Privacidad Financiera. Pídele al propietario que la active si la necesitas.'
+            : 'This view (profit, cost, margin) is hidden by the Financial Privacy setting. Ask the owner to grant access if you need it.',
+        };
+      } else {
+        response = handleIntent(match, engine, lang);
+      }
       matchedIntentId = match.id;
     }
 
@@ -933,14 +982,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             )}
           </div>
           {chipData && (
-            <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' />
+            <SuggestionChips chipData={chipData} onFireChat={handleSuggestion} locale={locale} mode='row' canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
           )}
         </div>
       )}
 
       {/* Continuity bar — full mode only */}
       {!compact && messages.length > 0 && chipData && (
-        <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} />
+        <OperatorContinuityBar chipData={chipData} onFireChat={handleSuggestion} locale={locale} canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
       )}
 
       {/* INTELLIGENCE-PROACTIVE-OPERATOR-SURFACES-V1: proactive peek card.
@@ -1013,7 +1062,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
             {messages.length === 0 ? (
-              <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
+              <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
             ) : (
               messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
             )}
@@ -1375,10 +1424,11 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
 // use inline locale ternary, mirroring the prior EmptyState pattern so
 // no new translation keys are needed and bilingual coverage stays
 // consistent. UI-only — no logic changes, no new state, no new effects.
-function OperatorWelcome({ locale, chipData, onSuggestion }: {
+function OperatorWelcome({ locale, chipData, onSuggestion, canSeeOwnerFinancials = true }: {
   locale: string;
   chipData?: ChipData;
   onSuggestion: (text: string) => void;
+  canSeeOwnerFinancials?: boolean;
 }) {
   const pendingWorkflows = getPendingResumeContexts();
   const resumeLabel = locale === 'es' ? 'RETOMAR' : locale === 'pt' ? 'RETOMAR' : 'RESUME';
@@ -1436,8 +1486,8 @@ function OperatorWelcome({ locale, chipData, onSuggestion }: {
       )}
 
       {chipData
-        ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" />
-        : <QuickActionGrid onQuickAction={onSuggestion} />}
+        ? <SuggestionChips chipData={chipData} onFireChat={onSuggestion} locale={locale} mode="welcome" canSeeOwnerFinancials={canSeeOwnerFinancials} />
+        : <QuickActionGrid onQuickAction={onSuggestion} canSeeOwnerFinancials={canSeeOwnerFinancials} />}
     </div>
   );
 }
@@ -1556,10 +1606,10 @@ function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
   );
 }
 
-function QuickActionGrid({ onQuickAction }: { onQuickAction: (text: string) => void }) {
+function QuickActionGrid({ onQuickAction, canSeeOwnerFinancials = true }: { onQuickAction: (text: string) => void; canSeeOwnerFinancials?: boolean }) {
   const { t, locale } = useTranslation();
 
-  type Card = { icon: string; titleKey: string; queryKey: string; desc: string };
+  type Card = { icon: string; titleKey: string; queryKey: string; desc: string; ownerOnly?: boolean };
   const D = {
     today:    locale === 'es' ? 'Ingresos, transacciones y ritmo de hoy.'
             : locale === 'pt' ? 'Receita, transações e ritmo de hoje.'
@@ -1584,11 +1634,15 @@ function QuickActionGrid({ onQuickAction }: { onQuickAction: (text: string) => v
   const cards: Card[] = [
     { icon: '📊', titleKey: 'intelligence.console.chipToday',      queryKey: 'intelligence.console.queryToday',          desc: D.today },
     { icon: '📞', titleKey: 'intelligence.console.chipWhoContact', queryKey: 'intelligence.console.queryContactToday',   desc: D.contact },
-    { icon: '🎯', titleKey: 'intelligence.console.chipWhatSell',   queryKey: 'intelligence.dash.quickSell',              desc: D.sell },
-    { icon: '💸', titleKey: 'intelligence.console.chipProfit',     queryKey: 'intelligence.dash.quickProfit',            desc: D.profit },
+    // R-FINANCIAL-PRIVACY-V4: "Highest-margin opportunities" + "Slow days,
+    // dead stock, missed revenue" are owner-only chips. Marked here and
+    // filtered out below when the viewer cannot see owner financials.
+    { icon: '🎯', titleKey: 'intelligence.console.chipWhatSell',   queryKey: 'intelligence.dash.quickSell',              desc: D.sell,    ownerOnly: true },
+    { icon: '💸', titleKey: 'intelligence.console.chipProfit',     queryKey: 'intelligence.dash.quickProfit',            desc: D.profit,  ownerOnly: true },
     { icon: '🚀', titleKey: 'intelligence.console.chipPromote',    queryKey: 'intelligence.console.queryPromoteGeneric', desc: D.promote },
     { icon: '🔧', titleKey: 'intelligence.console.chipReady',      queryKey: 'intelligence.console.queryReadyRepairs',   desc: D.ready },
   ];
+  const visibleCards = canSeeOwnerFinancials ? cards : cards.filter((c) => !c.ownerOnly);
 
   return (
     <div className="py-4">
@@ -1597,7 +1651,7 @@ function QuickActionGrid({ onQuickAction }: { onQuickAction: (text: string) => v
         <p className="text-sm text-slate-300">{t('intelligence.tryQuestion')}</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {cards.map((c) => (
+        {visibleCards.map((c) => (
           <button
             key={c.titleKey}
             onClick={() => onQuickAction(t(c.queryKey))}

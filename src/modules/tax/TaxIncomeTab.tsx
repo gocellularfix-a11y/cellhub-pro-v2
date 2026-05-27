@@ -14,6 +14,9 @@ import {
   modalOverlay, modalCard, btnSecondaryStyle, btnPrimaryStyle, btnAddStyle, cardBox,
 } from './taxStyles';
 import type { TaxIncomeEntry, TaxIncomeCategory } from '@/store/types';
+// R-FINANCIAL-PRIVACY-V2: gate POS profit card + total net income summary.
+import { useApp } from '@/store/AppProvider';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 
 interface Props {
   year: number;
@@ -24,6 +27,12 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
   const { toast } = useToast();
   const { t, locale } = useTranslation();
   const tax = useTaxYear(year);
+  // R-FINANCIAL-PRIVACY-V2: POS profit / total net income are owner-only.
+  const { state: { settings, isAdminMode, currentEmployee } } = useApp();
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   const [editing, setEditing] = useState<TaxIncomeEntry | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -119,20 +128,22 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
         </button>
       </div>
 
-      {/* POS auto-calculated card */}
-      <div style={{ ...cardBox, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#86efac' }}>
-            🛒 {t('taxIncome.posCardTitle')}
+      {/* POS auto-calculated card — R-FINANCIAL-PRIVACY-V2: gated. */}
+      {canSeeOwnerFinancials && (
+        <div style={{ ...cardBox, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#86efac' }}>
+              🛒 {t('taxIncome.posCardTitle')}
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
+              {formatCurrency(posProfitCents)}
+            </div>
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
-            {formatCurrency(posProfitCents)}
+          <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            {t('taxIncome.posCardSub')}
           </div>
         </div>
-        <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5 }}>
-          {t('taxIncome.posCardSub')}
-        </div>
-      </div>
+      )}
 
       {/* Manual income table */}
       <div style={{ marginBottom: '1rem' }}>
@@ -240,25 +251,28 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
         </div>
       </div>
 
-      {/* Total income summary */}
-      <div style={{
-        ...cardBox,
-        background: 'rgba(34,197,94,0.08)',
-        border: '2px solid rgba(34,197,94,0.3)',
-        marginBottom: 0,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '1rem', fontWeight: 700, color: '#cbd5e1' }}>
-            {t('taxIncome.totalNet')}
-          </span>
-          <span style={{ fontSize: '1.7rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
-            {formatCurrency(totalNetIncome)}
-          </span>
+      {/* Total income summary — R-FINANCIAL-PRIVACY-V2: gated (net income is
+          owner-only). Manual entries still show via the table above. */}
+      {canSeeOwnerFinancials && (
+        <div style={{
+          ...cardBox,
+          background: 'rgba(34,197,94,0.08)',
+          border: '2px solid rgba(34,197,94,0.3)',
+          marginBottom: 0,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#cbd5e1' }}>
+              {t('taxIncome.totalNet')}
+            </span>
+            <span style={{ fontSize: '1.7rem', fontWeight: 800, color: '#22c55e', fontFamily: 'ui-monospace, monospace' }}>
+              {formatCurrency(totalNetIncome)}
+            </span>
+          </div>
+          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#94a3b8' }}>
+            POS: {formatCurrency(posProfitCents)} + {t('taxIncome.summaryManualLabel')}: {formatCurrency(tax.totalManualIncome)} + {t('taxIncome.summaryOtherLabel')}: {formatCurrency(otherIncome)} − {t('taxIncome.summaryReturnsLabel')}: {formatCurrency(returnsAdjustment)}
+          </div>
         </div>
-        <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#94a3b8' }}>
-          POS: {formatCurrency(posProfitCents)} + {t('taxIncome.summaryManualLabel')}: {formatCurrency(tax.totalManualIncome)} + {t('taxIncome.summaryOtherLabel')}: {formatCurrency(otherIncome)} − {t('taxIncome.summaryReturnsLabel')}: {formatCurrency(returnsAdjustment)}
-        </div>
-      </div>
+      )}
 
       {/* ════════════ EDIT MODAL ════════════ */}
       {showModal && (

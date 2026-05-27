@@ -78,10 +78,20 @@ interface OperatorContinuityBarProps {
   chipData: ChipData;
   onFireChat: (query: string) => void;
   locale: string;
+  // R-FINANCIAL-PRIVACY-V4: when false the dead-stock $ and profit-at-risk
+  // chips are filtered out. Defaults to true so existing callers retain
+  // their behavior.
+  canSeeOwnerFinancials?: boolean;
 }
 
-function OperatorContinuityBar({ chipData, onFireChat, locale }: OperatorContinuityBarProps) {
-  const signals = buildActiveSignals(chipData, locale);
+function OperatorContinuityBar({ chipData, onFireChat, locale, canSeeOwnerFinancials = true }: OperatorContinuityBarProps) {
+  // R-FINANCIAL-PRIVACY-V4: zero out the two owner-financial counters so
+  // buildActiveSignals skips them (both branches gate on > 0). Repair +
+  // outreach signals are untouched.
+  const effectiveChipData: ChipData = canSeeOwnerFinancials
+    ? chipData
+    : { ...chipData, biggestLeakCents: 0, deadStockLockedCents: 0 };
+  const signals = buildActiveSignals(effectiveChipData, locale);
   if (signals.length === 0) return null;
 
   const headerLabel = locale === 'es' ? 'AÚN ACTIVO' : locale === 'pt' ? 'AINDA ATIVO' : 'STILL ACTIVE';

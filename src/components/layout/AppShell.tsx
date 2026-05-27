@@ -104,12 +104,59 @@ export default function AppShell() {
   }, [dispatch]);
 
   const handleCustomerScan = useCallback((code: string) => {
-    // Look up customer by customerNumber (exact match, case-insensitive)
-    const wanted = code.trim().toUpperCase();
-    const match = customers.find(
-      (c) => (c.customerNumber || '').toUpperCase() === wanted
+    // R-CREDENTIAL-BARCODE-SCAN-V3: aggressive lookup. Customer credential
+    // barcodes may encode the customerNumber with hyphens stripped by the
+    // printer/scanner config, or be a legacy field (referralCode), or be
+    // the CredentialMakerModal fallback derived from customer.id. Try each
+    // strategy before falling through to inventory search.
+    const normalize = (v: string) =>
+      (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const wanted = normalize(code.trim());
+
+    // S1: exact normalized customerNumber match (covers GC480055 ↔ GC-480055,
+    // GC480055 ↔ gc480055, etc.)
+    let match = customers.find(
+      (c) => normalize(c.customerNumber || '') === wanted
     );
+
+    // S2: referralCode match — referralCode has no hyphens by design and
+    // shares the customerNumberPrefix, so a printed credential built from
+    // this field still scans cleanly.
     if (!match) {
+      match = customers.find(
+        (c) =>
+          normalize((c as { referralCode?: string }).referralCode || '') ===
+          wanted
+      );
+    }
+
+    // S3: CredentialMakerModal fallback format. When customerNumber is
+    // empty, the credential is generated as `${prefix}-${first6alphanumOfId}`.
+    // Strip the prefix from the scanned code and try matching the tail
+    // against the id-prefix.
+    if (!match) {
+      const tail = wanted.replace(/^[A-Z]+/, '');
+      if (tail.length >= 4) {
+        match = customers.find((c) => {
+          const cleanId = normalize(c.id || '');
+          return cleanId.startsWith(tail);
+        });
+      }
+    }
+
+    if (!match) {
+      // Diagnostic: surface this in DevTools so future credential mismatches
+      // are easy to debug without re-instrumenting.
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[cellhub] credential scan: no customer match for',
+        code,
+        '(normalized:',
+        wanted + ')',
+        'searched',
+        customers.length,
+        'customers'
+      );
       // Customer code not found — fall through to inventory search
       dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
       dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });

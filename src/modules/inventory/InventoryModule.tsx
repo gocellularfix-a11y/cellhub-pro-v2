@@ -11,6 +11,7 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
@@ -61,9 +62,15 @@ export default function InventoryModule() {
     // unlocks, layaways, customerReturns destructured for IntelligenceEngine
     // construction in the Promote click handler. Engine needs the full data
     // set to score customers (getCustomerScores requires cachedResult).
-    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns, inventoryLosses, currentEmployee },
+    state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns, inventoryLosses, currentEmployee, isAdminMode },
     setInventory, setCart, setInventoryLosses, dispatch,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V2: cost column, profit-potential stat card, and the
+  // margin section inside InventoryFormModal are owner-only when the flag is on.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
@@ -680,10 +687,13 @@ export default function InventoryModule() {
             <p className="text-xs text-slate-400 uppercase">{t('inventory.retailValue')}</p>
             <p className="text-2xl font-bold text-emerald-400 mt-1">{formatCurrency(totalValue)}</p>
           </div>
-          <div className="stat-card">
-            <p className="text-xs text-slate-400 uppercase">{t('inventory.profitPotential')}</p>
-            <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(totalValue - totalCost)}</p>
-          </div>
+          {/* R-FINANCIAL-PRIVACY-V2: profit potential = retailValue − cost, owner-only. */}
+          {canSeeOwnerFinancials && (
+            <div className="stat-card">
+              <p className="text-xs text-slate-400 uppercase">{t('inventory.profitPotential')}</p>
+              <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(totalValue - totalCost)}</p>
+            </div>
+          )}
           <div className="stat-card">
             <p className="text-xs text-slate-400 uppercase">{t('inventory.lowStock')}</p>
             <p className={`text-2xl font-bold mt-1 ${lowStockCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
@@ -813,7 +823,8 @@ export default function InventoryModule() {
                 <th>{t('inventory.skuImei')}</th>
                 <th>{t('inventory.name')}</th>
                 <th>{t('inventory.category')}</th>
-                <th className="text-right">{t('inventory.cost')}</th>
+                {/* R-FINANCIAL-PRIVACY-V2: cost column owner-only. */}
+                {canSeeOwnerFinancials && <th className="text-right">{t('inventory.cost')}</th>}
                 <th className="text-right">{t('inventory.price')}</th>
                 <th className="text-right">{t('inventory.qty')}</th>
                 <th className="text-right">{t('inventory.actions')}</th>
@@ -822,7 +833,8 @@ export default function InventoryModule() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
+                  {/* R-FINANCIAL-PRIVACY-V2: colSpan tracks the cost column gate. */}
+                  <td colSpan={canSeeOwnerFinancials ? 7 : 6} className="text-center py-8 text-slate-500">
                     {t('inventory.noItemsFound')}
                   </td>
                 </tr>
@@ -849,7 +861,8 @@ export default function InventoryModule() {
                       </div>
                     </td>
                     <td><span className="badge badge-neutral">{item.category}</span></td>
-                    <td className="text-right text-sm text-slate-400">{formatCurrency(item.cost)}</td>
+                    {/* R-FINANCIAL-PRIVACY-V2: cost cell owner-only. */}
+                    {canSeeOwnerFinancials && <td className="text-right text-sm text-slate-400">{formatCurrency(item.cost)}</td>}
                     <td className="text-right text-sm text-emerald-400 font-medium">{formatCurrency(item.price)}</td>
                     <td className="text-right">
                       <span className={`text-sm font-medium ${item.qty <= 0 ? 'text-red-400' : item.qty <= lowStockThreshold ? 'text-amber-400' : 'text-white'}`}>
@@ -1739,6 +1752,15 @@ function InventoryFormModal({
   const marginPct = form.cost > 0 && form.price > 0 ? ((1 - form.cost / form.price) * 100).toFixed(1) : null;
   const isLoss = form.cost > 0 && form.price > 0 && form.cost > form.price;
 
+  // R-FINANCIAL-PRIVACY-V2: also gate the in-form margin indicator. Reads
+  // isAdminMode + currentEmployee inline (settings is already available
+  // via props) so InventoryFormModal stays additive.
+  const { state: { isAdminMode: _isAdminFormMode, currentEmployee: _currentEmpForm } } = useApp();
+  const formCanSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    _isAdminFormMode || _currentEmpForm?.role === 'owner',
+  );
+
   const CATEGORIES = [
     { value: 'phone',     label: t('inventory.form.cat.phones') },
     { value: 'accessory', label: t('inventory.form.cat.accessories') },
@@ -2208,8 +2230,8 @@ function InventoryFormModal({
         </div>
         )}
 
-        {/* Margin indicator */}
-        {form.cost > 0 && form.price > 0 && (
+        {/* Margin indicator — R-FINANCIAL-PRIVACY-V2: owner-only. */}
+        {formCanSeeOwnerFinancials && form.cost > 0 && form.price > 0 && (
           <div style={{
             padding: '0.5rem 0.75rem',
             background: marginDollars >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',

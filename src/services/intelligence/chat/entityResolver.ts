@@ -26,7 +26,18 @@ function scoreCustomerName(normName: string, normQuery: string): number {
   if (!normName || !normQuery) return 0;
   if (normName === normQuery) return 1.0;
   if (normName.includes(normQuery) && normQuery.length >= 4) return 0.9;
-  if (normQuery.includes(normName) && normName.length >= 4) return 0.85;
+  // R-INTELLIGENCE-STABILIZATION-V1 TASK 5 — Suspicious-fallback guard.
+  // Reverse-match (query contains name as substring) is the path most
+  // likely to accidentally fire on long descriptive queries that happen
+  // to embed a short customer name (e.g. "is jack good at his job"
+  // matching customer "Jack"). Require the name to occupy at least 40%
+  // of the query so a short name embedded in a long sentence no longer
+  // hijacks intent routing. Exact / forward matches are unaffected.
+  if (
+    normQuery.includes(normName) &&
+    normName.length >= 4 &&
+    normName.length / normQuery.length >= 0.4
+  ) return 0.85;
   return 0;
 }
 

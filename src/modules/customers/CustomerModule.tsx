@@ -12,6 +12,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { computeCustomerProfit, adjustSalesItemCosts } from '@/utils/customerProfit';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
@@ -1278,6 +1279,12 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   settings: any;
 }) {
   const { t } = useTranslation();
+  // R-FINANCIAL-PRIVACY-V2: gate profit + margin stat tiles inside this modal.
+  const { state: { isAdminMode: _hxAdminMode, currentEmployee: _hxCurrentEmp } } = useApp();
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    _hxAdminMode || _hxCurrentEmp?.role === 'owner',
+  );
   // R-CUSTOMER-PROFIT-PARITY-V1: shared helper now centralizes the
   // phone_payment commission rewrite + repair 35% fallback. CustomerModule,
   // IntelligenceEngine.getCustomerHistory, and (indirectly) the chat
@@ -1330,26 +1337,33 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
     <Modal open onClose={onClose} title={`📋 ${customer.name}`} size="max-w-2xl">
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
 
-        {/* Summary stats — primary row */}
-        <div className="grid grid-cols-4 gap-2">
+        {/* Summary stats — primary row.
+            R-FINANCIAL-PRIVACY-V2: profit + margin tiles are owner-only.
+            Revenue + store credit remain visible. Grid drops to 2 cols when
+            both owner-only tiles are hidden so the layout doesn't collapse. */}
+        <div className={`grid ${canSeeOwnerFinancials ? 'grid-cols-4' : 'grid-cols-2'} gap-2`}>
           <div className="rounded-lg bg-white/5 p-3 text-center">
             <p className="text-xs text-slate-400">{t('customers.history.revenue')}</p>
             <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalSpent)}</p>
           </div>
-          <div
-            className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30 p-3 text-center"
-            title={coveragePct < 100 ? t('customers.history.coverageTitle', coveragePct) : undefined}
-          >
-            <p className="text-xs text-emerald-300">
-              {t('customers.history.profit')}
-              {coveragePct < 100 && <span className="ml-1 text-amber-400">*</span>}
-            </p>
-            <p className="text-lg font-bold text-emerald-300">{formatCurrency(stats.profit)}</p>
-          </div>
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{t('customers.history.margin')}</p>
-            <p className="text-lg font-bold text-white">{stats.margin.toFixed(1)}%</p>
-          </div>
+          {canSeeOwnerFinancials && (
+            <div
+              className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30 p-3 text-center"
+              title={coveragePct < 100 ? t('customers.history.coverageTitle', coveragePct) : undefined}
+            >
+              <p className="text-xs text-emerald-300">
+                {t('customers.history.profit')}
+                {coveragePct < 100 && <span className="ml-1 text-amber-400">*</span>}
+              </p>
+              <p className="text-lg font-bold text-emerald-300">{formatCurrency(stats.profit)}</p>
+            </div>
+          )}
+          {canSeeOwnerFinancials && (
+            <div className="rounded-lg bg-white/5 p-3 text-center">
+              <p className="text-xs text-slate-400">{t('customers.history.margin')}</p>
+              <p className="text-lg font-bold text-white">{stats.margin.toFixed(1)}%</p>
+            </div>
+          )}
           <div className="rounded-lg bg-white/5 p-3 text-center">
             <p className="text-xs text-slate-400">{t('customers.history.credit')}</p>
             <p className="text-lg font-bold text-blue-400">{formatCurrency(customer.storeCredit || 0)}</p>
@@ -1378,7 +1392,9 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
           </div>
         </div>
 
-        {coveragePct < 100 && stats.visitCount > 0 && (
+        {/* R-FINANCIAL-PRIVACY-V2: coverage warning relates to profit accuracy,
+            hide it for employees when the profit tile is also hidden. */}
+        {canSeeOwnerFinancials && coveragePct < 100 && stats.visitCount > 0 && (
           <div className="text-xs text-amber-400/80 text-center -mt-2">
             {t('customers.history.coverageWarn', coveragePct)}
           </div>

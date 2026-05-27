@@ -28,6 +28,7 @@ import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { loadLocal, saveLocal } from '@/services/storage';
 import { formatCurrency } from '@/utils/currency';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { normalizeCarrier, normalizePhone, formatPhone } from '@/utils/normalize';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
@@ -164,17 +165,77 @@ export default function PhonePaymentModal({
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  // R-PHONE-AUTOCOPY-ALL-SOURCES-V1: same-session dedupe so a phone driven
+  // through multiple state paths (pending customer prefill → user toggles
+  // family-plan → re-selects same customer) doesn't trigger multiple writes
+  // to the OS clipboard. Cleared by reset() so a fresh modal session can
+  // re-copy the same phone (clipboard may have been overwritten meanwhile).
+  const lastCopiedPhoneRef = useRef<string | null>(null);
   // Auto-copy phone to clipboard when a valid 10-digit number is set
   // (from manual entry, customer selection, or known line toggle).
-  // v2: use isValidPhone helper so all 10-digit checks stay centralized.
+  // Strict 10-digit check — isValidPhone() accepts empty as valid, which
+  // would otherwise cause empty-clipboard writes when the effect below
+  // fires on reset/clear.
   const autoCopyPhone = useCallback((raw: string) => {
-    if (!isValidPhone(raw)) return;
     const digits = sanitizePhone(raw);
-    navigator.clipboard.writeText(digits).then(() => {
+    if (digits.length !== 10) return;
+    if (lastCopiedPhoneRef.current === digits) return;
+    const onSuccess = () => {
+      lastCopiedPhoneRef.current = digits;
       setCopiedPhone(digits);
       setTimeout(() => setCopiedPhone(null), 2000);
-    }).catch(() => {});
+    };
+    // R-PHONE-AUTOCOPY-ALL-SOURCES-V2: navigator.clipboard.writeText
+    // requires an active user gesture in Chromium/Electron, so it
+    // silently fails when called from prefill useEffects (pending
+    // customer, intelligence/barcode action, customer select). Fall
+    // back to the legacy textarea+execCommand path which has no user-
+    // gesture requirement and is still supported in Electron 31.
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = digits;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        const prevActive = document.activeElement as HTMLElement | null;
+        ta.select();
+        ta.setSelectionRange(0, digits.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (prevActive && typeof prevActive.focus === 'function') prevActive.focus();
+        if (ok) onSuccess();
+      } catch { /* ignore — clipboard genuinely unavailable */ }
+    };
+    try {
+      const p = navigator.clipboard?.writeText(digits);
+      if (p && typeof p.then === 'function') {
+        p.then(onSuccess).catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    } catch {
+      fallbackCopy();
+    }
   }, []);
+  // R-PHONE-AUTOCOPY-ALL-SOURCES-V1: state-driven trigger. Every path that
+  // updates phoneNumber (pending customer prefill, intelligence/barcode
+  // action, handleSelectCustomer, customer save, multi→single switch,
+  // manual onChange) flows through this single effect, so autocopy fires
+  // exactly once per phone per session regardless of source.
+  useEffect(() => {
+    const digits = sanitizePhone(phoneNumber);
+    if (digits.length === 0) {
+      // Cleared field — drop the dedupe sentinel so a future re-set of the
+      // same phone (e.g. operator cleared and re-picked the same customer)
+      // will autocopy again.
+      lastCopiedPhoneRef.current = null;
+      return;
+    }
+    autoCopyPhone(phoneNumber);
+  }, [phoneNumber, autoCopyPhone]);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [portal, setPortal] = useState('');
@@ -237,6 +298,14 @@ export default function PhonePaymentModal({
   // autofill everything from the customer record.
   const { state: appState, dispatch: appDispatch } = useApp();
   const { pendingPhonePaymentCustomerId, inventory, repairs: appRepairs, layaways: appLayaways, storeCreditLedger: appLedger } = appState;
+  // R-FINANCIAL-PRIVACY-PHONE-PAYMENT-LEAK: gate the commission preview card
+  // below ("💰 Your Commission" + carrier rate + per-line breakdown). Owner-
+  // only financial data — must hide entirely for non-owner employees. Math,
+  // totals, and the cart write path are untouched.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    appState.isAdminMode || appState.currentEmployee?.role === 'owner',
+  );
   // R-SIM-INTAKE: anti-stale-closure ref for inventory — back-to-back
   // activations (same modal session) should see post-decrement qty so the
   // SIM picker doesn't show items that were already sold this session.
@@ -785,6 +854,9 @@ export default function PhonePaymentModal({
     setPaidKnownLines({});
     setNewLinePhone('');
     setNewLineAmount('');
+    // R-PHONE-AUTOCOPY-ALL-SOURCES-V1: clear the dedupe sentinel so the next
+    // modal session can re-copy the same phone (clipboard may be stale).
+    lastCopiedPhoneRef.current = null;
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -1950,7 +2022,11 @@ export default function PhonePaymentModal({
               </div>
             </div>
 
-            {/* Commission preview */}
+            {/* Commission preview — R-FINANCIAL-PRIVACY-PHONE-PAYMENT-LEAK:
+                hide the 💰 emoji + commission % + $ for non-owner employees.
+                The "🔗 Open Portal" button stays — it's operational, not
+                financial, and the cashier still needs to launch the carrier
+                portal flow. */}
             {actCarrier && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -1958,14 +2034,18 @@ export default function PhonePaymentModal({
                 background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
                 borderRadius: '0.625rem',
               }}>
-                <span style={{ fontSize: '1.1rem' }}>💰</span>
-                <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-                  {t('phonePay.estCommission')}:
-                  <strong style={{ color: '#22c55e', marginLeft: '0.35rem' }}>
-                    {((settings.carrierCommissions?.[normalizeCarrier(actCarrier)] ?? 0) * 100).toFixed(0)}%
-                    {actCommissionCents > 0 && ` = ${formatCurrency(actCommissionCents)}`}
-                  </strong>
-                </div>
+                {canSeeOwnerFinancials && (
+                  <>
+                    <span style={{ fontSize: '1.1rem' }}>💰</span>
+                    <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                      {t('phonePay.estCommission')}:
+                      <strong style={{ color: '#22c55e', marginLeft: '0.35rem' }}>
+                        {((settings.carrierCommissions?.[normalizeCarrier(actCarrier)] ?? 0) * 100).toFixed(0)}%
+                        {actCommissionCents > 0 && ` = ${formatCurrency(actCommissionCents)}`}
+                      </strong>
+                    </div>
+                  </>
+                )}
                 {actCarrier && (
                   <button onClick={handleOpenActivationPortal}
                     style={{
@@ -1984,7 +2064,12 @@ export default function PhonePaymentModal({
                 Replaces the prior auto-populate that read settings.carrierSpiffs.
                 When ON: cashier types the spiff amount; gets stamped onto the
                 SIM cart line as `spiffAmount` and persisted to legacy
-                `activation_spiffs` localStorage (Tax Reports source). */}
+                `activation_spiffs` localStorage (Tax Reports source).
+                R-FINANCIAL-PRIVACY-PHONE-PAYMENT-LEAK: spiff is owner-only
+                financial data (carrier bonus paid TO the shop). Hide the
+                toggle entirely from non-owner employees. Math/persistence
+                are not affected — useSpiff stays its initial `false`. */}
+            {canSeeOwnerFinancials && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '0.75rem',
               padding: '0.625rem 0.875rem',
@@ -2029,6 +2114,7 @@ export default function PhonePaymentModal({
                 </div>
               )}
             </div>
+            )}
 
             {/* Phone + Plan grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
@@ -3171,8 +3257,13 @@ export default function PhonePaymentModal({
         {/* ── Commission preview ──────────────────────────── */}
         {/* R-PHONE-FAMILY-MULTILINE-TOTALS: gate on total commission (not
             global carrier) so mixed-carrier multi-line bundles still render
-            the card even when no top-level carrier was picked. */}
-        {breakdown.commissionCents > 0 && breakdown.commissionBreakdown.length > 0 && (
+            the card even when no top-level carrier was picked.
+            R-FINANCIAL-PRIVACY-PHONE-PAYMENT-LEAK: also gate on
+            canSeeOwnerFinancials — commission is owner-only financial data
+            and must be hidden from non-owner employees when the Financial
+            Privacy toggle is on. Math, totals, and the cart write path are
+            unaffected. Card disappears entirely (no $0 placeholder). */}
+        {canSeeOwnerFinancials && breakdown.commissionCents > 0 && breakdown.commissionBreakdown.length > 0 && (
           <div style={{
             padding: '0.75rem 1rem',
             background: 'rgba(34,197,94,0.1)',

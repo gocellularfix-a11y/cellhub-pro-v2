@@ -21,6 +21,7 @@ import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/config/constants';
 import { REPAIR_STATUS, normalizeRepairStatus } from '@/utils/repairStatus';
 import { STATUS_LABELS, PAYMENT_LABELS } from '@/i18n/statusMap';
 import { normalizeCarrier } from '@/utils/normalize';
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 // R-DASHBOARD-PROFIT-RECONCILE-V1: reuse Reports' pseudo-item detection
 // + proportional-cost helpers so the Dashboard's profit pipeline applies
 // the SAME accounting rules as Reports (no duplicated math).
@@ -61,9 +62,16 @@ export default function Dashboard() {
     state: {
       sales, repairs, unlocks, inventory, customers,
       specialOrders, layaways, lang, settings,
+      // R-FINANCIAL-PRIVACY-V2: needed to gate owner-only profit tile.
+      isAdminMode, currentEmployee,
     },
     setActiveTab,
   } = useApp();
+  // R-FINANCIAL-PRIVACY-V2: gate profit tile + margin% line on the dashboard.
+  const canSeeOwnerFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
   const { t } = useTranslation();
   const statusLabels = STATUS_LABELS(t);
   const paymentLabels = PAYMENT_LABELS(t);
@@ -464,6 +472,41 @@ export default function Dashboard() {
               weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
             })}
           </p>
+          {/* R-FINANCIAL-PRIVACY-V4.1: privacy-active chip. Surfaces the
+              fact that profit hiding is currently configured. Admin/owner
+              still sees the profit tile above — the chip is the visual
+              cue that explains why the toggle is doing "nothing" from
+              their perspective. Employees already lose the profit tile
+              entirely, so the chip is gated to admin/owner only.
+              Read the flag via canViewOwnerFinancials(settings, false):
+              false-second-arg simulates a non-admin viewer, so a falsy
+              result means "the flag is currently ON". */}
+          {!canViewOwnerFinancials(settings, false)
+            && (isAdminMode || currentEmployee?.role === 'owner') && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              marginTop: '0.5rem',
+              padding: '0.18rem 0.55rem',
+              borderRadius: '999px',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              background: 'rgba(96,165,250,0.12)',
+              border: '1px solid rgba(96,165,250,0.3)',
+              color: '#bfdbfe',
+              letterSpacing: '0.01em',
+            }}
+            title={
+              lang === 'es' ? 'Tu rol de Admin/propietario sigue viendo todo. Los empleados no.'
+              : lang === 'pt' ? 'Seu papel de Admin/proprietário continua vendo tudo. Funcionários não.'
+              : 'Your Admin/owner role still sees everything. Employees do not.'}
+            >
+              🛡️ {lang === 'es' ? 'Privacidad de ganancia activa para empleados'
+                : lang === 'pt' ? 'Privacidade de lucro ativa para funcionários'
+                : 'Employee profit privacy active'}
+            </span>
+          )}
         </div>
 
         {/* Search — top-right with + button */}
@@ -503,26 +546,30 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" data-kpi="teal" title={todayReturnsCents > 0
-          ? t('dashboard.refundsTooltip', formatCurrency(todayReturnsCents))
-          : undefined}>
-          <StatIcon icon="📈" color="rgba(34, 197, 94, 0.2)" />
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-            {t('estimatedGrossProfit')}
+        {/* R-FINANCIAL-PRIVACY-V2: hide entire profit + margin tile when the
+            owner-financial-privacy flag is on AND viewer is not admin/owner. */}
+        {canSeeOwnerFinancials && (
+          <div className="stat-card" data-kpi="teal" title={todayReturnsCents > 0
+            ? t('dashboard.refundsTooltip', formatCurrency(todayReturnsCents))
+            : undefined}>
+            <StatIcon icon="📈" color="rgba(34, 197, 94, 0.2)" />
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+              {t('estimatedGrossProfit')}
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: todayProfit >= 0 ? '#34d399' : '#f87171', marginTop: '0.5rem' }}>
+              {formatCurrency(todayProfit)}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              {/* Clamp visual margin display: showing -1500% is meaningless when refunds dwarf today's sales */}
+              {Math.abs(parseFloat(profitMargin)) > 999 ? '—' : `${profitMargin}%`} {t('dashboard.margin')}
+              {todayReturnsCents > 0 && (
+                <span style={{ marginLeft: '0.4rem', color: '#fbbf24', fontSize: '0.7rem' }}>
+                  ⚠ {t('dashboard.includesRefunds')}
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: todayProfit >= 0 ? '#34d399' : '#f87171', marginTop: '0.5rem' }}>
-            {formatCurrency(todayProfit)}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            {/* Clamp visual margin display: showing -1500% is meaningless when refunds dwarf today's sales */}
-            {Math.abs(parseFloat(profitMargin)) > 999 ? '—' : `${profitMargin}%`} {t('dashboard.margin')}
-            {todayReturnsCents > 0 && (
-              <span style={{ marginLeft: '0.4rem', color: '#fbbf24', fontSize: '0.7rem' }}>
-                ⚠ {t('dashboard.includesRefunds')}
-              </span>
-            )}
-          </div>
-        </div>
+        )}
 
         <div className="stat-card" data-kpi="orange" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
           <StatIcon icon="🔧" color="rgba(249, 115, 22, 0.2)" />
