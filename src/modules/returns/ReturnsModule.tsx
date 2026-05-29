@@ -599,13 +599,21 @@ export default function ReturnsModule() {
       setActiveTab('pos');
     }
 
-    // Phase 6: store credit.
-    // R-RETURNS-CREDIT-OWNER: use the explicitly-confirmed recipientCustomerId
-    // when available (no more silent tail-10 phone-fallback that could route
-    // credit to the wrong customer). When no customer is linked (manual entry),
-    // the certificate is still issued and persisted — the cashier reconciles
+    // Phase 6: store credit (legacy customer.storeCredit fallback).
+    // R-RETURNS-STORE-CREDIT-DOUBLE-MINT-BLOCKER-FIX: ledger is authoritative;
+    // legacy storeCredit only used when no cert minted. Previously this block
+    // ran alongside the ledger issuance below (line ~887), giving the customer
+    // TWO redeemable amounts for one return — legacy via "Store Credit"
+    // payment method (POSModule §3) AND ledger via ApplyStoreCreditModal
+    // (POSModule §4e). Now the legacy increment fires only when no
+    // certificateNumber was minted (defensive — current code always mints
+    // one for store_credit returns, but the fallback survives if that ever
+    // changes).
+    //
+    // R-RETURNS-CREDIT-OWNER: when no customer is linked (manual entry), the
+    // certificate is still issued and persisted — the cashier reconciles
     // physically later. Certificate number remains discoverable via reports.
-    if (resolution === 'store_credit' && totalCents > 0) {
+    if (resolution === 'store_credit' && totalCents > 0 && !certificateNumber) {
       const refundCents = totalCents;
       if (recipientCustomerId) {
         let matched = false;
