@@ -1371,7 +1371,17 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
       handleClose();
       return;
     }
-    if (fresh.updatedAt && editOrder.updatedAt && String(fresh.updatedAt) !== String(editOrder.updatedAt)) {
+    // R-CROSS-STALE-CHECK-NORMALIZATION: same fix as RepairModal B1 —
+    // String(date_object) is locale-dependent and differs from String(iso_string)
+    // for the same instant when storage format is mixed.
+    const normalizeUpdatedAt = (v: unknown): number => {
+      if (v instanceof Date) return v.getTime();
+      if (v != null && typeof (v as any).toDate === 'function') return (v as any).toDate().getTime();
+      if (typeof v === 'string') return Date.parse(v);
+      if (typeof v === 'number') return v;
+      return 0;
+    };
+    if (fresh.updatedAt && editOrder.updatedAt && normalizeUpdatedAt(fresh.updatedAt) !== normalizeUpdatedAt(editOrder.updatedAt)) {
       toast(t('so.modal.ticketModifiedOtherStation'), 'error');
       handleClose();
       return;
