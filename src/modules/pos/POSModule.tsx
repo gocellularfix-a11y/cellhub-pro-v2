@@ -369,6 +369,43 @@ export default function POSModule() {
 
   const handleCompleteSale = useCallback(
     (sale: Sale) => {
+      // ── R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: pre-flight validation ──
+      // Walk every linked entity in the sale BEFORE persisting anything so a
+      // cancelled repair or cancelled/forfeited layaway aborts the whole
+      // checkout cleanly. Previously these guards lived inside §4a (line ~639)
+      // and §4d (line ~775), AFTER the sale was persisted and inventory was
+      // decremented — a failing guard there returned mid-mutation, leaving
+      // persisted Sale + decremented stock + still-active linked entity +
+      // uncleared cart. Refs are stable across a single synchronous handler
+      // invocation, so the lookups here see exactly the same data §4a/§4d
+      // would have seen, which is why the in-loop guards below are now
+      // redundant and have been removed (same toasts, same return points,
+      // pre-persist).
+      const repairIdsInSale = new Set<string>();
+      const layawayIdsInSale = new Set<string>();
+      for (const saleItem of sale.items) {
+        if (saleItem.repairId) repairIdsInSale.add(saleItem.repairId);
+        if (saleItem.layawayId) layawayIdsInSale.add(saleItem.layawayId);
+      }
+      for (const repairId of repairIdsInSale) {
+        const repair = repairsRef.current.find((r) => r.id === repairId);
+        if (!repair) continue;
+        const freshStatus = String(repair.status || '').toLowerCase();
+        if (freshStatus === 'cancelled') {
+          toast(t('pos.repairCancelledPayment'), 'error');
+          return;
+        }
+      }
+      for (const layawayId of layawayIdsInSale) {
+        const layaway = layawaysRef.current.find((l) => l.id === layawayId);
+        if (!layaway) continue;
+        const freshStatus = String(layaway.status || '').toLowerCase();
+        if (freshStatus === 'cancelled' || freshStatus === 'forfeited') {
+          toast(t('pos.layawayCancelledSale'), 'error');
+          return;
+        }
+      }
+
       // 1. Save sale (use ref to avoid stale closure if Firestore listener
       //    or another module wrote sales between render and now)
       const nextSales = [...salesRef.current, sale];
@@ -630,17 +667,12 @@ export default function POSModule() {
         if (ri < 0) continue;
         const repair = updatedRepairs[ri];
 
-        // Round R-POS-PARITY F3: H2 cancel guard (parity with Layaway
-        // line 644-653). Re-read fresh status; abort the entire handler
-        // if the repair was cancelled between cart-add and checkout
-        // commit. This prevents reconciling a payment onto a dead record.
-        // Repair has no 'forfeited' status (that's layaway-specific), so
-        // only 'cancelled' is checked.
-        const freshStatus = String(repair.status || '').toLowerCase();
-        if (freshStatus === 'cancelled') {
-          toast(t('pos.repairCancelledPayment'), 'error');
-          return;
-        }
+        // R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: the prior H2 cancel guard
+        // (Round R-POS-PARITY F3) lived here and returned mid-handler if
+        // repair.status was 'cancelled' — but by that point §1+§2 had
+        // already persisted the sale and decremented inventory. The guard
+        // is now hoisted into the pre-flight block at the top of
+        // handleCompleteSale, which runs against the same repairsRef.
 
         // r-new-7: defensive sanity check — overpayment detection.
         // The cart consolidation invariant in RepairModule should prevent
@@ -770,13 +802,12 @@ export default function POSModule() {
         const li = updatedLayaways.findIndex((l) => l.id === layawayId);
         if (li < 0) continue;
         const layaway = updatedLayaways[li];
-        // Round 15b H2: re-read status; abort if the layaway was cancelled or
-        // forfeited between cart-add and checkout commit.
-        const freshStatus = String(layaway.status || '').toLowerCase();
-        if (freshStatus === 'cancelled' || freshStatus === 'forfeited') {
-          toast(t('pos.layawayCancelledSale'), 'error');
-          return;
-        }
+        // R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: the prior Round-15b H2 guard
+        // (cancelled/forfeited abort) lived here and returned mid-handler —
+        // after §1+§2 had persisted the sale and decremented inventory.
+        // The guard is now hoisted into the pre-flight block at the top of
+        // handleCompleteSale, which runs against the same layawaysRef.
+
         // Round 15b M4: write depositMethod on the FIRST payment only. Refund
         // policy is refund-to-original-method, so we must lock the method in
         // at first deposit and never overwrite on subsequent partials.
