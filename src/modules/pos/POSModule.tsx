@@ -410,6 +410,53 @@ export default function POSModule() {
         }
       }
 
+      // R-REPAIRS-OVERPAYMENT-BLOCK-H1: overpayment pre-flight — must run before
+      // §1 persist so a return here aborts ALL mutations (sale, inventory, customer,
+      // repair). The §4a overpayment console.warn is left as a belt-and-suspenders
+      // sentinel; it should never fire in practice once this guard is in place.
+      // Duplicates the §4a discount-ratio + itemPaidCents math in a block scope so
+      // variable names don't shadow the §4a declarations that follow.
+      {
+        const _taxRate = settings.taxRate ?? 0.0925;
+        let _discountableBase = 0;
+        for (const si of sale.items) {
+          if (si.category === 'phone_payment' || si.category === 'top_up') continue;
+          _discountableBase += (si.price || 0) * (si.qty || 1);
+        }
+        const _saleDiscount = Math.max(
+          0,
+          (sale.subtotal || 0) - (sale.subtotalAfterDiscount ?? sale.subtotal ?? 0),
+        );
+        const _discountRatio = _discountableBase > 0
+          ? Math.max(0, (_discountableBase - _saleDiscount) / _discountableBase)
+          : 1;
+        const _repairPaid = new Map<string, number>();
+        for (const si of sale.items) {
+          if (!si.repairId) continue;
+          const isDisc = si.category !== 'phone_payment' && si.category !== 'top_up';
+          const effBase = isDisc ? Math.round((si.price || 0) * _discountRatio) : (si.price || 0);
+          const fwd = forwardTaxFromBase(effBase, _taxRate, !!si.taxable);
+          _repairPaid.set(
+            si.repairId,
+            (_repairPaid.get(si.repairId) || 0) + fwd.totalCents * (si.qty || (si as any).quantity || 1),
+          );
+        }
+        for (const [_repairId, _paidCents] of _repairPaid) {
+          const _repair = repairsRef.current.find((r) => r.id === _repairId);
+          if (!_repair) continue;
+          const _expected = _repair.balance || 0;
+          if (_paidCents > _expected + 1) {
+            console.warn(
+              `[repair-reconcile] Overpayment pre-flight: repair ${_repairId}`,
+              `paid ${_paidCents} cents, balance ${_expected} cents.`,
+              `Diff: ${_paidCents - _expected} cents. Possible stale cart.`,
+            );
+            toast(t('pos.repairOverpaymentBlocked'), 'error');
+            return;
+          }
+        }
+      }
+
       // 1. Save sale (use ref to avoid stale closure if Firestore listener
       //    or another module wrote sales between render and now)
       const nextSales = [...salesRef.current, sale];

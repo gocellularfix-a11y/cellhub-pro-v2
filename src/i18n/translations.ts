@@ -2059,6 +2059,7 @@ export const translations: TranslationDictionary = {
   'pos.knownLineAmountAria': { en: 'Amount for selected phone line', es: 'Monto para la línea seleccionada', pt: 'Valor para a linha selecionada' },
   'pos.repairCancelledPayment': { en: 'Repair was cancelled. Payment was not processed.', es: 'La reparación fue cancelada. El pago no se procesó.', pt: 'O reparo foi cancelado. Pagamento não processado.' },
   'pos.repairAlreadyCompleted': { en: 'Repair already picked up. Refresh the cart and verify the balance.', es: 'La reparación ya fue entregada. Actualiza el carrito y verifica el saldo.', pt: 'Reparo já entregue. Atualize o carrinho e verifique o saldo.' },
+  'pos.repairOverpaymentBlocked': { en: 'Repair payment is higher than the remaining balance. Refresh the cart and verify the amount.', es: 'El pago de reparación es mayor que el saldo pendiente. Actualiza el carrito y verifica el monto.', pt: 'O pagamento do reparo é maior que o saldo restante. Atualize o carrinho e verifique o valor.' },
   'pos.layawayCancelledSale': { en: 'This layaway was cancelled. Cannot complete sale.', es: 'Este apartado fue cancelado. No se puede completar la venta.', pt: 'Esta reserva foi cancelada. Não é possível completar a venda.' },
   'pos.saleCompleted': {
     en: (invoice: string) => `Sale ${invoice} completed!`,
