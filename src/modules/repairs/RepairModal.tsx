@@ -590,7 +590,19 @@ ${financialSection}
       handleClose();
       return;
     }
-    if (fresh.updatedAt && repair.updatedAt && String(fresh.updatedAt) !== String(repair.updatedAt)) {
+    // R-REPAIRS-STALE-CHECK-NORMALIZATION-B1: String(date_object) is
+    // locale-dependent and differs from String(iso_string) even for the same
+    // instant — allowing concurrent edits to slip past the stale guard when
+    // storage format is mixed (Date vs ISO string vs Firestore Timestamp).
+    // Normalize to epoch millis before comparing.
+    const normalizeUpdatedAt = (v: unknown): number => {
+      if (v instanceof Date) return v.getTime();
+      if (v != null && typeof (v as any).toDate === 'function') return (v as any).toDate().getTime();
+      if (typeof v === 'string') return Date.parse(v);
+      if (typeof v === 'number') return v;
+      return 0;
+    };
+    if (fresh.updatedAt && repair.updatedAt && normalizeUpdatedAt(fresh.updatedAt) !== normalizeUpdatedAt(repair.updatedAt)) {
       toast(t('repairs.errTicketModifiedOtherStation'), 'error');
       handleClose();
       return;
