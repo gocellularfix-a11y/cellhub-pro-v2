@@ -395,6 +395,10 @@ export default function POSModule() {
           toast(t('pos.repairCancelledPayment'), 'error');
           return;
         }
+        if (freshStatus === 'picked_up' || freshStatus === 'completed') {
+          toast(t('pos.repairAlreadyCompleted'), 'error');
+          return;
+        }
       }
       for (const layawayId of layawayIdsInSale) {
         const layaway = layawaysRef.current.find((l) => l.id === layawayId);
