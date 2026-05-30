@@ -2759,6 +2759,7 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `${n}/10 caracteres mínimos`,
   },
   'so.cancel.nevermind': { en: 'Never mind', es: 'No importa', pt: 'Não importa' },
+  'so.cancel.confirming': { en: 'Confirming...', es: 'Confirmando...', pt: 'Confirmando...' },
 
   // SpecialOrderModal (inner component)
   'so.modal.editTitle':              { en: 'Edit Special Order',           es: 'Editar Pedido',                     pt: 'Editar Pedido Especial' },

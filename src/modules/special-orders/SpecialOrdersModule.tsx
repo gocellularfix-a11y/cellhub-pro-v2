@@ -75,6 +75,9 @@ export default function SpecialOrdersModule() {
   const [form, setForm] = useState<Partial<SpecialOrder>>({});
   const [depositModalOrder, setDepositModalOrder] = useState<SpecialOrder | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SpecialOrder | null>(null);
+  // R-SO-CANCEL-DOUBLECLICK-UX1: parent-owned busy flag so the cancel modal's
+  // confirm button disables on first click and ignores rapid double-clicks.
+  const [cancelInFlight, setCancelInFlight] = useState(false);
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<SpecialOrder | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<SpecialOrder | null>(null);
@@ -600,6 +603,10 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-SO-CANCEL-DOUBLECLICK-UX1: mark busy immediately so the modal confirm
+    // button disables on first click; finally clears it on every exit path.
+    setCancelInFlight(true);
+    try {
     // R-APPROVAL-GATE-SPECIALORDERS-V1: approval gate before any mutation.
     const approval = await approvalGate.requestApproval({
       actionType: 'CANCEL_SPECIAL_ORDER',
@@ -738,6 +745,11 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
+    } finally {
+      // R-SO-CANCEL-DOUBLECLICK-UX1: clear busy on every exit (approval denied,
+      // early-return, or success) so a re-opened modal never starts stuck.
+      setCancelInFlight(false);
+    }
   }, [t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee, approvalGate.requestApproval]);
 
   const handleComplete = useCallback((order: SpecialOrder) => {
@@ -1064,8 +1076,9 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
           customerHasPhone={!!cancelTarget.customerPhone}
           customerName={cancelTarget.customerName}
           lang={lang}
+          confirming={cancelInFlight}
           onConfirm={(choice) => handleCancelSpecialOrder(cancelTarget, choice)}
-          onClose={() => setCancelTarget(null)}
+          onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
         />
       )}
 
