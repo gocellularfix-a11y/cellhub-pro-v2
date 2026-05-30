@@ -678,6 +678,46 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   );
 }
 
+/**
+ * R-POS-RECEIPT-INTERNAL-NOTES-LEAK-HIGH-FIX: strip owner-only tokens from
+ * `item.notes` before printing on customer-facing receipts.
+ *
+ * Top-up cart lines (TopUpModal.tsx) stamp notes as:
+ *   "Provider: X | Sender: Y | Recipient: Z | Rate: 7.00%"
+ * The `Rate:` token leaks the carrier commission, and `Sender:` exposes the
+ * paying customer's number on the recipient's receipt. Both must stay off
+ * customer-facing prints. `Provider:` and `Recipient:` are kept so the
+ * recipient can see what they got and from whom.
+ *
+ * Behavior:
+ *   - notes without `|`: returned unchanged (free-form cashier notes).
+ *   - notes with `|`: split, drop any segment whose leading "Key:" matches
+ *     the BLACKLIST (case-insensitive), rejoin.
+ *   - returns '' when every segment is filtered (caller suppresses the
+ *     small-tag wrapper so no empty `<small>` renders).
+ *
+ * NOT applied to internal-only surfaces (Reports, Tax, Intelligence) — the
+ * raw notes still flow to those owner-facing UIs through the Sale record
+ * untouched. This helper is a render-time filter, not a data mutation.
+ */
+function sanitizeReceiptNotes(notes: string | undefined): string {
+  if (!notes) return '';
+  if (!notes.includes('|')) return notes;
+  const BLACKLIST = new Set(['rate', 'sender', 'commission', 'spiff', 'payout']);
+  const kept: string[] = [];
+  for (const raw of notes.split('|')) {
+    const part = raw.trim();
+    if (!part) continue;
+    const keyMatch = part.match(/^([a-z][a-z\s]*?)\s*:/i);
+    if (keyMatch) {
+      const key = keyMatch[1].toLowerCase().trim();
+      if (BLACKLIST.has(key)) continue;
+    }
+    kept.push(part);
+  }
+  return kept.join(' | ');
+}
+
 /** Generate standalone receipt HTML with barcode.
  *  Supports '80mm' thermal roll or '4x6' label stock (default).
  *  Optional `qrSvg` is an inline SVG string from the qrcode lib; when provided
@@ -747,9 +787,13 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     const idLine = itemIdValue
       ? `<br><small style="color:#555;font-family:'Courier New',monospace;font-weight:700;font-size:10px;letter-spacing:0.04em">ID: ${escHtml(itemIdValue)}</small>`
       : '';
+    // R-POS-RECEIPT-INTERNAL-NOTES-LEAK-HIGH-FIX: filter owner-only tokens
+    // (Rate/Sender/commission/spiff/payout) out of notes before printing.
+    // Empty result suppresses the wrapper so we don't render <small></small>.
+    const safeNotes = sanitizeReceiptNotes(item.notes);
     return `
     <tr>
-      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${item.notes ? `<br><small style="color:#888">${escHtml(item.notes)}</small>` : ''}${idLine}</td>
+      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${safeNotes ? `<br><small style="color:#888">${escHtml(safeNotes)}</small>` : ''}${idLine}</td>
       <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(effectiveTotal)}${discountAnnotation}</td>
     </tr>`;
   }).join('');

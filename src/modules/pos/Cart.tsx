@@ -2,7 +2,7 @@
 // CellHub Pro — Cart Panel (right sidebar in POS)
 // ============================================================
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CartItem, Customer, StoreSettings } from '@/store/types';
 import type { CartTotals, DiscountState } from './types';
 import { formatCurrency } from '@/utils/currency';
@@ -178,6 +178,77 @@ export default function Cart({
     ));
     closeLineDiscount();
   }, [cart, setCart, discountTarget, discountMode, discountValue, discountReason, t, toast, closeLineDiscount, approvalGate.requestApproval, currentEmployee]);
+
+  // ── R-POS-CART-DISCOUNT-APPROVAL-BYPASS-FIX ───────────────────────────
+  // Cart-level discount input is gated by the same approvalGate the per-line
+  // discount uses (DISCOUNT_OVERRIDE action). Local mirror state lets the
+  // cashier type freely without firing the PIN modal on every keystroke;
+  // the gate runs on amount-blur and on type-change with a non-zero amount.
+  // When the resulting discount is 0 (clearing/removing), no approval is
+  // required — that's a take-back, not a give-away. Approval gate already
+  // pass-throughs when settings.approvalsEnabled is false and when the
+  // request is from an admin/owner, so admin behavior is unchanged.
+  const [pendingDiscountInput, setPendingDiscountInput] = useState<string>(
+    () => (discount.amount ? String(discount.amount) : ''),
+  );
+  useEffect(() => {
+    // Sync local mirror when discount state changes externally
+    // (e.g. cart cleared, approved commit, parent reset).
+    setPendingDiscountInput(discount.amount ? String(discount.amount) : '');
+  }, [discount.amount]);
+
+  const commitCartDiscount = useCallback(
+    async (nextAmount: number, nextType: 'percent' | 'dollar') => {
+      // R-POS-NEGATIVE-DISCOUNT-CLAMP-FIX: belt clamp at the commit boundary
+      // in case a future caller forwards a negative value past the input
+      // clamp at the JSX call sites below. Math layer (pos/types.ts) also
+      // clamps, but persisting a clean 0/positive value keeps cart state
+      // honest in localStorage/Firestore inspectors too.
+      const safeNextAmount = Math.max(0, nextAmount || 0);
+
+      // No-op when nothing actually changed.
+      if (safeNextAmount === discount.amount && nextType === discount.type) return;
+
+      // Removing the discount (going to 0) — no approval required.
+      if (safeNextAmount === 0) {
+        setDiscount({ ...discount, amount: 0, type: nextType });
+        return;
+      }
+
+      // Compute affectedAmount in cents the same way calculateCartTotals
+      // would. Mirrors the filter in pos/types.ts (exclude phone_payment +
+      // top_up + alreadyPaid items from the discountable base). Used only
+      // for the approval payload — does NOT alter cart totals.
+      const discountableAmount = cart
+        .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up' && !(i as any).alreadyPaid)
+        .reduce((s, i) => s + i.price * i.qty, 0);
+      const affectedAmount = nextType === 'dollar'
+        ? Math.min(Math.round(safeNextAmount * 100), discountableAmount)
+        : Math.max(0, Math.round((discountableAmount * safeNextAmount) / 100));
+
+      const reasonStr = nextType === 'percent'
+        ? `${safeNextAmount}% cart discount`
+        : `$${safeNextAmount.toFixed(2)} cart discount`;
+
+      emitDiscountAttempted();
+      const approval = await approvalGate.requestApproval({
+        actionType: 'DISCOUNT_OVERRIDE',
+        requestedByEmployeeId: currentEmployee?.id || '',
+        entityId: 'cart',
+        affectedAmount,
+        reason: reasonStr,
+      });
+
+      if (!approval.approved) {
+        // Revert the input mirror back to the last approved value.
+        setPendingDiscountInput(discount.amount ? String(discount.amount) : '');
+        return;
+      }
+
+      setDiscount({ ...discount, amount: safeNextAmount, type: nextType });
+    },
+    [cart, discount, setDiscount, approvalGate, currentEmployee],
+  );
 
   const updateQty = useCallback(
     (itemId: string, delta: number) => {
@@ -510,20 +581,25 @@ export default function Cart({
       </div>
 
       {/* Discount */}
+      {/* R-POS-CART-DISCOUNT-APPROVAL-BYPASS-FIX: input updates local mirror
+          on keystroke (cashier can type freely); commitCartDiscount runs on
+          blur/type-change and routes the change through approvalGate. Gate
+          pass-through covers approvalsEnabled=false and admin/owner. */}
       <div className="px-4 py-1.5 border-t border-white/10">
         <div className="flex gap-2">
           <input
             type="number"
             min="0"
             step="0.01"
-            value={discount.amount || ''}
-            onChange={(e) => setDiscount({ ...discount, amount: parseFloat(e.target.value) || 0 })}
+            value={pendingDiscountInput}
+            onChange={(e) => setPendingDiscountInput(e.target.value)}
+            onBlur={() => commitCartDiscount(Math.max(0, parseFloat(pendingDiscountInput) || 0), discount.type)}
             placeholder={t('discount')}
             className="input input-sm flex-1"
           />
           <select
             value={discount.type}
-            onChange={(e) => setDiscount({ ...discount, type: e.target.value as 'percent' | 'dollar' })}
+            onChange={(e) => commitCartDiscount(Math.max(0, parseFloat(pendingDiscountInput) || 0), e.target.value as 'percent' | 'dollar')}
             className="select input-sm w-16"
           >
             <option value="percent">%</option>

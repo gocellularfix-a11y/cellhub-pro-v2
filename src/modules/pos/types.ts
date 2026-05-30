@@ -150,6 +150,18 @@ export function calculateCartTotals(
     }
   }
 
+  // R-POS-NEGATIVE-DISCOUNT-CLAMP-FIX: defensive clamp at the math layer.
+  // discount.amount can arrive negative via paste/script/devtools edge cases
+  // (the HTML `min="0"` on the input doesn't bind for those paths). A
+  // negative value flips the downstream into a surcharge:
+  //   manualDiscountAmount < 0  →  discountAmount < 0
+  //   subtotalAfterDiscount = subtotal - (-x)            → inflates above sticker
+  //   discountRatio = (disc - (-x)) / disc > 1           → tax basis inflates
+  // Customer would be charged MORE than sticker price + over-tax. Clamping
+  // the input at the call site (Cart.tsx) is the primary defense; this
+  // clamp is the belt so future callers can't reintroduce the bug.
+  const safeDiscountAmount = Math.max(0, discount.amount || 0);
+
   // FIX: dollar-discount input is captured as DOLLARS in Cart.tsx (parseFloat of
   // user input like "5" = $5.00). Must convert to cents before comparing against
   // discountableAmount, which is in cents-as-int. Previously this treated the raw
@@ -157,8 +169,8 @@ export function calculateCartTotals(
   // (user asks $5 off → system applies 5¢ off). Same bug pattern as the Unlocks
   // dollars/cents mismatch already fixed in a previous round.
   let manualDiscountAmount = discount.type === 'dollar'
-    ? toIntCents(Math.min(discount.amount * 100, discountableAmount))
-    : toIntCents((discountableAmount * discount.amount) / 100);
+    ? toIntCents(Math.min(safeDiscountAmount * 100, discountableAmount))
+    : toIntCents((discountableAmount * safeDiscountAmount) / 100);
 
   const loyaltyDiscountAmount = selectedCustomerLoyaltyDiscount || 0;
   const discountAmount = toIntCents(Math.min(manualDiscountAmount + loyaltyDiscountAmount, discountableAmount));
