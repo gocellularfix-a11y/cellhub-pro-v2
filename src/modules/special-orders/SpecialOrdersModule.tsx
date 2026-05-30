@@ -665,7 +665,7 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
         cbeTotal: 0,
         total: -depositCents,
         paymentMethod: 'Cash' as any,
-        status: 'voided',
+        status: 'completed',
         employeeId: currentEmployee?.id,
         employeeName: currentEmployee?.name,
         notes: `Special order cancelled — cash refund for order ${order.id.slice(-6).toUpperCase()}`,
