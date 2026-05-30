@@ -1050,7 +1050,7 @@ export default function LayawayModule() {
         cbeTotal: 0,
         total: -depositCents,
         paymentMethod: 'Cash',
-        status: 'voided',
+        status: 'completed',
         employeeId: currentEmployee?.id,
         employeeName: currentEmployee?.name,
         notes: `Layaway cancelled — cash refund for ${(l as any).ticketNumber || l.id.slice(-6).toUpperCase()}`,
