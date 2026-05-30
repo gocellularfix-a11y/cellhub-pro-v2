@@ -827,15 +827,26 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       }
     }
   }
+  // R-RECEIPT-4X6-ACTIVATION-OVERFLOW-FIX: a 4×6 receipt that ALSO carries the
+  // NEW PHONE NUMBER activation block runs taller than the 6in page, clipping
+  // the Google review QR/footer at the bottom. ONLY for this exact combination
+  // (default 4×6 page + activation lines present) do we tighten the activation
+  // block's vertical spacing and shrink the review QR/footer so the whole
+  // receipt fits within 6in. Regular 4×6, 80mm, label, and cr80 receipts are
+  // untouched; totals/payment are never compressed. is4x6 mirrors the default
+  // (else) branch of pageStyle below — anything that isn't 80mm/label/cr80.
+  const is4x6 = paperSize !== '80mm' && paperSize !== 'label' && paperSize !== 'cr80';
+  const isActivation4x6 = is4x6 && activationLines.length > 0;
+
   const activationBlock = activationLines.length > 0
-    ? `<div style="text-align:center;margin:6px 0;padding:8px 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
+    ? `<div style="text-align:center;margin:${isActivation4x6 ? '3px' : '6px'} 0;padding:${isActivation4x6 ? '4px' : '8px'} 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
         activationLines.map((phone) =>
-          `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">${
+          `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:${isActivation4x6 ? '1px' : '3px'}">${
             es ? 'Nuevo Número de Teléfono' : pt ? 'Novo Número de Telefone' : 'New Phone Number'
-          }</div><div style="font-size:22px;font-weight:900;letter-spacing:0.04em;line-height:1.2">${
+          }</div><div style="font-size:${isActivation4x6 ? '18px' : '22px'};font-weight:900;letter-spacing:0.04em;line-height:1.15">${
             escHtml(formatPhone(phone) || phone)
           }</div>`
-        ).join('<div style="border-top:1px dashed #ccc;margin:5px 0"></div>')
+        ).join(`<div style="border-top:1px dashed #ccc;margin:${isActivation4x6 ? '3px' : '5px'} 0"></div>`)
       }</div>`
     : '';
 
@@ -983,12 +994,12 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ${settings.warrantyText ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.warrantyText)}</div>` : ''}
     ${settings.returnPolicy ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.returnPolicy)}</div>` : ''}
     ${settings.showReviewQr && settings.googleReviewUrl ? `
-    <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
-      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>
+    <div style="text-align:center;margin-top:${isActivation4x6 ? '4px' : '8px'};padding-top:${isActivation4x6 ? '3px' : '6px'};border-top:1px dashed #ccc">
+      <div style="font-size:10px;font-weight:700;margin-bottom:${isActivation4x6 ? '2px' : '4px'}">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>
       ${qrSvg
-        ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
-        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}
-      <div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
+        ? `<div style="width:${isActivation4x6 ? '54px' : '72px'};height:${isActivation4x6 ? '54px' : '72px'};margin:0 auto">${qrSvg}</div>`
+        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="${isActivation4x6 ? '54' : '72'}" height="${isActivation4x6 ? '54' : '72'}" style="display:block;margin:0 auto" />`}
+      <div style="font-size:8px;color:#555;margin-top:${isActivation4x6 ? '1px' : '3px'}">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
     </div>` : ''}
   </div>
 
