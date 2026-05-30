@@ -929,7 +929,7 @@ export default function LayawayModule() {
       return;
     }
 
-    const depositCents = l.paidAmount || 0;
+    const depositCents = fresh.paidAmount || 0;
     const now = new Date().toISOString();
 
     // Restore inventory reservation
