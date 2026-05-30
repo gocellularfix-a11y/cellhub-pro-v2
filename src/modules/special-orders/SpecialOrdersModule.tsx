@@ -603,6 +603,9 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-SO-CANCEL-DOUBLECLICK-UX1B: handler-level guard. Even if the modal
+    // button somehow fires twice, a re-entrant call bails before any mutation.
+    if (cancelInFlight) return;
     // R-SO-CANCEL-DOUBLECLICK-UX1: mark busy immediately so the modal confirm
     // button disables on first click; finally clears it on every exit path.
     setCancelInFlight(true);
@@ -750,7 +753,7 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
       // early-return, or success) so a re-opened modal never starts stuck.
       setCancelInFlight(false);
     }
-  }, [t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee, approvalGate.requestApproval]);
+  }, [cancelInFlight, t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee, approvalGate.requestApproval]);
 
   const handleComplete = useCallback((order: SpecialOrder) => {
     const balance = order.balance || 0;
