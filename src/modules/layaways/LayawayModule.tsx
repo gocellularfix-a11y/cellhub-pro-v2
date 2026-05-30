@@ -516,6 +516,14 @@ export default function LayawayModule() {
         if (newInvItem) persist.inventory(newInvItem.id, newInvItem as unknown as Record<string, unknown>);
       }
 
+      // R-LAYAWAY-SAFE-STATE-REPAIR-V1: the edit form's "deposit" field is the
+      // legacy single-deposit value and must NEVER overwrite the reconciled
+      // payment total. payments[] is the source of truth — preserve it and the
+      // derived paid total, recomputing balance only against the (possibly
+      // edited) grand total. Prevents an info-only edit from collapsing
+      // multi-payment history down to the form's deposit value.
+      const preservedPaidCents = calculateLayawayTotals(editLayaway).totalPaidCents;
+      const preservedBalanceCents = Math.max(0, totalCents - preservedPaidCents);
       const updated: any = {
         ...editLayaway,
         // R-PHONE-SANITIZE-SWEEP: 10-digit form on the layaway record itself.
@@ -527,7 +535,7 @@ export default function LayawayModule() {
         items: [{ id: editLayaway.items?.[0]?.id || generateId(), inventoryId: form.inventoryId || undefined, name: form.itemDescription, price: Math.round(subtotal * 100), qty: 1 }],
         totalPrice: totalCents, taxAmount: taxCents, taxable: form.taxable,
         taxRate: form.taxable ? taxRate : 0,
-        paidAmount: depositCents, balance: balanceCents,
+        paidAmount: preservedPaidCents, balance: preservedBalanceCents,
         dueDate: form.pickupDate || undefined, notes: form.notes,
         employeeName: form.employeeName, updatedAt: new Date().toISOString(),
       };
@@ -1307,11 +1315,20 @@ ${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc
               const itemName      = r.itemDescription || l.items?.[0]?.name || '';
               const ticketNum     = r.ticketNumber    || l.id.slice(-8).toUpperCase();
               const totalDollars  = (l.totalPrice  || 0) / 100;
-              const paidDollars   = (l.paidAmount  || 0) / 100;
-              const balDollars    = (l.balance     || 0) / 100;
+              // R-LAYAWAY-SAFE-STATE-REPAIR-V1: derive paid/balance from
+              // payments[] when present (calculateLayawayTotals), falling back
+              // to stored aggregates only for legacy records with no payment
+              // log. The card no longer trusts raw l.paidAmount/l.balance,
+              // which can desync from the discrete payment log.
+              const _layTotals    = calculateLayawayTotals(l);
+              const paidDollars   = _layTotals.totalPaidCents / 100;
+              const balDollars    = _layTotals.remainingBalanceCents / 100;
               const taxDollars    = (r.taxAmount   || 0) / 100;
               const subDollars    = totalDollars - taxDollars;
-              const isActive      = l.status === 'active';
+              // R-LAYAWAY-SAFE-STATE-REPAIR-V1: normalized status gate so a
+              // record stored as 'Active' (capitalized) still surfaces the
+              // active action row, consistent with the filter logic above.
+              const isActive      = String(l.status || '').toLowerCase() === 'active';
 
               return (
                 <div key={l.id}
