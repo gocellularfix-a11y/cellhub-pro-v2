@@ -117,6 +117,9 @@ export default function UnlockModule() {
   const [editUnlock, setEditUnlock] = useState<Unlock | null>(null);
   const [depositModalUnlock, setDepositModalUnlock] = useState<Unlock | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Unlock | null>(null);
+  // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: parent-owned busy flag so the cancel
+  // modal's confirm button disables on first click and ignores rapid double-clicks.
+  const [cancelInFlight, setCancelInFlight] = useState(false);
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Unlock | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<Unlock | null>(null);
@@ -827,6 +830,11 @@ ${unlock.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: handler-level guard + busy flag.
+    // Re-entrant calls bail before any mutation; finally clears on every exit.
+    if (cancelInFlight) return;
+    setCancelInFlight(true);
+    try {
     // R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1: approval gate before any mutation.
     const approval = await approvalGate.requestApproval({
       actionType: 'CANCEL_UNLOCK',
@@ -950,7 +958,12 @@ ${unlock.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, t, setCustomers, setUnlocks, setSales, currentEmployee, toast, approvalGate.requestApproval]);
+    } finally {
+      // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: clear busy on every exit (approval
+      // denied, early-return, or success) so a re-opened modal never starts stuck.
+      setCancelInFlight(false);
+    }
+  }, [cancelInFlight, lang, t, setCustomers, setUnlocks, setSales, currentEmployee, toast, approvalGate.requestApproval]);
 
   const handleComplete = useCallback((unlock: Unlock) => {
     const balance = unlock.balance || 0;
@@ -1719,8 +1732,9 @@ ${form.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${
           customerHasPhone={!!cancelTarget.customerPhone}
           customerName={cancelTarget.customerName}
           lang={lang}
+          confirming={cancelInFlight}
           onConfirm={(choice) => handleCancelUnlock(cancelTarget, choice)}
-          onClose={() => setCancelTarget(null)}
+          onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
         />
       )}
 

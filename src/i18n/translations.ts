@@ -2259,6 +2259,7 @@ export const translations: TranslationDictionary = {
     pt: (money: string) => `Cancelado. Reembolso ${money} registrado.`,
   },
   'repairs.cancelledForfeited': { en: 'Cancelled. Deposit forfeited.', es: 'Cancelado. Depósito retenido.', pt: 'Cancelado. Depósito retido.' },
+  'repairs.cancel.confirming': { en: 'Confirming...', es: 'Confirmando...', pt: 'Confirmando...' },
   'repairs.cartAdded': {
     en: (money: string) => `${money} in cart for this ticket`,
     es: (money: string) => `${money} en carrito para este ticket`,
@@ -2578,6 +2579,7 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `${n}/10 caracteres mínimos`,
   },
   'unlocks.cancel.nevermind': { en: 'Never mind', es: 'No importa', pt: 'Deixa pra lá' },
+  'unlocks.cancel.confirming': { en: 'Confirming...', es: 'Confirmando...', pt: 'Confirmando...' },
 
   // Print receipt labels (thermal 4x6)
   'unlocks.print.previously': {

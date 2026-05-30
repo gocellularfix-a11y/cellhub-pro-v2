@@ -79,6 +79,9 @@ export default function RepairModule() {
   const [editRepair, setEditRepair] = useState<Repair | null>(null);
   const [depositModalRepair, setDepositModalRepair] = useState<Repair | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Repair | null>(null);
+  // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: parent-owned busy flag so the cancel
+  // modal's confirm button disables on first click and ignores rapid double-clicks.
+  const [cancelInFlight, setCancelInFlight] = useState(false);
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Repair | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState<Repair | null>(null);
@@ -827,6 +830,11 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
     method: 'store_credit' | 'cash' | 'forfeit';
     note: string;
   }) => {
+    // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: handler-level guard + busy flag.
+    // Re-entrant calls bail before any mutation; finally clears on every exit.
+    if (cancelInFlight) return;
+    setCancelInFlight(true);
+    try {
     // R-APPROVAL-GATE-REPAIRS-UNLOCKS-V1: approval gate before any mutation.
     const approval = await approvalGate.requestApproval({
       actionType: 'CANCEL_REPAIR',
@@ -959,7 +967,12 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
     }[choice.method];
     toast(msg, 'success');
     setCancelTarget(null);
-  }, [lang, setCustomers, setSales, setRepairs, toast, currentEmployee, approvalGate.requestApproval]);
+    } finally {
+      // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: clear busy on every exit (approval
+      // denied, early-return, or success) so a re-opened modal never starts stuck.
+      setCancelInFlight(false);
+    }
+  }, [cancelInFlight, lang, setCustomers, setSales, setRepairs, toast, currentEmployee, approvalGate.requestApproval]);
 
   // ── Collect balance ─────────────────────────────────────
 
@@ -1375,8 +1388,9 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
           customerHasPhone={!!cancelTarget.customerPhone}
           customerName={cancelTarget.customerName}
           lang={lang}
+          confirming={cancelInFlight}
           onConfirm={(choice) => handleCancelRepair(cancelTarget, choice)}
-          onClose={() => setCancelTarget(null)}
+          onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
         />
       )}
 

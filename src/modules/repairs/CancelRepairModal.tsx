@@ -15,6 +15,10 @@ interface CancelRepairModalProps {
     note: string;
   }) => void;
   onClose: () => void;
+  // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: parent-owned busy state to prevent
+  // double-confirm. Mirrors CancelLayawayModal/CancelSpecialOrderModal. When
+  // undefined the modal falls back to internal state, behaviour unchanged.
+  confirming?: boolean;
 }
 
 export default function CancelRepairModal({
@@ -24,6 +28,7 @@ export default function CancelRepairModal({
   lang,
   onConfirm,
   onClose,
+  confirming,
 }: CancelRepairModalProps) {
   void lang; // vestigial — V3 cleanup
   const { t } = useTranslation();
@@ -34,9 +39,15 @@ export default function CancelRepairModal({
 
   const [method, setMethod] = useState<'store_credit' | 'cash' | 'forfeit'>('store_credit');
   const [note, setNote] = useState('');
+  // R-REPAIR-UNLOCK-CANCEL-DOUBLECLICK-UX1: busy-state guard. Parent owns the
+  // lifecycle when `confirming` is provided; otherwise internal state is the fallback.
+  const [internalConfirming, setInternalConfirming] = useState(false);
+  const isConfirming = confirming ?? internalConfirming;
 
   const handleConfirm = () => {
+    if (isConfirming) return;
     if (method === 'forfeit' && note.trim().length < 10) return;
+    if (confirming === undefined) setInternalConfirming(true);
     onConfirm({ method, note: note.trim() });
   };
 
@@ -170,13 +181,13 @@ export default function CancelRepairModal({
           type="button"
           className="btn btn-primary btn-sm"
           onClick={handleConfirm}
-          disabled={!isValid}
+          disabled={!isValid || isConfirming}
           style={{
             padding: '0.5rem 1rem',
-            opacity: isValid ? 1 : 0.5,
-            cursor: isValid ? 'pointer' : 'not-allowed',
+            opacity: (isValid && !isConfirming) ? 1 : 0.5,
+            cursor: (isValid && !isConfirming) ? 'pointer' : 'not-allowed',
           }}>
-          {t('confirm')}
+          {isConfirming ? t('repairs.cancel.confirming') : t('confirm')}
         </button>
       </div>
     </Modal>
