@@ -614,7 +614,18 @@ ${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">$
     });
     if (!approval.approved) return;
 
-    const depositCents = order.depositAmount || 0;
+    const fresh = specialOrdersRef.current.find((x) => x.id === order.id);
+    if (!fresh) {
+      toast(lang === 'es' ? 'Orden no encontrada.' : 'Special order not found.', 'error');
+      return;
+    }
+    const freshStatus = String(fresh.status || '').toLowerCase();
+    if (['cancelled', 'picked_up', 'refund_pending', 'refunded'].includes(freshStatus)) {
+      toast(lang === 'es' ? 'Esta orden ya no puede cancelarse.' : 'This order can no longer be cancelled.', 'error');
+      return;
+    }
+
+    const depositCents = fresh.depositAmount || 0;
     const now = new Date().toISOString();
 
     // 1. Customer side effects
