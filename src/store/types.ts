@@ -1110,6 +1110,8 @@ export interface Layaway {
    * Readers must fall back to 'Cash' with console.warn.
    */
   depositMethod?: string;
+  /** R-LAYAWAY-COMPLETEDAT-STAMP-M3-L: ISO timestamp of first full payment. Preserved on re-save. */
+  completedAt?: string;
 }
 
 // ── Employee ──────────────────────────────────────────────

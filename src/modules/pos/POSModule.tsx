@@ -898,13 +898,15 @@ export default function POSModule() {
           : (layaway.paidAmount || 0) + paidCents;
         const newPaid = reconciledPaid;
         const newBalance = Math.max(0, (layaway.totalPrice || 0) - newPaid);
+        const nowIsoLay = new Date().toISOString();
         updatedLayaways[li] = {
           ...withPaymentLog,
           ...depositMethodUpdate,
           paidAmount: newPaid,
           balance: newBalance,
           status: newBalance === 0 ? 'completed' : layaway.status,
-          updatedAt: new Date().toISOString(),
+          completedAt: newBalance === 0 ? (layaway.completedAt ?? nowIsoLay) : layaway.completedAt,
+          updatedAt: nowIsoLay,
         };
         layawayOps.push({
           collection: 'layaways',

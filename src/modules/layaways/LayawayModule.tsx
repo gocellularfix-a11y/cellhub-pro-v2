@@ -758,6 +758,7 @@ export default function LayawayModule() {
       paidAmount: newPaid,
       balance: newBalance,
       status: isNowComplete ? 'completed' : fresh.status,
+      completedAt: isNowComplete ? (fresh.completedAt ?? now) : fresh.completedAt,
       updatedAt: now,
     };
 
