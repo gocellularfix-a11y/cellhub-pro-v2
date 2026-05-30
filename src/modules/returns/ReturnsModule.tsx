@@ -1020,6 +1020,10 @@ ${phoneLine ? `<div class="row"><span class="label">${escHtml(t('returns.print.c
   const [vendorReason, setVendorReason] = useState('defective');
   const [vendorResolution, setVendorResolution] = useState('credit');
   const [vendorNotes, setVendorNotes] = useState('');
+  // R-VENDOR-RETURN-DOUBLECLICK-UX1: busy flag so the record button disables on
+  // first click and a re-entrant call bails before any mutation (duplicate
+  // VendorReturn record / stock decrement / persist).
+  const [vendorReturnInFlight, setVendorReturnInFlight] = useState(false);
   // r-pkg-b3: vendorHistory now reads from AppState (hydrated at boot)
   const vendorHistory = vendorReturns;
   const setVendorHistory = setVendorReturns;
@@ -1031,9 +1035,14 @@ ${phoneLine ? `<div class="row"><span class="label">${escHtml(t('returns.print.c
   }, [vendorSearch, inventory]);
 
   const processVendorReturn = () => {
+    // R-VENDOR-RETURN-DOUBLECLICK-UX1: re-entrant guard before any validation
+    // or mutation. Paired with setVendorReturnInFlight + try/finally below.
+    if (vendorReturnInFlight) return;
     if (!vendorItem) { toast(t('returns.vendor.selectProduct'), 'warning'); return; }
     const maxQty = vendorItem.qty || 0;
     if (vendorQty < 1 || vendorQty > maxQty) { toast(t('returns.vendor.invalidQty', maxQty), 'warning'); return; }
+    setVendorReturnInFlight(true);
+    try {
     // Round 19: multi-station safe vendor return number (same pattern as RTN above)
     const vndTs8  = Date.now().toString().slice(-8);
     const vndRand = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -1071,6 +1080,12 @@ ${phoneLine ? `<div class="row"><span class="label">${escHtml(t('returns.print.c
     persist.vendorReturn(rec.id, rec as unknown as Record<string, unknown>);
     toast(t('returns.vendor.recorded'), 'success');
     setVendorItem(null); setVendorSearch(''); setVendorQty(1); setVendorNotes('');
+    } finally {
+      // R-VENDOR-RETURN-DOUBLECLICK-UX1: clear busy on every exit (validation
+      // early-return is handled above before the flag is set; this covers the
+      // mutation path success/throw).
+      setVendorReturnInFlight(false);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────
@@ -1670,7 +1685,7 @@ ${phoneLine ? `<div class="row"><span class="label">${escHtml(t('returns.print.c
                   <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{t('returns.vendor.valueToReturn')}</span>
                   <span style={{ fontWeight: 700, color: '#f87171' }}>${(((vendorItem.cost || 0) / 100) * vendorQty).toFixed(2)} ({vendorQty} {t('returns.vendor.units')})</span>
                 </div>
-                <button onClick={processVendorReturn} className="btn btn-primary" style={{ width: '100%' }}>
+                <button onClick={processVendorReturn} disabled={vendorReturnInFlight} aria-busy={vendorReturnInFlight} className="btn btn-primary" style={{ width: '100%', opacity: vendorReturnInFlight ? 0.6 : 1, cursor: vendorReturnInFlight ? 'not-allowed' : 'pointer' }}>
                   📦 {t('returns.vendor.recordBtn')}
                 </button>
               </div>
