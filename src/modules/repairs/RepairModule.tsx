@@ -514,15 +514,30 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
         // Recalculate balance from the new total so price changes (parts/labor)
         // still update balance = total - depositAmount correctly.
         const spread = { ...editRepair, ...repairData } as Repair;
-        const lockedDeposit = editRepair.depositAmount || (editRepair as any).deposit || 0;
+        // R-REPAIRS-CONCURRENT-CHECKOUT-RACE-H4: read locked fields from
+        // repairsRef.current, not from the stale modal snapshot (editRepair).
+        // If POS checkout ran while the modal was open, repairsRef.current has
+        // the post-checkout state; editRepair has the pre-checkout snapshot.
+        // Reading from editRepair would zero the deposit, revert a terminal
+        // status (e.g. picked_up → received), and clear POS-stamped completedAt.
+        const liveForLock = repairsRef.current.find((r) => r.id === editRepair.id) || editRepair;
+        const lockedDeposit = liveForLock.depositAmount || (liveForLock as any).deposit || 0;
         const newTotal = (spread as any).total || spread.estimatedCost || 0;
         const lockedBalance = Math.max(0, newTotal - lockedDeposit);
+        // Preserve terminal status from live state — stale form must not revert picked_up.
+        const liveStatusNorm = normalizeRepairStatus(liveForLock.status);
+        const LOCK_TERMINAL = new Set(['picked_up', 'cancelled', 'refunded', 'refund_pending']);
+        const baseStatus = LOCK_TERMINAL.has(liveStatusNorm || '')
+          ? liveStatusNorm
+          : (normalizeRepairStatus(spread.status) || REPAIR_STATUS.RECEIVED);
         const updated: Repair = {
           ...spread,
           // Round R2: persist canonical snake_case repair status.
-          status: normalizeRepairStatus(spread.status) || REPAIR_STATUS.RECEIVED,
+          status: baseStatus || REPAIR_STATUS.RECEIVED,
           depositAmount: lockedDeposit,
           balance: lockedBalance,
+          // Preserve completedAt from live state — POS stamps this at pickup.
+          completedAt: liveForLock.completedAt ?? spread.completedAt,
           id: editRepair.id,
           createdAt: editRepair.createdAt,
           updatedAt: new Date().toISOString(),
