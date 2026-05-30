@@ -707,20 +707,6 @@ export default function LayawayModule() {
     const fresh = layawaysRef.current.find(x => x.id === layaway.id);
     if (!fresh) return;
 
-    // [R-LAYAWAY-MPA TEMP DEBUG] payment audit trace
-    console.log('[R-LAYAWAY-MPA] payment added', {
-      layawayId: fresh.id,
-      ticket: (fresh as any).ticketNumber || fresh.id.slice(-6),
-      amountCents,
-      method,
-      note,
-      preCount: Array.isArray(fresh.payments) ? fresh.payments.length : 0,
-      prePaidAmount: fresh.paidAmount || 0,
-      preBalance: fresh.balance || 0,
-      totalPrice: fresh.totalPrice || 0,
-    });
-    console.log('[R-LAYAWAY-MPA] payments[] before', JSON.parse(JSON.stringify(fresh.payments || [])));
-
     // H2 guard: abort if cancelled or forfeited since modal opened
     const freshStatus = String((fresh as any).status || '').toLowerCase();
     if (freshStatus === 'cancelled' || freshStatus === 'forfeited' || freshStatus === 'completed') {
@@ -762,17 +748,6 @@ export default function LayawayModule() {
       updatedAt: now,
     };
 
-    // [R-LAYAWAY-MPA TEMP DEBUG] persisted layaway + recomputed totals
-    console.log('[R-LAYAWAY-MPA] payments[] after', JSON.parse(JSON.stringify(finalLayaway.payments || [])));
-    console.log('[R-LAYAWAY-MPA] persisted layaway', {
-      id: finalLayaway.id,
-      postCount: Array.isArray(finalLayaway.payments) ? finalLayaway.payments.length : 0,
-      newPaid,
-      newBalance,
-      status: finalLayaway.status,
-      updatedAt: finalLayaway.updatedAt,
-    });
-
     // Persist layaway — FULL spread (CLAUDE.md critical rule)
     persist.layaway(finalLayaway.id, finalLayaway as unknown as Record<string, unknown>);
 
@@ -780,14 +755,6 @@ export default function LayawayModule() {
     const nextLayaways = layawaysRef.current.map(x => x.id === finalLayaway.id ? finalLayaway : x);
     layawaysRef.current = nextLayaways;
     setLayaways(nextLayaways);
-
-    // [R-LAYAWAY-MPA TEMP DEBUG] final stored balance from ref after setState
-    console.log('[R-LAYAWAY-MPA] final stored balance', {
-      id: finalLayaway.id,
-      refPaidAmount: finalLayaway.paidAmount,
-      refBalance: finalLayaway.balance,
-      sumPayments: (finalLayaway.payments || []).reduce((s, p) => s + (p.amount || 0), 0),
-    });
 
     // Create a Sale record so the payment shows in the cash / daily report.
     // Structure mirrors what POSModule §4d produces for a layaway cart item.
