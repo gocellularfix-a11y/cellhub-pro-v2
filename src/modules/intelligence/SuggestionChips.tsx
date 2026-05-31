@@ -12,6 +12,20 @@ export interface ChipData {
   productOppsCount: number;
   biggestLeakCents: number;
   deadStockLockedCents: number;
+  // R-INTELLIGENCE-OPERATOR-SIGNALS-V2: optional operational counts surfaced
+  // in the Operator Home briefing. Optional so existing ChipData construction
+  // sites and spreads (OperatorContinuityBar, SuggestionChips filter) stay
+  // valid without change. Sourced from already-computed module useMemos —
+  // no new scans. Non-financial, so safe for all roles.
+  activeLayawayCount?: number;
+  activeUnlockCount?: number;
+  activeSpecialOrderCount?: number;
+  // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: deterministic operational scan counts.
+  // Counts only — never carry money values, so safe for all roles.
+  overdueLayawayCount?: number;
+  readyPickupCount?: number;
+  paymentOpportunityCount?: number;
+  todayActivationCount?: number;
 }
 
 interface ChipSignal {

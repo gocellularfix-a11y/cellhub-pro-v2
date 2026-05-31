@@ -636,6 +636,74 @@ export default function IntelligenceModule() {
     catch { return 0; }
   }), [engine, result]);
 
+  // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: lightweight deterministic operational
+  // scans over already-loaded arrays for the Operator Home briefing. Single
+  // pass each, no effects/polling/persistence. COUNTS ONLY — no money values
+  // are surfaced (collectible amounts stay private). Mirrors the toDate-
+  // tolerant timestamp parsing used by staleRepairStats above.
+  const operatorSignalsV3 = useMemo(() => perfTime('intel.module.cards.operatorSignalsV3', () => {
+    const now = Date.now();
+    const AGED_MS = 30 * 24 * 60 * 60 * 1000; // 30d without a due date ⇒ collection risk
+    const toMs = (raw: unknown): number => {
+      if (!raw) return 0;
+      try {
+        const d = typeof (raw as { toDate?: () => Date }).toDate === 'function'
+          ? (raw as { toDate: () => Date }).toDate()
+          : (raw as string | Date);
+        const ts = new Date(d as string | Date).getTime();
+        return Number.isFinite(ts) ? ts : 0;
+      } catch { return 0; }
+    };
+    const LAYAWAY_DONE = ['completed', 'cancelled', 'picked_up'];
+
+    // Layaways: overdue (aged + collectible) and collectible (any balance).
+    let overdueLayawayCount = 0;
+    let layawayCollectible = 0;
+    for (const l of layaways) {
+      const st = String((l as { status?: string }).status || '').toLowerCase();
+      if (LAYAWAY_DONE.includes(st)) continue;
+      const bal = (l as { balance?: number }).balance || 0;
+      if (bal <= 0) continue;
+      layawayCollectible++;
+      const due = (l as { dueDate?: unknown }).dueDate ? toMs((l as { dueDate?: unknown }).dueDate) : 0;
+      const created = toMs((l as { createdAt?: unknown }).createdAt);
+      const isOverdue = (due > 0 && due < now) || (due === 0 && created > 0 && (now - created) > AGED_MS);
+      if (isOverdue) overdueLayawayCount++;
+    }
+
+    // Repairs: ready-for-pickup (all ready) + collectible ready (balance > 0).
+    let readyPickupCount = 0;
+    let repairCollectible = 0;
+    for (const r of repairs) {
+      const st = String((r as { status?: string }).status || '').toLowerCase();
+      if (st !== 'ready') continue;
+      readyPickupCount++;
+      if (((r as { balance?: number }).balance || 0) > 0) repairCollectible++;
+    }
+
+    // Roll-up count of records with money waiting to be collected. COUNT ONLY.
+    const paymentOpportunityCount = layawayCollectible + repairCollectible;
+
+    return { overdueLayawayCount, readyPickupCount, paymentOpportunityCount };
+  }), [layaways, repairs]);
+
+  // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: activations completed today. Reuses the
+  // already-filtered todaySales array (no new date scan). Same activation
+  // detection the receipt/saleBuilder use: category 'activation'/'sim' or the
+  // explicit isActivation flag. Count only — non-financial.
+  const todayActivationCount = useMemo(() => {
+    let n = 0;
+    for (const s of todaySales) {
+      const items = (s as { items?: unknown[] }).items || [];
+      const hasActivation = items.some((it) => {
+        const c = (it as { category?: string }).category;
+        return c === 'activation' || c === 'sim' || (it as { isActivation?: boolean }).isActivation === true;
+      });
+      if (hasActivation) n++;
+    }
+    return n;
+  }, [todaySales]);
+
   // R-INTELLIGENCE-STORE-STATE-V1: deterministic operational state detection.
   // Must be after outreachCount to avoid TS2448 use-before-declaration.
   const storeState: StoreStateResult = useMemo(() => {
@@ -1355,6 +1423,18 @@ export default function IntelligenceModule() {
           productOppsCount: productOpps.length,
           biggestLeakCents: biggestLeak,
           deadStockLockedCents: missedRev.deadStockLockedCents,
+          // R-INTELLIGENCE-OPERATOR-SIGNALS-V2: reuse already-computed active
+          // counts (same useMemos passed as standalone props below). No new
+          // scans — just threaded into chipData for the Operator Home briefing.
+          activeLayawayCount: layawaysActive,
+          activeUnlockCount: unlocksActive,
+          activeSpecialOrderCount: specialOrdersActive,
+          // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: deterministic operational scans
+          // (counts only — no money). See operatorSignalsV3 / todayActivationCount.
+          overdueLayawayCount: operatorSignalsV3.overdueLayawayCount,
+          readyPickupCount: operatorSignalsV3.readyPickupCount,
+          paymentOpportunityCount: operatorSignalsV3.paymentOpportunityCount,
+          todayActivationCount,
         }}
         todayRevenue={todayRevenue}
         todaySalesCount={todaySales.length}

@@ -1424,6 +1424,211 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
 // use inline locale ternary, mirroring the prior EmptyState pattern so
 // no new translation keys are needed and bilingual coverage stays
 // consistent. UI-only — no logic changes, no new state, no new effects.
+// ── R-INTELLIGENCE-OPERATOR-HOME-V1: deterministic TODAY briefing ─────
+// Pure render of the SAME chipData counts the action chips already use —
+// no engine calls, no data access, no effects. Turns the pre-computed
+// operator signals into a compact "store briefing" so the idle
+// Intelligence state reads like an operator console instead of a generic
+// chatbot intro. Money-derived lines are gated by canSeeOwnerFinancials
+// (cashier privacy parity with SuggestionChips). Bilingual EN/ES/PT via
+// inline ternary, matching the existing welcome-component pattern (these
+// components deliberately avoid new translation keys — see the
+// QuickActionGrid note below).
+function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true, onSuggestion }: {
+  chipData?: ChipData;
+  locale: string;
+  canSeeOwnerFinancials?: boolean;
+  // R-INTELLIGENCE-OPERATOR-ACTIONS-V1: optional callback to fire an existing
+  // deterministic chat prompt. When absent the lines render info-only.
+  onSuggestion?: (text: string) => void;
+}) {
+  const es = locale === 'es';
+  const pt = locale === 'pt';
+  const todayLabel = es ? 'HOY' : pt ? 'HOJE' : 'TODAY';
+
+  // R-INTELLIGENCE-OPERATOR-ACTIONS-V1: action labels (EN/ES/PT). Each briefing
+  // line may carry ONE compact action that reuses an existing mechanism only:
+  //   - kind 'nav' → cellhub:navigate-tab CustomEvent (AppShell handler,
+  //     R-INTELLIGENCE-RUNTIME-NAVIGATION-V1) with a canonical TabId.
+  //   - kind 'chat' → onSuggestion(query) firing a deterministic prompt the
+  //     existing welcome cards/chips already use. No new command system.
+  const L = {
+    openRepairs:   es ? 'Abrir Reparaciones'    : pt ? 'Abrir Reparos'            : 'Open Repairs',
+    openLayaways:  es ? 'Abrir Apartados'        : pt ? 'Abrir Reservas'           : 'Open Layaways',
+    openUnlocks:   es ? 'Abrir Desbloqueos'      : pt ? 'Abrir Desbloqueios'       : 'Open Unlocks',
+    openSpecial:   es ? 'Abrir Órdenes Esp.'     : pt ? 'Abrir Pedidos Esp.'       : 'Open Special Orders',
+    contact:       es ? 'Contactar Clientes'     : pt ? 'Contatar Clientes'        : 'Contact Customers',
+    push:          es ? 'Promover Productos'     : pt ? 'Promover Produtos'        : 'Push Products',
+    collect:       es ? 'Cobrar Pagos'           : pt ? 'Cobrar Pagamentos'        : 'Collect Payments',
+  };
+  // Deterministic chat prompts — copied verbatim from the existing welcome
+  // cards (OperatorCommandWelcome) so they route through the same intent router.
+  const Q = {
+    contact:  es ? 'quién debo contactar hoy'         : 'who should I contact today',
+    push:     es ? 'qué productos debo promover hoy'   : 'what products should I promote today',
+    collect:  es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
+  };
+
+  type BriefAction =
+    | { kind: 'nav'; tab: string; label: string }
+    | { kind: 'chat'; query: string; label: string };
+  type BriefLine = { id: string; icon: string; text: string; action?: BriefAction };
+  const lines: BriefLine[] = [];
+
+  // Deterministic lines built ONLY from the existing ChipData counts the
+  // action chips already consume — no engine calls, no new data access.
+  if (chipData) {
+    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: ready-for-pickup (actionable now).
+    if ((chipData.readyPickupCount ?? 0) > 0) {
+      lines.push({ id: 'readyPickup', icon: '📲',
+        text: es ? `${chipData.readyPickupCount} reparaciones listas para recoger`
+            : pt ? `${chipData.readyPickupCount} reparos prontos para retirada`
+            : `${chipData.readyPickupCount} repairs ready for pickup`,
+        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
+    }
+    if (chipData.staleRepairCount > 0) {
+      lines.push({ id: 'staleRepair', icon: '🔧',
+        text: es ? `${chipData.staleRepairCount} reparaciones sin recoger`
+            : pt ? `${chipData.staleRepairCount} reparos não retirados`
+            : `${chipData.staleRepairCount} repairs uncollected`,
+        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
+    }
+    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: overdue layaways (collection risk).
+    if ((chipData.overdueLayawayCount ?? 0) > 0) {
+      lines.push({ id: 'overdueLayaway', icon: '⏰',
+        text: es ? `${chipData.overdueLayawayCount} apartados vencidos`
+            : pt ? `${chipData.overdueLayawayCount} reservas vencidas`
+            : `${chipData.overdueLayawayCount} layaways overdue`,
+        action: { kind: 'nav', tab: 'layaways', label: L.openLayaways } });
+    }
+    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: open balances to collect (COUNT only,
+    // no money value — safe for all roles).
+    if ((chipData.paymentOpportunityCount ?? 0) > 0) {
+      lines.push({ id: 'paymentOpp', icon: '💳',
+        text: es ? `${chipData.paymentOpportunityCount} balances por cobrar`
+            : pt ? `${chipData.paymentOpportunityCount} saldos a receber`
+            : `${chipData.paymentOpportunityCount} open balances to collect`,
+        action: { kind: 'chat', query: Q.collect, label: L.collect } });
+    }
+    if (chipData.repairsPending > 0) {
+      lines.push({ id: 'repairsPending', icon: '✅',
+        text: es ? `${chipData.repairsPending} reparaciones listas para entrega`
+            : pt ? `${chipData.repairsPending} reparos prontos para retirada`
+            : `${chipData.repairsPending} repairs ready for pickup`,
+        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
+    }
+    if (chipData.outreachCount >= 2) {
+      lines.push({ id: 'outreach', icon: '📞',
+        text: es ? `${chipData.outreachCount} clientes por contactar`
+            : pt ? `${chipData.outreachCount} clientes para contatar`
+            : `${chipData.outreachCount} customers to contact`,
+        action: { kind: 'chat', query: Q.contact, label: L.contact } });
+    }
+    if (chipData.productOppsCount > 0) {
+      lines.push({ id: 'productOpps', icon: '🚀',
+        text: es ? `${chipData.productOppsCount} productos para promover`
+            : pt ? `${chipData.productOppsCount} produtos para promover`
+            : `${chipData.productOppsCount} products to promote`,
+        action: { kind: 'chat', query: Q.push, label: L.push } });
+    }
+    // R-INTELLIGENCE-OPERATOR-SIGNALS-V2: deterministic active-count signals
+    // (already-computed module useMemos). Non-financial — shown for all roles.
+    if ((chipData.activeLayawayCount ?? 0) > 0) {
+      lines.push({ id: 'layawayActive', icon: '🏷️',
+        text: es ? `${chipData.activeLayawayCount} apartados activos`
+            : pt ? `${chipData.activeLayawayCount} reservas ativas`
+            : `${chipData.activeLayawayCount} active layaways`,
+        action: { kind: 'nav', tab: 'layaways', label: L.openLayaways } });
+    }
+    if ((chipData.activeSpecialOrderCount ?? 0) > 0) {
+      lines.push({ id: 'specialOrderActive', icon: '📦',
+        text: es ? `${chipData.activeSpecialOrderCount} órdenes especiales abiertas`
+            : pt ? `${chipData.activeSpecialOrderCount} pedidos especiais abertos`
+            : `${chipData.activeSpecialOrderCount} special orders open`,
+        action: { kind: 'nav', tab: 'specialOrders', label: L.openSpecial } });
+    }
+    if ((chipData.activeUnlockCount ?? 0) > 0) {
+      lines.push({ id: 'unlockActive', icon: '🔓',
+        text: es ? `${chipData.activeUnlockCount} desbloqueos en progreso`
+            : pt ? `${chipData.activeUnlockCount} desbloqueios em andamento`
+            : `${chipData.activeUnlockCount} unlocks in progress`,
+        action: { kind: 'nav', tab: 'unlocks', label: L.openUnlocks } });
+    }
+    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: activations completed today (info).
+    if ((chipData.todayActivationCount ?? 0) > 0) {
+      lines.push({ id: 'todayActivation', icon: '📶',
+        text: es ? `${chipData.todayActivationCount} activaciones hoy`
+            : pt ? `${chipData.todayActivationCount} ativações hoje`
+            : `${chipData.todayActivationCount} activations today` });
+    }
+    if (canSeeOwnerFinancials && chipData.biggestLeakCents > 0) {
+      const amt = `$${(chipData.biggestLeakCents / 100).toFixed(0)}`;
+      lines.push({ id: 'leak', icon: '💸',
+        text: es ? `${amt} en ganancia recuperable`
+            : pt ? `${amt} em lucro recuperável`
+            : `${amt} recoverable profit` });
+    }
+    if (canSeeOwnerFinancials && chipData.deadStockLockedCents > 0) {
+      const amt = `$${(chipData.deadStockLockedCents / 100).toFixed(0)}`;
+      lines.push({ id: 'deadStock', icon: '📦',
+        text: es ? `${amt} bloqueado en stock muerto`
+            : pt ? `${amt} preso em estoque parado`
+            : `${amt} locked in dead stock` });
+    }
+  }
+
+  // R-INTELLIGENCE-OPERATOR-ACTIONS-V1: run a line's action via an EXISTING
+  // mechanism only — navigate-tab CustomEvent (AppShell) or onSuggestion chat
+  // prompt. No new command system, no direct mutations, no money exposure.
+  const runAction = (a: BriefAction) => {
+    if (a.kind === 'nav') {
+      try {
+        window.dispatchEvent(new CustomEvent('cellhub:navigate-tab', { detail: { tab: a.tab } }));
+      } catch { /* env without CustomEvent — silent */ }
+    } else if (a.kind === 'chat') {
+      onSuggestion?.(a.query);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14, textAlign: 'left' }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8 }}>
+        {todayLabel}
+      </div>
+      {lines.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: '#94A3B8', lineHeight: '1.5' }}>
+          {es ? '✓ Todo al día. Sin pendientes urgentes — revisa las oportunidades abajo.'
+           : pt ? '✓ Tudo em dia. Nada urgente — veja as oportunidades abaixo.'
+           : '✓ All clear. No urgent items — review the opportunities below.'}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {lines.map((l) => (
+            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#CBD5E1' }}>
+              <span style={{ fontSize: 13, flexShrink: 0 }}>{l.icon}</span>
+              <span style={{ flex: 1 }}>{l.text}</span>
+              {l.action && (
+                <button
+                  type="button"
+                  onClick={() => runAction(l.action!)}
+                  style={{
+                    flexShrink: 0, fontSize: 10.5, fontWeight: 600,
+                    padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
+                    background: 'rgba(59,130,246,0.12)', color: '#93C5FD',
+                    border: '1px solid rgba(59,130,246,0.28)', whiteSpace: 'nowrap' as const,
+                  }}
+                >
+                  {l.action.label}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OperatorWelcome({ locale, chipData, onSuggestion, canSeeOwnerFinancials = true }: {
   locale: string;
   chipData?: ChipData;
@@ -1435,19 +1640,12 @@ function OperatorWelcome({ locale, chipData, onSuggestion, canSeeOwnerFinancials
 
   return (
     <div style={{ padding: '16px 4px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 24, marginBottom: 6 }}>⚡</div>
-        <p style={{ fontSize: 14, fontWeight: 700, color: '#E2E8F0', margin: 0 }}>
-          {locale === 'es' ? 'Listo para operar tu tienda.'
-           : locale === 'pt' ? 'Pronto para operar sua loja.'
-           : 'Ready to help run your store.'}
-        </p>
-        <p style={{ fontSize: 11, color: '#6B7280', marginTop: 4, lineHeight: '1.4' }}>
-          {locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias.'
-           : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros.'
-           : 'Ask about customers, repairs, taxes, inventory, profit, and workflows.'}
-        </p>
-      </div>
+      {/* R-INTELLIGENCE-OPERATOR-HOME-V1: operational briefing replaces the
+          generic chatbot helper copy. The deterministic TODAY summary reads
+          like an operator console; action chips/cards below stay unchanged.
+          R-INTELLIGENCE-OPERATOR-ACTIONS-V1: onSuggestion enables per-line
+          executable buttons (reuses existing chat + navigate-tab handlers). */}
+      <OperatorTodayBriefing chipData={chipData} locale={locale} canSeeOwnerFinancials={canSeeOwnerFinancials} onSuggestion={onSuggestion} />
 
       {pendingWorkflows.length > 0 && (
         <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1578,6 +1776,12 @@ function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
           {es ? '¿Qué quieres manejar?' : 'What would you like to handle?'}
         </p>
       </div>
+      {/* R-INTELLIGENCE-OPERATOR-HOME-V1: deterministic TODAY briefing above
+          the command cards. Operational-only (no money figures) to match the
+          compact command-center cards.
+          R-INTELLIGENCE-OPERATOR-ACTIONS-V1: onSuggestion enables per-line
+          executable buttons (reuses existing chat + navigate-tab handlers). */}
+      <OperatorTodayBriefing chipData={chipData} locale={locale} canSeeOwnerFinancials={false} onSuggestion={onSuggestion} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {cards.map((card) => (
           <button
