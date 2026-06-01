@@ -1289,6 +1289,10 @@ function InventoryFormModal({
   // focus listener is already pending so rapid saves never stack duplicates.
   const skuFocusListenerActiveRef = useRef(false);
 
+  // R-INVENTORY-SKU-FOCUS-PREVIEW-MODAL-V1: dedup guard so the in-app
+  // print-preview-close poll never stacks across rapid saves.
+  const skuPreviewPollActiveRef = useRef(false);
+
   // R-INVENTORY-SKU-FOCUS-RECLAIM-HARDENING-V1: hardened SKU/IMEI focus
   // restore for new-item create flow only (isEdit guard lives at call site).
   //
@@ -1307,7 +1311,7 @@ function InventoryFormModal({
   const restoreSkuFocusAfterCreate = useCallback(() => {
     // Phase 1: immediate (no-print-dialog path).
     focusSkuInput();
-    // Phase 2: deduped window listener (print-dialog-close path).
+    // Phase 2: deduped window listener (OS / browser print-dialog-close path).
     if (!skuFocusListenerActiveRef.current) {
       skuFocusListenerActiveRef.current = true;
       const handler = () => {
@@ -1315,6 +1319,37 @@ function InventoryFormModal({
         focusSkuInput();
       };
       window.addEventListener('focus', handler, { once: true });
+    }
+    // Phase 3 — R-INVENTORY-SKU-FOCUS-PREVIEW-MODAL-V1: the single-item add
+    // path prints with silent:false, which routes to the Electron in-app
+    // PrintPreviewModal. That modal does NOT blur the window, so Phase 2 never
+    // fires and focus is lost when it closes. Observe the preview modal's
+    // #print-content node (read-only — no print-logic coupling): once it has
+    // opened and then closed, reclaim SKU focus. If it never opens (labels
+    // skipped / silent batch), reclaim after a short grace. Bounded + deduped
+    // so the poll can never run away or stack across rapid saves. focusSkuInput
+    // is a no-op when the input is unmounted, so this never steals focus after
+    // the form closes.
+    if (!skuPreviewPollActiveRef.current) {
+      skuPreviewPollActiveRef.current = true;
+      let ticks = 0;
+      let sawPreview = false;
+      const GRACE_TICKS = 4;   // ~0.8s for the modal to mount before giving up
+      const MAX_TICKS = 40;    // ~8s hard ceiling
+      const poll = window.setInterval(() => {
+        ticks++;
+        const previewOpen = !!document.getElementById('print-content');
+        if (previewOpen) {
+          sawPreview = true;
+          if (ticks < MAX_TICKS) return;          // wait for the preview to close
+        } else if (!sawPreview && ticks < GRACE_TICKS) {
+          return;                                  // preview not mounted yet — wait briefly
+        }
+        // Preview just closed, or grace elapsed with no preview, or ceiling hit.
+        window.clearInterval(poll);
+        skuPreviewPollActiveRef.current = false;
+        focusSkuInput();
+      }, 200);
     }
   }, [focusSkuInput]);
 
