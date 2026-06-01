@@ -12,6 +12,8 @@
     "build:web": "vite build --mode web",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && electron-builder --config electron-builder.config.js",
     "electron:build:win": "vite build && electron-builder --win --config electron-builder.config.js",
@@ -47,6 +49,7 @@
     "typescript": "^5.5.2",
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^2.1.9",
     "wait-on": "^7.2.0"
   }
 }

@@ -95,18 +95,31 @@ function localSaveRecord(collectionName: string, id: string, data: Record<string
     // Overwriting destroys all other settings fields on every partial update,
     // breaking the offline-mode customer story (BYO-no-Firebase).
     const existing = loadLocal<Record<string, unknown>>(key, {});
-    saveLocal(key, { ...existing, ...data, updatedAt: new Date().toISOString() });
+    const ok = saveLocal(key, { ...existing, ...data, updatedAt: new Date().toISOString() });
+    // r-stabilize-1 T3: surface a failed local write (e.g. quota exceeded) with
+    // collection/id context. saveLocal already logs the raw error, but it has no
+    // record context — this makes a dropped settings write traceable.
+    if (!ok) console.error(`[persist] LOCAL SAVE FAILED — ${collectionName}/${id} NOT persisted (storage full?)`);
     return;
   }
   const arr = loadLocal<Record<string, unknown>[]>(key, []);
   const idx = arr.findIndex((r) => r.id === id);
-  const record = { ...data, id, updatedAt: new Date().toISOString() };
+  let ok: boolean;
   if (idx >= 0) {
-    arr[idx] = record;
+    // r-stabilize-1 T1: MERGE existing record with incoming partial data so a
+    // partial save can never silently erase fields not present in `data`.
+    // Mirrors Firestore's { merge: true } semantics (see setDoc in saveRecord)
+    // so local and cloud writes stay consistent. Keys present in `data` still
+    // overwrite the old value; keys absent from `data` are preserved.
+    arr[idx] = { ...arr[idx], ...data, id, updatedAt: new Date().toISOString() };
+    ok = saveLocal(key, arr);
   } else {
-    arr.push(record);
+    // New record — no existing fields to preserve.
+    arr.push({ ...data, id, updatedAt: new Date().toISOString() });
+    ok = saveLocal(key, arr);
   }
-  saveLocal(key, arr);
+  // r-stabilize-1 T3: make a dropped write visible with record context.
+  if (!ok) console.error(`[persist] LOCAL SAVE FAILED — ${collectionName}/${id} NOT persisted (storage full?)`);
 }
 
 function localDeleteRecord(collectionName: string, id: string): void {

@@ -28,7 +28,17 @@ export function saveLocal(key: string, data: unknown): boolean {
     localStorage.setItem(`${STORAGE_PREFIX}${key}`, json);
     return true;
   } catch (e) {
-    console.error(`[Storage] Failed to save ${key}:`, e);
+    // r-stabilize-1 T3: detect the silent killer — localStorage quota exceeded.
+    // A busy store fills the ~5MB cap and writes start failing; previously this
+    // logged a generic error. Now the quota case is called out explicitly so it
+    // is unmistakable in the console. (No IndexedDB migration / UI change here.)
+    const quota =
+      e instanceof DOMException &&
+      (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    console.error(
+      `[Storage] Failed to save ${key}${quota ? ' — QUOTA EXCEEDED (local storage full)' : ''}:`,
+      e,
+    );
     return false;
   }
 }
