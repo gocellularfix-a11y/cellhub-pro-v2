@@ -1565,6 +1565,30 @@ export function isFollowUpQuery(query: string): boolean {
   return FOLLOWUP_PHRASES.has(normalize(query));
 }
 
+// R-INTELLIGENCE-STABILIZE-1 T3: pure conversational filler that must NEVER
+// trigger an operational intent. Matched on EXACT normalized phrase (full
+// string), never substring — so "interesting" is blocked but "interesting
+// customers" still routes normally. This is the surgical guard against
+// conversational chatter hijacking routing via a coincidental keyword
+// substring; it deliberately does NOT raise the numeric score threshold
+// (which would regress the many legitimate single-keyword operational intents).
+const CONVERSATIONAL_FILLER = new Set([
+  // EN
+  'wow', 'interesting', 'thats crazy', "that's crazy", 'tell me more',
+  'nice', 'cool', 'ok', 'okay', 'k', 'thanks', 'thank you', 'lol', 'haha',
+  'hmm', 'i see', 'got it', 'great', 'awesome', 'sure', 'yeah', 'yep',
+  'no way', 'really', 'makes sense', 'understood', 'right',
+  // ES
+  'guau', 'que loco', 'qué loco', 'interesante', 'cuentame mas', 'cuéntame más',
+  'gracias', 'genial', 'ya veo', 'entendido', 'claro', 'en serio',
+  // PT
+  'nossa', 'que loucura', 'interessante', 'me conta mais', 'obrigado', 'entendi',
+]);
+
+export function isConversationalFiller(query: string): boolean {
+  return CONVERSATIONAL_FILLER.has(normalize(query));
+}
+
 // R-INTELLIGENCE-CONTEXT-MEMORY-V1 ──────────────────────────────
 // Lightweight session-only operational context. Pure type + a
 // deterministic rewrite helper — NO AI, NO embeddings, NO learning,
@@ -1884,6 +1908,15 @@ export function classifyIntent(
   const ctx: IntentContext = { query: rawQuery, queryLower: query, lang, customers };
   void ctx;
 
+  // R-INTELLIGENCE-STABILIZE-1 T3: hard-block pure conversational filler BEFORE
+  // any keyword scoring, so chatter like "wow" / "interesting" / "tell me more"
+  // can never coincidentally score an operational intent. Downgrades safely to
+  // the deterministic fallback handler (same path as a zero-score query).
+  if (isConversationalFiller(query)) {
+    console.debug(`[IntelligenceRouter] conversational filler blocked → fallback_question: "${query}"`);
+    return { id: 'fallback_question', confidence: 0, query: rawQuery };
+  }
+
   // Score each intent bank.
   const scores: Array<{ id: IntentId; score: number }> = [
     { id: 'best_customer',    score: scoreKeywords(query, BEST_CUSTOMER_KEYWORDS) },
@@ -2164,6 +2197,8 @@ export function classifyIntent(
     // priority is preserved.
     // R-INTEL-FALLBACK-QUESTION-AWARE: pass through the raw query so the
     // handler can detect topic keywords and tailor the response.
+    // R-INTELLIGENCE-STABILIZE-1 T4: no bank matched — visible downgrade reason.
+    console.debug('[IntelligenceRouter] no keyword match → fallback_question (confidence downgraded to 0)');
     return { id: 'fallback_question', confidence: 0, query: rawQuery };
   }
 
@@ -2186,6 +2221,11 @@ export function classifyIntent(
 
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
+
+  // R-INTELLIGENCE-STABILIZE-1 T4: surface the selected intent + confidence so
+  // weak (score 1 → 0.5) matches are visible in the console when debugging
+  // erratic routing. Lightweight console only — no telemetry, no analytics.
+  console.debug(`[IntelligenceRouter] intent=${winner.id} score=${winner.score} confidence=${confidence.toFixed(2)}`);
 
   // R-INTELLIGENCE-PENDING-DEAL-V1: pass raw query so the handler can parse
   // customer + product + price (deterministic substring + digit scan).

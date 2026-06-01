@@ -77,6 +77,10 @@ export { runProductPush } from './productPromotion';
 import { handleRecoverCustomer, handleVipOutreach } from './customerOutreach';
 import { handleRepairFollowUp, handleRepairEscalate } from './repairIntelligence';
 import { validateCustomerContext, validateRepairContext } from '../context/contextValidator';
+// R-INTELLIGENCE-STABILIZE-1 T1/T2: shared TTL predicate + stale-context purge
+// so follow-up resolution enforces the same 30-min window as session storage
+// and clears dangling context when an entity reference goes stale.
+import { isSessionEntryExpired, clearSessionContext } from './sessionContext';
 import { summarizeCustomerHistory } from '../nlg';
 import { translations } from '@/i18n/translations';
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: queue creation moved here from
@@ -1196,10 +1200,44 @@ export function handleFollowUp(
 ): ChatResponse {
   const t = tChat(lang);
 
+  // R-INTELLIGENCE-STABILIZE-1 T1: STRICT TTL validation BEFORE any follow-up
+  // resolution. The in-memory last-intent ref in IntelligenceChat survives for
+  // the lifetime of the tab; without this guard a 45-minute-old context could
+  // still drive "contact him" / "open it". If the context is past the 30-min
+  // window we purge any persisted stale context and downgrade safely to the
+  // "ask a complete question" fallback (which routes the next full query
+  // through normal classifyIntent).
+  if (!context || isSessionEntryExpired(context.ts)) {
+    console.warn('[IntelligenceContext] expired');
+    try { clearSessionContext(); } catch { /* storage unavailable */ }
+    console.warn('[IntelligenceContext] cleared stale context');
+    console.debug('[IntelligenceFollowUp] downgraded to normal routing (expired context)');
+    return { kind: 'answer', text: t('chat.followup.noContext') };
+  }
+
+  // R-INTELLIGENCE-STABILIZE-1 T2: an operational (entity) context that is
+  // itself past TTL must not drive an entity action either — clear it so the
+  // entity branches below fall through to the safe "stale context" response.
+  if (operationalContext && isSessionEntryExpired(operationalContext.timestamp)) {
+    console.warn('[IntelligenceFollowUp] operational entity context expired — rejected');
+    try { clearSessionContext(); } catch { /* storage unavailable */ }
+    operationalContext = null;
+  }
+
   // R-INTELLIGENCE-SESSION-CONTEXT-V1: resolve pronoun/entity follow-ups
   // before the switch. These patterns require the operational context slot
   // (type + value) rather than the intent-specific text in the switch below.
   const cq = (currentQuery ?? '').toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // R-INTELLIGENCE-STABILIZE-1 T2: single exit for a follow-up that references
+  // an entity no longer present in the store. Logs the rejection, clears the
+  // dangling persisted context, and returns the safe stale-context fallback —
+  // a follow-up action is NEVER emitted against an unresolved entity.
+  const rejectStaleEntity = (kind: string): ChatResponse => {
+    console.warn(`[IntelligenceFollowUp] stale entity rejected (${kind}) — clearing dangling context`);
+    try { clearSessionContext(); } catch { /* storage unavailable */ }
+    return { kind: 'answer', text: t('chat.followup.staleContext') };
+  };
 
   // "contact him/her/them" — customer pronoun reference
   const isContactRef = /^(contact h[ei]m|contact her|contact them|call h[ei]m|call her|message h[ei]m|message her|contactal[oa]|contactalos|llamal[oa]|contata ele|contata ela)\b/.test(cq);
@@ -1207,7 +1245,7 @@ export function handleFollowUp(
     if (operationalContext?.type === 'customer') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block execution if entity gone from store
       if (!validateCustomerContext(engine, operationalContext).valid) {
-        return { kind: 'answer', text: t('chat.followup.staleContext') };
+        return rejectStaleEntity('customer/contact');
       }
       const custId = operationalContext.value;
       const customer = engine.getCustomers().find((c) => c.id === custId);
@@ -1243,7 +1281,7 @@ export function handleFollowUp(
     if (operationalContext.type === 'repair') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if repair no longer in store
       if (!validateRepairContext(engine, operationalContext).valid) {
-        return { kind: 'answer', text: t('chat.followup.staleContext') };
+        return rejectStaleEntity('repair/open');
       }
       const action: ChatActionUI = {
         id: `fu-open-repair-${operationalContext.value}`,
@@ -1256,7 +1294,7 @@ export function handleFollowUp(
     if (operationalContext.type === 'customer') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if customer no longer in store
       if (!validateCustomerContext(engine, operationalContext).valid) {
-        return { kind: 'answer', text: t('chat.followup.staleContext') };
+        return rejectStaleEntity('customer/open');
       }
       const custId = operationalContext.value;
       const customer = engine.getCustomers().find((c) => c.id === custId);
