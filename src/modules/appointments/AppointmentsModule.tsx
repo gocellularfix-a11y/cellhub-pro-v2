@@ -19,6 +19,11 @@ import { matchesSearchPhones } from '@/utils/search';
 import type { Customer, Appointment, AppointmentStatus } from '@/store/types';
 import { usePrint } from '@/hooks/usePrint';
 import { escHtml } from '@/utils/escHtml';
+// R-RECEIPT-UNIFY-APPOINTMENT-V1: reuse the POS payment-receipt barcode renderer
+// (the exact scannable CODE128 used by the master receipt) + the bundled QR lib
+// so the appointment receipt shares the same visual system as the payment receipt.
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import QRCode from 'qrcode';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import { useTranslation } from '@/i18n';
 
@@ -117,7 +122,7 @@ export default function AppointmentsModule() {
 
   // ── Actions ──────────────────────────────────────────────
 
-  const printAppointmentTicket = useCallback((appt: Appointment) => {
+  const printAppointmentTicket = useCallback(async (appt: Appointment) => {
     const dateStr = new Date(appt.estimatedDropOff).toLocaleDateString(
       dateLoc,
       { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
@@ -126,15 +131,27 @@ export default function AppointmentsModule() {
       dateLoc,
       { hour: 'numeric', minute: '2-digit' }
     );
-    // R-APPT-RECEIPT-POLISH-V1: customer-facing layout. Same render pipeline
-    // (HTML string → printHtml), same 4in monospace thermal format — only the
-    // content/hierarchy is refined. Empty values render "Not provided" or hide
-    // the line; no debug-looking "-" placeholders. All text via i18n (EN/ES/PT).
+    // R-RECEIPT-UNIFY-APPOINTMENT-V1: rebuilt onto the SAME visual system as the
+    // POS payment receipt (generateReceiptHtml): centered Go Cellular header,
+    // scannable CODE128 barcode, dashed separators, label/value info rows, and
+    // the shared footer + Google Reviews QR. Appointment-specific data only —
+    // the visual format mirrors the master. Same render pipeline (HTML string →
+    // printHtml). All text via i18n (EN/ES/PT).
     const NP = t('appt.receipt.notProvided');
     const conf = appt.id.slice(-8).toUpperCase();
+    const storeName = settings.storeName || 'GO CELLULAR';
+    const storeAddress = settings.storeAddress || '';
+    const storePhone = settings.storePhone ? (formatPhone(settings.storePhone) || settings.storePhone) : '';
 
-    // Aligned field block: labels padded to a fixed column so values line up
-    // cleanly regardless of language length.
+    // Barcode (confirmation number) + Google Reviews QR — same generators the
+    // payment receipt uses, so scan + QR behaviour is identical.
+    const barcodeSvg = renderBarcodeSvg(conf);
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
+
     const fields: Array<[string, string]> = [
       [t('appt.receipt.customer'), (appt.customerName || '').trim() || NP],
       [t('appt.receipt.phone'),    formatPhone(appt.customerPhone) || NP],
@@ -145,52 +162,64 @@ export default function AppointmentsModule() {
     ];
     const emp = (appt.employeeName || '').trim();
     if (emp) fields.push([t('appt.receipt.attendedBy'), emp]);
-
-    const colW = Math.max(...fields.map(([l]) => l.length)) + 1; // +1 for the colon
-    const bodyLines = fields.map(([l, v]) => `${(l + ':').padEnd(colW + 2)}${v}`);
+    const fieldRows = fields.map(([l, v]) =>
+      `<tr><td style="padding:2px 0;font-size:11px;color:#444;vertical-align:top">${escHtml(l)}:</td><td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${escHtml(v)}</td></tr>`
+    ).join('');
     const notes = (appt.notes || '').trim();
-    if (notes) {
-      bodyLines.push('');
-      bodyLines.push(`${t('appt.receipt.notes')}:`);
-      bodyLines.push(notes);
-    }
-    const bodyText = bodyLines.join('\n');
+    const notesRow = notes
+      ? `<tr><td colspan="2" style="padding:3px 0 0;font-size:10px"><span style="color:#444">${escHtml(t('appt.receipt.notes'))}:</span> ${escHtml(notes)}</td></tr>`
+      : '';
 
-    const storeName = settings.storeName || 'Go Cellular';
-    const storeAddress = (settings as any).storeAddress as string | undefined;
-    const storePhone = settings.storePhone ? (formatPhone(settings.storePhone) || settings.storePhone) : '';
     const guide = [
       t('appt.receipt.guideEarly'),
       t('appt.receipt.guideBring'),
       t('appt.receipt.guideReschedule'),
     ];
+    const docType = t('appt.receipt.title');
+    const thanks = settings.receiptFooter || t('appt.receipt.thanks');
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Appointment ${escHtml(conf)}</title><style>`
-      + `@page{size:4in 6in;margin:0}`
-      + `html,body{width:4in;margin:0;padding:0;font-family:monospace;color:#000;background:#fff}`
-      + `body{padding:.25in;box-sizing:border-box}`
-      + `.store{text-align:center;line-height:1.4}`
-      + `.store .name{font-size:15px;font-weight:bold}`
-      + `.store .meta{font-size:11px}`
-      + `.title{text-align:center;font-size:22px;font-weight:bold;letter-spacing:3px;text-transform:uppercase;border-top:2px solid #000;border-bottom:2px solid #000;padding:7px 0;margin:12px 0 4px}`
-      + `.conf{text-align:center;font-size:12px;margin-bottom:12px}`
-      + `pre{font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin:0}`
-      + `.guide{font-size:11px;line-height:1.55;margin-top:12px;border-top:1px dashed #000;padding-top:8px}`
-      + `.guide div{margin-bottom:2px}`
-      + `.thanks{text-align:center;font-size:12px;font-weight:bold;margin-top:12px}`
-      + `.contact{text-align:center;font-size:12px;margin-top:4px}`
-      + `</style></head><body>`
-      + `<div class="store"><div class="name">${escHtml(storeName)}</div>`
-      + (storeAddress ? `<div class="meta">${escHtml(storeAddress)}</div>` : '')
-      + (storePhone ? `<div class="meta">${escHtml(storePhone)}</div>` : '')
-      + `</div>`
-      + `<div class="title">${escHtml(t('appt.receipt.title'))}</div>`
-      + `<div class="conf">${escHtml(t('appt.receipt.confirmation'))} #${escHtml(conf)}</div>`
-      + `<pre>${escHtml(bodyText)}</pre>`
-      + `<div class="guide">${guide.map((g) => `<div>- ${escHtml(g)}</div>`).join('')}</div>`
-      + `<div class="thanks">${escHtml(t('appt.receipt.thanks'))}</div>`
-      + (storePhone ? `<div class="contact">${escHtml(t('appt.receipt.contactLabel'))}: ${escHtml(storePhone)}</div>` : '')
-      + `</body></html>`;
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${escHtml(docType)} ${escHtml(conf)}</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  html, body { width: 4in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+  body { padding: 0.1in 0.15in; box-sizing: border-box; }
+  @media screen { html, body { width: 100% !important; max-width: 100% !important; } * { box-sizing: border-box; max-width: 100%; } img, svg { max-width: 100%; height: auto; } }
+  table { width: 100%; border-collapse: collapse; }
+  .sep { border-top: 1px dashed #999; margin: 5px 0; }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+  <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center">
+    <div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>
+    <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddress)}</div>
+    <div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>
+  </div>
+  <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
+    ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}
+  </div>
+  <table style="margin-bottom:5px">
+    <tr><td style="font-size:11px">${escHtml(dateStr)}</td><td style="text-align:right;font-size:12px;font-weight:900">#${escHtml(conf)}</td></tr>
+    <tr><td colspan="2" style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;padding-top:3px">${escHtml(docType)}</td></tr>
+  </table>
+  <div class="sep"></div>
+  <table style="margin-bottom:5px">${fieldRows}${notesRow}</table>
+  <div class="sep"></div>
+  <div style="font-size:9px;line-height:1.5;margin-bottom:5px">
+    ${guide.map((g) => `<div style="margin-bottom:1px">&bull; ${escHtml(g)}</div>`).join('')}
+  </div>
+  <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
+    ${escHtml(thanks)}
+    ${storePhone ? `<div style="font-size:10px;font-weight:500;margin-top:2px">${escHtml(t('appt.receipt.contactLabel'))}: ${escHtml(storePhone)}</div>` : ''}
+    ${settings.showReviewQr && settings.googleReviewUrl ? `
+    <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
+      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('appt.receipt.reviewPrompt'))}</div>
+      ${qrSvg
+        ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
+        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}
+      <div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
+    </div>` : ''}
+  </div>
+</body></html>`;
 
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
     toast(t('appt.toastPrinting'), 'info');

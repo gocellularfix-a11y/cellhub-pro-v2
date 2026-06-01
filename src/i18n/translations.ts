@@ -6528,6 +6528,7 @@ export const translations: TranslationDictionary = {
   'appt.receipt.guideReschedule':{ en: 'Call us if you need to reschedule.', es: 'Llámanos si necesitas reprogramar.',     pt: 'Ligue para nós se precisar remarcar.' },
   'appt.receipt.contactLabel':   { en: 'Call or WhatsApp',                  es: 'Llama o WhatsApp',                      pt: 'Ligue ou WhatsApp' },
   'appt.receipt.thanks':         { en: 'Thank you for choosing us!',        es: '¡Gracias por elegirnos!',               pt: 'Obrigado por nos escolher!' },
+  'appt.receipt.reviewPrompt':   { en: 'Leave us a review!',                es: '¡Déjanos tu reseña!',                   pt: 'Deixe-nos uma avaliação!' },
   'appt.toastArrived':           { en: (n: string) => `${n} arrived`,       es: (n: string) => `${n} llegó`,             pt: (n: string) => `${n} chegou` },
   'appt.toastRepairCreated':     { en: (t: string) => `Repair ticket created — ${t}`, es: (t: string) => `Ticket de reparación creado — ${t}`, pt: (t: string) => `Ticket de reparo criado — ${t}` },
   // Form labels
