@@ -456,6 +456,13 @@ export default function SettingsModule() {
     whatsapp:    t('settings.nav.whatsapp'),
     ai:          t('settings.nav.ai'),
     employees:   t('settings.nav.employees'),
+    // R-FINANCIAL-PRIVACY-V1 fix: the privacy section was added to SECTIONS but
+    // its label was missing here, so the sidebar render (sectionLabels[s.id])
+    // resolved to undefined and showed only the 🔒 icon. Inline bilingual to
+    // match the SECTIONS entry above (no translations.ts touch, additive-only).
+    privacy:     lang === 'es' ? 'Privacidad financiera'
+                 : lang === 'pt' ? 'Privacidade financeira'
+                 : 'Financial privacy',
     backup:      t('settings.nav.backup'),
   };
 
