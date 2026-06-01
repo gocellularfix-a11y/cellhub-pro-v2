@@ -126,40 +126,71 @@ export default function AppointmentsModule() {
       dateLoc,
       { hour: 'numeric', minute: '2-digit' }
     );
-    const lines: string[] = [];
-    lines.push(settings.storeName || 'Go Cellular');
-    if ((settings as any).storeAddress) lines.push((settings as any).storeAddress);
-    if (settings.storePhone) lines.push(settings.storePhone);
-    lines.push('');
-    lines.push('================================');
-    lines.push(es ? '       CITA / APPOINTMENT      ' : '          APPOINTMENT          ');
-    lines.push('================================');
-    lines.push('');
-    lines.push(`Ticket: ${appt.id.slice(-8).toUpperCase()}`);
-    lines.push('');
-    lines.push(`${es ? 'Cliente' : 'Customer'}: ${appt.customerName}`);
-    lines.push(`${es ? 'Teléfono' : 'Phone'}: ${formatPhone(appt.customerPhone) || '-'}`);
-    lines.push('');
-    lines.push(`${es ? 'Equipo' : 'Device'}: ${appt.device || '-'}`);
-    lines.push(`${es ? 'Problema' : 'Issue'}: ${appt.issue || '-'}`);
-    lines.push('');
-    lines.push(`${es ? 'Fecha' : 'Date'}: ${dateStr}`);
-    lines.push(`${es ? 'Hora' : 'Time'}: ${timeStr}`);
-    if (appt.notes) {
-      lines.push('');
-      lines.push(`${es ? 'Notas' : 'Notes'}: ${appt.notes}`);
-    }
-    if (appt.employeeName) {
-      lines.push('');
-      lines.push(`${es ? 'Atendido por' : 'Attended by'}: ${appt.employeeName}`);
-    }
-    lines.push('');
-    lines.push('================================');
-    lines.push(es ? '   Gracias por elegirnos   ' : '  Thank you for choosing us  ');
-    lines.push('================================');
+    // R-APPT-RECEIPT-POLISH-V1: customer-facing layout. Same render pipeline
+    // (HTML string → printHtml), same 4in monospace thermal format — only the
+    // content/hierarchy is refined. Empty values render "Not provided" or hide
+    // the line; no debug-looking "-" placeholders. All text via i18n (EN/ES/PT).
+    const NP = t('appt.receipt.notProvided');
+    const conf = appt.id.slice(-8).toUpperCase();
 
-    const text = lines.join('\n');
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Appointment ${escHtml(appt.id.slice(-8))}</title><style>@page{size:4in 6in;margin:0}html,body{width:4in;margin:0;padding:0;font-family:monospace}body{padding:.25in;box-sizing:border-box}pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0}</style></head><body><pre>${escHtml(text)}</pre></body></html>`;
+    // Aligned field block: labels padded to a fixed column so values line up
+    // cleanly regardless of language length.
+    const fields: Array<[string, string]> = [
+      [t('appt.receipt.customer'), (appt.customerName || '').trim() || NP],
+      [t('appt.receipt.phone'),    formatPhone(appt.customerPhone) || NP],
+      [t('appt.receipt.device'),   (appt.device || '').trim() || NP],
+      [t('appt.receipt.issue'),    (appt.issue || '').trim() || NP],
+      [t('appt.receipt.date'),     dateStr],
+      [t('appt.receipt.time'),     timeStr],
+    ];
+    const emp = (appt.employeeName || '').trim();
+    if (emp) fields.push([t('appt.receipt.attendedBy'), emp]);
+
+    const colW = Math.max(...fields.map(([l]) => l.length)) + 1; // +1 for the colon
+    const bodyLines = fields.map(([l, v]) => `${(l + ':').padEnd(colW + 2)}${v}`);
+    const notes = (appt.notes || '').trim();
+    if (notes) {
+      bodyLines.push('');
+      bodyLines.push(`${t('appt.receipt.notes')}:`);
+      bodyLines.push(notes);
+    }
+    const bodyText = bodyLines.join('\n');
+
+    const storeName = settings.storeName || 'Go Cellular';
+    const storeAddress = (settings as any).storeAddress as string | undefined;
+    const storePhone = settings.storePhone ? (formatPhone(settings.storePhone) || settings.storePhone) : '';
+    const guide = [
+      t('appt.receipt.guideEarly'),
+      t('appt.receipt.guideBring'),
+      t('appt.receipt.guideReschedule'),
+    ];
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Appointment ${escHtml(conf)}</title><style>`
+      + `@page{size:4in 6in;margin:0}`
+      + `html,body{width:4in;margin:0;padding:0;font-family:monospace;color:#000;background:#fff}`
+      + `body{padding:.25in;box-sizing:border-box}`
+      + `.store{text-align:center;line-height:1.4}`
+      + `.store .name{font-size:15px;font-weight:bold}`
+      + `.store .meta{font-size:11px}`
+      + `.title{text-align:center;font-size:22px;font-weight:bold;letter-spacing:3px;text-transform:uppercase;border-top:2px solid #000;border-bottom:2px solid #000;padding:7px 0;margin:12px 0 4px}`
+      + `.conf{text-align:center;font-size:12px;margin-bottom:12px}`
+      + `pre{font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin:0}`
+      + `.guide{font-size:11px;line-height:1.55;margin-top:12px;border-top:1px dashed #000;padding-top:8px}`
+      + `.guide div{margin-bottom:2px}`
+      + `.thanks{text-align:center;font-size:12px;font-weight:bold;margin-top:12px}`
+      + `.contact{text-align:center;font-size:12px;margin-top:4px}`
+      + `</style></head><body>`
+      + `<div class="store"><div class="name">${escHtml(storeName)}</div>`
+      + (storeAddress ? `<div class="meta">${escHtml(storeAddress)}</div>` : '')
+      + (storePhone ? `<div class="meta">${escHtml(storePhone)}</div>` : '')
+      + `</div>`
+      + `<div class="title">${escHtml(t('appt.receipt.title'))}</div>`
+      + `<div class="conf">${escHtml(t('appt.receipt.confirmation'))} #${escHtml(conf)}</div>`
+      + `<pre>${escHtml(bodyText)}</pre>`
+      + `<div class="guide">${guide.map((g) => `<div>- ${escHtml(g)}</div>`).join('')}</div>`
+      + `<div class="thanks">${escHtml(t('appt.receipt.thanks'))}</div>`
+      + (storePhone ? `<div class="contact">${escHtml(t('appt.receipt.contactLabel'))}: ${escHtml(storePhone)}</div>` : '')
+      + `</body></html>`;
 
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
     toast(t('appt.toastPrinting'), 'info');
