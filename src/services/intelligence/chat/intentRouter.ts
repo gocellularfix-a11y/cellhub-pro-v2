@@ -836,6 +836,11 @@ const WHO_TO_CONTACT_KEYWORDS = [
   'llamar', 'contactar', 'contact', 'reach out', 'follow up',
   'quién llamar', 'quien llamar', 'who should', 'a quién', 'a quien',
   'clientes que', 'customers to', 'follow-up', 'no han venido', 'not visited',
+  // R-INTELLIGENCE-OPERATIONAL-PHRASES-1: explicit owner-command aliases for
+  // the existing generic outreach/contact intent (no new handler/output).
+  'customers to call', 'contact customer', 'who to contact', 'who to call',
+  'clientes para llamar', 'clientes para contactar', 'contactar cliente',
+  'clientes para chamar', 'contatar cliente',
 ];
 
 // R-INTEL-WHO-TO-CONTACT-TODAY: more-specific intent than WHO_TO_CONTACT.
@@ -1276,6 +1281,10 @@ const DATA_QUERY_KEYWORDS = [
   'appointments', 'appointment today', 'upcoming appointments',
   'citas', 'citas hoy', 'citas mañana',
   'agendamentos', 'agendamentos hoje',
+  // R-INTELLIGENCE-OPERATIONAL-PHRASES-1: explicit appointment owner-command
+  // aliases (already covered by the substrings above; added for clarity).
+  'show appointments', "today's appointments", 'todays appointments',
+  'appointments today', 'citas de hoy', 'agendamentos de hoje',
   // R-DATA-LIABILITY-V1: store credit + loyalty triggers
   'store credit', 'loyalty points', 'liability',
   'crédito', 'credito', 'crédito tienda', 'credito tienda', 'puntos',
@@ -1588,6 +1597,50 @@ const CONVERSATIONAL_FILLER = new Set([
 export function isConversationalFiller(query: string): boolean {
   return CONVERSATIONAL_FILLER.has(normalize(query));
 }
+
+// R-INTELLIGENCE-OPERATIONAL-PHRASES-1: operator phrases mapped to the closest
+// EXISTING intent. The phrases are ALSO present in the corresponding keyword
+// banks above — that is what actually routes them. This table only documents
+// the mapping and powers the alias-match debug log in classifyIntent. It adds
+// NO handlers and NO outputs.
+const OPERATIONAL_ALIASES: ReadonlyArray<{ phrase: string; intent: IntentId }> = [
+  // outreach / contact
+  { phrase: 'customers to call',   intent: 'who_to_contact' },
+  { phrase: 'contact customer',    intent: 'who_to_contact' },
+  { phrase: 'clientes para llamar', intent: 'who_to_contact' },
+  { phrase: 'contactar cliente',   intent: 'who_to_contact' },
+  // appointments (data_query)
+  { phrase: 'show appointments',   intent: 'data_query' },
+  { phrase: "today's appointments", intent: 'data_query' },
+  { phrase: 'todays appointments', intent: 'data_query' },
+  { phrase: 'citas de hoy',        intent: 'data_query' },
+  { phrase: 'agendamentos de hoje', intent: 'data_query' },
+  // entity open commands
+  { phrase: 'open customer',       intent: 'entity_operational_command' },
+  { phrase: 'open repair',         intent: 'entity_operational_command' },
+  { phrase: 'abrir cliente',       intent: 'entity_operational_command' },
+  { phrase: 'abrir reparación',    intent: 'entity_operational_command' },
+];
+
+// R-INTELLIGENCE-OPERATIONAL-PHRASES-1 — UNRESOLVED owner phrases:
+// There is NO existing intent or handler that lists unpaid balances /
+// accounts-receivable across repairs / layaways / orders. These phrases were
+// therefore NOT aliased to any existing intent (aliasing them to data_query or
+// who_to_contact would invent an output the engine does not produce):
+//   "show unpaid" / "unpaid" / "payments due"
+//     → correctly fall through to `fallback_question` (no keyword match).
+//   "who owes me money" / "quién me debe dinero"
+//     → PRE-EXISTING: route to `what_hurting_profit` via the bare 'money' /
+//       'dinero' tokens in WHAT_HURTING_PROFIT_KEYWORDS.
+//   "pending payments"
+//     → PRE-EXISTING: routes to `repairs_overdue` via the bare 'pending' token
+//       in REPAIRS_KEYWORDS.
+//   This round does NOT change the two pre-existing cases (narrowing those bare
+//   tokens would regress legitimate profit-leak / overdue-repair routing — out
+//   of scope for an additive keyword round).
+// TODO(intent): introduce a dedicated `unpaid_balances` intent + handler once an
+// accounts-receivable / outstanding-balance view exists; at that point also
+// narrow the bare 'money'/'dinero' tokens so the two phrases above route to it.
 
 // R-INTELLIGENCE-CONTEXT-MEMORY-V1 ──────────────────────────────
 // Lightweight session-only operational context. Pure type + a
@@ -2226,6 +2279,15 @@ export function classifyIntent(
   // weak (score 1 → 0.5) matches are visible in the console when debugging
   // erratic routing. Lightweight console only — no telemetry, no analytics.
   console.debug(`[IntelligenceRouter] intent=${winner.id} score=${winner.score} confidence=${confidence.toFixed(2)}`);
+
+  // R-INTELLIGENCE-OPERATIONAL-PHRASES-1: when an operator phrase alias drove
+  // the (existing) winning intent, surface it for routing diagnostics.
+  for (const a of OPERATIONAL_ALIASES) {
+    if (winner.id === a.intent && query.includes(a.phrase)) {
+      console.debug(`[IntelligenceRouter] alias matched phrase=${a.phrase} intent=${winner.id}`);
+      break;
+    }
+  }
 
   // R-INTELLIGENCE-PENDING-DEAL-V1: pass raw query so the handler can parse
   // customer + product + price (deterministic substring + digit scan).

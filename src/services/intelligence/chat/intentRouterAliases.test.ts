@@ -1,0 +1,70 @@
+// ============================================================
+// R-INTELLIGENCE-OPERATIONAL-PHRASES-1 — operator-phrase routing.
+// Locks: (a) common owner commands route to the intended EXISTING intent,
+// (b) accounts-receivable phrases with no handler still fall back safely,
+// (c) conversational filler stays blocked, (d) generic chatter does not
+// false-positive into an operational intent.
+// ============================================================
+
+import { describe, it, expect } from 'vitest';
+import { classifyIntent } from './intentRouter';
+import type { Customer } from '@/store/types';
+
+const NO_CUSTOMERS: Customer[] = [];
+const id = (q: string, lang: 'en' | 'es' | 'pt' = 'en') => classifyIntent(q, NO_CUSTOMERS, lang).id;
+
+describe('operational phrase aliases → existing intents', () => {
+  it('outreach/contact phrases route to who_to_contact', () => {
+    expect(id('customers to call')).toBe('who_to_contact');
+    expect(id('contact customer')).toBe('who_to_contact');
+    expect(id('clientes para llamar', 'es')).toBe('who_to_contact');
+    expect(id('contactar cliente', 'es')).toBe('who_to_contact');
+  });
+
+  it('appointment phrases route to data_query', () => {
+    expect(id('show appointments')).toBe('data_query');
+    expect(id("today's appointments")).toBe('data_query');
+    expect(id('appointments today')).toBe('data_query');
+    expect(id('citas de hoy', 'es')).toBe('data_query');
+    expect(id('agendamentos de hoje', 'pt')).toBe('data_query');
+  });
+
+  it('open-entity commands route to entity_operational_command', () => {
+    expect(id('open customer')).toBe('entity_operational_command');
+    expect(id('open repair')).toBe('entity_operational_command');
+    expect(id('abrir cliente', 'es')).toBe('entity_operational_command');
+    expect(id('abrir reparación', 'es')).toBe('entity_operational_command');
+  });
+});
+
+describe('accounts-receivable phrases have no handler', () => {
+  it('plain unpaid phrases fall through to fallback_question (not aliased)', () => {
+    for (const q of ['show unpaid', 'unpaid', 'payments due']) {
+      expect(id(q)).toBe('fallback_question');
+    }
+  });
+
+  // Characterization of PRE-EXISTING behavior (NOT introduced by this round):
+  // bare tokens in unrelated banks capture these phrases. Left unchanged on
+  // purpose (see the UNRESOLVED note in intentRouter.ts). Locked here so a
+  // future `unpaid_balances` intent that redirects them is a deliberate change.
+  it('money/pending-word phrases hit pre-existing intents via bare token overlap', () => {
+    expect(id('who owes me money')).toBe('what_hurting_profit');   // bare 'money'
+    expect(id('quién me debe dinero', 'es')).toBe('what_hurting_profit'); // bare 'dinero'
+    expect(id('pending payments')).toBe('repairs_overdue');        // bare 'pending'
+  });
+});
+
+describe('guards preserved', () => {
+  it('conversational filler stays blocked', () => {
+    for (const q of ['wow', 'interesting', 'thats crazy', 'tell me more', 'ok']) {
+      expect(id(q)).toBe('fallback_question');
+    }
+  });
+
+  it('generic chatter does not false-positive into an operational intent', () => {
+    for (const q of ['i like this song', 'my cat is cute']) {
+      expect(id(q)).toBe('fallback_question');
+    }
+  });
+});
