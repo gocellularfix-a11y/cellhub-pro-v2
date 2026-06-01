@@ -1320,35 +1320,67 @@ function InventoryFormModal({
       };
       window.addEventListener('focus', handler, { once: true });
     }
-    // Phase 3 — R-INVENTORY-SKU-FOCUS-PREVIEW-MODAL-V1: the single-item add
+    // Phase 3 — R-INVENTORY-SKU-FOCUS-PREVIEW-MODAL-V2: the single-item add
     // path prints with silent:false, which routes to the Electron in-app
     // PrintPreviewModal. That modal does NOT blur the window, so Phase 2 never
-    // fires and focus is lost when it closes. Observe the preview modal's
-    // #print-content node (read-only — no print-logic coupling): once it has
-    // opened and then closed, reclaim SKU focus. If it never opens (labels
-    // skipped / silent batch), reclaim after a short grace. Bounded + deduped
-    // so the poll can never run away or stack across rapid saves. focusSkuInput
-    // is a no-op when the input is unmounted, so this never steals focus after
-    // the form closes.
+    // fires. V1 reclaimed focus with a single shot the moment the preview
+    // closed — but a late React commit (the New Item form re-rendering after
+    // the preview unmounts) stole it back, leaving no field focused. V2 splits
+    // into two stages:
+    //   Stage A — observe the preview modal's #print-content node (read-only —
+    //     no print-logic coupling) until it has opened and then closed. If it
+    //     never opens (labels skipped / silent batch), proceed after a grace.
+    //   Stage B — double-rAF past the unmount/re-render commit, then a bounded
+    //     RETRY loop (~120ms × up to 1.5s) that re-asserts SKU focus until it
+    //     actually STICKS (document.activeElement === the input), surviving the
+    //     late render that defeated V1.
+    // Bounded + deduped so it can never run away or stack across rapid saves.
     if (!skuPreviewPollActiveRef.current) {
       skuPreviewPollActiveRef.current = true;
-      let ticks = 0;
+      let waitTicks = 0;
       let sawPreview = false;
-      const GRACE_TICKS = 4;   // ~0.8s for the modal to mount before giving up
-      const MAX_TICKS = 40;    // ~8s hard ceiling
-      const poll = window.setInterval(() => {
-        ticks++;
+      const GRACE_TICKS = 4;       // ~0.8s mount window before giving up on a preview
+      const MAX_WAIT_TICKS = 40;   // ~8s hard ceiling
+      const waitPoll = window.setInterval(() => {
+        waitTicks++;
         const previewOpen = !!document.getElementById('print-content');
         if (previewOpen) {
           sawPreview = true;
-          if (ticks < MAX_TICKS) return;          // wait for the preview to close
-        } else if (!sawPreview && ticks < GRACE_TICKS) {
-          return;                                  // preview not mounted yet — wait briefly
+          if (waitTicks < MAX_WAIT_TICKS) return;     // still open — keep waiting
+        } else if (!sawPreview && waitTicks < GRACE_TICKS) {
+          return;                                      // not mounted yet — wait briefly
         }
-        // Preview just closed, or grace elapsed with no preview, or ceiling hit.
-        window.clearInterval(poll);
-        skuPreviewPollActiveRef.current = false;
-        focusSkuInput();
+        // Preview is gone (closed, never appeared, or ceiling hit).
+        window.clearInterval(waitPoll);
+        console.debug('[InventoryFocus] preview closed');
+        // Stage B: defer past the unmount/re-render commit, then retry until
+        // focus sticks. Do NOT focus if the New Item input is gone (modal
+        // closed) — el will stay null and the loop simply times out.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          let attempts = 0;
+          const MAX_ATTEMPTS = 12;     // ~1.5s at 120ms
+          const tryFocus = () => {
+            const el = skuInputRef.current;
+            const visible = !!el && el.offsetParent !== null && !el.disabled;
+            if (el && visible) {
+              el.focus();
+              el.select?.();
+            }
+            if (el && document.activeElement === el) {
+              console.debug('[InventoryFocus] sku focus restored');
+              skuPreviewPollActiveRef.current = false;
+              return;                                  // stuck — done
+            }
+            attempts++;
+            if (attempts >= MAX_ATTEMPTS) {
+              console.debug('[InventoryFocus] sku focus retry failed');
+              skuPreviewPollActiveRef.current = false;
+              return;                                  // give up (modal likely closed)
+            }
+            window.setTimeout(tryFocus, 120);
+          };
+          tryFocus();
+        }));
       }, 200);
     }
   }, [focusSkuInput]);
