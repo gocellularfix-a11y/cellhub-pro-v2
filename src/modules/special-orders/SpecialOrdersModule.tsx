@@ -38,6 +38,10 @@ import {
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { escHtml } from '@/utils/escHtml';
+// R-RECEIPT-UNIFY-SPECIALORDER-V1: reuse the POS payment-receipt barcode renderer
+// + bundled QR lib so the special-order receipt shares the same visual system.
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import QRCode from 'qrcode';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitSpecialOrderAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
@@ -268,11 +272,11 @@ export default function SpecialOrdersModule() {
   // SpecialOrder plus optional "corrected" display override — used by auto-
   // reprint after audit saves AND by the print-choice dialog on the card.
   // (No pre-existing SO print function; card's onPrint was undefined.)
-  const printSpecialOrderEntity = useCallback((order: SpecialOrder, displayOverride?: {
+  const printSpecialOrderEntity = useCallback(async (order: SpecialOrder, displayOverride?: {
     corrected?: boolean;
     originalSnapshot?: { capturedAt: string; snapshot: Record<string, unknown> };
   }) => {
-    const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
+    const storeName = settings.storeName || 'GO CELLULAR';
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
     const fmt = (v: unknown) => v == null ? '' : String(v);
@@ -290,40 +294,88 @@ export default function SpecialOrdersModule() {
     };
 
     const ticketNum = order.id.slice(-8).toUpperCase();
-    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
-    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.corr-bar{background:#b91c1c;color:#fff;text-align:center;font-size:10px;font-weight:700;padding:2px 0;margin:2px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.was{font-size:9px;color:#999;font-style:italic}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SO ${escHtml(ticketNum)}</title><style>${css}</style></head><body>
-<div class="hdr"><div class="store">${escHtml(storeName)}</div>${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}</div>
-${corrected ? `<div class="corr-bar">${escHtml(t('so.print.correctedReceipt'))}</div>` : ''}
-<div class="title-bar">${escHtml(t('so.print.title'))} — #${escHtml(ticketNum)}</div>
-<div class="sec">
-<div class="row"><span class="lbl">${escHtml(t('so.print.date'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>
-<div class="row"><span class="lbl">Status</span><span class="val">${escHtml(fmt(order.status))}</span></div>
-${corrected ? `<div class="row"><span class="lbl">${escHtml(t('so.print.corrected'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>` : ''}
-</div>
-<div class="dash"></div>
-<div class="sec">
-<div class="sec-lbl">${escHtml(t('so.print.customer'))}</div>
-<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(order.customerName))}</span></div>
-${order.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('so.print.phone'))}</span><span class="val">${escHtml(fmt(order.customerPhone))}</span></div>` : ''}
-</div>
-<div class="dash"></div>
-<div class="sec">
-<div class="sec-lbl">${escHtml(t('so.print.item'))}</div>
-<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(order.itemDescription))}</span></div>
-${order.supplier ? `<div class="row"><span class="lbl">${escHtml(t('so.print.supplier'))}</span><span class="val">${escHtml(fmt(order.supplier))}</span></div>` : ''}
-${order.estimatedArrival ? `<div class="row"><span class="lbl">${escHtml(t('so.print.estArrival'))}</span><span class="val">${escHtml(fmt(order.estimatedArrival))}</span></div>` : ''}
-</div>
-<div class="solid"></div>
-<div class="sec">
-<div class="row"><span class="lbl">${escHtml(t('so.print.price'))}</span><span class="val">${escHtml(money(order.price || 0))}${prevHtml('price')}</span></div>
-<div class="row"><span class="lbl">${escHtml(t('so.print.deposit'))}</span><span class="val">${escHtml(money(order.depositAmount || 0))}${prevHtml('depositAmount')}</span></div>
-<div class="dash"></div>
-<div class="row ${(order.balance || 0) > 0 ? 'bal-due' : 'grand'}"><span class="lbl">${escHtml(t('so.print.balance'))}</span><span class="val">${escHtml(money(order.balance || 0))}${prevHtml('balance')}</span></div>
-${corrected && ((order as any).refundOwedAmount || 0) > 0 ? `<div class="row" style="color:#b91c1c"><span class="lbl">${escHtml(t('so.print.refundOwed'))}</span><span class="val">${escHtml(money((order as any).refundOwedAmount))}</span></div>` : ''}
-</div>
-${order.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${escHtml(t('so.print.notes'))}</div><div>${escHtml(fmt(order.notes))}</div></div>` : ''}
-<div class="ftr">Thank you for your business!<br>${escHtml(storeName)}</div>
+    // R-RECEIPT-UNIFY-SPECIALORDER-V1: rebuilt onto the SAME visual system as
+    // the POS payment receipt — centered Go Cellular header, scannable CODE128
+    // barcode (ticket #), dashed separators, Arial typography, money section in
+    // the master's totals style, shared footer + Google Reviews QR. ALL existing
+    // data/logic preserved: corrected-reprint bar, previous-value annotations
+    // (prevHtml), refund-owed line, status / supplier / ETA / notes. Money values
+    // are formatted only — no financial math touched.
+    const barcodeSvg = renderBarcodeSvg(ticketNum);
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
+    const balanceDue = (order.balance || 0) > 0;
+    const thanks = settings.receiptFooter || t('so.print.thankYou');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>SO ${escHtml(ticketNum)}</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 4in; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+  body { padding: 0.1in 0.15in; }
+  @media screen { html, body { width: 100% !important; max-width: 100% !important; } img, svg { max-width: 100%; height: auto; } }
+  table { width: 100%; border-collapse: collapse; }
+  .sep { border-top: 1px dashed #999; margin: 5px 0; }
+  .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
+  .corr-bar { background: #b91c1c; color: #fff; text-align: center; font-size: 10px; font-weight: 700; padding: 2px 0; margin: 4px 0; }
+  .was { font-size: 9px; color: #999; font-style: italic; }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+  <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center">
+    <div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>
+    ${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}
+    ${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}
+  </div>
+  <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
+    ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}
+  </div>
+  ${corrected ? `<div class="corr-bar">${escHtml(t('so.print.correctedReceipt'))}</div>` : ''}
+  <table style="margin-bottom:5px">
+    <tr><td style="font-size:11px">${escHtml(new Date().toLocaleString())}</td><td style="text-align:right;font-size:12px;font-weight:900">#${escHtml(ticketNum)}</td></tr>
+    <tr><td colspan="2" style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;padding-top:3px">${escHtml(t('so.print.title'))}</td></tr>
+    <tr><td colspan="2" style="font-size:10px;padding-top:2px">${escHtml(t('so.print.status'))}: <strong>${escHtml(fmt(order.status))}</strong></td></tr>
+    ${corrected ? `<tr><td colspan="2" style="font-size:10px">${escHtml(t('so.print.corrected'))}: ${escHtml(new Date().toLocaleString())}</td></tr>` : ''}
+  </table>
+  <div class="sep"></div>
+  <div class="sec-lbl">${escHtml(t('so.print.customer'))}</div>
+  <table style="margin-bottom:5px">
+    <tr><td colspan="2" style="font-size:11px;font-weight:600">${escHtml(fmt(order.customerName))}</td></tr>
+    ${order.customerPhone ? `<tr><td style="font-size:11px;color:#444">${escHtml(t('so.print.phone'))}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(fmt(order.customerPhone))}</td></tr>` : ''}
+  </table>
+  <div class="sep"></div>
+  <div class="sec-lbl">${escHtml(t('so.print.item'))}</div>
+  <table style="margin-bottom:5px">
+    <tr><td colspan="2" style="font-size:11px;font-weight:600">${escHtml(fmt(order.itemDescription))}</td></tr>
+    ${order.supplier ? `<tr><td style="font-size:11px;color:#444">${escHtml(t('so.print.supplier'))}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(fmt(order.supplier))}</td></tr>` : ''}
+    ${order.estimatedArrival ? `<tr><td style="font-size:11px;color:#444">${escHtml(t('so.print.estArrival'))}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(fmt(order.estimatedArrival))}</td></tr>` : ''}
+  </table>
+  <div class="sep"></div>
+  <table style="margin-bottom:5px">
+    <tr><td>${escHtml(t('so.print.price'))}:</td><td style="text-align:right">${escHtml(money(order.price || 0))}${prevHtml('price')}</td></tr>
+    <tr><td>${escHtml(t('so.print.deposit'))}:</td><td style="text-align:right">${escHtml(money(order.depositAmount || 0))}${prevHtml('depositAmount')}</td></tr>
+    <tr style="border-top:1px solid #000">
+      <td style="font-size:14px;font-weight:900;padding-top:4px">${escHtml(t('so.print.balance'))}:</td>
+      <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px${balanceDue ? ';color:#c00' : ''}">${escHtml(money(order.balance || 0))}${prevHtml('balance')}</td>
+    </tr>
+    ${corrected && ((order as any).refundOwedAmount || 0) > 0 ? `<tr style="color:#b91c1c"><td>${escHtml(t('so.print.refundOwed'))}:</td><td style="text-align:right;font-weight:700">${escHtml(money((order as any).refundOwedAmount))}</td></tr>` : ''}
+  </table>
+  ${order.notes ? `<div class="sep"></div><div class="sec-lbl">${escHtml(t('so.print.notes'))}</div><div style="font-size:10px">${escHtml(fmt(order.notes))}</div>` : ''}
+  <div class="sep"></div>
+  <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
+    ${escHtml(thanks)}
+    ${settings.showReviewQr && settings.googleReviewUrl ? `
+    <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
+      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('so.print.reviewPrompt'))}</div>
+      ${qrSvg
+        ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
+        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}
+      <div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
+    </div>` : ''}
+  </div>
 </body></html>`;
     printHtml(html, {
       silent: false,
