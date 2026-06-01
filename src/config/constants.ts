@@ -161,6 +161,9 @@ export const NAV_TABS: NavTab[] = [
   { id: 'reports',       labelKey: 'reports',        icon: '📈', adminOnly: true },
   { id: 'tax',           labelKey: 'caTaxReports',   icon: '🏛️', adminOnly: true },
   { id: 'settings',      labelKey: 'settings',       icon: '⚙️', adminOnly: true },
+  // R-HELP-MANUAL-V1: in-app manual. Visible to every role (no adminOnly, no
+  // allowedRoles) so any logged-in user can read the documentation.
+  { id: 'help',          labelKey: 'help',           icon: '📖' },
 ];
 
 /**
@@ -168,6 +171,9 @@ export const NAV_TABS: NavTab[] = [
  * Owner and manager always have access to everything.
  */
 export function canAccessTab(tabId: string, role: string | undefined, allowedModules?: string[]): boolean {
+  // R-HELP-MANUAL-V1: the Help manual is always accessible, regardless of role
+  // or an employee's explicit allowedModules list.
+  if (tabId === 'help') return true;
   if (!role || role === 'owner' || role === 'manager') return true;
   // If employee has explicit allowedModules list, use it
   if (allowedModules && allowedModules.length > 0) {

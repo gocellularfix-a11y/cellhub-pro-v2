@@ -29,6 +29,8 @@ const SettingsModule   = lazy(() => import('@/modules/settings/SettingsModule'))
 const EmployeesModule  = lazy(() => import('@/modules/employees/EmployeesModule'));
 const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPanel'));
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
+// R-HELP-MANUAL-V1: in-app Help / Manual module.
+const HelpModule = lazy(() => import('@/modules/help/HelpModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 // COMPANION: parallel simplified companion using REST polling.
 const CompanionPage = lazy(() => import('@/modules/companion/CompanionPage'));
@@ -320,6 +322,8 @@ export default function AppShell() {
           {activeTab === 'returns'        && <ReturnsModule />}
           {activeTab === 'customers'      && <CustomerModule />}
           {activeTab === 'appointments'   && <AppointmentsModule />}
+          {/* R-HELP-MANUAL-V1: in-app manual — available to every role. */}
+          {activeTab === 'help'           && <HelpModule />}
 
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}

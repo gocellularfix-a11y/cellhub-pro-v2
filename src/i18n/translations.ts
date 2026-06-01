@@ -5945,6 +5945,28 @@ export const translations: TranslationDictionary = {
   'nav.reports':         { en: 'Reports',           es: 'Reportes',             pt: 'Relatórios' },
   'nav.caTaxReports':    { en: 'Business Insights', es: 'Perspectivas del Negocio', pt: 'Perspectivas do Negócio' },
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
+  'nav.help':            { en: 'Help',              es: 'Ayuda',                pt: 'Ajuda' },
+
+  // R-HELP-MANUAL-V1 — in-app Help / Manual chrome (content lives in
+  // src/modules/help/helpContent.ts as a localized data map).
+  'help.title':          { en: 'Help & Manual',     es: 'Ayuda y Manual',       pt: 'Ajuda e Manual' },
+  'help.subtitle':       { en: 'How each module works, step by step.', es: 'Cómo funciona cada módulo, paso a paso.', pt: 'Como cada módulo funciona, passo a passo.' },
+  'help.searchPlaceholder': { en: 'Search help…',   es: 'Buscar ayuda…',        pt: 'Buscar ajuda…' },
+  'help.overview':       { en: 'Overview',          es: 'Resumen',              pt: 'Visão geral' },
+  'help.overviewTitle':  { en: 'Welcome to CellHub Pro Help', es: 'Bienvenido a la Ayuda de CellHub Pro', pt: 'Bem-vindo à Ajuda do CellHub Pro' },
+  'help.overviewBody':   {
+    en: 'Pick a module on the left to read what it does, the common actions, a step-by-step guide, important warnings, and troubleshooting tips. Use the search box to jump straight to a topic.',
+    es: 'Elige un módulo a la izquierda para leer qué hace, las acciones comunes, una guía paso a paso, advertencias importantes y consejos de solución de problemas. Usa el buscador para ir directo a un tema.',
+    pt: 'Escolha um módulo à esquerda para ler o que ele faz, as ações comuns, um guia passo a passo, avisos importantes e dicas de solução de problemas. Use a busca para ir direto a um tópico.',
+  },
+  'help.browseModules':  { en: 'Browse modules',    es: 'Explorar módulos',     pt: 'Explorar módulos' },
+  'help.noResults':      { en: 'No matching topics.', es: 'No hay temas que coincidan.', pt: 'Nenhum tópico correspondente.' },
+  'help.section.whatItDoes':      { en: 'What this module does', es: 'Qué hace este módulo',  pt: 'O que este módulo faz' },
+  'help.section.commonActions':   { en: 'Common actions',        es: 'Acciones comunes',     pt: 'Ações comuns' },
+  'help.section.steps':           { en: 'Step-by-step',          es: 'Paso a paso',          pt: 'Passo a passo' },
+  'help.section.warnings':        { en: 'Important warnings',    es: 'Advertencias importantes', pt: 'Avisos importantes' },
+  'help.section.troubleshooting': { en: 'Troubleshooting',       es: 'Solución de problemas', pt: 'Solução de problemas' },
+  'help.section.related':         { en: 'Related modules',       es: 'Módulos relacionados', pt: 'Módulos relacionados' },
 
   // R-OPERATOR-FLOATING-BUBBLE-V1 — global Intelligence shortcut bubble
   'operator.bubble.openTooltip':  { en: 'Open Operator (Intelligence)',  es: 'Abrir Operador (Inteligencia)', pt: 'Abrir Operador (Inteligência)' },
