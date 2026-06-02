@@ -8071,6 +8071,13 @@ export const translations: TranslationDictionary = {
   'chat.continuity.itemLowMovement':   { en: 'This item has low movement.', es: 'Este artículo tiene poco movimiento.', pt: 'Este item tem pouco movimento.' },
   'chat.continuity.layawayPending':    { en: 'Layaway balance still pending.', es: 'Saldo del apartado aún pendiente.', pt: 'Saldo do crediário ainda pendente.' },
   'chat.continuity.afterContact':      { en: 'Contact ready — what is next?', es: 'Contacto listo — ¿siguiente paso?', pt: 'Contato pronto — qual o próximo passo?' },
+  // R-INTELLIGENCE-OPERATOR-SESSIONS-V1: one-line workflow awareness hint.
+  'chat.session.hint.repair_collection':     { en: '🔧 Continuing repair collection workflow.',    es: '🔧 Continuando flujo de cobro de reparación.',   pt: '🔧 Continuando fluxo de cobrança de reparo.' },
+  'chat.session.hint.layaway_collection':    { en: '📅 Continuing layaway collection workflow.',   es: '📅 Continuando flujo de cobro de apartado.',     pt: '📅 Continuando fluxo de cobrança de crediário.' },
+  'chat.session.hint.vip_retention':         { en: '⭐ Continuing VIP retention workflow.',        es: '⭐ Continuando flujo de retención VIP.',         pt: '⭐ Continuando fluxo de retenção VIP.' },
+  'chat.session.hint.customer_reactivation': { en: '👤 Continuing customer reactivation workflow.', es: '👤 Continuando flujo de reactivación de cliente.', pt: '👤 Continuando fluxo de reativação de cliente.' },
+  'chat.session.hint.inventory_push':        { en: '📦 Continuing inventory push workflow.',       es: '📦 Continuando flujo de empuje de inventario.',  pt: '📦 Continuando fluxo de impulso de estoque.' },
+  'chat.session.hint.manager_queue':         { en: '📋 Continuing manager queue workflow.',        es: '📋 Continuando flujo de cola del gerente.',      pt: '📋 Continuando fluxo de fila do gerente.' },
   'outcome.status.pending':    { en: 'Pending',     es: 'Pendiente',   pt: 'Pendente' },
   'outcome.status.successful': { en: 'Successful',  es: 'Exitoso',     pt: 'Bem-sucedido' },
   'outcome.status.failed':     { en: 'Failed',      es: 'Fallido',     pt: 'Falhou' },

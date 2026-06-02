@@ -17,6 +17,11 @@ import type { ChatActionUI, PanelCampaignDraft, WorkflowSection } from '@/servic
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: deterministic post-action next-steps.
 import { resolvePostActionContinuity } from '@/services/intelligence/continuity/postActionContinuity';
+// R-INTELLIGENCE-OPERATOR-SESSIONS-V1: lightweight active-workflow tracking.
+import {
+  deriveOperatorSessionFromAction, shouldShowSessionHint, sessionHintKey,
+  type OperatorSession,
+} from '@/services/intelligence/continuity/operatorSession';
 import {
   createAutomationItem,
   approveAutomationItem,
@@ -602,20 +607,62 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   const continuityCooldownRef = useRef<Map<string, number>>(new Map());
   const CONTINUITY_COOLDOWN_MS = 45_000;
 
-  // After an action executes, offer deterministic next-step suggestions.
-  // Loop-safe: continuity actions are tagged `cont-…` and never spawn more
-  // continuity. Cooldown-safe: same target+entity suppressed within the window.
+  // R-INTELLIGENCE-OPERATOR-SESSIONS-V1: single active workflow session (V1).
+  // State-only — it does NOT generate actions/continuity; it just lets the
+  // assistant surface one subtle "continuing X workflow" hint.
+  const operatorSessionRef = useRef<OperatorSession | null>(null);
+
+  // After an action executes: advance the workflow session (state only) AND
+  // offer deterministic next-step suggestions through ONE deferred-push path.
+  // Loop-safe (continuity actions tagged `cont-…` never spawn more continuity),
+  // cooldown-safe, and the session hint appears at most once per session.
   const maybePushContinuity = useCallback((
     executionTarget: string,
     payload: ChatActionUI['payload'],
     sourceActionId: string,
   ) => {
-    if (sourceActionId.startsWith('cont-')) return; // no continuity-of-continuity
+    // R-INTELLIGENCE-CONTINUITY-RUNTIME-AUDIT-V1 (CHECK 4): defer one macrotask
+    // so the message lands after the click's navigation/render transition and
+    // the [messages] scroll effect reliably reaches it.
+    const pushLine = (content: string, actions?: ChatActionUI[]) => {
+      const stamp = Date.now();
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          { id: `m-${stamp}-${prev.length}`, role: 'assistant' as const, content, timestamp: new Date(), kind: 'answer' as const, ...(actions ? { actions } : {}) },
+        ]);
+      }, 0);
+    };
+
+    // SESSION: advance workflow state from this executed action (incl. cont-…
+    // clicks, which continue the same workflow). State only — no actions.
+    operatorSessionRef.current = deriveOperatorSessionFromAction(
+      executionTarget, payload, engineRef.current, operatorSessionRef.current,
+    );
+    const session = operatorSessionRef.current;
+    let hint: string | null = null;
+    if (session && shouldShowSessionHint(session)) {
+      session.hintShown = true;                 // once per session
+      hint = t(sessionHintKey(session.type));
+    }
+
+    // CONTINUITY: a continuity action must not spawn more continuity, but the
+    // session may still surface its one-time hint.
+    if (sourceActionId.startsWith('cont-')) {
+      if (hint) pushLine(hint);
+      return;
+    }
     const key = `${executionTarget}:${payload.entityId ?? payload.customerId ?? ''}`;
     const now = Date.now();
-    if (now - (continuityCooldownRef.current.get(key) ?? 0) < CONTINUITY_COOLDOWN_MS) return;
+    if (now - (continuityCooldownRef.current.get(key) ?? 0) < CONTINUITY_COOLDOWN_MS) {
+      if (hint) pushLine(hint);
+      return;
+    }
     const sugg = resolvePostActionContinuity(executionTarget, payload, engineRef.current, t);
-    if (!sugg || sugg.actions.length === 0) return;
+    if (!sugg || sugg.actions.length === 0) {
+      if (hint) pushLine(hint);
+      return;
+    }
     continuityCooldownRef.current.set(key, now);
     // Bound the cooldown map — drop entries older than 10 min.
     if (continuityCooldownRef.current.size > 40) {
@@ -624,18 +671,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       }
     }
     const tagged = sugg.actions.slice(0, 3).map((a, i) => ({ ...a, id: `cont-${now}-${i}-${a.id}` }));
-    // R-INTELLIGENCE-CONTINUITY-RUNTIME-AUDIT-V1 (CHECK 4): the push fires right
-    // after the click's navigation/render transition (open_repair etc. dispatch
-    // module-navigation events synchronously). Defer one macrotask so the
-    // message lands after render settles and the [messages] scroll effect
-    // reliably reaches it. Cooldown was recorded synchronously above, so the
-    // deferral cannot cause a double-push.
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { id: `cont-${now}`, role: 'assistant' as const, content: sugg.text, timestamp: new Date(), kind: 'answer' as const, actions: tagged },
-      ]);
-    }, 0);
+    // Prepend the one-line session hint to the continuity message (single push).
+    pushLine(hint ? `${hint}\n\n${sugg.text}` : sugg.text, tagged);
   }, [t]);
 
   function handleActionClick(action: ChatActionUI) {
@@ -692,6 +729,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         confidenceLabel,
       });
       window.dispatchEvent(new CustomEvent('cellhub:operator-queue-updated'));
+      // R-INTELLIGENCE-OPERATOR-SESSIONS-V1: a queued follow-up/reminder advances
+      // the active workflow session (this path returns before maybePushContinuity).
+      operatorSessionRef.current = deriveOperatorSessionFromAction(
+        'add_to_operator_queue', action.payload, engineRef.current, operatorSessionRef.current,
+      );
       setFeedbackForAction(action.id, t('chat.action.addedToQueue'));
       return;
     }
