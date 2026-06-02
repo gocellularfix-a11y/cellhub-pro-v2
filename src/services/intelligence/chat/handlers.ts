@@ -41,6 +41,9 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { IntentMatch, OperationalContext } from './intentRouter';
 import type { ActionType, ActionQueueItem } from '../types';
 import type { ActionPayload } from '../actions/actionEngine';
+// R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: proactive action shape (entityType/
+// entityId already carried) — used to attach executable buttons.
+import type { ProactiveAction } from '../proactive/types';
 import type { AutomationKind } from '../automation/automationQueue';
 import { getDealPerformance } from '../automation/automationQueue';
 import { buildActionPayload } from '../actions/actionEngine';
@@ -4996,6 +4999,101 @@ function handleManagerQueue(lang: Lang3): ChatResponse {
 
 // ── Proactive operations ──────────────────────────────────────────────────────
 // R-INTELLIGENCE-PROACTIVE-OPERATIONS-V1
+// R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: turn a proactive action's existing
+// entity reference (entityType/entityId — already produced by the proactive
+// engine) into executable chat buttons. Deterministic, reuses the SAME
+// executionTargets + WhatsApp pattern as handleFollowUp. Only emits a button
+// when the referenced entity actually exists (no fake/dead buttons), and only
+// a WhatsApp button when a real phone is on file. No profit/cost exposed.
+function buildProactiveActionButtons(
+  action: ProactiveAction,
+  engine: IntelligenceEngine,
+  t: ReturnType<typeof tChat>,
+): ChatActionUI[] {
+  const out: ChatActionUI[] = [];
+  const et = action.entityType;
+  const id = action.entityId;
+
+  // Entity-less actions (approval/manager-queue backlog) → one queue button.
+  if (!et || !id) {
+    if (action.category === 'approval') {
+      out.push({
+        id: `pa-queue-${action.id}`,
+        label: t('chat.proactive.action.openQueue'),
+        actionType: 'review',
+        payload: { type: 'review', executable: true, executionTarget: 'queue_manager_review' },
+      });
+    }
+    return out;
+  }
+
+  let customerId: string | undefined;
+  let customerName: string | undefined;
+  let phone = '';
+
+  if (et === 'repair') {
+    const r = engine.getRepairs().find((x) => x.id === id);
+    if (r) {
+      customerId = r.customerId;
+      const c = customerId ? engine.getCustomers().find((x) => x.id === customerId) : undefined;
+      customerName = c?.name ?? (r as any).customerName;
+      phone = ((c as any)?.phone ?? (r as any).customerPhone ?? '') as string;
+    }
+    out.push({
+      id: `pa-open-r-${id}`, label: t('chat.followup.openRepairLabel'), actionType: 'review',
+      payload: { type: 'review', entityId: id, executable: true, executionTarget: 'open_repair' },
+    });
+  } else if (et === 'layaway') {
+    const l = engine.getLayaways().find((x) => x.id === id);
+    if (l) {
+      customerId = l.customerId;
+      const c = customerId ? engine.getCustomers().find((x) => x.id === customerId) : undefined;
+      customerName = c?.name ?? (l as any).customerName;
+      phone = ((c as any)?.phone ?? (l as any).customerPhone ?? '') as string;
+    }
+    out.push({
+      id: `pa-open-l-${id}`, label: t('chat.proactive.action.openLayaway'), actionType: 'review',
+      payload: { type: 'review', entityId: id, executable: true, executionTarget: 'open_layaway' },
+    });
+  } else if (et === 'customer') {
+    const c = engine.getCustomers().find((x) => x.id === id);
+    customerId = id;
+    customerName = c?.name;
+    phone = ((c as any)?.phone ?? '') as string;
+    out.push({
+      id: `pa-open-c-${id}`, label: t('chat.followup.openCustomerLabel'), actionType: 'review',
+      payload: { type: 'review', entityId: id, customerId: id, customerName, executable: true, executionTarget: 'open_customer' },
+    });
+  } else if (et === 'inventory') {
+    const item = engine.getInventory().find((x) => x.id === id);
+    out.push({
+      id: `pa-open-i-${id}`, label: t('chat.proactive.action.openItem'), actionType: 'review',
+      payload: { type: 'review', entityId: id, productId: id, productName: item?.name, executable: true, executionTarget: 'open_inventory' },
+    });
+  } else {
+    // Unknown entityType (e.g. a workflow with no nav target) → no dead button.
+    return out;
+  }
+
+  // Contact button only when there's a real phone AND the action is about
+  // reaching a customer (collection / repair follow-up / VIP retention).
+  if (phone && customerName &&
+      (action.category === 'collection' || action.category === 'repair_followup' || action.category === 'vip_retention')) {
+    out.push({
+      id: `pa-wa-${id}`,
+      label: t('chat.followup.contactAction', customerName),
+      actionType: 'whatsapp',
+      payload: {
+        type: 'whatsapp', messageKey: 'whatsapp.template.reconnect',
+        customerId, customerName, customerPhone: phone,
+        executable: true, executionTarget: 'whatsapp_url',
+      },
+    });
+  }
+
+  return out;
+}
+
 function handleProactiveOperations(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
   const t = tChat(lang);
   const report = engine.getProactiveReport();
@@ -5008,12 +5106,31 @@ function handleProactiveOperations(engine: IntelligenceEngine, lang: Lang3): Cha
   const PRIORITY_ICON: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡' };
   const lines: string[] = [t('chat.proactive.header'), ''];
 
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: attach context-aware executable
+  // buttons to the SAME ranked actions the engine already produced. Deduped by
+  // target+entity, capped so the response stays operator-sized.
+  const actions: ChatActionUI[] = [];
+  const seen = new Set<string>();
+  const MAX_BUTTONS = 6;
+
   for (const action of report.actions.slice(0, 5)) {
     const icon = PRIORITY_ICON[action.priority] ?? '•';
     const impact = action.estimatedImpactCents
       ? ` (${es ? 'recuperable' : 'recoverable'}: $${(action.estimatedImpactCents / 100).toFixed(0)})`
       : '';
     lines.push(`${icon} ${action.title}${impact}`);
+    // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: concise operational reason line.
+    if (action.reason) lines.push(`   ${action.reason}`);
+
+    if (actions.length < MAX_BUTTONS) {
+      for (const btn of buildProactiveActionButtons(action, engine, t)) {
+        const key = `${btn.payload.executionTarget}:${btn.payload.entityId ?? btn.payload.customerId ?? btn.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        actions.push(btn);
+        if (actions.length >= MAX_BUTTONS) break;
+      }
+    }
   }
 
   if (report.topAction) {
@@ -5022,7 +5139,11 @@ function handleProactiveOperations(engine: IntelligenceEngine, lang: Lang3): Cha
     lines.push(report.topAction.recommendedAction);
   }
 
-  return { kind: 'answer', text: lines.join('\n').trim() };
+  return {
+    kind: 'answer',
+    text: lines.join('\n').trim(),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
 }
 
 // ── Trend direction ─────────────────────────────────────────────────────────

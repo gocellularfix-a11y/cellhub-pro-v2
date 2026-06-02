@@ -8053,6 +8053,10 @@ export const translations: TranslationDictionary = {
     es: 'Mejor siguiente acción',
     pt: 'Melhor próxima ação',
   },
+  // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: button labels for proactive_operations.
+  'chat.proactive.action.openLayaway': { en: 'Open layaway',       es: 'Abrir apartado',          pt: 'Abrir crediário' },
+  'chat.proactive.action.openItem':    { en: 'Open item',          es: 'Abrir artículo',          pt: 'Abrir item' },
+  'chat.proactive.action.openQueue':   { en: 'Open manager queue', es: 'Abrir cola del gerente',  pt: 'Abrir fila do gerente' },
   'outcome.status.pending':    { en: 'Pending',     es: 'Pendiente',   pt: 'Pendente' },
   'outcome.status.successful': { en: 'Successful',  es: 'Exitoso',     pt: 'Bem-sucedido' },
   'outcome.status.failed':     { en: 'Failed',      es: 'Fallido',     pt: 'Falhou' },
