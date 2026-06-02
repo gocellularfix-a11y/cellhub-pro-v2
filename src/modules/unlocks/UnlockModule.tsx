@@ -1126,7 +1126,10 @@ export default function UnlockModule() {
     // unsaved NEW ticket that has no real number yet), Arial typography, dashed
     // separators, money section in the master totals style, footer + Google
     // Reviews QR. Form data only — no financial math touched.
-    const barcodeSvg = (ticketNum && ticketNum !== 'NEW') ? renderBarcodeSvg(ticketNum) : '';
+    // R-RECEIPT-UNIFY-UNLOCK-V2: always render the barcode so the 4x6 ticket
+    // matches the other receipts. For an unsaved ticket the value is "NEW"
+    // (becomes the real id-derived number once the unlock is saved/reprinted).
+    const barcodeSvg = renderBarcodeSvg(ticketNum || 'NEW');
     let qrSvg = '';
     if (settings.showReviewQr && settings.googleReviewUrl) {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
