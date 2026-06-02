@@ -26,6 +26,10 @@ import TicketCard from '@/components/shared/TicketCard';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint } from '@/hooks/usePrint';
+// R-RECEIPT-UNIFY-REPAIR-V1: reuse the POS payment-receipt barcode renderer +
+// bundled QR lib so the (corrected-capable) repair ticket shares the same shell.
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import QRCode from 'qrcode';
 import RepairModal, { type RepairAuditMeta } from './RepairModal';
 import CancelRepairModal from './CancelRepairModal';
 import EditHistoryModal from '@/components/EditHistoryModal';
@@ -261,7 +265,7 @@ export default function RepairModule() {
   // a pending deposit, the entity holds depositAmount=0 (r-deposit-integrity-1)
   // but the customer should see the deposit they actually paid. The caller
   // passes the real numbers; persistence stays untouched.
-  const printRepairTicket = useCallback((repair: any, displayOverride?: {
+  const printRepairTicket = useCallback(async (repair: any, displayOverride?: {
     depositAmount?: number;  // cents
     balance?: number;        // cents
     // R-EDIT-AUDIT F3.8: corrected-receipt mode for edited tickets.
@@ -270,7 +274,7 @@ export default function RepairModule() {
   }) => {
     const safe = (v: any) => v == null ? '' : String(v);
     const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-    const storeName = (settings.storeName || 'CellHub Pro').toUpperCase();
+    const storeName = settings.storeName || 'GO CELLULAR';
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
 
@@ -312,10 +316,19 @@ export default function RepairModule() {
     const prevBalance  = previously('balance');
     const technician   = safe((repair as any).technician);
 
+    // R-RECEIPT-UNIFY-REPAIR-V1: barcode (ticket #) + Google Reviews QR — same
+    // generators the payment receipt uses, so scan + QR behaviour is identical.
+    const barcodeSvg = renderBarcodeSvg(safe(repair.ticketNumber) || (repair.id ? String(repair.id).slice(-8).toUpperCase() : ''));
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
+
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Repair ${escHtml(safe(repair.ticketNumber))}</title><style>
 @page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}
-html,body{width:4in;font-family:-apple-system,Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}
-body{padding:.18in .22in .15in .22in}
+html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff}
+body{padding:.1in .15in}
 .hdr{text-align:center;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
 .store{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .store-sub{font-size:9px;color:#444;margin-top:1px}
@@ -343,13 +356,10 @@ body{padding:.18in .22in .15in .22in}
 .ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:6px;line-height:1.5}
 @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
-<div class="hdr">
-  <div class="store">${escHtml(storeName)}</div>
-  ${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}
-  ${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}
-</div>
+<div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
+<div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
 ${corrected ? `<div class="corrected-bar">&#9888; ${escHtml(t('repairs.print.correctedReceipt'))}</div>` : ''}
-<div class="title-bar">${escHtml(t('repairs.print.repairTicket'))}</div>
+<div style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:4px">${escHtml(t('repairs.print.repairTicket'))}</div>
 <div class="sec">
   <div class="row"><span class="lbl">Ticket #</span><span class="val tkt">${escHtml(safe(repair.ticketNumber))}</span></div>
   <div class="row"><span class="lbl">${escHtml(t('repairs.print.date'))}</span><span class="val">${new Date().toLocaleDateString()}</span></div>
@@ -394,7 +404,7 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
   <div class="sig-line"></div>
   <div class="sig-lbl">Customer Signature / Pickup Authorization</div>
 </div>
-<div class="ftr">${escHtml(t('repairs.print.thankYou'))}<br>${escHtml(storeName)}</div>
+<div class="ftr" style="text-align:center;font-size:11px;font-weight:600;line-height:1.3;color:#000;border-top:none">${escHtml(t('repairs.print.thankYou'))}<br>${escHtml(storeName)}${settings.showReviewQr && settings.googleReviewUrl ? `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc"><div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('repairs.print.reviewPrompt'))}</div>${qrSvg ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>` : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}<div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div></div>` : ''}</div>
 </body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, printHtml, t]);

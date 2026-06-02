@@ -58,6 +58,10 @@ import LayawayPaymentModal from './LayawayPaymentModal';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { escHtml } from '@/utils/escHtml';
+// R-RECEIPT-UNIFY-LAYAWAY-V1: reuse the POS payment-receipt barcode renderer +
+// bundled QR lib so the layaway receipt shares the same visual system.
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import QRCode from 'qrcode';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -1158,11 +1162,11 @@ export default function LayawayModule() {
     }
   }, [deleteConfirm, t, isDeleting, setLayaways, setInventory, setCart, toast]);
 
-  const printLayawayTicket = useCallback((l: any) => {
+  const printLayawayTicket = useCallback(async (l: any) => {
     const safe   = (v: any) => v == null ? '' : String(v);
     const esc    = (s: unknown) => escHtml(s);
     const moneyC = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-    const storeName  = (settings.storeName  || 'Go Cellular').toUpperCase();
+    const storeName  = settings.storeName || 'GO CELLULAR';
     const storeAddr  = settings.storeAddress || '';
     const storePhone = settings.storePhone   || '';
     const taxRatePctLocal = ((settings.taxRate ?? 0.0925) * 100).toFixed(2);
@@ -1206,11 +1210,23 @@ export default function LayawayModule() {
       }
     }
 
-    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
-    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.sub{font-size:9px;color:#666;padding-left:8px;margin-bottom:1px}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800;font-size:11px}.cond-hdr{font-weight:700;font-size:9px;margin:4px 0 2px}.cond{font-size:8px;color:#555;margin-bottom:1px}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
+    // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #) + Google Reviews QR — same
+    // generators the payment receipt uses, so scan + QR behaviour is identical.
+    const barcodeSvg = renderBarcodeSvg(safe(l.ticketNumber) || (l.id ? String(l.id).slice(-8).toUpperCase() : ''));
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
+    // R-RECEIPT-UNIFY-LAYAWAY-V1: master visual shell (centered Go Cellular
+    // header, barcode, Arial typography, dashed separators, footer + Google
+    // Reviews QR). All money / payment-history / conditions rows are preserved
+    // verbatim below — formatting only, no financial math touched.
+    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff}body{padding:.1in .15in;overflow-x:hidden}.sep{border-top:1px dashed #999;margin:5px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#444}.val{font-weight:600}.sub{font-size:9px;color:#666;padding-left:8px;margin-bottom:1px}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:1px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:13px}.bal-due .val{color:#c00;font-weight:800;font-size:13px}.cond-hdr{font-weight:700;font-size:9px;margin:4px 0 2px}.cond{font-size:8px;color:#555;margin-bottom:1px}.ftr{text-align:center;font-size:11px;font-weight:600;line-height:1.3;margin-top:6px}`;
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Layaway ${esc(l.ticketNumber)}</title><style>${css}</style></head><body>
-<div class="hdr"><div class="store">${esc(storeName)}</div>${storeAddr ? `<div class="store-sub">${esc(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${esc(storePhone)}</div>` : ''}</div>
-<div class="title-bar">${esc(t('layaway.print.receipt'))}</div>
+<div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(storePhone)}</div>` : ''}</div>
+<div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
+<div style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:4px">${esc(t('layaway.print.receipt'))}</div>
 <div class="sec">
 <div class="row"><span class="lbl">${esc(t('layaway.print.date'))}</span><span class="val">${esc(new Date().toLocaleString())}</span></div>
 </div>
@@ -1251,7 +1267,8 @@ ${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc
 <div class="cond">${esc(t('layaway.print.cond3'))}</div>
 <div class="cond">${esc(t('layaway.print.cond4'))}</div>
 </div>
-<div class="ftr">${l.employeeName ? `${esc(t('layaway.print.servedBy'))}: ${esc(safe(l.employeeName))}<br>` : ''}${esc(t('layaway.print.thanks'))}${settings.storeWebsite ? `<br>${esc(settings.storeWebsite)}` : ''}</div>
+<div class="ftr">${l.employeeName ? `${esc(t('layaway.print.servedBy'))}: ${esc(safe(l.employeeName))}<br>` : ''}${esc(t('layaway.print.thanks'))}${settings.storeWebsite ? `<br>${esc(settings.storeWebsite)}` : ''}${settings.showReviewQr && settings.googleReviewUrl ? `
+<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc"><div style="font-size:10px;font-weight:700;margin-bottom:4px">${esc(t('layaway.print.reviewPrompt'))}</div>${qrSvg ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>` : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}<div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div></div>` : ''}</div>
 </body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, t, printHtml]);

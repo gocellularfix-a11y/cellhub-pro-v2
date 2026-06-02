@@ -23,6 +23,10 @@ import { formatCurrency } from '@/utils/currency';
 import { calcDepositTotals } from '@/utils/depositTax';
 import { generateId } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
+// R-RECEIPT-UNIFY-REPAIR-V1: reuse the POS payment-receipt barcode renderer +
+// bundled QR lib so the repair ticket shares the same visual system.
+import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import QRCode from 'qrcode';
 import { normalizePhone } from '@/utils/normalize';
 import { CARRIER_OPTIONS, DEVICE_MODEL_OPTIONS } from '@/config/autocompleteData';
 import CustomerPicker from '@/components/shared/CustomerPicker';
@@ -279,13 +283,21 @@ export default function RepairModal({ repair, customers, inventory, settings, al
   });
 
   // Print ticket — premium 4×6 HTML receipt (replaces old monospace template)
-  const printTicket = (payload: any = buildPayload(), notesOnly = false) => {
-    const storeName  = settings.storeName  || 'CellHub Pro';
+  const printTicket = async (payload: any = buildPayload(), notesOnly = false) => {
+    const storeName  = settings.storeName  || 'GO CELLULAR';
     const storeAddr  = settings.storeAddress || '';
     const storePhone = settings.storePhone  || '';
     const safe  = (v: any) => v == null ? '' : String(v);
     const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     const ticketNum  = safe(payload.ticketNumber || r?.id?.slice(-8).toUpperCase() || '');
+    // R-RECEIPT-UNIFY-REPAIR-V1: barcode (ticket #) + Google Reviews QR — same
+    // generators the payment receipt uses, so scan + QR behaviour is identical.
+    const barcodeSvg = renderBarcodeSvg(ticketNum);
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
     const partsCents = (payload.subtotal || 0) - (payload.laborCost || 0);
     const deviceLabel = safe(payload.device || `${safe(payload.brand)} ${safe(payload.model)}`.trim());
 
@@ -311,8 +323,8 @@ ${payload.warranty ? `<div class="wbox">WARRANTY: ${escHtml(safe(payload.warrant
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Repair Ticket ${escHtml(ticketNum)}</title><style>
 @page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}
-html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}
-body{padding:.18in .22in .15in .22in;overflow-x:hidden}
+html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff}
+body{padding:.1in .15in;overflow-x:hidden}
 .hdr{text-align:center;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
 .store{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .store-sub{font-size:9px;color:#444;margin-top:1px}
@@ -337,12 +349,9 @@ body{padding:.18in .22in .15in .22in;overflow-x:hidden}
 .ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:5px;line-height:1.5}
 @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
-<div class="hdr">
-  <div class="store">${escHtml(storeName)}</div>
-  ${storeAddr  ? `<div class="store-sub">${escHtml(storeAddr)}</div>`  : ''}
-  ${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}
-</div>
-<div class="title-bar">REPAIR TICKET</div>
+<div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
+<div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
+<div style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:4px">${escHtml(t('repairs.print.repairTicket'))}</div>
 <div class="sec">
   <div class="row"><span class="lbl">Ticket #</span><span class="val tkt">${escHtml(ticketNum)}</span></div>
   <div class="row"><span class="lbl">Date</span><span class="val">${new Date().toLocaleDateString()}</span></div>
@@ -367,7 +376,7 @@ body{padding:.18in .22in .15in .22in;overflow-x:hidden}
   ${payload.notes ? `<div style="font-size:8.5px;color:#555;margin-top:3px;word-break:break-word">${escHtml(safe(payload.notes))}</div>` : ''}
 </div>
 ${financialSection}
-<div class="ftr">Thank you for your business!<br>${escHtml(storeName)}</div>
+<div class="ftr" style="text-align:center;font-size:11px;font-weight:600;line-height:1.3;color:#000;border-top:none">${escHtml(t('repairs.print.thankYou'))}<br>${escHtml(storeName)}${settings.showReviewQr && settings.googleReviewUrl ? `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc"><div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('repairs.print.reviewPrompt'))}</div>${qrSvg ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>` : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}<div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div></div>` : ''}</div>
 </body></html>`;
 
     printHtml(html, {
