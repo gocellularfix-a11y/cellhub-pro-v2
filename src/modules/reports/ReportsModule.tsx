@@ -164,6 +164,30 @@ export function getRepairProportionalCost(entity: Repair, _inventory: InventoryI
   return Math.round(totalCostCents * (paymentCents / denominator));
 }
 
+// R-REPORTS-I18N-V1: localized DISPLAY label for a category. The internal
+// grouping keys (cat.name) stay English/stable — this only translates what is
+// shown on screen, so drilldown/aggregation logic is untouched. Unknown
+// (custom) categories fall back to their raw name.
+const REPORT_CATEGORY_LABEL_KEYS: Record<string, string> = {
+  'Phone Payments': 'reports.cat.phonePayments',
+  'Top-Ups': 'reports.cat.topUps',
+  'Repairs': 'reports.cat.repairs',
+  'Unlocks': 'reports.cat.unlocks',
+  'Special Orders': 'reports.cat.specialOrders',
+  'CC Fees': 'reports.cat.ccFees',
+  'Services': 'reports.cat.services',
+  'Returns': 'reports.cat.returns',
+  'Layaway': 'reports.cat.layaway',
+  'Products': 'reports.cat.products',
+  'phone': 'reports.cat.phone',
+  'sim': 'reports.cat.sim',
+  'accessory': 'reports.cat.accessory',
+};
+function reportCategoryLabel(name: string, t: (k: string) => string): string {
+  const key = REPORT_CATEGORY_LABEL_KEYS[name] ?? REPORT_CATEGORY_LABEL_KEYS[(name || '').toLowerCase()];
+  return key ? t(key) : name;
+}
+
 export function getUnlockProportionalCost(entity: Unlock, _inventory: InventoryItem[], paymentCents: number): number {
   if (!entity || !paymentCents) return 0;
   const cost = entity.cost || 0;
@@ -2391,7 +2415,7 @@ tr:last-child td { border-bottom: none; }
             {statCard(t('reports.returns'), stats.totalReturnsCents, `${returnsFromPeriodSales.length} ${pluralize(returnsFromPeriodSales.length, t('reports.returnSingular'), t('reports.returnPlural'))}`, stats.totalReturnsCents > 0 ? '#ef4444' : '#64748b', true)}
             {statCard(t('reports.netRevenue'), stats.netRevenueCents, stats.grossRevenueCents > 0 ? `${((stats.netRevenueCents / stats.grossRevenueCents) * 100).toFixed(1)}% ${t('reports.retained')}` : '—', '#22c55e')}
             {/* R-FINANCIAL-PRIVACY-V3: profit stat card owner-only. */}
-            {canSeeOwnerFinancials && statCard(t('reports.profit'), stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% margin`, '#22c55e')}
+            {canSeeOwnerFinancials && statCard(t('reports.profit'), stats.totalProfitCents, `${stats.profitMargin.toFixed(1)}% ${t('reports.marginWord')}`, '#22c55e')}
             {statCard(t('reports.taxStat'), stats.taxCollectedCents, 'CDTFA', '#60a5fa')}
             {/* Round 10 fix 1: Cash tripartite (In / Out / Net) single card — amber chrome preserved. */}
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
@@ -2442,17 +2466,17 @@ tr:last-child td { border-bottom: none; }
               padding: '0.875rem 1rem',
             }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#60a5fa', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                🧾 Z Tape Reconciliation
+                🧾 {t('reports.recon.title')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
-                {([
-                  ['Gross Collected', stats.recon.grossCollectedCents, '~ Z NET2', '#e2e8f0'],
-                  ['Tax Collected (bruto)', stats.recon.taxCollectedCents, '~ Z TTL TAX', '#60a5fa'],
-                  ['Fee Collected', stats.recon.feeCollectedCents, 'cbe + screen', '#a78bfa'],
-                  ['Refund Tax Adj.', stats.recon.refundTaxAdjustmentCents, 'subtract from tax', stats.recon.refundTaxAdjustmentCents > 0 ? '#ef4444' : '#64748b'],
-                  ['Operational Revenue', stats.recon.operationalRevenueCents, '~ Z NET1', '#22c55e'],
-                  ['Net Revenue (post-returns)', stats.recon.netRevenueCents, 'gross − returns', '#22c55e'],
-                ] as const).map(([label, valueCents, sub, color]) => (
+                {(([
+                  [t('reports.recon.grossCollected'), stats.recon.grossCollectedCents, '~ Z NET2', '#e2e8f0'],
+                  [t('reports.recon.taxCollected'), stats.recon.taxCollectedCents, '~ Z TTL TAX', '#60a5fa'],
+                  [t('reports.recon.feeCollected'), stats.recon.feeCollectedCents, t('reports.recon.subCbeScreen'), '#a78bfa'],
+                  [t('reports.recon.refundTaxAdj'), stats.recon.refundTaxAdjustmentCents, t('reports.recon.subSubtractTax'), stats.recon.refundTaxAdjustmentCents > 0 ? '#ef4444' : '#64748b'],
+                  [t('reports.recon.operationalRevenue'), stats.recon.operationalRevenueCents, '~ Z NET1', '#22c55e'],
+                  [t('reports.recon.netRevenue'), stats.recon.netRevenueCents, t('reports.recon.subGrossReturns'), '#22c55e'],
+                ]) as Array<[string, number, string, string]>).map(([label, valueCents, sub, color]) => (
                   <div key={label} style={{
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.06)',
@@ -2789,7 +2813,7 @@ tr:last-child td { border-bottom: none; }
                       title={t('reports.clickDrilldown')}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                         <div>
-                          <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>{cat.name}</span>
+                          <span style={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 600 }}>{reportCategoryLabel(cat.name, t)}</span>
                           <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: '0.5rem' }}>×{cat.quantity}</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -2798,7 +2822,7 @@ tr:last-child td { border-bottom: none; }
                               R-FINANCIAL-PRIVACY-V3: margin% sublabel owner-only. */}
                           {canSeeOwnerFinancials && (
                             <div style={{ fontSize: '0.68rem', color: cat.marginPct === null ? '#64748b' : (cat.marginPct > 40 ? '#22c55e' : '#f59e0b') }}>
-                              {cat.marginPct === null ? '—' : `${cat.marginPct.toFixed(1)}% margin`}
+                              {cat.marginPct === null ? '—' : `${cat.marginPct.toFixed(1)}% ${t('reports.marginWord')}`}
                             </div>
                           )}
                         </div>
@@ -3009,8 +3033,8 @@ tr:last-child td { border-bottom: none; }
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#0f172a' }}>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      {[t('reports.customer'), t('reports.phone'), 'Carrier', 'Invoice', t('reports.employee'), 'Time', 'Amount'].map((h) => (
-                        <th key={h} style={{ textAlign: h === 'Amount' ? 'right' : 'left', padding: '0.45rem 0.75rem', color: '#64748b', fontSize: '0.66rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
+                      {[t('reports.customer'), t('reports.phone'), t('reports.carrier'), t('reports.invoice'), t('reports.employee'), t('reports.time'), t('reports.amount')].map((h) => (
+                        <th key={h} style={{ textAlign: h === t('reports.amount') ? 'right' : 'left', padding: '0.45rem 0.75rem', color: '#64748b', fontSize: '0.66rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -3195,8 +3219,8 @@ tr:last-child td { border-bottom: none; }
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      {['Invoice', t('reports.customer'), 'Items', t('reports.payment'), t('reports.employee'), 'Total', t('reports.time'), ''].map((h, i) => (
-                        <th key={h + i} style={{ textAlign: h === 'Total' ? 'right' : 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
+                      {[t('reports.invoice'), t('reports.customer'), t('reports.items'), t('reports.payment'), t('reports.employee'), t('reports.total'), t('reports.time'), ''].map((h, i) => (
+                        <th key={h + i} style={{ textAlign: h === t('reports.total') ? 'right' : 'left', padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', fontWeight: 700 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
