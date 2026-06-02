@@ -1103,8 +1103,8 @@ export default function UnlockModule() {
   }, [deleteConfirm, setUnlocks, t, toast, lang]);
 
   // ── Print 4x6 thermal ticket ─────────────────────────────
-  const printTicket = useCallback(() => {
-    const storeName = settings.storeName || 'CellHub Pro';
+  const printTicket = useCallback(async () => {
+    const storeName = settings.storeName || 'GO CELLULAR';
     const storeAddr = settings.storeAddress || '';
     const storePhone = settings.storePhone || '';
     const firstName = (form.firstName as string || '').trim();
@@ -1120,42 +1120,83 @@ export default function UnlockModule() {
     const priceCents   = Math.round((form.price        || 0) * 100);
     const depositCents = Math.round((form.depositAmount || 0) * 100);
     const balanceCents = Math.max(0, Math.round(((form.price || 0) - (form.depositAmount || 0)) * 100));
-    // R-PRINT-PREMIUM: premium 4×6 thermal layout matching Repairs.
-    const css = `@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff}body{padding:.18in .22in .15in .22in;overflow-x:hidden}.hdr{text-align:center;margin-bottom:5px}.store{font-size:13px;font-weight:800;letter-spacing:.5px}.store-sub{font-size:9px;color:#555;margin-top:1px}.title-bar{background:#000;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;margin:4px 0}.sec{margin:4px 0}.sec-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin-bottom:3px}.row{display:flex;justify-content:space-between;margin-bottom:1px}.lbl{color:#555}.val{font-weight:600}.dash{border-top:1px dashed #bbb;margin:3px 0}.solid{border-top:2px solid #000;margin:3px 0}.grand .lbl,.grand .val{font-weight:800;font-size:11px}.bal-due .val{color:#c00;font-weight:800}.ftr{text-align:center;font-size:9px;color:#666;margin-top:5px;border-top:1px dashed #bbb;padding-top:3px}`;
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Unlock Ticket</title><style>${css}</style></head><body>
-<div class="hdr"><div class="store">${escHtml(storeName.toUpperCase())}</div>${storeAddr ? `<div class="store-sub">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div class="store-sub">${escHtml(storePhone)}</div>` : ''}</div>
-<div class="title-bar">${escHtml(t('unlocks.print.title') || 'UNLOCK TICKET')} — #${escHtml(ticketNum)}</div>
-<div class="sec">
-<div class="row"><span class="lbl">${escHtml(t('unlocks.print.date'))}</span><span class="val">${escHtml(new Date().toLocaleString())}</span></div>
-<div class="row"><span class="lbl">Status</span><span class="val">${escHtml(fmt(form.status))}</span></div>
-</div>
-<div class="dash"></div>
-<div class="sec">
-<div class="sec-lbl">${escHtml(t('unlocks.print.customer'))}</div>
-<div class="row"><span class="lbl"></span><span class="val">${escHtml(customerName)}</span></div>
-${form.customerPhone ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.phone'))}</span><span class="val">${escHtml(fmt(form.customerPhone))}</span></div>` : ''}
-</div>
-<div class="dash"></div>
-<div class="sec">
-<div class="sec-lbl">${escHtml(t('unlocks.print.device'))}</div>
-<div class="row"><span class="lbl"></span><span class="val">${escHtml(fmt(form.device))}</span></div>
-${form.carrier ? `<div class="row"><span class="lbl">Carrier</span><span class="val">${escHtml(fmt(form.carrier))}</span></div>` : ''}
-${form.imei ? `<div class="row"><span class="lbl">IMEI</span><span class="val">${escHtml(fmt(form.imei))}</span></div>` : ''}
-${form.unlockType ? `<div class="row"><span class="lbl">Type</span><span class="val">${escHtml(typeLabel(form.unlockType as string))}</span></div>` : ''}
-${form.supplier ? `<div class="row"><span class="lbl">Supplier</span><span class="val">${escHtml(fmt(form.supplier))}</span></div>` : ''}
-${form.unlockCode ? `<div class="row"><span class="lbl">Code</span><span class="val">${escHtml(fmt(form.unlockCode))}</span></div>` : ''}
-${form.orderDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.ordered'))}</span><span class="val">${escHtml(fmt(form.orderDate))}</span></div>` : ''}
-${form.completionDate ? `<div class="row"><span class="lbl">${escHtml(t('unlocks.print.completed'))}</span><span class="val">${escHtml(fmt(form.completionDate))}</span></div>` : ''}
-</div>
-<div class="solid"></div>
-<div class="sec">
-<div class="row"><span class="lbl">Price</span><span class="val">${escHtml(money(priceCents))}</span></div>
-<div class="row"><span class="lbl">Deposit</span><span class="val">${escHtml(money(depositCents))}</span></div>
-<div class="dash"></div>
-<div class="row ${balanceCents > 0 ? 'bal-due' : 'grand'}"><span class="lbl">Balance</span><span class="val">${escHtml(money(balanceCents))}</span></div>
-</div>
-${form.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${escHtml(t('unlocks.print.notes'))}</div><div>${escHtml(fmt(form.notes))}</div></div>` : ''}
-<div class="ftr">Thank you for your business!<br>${escHtml(storeName.toUpperCase())}</div>
+    // R-RECEIPT-UNIFY-UNLOCK-V1: this 4x6 "Print Ticket" path (prints from the
+    // open form) now uses the SAME master visual system as the payment receipt —
+    // centered Go Cellular header, scannable CODE128 barcode (skipped for an
+    // unsaved NEW ticket that has no real number yet), Arial typography, dashed
+    // separators, money section in the master totals style, footer + Google
+    // Reviews QR. Form data only — no financial math touched.
+    const barcodeSvg = (ticketNum && ticketNum !== 'NEW') ? renderBarcodeSvg(ticketNum) : '';
+    let qrSvg = '';
+    if (settings.showReviewQr && settings.googleReviewUrl) {
+      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
+      catch { /* QR optional — template falls back to a remote img */ }
+    }
+    const balanceDue = balanceCents > 0;
+    const thanks = settings.receiptFooter || t('unlocks.print.thankYou');
+    const lvRow = (label: string, value: string) =>
+      `<tr><td style="font-size:11px;color:#444">${escHtml(label)}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(value)}</td></tr>`;
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Unlock ${escHtml(ticketNum)}</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 4in; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+  body { padding: 0.1in 0.15in; }
+  @media screen { html, body { width: 100% !important; max-width: 100% !important; } img, svg { max-width: 100%; height: auto; } }
+  table { width: 100%; border-collapse: collapse; }
+  .sep { border-top: 1px dashed #999; margin: 5px 0; }
+  .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+  <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
+  ${barcodeSvg ? `<div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"')}</div>` : ''}
+  <table style="margin-bottom:5px">
+    <tr><td style="font-size:11px">${escHtml(new Date().toLocaleString())}</td><td style="text-align:right;font-size:12px;font-weight:900">#${escHtml(ticketNum)}</td></tr>
+    <tr><td colspan="2" style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;padding-top:3px">${escHtml(t('unlocks.print.title'))}</td></tr>
+    <tr><td colspan="2" style="font-size:10px;padding-top:2px">${escHtml(t('unlocks.print.status'))}: <strong>${escHtml(fmt(form.status))}</strong></td></tr>
+  </table>
+  <div class="sep"></div>
+  <div class="sec-lbl">${escHtml(t('unlocks.print.customer'))}</div>
+  <table style="margin-bottom:5px">
+    <tr><td colspan="2" style="font-size:11px;font-weight:600">${escHtml(customerName)}</td></tr>
+    ${form.customerPhone ? lvRow(t('unlocks.print.phone'), fmt(form.customerPhone)) : ''}
+  </table>
+  <div class="sep"></div>
+  <div class="sec-lbl">${escHtml(t('unlocks.print.device'))}</div>
+  <table style="margin-bottom:5px">
+    <tr><td colspan="2" style="font-size:11px;font-weight:600">${escHtml(fmt(form.device))}</td></tr>
+    ${form.carrier ? lvRow(t('unlocks.print.carrier'), fmt(form.carrier)) : ''}
+    ${form.imei ? lvRow('IMEI', fmt(form.imei)) : ''}
+    ${form.unlockType ? lvRow(t('unlocks.print.type'), typeLabel(form.unlockType as string)) : ''}
+    ${form.supplier ? lvRow(t('unlocks.print.supplier'), fmt(form.supplier)) : ''}
+    ${form.unlockCode ? lvRow(t('unlocks.print.code'), fmt(form.unlockCode)) : ''}
+    ${form.orderDate ? lvRow(t('unlocks.print.ordered'), fmt(form.orderDate)) : ''}
+    ${form.completionDate ? lvRow(t('unlocks.print.completed'), fmt(form.completionDate)) : ''}
+  </table>
+  <div class="sep"></div>
+  <table style="margin-bottom:5px">
+    <tr><td>${escHtml(t('unlocks.print.price'))}:</td><td style="text-align:right">${escHtml(money(priceCents))}</td></tr>
+    <tr><td>${escHtml(t('unlocks.print.deposit'))}:</td><td style="text-align:right">${escHtml(money(depositCents))}</td></tr>
+    <tr style="border-top:1px solid #000">
+      <td style="font-size:14px;font-weight:900;padding-top:4px">${escHtml(t('unlocks.print.balance'))}:</td>
+      <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px${balanceDue ? ';color:#c00' : ''}">${escHtml(money(balanceCents))}</td>
+    </tr>
+  </table>
+  ${form.notes ? `<div class="sep"></div><div class="sec-lbl">${escHtml(t('unlocks.print.notes'))}</div><div style="font-size:10px">${escHtml(fmt(form.notes))}</div>` : ''}
+  <div class="sep"></div>
+  <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
+    ${escHtml(thanks)}
+    ${settings.showReviewQr && settings.googleReviewUrl ? `
+    <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
+      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('unlocks.print.reviewPrompt'))}</div>
+      ${qrSvg
+        ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
+        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}
+      <div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
+    </div>` : ''}
+  </div>
 </body></html>`;
     printHtml(html, {
       silent: false,
