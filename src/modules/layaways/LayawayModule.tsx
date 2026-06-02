@@ -58,10 +58,9 @@ import LayawayPaymentModal from './LayawayPaymentModal';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { escHtml } from '@/utils/escHtml';
-// R-RECEIPT-UNIFY-LAYAWAY-V1: reuse the POS payment-receipt barcode renderer +
-// bundled QR lib so the layaway receipt shares the same visual system.
+// R-RECEIPT-UNIFY-LAYAWAY-V1: reuse the POS payment-receipt barcode renderer.
+// (Google Reviews QR intentionally omitted on layaway — see printLayawayTicket.)
 import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
-import QRCode from 'qrcode';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -1210,14 +1209,10 @@ export default function LayawayModule() {
       }
     }
 
-    // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #) + Google Reviews QR — same
-    // generators the payment receipt uses, so scan + QR behaviour is identical.
+    // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #). The Google Reviews QR is
+    // intentionally OMITTED on layaway — it is the tallest receipt (tax split +
+    // payment history + 4 conditions) and the QR pushed it past the 4x6 page.
     const barcodeSvg = renderBarcodeSvg(safe(l.ticketNumber) || (l.id ? String(l.id).slice(-8).toUpperCase() : ''));
-    let qrSvg = '';
-    if (settings.showReviewQr && settings.googleReviewUrl) {
-      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
-      catch { /* QR optional — template falls back to a remote img */ }
-    }
     // R-RECEIPT-UNIFY-LAYAWAY-V1: master visual shell (centered Go Cellular
     // header, barcode, Arial typography, dashed separators, footer + Google
     // Reviews QR). All money / payment-history / conditions rows are preserved
@@ -1267,8 +1262,7 @@ ${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc
 <div class="cond">${esc(t('layaway.print.cond3'))}</div>
 <div class="cond">${esc(t('layaway.print.cond4'))}</div>
 </div>
-<div class="ftr">${l.employeeName ? `${esc(t('layaway.print.servedBy'))}: ${esc(safe(l.employeeName))}<br>` : ''}${esc(t('layaway.print.thanks'))}${settings.storeWebsite ? `<br>${esc(settings.storeWebsite)}` : ''}${settings.showReviewQr && settings.googleReviewUrl ? `
-<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc"><div style="font-size:10px;font-weight:700;margin-bottom:4px">${esc(t('layaway.print.reviewPrompt'))}</div>${qrSvg ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>` : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}<div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div></div>` : ''}</div>
+<div class="ftr">${l.employeeName ? `${esc(t('layaway.print.servedBy'))}: ${esc(safe(l.employeeName))}<br>` : ''}${esc(t('layaway.print.thanks'))}${settings.storeWebsite ? `<br>${esc(settings.storeWebsite)}` : ''}</div>
 </body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, t, printHtml]);
