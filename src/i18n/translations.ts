@@ -2597,6 +2597,19 @@ export const translations: TranslationDictionary = {
   'unlocks.print.completed': { en: 'COMPLETED', es: 'COMPLETADO', pt: 'COMPLETADO' },
   'unlocks.print.refundOwed': { en: 'REFUND OWED', es: 'REEMBOLSO ADEUDADO', pt: 'REEMBOLSO DEVIDO' },
   'unlocks.print.notes': { en: 'NOTES:', es: 'NOTAS:', pt: 'NOTAS:' },
+  // R-RECEIPT-UNIFY-UNLOCK-V1: title key was missing (rendered as the raw key
+  // text on the ticket) + labels that were hardcoded English.
+  'unlocks.print.title': { en: 'UNLOCK TICKET', es: 'TICKET DE LIBERACIÓN', pt: 'TICKET DE DESBLOQUEIO' },
+  'unlocks.print.status': { en: 'Status', es: 'Estado', pt: 'Status' },
+  'unlocks.print.carrier': { en: 'Carrier', es: 'Operador', pt: 'Operadora' },
+  'unlocks.print.type': { en: 'Type', es: 'Tipo', pt: 'Tipo' },
+  'unlocks.print.supplier': { en: 'Supplier', es: 'Proveedor', pt: 'Fornecedor' },
+  'unlocks.print.code': { en: 'Code', es: 'Código', pt: 'Código' },
+  'unlocks.print.price': { en: 'Price', es: 'Precio', pt: 'Preço' },
+  'unlocks.print.deposit': { en: 'Deposit', es: 'Depósito', pt: 'Sinal' },
+  'unlocks.print.balance': { en: 'BALANCE', es: 'BALANCE', pt: 'SALDO' },
+  'unlocks.print.thankYou': { en: 'Thank you for your business!', es: '¡Gracias por su preferencia!', pt: 'Obrigado pela preferência!' },
+  'unlocks.print.reviewPrompt': { en: 'Leave us a review!', es: '¡Déjanos tu reseña!', pt: 'Deixe-nos uma avaliação!' },
 
   // Dynamic item names (cart + sales records)
   'unlocks.cartItemName': { en: 'Unlock', es: 'Desbloqueo', pt: 'Desbloqueio' },
