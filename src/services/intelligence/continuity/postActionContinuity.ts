@@ -108,7 +108,7 @@ function openCustomerBtn(t: T, customerId: string, name?: string): ChatActionUI 
 function followUpBtn(t: T, queueType: string, entityId: string | undefined, name: string | undefined): ChatActionUI {
   return {
     id: `fu-${queueType}-${entityId ?? name ?? 'x'}`,
-    label: t(queueType === 'repair_followup' ? 'chat.continuity.markFollowUp' : 'chat.continuity.addReminder'),
+    label: t(queueType === 'repair_follow_up' ? 'chat.continuity.markFollowUp' : 'chat.continuity.addReminder'),
     actionType: 'review',
     payload: {
       type: 'reminder', queueType, customerName: name, entityId,
@@ -136,7 +136,7 @@ export function resolvePostActionContinuity(
       const c = contactOf(engine, repair?.customerId);
       const pending = (repair?.balance ?? 0) > 0;
       return push(t(pending ? 'chat.continuity.repairPending' : 'chat.continuity.repairOpen'), [
-        followUpBtn(t, 'repair_followup', payload.entityId, c.name ?? payload.customerName),
+        followUpBtn(t, 'repair_follow_up', payload.entityId, c.name ?? payload.customerName),
         waBtn(t, c.name ? c : { id: payload.customerId, name: payload.customerName, phone: payload.customerPhone ?? '' }),
         repair?.customerId ? openCustomerBtn(t, repair.customerId, c.name) : null,
       ]);

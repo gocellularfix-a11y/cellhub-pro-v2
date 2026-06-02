@@ -624,10 +624,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       }
     }
     const tagged = sugg.actions.slice(0, 3).map((a, i) => ({ ...a, id: `cont-${now}-${i}-${a.id}` }));
-    setMessages((prev) => [
-      ...prev,
-      { id: `cont-${now}`, role: 'assistant' as const, content: sugg.text, timestamp: new Date(), kind: 'answer' as const, actions: tagged },
-    ]);
+    // R-INTELLIGENCE-CONTINUITY-RUNTIME-AUDIT-V1 (CHECK 4): the push fires right
+    // after the click's navigation/render transition (open_repair etc. dispatch
+    // module-navigation events synchronously). Defer one macrotask so the
+    // message lands after render settles and the [messages] scroll effect
+    // reliably reaches it. Cooldown was recorded synchronously above, so the
+    // deferral cannot cause a double-push.
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        { id: `cont-${now}`, role: 'assistant' as const, content: sugg.text, timestamp: new Date(), kind: 'answer' as const, actions: tagged },
+      ]);
+    }, 0);
   }, [t]);
 
   function handleActionClick(action: ChatActionUI) {
