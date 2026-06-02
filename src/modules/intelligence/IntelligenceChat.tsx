@@ -15,6 +15,8 @@ import type { OperationalContext } from '@/services/intelligence/chat/intentRout
 import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
 import type { ChatActionUI, PanelCampaignDraft, WorkflowSection } from '@/services/intelligence/chat/handlers';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
+// R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: deterministic post-action next-steps.
+import { resolvePostActionContinuity } from '@/services/intelligence/continuity/postActionContinuity';
 import {
   createAutomationItem,
   approveAutomationItem,
@@ -595,6 +597,39 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     setInput('');
   };
 
+  // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: short-lived per-(target+entity)
+  // cooldown so repeated clicks / re-opens don't spam continuity suggestions.
+  const continuityCooldownRef = useRef<Map<string, number>>(new Map());
+  const CONTINUITY_COOLDOWN_MS = 45_000;
+
+  // After an action executes, offer deterministic next-step suggestions.
+  // Loop-safe: continuity actions are tagged `cont-…` and never spawn more
+  // continuity. Cooldown-safe: same target+entity suppressed within the window.
+  const maybePushContinuity = useCallback((
+    executionTarget: string,
+    payload: ChatActionUI['payload'],
+    sourceActionId: string,
+  ) => {
+    if (sourceActionId.startsWith('cont-')) return; // no continuity-of-continuity
+    const key = `${executionTarget}:${payload.entityId ?? payload.customerId ?? ''}`;
+    const now = Date.now();
+    if (now - (continuityCooldownRef.current.get(key) ?? 0) < CONTINUITY_COOLDOWN_MS) return;
+    const sugg = resolvePostActionContinuity(executionTarget, payload, engineRef.current, t);
+    if (!sugg || sugg.actions.length === 0) return;
+    continuityCooldownRef.current.set(key, now);
+    // Bound the cooldown map — drop entries older than 10 min.
+    if (continuityCooldownRef.current.size > 40) {
+      for (const [k, ts] of continuityCooldownRef.current) {
+        if (now - ts > 600_000) continuityCooldownRef.current.delete(k);
+      }
+    }
+    const tagged = sugg.actions.slice(0, 3).map((a, i) => ({ ...a, id: `cont-${now}-${i}-${a.id}` }));
+    setMessages((prev) => [
+      ...prev,
+      { id: `cont-${now}`, role: 'assistant' as const, content: sugg.text, timestamp: new Date(), kind: 'answer' as const, actions: tagged },
+    ]);
+  }, [t]);
+
   function handleActionClick(action: ChatActionUI) {
     // INTELLIGENCE-OPERATOR-TIMELINE-V1: record every user-clicked action.
     recordActionClicked(
@@ -749,6 +784,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         setFeedbackForAction(action.id, t('chat.action.openingReview'));
         break;
     }
+    // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: chain deterministic next-step
+    // suggestions after a successful navigation/queue action. (whatsapp_url
+    // returns early above and is handled on its send-confirm instead.)
+    maybePushContinuity(result.type, action.payload, action.id);
   }
 
   function handleApproveAutomation(id: string) {
@@ -1355,6 +1394,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                       });
                     }
                   }
+                  // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: chain next-steps after send.
+                  maybePushContinuity('whatsapp_url', a.payload, a.id);
                 }
                 setPendingWaAction(null);
               }}
