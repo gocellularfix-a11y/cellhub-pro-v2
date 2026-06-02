@@ -1657,6 +1657,11 @@ export const translations: TranslationDictionary = {
   'sidebar.thisStore': { en: 'This Store', es: 'Esta tienda', pt: 'Esta loja' },
   'sidebar.adminMode': { en: 'Admin Mode — click to exit', es: 'Modo Admin — clic para salir', pt: 'Modo Admin — clique para sair' },
   'sidebar.theme': { en: 'THEME', es: 'TEMA', pt: 'TEMA' },
+  // R-OFFLINE-MODE-GUARD-V1
+  'offline.online': { en: 'Online', es: 'En línea', pt: 'Online' },
+  'offline.offline': { en: 'Offline', es: 'Sin conexión', pt: 'Offline' },
+  'offline.localWorks': { en: 'Local POS still works', es: 'El POS local sigue funcionando', pt: 'O PDV local continua funcionando' },
+  'offline.requiresInternet': { en: 'Internet required for this action. Local POS still works.', es: 'Se requiere internet para esta acción. El POS local sigue funcionando.', pt: 'Internet necessária para esta ação. O PDV local continua funcionando.' },
   'sidebar.clockIn': { en: 'Clock In', es: 'Registrar Entrada', pt: 'Registrar Entrada' },
   'sidebar.clockOut': { en: 'Clock Out', es: 'Registrar Salida', pt: 'Registrar Saída' },
   'dashboard.viewInventory': { en: 'View inventory', es: 'Ver inventario', pt: 'Ver inventário' },

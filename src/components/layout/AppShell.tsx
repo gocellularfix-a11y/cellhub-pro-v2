@@ -6,6 +6,8 @@ import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/u
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+// R-OFFLINE-MODE-GUARD-V1: turns offline-blocked action signals into a toast.
+import OfflineGuardListener from '@/components/OfflineGuardListener';
 import { CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
@@ -350,6 +352,9 @@ export default function AppShell() {
 
       {/* Global Search (Cmd+K / Ctrl+K) */}
       <GlobalSearch />
+
+      {/* R-OFFLINE-MODE-GUARD-V1: offline-action toast bridge (renders nothing). */}
+      <OfflineGuardListener />
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />

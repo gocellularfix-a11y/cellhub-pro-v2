@@ -24,6 +24,10 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+// R-OFFLINE-MODE-GUARD-V1: carrier-portal opens require internet — guard them
+// so an offline cashier gets a warning instead of a dead tab. POS/cart flow is
+// unaffected (only the external open is gated).
+import { openExternalIfOnline } from '@/hooks/useOnlineStatus';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { loadLocal, saveLocal } from '@/services/storage';
@@ -1232,7 +1236,7 @@ export default function PhonePaymentModal({
       const c = normalizeCarrier(carrier).toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
         ? 'qpayWindow' : 'externalPortalWindow';
-      window.open(url, winName, 'noopener,noreferrer');
+      openExternalIfOnline(url, winName, 'noopener,noreferrer');
     }
     const nextCart = [...cartRef.current, ...newItems];
     cartRef.current = nextCart;
@@ -1338,7 +1342,7 @@ export default function PhonePaymentModal({
       const c = normCarrier.toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
         ? 'qpayWindow' : 'externalPortalWindow';
-      window.open(url, winName, 'noopener,noreferrer');
+      openExternalIfOnline(url, winName, 'noopener,noreferrer');
     }
 
     // Commit to cart.
@@ -1864,7 +1868,7 @@ export default function PhonePaymentModal({
     const normalizedActCarrier = normalizeCarrier(actCarrier);
     const url = settings.carrierPortalUrls?.[actCarrier]
              || settings.carrierPortalUrls?.[normalizedActCarrier];
-    if (url) { window.open(url, '_blank'); return; }
+    if (url) { openExternalIfOnline(url, '_blank'); return; }
     const lcCarrier = normalizedActCarrier.toLowerCase();
     const defaults: Record<string, string> = {
       'att': 'https://www.att.com/dealer',
@@ -1877,7 +1881,7 @@ export default function PhonePaymentModal({
       'page plus': 'https://www.pagepluscellular.com/dealer',
     };
     const fallback = Object.entries(defaults).find(([k]) => lcCarrier.includes(k))?.[1];
-    if (fallback) window.open(fallback, '_blank');
+    if (fallback) openExternalIfOnline(fallback, '_blank');
   };
 
   // ── Render ────────────────────────────────────────────────

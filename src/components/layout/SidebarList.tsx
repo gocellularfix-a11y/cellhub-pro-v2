@@ -4,6 +4,8 @@ import { useLicense } from '@/contexts/LicenseContext';
 import { NAV_TABS, canAccessTab } from '@/config/constants';
 import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
+// R-OFFLINE-MODE-GUARD-V1: live online/offline status for the sidebar badge.
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 // R-DASHBOARD-THEME-V1: list-style sidebar variant. Restored from the
 // backup/pre-sidebar-redesign branch as one of three user-selectable
@@ -24,6 +26,7 @@ export default function SidebarList() {
   const { features } = useLicense();
   const { theme, setTheme } = useTheme();
   const { t, locale } = useTranslation();
+  const { isOffline } = useOnlineStatus();
 
   const handleClockOut = () => {
     setCurrentEmployee(null);
@@ -231,6 +234,21 @@ export default function SidebarList() {
               );
             })}
           </div>
+        </div>
+
+        {/* R-OFFLINE-MODE-GUARD-V1: non-blocking online/offline status badge. */}
+        <div style={{ marginBottom: '0.6rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.72rem', fontWeight: 600 }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOffline ? '#f59e0b' : '#22c55e', display: 'inline-block' }} />
+            <span style={{ color: isOffline ? '#fbbf24' : '#86efac' }}>
+              {isOffline ? t('offline.offline') : t('offline.online')}
+            </span>
+          </div>
+          {isOffline && (
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {t('offline.localWorks')}
+            </div>
+          )}
         </div>
 
         {/* Version info */}

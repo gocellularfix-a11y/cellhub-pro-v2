@@ -5,6 +5,9 @@
 // The employee just clicks → WhatsApp opens → hits Send.
 // ============================================================
 
+// R-OFFLINE-MODE-GUARD-V1: gate the external WhatsApp open on connectivity.
+import { guardOnline } from '@/hooks/useOnlineStatus';
+
 // R-COMMS-WHATSAPP-EMOJI-FIX-V2: strip non-BMP code points (U+10000+)
 // before encoding. Electron's shell.openExternal on Windows mangles
 // non-BMP UTF-16 surrogate pairs to U+FFFD (�) in the resulting URL.
@@ -39,6 +42,10 @@ export function buildWhatsAppUrl(phone: string, message: string): string {
  */
 export function openWhatsApp(phone: string, message: string): void {
   if (!phone?.trim()) return;
+  // R-OFFLINE-MODE-GUARD-V1: WhatsApp needs the internet. When offline, bail out
+  // (the guard surfaces the "internet required" toast) instead of opening a tab
+  // that can't load. Local-first work is unaffected.
+  if (!guardOnline('whatsapp')) return;
   const url = buildWhatsAppUrl(phone, message);
   window.open(url, '_blank', 'noopener,noreferrer');
 }
