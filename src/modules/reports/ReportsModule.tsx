@@ -157,8 +157,10 @@ export function getRepairProportionalCost(entity: Repair, _inventory: InventoryI
     (s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1),
     0,
   );
-  const laborCost = entity.laborCost || 0;
-  const totalCostCents = partsCost + laborCost;
+  // R-REPORTS-REPAIR-MARGIN-FIX-V1: labor is the shop's service margin, not COGS
+  // (see the regular repair-item path for the full rationale). Only parts are a
+  // real cost — keep the proportional pseudo-item path consistent.
+  const totalCostCents = partsCost;
   const denominator = entity.total ?? entity.estimatedCost ?? 0;
   if (totalCostCents <= 0 || denominator <= 0) return 0;
   return Math.round(totalCostCents * (paymentCents / denominator));
@@ -1224,9 +1226,14 @@ export default function ReportsModule() {
           if (item.repairId) {
             const linkedRepair = repairsById.get(item.repairId);
             if (linkedRepair) {
+              // R-REPORTS-REPAIR-MARGIN-FIX-V1: repair labor is the shop's own
+              // SERVICE MARGIN, not cost of goods. Only PARTS are a real cost.
+              // Adding laborCost here made every labor-bearing repair under-report
+              // profit, and on a partial deposit/balance payment it swung the
+              // margin to a false negative (e.g. -400% on the $25 balance of a
+              // $125 labor-only / $0-parts repair). Cost basis = parts only.
               const partsCost = (linkedRepair.parts || []).reduce((s, p) => s + (p.cost || 0) * (p.qty || (p as any).quantity || 1), 0);
-              const labor = linkedRepair.laborCost || 0;
-              costCents = partsCost + labor;
+              costCents = partsCost;
               profitCents = revenueCents - costCents;
             } else {
               costCents = Math.round(revenueCents * REPAIR_COST_FALLBACK);
