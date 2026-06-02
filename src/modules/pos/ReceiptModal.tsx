@@ -976,6 +976,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ` : `${(sale.taxAmount || 0) > 0 ? `<tr><td>${es ? 'Impuesto' : pt ? 'Imposto' : 'Tax'}:</td><td style="text-align:right">${fmt(sale.taxAmount)}</td></tr>` : ''}`}
     ${(sale.cbeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota CBE:' : pt ? 'Taxa CBE:' : 'CBE Fee:'}</td><td style="text-align:right">${fmt(sale.cbeTotal!)}</td></tr>` : ''}
     ${(sale.screenFeeTotal || 0) > 0 ? `<tr><td>${es ? 'Cuota Pantalla:' : pt ? 'Taxa Tela:' : 'Screen Fee:'}</td><td style="text-align:right">${fmt(sale.screenFeeTotal!)}</td></tr>` : ''}
+    ${(sale.creditCardFee || 0) > 0 ? `<tr><td>${es ? 'Cargo de Tarjeta:' : pt ? 'Taxa de Cartão:' : 'Card Fee:'}</td><td style="text-align:right">${fmt(sale.creditCardFee!)}</td></tr>` : ''}
     <tr style="border-top:1px solid #000">
       <td style="font-size:14px;font-weight:900;padding-top:4px">TOTAL:</td>
       <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px">${fmt(sale.total)}</td>
