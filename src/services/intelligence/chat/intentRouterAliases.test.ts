@@ -7,7 +7,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { classifyIntent } from './intentRouter';
+import { classifyIntent, correctOperatorTypos } from './intentRouter';
 import type { Customer } from '@/store/types';
 
 const NO_CUSTOMERS: Customer[] = [];
@@ -65,6 +65,35 @@ describe('guards preserved', () => {
   it('generic chatter does not false-positive into an operational intent', () => {
     for (const q of ['i like this song', 'my cat is cute']) {
       expect(id(q)).toBe('fallback_question');
+    }
+  });
+});
+
+// R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1 — PART B
+describe('operator-command typo tolerance', () => {
+  it('a Spanish typo routes to the SAME intent as the clean command (not fallback)', () => {
+    const clean = id('que hago ahora');
+    expect(clean).not.toBe('fallback_question');
+    expect(id('que hago ahorta')).toBe(clean);
+    expect(id('que hago ahorta ?')).toBe(clean);
+  });
+
+  it('an English typo routes to the SAME intent as the clean command (not fallback)', () => {
+    const clean = id('what should i do right now');
+    expect(clean).not.toBe('fallback_question');
+    expect(id('what shoud i do right now')).toBe(clean);
+  });
+
+  it('correctOperatorTypos rewrites only the controlled operator typos', () => {
+    expect(correctOperatorTypos('que hago ahorta')).toBe('que hago ahora');
+    expect(correctOperatorTypos('q hago ahora')).toBe('que hago ahora');
+    expect(correctOperatorTypos('what shoud i do')).toBe('what should i do');
+    expect(correctOperatorTypos('who shoud i contact today')).toBe('who should i contact today');
+  });
+
+  it('does NOT mutate phone / invoice / barcode / name-like strings', () => {
+    for (const s of ['8051234567', 'inv-260601-1741-0838', 'daniel morales', 'ch-cust-00042', 'historial de juan']) {
+      expect(correctOperatorTypos(s)).toBe(s);
     }
   });
 });

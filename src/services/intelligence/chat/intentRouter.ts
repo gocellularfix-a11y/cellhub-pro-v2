@@ -1537,6 +1537,40 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[¿?¡!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1: deterministic typo
+// tolerance for a SMALL, controlled set of high-value operator commands. Runs on
+// the already-normalized (lowercased, punctuation-stripped) query. The dictionary
+// is intentionally tight — it only rewrites operator-command tokens, so customer
+// names / phone numbers / invoice ids / barcodes (which never contain these exact
+// alphabetic tokens, and digits never word-match these regexes) pass through
+// unchanged. No AI, no fuzzy library — pure word-boundary replacements.
+const OPERATOR_TYPO_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bq hago\b/g, 'que hago'],
+  [/\bqe hago\b/g, 'que hago'],
+  [/\bke hago\b/g, 'que hago'],
+  [/\bque ago\b/g, 'que hago'],
+  [/\bq debo hacer\b/g, 'que debo hacer'],
+  [/\bque deveria hacer\b/g, 'que deberia hacer'],
+  [/\bwhat shoud i do\b/g, 'what should i do'],
+  [/\bwhat should i doo\b/g, 'what should i do'],
+  [/\bwho shoud i contact\b/g, 'who should i contact'],
+];
+const OPERATOR_TYPO_TOKENS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bahorta\b/g, 'ahora'],
+  [/\baora\b/g, 'ahora'],
+];
+export function correctOperatorTypos(normalized: string): string {
+  let q = normalized;
+  for (const [re, to] of OPERATOR_TYPO_PHRASES) q = q.replace(re, to);
+  for (const [re, to] of OPERATOR_TYPO_TOKENS) q = q.replace(re, to);
+  // 'ora' → 'ahora' ONLY inside a "que hago …" operator command and when 'ahora'
+  // isn't already present — avoids rewriting the substring in unrelated words.
+  if (/\bque hago\b/.test(q) && /\bora\b/.test(q) && !/\bahora\b/.test(q)) {
+    q = q.replace(/\bora\b/g, 'ahora');
+  }
+  return q.replace(/\s+/g, ' ').trim();
+}
+
 // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases that re-use
 // the last intent's context instead of running classifyIntent. Match on
 // exact normalized phrase (set lookup) — pure O(1), no scan, no engine call.
@@ -1957,7 +1991,10 @@ export function classifyIntent(
   customers: Customer[],
   lang: 'en' | 'es' | 'pt' = 'en',
 ): IntentMatch {
-  const query = normalize(rawQuery);
+  // R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1: tolerate small typos
+  // in high-value operator commands BEFORE keyword scoring (tight dictionary —
+  // never touches names/phones/invoices/barcodes).
+  const query = correctOperatorTypos(normalize(rawQuery));
   const ctx: IntentContext = { query: rawQuery, queryLower: query, lang, customers };
   void ctx;
 

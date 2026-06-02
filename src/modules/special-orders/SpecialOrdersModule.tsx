@@ -109,9 +109,14 @@ export default function SpecialOrdersModule() {
       const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
       if (!orderId) return;
       const order = specialOrdersRef.current.find((o) => o.id === orderId);
+      // R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1: id present but no
+      // matching order → safe no-op (never open a blank/default modal).
       if (!order) { console.warn('[cellhub] _intel-open-special-order: not found', orderId); return; }
-      setEditOrder(order);
-      setShowModal(true);
+      // BUG FIX: previously setEditOrder + setShowModal left `form` (parent state,
+      // which the modal renders) stale → the modal showed placeholder/default
+      // values (John Doe / 0.00) instead of the real order. openEdit() populates
+      // editOrder AND the form from the real order — same path as the card Edit.
+      openEdit(order);
     };
     window.addEventListener('cellhub:_intel-open-special-order', handler);
     return () => window.removeEventListener('cellhub:_intel-open-special-order', handler);
