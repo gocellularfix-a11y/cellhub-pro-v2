@@ -128,8 +128,11 @@ export default function LayawayModule() {
       if (!layawayId) return;
       const lay = layawaysRef.current.find((l) => l.id === layawayId);
       if (!lay) { console.warn('[cellhub] _intel-open-layaway: not found', layawayId); return; }
-      setEditLayaway(lay);
-      setShowForm(true);
+      // R-INTELLIGENCE-OPEN-ENTITY-RUNTIME-POLISH-V1: the inline edit form renders the
+      // parent `form` state (populated by openEdit with the tax back-out math), NOT
+      // editLayaway directly. setEditLayaway alone left `form` stale → blank fields.
+      // Route through openEdit (same path as the card Edit button).
+      openEdit(lay);
     };
     window.addEventListener('cellhub:_intel-open-layaway', handler);
     return () => window.removeEventListener('cellhub:_intel-open-layaway', handler);

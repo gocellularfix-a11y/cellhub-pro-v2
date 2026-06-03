@@ -99,8 +99,12 @@ export default function UnlockModule() {
       if (!unlockId) return;
       const unlock = unlocksRef.current.find((u) => u.id === unlockId);
       if (!unlock) { console.warn('[cellhub] _intel-open-unlock: not found', unlockId); return; }
-      setEditUnlock(unlock);
-      setShowModal(true);
+      // R-INTELLIGENCE-OPEN-ENTITY-RUNTIME-POLISH-V1: the inline edit modal renders the
+      // parent `form` state (populated cents→dollars by openEdit), NOT editUnlock
+      // directly. setEditUnlock alone left `form` stale → blank/placeholder fields.
+      // Route through openEdit (same path as the card Edit button) so the real unlock
+      // populates the form + selected customer and opens the modal.
+      openEdit(unlock);
     };
     window.addEventListener('cellhub:_intel-open-unlock', handler);
     return () => window.removeEventListener('cellhub:_intel-open-unlock', handler);
@@ -279,7 +283,10 @@ export default function UnlockModule() {
 
   const openEdit = (u: Unlock) => {
     setEditUnlock(u);
-    setSelectedCustomer(customers.find(c => c.id === u.customerId) ?? null);
+    // R-INTELLIGENCE-OPEN-ENTITY-RUNTIME-POLISH-V1: read from the ref so the
+    // `[]`-deps _intel-open-unlock handler closure resolves the customer against
+    // the freshest list (not the first-render snapshot).
+    setSelectedCustomer(customersRef.current.find(c => c.id === u.customerId) ?? null);
     // Storage is in cents — convert to dollars for the form inputs
     setForm({
       ...u,
