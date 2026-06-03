@@ -757,7 +757,7 @@ const GLOBAL_PRIORITY_STATUS_KEYWORDS = [
   'global priorities', 'what needs attention right now', 'priority status',
   'most important right now', 'what should i focus on', 'priorities right now',
   'urgent actions', 'operator brief', 'store priorities', 'priority list',
-  'what to focus on', 'what should i do right now', 'most urgent',
+  'what to focus on', 'most urgent',
   'critical actions', 'top action', 'most pressing',
   // ES
   'prioridades operativas', 'prioridades principales', 'qué importa más',
@@ -1298,11 +1298,16 @@ const DATA_QUERY_KEYWORDS = [
 // Anchored multi-word phrases to avoid collision with single-word intents.
 const PROACTIVE_OPERATIONS_KEYWORDS = [
   // EN
-  'what should i do now', 'best next action', 'top priorities', 'best opportunity',
+  // R-INTELLIGENCE-PHRASE-CONSOLIDATION-V1: this is the OPERATIONAL-PRIORITY
+  // intent (priorities / biggest problem / what matters most). The "do
+  // something NOW" phrases moved to recommended_next_best_action so the two
+  // stop fighting on shared substrings.
+  'best next action', 'top priorities', 'best opportunity',
+  'what are my priorities', 'my priorities', 'biggest problem',
   'proactive report', 'operational guidance', 'highest roi', 'what matters most',
   'what to prioritize', 'who should i contact', 'next steps for the store',
   // ES
-  'qué debo hacer ahora', 'que debo hacer ahora', 'mejor siguiente acción',
+  'mejor siguiente acción',
   'mejor siguiente accion', 'prioridades principales', 'mejor oportunidad',
   'guía operacional', 'guia operacional', 'mayor retorno',
   'qué importa más', 'que importa mas', 'a quién debo contactar',
@@ -1872,11 +1877,18 @@ const RECOMMENDED_NEXT_BEST_ACTION_KEYWORDS = [
   'next best action', 'what is the next move', 'what is my next move',
   'what should i do next', 'what should i handle now',
   'what now', 'next move', 'next action',
+  // R-INTELLIGENCE-PHRASE-CONSOLIDATION-V1: "do something NOW" anchors live
+  // here (the contract: now / right now / ahora → next best action). Moved off
+  // proactive_operations / global_priority_status so the "now" cluster is
+  // stable and explicit. "today" stays on daily_operator_brief; "priorities /
+  // biggest problem" stays on proactive_operations.
+  'what should i do now', 'what should i do right now',
   // ES
   'siguiente acción', 'siguiente accion',
   'cuál es el siguiente paso', 'cual es el siguiente paso',
   'qué sigue', 'que sigue',
   'qué hago ahora', 'que hago ahora',
+  'qué debo hacer ahora', 'que debo hacer ahora',
   'próxima acción', 'proxima accion',
   'mejor siguiente acción', 'mejor siguiente accion',
   // PT

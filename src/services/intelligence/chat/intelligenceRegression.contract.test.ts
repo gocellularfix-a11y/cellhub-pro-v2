@@ -36,17 +36,22 @@ const BUSINESS_INTENTS = [
 // ── TASK 3 — intent contract (locks real, working routing) ──
 describe('R-REGRESSION: intent contract (empirically captured)', () => {
   const CONTRACT: Array<[string, 'en' | 'es' | 'pt', string]> = [
-    // "do something now" cluster — each phrase routes to a DISTINCT handler;
-    // this is exactly the overlap the handoff warns about, so it is locked.
-    ['what should i do now',   'en', 'proactive_operations'],
-    ['que hago ahora',         'es', 'recommended_next_best_action'],
-    ['qué hago ahora',         'es', 'recommended_next_best_action'],
-    ['what should i do today', 'en', 'daily_operator_brief'],
+    // R-INTELLIGENCE-PHRASE-CONSOLIDATION-V1: explicit, stable semantic split —
+    //   now / right now / ahora / "what should I do"  → recommended_next_best_action
+    //   today / status today                          → daily_operator_brief
+    //   priorities / biggest problem                  → proactive_operations
+    ['what should i do now',       'en', 'recommended_next_best_action'],
+    ['what should i do right now', 'en', 'recommended_next_best_action'],
+    ['que hago ahora',             'es', 'recommended_next_best_action'],
+    ['qué hago ahora',             'es', 'recommended_next_best_action'],
+    ['what should i do today',     'en', 'daily_operator_brief'],
+    ['what are my priorities',     'en', 'proactive_operations'],
+    ['what is my biggest problem', 'en', 'proactive_operations'],
     // best customer
-    ['mi mejor cliente',       'es', 'best_customer'],
-    ['my best customer',       'en', 'best_customer'],
+    ['mi mejor cliente',           'es', 'best_customer'],
+    ['my best customer',           'en', 'best_customer'],
     // explicit open-entity command
-    ['open order',             'en', 'entity_operational_command'],
+    ['open order',                 'en', 'entity_operational_command'],
   ];
 
   for (const [q, lang, expected] of CONTRACT) {
