@@ -4273,8 +4273,8 @@ export const translations: TranslationDictionary = {
   'workflow.layaway.reachActiveHolders.label':         { en: 'Reach active layaway holders before they go cold', es: 'Contacta a clientes con apartados activos', pt: 'Contate clientes com layaways ativos' },
   'workflow.layaway.reviewPolicy.label':               { en: 'Review layaway abandon-risk policy', es: 'Revisa la política de apartados',  pt: 'Revise a política de layaways' },
   // Special order workflows
-  'workflow.so.notifyCustomer.label':                  { en: 'Notify the customer their order is in', es: 'Notifica al cliente que su pedido llegó', pt: 'Notifique o cliente que o pedido chegou' },
-  'workflow.so.confirmPickup.label':                   { en: 'Confirm pickup window',         es: 'Confirma la ventana de recogida', pt: 'Confirme a janela de retirada' },
+  'workflow.so.notifyCustomer.label':                  { en: 'Notify Customer',               es: 'Notificar cliente',           pt: 'Notificar cliente' },
+  'workflow.so.confirmPickup.label':                   { en: 'Confirm Pickup',                es: 'Confirmar recogida',          pt: 'Confirmar retirada' },
   // Store credit workflows
   'workflow.credit.reachHolders.label':                { en: 'Remind credit holders their balance is active', es: 'Recuérdale a los clientes que su crédito está activo', pt: 'Lembre os titulares que o crédito está ativo' },
   'workflow.credit.reminderMsg.label':                 { en: 'Send a short credit reminder',  es: 'Envía un recordatorio corto de crédito', pt: 'Envie um lembrete curto de crédito' },

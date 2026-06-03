@@ -109,9 +109,11 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
   const items = computeAttentionItemsForToday(engine, lang);
 
   if (items.length === 0) {
+    // R-INTELLIGENCE-RECOMMENDED-ACTION-UI-POLISH-V1: no markdown — ResponseCard
+    // renders text as pre-wrap, so `**` would leak as raw characters.
     return {
       kind: 'answer',
-      text: `**${t('chat.nextBestAction.header')}**\n\n${t('chat.nextBestAction.empty')}`,
+      text: `${t('chat.nextBestAction.header')}\n\n${t('chat.nextBestAction.empty')}`,
     };
   }
 
@@ -120,9 +122,9 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
   const badge = URGENCY_BADGE[top.urgency] ?? '•';
 
   const text = [
-    `**${t('chat.nextBestAction.header')}**`,
+    t('chat.nextBestAction.header'),
     '',
-    `${badge} **${headline}**`,
+    `${badge} ${headline}`,
     `   ${t('chat.nextBestAction.whyLabel')}: ${why}`,
     `   💡 ${t('chat.nextBestAction.stepLabel')}: ${step}`,
   ].join('\n');
@@ -166,11 +168,31 @@ export function handleRecommendedNextBestAction(engine: IntelligenceEngine, lang
   const workflowText = renderWorkflowChainText(workflowRecs, t);
   const workflowActions = getWorkflowChatActions(workflowRecs, { type: ctxType, value: ctxValue });
 
+  // R-INTELLIGENCE-RECOMMENDED-ACTION-UI-POLISH-V1: drop workflow buttons whose
+  // executionTarget already exists among the base actions, so the operator never
+  // sees two buttons that do the same thing — e.g. "WhatsApp" + "Notify Customer"
+  // (both whatsapp_url), or "Open Special Order" + "Confirm Pickup" (both
+  // open_special_order). Genuinely distinct steps (e.g. an upsell that opens
+  // inventory) survive. Pure UI dedupe — no execution/routing/scoring change.
+  const baseTargets = new Set(
+    actions
+      .map((a) => (a.payload as { executionTarget?: string } | undefined)?.executionTarget)
+      .filter(Boolean),
+  );
+  const dedupedWorkflowActions = workflowActions.filter((a) => {
+    const tgt = (a.payload as { executionTarget?: string } | undefined)?.executionTarget;
+    return !tgt || !baseTargets.has(tgt);
+  });
+
+  // Strip markdown bold markers — ResponseCard is pre-wrap (no markdown render),
+  // so any leftover `**` from the shared workflow renderer would show raw.
+  const cleanText = (text + workflowText).replace(/\*\*/g, '');
+
   return {
     kind: 'answer',
-    text: text + workflowText,
-    ...(actions.length + workflowActions.length > 0
-      ? { actions: [...actions, ...workflowActions].slice(0, 8) }
+    text: cleanText,
+    ...(actions.length + dedupedWorkflowActions.length > 0
+      ? { actions: [...actions, ...dedupedWorkflowActions].slice(0, 8) }
       : {}),
     ...(ctxValue ? { establishesContext: { type: ctxType, value: ctxValue } } : {}),
   };
