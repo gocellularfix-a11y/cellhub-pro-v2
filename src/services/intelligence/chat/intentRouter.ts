@@ -121,6 +121,8 @@ export type IntentId =
   | 'attention_feed'
   // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine
   | 'who_needs_attention_today'
+  // R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable / money-owed list
+  | 'unpaid_balances'
   // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action
   | 'recommended_next_best_action'
   // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis
@@ -1904,6 +1906,34 @@ const WHO_NEEDS_ATTENTION_TODAY_KEYWORDS = [
   'quem devo contatar hoje', 'quem devo atender hoje',
 ];
 
+// R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable / money-owed list.
+// Resolves the documented capability gap (see the UNRESOLVED owner-phrases
+// note above). All triggers are anchored multi-word phrases or unambiguous
+// AR tokens ('unpaid', 'owes', 'por cobrar', 'em aberto', 'a receber') so a
+// natural query scores >= 2 here and outranks the bare 'money'/'dinero'/
+// 'pending' substrings in WHAT_HURTING_PROFIT / REPAIRS banks on RAW score —
+// no narrowing of those existing tokens needed (fully additive, no regression).
+// Listed in the scores array ABOVE who_needs_attention_today / customer_history
+// / what_hurting_profit / repairs_overdue so it also wins any 1-1 tie-break.
+const UNPAID_BALANCES_KEYWORDS = [
+  // EN
+  'unpaid', 'unpaid balance', 'unpaid balances', 'show unpaid',
+  'who owes', 'owes me', 'owe me', 'owes me money', 'owes money',
+  'money owed', 'owed to me', 'who owes me money',
+  'customers with balance', 'customers with a balance', 'with balance',
+  'outstanding balance', 'outstanding balances', 'balance due', 'balances due',
+  'payments due', 'pending payment', 'accounts receivable', 'money owed to me',
+  // ES
+  'quien me debe', 'quién me debe', 'me debe', 'debe dinero',
+  'quien debe', 'quién debe', 'cuanto me deben', 'cuánto me deben',
+  'saldo pendiente', 'saldos pendientes', 'con saldo', 'clientes con saldo',
+  'saldo por cobrar', 'por cobrar', 'cuentas por cobrar', 'pagos pendientes',
+  // PT
+  'em aberto', 'contas em aberto', 'com saldo', 'clientes com saldo',
+  'quem me deve', 'quem deve', 'a receber', 'contas a receber',
+  'saldo devedor', 'pagamentos pendentes',
+];
+
 const WHAT_NEEDS_ATTENTION_KEYWORDS = [
   // EN
   'what needs attention', 'needs attention', 'what needs my attention',
@@ -2131,6 +2161,14 @@ export function classifyIntent(
     // because this bank requires the action-anchor ("next" / "siguiente" /
     // "próxima") in addition to the verb.
     { id: 'recommended_next_best_action', score: scoreKeywords(query, RECOMMENDED_NEXT_BEST_ACTION_KEYWORDS) },
+    // R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable list. Listed HIGH —
+    // ABOVE who_needs_attention_today / customer_history / what_hurting_profit /
+    // repairs_overdue — so AR phrases ("who owes me money", "saldos pendientes",
+    // "contas em aberto") route here. Anchored AR tokens score >= 2, beating the
+    // bare 'money'/'dinero'/'pending' substrings on raw score; the high position
+    // also wins any 1-1 tie. Nothing above this line contains AR tokens, so no
+    // legitimate intent is hijacked.
+    { id: 'unpaid_balances', score: scoreKeywords(query, UNPAID_BALANCES_KEYWORDS) },
     // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision
     // engine. Listed BEFORE attention_feed / what_needs_attention / proactive_
     // operations / customer_history so the listed trigger phrases (anchored on

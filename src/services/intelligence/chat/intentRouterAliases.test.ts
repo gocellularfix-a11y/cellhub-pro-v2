@@ -37,21 +37,40 @@ describe('operational phrase aliases → existing intents', () => {
   });
 });
 
-describe('accounts-receivable phrases have no handler', () => {
-  it('plain unpaid phrases fall through to fallback_question (not aliased)', () => {
-    for (const q of ['show unpaid', 'unpaid', 'payments due']) {
-      expect(id(q)).toBe('fallback_question');
+// R-INTELLIGENCE-UNPAID-BALANCES-V1 — the accounts-receivable handler now
+// exists, so the phrases the prior round documented as "no handler" route to
+// the new `unpaid_balances` intent. This is the deliberate redirect the old
+// characterization test anticipated.
+describe('accounts-receivable phrases route to unpaid_balances', () => {
+  it('English AR phrases route to unpaid_balances', () => {
+    for (const q of [
+      'show unpaid', 'unpaid balances', 'who owes me money',
+      'customers with balance', 'outstanding balances', 'who owes me',
+    ]) {
+      expect(id(q)).toBe('unpaid_balances');
     }
   });
 
-  // Characterization of PRE-EXISTING behavior (NOT introduced by this round):
-  // bare tokens in unrelated banks capture these phrases. Left unchanged on
-  // purpose (see the UNRESOLVED note in intentRouter.ts). Locked here so a
-  // future `unpaid_balances` intent that redirects them is a deliberate change.
-  it('money/pending-word phrases hit pre-existing intents via bare token overlap', () => {
-    expect(id('who owes me money')).toBe('what_hurting_profit');   // bare 'money'
-    expect(id('quién me debe dinero', 'es')).toBe('what_hurting_profit'); // bare 'dinero'
-    expect(id('pending payments')).toBe('repairs_overdue');        // bare 'pending'
+  it('Spanish AR phrases route to unpaid_balances', () => {
+    for (const q of [
+      'quién me debe dinero', 'clientes con saldo', 'saldos pendientes', 'quien debe',
+    ]) {
+      expect(id(q, 'es')).toBe('unpaid_balances');
+    }
+  });
+
+  it('Portuguese AR phrases route to unpaid_balances', () => {
+    for (const q of ['contas em aberto', 'clientes com saldo', 'quem me deve']) {
+      expect(id(q, 'pt')).toBe('unpaid_balances');
+    }
+  });
+
+  it('beats the bare money/pending token catchers on raw score', () => {
+    // Previously: 'who owes me money' → what_hurting_profit (bare 'money'),
+    // 'pending payments' → repairs_overdue (bare 'pending'). Now redirected.
+    expect(id('who owes me money')).toBe('unpaid_balances');
+    expect(id('quién me debe dinero', 'es')).toBe('unpaid_balances');
+    expect(id('pending payments')).toBe('unpaid_balances');
   });
 });
 

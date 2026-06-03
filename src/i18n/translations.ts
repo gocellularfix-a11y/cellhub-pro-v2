@@ -3586,6 +3586,28 @@ export const translations: TranslationDictionary = {
   'chat.whoNeedsAttention.action.openCustomer':     { en: 'Open customer',       es: 'Abrir cliente',        pt: 'Abrir cliente' },
   'chat.whoNeedsAttention.action.openPos':          { en: 'Open POS',            es: 'Abrir POS',            pt: 'Abrir POS' },
   'chat.whoNeedsAttention.action.whatsapp':         { en: 'WhatsApp',            es: 'WhatsApp',             pt: 'WhatsApp' },
+  // R-INTELLIGENCE-UNPAID-BALANCES-V1 — accounts-receivable / money-owed list
+  'chat.unpaidBalances.header': { en: '💰 Unpaid balances', es: '💰 Saldos pendientes', pt: '💰 Contas em aberto' },
+  'chat.unpaidBalances.empty':  { en: 'No outstanding balances — everyone is paid up.', es: 'No hay saldos pendientes — todos están al corriente.', pt: 'Sem saldos em aberto — todos estão em dia.' },
+  'chat.unpaidBalances.total': {
+    en: (count: number, total: string) => `${count} ${count === 1 ? 'record' : 'records'} owe ${total} total`,
+    es: (count: number, total: string) => `${count} ${count === 1 ? 'registro debe' : 'registros deben'} ${total} en total`,
+    pt: (count: number, total: string) => `${count} ${count === 1 ? 'registro deve' : 'registros devem'} ${total} no total`,
+  },
+  'chat.unpaidBalances.nextAction': {
+    en: 'Reach out to the highest balances first to collect.',
+    es: 'Contacta primero los saldos más altos para cobrar.',
+    pt: 'Contate primeiro os saldos mais altos para cobrar.',
+  },
+  'chat.unpaidBalances.source.repair':       { en: 'Repair',        es: 'Reparación',   pt: 'Reparo' },
+  'chat.unpaidBalances.source.layaway':      { en: 'Layaway',       es: 'Apartado',     pt: 'Layaway' },
+  'chat.unpaidBalances.source.specialOrder': { en: 'Special order', es: 'Pedido especial', pt: 'Pedido especial' },
+  'chat.unpaidBalances.source.unlock':       { en: 'Unlock',        es: 'Desbloqueo',   pt: 'Desbloqueio' },
+  'chat.unpaidBalances.action.open.repair':        { en: 'Open repair',        es: 'Abrir reparación', pt: 'Abrir reparo' },
+  'chat.unpaidBalances.action.open.layaway':       { en: 'Open layaway',       es: 'Abrir apartado',   pt: 'Abrir layaway' },
+  'chat.unpaidBalances.action.open.special_order': { en: 'Open order',         es: 'Abrir pedido',     pt: 'Abrir pedido' },
+  'chat.unpaidBalances.action.open.unlock':        { en: 'Open unlock',        es: 'Abrir desbloqueo', pt: 'Abrir desbloqueio' },
+  'chat.unpaidBalances.action.whatsapp':           { en: 'WhatsApp',           es: 'WhatsApp',         pt: 'WhatsApp' },
   // R-PHONE-PAYMENT-REMINDER-TODAY-LAST-PAYMENT-BUBBLE-ANCHOR
   'phonePay.lastPayment': {
     en: (date: string, amount: string) => `Last payment: ${date} — ${amount}`,

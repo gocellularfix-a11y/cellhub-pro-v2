@@ -150,6 +150,8 @@ import { computeEntityAttentionPriorities } from '../attention/entityPriorityEng
 import type { AttentionAction } from '../attention/entityPriorityTypes';
 // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
 import { handleWhoNeedsAttentionToday } from './whoNeedsAttentionToday';
+// R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable list handler.
+import { handleUnpaidBalances } from './unpaidBalances';
 // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
 import { handleRecommendedNextBestAction } from './nextBestAction';
 // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis.
@@ -525,6 +527,11 @@ export function handleIntent(
     // R-INTELLIGENCE-WHO-NEEDS-ATTENTION-TODAY: cross-domain operator decision engine.
     case 'who_needs_attention_today':
       return handleWhoNeedsAttentionToday(engine, lang);
+
+    // R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable list (money owed
+    // across repairs / layaways / special orders / unlocks).
+    case 'unpaid_balances':
+      return handleUnpaidBalances(engine, lang);
 
     // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top action.
     case 'recommended_next_best_action':
