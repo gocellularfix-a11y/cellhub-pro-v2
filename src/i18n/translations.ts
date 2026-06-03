@@ -2745,6 +2745,8 @@ export const translations: TranslationDictionary = {
   'so.print.supplier':         { en: 'SUPPLIER',      es: 'PROVEEDOR',      pt: 'FORNECEDOR' },
   'so.print.estArrival':       { en: 'EST. ARRIVAL',  es: 'LLEGADA EST',    pt: 'CHEGADA EST.' },
   'so.print.price':            { en: 'PRICE',         es: 'PRECIO',         pt: 'PREÇO' },
+  'so.print.salesTax':         { en: 'SALES TAX',     es: 'IMPUESTO',       pt: 'IMPOSTO' },
+  'so.print.total':            { en: 'TOTAL',         es: 'TOTAL',          pt: 'TOTAL' },
   'so.print.deposit':          { en: 'DEPOSIT',       es: 'DEPÓSITO',       pt: 'DEPÓSITO' },
   'so.print.balance':          { en: 'BALANCE',       es: 'BALANCE',        pt: 'SALDO' },
   'so.print.refundOwed':       { en: 'REFUND OWED',   es: 'REEMBOLSO ADEUDADO', pt: 'REEMBOLSO DEVIDO' },

@@ -280,6 +280,10 @@ export default function SpecialOrdersModule() {
   const printSpecialOrderEntity = useCallback(async (order: SpecialOrder, displayOverride?: {
     corrected?: boolean;
     originalSnapshot?: { capturedAt: string; snapshot: Record<string, unknown> };
+    // r-deposit-integrity-1: at FIRST print the deposit lives only in the cart
+    // (order.depositAmount is still 0 until POS checkout reconciles). The create
+    // path passes the just-paid deposit here so the first receipt shows it.
+    depositAmount?: number;
   }) => {
     const storeName = settings.storeName || 'GO CELLULAR';
     const storeAddr = settings.storeAddress || '';
@@ -312,7 +316,17 @@ export default function SpecialOrdersModule() {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
       catch { /* QR optional — template falls back to a remote img */ }
     }
-    const balanceDue = (order.balance || 0) > 0;
+    // Full-order money display. Tax is the FULL order sales tax (forward from the
+    // pre-tax price), NOT the deposit's reverse-tax split — that lives on the POS
+    // payment receipt and is intentionally left untouched. Display-only: no stored
+    // field (depositAmount / balance) is mutated, so the POS reconcile contract and
+    // "no duplicate deposit" invariant are preserved.
+    const soTaxable = !!(order as any).taxable;
+    const soTaxRate = settings.taxRate ?? 0.0925;
+    const soFwd = forwardTaxFromBase(order.price || 0, soTaxRate, soTaxable);
+    const displayDeposit = displayOverride?.depositAmount ?? (order.depositAmount || 0);
+    const displayBalance = Math.max(0, soFwd.totalCents - displayDeposit);
+    const balanceDue = displayBalance > 0;
     const thanks = settings.receiptFooter || t('so.print.thankYou');
 
     const html = `<!DOCTYPE html>
@@ -361,10 +375,12 @@ export default function SpecialOrdersModule() {
   <div class="sep"></div>
   <table style="margin-bottom:5px">
     <tr><td>${escHtml(t('so.print.price'))}:</td><td style="text-align:right">${escHtml(money(order.price || 0))}${prevHtml('price')}</td></tr>
-    <tr><td>${escHtml(t('so.print.deposit'))}:</td><td style="text-align:right">${escHtml(money(order.depositAmount || 0))}${prevHtml('depositAmount')}</td></tr>
+    ${soTaxable ? `<tr><td>${escHtml(t('so.print.salesTax'))}:</td><td style="text-align:right">${escHtml(money(soFwd.taxCents))}</td></tr>` : ''}
+    <tr style="border-top:1px solid #ccc"><td style="font-weight:700;padding-top:2px">${escHtml(t('so.print.total'))}:</td><td style="text-align:right;font-weight:700;padding-top:2px">${escHtml(money(soFwd.totalCents))}</td></tr>
+    <tr><td>${escHtml(t('so.print.deposit'))}:</td><td style="text-align:right">${escHtml(money(displayDeposit))}${prevHtml('depositAmount')}</td></tr>
     <tr style="border-top:1px solid #000">
       <td style="font-size:14px;font-weight:900;padding-top:4px">${escHtml(t('so.print.balance'))}:</td>
-      <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px${balanceDue ? ';color:#c00' : ''}">${escHtml(money(order.balance || 0))}${prevHtml('balance')}</td>
+      <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px${balanceDue ? ';color:#c00' : ''}">${escHtml(money(displayBalance))}${prevHtml('balance')}</td>
     </tr>
     ${corrected && ((order as any).refundOwedAmount || 0) > 0 ? `<tr style="color:#b91c1c"><td>${escHtml(t('so.print.refundOwed'))}:</td><td style="text-align:right;font-weight:700">${escHtml(money((order as any).refundOwedAmount))}</td></tr>` : ''}
   </table>
@@ -585,7 +601,10 @@ export default function SpecialOrdersModule() {
       specialOrdersRef.current = nextOrders;
       setSpecialOrders(nextOrders);
       persist.specialOrder(newOrder.id, newOrder as unknown as Record<string, unknown>);
-      setTimeout(() => printSpecialOrderEntity(newOrder), 300);
+      // r-deposit-integrity-1: pass the just-paid deposit so the FIRST receipt
+      // shows Deposit + Balance correctly (order.depositAmount stays 0 until POS
+      // checkout reconciles — display-only override, no stored mutation).
+      setTimeout(() => printSpecialOrderEntity(newOrder, { depositAmount: deposit }), 300);
       try {
         window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
           detail: { type: 'special_order.created', payload: { customerId: (newOrder as any).customerId || undefined } },
