@@ -684,10 +684,13 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
  *
  * Top-up cart lines (TopUpModal.tsx) stamp notes as:
  *   "Provider: X | Sender: Y | Recipient: Z | Rate: 7.00%"
- * The `Rate:` token leaks the carrier commission, and `Sender:` exposes the
- * paying customer's number on the recipient's receipt. Both must stay off
- * customer-facing prints. `Provider:` and `Recipient:` are kept so the
- * recipient can see what they got and from whom.
+ * The `Rate:` token leaks the carrier commission (and commission/spiff/payout
+ * are owner-only) — those must stay off customer-facing prints.
+ * R-POS-TOPUP-RECEIPT-SENDER-FIX-V1: `Sender:` is KEPT. The top-up receipt is
+ * handed to the paying customer at the counter — they ARE the sender — so their
+ * own number is their own info (not a leak), and the cashier can confirm both
+ * the sender and recipient numbers were entered right. `Provider:`, `Sender:`
+ * and `Recipient:` all print.
  *
  * Behavior:
  *   - notes without `|`: returned unchanged (free-form cashier notes).
@@ -703,7 +706,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 function sanitizeReceiptNotes(notes: string | undefined): string {
   if (!notes) return '';
   if (!notes.includes('|')) return notes;
-  const BLACKLIST = new Set(['rate', 'sender', 'commission', 'spiff', 'payout']);
+  const BLACKLIST = new Set(['rate', 'commission', 'spiff', 'payout']);
   const kept: string[] = [];
   for (const raw of notes.split('|')) {
     const part = raw.trim();
@@ -716,6 +719,28 @@ function sanitizeReceiptNotes(notes: string | undefined): string {
     kept.push(part);
   }
   return kept.join(' | ');
+}
+
+/**
+ * R-POS-TOPUP-RECEIPT-SENDER-FIX-V1: render sanitized receipt notes as safe HTML,
+ * bolding the phone-number VALUES (Sender / Recipient) so they stand out on the
+ * muted grey notes line. Keys and any other segments keep the muted style. All
+ * text is escaped here — the returned string is safe to interpolate.
+ */
+function renderReceiptNotesHtml(safeNotes: string): string {
+  const BOLD_KEYS = new Set(['sender', 'recipient']);
+  return safeNotes
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      const m = seg.match(/^([a-z][a-z\s]*?)\s*:\s*(.*)$/i);
+      if (m && BOLD_KEYS.has(m[1].trim().toLowerCase())) {
+        return `${escHtml(m[1].trim())}: <strong style="color:#000;font-weight:700">${escHtml(m[2].trim())}</strong>`;
+      }
+      return escHtml(seg);
+    })
+    .join(' | ');
 }
 
 /** Generate standalone receipt HTML with barcode.
@@ -793,7 +818,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     const safeNotes = sanitizeReceiptNotes(item.notes);
     return `
     <tr>
-      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${safeNotes ? `<br><small style="color:#888">${escHtml(safeNotes)}</small>` : ''}${idLine}</td>
+      <td style="padding:2px 0;font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` ×${item.qty}` : ''}${safeNotes ? `<br><small style="color:#888">${renderReceiptNotesHtml(safeNotes)}</small>` : ''}${idLine}</td>
       <td style="text-align:right;padding:2px 0;font-size:11px;font-weight:600;vertical-align:top">${fmt(effectiveTotal)}${discountAnnotation}</td>
     </tr>`;
   }).join('');
