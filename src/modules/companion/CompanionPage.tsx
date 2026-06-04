@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import type { CompanionDesktopSession } from '@/types/companion';
 import {
   loadDesktopSession,
@@ -92,6 +93,7 @@ function Header({
   session: CompanionDesktopSession | null;
   onSignOut: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
       <span style={{ fontSize: 30 }}>📲</span>
@@ -100,15 +102,15 @@ function Header({
           Companion
         </h1>
         <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '2px 0 0' }}>
-          Simple polling-based bridge between desktop and the manager phone.
+          {t('companion.subtitle')}
         </p>
       </div>
       <span style={pillStyle(isPaired ? '#22c55e' : '#94a3b8')}>
-        {isPaired ? '● Paired' : '○ Not paired'}
+        {isPaired ? t('companion.status.paired') : t('companion.status.notPaired')}
       </span>
       {isPaired && session && (
         <button onClick={onSignOut} style={signOutButtonStyle}>
-          Unpair
+          {t('companion.unpair')}
         </button>
       )}
     </div>
@@ -128,6 +130,7 @@ function PairingPanel({
   storeName: string;
   onPaired: (s: CompanionDesktopSession) => void;
 }) {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState<PairingPhase>('idle');
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
@@ -144,7 +147,7 @@ function PairingPanel({
       setPendingSession(result.session);
       setPhase('waiting');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : t('companion.pair.unknownError');
       setError(msg);
       setPhase('error');
     }
@@ -176,52 +179,50 @@ function PairingPanel({
   if (phase === 'idle' || phase === 'error') {
     return (
       <div style={cardStyle}>
-        <div style={titleStyle}>Pair this terminal</div>
+        <div style={titleStyle}>{t('companion.pair.title')}</div>
         <div style={bodyTextStyle}>
-          Generates a 6-digit code that the manager enters on the Companion mobile app.
+          {t('companion.pair.desc')}
         </div>
         <div style={{ display: 'flex', gap: 8, fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-          <span>Store ID: <code style={codeInlineStyle}>{storeId}</code></span>
-          <span>· Bridge: <code style={codeInlineStyle}>{bridgeUrl.replace(/^https?:\/\//, '')}</code></span>
+          <span>{t('companion.pair.storeId')} <code style={codeInlineStyle}>{storeId}</code></span>
+          <span>· {t('companion.pair.bridge')} <code style={codeInlineStyle}>{bridgeUrl.replace(/^https?:\/\//, '')}</code></span>
         </div>
         {error && (
           <div style={errorBoxStyle}>{error}</div>
         )}
         <button onClick={handleStart} style={primaryButtonStyle}>
-          Start Pairing
+          {t('companion.pair.start')}
         </button>
       </div>
     );
   }
 
   if (phase === 'starting') {
-    return <div style={cardStyle}>Generating code…</div>;
+    return <div style={cardStyle}>{t('companion.pair.generating')}</div>;
   }
 
   if (phase === 'waiting') {
     return (
       <div style={cardStyle}>
-        <div style={titleStyle}>Code ready — scan or enter on your phone</div>
+        <div style={titleStyle}>{t('companion.pair.codeReady')}</div>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
           {code && <QrPanel bridgeUrl={bridgeUrl} code={code} />}
           <div style={{ textAlign: 'center' }}>
             <div style={codeBigStyle}>{code}</div>
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              6-digit code
+              {t('companion.pair.sixDigit')}
             </div>
           </div>
         </div>
         <div style={{ textAlign: 'center' }}>
           {expiresAt && (
             <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
-              Expires {new Date(expiresAt).toLocaleTimeString()}
+              {t('companion.pair.expires', new Date(expiresAt).toLocaleTimeString())}
             </div>
           )}
         </div>
         <div style={bodyTextStyle}>
-          Open Companion on your phone → tap <b>Scan QR Code</b> and point at the QR,
-          or enter the bridge URL + this 6-digit code manually. The desktop will detect
-          the claim automatically.
+          {t('companion.pair.instrBefore')}<b>{t('companion.pair.scanQr')}</b>{t('companion.pair.instrAfter')}
         </div>
       </div>
     );
@@ -230,16 +231,16 @@ function PairingPanel({
   if (phase === 'expired') {
     return (
       <div style={cardStyle}>
-        <div style={titleStyle}>Code expired</div>
+        <div style={titleStyle}>{t('companion.pair.expiredTitle')}</div>
         <div style={bodyTextStyle}>
-          The pairing code timed out without being claimed. Click below to generate a fresh one.
+          {t('companion.pair.expiredDesc')}
         </div>
-        <button onClick={handleStart} style={primaryButtonStyle}>Generate New Code</button>
+        <button onClick={handleStart} style={primaryButtonStyle}>{t('companion.pair.generateNew')}</button>
       </div>
     );
   }
 
-  return <div style={cardStyle}>Paired ✓</div>;
+  return <div style={cardStyle}>{t('companion.pair.pairedOk')}</div>;
 }
 
 // ── Paired shell ─────────────────────────────────────────────────────
@@ -251,27 +252,28 @@ function PairedShell({
   tab: Tab;
   onTab: (t: Tab) => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {(['status', 'approvals', 'messages', 'intelligence'] as Tab[]).map(t => (
+        {(['status', 'approvals', 'messages', 'intelligence'] as Tab[]).map(tabId => (
           <button
-            key={t}
+            key={tabId}
             type="button"
-            onClick={() => onTab(t)}
-            style={tabButtonStyle(t === tab)}
+            onClick={() => onTab(tabId)}
+            style={tabButtonStyle(tabId === tab)}
           >
-            {t === 'status'       ? '🏪 Status'
-            : t === 'approvals'  ? '✅ Approvals'
-            : t === 'messages'   ? '💬 Messages'
-            :                      '📡 Intelligence'}
+            {tabId === 'status'       ? tr('companion.tab.status')
+            : tabId === 'approvals'  ? tr('companion.tab.approvals')
+            : tabId === 'messages'   ? tr('companion.tab.messages')
+            :                          tr('companion.tab.intelligence')}
           </button>
         ))}
       </div>
       <div style={cardStyle}>
         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-          Paired to <code style={codeInlineStyle}>{session.storeId}</code>
-          {' · since '}
+          {tr('companion.paired.toLabel')} <code style={codeInlineStyle}>{session.storeId}</code>
+          {' · ' + tr('companion.paired.since') + ' '}
           {new Date(session.pairedAt).toLocaleTimeString()}
         </div>
         {tab === 'status'       && <StatusPanel session={session} />}
@@ -286,6 +288,7 @@ function PairedShell({
 // ── QR panel ─────────────────────────────────────────────────────────
 
 function QrPanel({ bridgeUrl, code }: { bridgeUrl: string; code: string }) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -304,7 +307,7 @@ function QrPanel({ bridgeUrl, code }: { bridgeUrl: string; code: string }) {
 
   if (renderError) {
     return (
-      <div style={{ fontSize: 11, color: '#fca5a5' }}>QR failed: {renderError}</div>
+      <div style={{ fontSize: 11, color: '#fca5a5' }}>{t('companion.qr.failed', renderError)}</div>
     );
   }
 

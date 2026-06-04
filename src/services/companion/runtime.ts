@@ -32,12 +32,18 @@ import {
 } from './bubbleNotify';
 
 type ToastFn = (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+// R-COMPANION-I18N-FULL-V1: locale-bound translator passed from the React
+// mount so inbound-activity toasts are localized. Optional for backward
+// compatibility — when absent the helpers fall back to English templates.
+type TranslateFn = (key: string, ...args: any[]) => string;
 
 export interface RuntimeBindings {
   /** Returns the current sidebar active tab id (read fresh on each poll). */
   getActiveTab: () => string;
   /** Stable global toast trigger. */
   toast: ToastFn;
+  /** Locale-bound translator (companion.toast.* / companion.role.*). */
+  t?: TranslateFn;
 }
 
 const POLL_INTERVAL_MS = 5000;
@@ -104,9 +110,9 @@ async function poll(): Promise<void> {
   const seedingNow = !seedDone;
 
   try {
-    await pollApprovalsAndStatuses(session, isOnTab, seedingNow, local.toast);
-    await pollApprovalThreads(session, isOnTab, seedingNow, local.toast);
-    await pollGeneralMessages(session, isOnTab, seedingNow, local.toast);
+    await pollApprovalsAndStatuses(session, isOnTab, seedingNow, local.toast, local.t);
+    await pollApprovalThreads(session, isOnTab, seedingNow, local.toast, local.t);
+    await pollGeneralMessages(session, isOnTab, seedingNow, local.toast, local.t);
     seedDone = true;
   } catch (err) {
     if (err instanceof CompanionApiError && err.httpStatus === 401) {
@@ -123,6 +129,7 @@ async function pollApprovalsAndStatuses(
   isOnTab: boolean,
   seedingNow: boolean,
   toast: ToastFn,
+  t?: TranslateFn,
 ): Promise<void> {
   const approvals = await listApprovals(session);
   if (seedingNow) {
@@ -133,10 +140,12 @@ async function pollApprovalsAndStatuses(
     const prev = seenApprovalStatuses.get(a.id);
     if (prev === 'pending' && (a.status === 'approved' || a.status === 'denied')) {
       const label = a.affectedItem ?? a.reason.slice(0, 40);
-      const who = a.respondedBy ?? 'manager';
+      const who = a.respondedBy ?? (t ? t('companion.role.manager') : 'manager');
       const note = a.managerNote ? ` — "${a.managerNote}"` : '';
-      const verbToast = a.status === 'approved' ? '✅ Approved' : '❌ Denied';
-      toast(`${verbToast} by ${who}${note}`, a.status === 'approved' ? 'success' : 'warning');
+      const msg = a.status === 'approved'
+        ? (t ? t('companion.toast.approved', who, note) : `✅ Approved by ${who}${note}`)
+        : (t ? t('companion.toast.denied', who, note) : `❌ Denied by ${who}${note}`);
+      toast(msg, a.status === 'approved' ? 'success' : 'warning');
       if (!isOnTab) {
         if (a.status === 'approved') notifyApprovalAccepted(label);
         else notifyApprovalDenied(label);
@@ -151,6 +160,7 @@ async function pollApprovalThreads(
   isOnTab: boolean,
   seedingNow: boolean,
   toast: ToastFn,
+  t?: TranslateFn,
 ): Promise<void> {
   // Re-fetch the list locally (cheap — same Map.get on the bridge).
   let approvals: ApprovalRequest[] = [];
@@ -170,9 +180,9 @@ async function pollApprovalThreads(
       if (seenApprovalMessageIds.has(m.id)) continue;
       seenApprovalMessageIds.add(m.id);
       if (seedingNow || m.fromRole !== 'manager') continue;
-      const who = m.fromName ?? 'Manager';
+      const who = m.fromName ?? (t ? t('companion.role.manager') : 'Manager');
       const preview = m.body.length > 80 ? `${m.body.slice(0, 77)}…` : m.body;
-      toast(`💬 Approval: ${who}: ${preview}`, 'info');
+      toast(t ? t('companion.toast.approvalMessage', who, preview) : `💬 Approval: ${who}: ${preview}`, 'info');
       if (!isOnTab) notifyApprovalMessage(who);
     }
   }
@@ -183,6 +193,7 @@ async function pollGeneralMessages(
   isOnTab: boolean,
   seedingNow: boolean,
   toast: ToastFn,
+  t?: TranslateFn,
 ): Promise<void> {
   let msgs;
   try { msgs = await listMessages(session); } catch { return; }
@@ -190,9 +201,9 @@ async function pollGeneralMessages(
     if (seenGeneralMessageIds.has(m.id)) continue;
     seenGeneralMessageIds.add(m.id);
     if (seedingNow || m.fromRole !== 'manager') continue;
-    const who = m.fromName ?? 'Manager';
+    const who = m.fromName ?? (t ? t('companion.role.manager') : 'Manager');
     const preview = m.body.length > 80 ? `${m.body.slice(0, 77)}…` : m.body;
-    toast(`💬 ${who}: ${preview}`, 'info');
+    toast(t ? t('companion.toast.message', who, preview) : `💬 ${who}: ${preview}`, 'info');
     if (!isOnTab) notifyGeneralMessage(who);
   }
 }

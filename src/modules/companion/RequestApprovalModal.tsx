@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import type { InventoryItem } from '@/store/types';
 import type {
   CompanionDesktopSession,
@@ -23,14 +24,15 @@ import {
   sendApprovalMessage,
 } from '@/services/companion/approvalsService';
 
-const APPROVAL_TYPES: Array<{ id: string; label: string }> = [
-  { id: 'discount',           label: 'Discount' },
-  { id: 'price_override',     label: 'Price override' },
-  { id: 'refund',             label: 'Refund' },
-  { id: 'layaway_exception',  label: 'Layaway exception' },
-  { id: 'repair_discount',    label: 'Repair discount' },
-  { id: 'other',              label: 'Other' },
-];
+// Labels resolved via t('companion.apprType.<id>') at render time.
+const APPROVAL_TYPE_IDS = [
+  'discount',
+  'price_override',
+  'refund',
+  'layaway_exception',
+  'repair_discount',
+  'other',
+] as const;
 
 interface Props {
   open: boolean;
@@ -45,6 +47,7 @@ interface Props {
 }
 
 export default function RequestApprovalModal({ open, session, onClose, onCreated, prefilledItem }: Props) {
+  const { t } = useTranslation();
   const { state: { inventory, currentEmployee } } = useApp();
 
   const [type, setType] = useState('discount');
@@ -138,7 +141,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
         hasBridgeUrl: !!session?.bridgeUrl,
         hasStoreId: !!session?.storeId,
       });
-      setError('Companion not configured. Check connection settings.');
+      setError(t('companion.modal.notConfigured'));
       return;
     }
 
@@ -174,12 +177,12 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
       // Translate common network/API error codes into operator-friendly messages.
       const msg =
         raw.includes('network_error') || raw.includes('Failed to fetch') || raw.includes('ERR_CONNECTION')
-          ? 'Connection failed — make sure the Companion server is reachable.'
+          ? t('companion.modal.connFailed')
           : raw.includes('timeout')
-            ? 'Request timed out. Check your network and try again.'
+            ? t('companion.modal.timeout')
             : raw.includes('401') || raw.includes('403') || raw.includes('unauthorized')
-              ? 'Session expired. Re-pair Companion in settings.'
-              : raw || 'Could not send approval.';
+              ? t('companion.modal.sessionExpired')
+              : raw || t('companion.modal.couldNotSend');
       setError(msg);
     } finally {
       setBusy(false);
@@ -190,7 +193,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
     <Modal
       open={open}
       onClose={onClose}
-      title="Request approval"
+      title={t('companion.modal.title')}
       size="max-w-2xl"
       footer={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 16px' }}>
@@ -200,7 +203,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
             </div>
           )}
           <div style={footerStyle}>
-            <button onClick={onClose} style={ghostButtonStyle}>Cancel</button>
+            <button onClick={onClose} style={ghostButtonStyle}>{t('companion.modal.cancel')}</button>
             <button
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
@@ -210,7 +213,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
                 cursor: !canSubmit ? 'not-allowed' : 'pointer',
               }}
             >
-              {busy ? '⏳ Sending…' : 'Send approval'}
+              {busy ? t('companion.modal.sending') : t('companion.modal.send')}
             </button>
           </div>
         </div>
@@ -218,20 +221,20 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
     >
       <div style={bodyStyle}>
         {/* Type */}
-        <Field label="Approval type">
+        <Field label={t('companion.modal.fieldType')}>
           <select
             value={type}
             onChange={e => setType(e.target.value)}
             style={inputStyle}
           >
-            {APPROVAL_TYPES.map(t => (
-              <option key={t.id} value={t.id}>{t.label}</option>
+            {APPROVAL_TYPE_IDS.map(id => (
+              <option key={id} value={id}>{t(`companion.apprType.${id}`)}</option>
             ))}
           </select>
         </Field>
 
         {/* Inventory search / select */}
-        <Field label="Inventory item">
+        <Field label={t('companion.modal.fieldItem')}>
           {selectedItem ? (
             <div style={selectedItemBoxStyle}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -239,9 +242,9 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
                   {selectedItem.name}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                  SKU {selectedItem.sku ?? '—'} · Retail ${(selectedItem.price / 100).toFixed(2)}
+                  SKU {selectedItem.sku ?? '—'} · {t('companion.modal.retail')} ${(selectedItem.price / 100).toFixed(2)}
                   {typeof selectedItem.cost === 'number' && (
-                    <> · Cost ${(selectedItem.cost / 100).toFixed(2)}</>
+                    <> · {t('companion.modal.cost')} ${(selectedItem.cost / 100).toFixed(2)}</>
                   )}
                 </div>
               </div>
@@ -249,7 +252,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
                 onClick={() => { setSelectedItem(null); setSearchQuery(''); }}
                 style={clearChipStyle}
               >
-                Change
+                {t('companion.modal.change')}
               </button>
             </div>
           ) : (
@@ -258,7 +261,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
                 type="search"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search name, SKU, barcode, IMEI…"
+                placeholder={t('companion.modal.searchPlaceholder')}
                 style={inputStyle}
               />
               {searchResults.length > 0 && (
@@ -281,7 +284,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
               )}
               {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
                 <div style={{ fontSize: 11, color: '#64748b', padding: '4px 0' }}>
-                  No matches — the approval will be sent without product context.
+                  {t('companion.modal.noMatches')}
                 </div>
               )}
             </>
@@ -289,7 +292,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
         </Field>
 
         {/* Discount */}
-        <Field label="Requested discount">
+        <Field label={t('companion.modal.fieldDiscount')}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <label style={radioLabelStyle}>
               <input
@@ -309,7 +312,7 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
               onChange={e => setDiscountPercent(e.target.value)}
               style={{ ...inputStyle, width: 80, opacity: discountMode === 'percent' ? 1 : 0.5 }}
             />
-            <span style={{ color: '#475569', fontSize: 12, margin: '0 6px' }}>or</span>
+            <span style={{ color: '#475569', fontSize: 12, margin: '0 6px' }}>{t('companion.modal.or')}</span>
             <label style={radioLabelStyle}>
               <input
                 type="radio"
@@ -332,23 +335,23 @@ export default function RequestApprovalModal({ open, session, onClose, onCreated
         </Field>
 
         {/* Reason / opening message */}
-        <Field label="Reason (also becomes the first thread message)">
+        <Field label={t('companion.modal.fieldReason')}>
           <textarea
             value={reason}
             onChange={e => setReason(e.target.value)}
-            placeholder="Customer is requesting a discount because…"
+            placeholder={t('companion.modal.reasonPlaceholder')}
             rows={3}
             style={{ ...inputStyle, resize: 'vertical', minHeight: 64 }}
           />
         </Field>
 
         {/* Employee name */}
-        <Field label="Employee">
+        <Field label={t('companion.modal.fieldEmployee')}>
           <input
             type="text"
             value={employeeName}
             onChange={e => setEmployeeName(e.target.value)}
-            placeholder="Store"
+            placeholder={t('companion.role.store')}
             style={inputStyle}
           />
         </Field>
@@ -384,14 +387,15 @@ function DecisionPreview({
   context: ProductCostContext | undefined;
   discountCents: number;
 }) {
+  const { t } = useTranslation();
   if (!context) {
     return (
       <div style={previewWrapperStyle}>
-        <div style={previewHeaderStyle}>Manager decision preview</div>
+        <div style={previewHeaderStyle}>{t('companion.preview.header')}</div>
         <div style={{ fontSize: 12, color: '#64748b' }}>
           {discountCents > 0
-            ? `Manual approval — no product attached. Manager will see the reason and the requested amount ($${(discountCents / 100).toFixed(2)}).`
-            : 'Select an inventory item to compute margin impact, or send a manual approval without it.'}
+            ? t('companion.preview.manualNote', `$${(discountCents / 100).toFixed(2)}`)
+            : t('companion.preview.selectItem')}
         </div>
       </div>
     );
@@ -407,32 +411,32 @@ function DecisionPreview({
   const marginBeforePct = marginBefore !== null && retail > 0 ? (marginBefore / retail) * 100 : null;
   const marginAfterPct  = marginAfter !== null && retailAfter > 0 ? (marginAfter / retailAfter) * 100 : null;
 
-  let riskLabel = 'No cost data';
+  let riskLabel = t('companion.preview.riskNoCost');
   let riskColor = '#64748b';
   if (marginAfter !== null && marginBefore !== null) {
     if (marginAfter <= 0) {
-      riskLabel = '🚫 Loss — below cost'; riskColor = '#ef4444';
+      riskLabel = t('companion.preview.riskLoss'); riskColor = '#ef4444';
     } else if (marginBefore > 0 && marginAfter < marginBefore * 0.5) {
-      riskLabel = '⚠ Risky — margin halved'; riskColor = '#fbbf24';
+      riskLabel = t('companion.preview.riskHalved'); riskColor = '#fbbf24';
     } else {
-      riskLabel = '✓ Safe'; riskColor = '#22c55e';
+      riskLabel = t('companion.preview.riskSafe'); riskColor = '#22c55e';
     }
   }
 
   return (
     <div style={previewWrapperStyle}>
       <div style={previewHeaderStyle}>
-        <span>Manager decision preview</span>
+        <span>{t('companion.preview.header')}</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: riskColor }}>{riskLabel}</span>
       </div>
       <div style={previewGridStyle}>
-        <Row label="Item" value={context.name ?? '—'} />
-        <Row label="SKU" value={context.sku ?? '—'} muted />
-        <Row label="Retail" value={fmtMoney(retail)} />
-        <Row label="Cost" value={typeof cost === 'number' ? fmtMoney(cost) : 'Cost not available'} muted={typeof cost !== 'number'} />
-        <Row label="Current margin" value={marginBefore !== null ? `${fmtMoney(marginBefore)} (${(marginBeforePct ?? 0).toFixed(0)}%)` : '—'} />
-        <Row label="Requested discount" value={disc > 0 ? `−${fmtMoney(disc)}` : '—'} />
-        <Row label="Margin after" value={marginAfter !== null ? `${fmtMoney(marginAfter)} (${(marginAfterPct ?? 0).toFixed(0)}%)` : '—'} valueColor={riskColor} />
+        <Row label={t('companion.preview.rowItem')} value={context.name ?? '—'} />
+        <Row label={t('companion.preview.rowSku')} value={context.sku ?? '—'} muted />
+        <Row label={t('companion.preview.rowRetail')} value={fmtMoney(retail)} />
+        <Row label={t('companion.preview.rowCost')} value={typeof cost === 'number' ? fmtMoney(cost) : t('companion.preview.costNotAvailable')} muted={typeof cost !== 'number'} />
+        <Row label={t('companion.preview.rowCurrentMargin')} value={marginBefore !== null ? `${fmtMoney(marginBefore)} (${(marginBeforePct ?? 0).toFixed(0)}%)` : '—'} />
+        <Row label={t('companion.preview.rowRequestedDiscount')} value={disc > 0 ? `−${fmtMoney(disc)}` : '—'} />
+        <Row label={t('companion.preview.rowMarginAfter')} value={marginAfter !== null ? `${fmtMoney(marginAfter)} (${(marginAfterPct ?? 0).toFixed(0)}%)` : '—'} valueColor={riskColor} />
       </div>
     </div>
   );

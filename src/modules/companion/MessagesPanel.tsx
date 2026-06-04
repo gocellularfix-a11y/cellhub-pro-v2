@@ -2,6 +2,7 @@
 // Single thread per store. Poll inbox + textarea + send button.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from '@/i18n';
 import type {
   CompanionDesktopSession,
   CompanionMessage,
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function MessagesPanel({ session }: Props) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<CompanionMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,9 +34,9 @@ export default function MessagesPanel({ session }: Props) {
       setMessages(items);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load');
+      setError(err instanceof Error ? err.message : t('companion.msg.couldNotLoad'));
     }
-  }, [session]);
+  }, [session, t]);
 
   useEffect(() => {
     void refresh();
@@ -57,7 +59,7 @@ export default function MessagesPanel({ session }: Props) {
       setDraft('');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send');
+      setError(err instanceof Error ? err.message : t('companion.msg.couldNotSend'));
     } finally {
       setBusy(false);
     }
@@ -78,7 +80,7 @@ export default function MessagesPanel({ session }: Props) {
         }}
       >
         {messages.length === 0
-          ? <div style={emptyStyle}>No messages yet. Say hi to the manager.</div>
+          ? <div style={emptyStyle}>{t('companion.msg.empty')}</div>
           : messages.map(m => <Bubble key={m.id} msg={m} />)
         }
       </div>
@@ -90,12 +92,12 @@ export default function MessagesPanel({ session }: Props) {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
-          placeholder="Write a message…"
+          placeholder={t('companion.msg.placeholder')}
           disabled={busy}
           style={inputStyle}
         />
         <button onClick={() => void handleSend()} disabled={!draft.trim() || busy} style={sendButtonStyle}>
-          Send
+          {t('companion.msg.send')}
         </button>
       </div>
     </div>
@@ -103,6 +105,7 @@ export default function MessagesPanel({ session }: Props) {
 }
 
 function Bubble({ msg }: { msg: CompanionMessage }) {
+  const { t } = useTranslation();
   const fromMe = msg.fromRole === 'pos';
   return (
     <div style={{
@@ -127,7 +130,7 @@ function Bubble({ msg }: { msg: CompanionMessage }) {
         textAlign: fromMe ? 'right' : 'left',
         marginTop: 2,
       }}>
-        {msg.fromName ?? (fromMe ? 'Store' : 'Manager')} · {new Date(msg.createdAt).toLocaleTimeString()}
+        {msg.fromName ?? (fromMe ? t('companion.role.store') : t('companion.role.manager'))} · {new Date(msg.createdAt).toLocaleTimeString()}
       </div>
     </div>
   );

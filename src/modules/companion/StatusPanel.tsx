@@ -5,6 +5,7 @@
 
 import { useMemo } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import type { CompanionDesktopSession } from '@/types/companion';
 import { computeLiteSnapshot } from '@/services/companion/snapshot';
 
@@ -14,6 +15,7 @@ interface Props {
 
 export default function StatusPanel({ session }: Props) {
   void session; // kept for prop-API parity
+  const { t } = useTranslation();
   const { state: { sales, repairs, layaways, employees, currentEmployee } } = useApp();
   const snapshot = useMemo(
     () => computeLiteSnapshot({ sales, repairs, layaways, employees, currentEmployee }),
@@ -23,16 +25,16 @@ export default function StatusPanel({ session }: Props) {
   return (
     <div>
       <div style={statsGridStyle}>
-        <StatCard label="Today's revenue" value={`$${(snapshot.todayRevenueCents / 100).toFixed(2)}`} />
-        <StatCard label="Sales today" value={String(snapshot.todaySalesCount)} />
-        <StatCard label="Open repairs" value={String(snapshot.openRepairsCount)} />
-        <StatCard label="Pending layaways" value={String(snapshot.pendingLayawaysCount)} />
-        <StatCard label="On shift" value={String(snapshot.clockedInCount)} />
+        <StatCard label={t('companion.statusPanel.todayRevenue')} value={`$${(snapshot.todayRevenueCents / 100).toFixed(2)}`} />
+        <StatCard label={t('companion.statusPanel.salesToday')} value={String(snapshot.todaySalesCount)} />
+        <StatCard label={t('companion.statusPanel.openRepairs')} value={String(snapshot.openRepairsCount)} />
+        <StatCard label={t('companion.statusPanel.pendingLayaways')} value={String(snapshot.pendingLayawaysCount)} />
+        <StatCard label={t('companion.statusPanel.onShift')} value={String(snapshot.clockedInCount)} />
         <StatCard label="" value={snapshot.clockedInNames.join(', ') || '—'} span2 small />
       </div>
 
       <div style={{ marginTop: 12, fontSize: 11, color: '#64748b' }}>
-        Live sync active · pushing every 10s
+        {t('companion.statusPanel.liveSync')}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@
 
 import { useMemo } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import {
   buildCompanionIntelligencePayload,
   type CompanionItemSeverity,
@@ -30,14 +31,6 @@ const STATE_COLOR: Record<string, string> = {
   collection_mode: '#8b5cf6',
 };
 
-const STATE_LABEL: Record<string, string> = {
-  normal:          'Normal',
-  rush_mode:       'Rush Mode',
-  slow_day:        'Slow Day',
-  repair_overload: 'Repair Overload',
-  collection_mode: 'Collection Mode',
-};
-
 const SEV_COLOR: Record<CompanionItemSeverity, string> = {
   critical: '#ef4444',
   high:     '#f59e0b',
@@ -51,6 +44,7 @@ const SEV_DOT: Record<CompanionItemSeverity, string> = {
 };
 
 export default function IntelligenceStatusPanel() {
+  const { t } = useTranslation();
   const { state: { sales, repairs, layaways, currentEmployee } } = useApp();
 
   const payload = useMemo(
@@ -58,9 +52,12 @@ export default function IntelligenceStatusPanel() {
     [sales, repairs, layaways, currentEmployee],
   );
 
+  // Localized enum labels with safe fallback to the raw value.
+  const tFallback = (key: string, raw: string) => { const l = t(key); return l === key ? raw : l; };
   const stateColor  = STATE_COLOR[payload.storeState.state]  ?? '#64748b';
-  const stateLabel  = STATE_LABEL[payload.storeState.state]  ?? payload.storeState.state;
+  const stateLabel  = tFallback(`companion.intel.state.${payload.storeState.state}`, payload.storeState.state);
   const healthColor = HEALTH_COLOR[payload.operationalHealth.overallStatus] ?? '#64748b';
+  const healthLabel = tFallback(`companion.intel.health.${payload.operationalHealth.overallStatus}`, payload.operationalHealth.overallStatus);
   const hasCritical = payload.criticalItems.some((i) => i.severity === 'critical' || i.severity === 'high');
 
   return (
@@ -78,7 +75,7 @@ export default function IntelligenceStatusPanel() {
           padding: '10px 12px',
         }}>
           <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            Store State
+            {t('companion.intel.storeState')}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{
@@ -89,7 +86,7 @@ export default function IntelligenceStatusPanel() {
             }} />
             <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
               {stateLabel}
-            </span>
+            </span>{/* localized via companion.intel.state.* */}
           </div>
           {payload.storeState.reason && (
             <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, lineHeight: 1.3 }}>
@@ -108,19 +105,19 @@ export default function IntelligenceStatusPanel() {
           padding: '10px 12px',
         }}>
           <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            Operational Health
+            {t('companion.intel.operationalHealth')}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span style={{ fontSize: 20, fontWeight: 800, color: healthColor }}>
               {payload.operationalHealth.overallScore}
             </span>
             <span style={{ fontSize: 11, fontWeight: 600, color: healthColor, opacity: 0.85 }}>
-              {payload.operationalHealth.overallStatus}
+              {healthLabel}
             </span>
           </div>
           {payload.operationalHealth.weakestArea && (
             <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-              Pressure: {payload.operationalHealth.weakestArea.replace(/_/g, ' ')}
+              {t('companion.intel.pressure', payload.operationalHealth.weakestArea.replace(/_/g, ' '))}
             </div>
           )}
         </div>
@@ -137,7 +134,7 @@ export default function IntelligenceStatusPanel() {
             minWidth: 80,
           }}>
             <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-              Queue
+              {t('companion.intel.queue')}
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: payload.queuePressure >= 5 ? '#ef4444' : '#fff' }}>
               {payload.queuePressure}
@@ -157,7 +154,7 @@ export default function IntelligenceStatusPanel() {
           padding: '10px 12px',
         }}>
           <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-            Needs Attention
+            {t('companion.intel.needsAttention')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {payload.criticalItems.map((item) => (
@@ -192,7 +189,7 @@ export default function IntelligenceStatusPanel() {
         padding: '10px 12px',
       }}>
         <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-          Recommended Focus
+          {t('companion.intel.recommendedFocus')}
         </div>
         <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 500, lineHeight: 1.4 }}>
           {payload.recommendedFocus}
@@ -201,8 +198,8 @@ export default function IntelligenceStatusPanel() {
 
       {/* Footer: role + generated at */}
       <div style={{ fontSize: 10, color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
-        <span style={{ textTransform: 'capitalize' }}>{payload.role} view</span>
-        <span>Updated {new Date(payload.generatedAt).toLocaleTimeString()}</span>
+        <span style={{ textTransform: 'capitalize' }}>{t('companion.intel.roleView', payload.role)}</span>
+        <span>{t('companion.intel.updated', new Date(payload.generatedAt).toLocaleTimeString())}</span>
       </div>
     </div>
   );

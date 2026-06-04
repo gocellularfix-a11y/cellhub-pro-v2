@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useTranslation } from '@/i18n';
 import type {
   ApprovalRequest,
   CompanionDesktopSession,
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export default function ApprovalsPanel({ session }: Props) {
+  const { t } = useTranslation();
   const { state: { inventory } } = useApp();
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState(false);
@@ -49,12 +51,12 @@ export default function ApprovalsPanel({ session }: Props) {
     } catch (err) {
       if (err instanceof CompanionApiError && err.httpStatus === 401) {
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-        setError('Session expired — click Unpair and re-pair Companion.');
+        setError(t('companion.appr.sessionExpiredUnpair'));
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to load');
+        setError(err instanceof Error ? err.message : t('companion.appr.failedToLoad'));
       }
     }
-  }, [session]);
+  }, [session, t]);
 
   useEffect(() => {
     void refresh();
@@ -83,17 +85,17 @@ export default function ApprovalsPanel({ session }: Props) {
       await createApproval(session, {
         type: 'discount',
         reason: sample
-          ? `Test approval — customer requesting 15% off ${sample.name}.`
-          : 'Test approval — customer requesting 15% off accessories bundle.',
+          ? t('companion.appr.sampleReason', sample.name)
+          : t('companion.appr.sampleReasonGeneric'),
         employeeName: 'Maria Santos',
         affectedAmountCents: productContext?.requestedDiscountCents ?? 4500,
-        affectedItem: sample?.name ?? 'Accessories Bundle',
+        affectedItem: sample?.name ?? t('companion.appr.sampleItem'),
         expiresInMs: 15 * 60 * 1000,
         productContext,
       });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Send failed');
+      setError(err instanceof Error ? err.message : t('companion.appr.sendFailed'));
     } finally {
       setBusy(false);
     }
@@ -103,16 +105,16 @@ export default function ApprovalsPanel({ session }: Props) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <button onClick={() => setRequestOpen(true)} style={primaryButtonStyle}>
-          + Request Approval
+          {t('companion.appr.request')}
         </button>
         <button onClick={handleSendTest} disabled={busy} style={secondaryButtonStyle}>
-          {busy ? 'Sending…' : 'Send sample approval'}
+          {busy ? t('companion.appr.sending') : t('companion.appr.sendSample')}
         </button>
         <button onClick={() => void refresh()} style={ghostButtonStyle}>
-          Refresh
+          {t('companion.appr.refresh')}
         </button>
         <span style={{ fontSize: 11, color: '#64748b', marginLeft: 'auto' }}>
-          Polling every {POLL_MS / 1000}s
+          {t('companion.appr.polling', POLL_MS / 1000)}
         </span>
       </div>
 
@@ -120,7 +122,7 @@ export default function ApprovalsPanel({ session }: Props) {
 
       {approvals.length === 0 ? (
         <div style={emptyStyle}>
-          No approvals yet. Click "Request Approval" to create one, or "Send sample approval" for a quick test.
+          {t('companion.appr.empty')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -161,6 +163,7 @@ function ApprovalRow({
   defaultOpen?: boolean;
   onConsumedDefaultOpen?: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(!!defaultOpen);
   // Consume the parent's auto-open hint exactly once so a refresh that
   // brings the same id back doesn't re-open after the operator closes.
@@ -173,12 +176,18 @@ function ApprovalRow({
     approval.status === 'expired'  ? '#64748b' :
     '#fbbf24';
 
+  // Localized status/type labels with safe fallback to the raw value.
+  const typeKey = `companion.apprType.${approval.type}`;
+  const typeLabel = (() => { const l = t(typeKey); return l === typeKey ? approval.type : l; })();
+  const statusKey = `companion.apprStatus.${approval.status}`;
+  const statusLabel = (() => { const l = t(statusKey); return l === statusKey ? approval.status : l; })();
+
   return (
     <div style={rowStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-        <span style={typePillStyle}>{approval.type}</span>
+        <span style={typePillStyle}>{typeLabel}</span>
         <span style={{ ...statusPillStyle, color: statusColor, borderColor: statusColor + '60' }}>
-          {approval.status.toUpperCase()}
+          {statusLabel.toUpperCase()}
         </span>
         <span style={{ fontSize: 11, color: '#64748b', marginLeft: 'auto' }}>
           {new Date(approval.createdAt).toLocaleTimeString()}
@@ -193,8 +202,8 @@ function ApprovalRow({
       </div>
       {approval.respondedBy && (
         <div style={{ fontSize: 11, color: statusColor, marginTop: 4, marginBottom: 6 }}>
-          Resolved by {approval.respondedBy}
-          {approval.respondedAt ? ` at ${new Date(approval.respondedAt).toLocaleTimeString()}` : ''}
+          {t('companion.appr.resolvedBy', approval.respondedBy)}
+          {approval.respondedAt ? ` ${t('companion.appr.atTime', new Date(approval.respondedAt).toLocaleTimeString())}` : ''}
           {approval.managerNote ? ` — "${approval.managerNote}"` : ''}
         </div>
       )}
@@ -203,7 +212,7 @@ function ApprovalRow({
         onClick={() => setOpen(o => !o)}
         style={threadToggleStyle}
       >
-        {open ? '▾ Hide messages' : '▸ View / Send Message'}
+        {open ? t('companion.appr.hideMessages') : t('companion.appr.viewMessages')}
       </button>
       {open && <ApprovalThread approval={approval} session={session} />}
     </div>
@@ -218,6 +227,7 @@ function ApprovalThread({
   approval: ApprovalRequest;
   session: CompanionDesktopSession;
 }) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<CompanionMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -232,12 +242,12 @@ function ApprovalThread({
     } catch (err) {
       if (err instanceof CompanionApiError && err.httpStatus === 401) {
         if (threadPollRef.current) { clearInterval(threadPollRef.current); threadPollRef.current = null; }
-        setError('Session expired.');
+        setError(t('companion.appr.sessionExpired'));
       } else {
-        setError(err instanceof Error ? err.message : 'Could not load');
+        setError(err instanceof Error ? err.message : t('companion.msg.couldNotLoad'));
       }
     }
-  }, [session, approval.id]);
+  }, [session, approval.id, t]);
 
   useEffect(() => {
     void refresh();
@@ -256,7 +266,7 @@ function ApprovalThread({
       setDraft('');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send');
+      setError(err instanceof Error ? err.message : t('companion.msg.couldNotSend'));
     } finally {
       setBusy(false);
     }
@@ -266,7 +276,7 @@ function ApprovalThread({
     <div style={threadContainerStyle}>
       <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {messages.length === 0
-          ? <div style={threadEmptyStyle}>No messages yet for this approval.</div>
+          ? <div style={threadEmptyStyle}>{t('companion.appr.threadEmpty')}</div>
           : messages.map(m => <Bubble key={m.id} msg={m} />)}
       </div>
       {error && <div style={{ ...errorBoxStyle, marginTop: 6 }}>{error}</div>}
@@ -275,12 +285,12 @@ function ApprovalThread({
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
-          placeholder="Ask the manager about this approval…"
+          placeholder={t('companion.appr.threadPlaceholder')}
           disabled={busy}
           style={threadInputStyle}
         />
         <button onClick={() => void handleSend()} disabled={!draft.trim() || busy} style={threadSendStyle}>
-          Send
+          {t('companion.msg.send')}
         </button>
       </div>
     </div>
@@ -288,6 +298,7 @@ function ApprovalThread({
 }
 
 function Bubble({ msg }: { msg: CompanionMessage }) {
+  const { t } = useTranslation();
   const fromMe = msg.fromRole === 'pos';
   return (
     <div style={{ alignSelf: fromMe ? 'flex-end' : 'flex-start', maxWidth: '82%' }}>
@@ -304,7 +315,7 @@ function Bubble({ msg }: { msg: CompanionMessage }) {
         {msg.body}
       </div>
       <div style={{ fontSize: 10, color: '#64748b', textAlign: fromMe ? 'right' : 'left', marginTop: 2 }}>
-        {msg.fromName ?? (fromMe ? 'Store' : 'Manager')} · {new Date(msg.createdAt).toLocaleTimeString()}
+        {msg.fromName ?? (fromMe ? t('companion.role.store') : t('companion.role.manager'))} · {new Date(msg.createdAt).toLocaleTimeString()}
       </div>
     </div>
   );
