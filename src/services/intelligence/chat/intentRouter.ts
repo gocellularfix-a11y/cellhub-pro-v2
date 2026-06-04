@@ -1564,6 +1564,11 @@ const OPERATOR_TYPO_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 const OPERATOR_TYPO_TOKENS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bahorta\b/g, 'ahora'],
+  // R-INTELLIGENCE-RUNTIME-POLISH-V1: "ahorita" (MX colloquial "right now")
+  // normalizes to "ahora" so "que hago ahorita" routes like "que hago ahora"
+  // (recommended_next_best_action) instead of falling back. Word-boundary
+  // anchored — never touches names/phones/invoices/SKUs (no such token).
+  [/\bahorita\b/g, 'ahora'],
   [/\baora\b/g, 'ahora'],
 ];
 export function correctOperatorTypos(normalized: string): string {

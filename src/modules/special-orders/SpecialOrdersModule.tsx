@@ -109,9 +109,15 @@ export default function SpecialOrdersModule() {
       const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
       if (!orderId) return;
       const order = specialOrdersRef.current.find((o) => o.id === orderId);
-      // R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1: id present but no
-      // matching order → safe no-op (never open a blank/default modal).
-      if (!order) { console.warn('[cellhub] _intel-open-special-order: not found', orderId); return; }
+      // R-INTELLIGENCE-ACTION-OPEN-ORDER-AND-TYPO-TOLERANCE-V1 + RUNTIME-POLISH-V1:
+      // id present but no matching order → safe no-op (NEVER open a blank/default
+      // create-modal) PLUS a visible operator toast instead of a silent log, so
+      // the cashier isn't left wondering why nothing happened.
+      if (!order) {
+        console.warn('[cellhub] _intel-open-special-order: not found', orderId);
+        toast(t('so.intelOrderNotFound'), 'error');
+        return;
+      }
       // BUG FIX: previously setEditOrder + setShowModal left `form` (parent state,
       // which the modal renders) stale → the modal showed placeholder/default
       // values (John Doe / 0.00) instead of the real order. openEdit() populates
@@ -120,7 +126,9 @@ export default function SpecialOrdersModule() {
     };
     window.addEventListener('cellhub:_intel-open-special-order', handler);
     return () => window.removeEventListener('cellhub:_intel-open-special-order', handler);
-  }, []);
+    // `t` in deps so the fallback toast re-localizes if the operator switches
+    // language mid-session (re-subscribe is a harmless add/remove listener).
+  }, [t]);
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active special order entity so
   // Intelligence surfaces contextual recommendations for this specific ticket.

@@ -2194,6 +2194,8 @@ export const translations: TranslationDictionary = {
   'phonePay.simCardLabel': { en: 'SIM Card (optional)', es: 'Tarjeta SIM (opcional)', pt: 'Cartão SIM (opcional)' },
   'phonePay.simCardSearchPlaceholder': { en: 'Search SIM cards in stock…', es: 'Buscar tarjetas SIM en stock…', pt: 'Buscar cartões SIM em estoque…' },
   'phonePay.noSimsInStock': { en: 'No SIM cards in stock — activation can still proceed', es: 'No hay tarjetas SIM en stock — la activación puede continuar', pt: 'Sem cartões SIM em estoque — a ativação pode prosseguir' },
+  // R-SIM-ACTIVATION-EDITABLE-PRICE-V1
+  'phonePay.simPriceEditHint': { en: 'Tap to edit the SIM price for this sale (inventory price stays unchanged)', es: 'Toca para editar el precio del SIM en esta venta (el precio del inventario no cambia)', pt: 'Toque para editar o preço do SIM nesta venda (o preço do estoque não muda)' },
   'phonePay.spiffToggleLabel': { en: 'Spiff (manual)', es: 'Spiff (manual)', pt: 'Spiff (manual)' },
   'phonePay.spiffToggleHint': { en: 'Internal — does not affect customer total', es: 'Interno — no afecta total del cliente', pt: 'Interno — não afeta total do cliente' },
   'phonePay.knownLineCount': {
@@ -2842,6 +2844,10 @@ export const translations: TranslationDictionary = {
   'so.cancelled':          { en: 'Cancelled',               es: 'Cancelado',                      pt: 'Cancelado' },
   'so.saved':              { en: 'Saved!',                  es: '¡Guardado!',                     pt: 'Salvo!' },
   'so.specialOrderCreated':{ en: 'Special order created!',  es: '¡Pedido especial creado!',       pt: 'Pedido especial criado!' },
+  // R-INTELLIGENCE-RUNTIME-POLISH-V1: safe fallback when an Intelligence "Open
+  // Order" action references an order that no longer exists (never open a blank
+  // create-modal — show this instead).
+  'so.intelOrderNotFound': { en: 'That special order is no longer available.', es: 'Ese pedido especial ya no está disponible.', pt: 'Esse pedido especial não está mais disponível.' },
   'so.title':              { en: 'Special Orders',          es: 'Pedidos Especiales',             pt: 'Pedidos Especiais' },
   'so.active':             { en: 'Active',                  es: 'Activos',                        pt: 'Ativos' },
   'so.completed':          { en: 'Completed',               es: 'Completados',                    pt: 'Concluídos' },
@@ -6973,6 +6979,10 @@ export const translations: TranslationDictionary = {
   'tax.unlockServicesNoTax':         { en: 'Unlock Services (No Tax):',            es: 'Desbloqueos (Sin Impuesto):',            pt: 'Serviços de Desbloqueio (Sem Imposto):' },
   'tax.totalGrossSales':             { en: 'Total Gross Sales:',                   es: 'Total Ventas Brutas:',                   pt: 'Total Vendas Brutas:' },
   'tax.totalTaxCollectedRow':        { en: 'Total Tax Collected:',                 es: 'Total Impuesto Recaudado:',              pt: 'Total Imposto Cobrado:' },
+  // R-REPORTS-TAX-FEE-BUCKETS-CBE-SCREEN-V1: separate recycling-fee rows + combined grand total
+  'tax.cbeFee':                      { en: 'CBE Fee:',                             es: 'Cargo CBE:',                             pt: 'Taxa CBE:' },
+  'tax.screenFee':                   { en: 'Screen Fee:',                          es: 'Cargo de Pantalla:',                     pt: 'Taxa de Tela:' },
+  'tax.totalTaxesFeesRow':           { en: 'Total Taxes & Fees:',                  es: 'Total Impuestos y Cargos:',              pt: 'Total Impostos e Taxas:' },
   'tax.cdtfaLine1':                  { en: 'Line 1 – Total Sales Subject to Tax:', es: 'Línea 1 – Ventas Sujetas a Impuesto:',  pt: 'Linha 1 – Vendas Sujeitas a Imposto:' },
   'tax.cdtfaLine2':                  { en: 'Line 2 – Tax Rate:',                  es: 'Línea 2 – Tasa de Impuesto:',            pt: 'Linha 2 – Alíquota:' },
   'tax.cdtfaLine3':                  { en: 'Line 3 – Amount of Tax:',              es: 'Línea 3 – Monto del Impuesto:',          pt: 'Linha 3 – Valor do Imposto:' },

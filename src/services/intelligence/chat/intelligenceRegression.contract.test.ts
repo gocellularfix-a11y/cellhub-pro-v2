@@ -44,6 +44,10 @@ describe('R-REGRESSION: intent contract (empirically captured)', () => {
     ['what should i do right now', 'en', 'recommended_next_best_action'],
     ['que hago ahora',             'es', 'recommended_next_best_action'],
     ['qué hago ahora',             'es', 'recommended_next_best_action'],
+    // R-INTELLIGENCE-RUNTIME-POLISH-V1: MX-colloquial "ahorita" + typo "ahorta"
+    // normalize to "ahora" → same immediate-action handler.
+    ['que hago ahorita',           'es', 'recommended_next_best_action'],
+    ['que hago ahorta',            'es', 'recommended_next_best_action'],
     ['what should i do today',     'en', 'daily_operator_brief'],
     ['what are my priorities',     'en', 'proactive_operations'],
     ['what is my biggest problem', 'en', 'proactive_operations'],
@@ -109,6 +113,13 @@ describe('R-REGRESSION: typos never mis-route to a wrong business intent', () =>
   it('controlled typo "que hago ahorta" routes like the clean command', () => {
     expect(correctOperatorTypos('que hago ahorta')).toBe('que hago ahora');
     expect(id('que hago ahorta', 'es')).toBe(id('que hago ahora', 'es'));
+  });
+  // R-INTELLIGENCE-RUNTIME-POLISH-V1: ahorita / q hago / ke hago normalization.
+  it('"ahorita" / "q hago" / "ke hago" normalize to the canonical command', () => {
+    expect(correctOperatorTypos('que hago ahorita')).toBe('que hago ahora');
+    expect(correctOperatorTypos('q hago ahora')).toBe('que hago ahora');
+    expect(correctOperatorTypos('ke hago ahora')).toBe('que hago ahora');
+    expect(id('que hago ahorita', 'es')).toBe(id('que hago ahora', 'es'));
   });
   it('controlled typo "what shoud i do right now" is not fallback', () => {
     expect(id('what shoud i do right now')).not.toBe('fallback_question');

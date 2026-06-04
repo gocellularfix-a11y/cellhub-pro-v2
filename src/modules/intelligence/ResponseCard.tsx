@@ -4,6 +4,29 @@
 import { memo } from 'react';
 import type { ChatActionUI, WorkflowSection } from '@/services/intelligence/chat/handlers';
 
+// ── R-INTELLIGENCE-RUNTIME-POLISH-V1: markdown display sanitizer ──
+// ResponseCard renders chat text as plain pre-wrap (no markdown engine), so any
+// `**bold**`, `__bold__`, or leading `#` heading produced by a handler would
+// leak as literal characters ("**Next best action**"). This is the single UI
+// boundary every Intelligence response flows through, so sanitizing here cleans
+// ALL handlers at once without touching engine output or rewriting any handler.
+// Meaning is preserved — only the syntax markers are stripped.
+export function sanitizeMarkdown(input: string): string {
+  if (!input) return input;
+  return input
+    // **bold** / __bold__ → inner text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // any stray unmatched emphasis markers left over
+    .replace(/\*\*/g, '')
+    // leading ATX headings at line start: "## Title" → "Title"
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    // leading markdown bullets ("* " / "- " at line start) → bullet dot,
+    // keeping list readability without the raw md marker. Numbered lists and
+    // the existing "•" bullets are untouched.
+    .replace(/^[ \t]*[*-][ \t]+/gm, '• ');
+}
+
 // ── keyframe injection (once per app) ────────────────────────
 const KF_ID = 'cellhub-response-card-kf';
 function ensureKeyframes() {
@@ -74,7 +97,10 @@ function ResponseCard({
   const cfg = KIND_CFG[kind ?? 'answer'] ?? KIND_CFG.answer;
   const isAnswer = !kind || kind === 'answer';
 
-  const paragraphs = content.split('\n\n').map(p => p.trim()).filter(Boolean);
+  // R-INTELLIGENCE-RUNTIME-POLISH-V1: strip raw markdown markers at the UI
+  // boundary so operator text renders clean (no leaked ** / # syntax).
+  const cleanContent = sanitizeMarkdown(content);
+  const paragraphs = cleanContent.split('\n\n').map(p => p.trim()).filter(Boolean);
   const [primary, ...rest] = paragraphs;
 
   const chipActions   = (actions ?? []).filter(a => a.triggerQuery && a.triggerQuery.trim());
