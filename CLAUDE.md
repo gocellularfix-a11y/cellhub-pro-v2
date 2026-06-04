@@ -18,6 +18,37 @@ dogfooding.
 
 ---
 
+## ANTI-REGRESSION PROTOCOL — PERMANENT, READ FIRST EVERY ROUND
+
+These rules are permanent project guidance for ALL future Claude Code rounds.
+They override convenience. When in doubt, choose the smaller, safer change.
+
+1. **Inspect before editing.** Read the existing working code path FIRST. Never
+   assume something is broken — verify empirically (probe, grep, read) before
+   changing it.
+2. **Preserve what already works.** A passing flow is a contract. Do not alter
+   behavior that isn't the explicit target of the round.
+3. **Surgical / additive only.** Smallest change that fixes the issue. No broad
+   rewrites, no "while I'm here" cleanups.
+4. **Do NOT refactor** unless the round explicitly requests it.
+5. **Do NOT touch** money math, taxes, receipts, reports, inventory, payments,
+   commissions, POS checkout, Companion, Firebase, bridge, sync, pairing, or
+   `.omc` — UNLESS the task explicitly targets that area.
+6. **Reuse existing handlers/actions.** Never create a parallel path for
+   something a module already does (open/edit, navigation, persist, print).
+7. **Fail safe on missing data.** If an id/entity is missing or not found:
+   no-op + safe toast/log. NEVER open a blank/new/default modal and NEVER
+   create a fake/placeholder record.
+8. **Bilingual always.** New user-facing text → EN/ES/PT (no voseo).
+9. **Validate before reporting done.** Run `./node_modules/.bin/tsc --noEmit`,
+   `npm run build` (if runtime paths changed), and `npx vitest run` when
+   reasonable. Never present as validated if only reasoned.
+10. **Report faithfully.** Always return: exact files changed, root cause,
+    validation results, and a manual runtime checklist. Surface out-of-scope
+    bugs at the end — do not fix them inline.
+
+---
+
 ## DUAL-TOOL WORKFLOW
 
 Jorge opera dos herramientas de IA simultáneamente:

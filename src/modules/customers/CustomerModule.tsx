@@ -100,13 +100,19 @@ export default function CustomerModule() {
       const { customerId } = (e as CustomEvent<{ customerId?: string }>).detail ?? {};
       if (!customerId) return;
       const cust = customersRef.current.find((c) => c && c.id === customerId);
-      if (!cust) { console.warn('[cellhub] _intel-open-customer: not found', customerId); return; }
+      // R-INTELLIGENCE-ACTION-RELIABILITY-V2: not found → safe no-op + toast
+      // (never the create-new customer modal). Same path as the card Edit button.
+      if (!cust) {
+        console.warn('[cellhub] _intel-open-customer: not found', customerId);
+        toast(t('intel.entityNotFound'), 'error');
+        return;
+      }
       setEditCustomer(cust);
       setShowModal(true);
     };
     window.addEventListener('cellhub:_intel-open-customer', handler);
     return () => window.removeEventListener('cellhub:_intel-open-customer', handler);
-  }, []);
+  }, [t]);
 
   const [search, setSearch] = useState(customerSearchTerm || '');
   const [showModal, setShowModal] = useState(false);

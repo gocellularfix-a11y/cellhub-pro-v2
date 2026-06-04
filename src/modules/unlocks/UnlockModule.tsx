@@ -98,7 +98,12 @@ export default function UnlockModule() {
       const { unlockId } = (e as CustomEvent<{ unlockId?: string }>).detail ?? {};
       if (!unlockId) return;
       const unlock = unlocksRef.current.find((u) => u.id === unlockId);
-      if (!unlock) { console.warn('[cellhub] _intel-open-unlock: not found', unlockId); return; }
+      // R-INTELLIGENCE-ACTION-RELIABILITY-V2: not found → safe no-op + toast.
+      if (!unlock) {
+        console.warn('[cellhub] _intel-open-unlock: not found', unlockId);
+        toast(t('intel.entityNotFound'), 'error');
+        return;
+      }
       // R-INTELLIGENCE-OPEN-ENTITY-RUNTIME-POLISH-V1: the inline edit modal renders the
       // parent `form` state (populated cents→dollars by openEdit), NOT editUnlock
       // directly. setEditUnlock alone left `form` stale → blank/placeholder fields.
@@ -108,7 +113,7 @@ export default function UnlockModule() {
     };
     window.addEventListener('cellhub:_intel-open-unlock', handler);
     return () => window.removeEventListener('cellhub:_intel-open-unlock', handler);
-  }, []);
+  }, [t]);
 
   // r-new-5 port: refs to avoid stale closures in handlers (multi-station sync).
   const cartRef = useRef(cart);

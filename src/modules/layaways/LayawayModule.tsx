@@ -127,7 +127,12 @@ export default function LayawayModule() {
       const { layawayId } = (e as CustomEvent<{ layawayId?: string }>).detail ?? {};
       if (!layawayId) return;
       const lay = layawaysRef.current.find((l) => l.id === layawayId);
-      if (!lay) { console.warn('[cellhub] _intel-open-layaway: not found', layawayId); return; }
+      // R-INTELLIGENCE-ACTION-RELIABILITY-V2: not found → safe no-op + toast.
+      if (!lay) {
+        console.warn('[cellhub] _intel-open-layaway: not found', layawayId);
+        toast(t('intel.entityNotFound'), 'error');
+        return;
+      }
       // R-INTELLIGENCE-OPEN-ENTITY-RUNTIME-POLISH-V1: the inline edit form renders the
       // parent `form` state (populated by openEdit with the tax back-out math), NOT
       // editLayaway directly. setEditLayaway alone left `form` stale → blank fields.
@@ -136,7 +141,7 @@ export default function LayawayModule() {
     };
     window.addEventListener('cellhub:_intel-open-layaway', handler);
     return () => window.removeEventListener('cellhub:_intel-open-layaway', handler);
-  }, []);
+  }, [t]);
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active layaway so Intelligence
   // surfaces contextual recommendations for this specific ticket.

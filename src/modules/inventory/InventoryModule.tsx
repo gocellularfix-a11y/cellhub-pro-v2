@@ -260,13 +260,20 @@ export default function InventoryModule() {
       const { itemId } = (e as CustomEvent<{ itemId?: string }>).detail ?? {};
       if (!itemId) return;
       const item = inventoryRef.current.find((i) => i.id === itemId);
-      if (!item) { console.warn('[cellhub] _intel-open-inventory: not found', itemId); return; }
+      // R-INTELLIGENCE-ACTION-RELIABILITY-V2: not found → safe no-op + toast
+      // (never a blank/new item modal). Modal renders from the `item={editItem}`
+      // prop, same path as the card Edit button.
+      if (!item) {
+        console.warn('[cellhub] _intel-open-inventory: not found', itemId);
+        toast(t('intel.entityNotFound'), 'error');
+        return;
+      }
       setEditItem(item);
       setShowModal(true);
     };
     window.addEventListener('cellhub:_intel-open-inventory', handler);
     return () => window.removeEventListener('cellhub:_intel-open-inventory', handler);
-  }, []);
+  }, [t]);
 
   // R-INTELLIGENCE-CONTEXT-AWARE-V1: broadcast active inventory item so Intelligence
   // surfaces contextual recommendations for this specific product.
