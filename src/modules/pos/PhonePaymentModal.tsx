@@ -127,6 +127,14 @@ export default function PhonePaymentModal({
   // a custom plan in the receipt) without mutating the inventory record.
   const [simNameOverride, setSimNameOverride] = useState('');
   const [editingSimName, setEditingSimName] = useState(false);
+  // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: editable SIM price in the selected
+  // pill (dollars string). Initialized from `selectedSim.price` on pick;
+  // flushed to the cart-line price on Add to Cart so the cashier can adjust
+  // the charge ad-hoc per transaction WITHOUT mutating the inventory record.
+  // Empty / invalid input falls back to the inventory price (never $0 by
+  // accident). Mirrors the simNameOverride pattern exactly.
+  const [simPriceOverride, setSimPriceOverride] = useState('');
+  const [editingSimPrice, setEditingSimPrice] = useState(false);
 
   // ── R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 + OUTCOME-AWARE-V1 emitter.
   // The Operator bubble lives outside this module. We dispatch a
@@ -1603,6 +1611,16 @@ export default function PhonePaymentModal({
     return list.slice(0, 8);
   }, [simSearch, carrierFilteredSims]);
 
+  // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: effective SIM charge in cents — the
+  // cashier's ad-hoc override when it parses to a non-negative number, else
+  // the inventory price. Single source for both the pill display and the
+  // cart line (checkout recomputes the same expression).
+  const simEffectivePriceCents = useMemo(() => {
+    const d = parseFloat(simPriceOverride);
+    if (simPriceOverride.trim() !== '' && Number.isFinite(d) && d >= 0) return Math.round(d * 100);
+    return selectedSim?.price || 0;
+  }, [simPriceOverride, selectedSim]);
+
   // Plan autocomplete — load previously-used plans from localStorage
   const knownPlans = useMemo<string[]>(() => {
     try {
@@ -1692,7 +1710,13 @@ export default function PhonePaymentModal({
     // exclusive: a single phone gets ONE provisioning method, not both.
     const isEsimActivation = amountCents > 0;
     if (selectedSim && !isEsimActivation) {
-      const simPriceCents = selectedSim.price || 0;
+      // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: honor the cashier's ad-hoc price
+      // override when it parses to a non-negative number; otherwise fall back
+      // to the inventory price (never silently $0). Inventory record untouched.
+      const overrideDollars = parseFloat(simPriceOverride);
+      const simPriceCents = (simPriceOverride.trim() !== '' && Number.isFinite(overrideDollars) && overrideDollars >= 0)
+        ? Math.round(overrideDollars * 100)
+        : (selectedSim.price || 0);
       newItems.push({
         id: generateId(),
         inventoryId: selectedSim.id,
@@ -1854,6 +1878,8 @@ export default function PhonePaymentModal({
     setSelectedSim(null); setSimSearch(''); setUseSpiff(false);
     // R-SIM-ACTIVATION: reset the new picker UX state too.
     setSimCarrierFilter('All'); setSimNameOverride(''); setEditingSimName(false);
+    // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: reset price override for next sale.
+    setSimPriceOverride(''); setEditingSimPrice(false);
     // Also reset main panel fields to avoid data leak between transactions
     reset();
     onClose();
@@ -1861,7 +1887,9 @@ export default function PhonePaymentModal({
       actCommissionCents, settings, setCart, onClose, t, firstName, lastName,
       selectedCustomer, propagateSelectedCustomer, selectedSim, useSpiff,
       // R-SIM-ACTIVATION: the renamed SIM line picks up simNameOverride.
-      simNameOverride]);
+      simNameOverride,
+      // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: ad-hoc price override.
+      simPriceOverride]);
 
   const handleOpenActivationPortal = () => {
     // Try both raw and normalized carrier name as keys
@@ -2258,9 +2286,49 @@ export default function PhonePaymentModal({
                     )}
                     {/* R-SIM-ACTIVATION: ICCID label (was "IMEI" — semantically wrong for SIMs). */}
                     {selectedSim.imei && <span style={{ color: '#94a3b8' }}>· ICCID {selectedSim.imei}</span>}
-                    <span style={{ color: '#22c55e', fontWeight: 700 }}>
-                      {formatCurrency(selectedSim.price || 0)}
-                    </span>
+                    {/* R-SIM-ACTIVATION-EDITABLE-PRICE-V1: editable SIM price.
+                        Tap the green amount (or ✏️) to override the charge for
+                        this transaction only — inventory price is unchanged. */}
+                    {editingSimPrice ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', color: '#22c55e', fontWeight: 700 }}>
+                        $
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={simPriceOverride}
+                          onChange={(e) => setSimPriceOverride(e.target.value)}
+                          onBlur={() => setEditingSimPrice(false)}
+                          autoFocus
+                          style={{
+                            width: '5rem',
+                            background: 'transparent',
+                            border: 'none',
+                            borderBottom: '1px solid rgba(34,197,94,0.5)',
+                            color: '#22c55e',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            padding: '0.1rem 0.2rem',
+                          }}
+                        />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingSimPrice(true)}
+                        aria-label="edit SIM price"
+                        title={t('phonePay.simPriceEditHint')}
+                        style={{
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: '#22c55e', fontWeight: 700, fontSize: '0.82rem',
+                          padding: 0, display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                        }}
+                      >
+                        {formatCurrency(simEffectivePriceCents)}
+                        <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>✏️</span>
+                      </button>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -2271,6 +2339,9 @@ export default function PhonePaymentModal({
                       setSimCarrierFilter('All');
                       setSimNameOverride('');
                       setEditingSimName(false);
+                      // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: clear price override.
+                      setSimPriceOverride('');
+                      setEditingSimPrice(false);
                     }}
                     style={{
                       background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
@@ -2351,6 +2422,10 @@ export default function PhonePaymentModal({
                             setSimSearch('');
                             setSimNameOverride(s.name || '');
                             setEditingSimName(false);
+                            // R-SIM-ACTIVATION-EDITABLE-PRICE-V1: seed the
+                            // editable price from the inventory price (dollars).
+                            setSimPriceOverride(((s.price || 0) / 100).toFixed(2));
+                            setEditingSimPrice(false);
                           }}
                           style={{
                             display: 'block', width: '100%', textAlign: 'left',
