@@ -1010,12 +1010,24 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
                 </div>
                 <div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem' }}>{t('tax.taxesCollectedTitle')}</div>
-                  {[
+                  {([
                     [`${t('tax.salesTaxTaxLabel')} (${((settings.taxRate||0.0925)*100).toFixed(4)}%):`, formatCurrency(caTax.productTax)],
                     [`${t('tax.utilityUsersTax')} (${((settings.utilityUsersTax||0.055)*100).toFixed(2)}%):`, formatCurrency(caTax.phoneTax)],
                     [`${t('tax.caMobilityFee')} ($${(settings.mobileSurcharge||0.41).toFixed(2)} ea):`, formatCurrency(caTax.phoneSurcharge)],
+                    // R-REPORTS-TAX-FEE-BUCKETS-CBE-SCREEN-V1: CDTFA tax remittance
+                    // total stays EXACTLY sales + utility + mobility (unchanged
+                    // tax math). CBE Fee and Screen Fee are recycling fees
+                    // remitted separately, so they appear as their own rows below
+                    // — shown only when collected (> 0).
                     [t('tax.totalTaxCollectedRow'), formatCurrency(caTax.totalTaxDue)],
-                  ].map(([l, v]) => (
+                    ...(caTax.cbeTotal > 0 ? [[t('tax.cbeFee'), formatCurrency(caTax.cbeTotal)]] : []),
+                    ...(caTax.screenFeeTotal > 0 ? [[t('tax.screenFee'), formatCurrency(caTax.screenFeeTotal)]] : []),
+                    // Combined grand total (taxes + recycling fees) — additive
+                    // display only, shown when any recycling fee was collected.
+                    ...((caTax.cbeTotal > 0 || caTax.screenFeeTotal > 0)
+                      ? [[t('tax.totalTaxesFeesRow'), formatCurrency(caTax.totalTaxDue + caTax.cbeTotal + caTax.screenFeeTotal)]]
+                      : []),
+                  ] as Array<[string, string]>).map(([l, v]) => (
                     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <span style={{ color: '#94a3b8' }}>{l}</span><span style={{ color: '#f87171', fontWeight: 600 }}>{v}</span>
                     </div>
