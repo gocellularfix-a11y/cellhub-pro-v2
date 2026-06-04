@@ -2848,6 +2848,11 @@ export const translations: TranslationDictionary = {
   // Order" action references an order that no longer exists (never open a blank
   // create-modal — show this instead).
   'so.intelOrderNotFound': { en: 'That special order is no longer available.', es: 'Ese pedido especial ya no está disponible.', pt: 'Esse pedido especial não está mais disponível.' },
+  // R-INTELLIGENCE-ACTION-RELIABILITY-V2: standardized safe fallback for any
+  // Intelligence "open entity" action whose target no longer exists (repair /
+  // unlock / customer / layaway / inventory). Never open a blank modal — toast
+  // this instead. Special orders keep their module-specific copy above.
+  'intel.entityNotFound': { en: 'That item is no longer available.', es: 'Ese registro ya no está disponible.', pt: 'Esse registro não está mais disponível.' },
   'so.title':              { en: 'Special Orders',          es: 'Pedidos Especiales',             pt: 'Pedidos Especiais' },
   'so.active':             { en: 'Active',                  es: 'Activos',                        pt: 'Ativos' },
   'so.completed':          { en: 'Completed',               es: 'Completados',                    pt: 'Concluídos' },
@@ -7133,6 +7138,32 @@ export const translations: TranslationDictionary = {
     pt: (n: number) => `   ${n} estão aguardando há mais de 3 dias.`,
   },
   'chat.repairsReady.action': { en: 'Send pickup reminders via WhatsApp.', es: 'Envía recordatorios de recogida por WhatsApp.', pt: 'Envie lembretes de retirada pelo WhatsApp.' },
+  // R-INTELLIGENCE-REPAIR-PICKUP-DETAILS-V1: detailed pickup-ready rows + per-repair actions
+  'chat.repairsReady.ticketLabel':  { en: 'Ticket', es: 'Ticket', pt: 'Ticket' },
+  'chat.repairsReady.readyToday':   { en: 'Ready today', es: 'Lista hoy', pt: 'Pronto hoje' },
+  'chat.repairsReady.readyDaysAgo': {
+    en: (n: number) => `Ready ${n} day${n === 1 ? '' : 's'} ago`,
+    es: (n: number) => `Lista hace ${n} día${n === 1 ? '' : 's'}`,
+    pt: (n: number) => `Pronto há ${n} dia${n === 1 ? '' : 's'}`,
+  },
+  'chat.repairsReady.balanceDue':   {
+    en: (amount: string) => `Balance: ${amount}`,
+    es: (amount: string) => `Saldo: ${amount}`,
+    pt: (amount: string) => `Saldo: ${amount}`,
+  },
+  'chat.repairsReady.paid':         { en: 'Paid', es: 'Pagado', pt: 'Pago' },
+  'chat.repairsReady.showingTopN':  {
+    en: (shown: number, total: number) => `Showing ${shown} of ${total} ready repairs.`,
+    es: (shown: number, total: number) => `Mostrando ${shown} de ${total} reparaciones listas.`,
+    pt: (shown: number, total: number) => `Mostrando ${shown} de ${total} reparos prontos.`,
+  },
+  'chat.repairsReady.actionV2':     { en: 'Open a repair to confirm details, or send the customer a pickup reminder.', es: 'Abre una reparación para confirmar detalles, o envía al cliente un recordatorio de recogida.', pt: 'Abra um reparo para confirmar detalhes, ou envie ao cliente um lembrete de retirada.' },
+  'chat.repairsReady.thisRepair':   { en: 'this repair', es: 'esta reparación', pt: 'este reparo' },
+  'chat.repairsReady.waMessage':    {
+    en: (name: string) => `Hi ${name}, your repair at Go Cellular is ready for pickup. Come by whenever you can!`,
+    es: (name: string) => `Hola ${name}, tu reparación en Go Cellular ya está lista para recoger. ¡Pásate cuando puedas!`,
+    pt: (name: string) => `Olá ${name}, seu reparo na Go Cellular está pronto para retirada. Apareça quando puder!`,
+  },
 
   // R-INTELLIGENCE-MODULE-WIDE-ACTIONS-V1 — chat handler translations
   'chat.whatToDo.header': { en: "Today's Priority Actions", es: 'Acciones Prioritarias de Hoy', pt: 'Ações Prioritárias de Hoje' },

@@ -152,6 +152,8 @@ import type { AttentionAction } from '../attention/entityPriorityTypes';
 import { handleWhoNeedsAttentionToday } from './whoNeedsAttentionToday';
 // R-INTELLIGENCE-UNPAID-BALANCES-V1: accounts-receivable list handler.
 import { handleUnpaidBalances } from './unpaidBalances';
+// R-INTELLIGENCE-REPAIR-PICKUP-DETAILS-V1: detailed ready-for-pickup repair list.
+import { handleRepairsReady } from './repairsReady';
 // R-INTELLIGENCE-RECOMMENDED-NEXT-BEST-ACTION: single top-priority action.
 import { handleRecommendedNextBestAction } from './nextBestAction';
 // R-INTELLIGENCE-WHY-IS-TODAY-SLOW: deterministic operational diagnosis.
@@ -3258,26 +3260,9 @@ function handleRepairsOverdue(engine: IntelligenceEngine, es: boolean): ChatResp
 // Mirrors the live operator card's logic: kpi.repairs.pending for the
 // total ready-for-pickup count + a stale-3-day scan for stragglers.
 // Pure read; no engine/inventory mutation, no automation.
-function handleRepairsReady(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
-  const t = tChat(lang);
-  const result = engine.refresh();
-  const ready = result.kpiDashboard.repairs.pending;
-
-  if (ready === 0) {
-    return { kind: 'answer', text: t('chat.repairsReady.empty') };
-  }
-
-  const { staleCount } = scanStaleRepairs(engine);
-
-  const lines: string[] = [];
-  lines.push(t('chat.repairsReady.header', ready));
-  if (staleCount > 0) {
-    lines.push(t('chat.repairsReady.stale', staleCount));
-  }
-  lines.push('');
-  lines.push(`💡 ${t('chat.repairsReady.action')}`);
-  return { kind: 'answer', text: lines.join('\n') };
-}
+// R-INTELLIGENCE-REPAIR-PICKUP-DETAILS-V1: handleRepairsReady moved to
+// ./repairsReady.ts (detailed, actionable list). The 'repairs_ready' switch
+// case now delegates to the imported handler — see top-of-file import.
 
 function handleHealthCheck(engine: IntelligenceEngine, es: boolean): ChatResponse {
   const result = engine.refresh();
