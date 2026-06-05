@@ -38,6 +38,8 @@ import {
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { escHtml } from '@/utils/escHtml';
+// R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: partial-payment audit trail.
+import { buildPaymentTrace, renderPaymentTraceHtml, paymentTraceI18n } from '@/services/receipts/paymentTrace';
 // R-RECEIPT-UNIFY-SPECIALORDER-V1: reuse the POS payment-receipt barcode renderer
 // + bundled QR lib so the special-order receipt shares the same visual system.
 import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
@@ -337,6 +339,24 @@ export default function SpecialOrdersModule() {
     const balanceDue = displayBalance > 0;
     const thanks = settings.receiptFooter || t('so.print.thankYou');
 
+    // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: summary payment trace.
+    // Special Orders store only deposit + balance (no per-payment history), so
+    // this is a summary (no PAYMENT HISTORY rows). Uses the SAME display values
+    // the receipt already computed — no money/tax/balance recomputation. On the
+    // first deposit print the deposit override is shown as today's payment.
+    const soTraceHtml = renderPaymentTraceHtml(
+      buildPaymentTrace({
+        originalTotalCents: soFwd.totalCents,
+        totalPaidCents: displayDeposit,
+        balanceAfterCents: displayBalance,
+        history: [],
+        fallbackTodayCents: displayOverride?.depositAmount ?? 0,
+      }),
+      paymentTraceI18n(t),
+      escHtml,
+      money,
+    );
+
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>SO ${escHtml(ticketNum)}</title>
 <style>
@@ -392,6 +412,8 @@ export default function SpecialOrdersModule() {
     </tr>
     ${corrected && ((order as any).refundOwedAmount || 0) > 0 ? `<tr style="color:#b91c1c"><td>${escHtml(t('so.print.refundOwed'))}:</td><td style="text-align:right;font-weight:700">${escHtml(money((order as any).refundOwedAmount))}</td></tr>` : ''}
   </table>
+  <div class="sep"></div>
+  ${soTraceHtml}
   ${order.notes ? `<div class="sep"></div><div class="sec-lbl">${escHtml(t('so.print.notes'))}</div><div style="font-size:10px">${escHtml(fmt(order.notes))}</div>` : ''}
   <div class="sep"></div>
   <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">

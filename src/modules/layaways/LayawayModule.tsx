@@ -54,6 +54,13 @@ import {
   normalizeLayawayPayments,
   addLayawayPayment,
 } from '@/services/layaway/payments';
+// R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: partial-payment audit trail.
+import {
+  buildPaymentTrace,
+  renderPaymentTraceHtml,
+  classifyHistoryRows,
+  paymentTraceI18n,
+} from '@/services/receipts/paymentTrace';
 import LayawayPaymentModal from './LayawayPaymentModal';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
@@ -1201,21 +1208,35 @@ export default function LayawayModule() {
     const depSplit = paidCents > 0 ? reverseTaxFromPayment(paidCents, effectiveRate, isTaxable) : null;
     const balSplit = (isTaxable && balanceCents > 0) ? reverseTaxFromPayment(balanceCents, effectiveRate, isTaxable) : null;
 
-    // R-LAYAWAY-MULTIPAY-V1 — payment history block.
+    // R-LAYAWAY-MULTIPAY-V1 — payment totals.
     const lpTotals = calculateLayawayTotals(l);
-    let latestPmt: { amount: number; date: string; method?: string } | null = null;
-    let latestPmtDate = '';
-    if (lpTotals.paymentCount > 0) {
-      const history = normalizeLayawayPayments(l);
-      latestPmt = [...history].sort((a, b) => {
-        const da = new Date(a.date).getTime() || 0;
-        const db = new Date(b.date).getTime() || 0;
-        return db - da;
-      })[0] ?? null;
-      if (latestPmt) {
-        latestPmtDate = (() => { try { return new Date(latestPmt!.date).toLocaleDateString(); } catch { return latestPmt!.date; } })();
-      }
-    }
+    // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: structured partial-
+    // payment audit trail (summary + full per-payment history). Uses values the
+    // receipt already computed — no money/tax/balance recomputation. When the
+    // payments[] history exists, the summary is derived from it (single source
+    // of truth); for a brand-new agreement-state deposit (history empty but a
+    // deposit was captured) the deposit is shown as today's payment.
+    const traceHasHistory = lpTotals.paymentCount > 0;
+    const traceRows = traceHasHistory
+      ? classifyHistoryRows(
+          [...normalizeLayawayPayments(l)]
+            .sort((a, b) => (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0))
+            .map((p) => ({
+              date: (() => { try { return new Date(p.date).toLocaleDateString(); } catch { return ''; } })(),
+              method: String(p.method || ''),
+              amountCents: p.amount || 0,
+            })),
+          lpTotals.remainingBalanceCents <= 0,
+        )
+      : [];
+    const paymentTrace = buildPaymentTrace({
+      originalTotalCents: totalCents,
+      totalPaidCents: traceHasHistory ? lpTotals.totalPaidCents : paidCents,
+      balanceAfterCents: traceHasHistory ? lpTotals.remainingBalanceCents : Math.max(0, totalCents - paidCents),
+      history: traceRows,
+      fallbackTodayCents: traceHasHistory ? 0 : paidCents,
+    });
+    const paymentTraceHtml = renderPaymentTraceHtml(paymentTrace, paymentTraceI18n(t), esc, fmtMoney);
 
     // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #). The Google Reviews QR is
     // intentionally OMITTED on layaway — it is the tallest receipt (tax split +
@@ -1260,7 +1281,7 @@ ${depSplit && isTaxable && depSplit.taxCents > 0 ? `<div class="sub">${esc(t('la
 <div class="row ${balanceCents > 0 ? 'bal-due' : 'grand'}"><span class="lbl">${esc(t('layaway.print.balanceDue'))}</span><span class="val">${esc(fmtMoney(balanceCents))}</span></div>
 ${balSplit ? `<div class="sub">${esc(t('layaway.print.taxIncluded'))}: ${esc(fmtMoney(balSplit.taxCents))}</div><div class="sub">${esc(t('layaway.print.preTaxBase'))}: ${esc(fmtMoney(balSplit.baseCents))}</div>` : ''}
 </div>
-${lpTotals.paymentCount > 0 && latestPmt ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">Payment History</div>${latestPmt ? `<div class="row"><span class="lbl">${esc(t('layaway.print.lastPayment'))}</span><span class="val">${esc(fmtMoney(latestPmt.amount))} ${esc(latestPmtDate)} ${esc(latestPmt.method || '')}</span></div>` : ''}<div class="row"><span class="lbl">${esc(t('layaway.print.totalPaid'))}</span><span class="val">${esc(fmtMoney(lpTotals.totalPaidCents))} (${lpTotals.paymentCount})</span></div><div class="row grand"><span class="lbl">${esc(t('layaway.print.balanceDue'))}</span><span class="val">${esc(fmtMoney(lpTotals.remainingBalanceCents))}</span></div></div>` : ''}
+<div class="dash"></div>${paymentTraceHtml}
 ${l.notes ? `<div class="dash"></div><div class="sec"><div class="sec-lbl">${esc(t('layaway.print.notes'))}</div><div>${esc(safe(l.notes))}</div></div>` : ''}
 <div class="dash"></div>
 <div class="sec">
