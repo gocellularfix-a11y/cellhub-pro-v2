@@ -17,6 +17,9 @@ import { emitRepairCompleted } from '@/services/intelligence/liveContext/liveCon
 import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
 import { emitRepairAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { persist, persistSettings, remove } from '@/services/persist';
+// R-PAYMENT-TRACE-RECEIPTS-REPAIRS-UNLOCKS-V1: reuse the shared payment-trace
+// audit trail (summary mode — repairs store aggregates, not per-payment history).
+import { buildPaymentTrace, renderPaymentTraceHtml, paymentTraceI18n } from '@/services/receipts/paymentTrace';
 import { REPAIR_STATUS, normalizeRepairStatus, orderedRepairStatusOptions, isDoneRepairStatus } from '@/utils/repairStatus';
 import DepositModal from '@/components/DepositModal';
 // R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
@@ -314,6 +317,23 @@ export default function RepairModule() {
     const displayBalance = displayOverride?.balance
       ?? Math.max(0, displayTotal - displayDeposit);
 
+    // R-PAYMENT-TRACE-RECEIPTS-REPAIRS-UNLOCKS-V1: summary payment trace.
+    // Repairs store only deposit + balance (no per-payment history), so this is
+    // a summary (no PAYMENT HISTORY rows) — same shape as Special Orders. Uses
+    // the display values the receipt already computed; no money recomputation.
+    const repairTraceHtml = renderPaymentTraceHtml(
+      buildPaymentTrace({
+        originalTotalCents: displayTotal,
+        totalPaidCents: displayDeposit,
+        balanceAfterCents: displayBalance,
+        history: [],
+        fallbackTodayCents: displayOverride?.depositAmount ?? 0,
+      }),
+      paymentTraceI18n(t),
+      escHtml,
+      money,
+    );
+
     // Pre-compute corrected-receipt annotations
     const prevLabor    = previously('laborCost');
     const prevSubtotal = previously('subtotal');
@@ -406,6 +426,8 @@ ${corrected ? `<div class="corrected-bar">&#9888; ${escHtml(t('repairs.print.cor
   <div class="row balance"><span class="lbl">${escHtml(t('repairs.print.balance'))}</span><span class="val">${money(displayBalance)}${prevBalance ? `<span class="prev">${escHtml(prevBalance)}</span>` : ''}</span></div>
   ${corrected && (repair.refundOwedAmount || 0) > 0 ? `<div class="row"><span class="lbl">${escHtml(t('repairs.print.refundOwed'))}</span><span class="val">${money(repair.refundOwedAmount)}</span></div>` : ''}
 </div>
+<div class="dash" style="margin:4px 0"></div>
+${repairTraceHtml}
 ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: ${escHtml(safe(repair.warranty))} ${escHtml(t('repairs.print.days'))}</div>` : ''}
 <div class="sig-sec">
   <div class="sig-line"></div>

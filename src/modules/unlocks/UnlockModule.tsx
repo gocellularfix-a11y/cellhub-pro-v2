@@ -14,6 +14,9 @@ import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 // R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import { persist, remove } from '@/services/persist';
+// R-PAYMENT-TRACE-RECEIPTS-REPAIRS-UNLOCKS-V1: reuse the shared payment-trace
+// audit trail (summary mode — unlocks store aggregates, not per-payment history).
+import { buildPaymentTrace, renderPaymentTraceHtml, paymentTraceI18n } from '@/services/receipts/paymentTrace';
 import DepositModal from '@/components/DepositModal';
 import { calcDepositTotals, reverseTaxFromPayment, forwardTaxFromBase } from '@/utils/depositTax';
 import TicketListLayout from '@/components/shared/TicketListLayout';
@@ -388,6 +391,23 @@ export default function UnlockModule() {
       return '';
     };
 
+    // R-PAYMENT-TRACE-RECEIPTS-REPAIRS-UNLOCKS-V1: summary payment trace.
+    // Unlocks store only price + deposit + balance (no per-payment history), so
+    // this is a summary (no PAYMENT HISTORY rows) — same shape as Special Orders.
+    // Uses the values the receipt already shows; no money recomputation.
+    const unlockTraceHtml = renderPaymentTraceHtml(
+      buildPaymentTrace({
+        originalTotalCents: unlock.price || 0,
+        totalPaidCents: unlock.depositAmount || 0,
+        balanceAfterCents: unlock.balance || 0,
+        history: [],
+        fallbackTodayCents: unlock.depositAmount || 0,
+      }),
+      paymentTraceI18n(t),
+      escHtml,
+      money,
+    );
+
     const ticketNum = unlock.id.slice(-8).toUpperCase();
     // R-RECEIPT-UNIFY-UNLOCK-V1: rebuilt onto the SAME visual system as the POS
     // payment receipt — centered Go Cellular header, scannable CODE128 barcode
@@ -459,6 +479,8 @@ export default function UnlockModule() {
     </tr>
     ${corrected && (unlock.refundOwedAmount || 0) > 0 ? `<tr style="color:#b91c1c"><td>${escHtml(t('unlocks.print.refundOwed'))}:</td><td style="text-align:right;font-weight:700">${escHtml(money(unlock.refundOwedAmount || 0))}</td></tr>` : ''}
   </table>
+  <div class="sep"></div>
+  ${unlockTraceHtml}
   ${unlock.notes ? `<div class="sep"></div><div class="sec-lbl">${escHtml(t('unlocks.print.notes'))}</div><div style="font-size:10px">${escHtml(fmt(unlock.notes))}</div>` : ''}
   <div class="sep"></div>
   <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
