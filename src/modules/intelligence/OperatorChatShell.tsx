@@ -9,7 +9,7 @@ import type { ChipData } from './SuggestionChips';
 export interface OperatorChatShellProps {
   engine: IntelligenceEngine;
   customers: Customer[];
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   externalQuery?: { text: string; seq: number };
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;

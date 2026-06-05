@@ -63,7 +63,7 @@ import { recordActionClicked } from '@/services/intelligence/timeline/timelineRe
 interface Props {
   engine: IntelligenceEngine;
   customers: Customer[];
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   // When this changes (new seq), the chat auto-submits the query text.
   externalQuery?: { text: string; seq: number };
   // R-OPERATOR-EXECUTABLE-ACTIONS-V1: callback invoked when the user clicks
@@ -294,7 +294,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       matchedIntentId = lastIntentRef.current.intentId; // preserve context for chained follow-ups
     } else if (isFollowUpQuery(query)) {
       // Follow-up phrase with no prior context — clarify instead of mis-routing to classifyIntent.
-      response = { kind: 'answer' as const, text: langRef.current === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : 'No recent context to reference. Please ask a complete question.' };
+      response = { kind: 'answer' as const, text: langRef.current === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : langRef.current === 'pt' ? 'Sem contexto recente. Faça uma pergunta completa.' : 'No recent context to reference. Please ask a complete question.' };
       matchedIntentId = 'followup_no_context';
     } else {
       // R-INTELLIGENCE-CONTEXT-MEMORY-V1: deterministic operational
@@ -527,7 +527,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       response = handleFollowUp(lastIntentRef.current, engine, lang, operationalContextRef.current, query);
       matchedIntentId = lastIntentRef.current.intentId;
     } else if (isFollowUpQuery(query)) {
-      response = { kind: 'answer' as const, text: lang === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : 'No recent context to reference. Please ask a complete question.' };
+      response = { kind: 'answer' as const, text: lang === 'es' ? 'No hay contexto reciente. Haz una pregunta completa.' : lang === 'pt' ? 'Sem contexto recente. Faça uma pergunta completa.' : 'No recent context to reference. Please ask a complete question.' };
       matchedIntentId = 'followup_no_context';
     } else {
       const match = classifyIntent(query, customers, lang);
@@ -1306,7 +1306,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : 'Ask Intelligence…'}
+              placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : locale === 'pt' ? 'Pergunte ao Intelligence…' : 'Ask Intelligence…'}
               style={{
                 flex: 1, background: 'transparent', border: 'none',
                 outline: 'none', color: 'white', fontSize: 14,
@@ -1813,45 +1813,51 @@ function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
 }) {
   const hour = new Date().getHours();
   const es = locale === 'es';
+  // R-INTELLIGENCE-USE-APP-LANGUAGE-V1: pt branch so the operational action cards
+  // + greeting follow the app language (was es-or-English only). query strings
+  // stay as-is — they are not displayed and classifyIntent understands ES/EN/PT.
+  const pt = locale === 'pt';
   const greeting = es
     ? (hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches')
+    : pt
+    ? (hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite')
     : (hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
   const greetingEmoji = hour < 12 ? '🌅' : hour < 18 ? '☀️' : '🌙';
 
   const cards = [
     {
       icon: '💰',
-      title: es ? 'Cobrar pagos' : 'Collect Payments',
+      title: es ? 'Cobrar pagos' : pt ? 'Cobrar pagamentos' : 'Collect Payments',
       subtitle: chipData && chipData.staleRepairCount > 0
-        ? `${chipData.staleRepairCount} ${es ? 'reparaciones sin recoger' : 'repairs uncollected'}`
-        : es ? 'Revisar balances pendientes' : 'Check outstanding balances',
+        ? `${chipData.staleRepairCount} ${es ? 'reparaciones sin recoger' : pt ? 'reparos não retirados' : 'repairs uncollected'}`
+        : es ? 'Revisar balances pendientes' : pt ? 'Verificar saldos pendentes' : 'Check outstanding balances',
       accent: '#F59E0B',
       query: es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
     },
     {
       icon: '🚀',
-      title: es ? 'Promover productos' : 'Promote a Product',
+      title: es ? 'Promover productos' : pt ? 'Promover um produto' : 'Promote a Product',
       subtitle: chipData && chipData.productOppsCount > 0
-        ? `${chipData.productOppsCount} ${es ? 'productos para promover' : 'items to promote'}`
-        : es ? 'Ver oportunidades de venta' : 'See selling opportunities',
+        ? `${chipData.productOppsCount} ${es ? 'productos para promover' : pt ? 'itens para promover' : 'items to promote'}`
+        : es ? 'Ver oportunidades de venta' : pt ? 'Ver oportunidades de venda' : 'See selling opportunities',
       accent: '#8B5CF6',
       query: es ? 'qué productos debo promover hoy' : 'what products should I promote today',
     },
     {
       icon: '✅',
-      title: es ? 'Reparaciones listas' : 'Repairs Ready',
+      title: es ? 'Reparaciones listas' : pt ? 'Reparos prontos' : 'Repairs Ready',
       subtitle: chipData && chipData.repairsPending > 0
-        ? `${chipData.repairsPending} ${es ? 'listas para entrega' : 'ready for pickup'}`
-        : es ? 'Todo al día' : 'All caught up',
+        ? `${chipData.repairsPending} ${es ? 'listas para entrega' : pt ? 'prontos para retirada' : 'ready for pickup'}`
+        : es ? 'Todo al día' : pt ? 'Tudo em dia' : 'All caught up',
       accent: '#10B981',
       query: es ? 'reparaciones listas para entrega' : 'repairs ready for pickup',
     },
     {
       icon: '📞',
-      title: es ? 'Contactar clientes' : 'Contact Customers',
+      title: es ? 'Contactar clientes' : pt ? 'Contatar clientes' : 'Contact Customers',
       subtitle: chipData && chipData.outreachCount >= 2
-        ? `${chipData.outreachCount} ${es ? 'pendientes de contacto' : 'pending outreach'}`
-        : es ? 'Lista de WhatsApp' : 'WhatsApp outreach list',
+        ? `${chipData.outreachCount} ${es ? 'pendientes de contacto' : pt ? 'pendentes de contato' : 'pending outreach'}`
+        : es ? 'Lista de WhatsApp' : pt ? 'Lista de WhatsApp' : 'WhatsApp outreach list',
       accent: '#3B82F6',
       query: es ? 'quién debo contactar hoy' : 'who should I contact today',
     },

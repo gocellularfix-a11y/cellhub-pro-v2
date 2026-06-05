@@ -185,7 +185,7 @@ function ActionCard({ icon, title, subtitle, borderColor, iconBg, onClick }: Act
 interface SimpleOperatorViewProps {
   engine: IntelligenceEngine;
   customers: Customer[];
-  lang: 'en' | 'es';
+  lang: 'en' | 'es' | 'pt';
   externalQuery?: { text: string; seq: number };
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
@@ -216,6 +216,9 @@ export default function SimpleOperatorView({
 }: SimpleOperatorViewProps) {
   const { locale } = useTranslation();
   const es = locale === 'es';
+  // R-INTELLIGENCE-LAYOUT-AND-PT-TRANSLATIONS-V1: pt branch so the 3-column
+  // command center (action cards, store pulse, labels) follows the app language.
+  const pt = locale === 'pt';
   const seqRef = useRef(0);
   const [chatQuery, setChatQuery] = useState<{ text: string; seq: number } | undefined>(undefined);
   const [inputText, setInputText] = useState('');
@@ -248,40 +251,40 @@ export default function SimpleOperatorView({
   const actions = [
     {
       icon: '💰',
-      title: es ? 'Cobrar Pagos' : 'Collect Payments',
+      title: es ? 'Cobrar Pagos' : pt ? 'Cobrar Pagamentos' : 'Collect Payments',
       subtitle: chipData.staleRepairCount > 0
-        ? `${chipData.staleRepairCount} ${es ? 'clientes sin recoger' : 'customers waiting for payment'}`
-        : staleRecoverable > 0 ? formatCurrency(staleRecoverable) : es ? 'Sin pendientes' : 'Up to date',
+        ? `${chipData.staleRepairCount} ${es ? 'clientes sin recoger' : pt ? 'clientes aguardando pagamento' : 'customers waiting for payment'}`
+        : staleRecoverable > 0 ? formatCurrency(staleRecoverable) : es ? 'Sin pendientes' : pt ? 'Em dia' : 'Up to date',
       borderColor: '#3a3218',
       iconBg: '#3a3218',
       query: es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
     },
     {
       icon: '📦',
-      title: es ? 'Promover Producto' : 'Promote Product',
+      title: es ? 'Promover Producto' : pt ? 'Promover Produto' : 'Promote Product',
       subtitle: chipData.productOppsCount > 0
-        ? `${chipData.productOppsCount} ${es ? 'oportunidades disponibles' : 'suggested upsell opportunities available'}`
-        : es ? 'Ver catálogo' : 'Suggested upsell opportunities available',
+        ? `${chipData.productOppsCount} ${es ? 'oportunidades disponibles' : pt ? 'oportunidades de upsell disponíveis' : 'suggested upsell opportunities available'}`
+        : es ? 'Ver catálogo' : pt ? 'Oportunidades de upsell disponíveis' : 'Suggested upsell opportunities available',
       borderColor: '#312444',
       iconBg: '#312444',
       query: es ? 'qué productos debo promover hoy' : 'what products should I promote today',
     },
     {
       icon: '🔧',
-      title: es ? 'Reparaciones Listas' : 'Repairs Ready',
+      title: es ? 'Reparaciones Listas' : pt ? 'Reparos Prontos' : 'Repairs Ready',
       subtitle: chipData.repairsPending > 0
-        ? `${chipData.repairsPending} ${es ? 'esperando recoger' : 'repairs have been waiting for pickup'}`
-        : es ? 'Todo al día' : 'All caught up',
+        ? `${chipData.repairsPending} ${es ? 'esperando recoger' : pt ? 'aguardando retirada' : 'repairs have been waiting for pickup'}`
+        : es ? 'Todo al día' : pt ? 'Tudo em dia' : 'All caught up',
       borderColor: '#17352a',
       iconBg: '#17352a',
       query: es ? 'reparaciones listas para entrega' : 'repairs ready for pickup',
     },
     {
       icon: '📲',
-      title: es ? 'Contactar Clientes' : 'Contact Customers',
+      title: es ? 'Contactar Clientes' : pt ? 'Contatar Clientes' : 'Contact Customers',
       subtitle: chipData.outreachCount >= 2
-        ? `${chipData.outreachCount} ${es ? 'pendientes' : 'pending'}`
-        : es ? 'Seguimiento clientes inactivos' : 'Follow up with inactive or high-value customers',
+        ? `${chipData.outreachCount} ${es ? 'pendientes' : pt ? 'pendentes' : 'pending'}`
+        : es ? 'Seguimiento clientes inactivos' : pt ? 'Acompanhe clientes inativos ou de alto valor' : 'Follow up with inactive or high-value customers',
       borderColor: '#1c3147',
       iconBg: '#1c3147',
       query: es ? 'quién debo contactar hoy' : 'who should I contact today',
@@ -289,7 +292,14 @@ export default function SimpleOperatorView({
   ];
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    // R-INTELLIGENCE-LAYOUT-AND-PT-TRANSLATIONS-V1: definite viewport-relative
+    // height (was `flex: 1` inside a `minHeight: 100%` scrolling page, which gave
+    // the flex children NO resolved height — so long chat content grew the row
+    // and stretched the center action-card grid). A definite height lets each
+    // column scroll INTERNALLY (chat included) and keeps the 2×2 card grid stable
+    // regardless of chat length. Matches the existing `calc(100vh - 7rem)`
+    // convention used by OperatorChatShell. Page still scrolls to legacy sections.
+    <div style={{ display: 'flex', height: 'calc(100vh - 7rem)', minHeight: 0, overflow: 'hidden' }}>
 
       {/* ── LEFT: Store Pulse ──────────────────────────────────── */}
       <div style={{
@@ -311,13 +321,13 @@ export default function SimpleOperatorView({
             CellHub
           </div>
           <div style={{ fontSize: 13, color: '#7b8794' }}>
-            {es ? 'Resumen de tu tienda' : 'Store intelligence overview'}
+            {es ? 'Resumen de tu tienda' : pt ? 'Resumo de inteligência da loja' : 'Store intelligence overview'}
           </div>
         </div>
 
         {/* TODAY */}
         <div style={{ marginBottom: 26, flexShrink: 0 }}>
-          <SectionTitle text={es ? 'Hoy' : 'Today'} />
+          <SectionTitle text={es ? 'Hoy' : pt ? 'Hoje' : 'Today'} />
           <div style={{
             fontSize: 40, fontWeight: 700, lineHeight: 1,
             color: '#34d399', marginBottom: 10,
@@ -336,31 +346,31 @@ export default function SimpleOperatorView({
               </div>
             )}
             <div style={{ fontSize: 13, color: TEXT_MUTED }}>
-              {todaySalesCount} {es ? 'transacciones' : 'transactions'}
+              {todaySalesCount} {es ? 'transacciones' : pt ? 'transações' : 'transactions'}
             </div>
           </div>
         </div>
 
         {/* RETURNING CUSTOMERS */}
         <div style={{ marginBottom: 26, flexShrink: 0 }}>
-          <SectionTitle text={es ? 'Clientes que regresan' : 'Returning Customers'} />
+          <SectionTitle text={es ? 'Clientes que regresan' : pt ? 'Clientes recorrentes' : 'Returning Customers'} />
           <RetentionRing pct={retentionPct} active={activeCustomers30d} total={customers.length} />
         </div>
 
         {/* ACTIVE SERVICES */}
         <div style={{ marginBottom: 26, flexShrink: 0 }}>
-          <SectionTitle text={es ? 'Servicios activos' : 'Active Services'} />
+          <SectionTitle text={es ? 'Servicios activos' : pt ? 'Serviços ativos' : 'Active Services'} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <ServiceCard count={repairsInProgress} label={es ? 'Reparaciones' : 'Repairs'}       countColor="#fbbf24" borderColor="#3a3218" />
+            <ServiceCard count={repairsInProgress} label={es ? 'Reparaciones' : pt ? 'Reparos' : 'Repairs'}       countColor="#fbbf24" borderColor="#3a3218" />
             <ServiceCard count={layawaysActive}    label="Layaways"                                countColor="#a78bfa" borderColor="#312444" />
             <ServiceCard count={unlocksActive}     label="Unlocks"                                 countColor="#60a5fa" borderColor="#1c3147" />
-            <ServiceCard count={specialOrdersActive} label={es ? 'Especiales' : 'Special Orders'} countColor="#34d399" borderColor="#17352a" />
+            <ServiceCard count={specialOrdersActive} label={es ? 'Especiales' : pt ? 'Especiais' : 'Special Orders'} countColor="#34d399" borderColor="#17352a" />
           </div>
         </div>
 
         {/* SALES BY HOUR */}
         <div style={{ flex: 1, minHeight: 100, display: 'flex', flexDirection: 'column' }}>
-          <SectionTitle text={es ? 'Ventas por hora' : 'Sales by Hour'} />
+          <SectionTitle text={es ? 'Ventas por hora' : pt ? 'Vendas por hora' : 'Sales by Hour'} />
           <div style={{ flex: 1, minHeight: 0 }}>
             <HourlyChart hourlySales={hourlySales} />
           </div>
@@ -375,10 +385,10 @@ export default function SimpleOperatorView({
 
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
-            {es ? 'Acciones Operacionales' : 'Operational Actions'}
+            {es ? 'Acciones Operacionales' : pt ? 'Ações Operacionais' : 'Operational Actions'}
           </div>
           <div style={{ fontSize: 13, color: '#7b8794' }}>
-            {es ? 'Acciones rápidas para las prioridades de hoy' : "Quick actions for today's priorities"}
+            {es ? 'Acciones rápidas para las prioridades de hoy' : pt ? 'Ações rápidas para as prioridades de hoje' : "Quick actions for today's priorities"}
           </div>
         </div>
 
@@ -416,7 +426,7 @@ export default function SimpleOperatorView({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={es ? 'Pregunta a Intelligence…' : 'Ask Intelligence…'}
+              placeholder={es ? 'Pregunta a Intelligence…' : pt ? 'Pergunte ao Intelligence…' : 'Ask Intelligence…'}
               style={{
                 flex: 1, background: 'transparent', border: 'none', outline: 'none',
                 color: TEXT_PRIMARY, fontSize: 14,
@@ -455,7 +465,8 @@ export default function SimpleOperatorView({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_PRIMARY }}>
-              Intelligence
+              {/* R-INTELLIGENCE-USE-APP-LANGUAGE-V1: title follows app language. */}
+              {locale === 'es' ? 'Inteligencia' : locale === 'pt' ? 'Inteligência' : 'Intelligence'}
             </div>
             <button
               onClick={() => setClearSeq((n) => n + 1)}
@@ -465,11 +476,11 @@ export default function SimpleOperatorView({
                 color: TEXT_DIM, cursor: 'pointer',
               }}
             >
-              {es ? 'Nueva sesión' : 'New session'}
+              {locale === 'es' ? 'Nueva sesión' : locale === 'pt' ? 'Nova sessão' : 'New session'}
             </button>
           </div>
           <div style={{ fontSize: 13, color: '#7b8794' }}>
-            {es ? 'Pregunta sobre tu tienda' : 'Ask about your store'}
+            {locale === 'es' ? 'Pregunta sobre tu tienda' : locale === 'pt' ? 'Pergunte sobre sua loja' : 'Ask about your store'}
           </div>
         </div>
         <OperatorChatShell

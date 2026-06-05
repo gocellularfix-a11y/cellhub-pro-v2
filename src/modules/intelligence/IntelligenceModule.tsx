@@ -160,7 +160,11 @@ export default function IntelligenceModule() {
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
-  const apiLang: 'es' | 'en' = locale === 'pt' ? 'en' : locale as 'es' | 'en';
+  // R-INTELLIGENCE-USE-APP-LANGUAGE-V1: the chat/operator view now receives the
+  // FULL app locale (incl. pt). Previously a pt→en `apiLang` collapse forced
+  // Portuguese users to see English chat responses even though tChat() has pt
+  // entries (with en fallback for any missing key). Intent detection still
+  // understands ES/EN/PT input; only the response COPY follows the app language.
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [lookupQuery, setLookupQuery] = useState('');
@@ -1412,7 +1416,7 @@ export default function IntelligenceModule() {
       <SimpleOperatorView
         engine={engine}
         customers={customers}
-        lang={apiLang}
+        lang={engineLang}
         externalQuery={externalQuery}
         onOpenPromote={handleOpenPromote}
         onPanelCampaign={handlePanelCampaign}
