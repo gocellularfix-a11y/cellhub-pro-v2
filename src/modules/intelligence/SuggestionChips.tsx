@@ -165,7 +165,9 @@ function buildSignals(d: ChipData, locale: string): ChipSignal[] {
         title: es ? 'Contactar clientes hoy'  : pt ? 'Contatar clientes hoje'    : 'Contact customers today',
         subtitle: es ? 'Lista de outreach WhatsApp' : pt ? 'Lista de outreach WhatsApp' : 'WhatsApp outreach list',
         accent: '#3B82F6',
-        query: es ? 'quién debo contactar hoy' : pt ? 'quem devo contatar hoje' : 'who should I contact today',
+        // CONTACT-CUSTOMERS-CARD-ROUTE-TO-ATTENTION-V1: route to the proven
+        // attention_feed flow (same output as typing "what needs attention").
+        query: es ? 'qué necesita atención' : pt ? 'o que precisa de atenção' : 'what needs attention',
       },
     ];
     for (const s of statics) {

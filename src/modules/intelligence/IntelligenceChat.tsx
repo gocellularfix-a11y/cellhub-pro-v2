@@ -1632,8 +1632,12 @@ function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true,
   };
   // Deterministic chat prompts — copied verbatim from the existing welcome
   // cards (OperatorCommandWelcome) so they route through the same intent router.
+  // CONTACT-CUSTOMERS-CARD-ROUTE-TO-ATTENTION-V1: contact now fires the PROVEN
+  // attention prompt (routes to attention_feed → outstanding repair/layaway
+  // balances + Open/View/WhatsApp buttons) instead of the old who_to_contact
+  // outreach handler that often returned "No customers qualify".
   const Q = {
-    contact:  es ? 'quién debo contactar hoy'         : 'who should I contact today',
+    contact:  es ? 'qué necesita atención'             : 'what needs attention',
     push:     es ? 'qué productos debo promover hoy'   : 'what products should I promote today',
     collect:  es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
   };
@@ -1937,7 +1941,9 @@ function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
         ? `${chipData.outreachCount} ${es ? 'pendientes de contacto' : pt ? 'pendentes de contato' : 'pending outreach'}`
         : es ? 'Lista de WhatsApp' : pt ? 'Lista de WhatsApp' : 'WhatsApp outreach list',
       accent: '#3B82F6',
-      query: es ? 'quién debo contactar hoy' : 'who should I contact today',
+      // CONTACT-CUSTOMERS-CARD-ROUTE-TO-ATTENTION-V1: route to the proven
+      // attention_feed flow (same output as typing "what needs attention").
+      query: es ? 'qué necesita atención' : 'what needs attention',
     },
   ];
 

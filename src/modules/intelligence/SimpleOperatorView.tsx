@@ -287,7 +287,9 @@ export default function SimpleOperatorView({
         : es ? 'Seguimiento clientes inactivos' : pt ? 'Acompanhe clientes inativos ou de alto valor' : 'Follow up with inactive or high-value customers',
       borderColor: '#1c3147',
       iconBg: '#1c3147',
-      query: es ? 'quién debo contactar hoy' : 'who should I contact today',
+      // CONTACT-CUSTOMERS-CARD-ROUTE-TO-ATTENTION-V1: route to the proven
+      // attention_feed flow (same output as typing "what needs attention").
+      query: es ? 'qué necesita atención' : 'what needs attention',
     },
   ];
 
