@@ -134,6 +134,24 @@ const CARD_BG     = '#111827';
 const CARD_BORDER = '#1F2937';
 const PAGE_BG     = '#0B1220';
 
+// INTEL-PERF-LEGACY-GATE-V1: stable stub results returned by the legacy-only
+// memo chain while showLegacySections === false (the 3-column operator shell
+// doesn't render those sections, but their memos still recomputed on every
+// data change). Module-scope constants → stable identity, so downstream
+// legacy memos don't even re-run. When showLegacySections flips back to true
+// the full computations resume untouched. Display-only values (generatedAt 0
+// etc.) — nothing outside the hidden legacy JSX reads them (verified: every
+// consumer, including chainContextRef readers, is wired inside the
+// showLegacySections block).
+const LEGACY_STUB_STORE_STATE: StoreStateResult = { state: 'normal' as StoreStateType, confidence: 100, reason: '', detectedAt: 0, recommendedFocus: 'balanced' as const };
+const LEGACY_STUB_BRIEFING: DailyBriefingResult = { generatedAt: 0, tone: 'operational', items: [] };
+const LEGACY_STUB_FOCUS_MODE: FocusModeResult = { mode: 'balanced', reason: '', accentColor: '#9CA3AF', highlightedSections: [], suppressedSections: [], missionsDefaultCollapsed: false, queueDefaultCollapsed: false, isUrgentOverride: false };
+const LEGACY_STUB_BUSINESS_MEMORY: BusinessMemoryResult = { generatedAt: 0, insights: [] };
+const LEGACY_STUB_STRATEGIC: StrategicOperatorResult = { generatedAt: 0, insights: [] };
+const LEGACY_STUB_RECOMMENDATIONS: RecommendationResult = { generatedAt: 0, recommendations: [] };
+const LEGACY_STUB_HEALTH: OperationalHealthResult = { overallScore: 100, overallStatus: 'stable', dimensions: [], summary: '' };
+const LEGACY_STUB_WEEKLY: WeeklyReviewResult = { generatedAt: 0, overallWeekStatus: 'stable', reviewItems: [] };
+
 // Day name localization map for the top-insight sentence.
 const DAY_LOCAL: Record<string, Record<string, string>> = {
   es: { Sunday: 'Domingo', Monday: 'Lunes', Tuesday: 'Martes', Wednesday: 'Miércoles', Thursday: 'Jueves', Friday: 'Viernes', Saturday: 'Sábado' },
@@ -708,9 +726,19 @@ export default function IntelligenceModule() {
     return n;
   }, [todaySales]);
 
+  // Phase 1: operator shell takes over. Legacy sections preserved but hidden.
+  // INTEL-PERF-LEGACY-GATE-V1: declaration moved up from the render section so
+  // the legacy-only memo chain below can short-circuit to stable stubs.
+  const showLegacySections = false;
+
   // R-INTELLIGENCE-STORE-STATE-V1: deterministic operational state detection.
   // Must be after outreachCount to avoid TS2448 use-before-declaration.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — consumers are legacy-only (legacy JSX,
+  // CommandCenterHeader, chainContextRef whose readers are legacy-wired
+  // handlers, and the recordStoreStateEvent memory effect feeding the
+  // legacy-only businessMemory).
   const storeState: StoreStateResult = useMemo(() => {
+    if (!showLegacySections) return LEGACY_STUB_STORE_STATE;
     try {
       return detectStoreState({
         sales: sales as Parameters<typeof detectStoreState>[0]['sales'],
@@ -724,25 +752,30 @@ export default function IntelligenceModule() {
   }, [sales, repairs, layaways, outreachCount, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-INTELLIGENCE-PROACTIVE-MISSIONS-V1: deterministic mission generation.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — mission cards/handlers live only in
+  // the legacy JSX block.
   const missions = useMemo(
-    () => generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang, Date.now(), storeState.state),
+    () => showLegacySections ? generateProactiveMissions(engine, pendingTaskItems, dismissedMissions, engineLang, Date.now(), storeState.state) : [],
     [engine, result, pendingTaskItems, dismissedMissions, engineLang, storeState.state], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // R-INTELLIGENCE-CONTINUITY-V1: deterministic continuity item generation.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — continuity rows/resume handler are
+  // legacy-wired only.
   const continuityItems = useMemo(
-    () => generateContinuityItems({
+    () => showLegacySections ? generateContinuityItems({
       repairs: repairs as Parameters<typeof generateContinuityItems>[0]['repairs'],
       managerQueueItems: queueItems,
       operatorQueueItems: taskQueue,
       dismissedIds: dismissedContinuity,
-    }),
+    }) : [],
     [repairs, queueItems, taskQueue, dismissedContinuity, refreshKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // R-INTELLIGENCE-DAILY-BRIEFING-V1: compact operational briefing.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — briefing renders only in legacy JSX.
   const briefing: DailyBriefingResult = useMemo(
-    () => generateDailyBriefing({
+    () => !showLegacySections ? LEGACY_STUB_BRIEFING : generateDailyBriefing({
       storeState,
       repairs: repairs as Parameters<typeof generateDailyBriefing>[0]['repairs'],
       layaways: layaways as Parameters<typeof generateDailyBriefing>[0]['layaways'],
@@ -757,8 +790,10 @@ export default function IntelligenceModule() {
   );
 
   // R-INTELLIGENCE-FOCUS-MODE-V1: deterministic attention management.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — FocusModeIndicator + section
+  // suppression/collapse defaults only affect legacy sections.
   const focusMode: FocusModeResult = useMemo(
-    () => computeFocusMode({
+    () => !showLegacySections ? LEGACY_STUB_FOCUS_MODE : computeFocusMode({
       storeState,
       pendingQueueCount: pendingTaskItems.length,
     }),
@@ -781,14 +816,17 @@ export default function IntelligenceModule() {
   );
 
   // R-INTELLIGENCE-BUSINESS-MEMORY-V1: longitudinal pattern memory.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — reads localStorage + builds insights
+  // rendered only in the legacy Business Memory section.
   const businessMemory: BusinessMemoryResult = useMemo(
-    () => generateBusinessMemory(),
+    () => showLegacySections ? generateBusinessMemory() : LEGACY_STUB_BUSINESS_MEMORY,
     [refreshKey, storeState.state], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // R-INTELLIGENCE-STRATEGIC-OPERATOR-V1: deterministic strategic observations.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — legacy section only.
   const strategicInsights: StrategicOperatorResult = useMemo(
-    () => generateStrategicInsights({
+    () => !showLegacySections ? LEGACY_STUB_STRATEGIC : generateStrategicInsights({
       storeState,
       businessMemoryInsights: businessMemory.insights,
       repairs: repairs as Parameters<typeof generateStrategicInsights>[0]['repairs'],
@@ -801,8 +839,9 @@ export default function IntelligenceModule() {
   );
 
   // R-INTELLIGENCE-DECISION-RECOMMENDATION-V1: actionable recommendations.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — legacy section only.
   const recommendations: RecommendationResult = useMemo(
-    () => generateRecommendations({
+    () => !showLegacySections ? LEGACY_STUB_RECOMMENDATIONS : generateRecommendations({
       storeState,
       focusMode,
       strategicInsights: strategicInsights.insights,
@@ -818,8 +857,10 @@ export default function IntelligenceModule() {
   );
 
   // R-INTELLIGENCE-OPERATIONAL-HEALTH-V1: deterministic health scoring.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — health panel renders only in legacy;
+  // chainContextRef readers are legacy-wired handlers.
   const operationalHealth: OperationalHealthResult = useMemo(
-    () => generateOperationalHealth({
+    () => !showLegacySections ? LEGACY_STUB_HEALTH : generateOperationalHealth({
       storeState,
       businessMemoryInsights: businessMemory.insights,
       strategicInsights: strategicInsights.insights,
@@ -836,8 +877,9 @@ export default function IntelligenceModule() {
   );
 
   // R-INTELLIGENCE-WEEKLY-REVIEW-V1: deterministic week-in-review summary.
+  // INTEL-PERF-LEGACY-GATE-V1: gated — legacy section only.
   const weeklyReview: WeeklyReviewResult = useMemo(
-    () => generateWeeklyReview({
+    () => !showLegacySections ? LEGACY_STUB_WEEKLY : generateWeeklyReview({
       operationalHealth,
       businessMemoryInsights: businessMemory.insights,
       strategicInsights: strategicInsights.insights,
@@ -1288,6 +1330,12 @@ export default function IntelligenceModule() {
   // Poll for live assist suggestion every 2 minutes (also fires on mount).
   useEffect(() => {
     const check = () => {
+      // INTEL-PERF-TIMER-HYGIENE-V1: skip the engine call while the app
+      // window is hidden/minimized — the suggestion card isn't visible and
+      // a hidden window can't be a checkout burst. Next visible tick
+      // (≤2 min) refreshes normally. Interval itself stays registered so
+      // timing semantics are unchanged when visible.
+      if (document.visibilityState === 'hidden') return;
       const idleMs = Date.now() - lastInteractionAtRef.current;
 
       // R-INTELLIGENCE-ATTENTION-MODEL-V1: record checkout_burst when operator
@@ -1407,7 +1455,8 @@ export default function IntelligenceModule() {
   if (INTEL_PERF_ENABLED) perfLog('intel.module.render.total', _renderT0);
 
   // Phase 1: operator shell takes over. Legacy sections preserved but hidden.
-  const showLegacySections = false;
+  // INTEL-PERF-LEGACY-GATE-V1: showLegacySections now declared above the
+  // legacy memo chain (before storeState) so those memos can short-circuit.
 
   return (
     <div style={{ background: PAGE_BG, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>

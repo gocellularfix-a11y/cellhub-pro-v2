@@ -369,9 +369,16 @@ export default function FloatingOperatorBubble() {
   }, [activeTab, currentEmployee, cart, customers, pendingPhonePaymentCustomerId, pendingPosCustomer]);
 
   // ── Rotate preview badge text every 4 s ────────────────
+  // INTEL-PERF-TIMER-HYGIENE-V1: skip ticks while the app window is hidden —
+  // each tick re-renders the bubble (mounted on EVERY tab) just to rotate
+  // badge text nobody can see. Rotation resumes on the next tick after the
+  // window becomes visible. Interval registration/cleanup unchanged.
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => setPreviewTick((t) => t + 1), 4000);
+    const id = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      setPreviewTick((t) => t + 1);
+    }, 4000);
     return () => clearInterval(id);
   }, [enabled]);
 
