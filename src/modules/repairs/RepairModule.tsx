@@ -124,6 +124,9 @@ export default function RepairModule() {
   // 80ms before firing this event so this listener is attached.
   useEffect(() => {
     const handler = (e: Event) => {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: ack the AppShell relay —
+      // preventDefault on the cancelable event stops its bounded retry loop.
+      e.preventDefault();
       const { repairId } = (e as CustomEvent<{ repairId?: string }>).detail ?? {};
       if (!repairId) return;
       const repair = repairsRef.current.find((r) => r.id === repairId);

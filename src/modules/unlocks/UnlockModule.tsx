@@ -98,6 +98,9 @@ export default function UnlockModule() {
 
   useEffect(() => {
     const handler = (e: Event) => {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: ack the AppShell relay —
+      // preventDefault on the cancelable event stops its bounded retry loop.
+      e.preventDefault();
       const { unlockId } = (e as CustomEvent<{ unlockId?: string }>).detail ?? {};
       if (!unlockId) return;
       const unlock = unlocksRef.current.find((u) => u.id === unlockId);

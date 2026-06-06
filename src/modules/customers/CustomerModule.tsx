@@ -103,6 +103,9 @@ export default function CustomerModule() {
   // setEditCustomer directly, not this event).
   useEffect(() => {
     const handler = (e: Event) => {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: ack the AppShell relay —
+      // preventDefault on the cancelable event stops its bounded retry loop.
+      e.preventDefault();
       const { customerId, mode } = (e as CustomEvent<{ customerId?: string; mode?: 'edit' | 'history' }>).detail ?? {};
       if (!customerId) return;
       const cust = customersRef.current.find((c) => c && c.id === customerId);

@@ -72,6 +72,10 @@ export interface AttentionItem {
   recommendedAction: string;
   urgency: AttentionUrgency;
   customerId?: string;
+  /** INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: real customer name (no
+   *  device/description fallback like entityName) so WhatsApp payloads
+   *  personalize the message and pass the executor's identity gate. */
+  customerName?: string;
   customerPhone?: string;
   priorityScore: number;
 }
@@ -136,6 +140,7 @@ function collectRepairs(engine: IntelligenceEngine, t: ReturnType<typeof tChat>,
       recommendedAction: t('chat.whoNeedsAttention.repair.action', r.customerName || ''),
       urgency,
       customerId: r.customerId,
+      customerName: r.customerName,
       customerPhone: r.customerPhone,
       priorityScore,
     });
@@ -172,6 +177,7 @@ function collectLayaways(engine: IntelligenceEngine, t: ReturnType<typeof tChat>
       recommendedAction: t('chat.whoNeedsAttention.layaway.action', l.customerName || ''),
       urgency,
       customerId: l.customerId,
+      customerName: l.customerName,
       customerPhone: l.customerPhone,
       priorityScore,
     });
@@ -207,6 +213,7 @@ function collectSpecialOrders(engine: IntelligenceEngine, t: ReturnType<typeof t
       recommendedAction: t('chat.whoNeedsAttention.specialOrder.action', o.customerName || ''),
       urgency,
       customerId: o.customerId,
+      customerName: o.customerName,
       customerPhone: o.customerPhone,
       priorityScore,
     });
@@ -284,6 +291,7 @@ function collectChurnRisk(engine: IntelligenceEngine, t: ReturnType<typeof tChat
       recommendedAction: t('chat.whoNeedsAttention.churn.action', history.customer.name),
       urgency,
       customerId: s.customerId,
+      customerName: history.customer.name,
       customerPhone: history.customer.phone || '',
       priorityScore,
     });
@@ -325,6 +333,7 @@ function collectStoreCredit(engine: IntelligenceEngine, t: ReturnType<typeof tCh
       recommendedAction: t('chat.whoNeedsAttention.storeCredit.action', c.customerName || ''),
       urgency,
       customerId: c.customerId,
+      customerName: c.customerName,
       customerPhone: c.customerPhone,
       priorityScore,
     });
@@ -348,7 +357,12 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
         id: `${idBase}-wa`,
         label: t('chat.whoNeedsAttention.action.whatsapp'),
         actionType: 'whatsapp',
-        payload: { type: 'whatsapp', customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: carry customerId +
+        // customerName so the executor's identity gate passes, the message
+        // greets the real customer, and the execution log attributes the
+        // action for 72h conversion tracking. messageKey omitted on purpose
+        // — executor falls back to the default follow-up template.
+        payload: { type: 'whatsapp', customerId: item.customerId, customerName: item.customerName, customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
       });
       break;
     case 'layaway':
@@ -361,7 +375,12 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
         id: `${idBase}-wa`,
         label: t('chat.whoNeedsAttention.action.whatsapp'),
         actionType: 'whatsapp',
-        payload: { type: 'whatsapp', customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: carry customerId +
+        // customerName so the executor's identity gate passes, the message
+        // greets the real customer, and the execution log attributes the
+        // action for 72h conversion tracking. messageKey omitted on purpose
+        // — executor falls back to the default follow-up template.
+        payload: { type: 'whatsapp', customerId: item.customerId, customerName: item.customerName, customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
       });
       break;
     case 'special_order':
@@ -374,7 +393,12 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
         id: `${idBase}-wa`,
         label: t('chat.whoNeedsAttention.action.whatsapp'),
         actionType: 'whatsapp',
-        payload: { type: 'whatsapp', customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: carry customerId +
+        // customerName so the executor's identity gate passes, the message
+        // greets the real customer, and the execution log attributes the
+        // action for 72h conversion tracking. messageKey omitted on purpose
+        // — executor falls back to the default follow-up template.
+        payload: { type: 'whatsapp', customerId: item.customerId, customerName: item.customerName, customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
       });
       break;
     case 'external_payment':
@@ -394,7 +418,12 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
         id: `${idBase}-wa`,
         label: t('chat.whoNeedsAttention.action.whatsapp'),
         actionType: 'whatsapp',
-        payload: { type: 'whatsapp', customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: carry customerId +
+        // customerName so the executor's identity gate passes, the message
+        // greets the real customer, and the execution log attributes the
+        // action for 72h conversion tracking. messageKey omitted on purpose
+        // — executor falls back to the default follow-up template.
+        payload: { type: 'whatsapp', customerId: item.customerId, customerName: item.customerName, customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
       });
       break;
     case 'store_credit':
@@ -407,7 +436,12 @@ function actionsFor(item: AttentionItem, t: ReturnType<typeof tChat>): ChatActio
         id: `${idBase}-wa`,
         label: t('chat.whoNeedsAttention.action.whatsapp'),
         actionType: 'whatsapp',
-        payload: { type: 'whatsapp', customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: carry customerId +
+        // customerName so the executor's identity gate passes, the message
+        // greets the real customer, and the execution log attributes the
+        // action for 72h conversion tracking. messageKey omitted on purpose
+        // — executor falls back to the default follow-up template.
+        payload: { type: 'whatsapp', customerId: item.customerId, customerName: item.customerName, customerPhone: item.customerPhone, executable: true, executionTarget: 'whatsapp_url' },
       });
       break;
   }

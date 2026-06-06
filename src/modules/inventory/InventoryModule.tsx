@@ -257,6 +257,9 @@ export default function InventoryModule() {
   // 80ms before firing this event so this listener is attached.
   useEffect(() => {
     const handler = (e: Event) => {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: ack the AppShell relay —
+      // preventDefault on the cancelable event stops its bounded retry loop.
+      e.preventDefault();
       const { itemId } = (e as CustomEvent<{ itemId?: string }>).detail ?? {};
       if (!itemId) return;
       const item = inventoryRef.current.find((i) => i.id === itemId);

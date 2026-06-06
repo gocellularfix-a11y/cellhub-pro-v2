@@ -264,7 +264,13 @@ function buildMessage(messageKey: string, customerName?: string): string {
 export function executeActionPayload(payload: ActionPayload): ExecutionResult {
   switch (payload.executionTarget) {
     case 'whatsapp_url': {
-      if (!payload.customerName && !payload.customerId) {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: a phone is sufficient
+      // identity — several cards (who-needs-attention, attention feed,
+      // fusion) build phone-only payloads and the old name/id-only gate
+      // rejected them as missing_customer even though the wa.me URL only
+      // needs the phone. Name/id stay preferred for personalization and
+      // execution-log attribution when callers provide them.
+      if (!payload.customerName && !payload.customerId && !payload.customerPhone) {
         return { ok: false, reason: 'missing_customer' };
       }
       // R-INTELLIGENCE-PENDING-DEAL-V1: customMessage overrides the static
@@ -274,10 +280,10 @@ export function executeActionPayload(payload: ActionPayload): ExecutionResult {
       if (payload.customMessage && payload.customMessage.trim().length > 0) {
         text = payload.customMessage;
       } else {
-        if (!payload.messageKey) {
-          return { ok: false, reason: 'missing_template' };
-        }
-        text = buildMessage(payload.messageKey, payload.customerName);
+        // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: a missing messageKey now
+        // falls back to buildMessage's default follow-up template instead of
+        // failing the whole action — callers with a messageKey are untouched.
+        text = buildMessage(payload.messageKey || '', payload.customerName);
         if (!text || text.trim().length === 0) {
           return { ok: false, reason: 'missing_template' };
         }

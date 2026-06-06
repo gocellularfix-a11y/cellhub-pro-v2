@@ -197,10 +197,44 @@ export default function AppShell() {
   }, [activeTab]);
 
   // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: central coordinator for Intelligence
-  // action-button navigation. Step 1 → navigate to module tab. Step 2 (80ms
-  // defer, matching FloatingOperatorBubble) → fire module-scoped open event
-  // AFTER the lazy module has mounted and attached its listener.
+  // action-button navigation. Step 1 → navigate to module tab. Step 2 →
+  // fire module-scoped open event AFTER the lazy module has mounted and
+  // attached its listener.
+  // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: the old single fixed 80ms defer
+  // lost the open event whenever the lazy module chunk hadn't mounted yet
+  // (first click → list only; second click worked). Replaced with a bounded
+  // ack-retry: events are dispatched cancelable, module listeners call
+  // e.preventDefault() to ack consumption (dispatchEvent returns false), and
+  // un-acked dispatches retry every RELAY_RETRY_MS up to RELAY_MAX_ATTEMPTS
+  // (~3s) before giving up — same list-only fallback as before on cap-out.
   useEffect(() => {
+    const RELAY_FIRST_DELAY_MS = 80;   // preserves the original fast path
+    const RELAY_RETRY_MS       = 150;
+    const RELAY_MAX_ATTEMPTS   = 20;
+    // One pending loop per event name — a newer open request supersedes a
+    // still-retrying older one for the same target module.
+    const pendingRelays = new Map<string, number>();
+
+    function dispatchWhenReady(eventName: string, detail: unknown) {
+      const prev = pendingRelays.get(eventName);
+      if (prev !== undefined) window.clearTimeout(prev);
+      let attempts = 0;
+      const fire = () => {
+        pendingRelays.delete(eventName);
+        attempts++;
+        // dispatchEvent returns false when a handler called preventDefault →
+        // the module listener is mounted and consumed the open request.
+        const consumed = !window.dispatchEvent(new CustomEvent(eventName, { detail, cancelable: true }));
+        if (consumed) return;
+        if (attempts < RELAY_MAX_ATTEMPTS) {
+          pendingRelays.set(eventName, window.setTimeout(fire, RELAY_RETRY_MS));
+        } else {
+          console.warn('[cellhub] intel-open relay gave up — no listener consumed', eventName);
+        }
+      };
+      pendingRelays.set(eventName, window.setTimeout(fire, RELAY_FIRST_DELAY_MS));
+    }
+
     function nav(tab: string) {
       dispatch({ type: 'SET_ACTIVE_TAB', payload: tab });
     }
@@ -209,9 +243,7 @@ export default function AppShell() {
       const { repairId } = (e as CustomEvent<{ repairId?: string }>).detail ?? {};
       if (!repairId) return;
       nav('repairs');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-repair', { detail: { repairId } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-repair', { repairId });
     };
 
     const onOpenCustomer = (e: Event) => {
@@ -221,45 +253,35 @@ export default function AppShell() {
       const { customerId, mode } = (e as CustomEvent<{ customerId?: string; mode?: 'edit' | 'history' }>).detail ?? {};
       if (!customerId) return;
       nav('customers');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-customer', { detail: { customerId, mode } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-customer', { customerId, mode });
     };
 
     const onOpenLayaway = (e: Event) => {
       const { layawayId } = (e as CustomEvent<{ layawayId?: string }>).detail ?? {};
       if (!layawayId) return;
       nav('layaways');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-layaway', { detail: { layawayId } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-layaway', { layawayId });
     };
 
     const onOpenInventory = (e: Event) => {
       const { itemId } = (e as CustomEvent<{ itemId?: string }>).detail ?? {};
       if (!itemId) return;
       nav('inventory');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-inventory', { detail: { itemId } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-inventory', { itemId });
     };
 
     const onOpenUnlock = (e: Event) => {
       const { unlockId } = (e as CustomEvent<{ unlockId?: string }>).detail ?? {};
       if (!unlockId) return;
       nav('unlocks');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-unlock', { detail: { unlockId } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-unlock', { unlockId });
     };
 
     const onOpenSpecialOrder = (e: Event) => {
       const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
       if (!orderId) return;
       nav('specialOrders');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-special-order', { detail: { orderId } }));
-      }, 80);
+      dispatchWhenReady('cellhub:_intel-open-special-order', { orderId });
     };
 
     const onManagerReview = () => {
@@ -292,6 +314,9 @@ export default function AppShell() {
       window.removeEventListener('cellhub:open-special-order',  onOpenSpecialOrder);
       window.removeEventListener('cellhub:open-manager-review', onManagerReview);
       window.removeEventListener('cellhub:navigate-tab',        onNavigateTab);
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: cancel any in-flight relay retries.
+      for (const id of pendingRelays.values()) window.clearTimeout(id);
+      pendingRelays.clear();
     };
   }, [dispatch]);
 

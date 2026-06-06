@@ -108,6 +108,9 @@ export default function SpecialOrdersModule() {
 
   useEffect(() => {
     const handler = (e: Event) => {
+      // INTEL-ACTION-CONTEXT-AND-NAV-RACE-FIX-V1: ack the AppShell relay —
+      // preventDefault on the cancelable event stops its bounded retry loop.
+      e.preventDefault();
       const { orderId } = (e as CustomEvent<{ orderId?: string }>).detail ?? {};
       if (!orderId) return;
       const order = specialOrdersRef.current.find((o) => o.id === orderId);
