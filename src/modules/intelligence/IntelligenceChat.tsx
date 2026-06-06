@@ -47,6 +47,9 @@ import SuggestionChips, { type ChipData } from './SuggestionChips';
 import OperatorContinuityBar from './OperatorContinuityBar';
 import { getPendingResumeContexts } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 import { pushSessionContext, getSessionContext, clearSessionContext } from '@/services/intelligence/chat/sessionContext';
+// CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: one-shot explicit customer
+// set by module action buttons (Customers Recover/VIP) — wins over text parsing.
+import { consumePendingExplicitCustomer } from '@/services/intelligence/context/intelligenceContext';
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
@@ -286,6 +289,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: time the full chat dispatch path
     // (classify + handle). Heaviest single hot path on the Intelligence tab.
     const _fireT0 = performance.now();
+    // CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: consume the one-shot at
+    // the top of EVERY fired query so it can never linger past the query it
+    // was set for. Applied below only for customer outreach intents; manual
+    // typing (handleSubmit) never consumes or sets it.
+    const explicitCustomer = consumePendingExplicitCustomer();
     // R-INTELLIGENCE-FOLLOWUP-CONTEXT-V1: short follow-up phrases re-use
     // the last intent's context. Early return — no classifyIntent, no scan.
     let response;
@@ -308,6 +316,18 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const queryToRoute = enrichedQuery ?? query;
       const match = perfTime('intel.chat.classifyIntent',
         () => classifyIntent(queryToRoute, customersRef.current, langRef.current));
+      // CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: a button-originated
+      // query carries the exact customer — it overrides whatever the text
+      // parser resolved (or failed to resolve). Text parsing remains the
+      // fallback for typed prompts and for a stale/missing id.
+      if (explicitCustomer && (match.id === 'recover_customer' || match.id === 'vip_outreach')) {
+        const exact = customersRef.current.find((c) => c && c.id === explicitCustomer.customerId);
+        if (exact) {
+          match.matchedCustomer = exact;
+          match.extractedName = exact.name;
+          match.candidateCustomers = undefined;
+        }
+      }
       // R-FINANCIAL-PRIVACY-V2: intercept profit-intent queries when the
       // viewer cannot see owner financials. We never invoke the handler so
       // its profit/margin/cost numbers cannot leak. Operational intents are

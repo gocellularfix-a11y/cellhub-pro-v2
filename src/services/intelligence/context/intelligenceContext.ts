@@ -74,3 +74,22 @@ export function consumePendingIntelligenceAction(): { query: string } | null {
   _pendingIntelligenceAction = null;
   return p;
 }
+
+// CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: one-shot explicit customer
+// for module action buttons (Customers → Recover / VIP). Set right before
+// setPendingIntelligenceAction; consumed by IntelligenceChat.fireQuery at
+// classify time so button-originated prompts resolve by exact customerId
+// instead of re-parsing "name + phone" text. One-shot + 10s TTL → manually
+// typed prompts and later queries can never inherit it.
+let _pendingExplicitCustomer: { customerId: string; ts: number } | null = null;
+
+export function setPendingExplicitCustomer(customerId: string): void {
+  _pendingExplicitCustomer = { customerId, ts: Date.now() };
+}
+
+export function consumePendingExplicitCustomer(): { customerId: string } | null {
+  const p = _pendingExplicitCustomer;
+  _pendingExplicitCustomer = null;
+  if (!p || Date.now() - p.ts > 10_000) return null;
+  return { customerId: p.customerId };
+}

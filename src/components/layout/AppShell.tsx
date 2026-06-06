@@ -215,11 +215,14 @@ export default function AppShell() {
     };
 
     const onOpenCustomer = (e: Event) => {
-      const { customerId } = (e as CustomEvent<{ customerId?: string }>).detail ?? {};
+      // CUSTOMER-360-INTELLIGENCE-OPEN-HISTORY-V1: forward optional mode
+      // ('edit' | 'history') so callers can choose the edit form explicitly;
+      // default (no mode) opens the Customer 360 history modal.
+      const { customerId, mode } = (e as CustomEvent<{ customerId?: string; mode?: 'edit' | 'history' }>).detail ?? {};
       if (!customerId) return;
       nav('customers');
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-customer', { detail: { customerId } }));
+        window.dispatchEvent(new CustomEvent('cellhub:_intel-open-customer', { detail: { customerId, mode } }));
       }, 80);
     };
 

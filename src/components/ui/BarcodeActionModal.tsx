@@ -211,7 +211,10 @@ export default function BarcodeActionModal() {
                     // which navigates + fires _intel-open-customer after the
                     // module mounts) so the exact customer profile opens —
                     // not a name-search that could match the wrong record.
-                    window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: chCustomer.id } }));
+                    // CUSTOMER-360-INTELLIGENCE-OPEN-HISTORY-V1: mode:'edit'
+                    // keeps this button on the edit form — the sibling
+                    // "Customer History" button below already covers history.
+                    window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: chCustomer.id, mode: 'edit' } }));
                     close();
                   }}
                   style={actionStyle('#8B5CF6')}
@@ -418,7 +421,9 @@ export default function BarcodeActionModal() {
             return (
               <button
                 onClick={() => {
-                  window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: matched.id } }));
+                  // CUSTOMER-360-INTELLIGENCE-OPEN-HISTORY-V1: mode:'edit' —
+                  // same reasoning as the customer-history barcode branch above.
+                  window.dispatchEvent(new CustomEvent('cellhub:open-customer', { detail: { customerId: matched.id, mode: 'edit' } }));
                   close();
                 }}
                 style={actionStyle('#8B5CF6')}

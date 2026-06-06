@@ -19,7 +19,7 @@ import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
 import { openWhatsApp } from '@/services/whatsapp';
-import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction } from '@/services/intelligence/context/intelligenceContext';
+import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction, setPendingExplicitCustomer } from '@/services/intelligence/context/intelligenceContext';
 import { emitCustomerAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 
 export default function CustomerModule() {
@@ -95,9 +95,15 @@ export default function CustomerModule() {
   // R-INTELLIGENCE-RUNTIME-NAVIGATION-V1: open a customer profile from
   // Intelligence action buttons. AppShell navigates here first, then defers
   // 80ms before firing this event so this listener is attached.
+  // CUSTOMER-360-INTELLIGENCE-OPEN-HISTORY-V1: default now opens the rich
+  // CustomerHistoryModal (Customer 360 view) instead of the edit form.
+  // Callers that genuinely want the edit form (BarcodeActionModal "View
+  // Customer") pass mode:'edit' through the event detail — AppShell forwards
+  // it. Edit buttons on customer cards are untouched (they call
+  // setEditCustomer directly, not this event).
   useEffect(() => {
     const handler = (e: Event) => {
-      const { customerId } = (e as CustomEvent<{ customerId?: string }>).detail ?? {};
+      const { customerId, mode } = (e as CustomEvent<{ customerId?: string; mode?: 'edit' | 'history' }>).detail ?? {};
       if (!customerId) return;
       const cust = customersRef.current.find((c) => c && c.id === customerId);
       // R-INTELLIGENCE-ACTION-RELIABILITY-V2: not found → safe no-op + toast
@@ -107,8 +113,12 @@ export default function CustomerModule() {
         toast(t('intel.entityNotFound'), 'error');
         return;
       }
-      setEditCustomer(cust);
-      setShowModal(true);
+      if (mode === 'edit') {
+        setEditCustomer(cust);
+        setShowModal(true);
+      } else {
+        setViewHistory(cust);
+      }
     };
     window.addEventListener('cellhub:_intel-open-customer', handler);
     return () => window.removeEventListener('cellhub:_intel-open-customer', handler);
@@ -502,14 +512,21 @@ export default function CustomerModule() {
     [customers, repairs, layaways, unlocks, setCustomers, toast, t],
   );
 
+  // CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: pass the EXACT customer id
+  // through the one-shot context (consumed by IntelligenceChat at classify
+  // time) — the visible text prompt stays identical and remains the fallback.
+  // Applied to both buttons: inspection proved Recover and VIP share this
+  // exact text-only signal path.
   const handleRecoverCustomer = useCallback((c: Customer) => {
     const query = `${t('customers.queryRecover')}${c.name}${c.phone ? ` ${c.phone}` : ''}`;
+    setPendingExplicitCustomer(c.id);
     setPendingIntelligenceAction(query);
     dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
   }, [t, dispatch]);
 
   const handleVipOutreach = useCallback((c: Customer) => {
     const query = `${t('customers.queryVip')}${c.name}${c.phone ? ` ${c.phone}` : ''}`;
+    setPendingExplicitCustomer(c.id);
     setPendingIntelligenceAction(query);
     dispatch({ type: 'SET_ACTIVE_TAB', payload: 'intelligence' });
   }, [t, dispatch]);
@@ -792,6 +809,9 @@ export default function CustomerModule() {
             appointments={history.appointments}
             certificates={history.certificates}
             onClose={() => setViewHistory(null)}
+            // CUSTOMER-360-HEADER-V1: reuses the existing edit-modal handlers —
+            // closes history, opens the same edit modal the card ✏️ button uses.
+            onEdit={() => { setViewHistory(null); setEditCustomer(viewHistory); setShowModal(true); }}
             settings={settings}
           />
         );
@@ -1271,7 +1291,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
 
 // ── Customer History ──────────────────────────────────────
 
-function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, settings }: {
+function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, onEdit, settings }: {
   customer: Customer;
   sales: Sale[];
   repairs: any[];
@@ -1282,6 +1302,8 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   appointments: any[];
   certificates?: any[];
   onClose: () => void;
+  /** CUSTOMER-360-HEADER-V1: optional — opens the existing edit modal (parent handler reuse). */
+  onEdit?: () => void;
   settings: any;
 }) {
   const { t } = useTranslation();
@@ -1342,6 +1364,42 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   return (
     <Modal open onClose={onClose} title={`📋 ${customer.name}`} size="max-w-2xl">
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+
+        {/* CUSTOMER-360-HEADER-V1: compact identity snapshot — customer card +
+            quick facts. Every value comes from props already passed to this
+            modal (customer fields + the pre-sorted sales array); no new
+            aggregation, no new queries. Lifetime spend intentionally NOT
+            repeated here — it's the Revenue tile directly below. */}
+        <div className="rounded-lg bg-white/5 p-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+            <div className="min-w-0 mr-auto">
+              <p className="text-base font-bold text-white truncate">{customer.name}</p>
+              <p className="text-sm text-slate-400">{customer.phone || '—'}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-500">{t('carrier')}</p>
+              <p className="text-sm font-semibold text-white">{customer.carrier || '—'}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-500">{t('monthlyPaymentLabel')}</p>
+              <p className="text-sm font-semibold text-white">{customer.monthlyPayment ? `$${customer.monthlyPayment}` : '—'}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-500">{t('customers.history.lastVisit')}</p>
+              <p className="text-sm font-semibold text-white">{sales[0]?.createdAt ? formatDate(sales[0].createdAt as string) : '—'}</p>
+            </div>
+            {onEdit && (
+              <button onClick={onEdit} className="btn btn-sm btn-secondary shrink-0" title={t('customers.form.editCustomer')}>
+                ✏️ {t('customers.titleEdit')}
+              </button>
+            )}
+          </div>
+          {customer.notes && (
+            <p className="mt-2 text-xs text-slate-400 truncate" title={customer.notes}>
+              📝 {customer.notes}
+            </p>
+          )}
+        </div>
 
         {/* Summary stats — primary row.
             R-FINANCIAL-PRIVACY-V2: profit + margin tiles are owner-only.
