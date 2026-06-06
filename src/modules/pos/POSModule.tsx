@@ -785,6 +785,17 @@ export default function POSModule() {
           ...so,
           depositAmount: newDeposit,
           balance: newBalance,
+          // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: append-only per-payment log so
+          // receipts can separate deposit / previous payments / payment today.
+          // Display/audit only — depositAmount/balance/status math unchanged.
+          payments: [
+            ...(so.payments || []),
+            {
+              date: new Date().toISOString(),
+              method: sale.paymentMethod,
+              amountCents: paidCents,
+            },
+          ],
           status: newBalance === 0 ? 'picked_up' : so.status,
           updatedAt: new Date().toISOString(),
         };

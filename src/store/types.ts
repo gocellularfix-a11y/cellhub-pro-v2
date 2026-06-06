@@ -1039,8 +1039,17 @@ export interface SpecialOrder {
   supplier?: string;
   cost: number;            // cents
   price: number;           // cents
-  depositAmount: number;   // cents
+  depositAmount: number;   // cents (NOTE: accumulated total paid — POS reconcile increments it on every payment)
   balance: number;         // cents
+  // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: optional append-only per-payment log
+  // (mirrors LayawayPayment shape). Written by POS reconcile §4b; receipts
+  // derive the payment trace from it. Legacy orders without it keep the
+  // summary-only trace.
+  payments?: Array<{
+    date: string;        // ISO timestamp
+    method?: string;
+    amountCents: number;
+  }>;
   status: SpecialOrderStatus;
   notes: string;
   employeeId?: string;

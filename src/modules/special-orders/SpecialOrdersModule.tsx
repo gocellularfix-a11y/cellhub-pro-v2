@@ -39,7 +39,7 @@ import {
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { escHtml } from '@/utils/escHtml';
 // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: partial-payment audit trail.
-import { buildPaymentTrace, renderPaymentTraceHtml, paymentTraceI18n } from '@/services/receipts/paymentTrace';
+import { buildPaymentTrace, renderPaymentTraceHtml, classifyHistoryRows, paymentTraceI18n } from '@/services/receipts/paymentTrace';
 // R-RECEIPT-UNIFY-SPECIALORDER-V1: reuse the POS payment-receipt barcode renderer
 // + bundled QR lib so the special-order receipt shares the same visual system.
 import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
@@ -337,19 +337,43 @@ export default function SpecialOrdersModule() {
     const displayDeposit = displayOverride?.depositAmount ?? (order.depositAmount || 0);
     const displayBalance = Math.max(0, soFwd.totalCents - displayDeposit);
     const balanceDue = displayBalance > 0;
+    // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: depositAmount is the ACCUMULATED
+    // total paid after POS reconcile — only the create-time first print
+    // (deposit override) truly shows a deposit. Every other print labels the
+    // accumulated value TOTAL PAID so "Deposit" never means "total paid".
+    const paidRowLabel = displayOverride?.depositAmount != null
+      ? t('so.print.deposit')
+      : t('so.print.totalPaid');
     const thanks = settings.receiptFooter || t('so.print.thankYou');
 
-    // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: summary payment trace.
-    // Special Orders store only deposit + balance (no per-payment history), so
-    // this is a summary (no PAYMENT HISTORY rows). Uses the SAME display values
-    // the receipt already computed — no money/tax/balance recomputation. On the
-    // first deposit print the deposit override is shown as today's payment.
+    // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: payment trace. Uses
+    // the SAME display values the receipt already computed — no money/tax/
+    // balance recomputation. On the first deposit print the deposit override
+    // is shown as today's payment.
+    // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: when the per-payment log exists
+    // (POS reconcile appends a row on every payment), derive the trace history
+    // from it — same pattern as the layaway receipt — so reprints separate
+    // deposit / previous payments / payment today and list PAYMENT HISTORY
+    // rows. Legacy orders without payments[] keep the prior summary fallback.
+    const soPayments = order.payments || [];
+    const soTraceRows = soPayments.length > 0
+      ? classifyHistoryRows(
+          [...soPayments]
+            .sort((a, b) => (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0))
+            .map((p) => ({
+              date: (() => { try { return new Date(p.date).toLocaleDateString(); } catch { return ''; } })(),
+              method: String(p.method || ''),
+              amountCents: p.amountCents || 0,
+            })),
+          displayBalance <= 0,
+        )
+      : [];
     const soTraceHtml = renderPaymentTraceHtml(
       buildPaymentTrace({
         originalTotalCents: soFwd.totalCents,
         totalPaidCents: displayDeposit,
         balanceAfterCents: displayBalance,
-        history: [],
+        history: soTraceRows,
         fallbackTodayCents: displayOverride?.depositAmount ?? 0,
       }),
       paymentTraceI18n(t),
@@ -405,7 +429,7 @@ export default function SpecialOrdersModule() {
     <tr><td>${escHtml(t('so.print.price'))}:</td><td style="text-align:right">${escHtml(money(order.price || 0))}${prevHtml('price')}</td></tr>
     ${soTaxable ? `<tr><td>${escHtml(t('so.print.salesTax'))}:</td><td style="text-align:right">${escHtml(money(soFwd.taxCents))}</td></tr>` : ''}
     <tr style="border-top:1px solid #ccc"><td style="font-weight:700;padding-top:2px">${escHtml(t('so.print.total'))}:</td><td style="text-align:right;font-weight:700;padding-top:2px">${escHtml(money(soFwd.totalCents))}</td></tr>
-    <tr><td>${escHtml(t('so.print.deposit'))}:</td><td style="text-align:right">${escHtml(money(displayDeposit))}${prevHtml('depositAmount')}</td></tr>
+    <tr><td>${escHtml(paidRowLabel)}:</td><td style="text-align:right">${escHtml(money(displayDeposit))}${prevHtml('depositAmount')}</td></tr>
     <tr style="border-top:1px solid #000">
       <td style="font-size:14px;font-weight:900;padding-top:4px">${escHtml(t('so.print.balance'))}:</td>
       <td style="text-align:right;font-size:16px;font-weight:900;padding-top:4px${balanceDue ? ';color:#c00' : ''}">${escHtml(money(displayBalance))}${prevHtml('balance')}</td>

@@ -2768,6 +2768,9 @@ export const translations: TranslationDictionary = {
   'so.print.salesTax':         { en: 'SALES TAX',     es: 'IMPUESTO',       pt: 'IMPOSTO' },
   'so.print.total':            { en: 'TOTAL',         es: 'TOTAL',          pt: 'TOTAL' },
   'so.print.deposit':          { en: 'DEPOSIT',       es: 'DEPÓSITO',       pt: 'DEPÓSITO' },
+  // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: accumulated-paid row label (depositAmount
+  // after POS reconcile is total paid, not the original deposit).
+  'so.print.totalPaid':        { en: 'TOTAL PAID',    es: 'TOTAL PAGADO',   pt: 'TOTAL PAGO' },
   'so.print.balance':          { en: 'BALANCE',       es: 'BALANCE',        pt: 'SALDO' },
   'so.print.refundOwed':       { en: 'REFUND OWED',   es: 'REEMBOLSO ADEUDADO', pt: 'REEMBOLSO DEVIDO' },
   'so.print.notes':            { en: 'NOTES',         es: 'NOTAS',          pt: 'NOTAS' },
@@ -4610,6 +4613,8 @@ export const translations: TranslationDictionary = {
   'customers.form.clearMsg':          { en: 'Clear all form fields?', es: '¿Borrar todos los campos del formulario?', pt: 'Limpar todos os campos do formulário?' },
   'customers.form.clearConfirm':      { en: 'Clear',                  es: 'Borrar',                     pt: 'Limpar' },
   'customers.history.revenue':        { en: 'Revenue',                es: 'Ingresos',                   pt: 'Receita' },
+  // CUSTOMER-360-HEADER-V1: identity snapshot header in CustomerHistoryModal.
+  'customers.history.lastVisit':      { en: 'Last Visit',             es: 'Última Visita',              pt: 'Última Visita' },
   'customers.history.profit':         { en: 'Profit',                 es: 'Ganancia',                   pt: 'Lucro' },
   'customers.history.margin':         { en: 'Margin',                 es: 'Margen',                     pt: 'Margem' },
   'customers.history.credit':         { en: 'Store Credit',           es: 'Crédito',                    pt: 'Crédito' },
