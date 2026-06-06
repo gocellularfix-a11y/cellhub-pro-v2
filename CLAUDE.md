@@ -49,6 +49,25 @@ They override convenience. When in doubt, choose the smaller, safer change.
 
 ---
 
+## MANDATORY ROUND HEADER — BEFORE EDITING CODE
+
+Before editing ANY code, Claude MUST explicitly state in the conversation:
+
+1. **Which CLAUDE.md constraints apply** to this round.
+2. **Expected blast radius** — files/symbols/flows that could be affected.
+3. **Round classification** — exactly one of:
+   - investigation-only
+   - surgical fix
+   - additive feature
+   - refactor
+4. **What systems are intentionally NOT being touched.**
+
+**Extend, don't duplicate:** if Claude detects that a system already partially
+solves the problem, prefer extending the existing solution over introducing a
+second system.
+
+---
+
 ## DUAL-TOOL WORKFLOW
 
 Jorge opera dos herramientas de IA simultáneamente:
