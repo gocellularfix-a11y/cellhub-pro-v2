@@ -6746,6 +6746,17 @@ export const translations: TranslationDictionary = {
   'appt.toastCreated':           { en: 'Appointment created',               es: 'Cita creada',                           pt: 'Agendamento criado' },
   'appt.toastCancelled':         { en: 'Appointment cancelled',             es: 'Cita cancelada',                        pt: 'Agendamento cancelado' },
   'appt.toastPrinting':          { en: 'Printing appointment...',           es: 'Imprimiendo cita...',                   pt: 'Imprimindo agendamento...' },
+  // APPOINTMENTS-SEMANTIC-LIFECYCLE-V1 — no-show / restore / admin-protected delete
+  'appt.btnMore':                { en: 'More actions',                      es: 'Más acciones',                          pt: 'Mais ações' },
+  'appt.btnNoShow':              { en: 'Mark No Show',                      es: 'Marcar no apareció',                    pt: 'Marcar não compareceu' },
+  'appt.btnRestore':             { en: 'Restore to Scheduled',              es: 'Restaurar a programada',                pt: 'Restaurar para agendada' },
+  'appt.btnDelete':              { en: 'Delete (admin)',                    es: 'Eliminar (admin)',                      pt: 'Excluir (admin)' },
+  'appt.toastNoShow':            { en: 'Marked as no show',                 es: 'Marcada como no apareció',              pt: 'Marcado como não compareceu' },
+  'appt.toastRestored':          { en: 'Appointment restored to scheduled', es: 'Cita restaurada a programada',          pt: 'Agendamento restaurado para agendado' },
+  'appt.toastDeleted':           { en: 'Appointment deleted',               es: 'Cita eliminada',                        pt: 'Agendamento excluído' },
+  'appt.toastNotFound':          { en: 'Appointment not found',             es: 'Cita no encontrada',                    pt: 'Agendamento não encontrado' },
+  'appt.deleteTitle':            { en: 'Delete appointment permanently',    es: 'Eliminar cita permanentemente',         pt: 'Excluir agendamento permanentemente' },
+  'appt.deleteMsg':              { en: 'This permanently removes the record — only for duplicates or test entries. To cancel an appointment, use Cancel instead.', es: 'Esto elimina el registro permanentemente — solo para duplicados o entradas de prueba. Para cancelar una cita, usa Cancelar.', pt: 'Isso remove o registro permanentemente — apenas para duplicatas ou entradas de teste. Para cancelar um agendamento, use Cancelar.' },
   // R-APPT-RECEIPT-POLISH-V1 — customer-facing appointment receipt.
   'appt.receipt.title':          { en: 'APPOINTMENT',                       es: 'CITA',                                  pt: 'AGENDAMENTO' },
   'appt.receipt.confirmation':   { en: 'Confirmation',                      es: 'Confirmación',                          pt: 'Confirmação' },

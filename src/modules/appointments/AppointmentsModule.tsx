@@ -12,7 +12,10 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import CustomerPicker from '@/components/shared/CustomerPicker';
 import { generateId } from '@/utils/dates';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
-import { persist } from '@/services/persist';
+import { persist, remove } from '@/services/persist';
+// APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: admin PIN gate reused for the protected
+// permanent-delete cleanup flow (duplicates / test entries only).
+import AdminPinGate from '@/components/shared/AdminPinGate';
 // R-COMMS-SMS-HARD-DISABLE: sendSms import removed.
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { matchesSearchPhones } from '@/utils/search';
@@ -80,6 +83,12 @@ export default function AppointmentsModule() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [postSaveModal, setPostSaveModal] = useState<Appointment | null>(null);
   const [search, setSearch] = useState('');
+  // APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: per-card secondary actions menu (⋯)
+  // + two-stage admin delete (PIN gate → danger confirm). Cancel stays the
+  // existing status-flip flow (deleteConfirm above is the CANCEL confirm).
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deletePinFor, setDeletePinFor] = useState<string | null>(null);
+  const [deleteApptConfirm, setDeleteApptConfirm] = useState<string | null>(null);
 
   // Day-boundary refresh — recompute todayCount every minute so overnight
   // rollover is reflected without manual reload (matches Dashboard r21 pattern).
@@ -469,6 +478,50 @@ export default function AppointmentsModule() {
     toast(t('appt.toastCancelled'), 'info');
   }, [setAppointments, toast, t]);
 
+  // APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: lifecycle semantics. Cancel (above)
+  // is a status flip that preserves history. No Show is NOT cancellation —
+  // it marks a scheduled customer who failed to arrive. Restore brings a
+  // cancelled/no-show appointment back to scheduled WITHOUT creating a new
+  // record. Converted appointments are immutable operational history — no
+  // restore, no delete. All updates persist the FULL entity spread.
+  const markNoShow = useCallback((id: string) => {
+    const target = appointmentsRef.current.find((a) => a.id === id);
+    if (!target) { toast(t('appt.toastNotFound'), 'error'); return; }
+    if (target.status !== 'scheduled') return; // only a scheduled customer can no-show
+    const updated: Appointment = { ...target, status: 'no_show', updatedAt: new Date().toISOString() };
+    const nextAppts = appointmentsRef.current.map((a) => a.id === id ? updated : a);
+    appointmentsRef.current = nextAppts;
+    setAppointments(nextAppts);
+    persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
+    toast(t('appt.toastNoShow'), 'info');
+  }, [setAppointments, toast, t]);
+
+  const restoreAppt = useCallback((id: string) => {
+    const target = appointmentsRef.current.find((a) => a.id === id);
+    if (!target) { toast(t('appt.toastNotFound'), 'error'); return; }
+    // Only the reversible terminal states restore; converted stays immutable.
+    if (target.status !== 'cancelled' && target.status !== 'no_show') return;
+    const updated: Appointment = { ...target, status: 'scheduled', updatedAt: new Date().toISOString() };
+    const nextAppts = appointmentsRef.current.map((a) => a.id === id ? updated : a);
+    appointmentsRef.current = nextAppts;
+    setAppointments(nextAppts);
+    persist.appointment(updated.id, updated as unknown as Record<string, unknown>);
+    toast(t('appt.toastRestored'), 'success');
+  }, [setAppointments, toast, t]);
+
+  // Admin cleanup ONLY (duplicates / spam / test entries) — reached through
+  // PIN gate + danger confirm. Operational cancellation is cancelAppt above.
+  const deleteAppt = useCallback((id: string) => {
+    setDeleteApptConfirm(null);
+    const target = appointmentsRef.current.find((a) => a.id === id);
+    if (!target) { toast(t('appt.toastNotFound'), 'error'); return; }
+    const nextAppts = appointmentsRef.current.filter((a) => a.id !== id);
+    appointmentsRef.current = nextAppts;
+    setAppointments(nextAppts);
+    remove.appointment(id);
+    toast(t('appt.toastDeleted'), 'info');
+  }, [setAppointments, toast, t]);
+
   // ── Render ───────────────────────────────────────────────
 
   return (
@@ -591,6 +644,39 @@ export default function AppointmentsModule() {
                           ✕ {t('appt.btnCancel')}
                         </button>
                       )}
+                      {/* APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: secondary actions
+                          collapsed behind ⋯ — no large destructive buttons on
+                          the card. Converted = immutable history → no menu. */}
+                      {/* APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: secondary actions
+                          collapsed behind ⋯ — no large destructive buttons on
+                          the card. Converted = immutable history → no menu. */}
+                      {appt.status !== 'converted' && (
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === appt.id ? null : appt.id)}
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: '0.72rem' }}
+                          title={t('appt.btnMore')}
+                        >
+                          ⋯
+                        </button>
+                      )}
+                      {openMenuId === appt.id && appt.status !== 'converted' && (
+                        <>
+                          {appt.status === 'scheduled' && (
+                            <button onClick={() => { markNoShow(appt.id); setOpenMenuId(null); }} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
+                              👻 {t('appt.btnNoShow')}
+                            </button>
+                          )}
+                          {(appt.status === 'cancelled' || appt.status === 'no_show') && (
+                            <button onClick={() => { restoreAppt(appt.id); setOpenMenuId(null); }} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}>
+                              ↩️ {t('appt.btnRestore')}
+                            </button>
+                          )}
+                          <button onClick={() => { setDeletePinFor(appt.id); setOpenMenuId(null); }} className="btn btn-ghost btn-sm text-red-400/70" style={{ fontSize: '0.72rem' }}>
+                            🗑️ {t('appt.btnDelete')}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -663,6 +749,23 @@ export default function AppointmentsModule() {
         variant="danger"
         onConfirm={() => deleteConfirm && cancelAppt(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
+      />
+
+      {/* APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: permanent delete is admin
+          cleanup ONLY — PIN gate first, then an explicit danger confirm. */}
+      <AdminPinGate
+        open={!!deletePinFor}
+        adminPin={settings.adminPin || ''}
+        onSuccess={() => { setDeleteApptConfirm(deletePinFor); setDeletePinFor(null); }}
+        onCancel={() => setDeletePinFor(null)}
+      />
+      <ConfirmDialog
+        open={!!deleteApptConfirm}
+        title={t('appt.deleteTitle')}
+        message={t('appt.deleteMsg')}
+        variant="danger"
+        onConfirm={() => deleteApptConfirm && deleteAppt(deleteApptConfirm)}
+        onCancel={() => setDeleteApptConfirm(null)}
       />
     </>
   );
