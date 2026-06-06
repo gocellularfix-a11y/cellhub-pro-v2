@@ -21,7 +21,14 @@ export function handleRecoverCustomer(
   const now = Date.now();
 
   // Prefer matched customer from name extraction; fall back to most inactive high-value
-  let customerId = match.matchedCustomer?.id ?? null;
+  // INTEL-CUSTOMER-RESOLUTION-FIX-V1: when several customers match, use the
+  // resolver's best candidate; and when the operator EXPLICITLY typed a
+  // name/phone (extractedName set) that matched nobody, answer "not found"
+  // instead of silently substituting the default candidate.
+  let customerId = match.matchedCustomer?.id ?? match.candidateCustomers?.[0]?.id ?? null;
+  if (!customerId && match.extractedName) {
+    return { kind: 'answer', text: t('chat.recoverCustomer.noCustomer') };
+  }
   if (!customerId) {
     const scores = engine.getCustomerScores();
     let best: { id: string; rankScore: number } | null = null;
@@ -136,7 +143,13 @@ export function handleVipOutreach(
   const t = tChat(lang);
   const now = Date.now();
 
-  let customerId = match.matchedCustomer?.id ?? null;
+  // INTEL-CUSTOMER-RESOLUTION-FIX-V1: same explicit-name guard as recovery —
+  // a typed name/phone that matched nobody must NOT silently become the
+  // top-scored customer (this was the "always CENOBIO" bug).
+  let customerId = match.matchedCustomer?.id ?? match.candidateCustomers?.[0]?.id ?? null;
+  if (!customerId && match.extractedName) {
+    return { kind: 'answer', text: t('chat.vipOutreach.noCustomer') };
+  }
   if (!customerId) {
     const scores = engine.getCustomerScores();
     const top = scores.slice().sort((a, b) => b.score - a.score)[0];

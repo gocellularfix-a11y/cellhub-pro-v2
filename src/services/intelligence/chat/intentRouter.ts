@@ -2031,6 +2031,68 @@ function extractName(query: string, allKeywords: string[][]): string | null {
   return best.trim().length >= 2 ? best.trim() : null;
 }
 
+// INTEL-CUSTOMER-RESOLUTION-FIX-V1: resolve a "name [phone]" fragment to a
+// customer. The old path fed the WHOLE fragment to matchesSearch (substring
+// against one field at a time), so "abel mena 8053662830" matched neither
+// the name ("abel mena") nor the formatted phone ("(805) 366-2830") → no
+// match → handlers silently fell back to the default candidate (VIP: the
+// top-scored customer, always the same one). Resolution order:
+//   1. exact phone-digit match (digits normalized on both sides) — wins;
+//      name tokens disambiguate when several customers share the number
+//   2. order-free name-token match (every typed token in customer.name)
+//   3. legacy whole-fragment matchesSearch (preserves customerNumber lookups)
+function resolveCustomerFragment(
+  fragment: string,
+  customers: Customer[],
+): { matched?: Customer; candidates?: Customer[] } {
+  const typedDigits = (fragment.match(/\d/g) || []).join('');
+  const nameTokens = fragment
+    .replace(/[\d()+\-.]/g, ' ')
+    .split(/\s+/)
+    .filter((tk) => tk.length >= 2);
+  const digitsOf = (p: string | undefined | null) => (p || '').replace(/\D/g, '');
+
+  // 1) Phone digits (≥7 typed digits to avoid accidental hits).
+  if (typedDigits.length >= 7) {
+    const tail = typedDigits.slice(-10);
+    const byPhone = customers.filter((c) => {
+      const all = [c.phone, ...(((c as { phones?: string[] }).phones) || [])];
+      return all.some((p) => {
+        const d = digitsOf(p);
+        return d.length >= 7 && (d === tail || d.endsWith(tail) || tail.endsWith(d));
+      });
+    });
+    if (byPhone.length === 1) return { matched: byPhone[0] };
+    if (byPhone.length > 1) {
+      const refined = nameTokens.length > 0
+        ? byPhone.filter((c) => { const n = c.name.toLowerCase(); return nameTokens.every((tk) => n.includes(tk)); })
+        : [];
+      if (refined.length === 1) return { matched: refined[0] };
+      return { candidates: byPhone.slice(0, 5) };
+    }
+    // Typed phone matched nobody → fall through to the name tokens.
+  }
+
+  // 2) Order-free name-token match.
+  if (nameTokens.length > 0) {
+    const byName = customers.filter((c) => {
+      const n = c.name.toLowerCase();
+      return nameTokens.every((tk) => n.includes(tk));
+    });
+    if (byName.length === 1) return { matched: byName[0] };
+    if (byName.length > 1) return { candidates: byName.slice(0, 5) };
+  }
+
+  // 3) Legacy behavior (whole-fragment substring) — keeps customerNumber
+  //    and exact-format matches working as before.
+  const legacy = customers
+    .filter((c) => matchesSearch(fragment, c.name, c.phone, (c as { customerNumber?: string }).customerNumber))
+    .slice(0, 5);
+  if (legacy.length === 1) return { matched: legacy[0] };
+  if (legacy.length > 1) return { candidates: legacy };
+  return {};
+}
+
 // ── Main entry ──────────────────────────────────────────────
 
 export function classifyIntent(
@@ -2496,13 +2558,13 @@ export function classifyIntent(
     if (nameFragment) {
       result.extractedName = nameFragment;
       if (winner.id === 'recover_customer' || winner.id === 'vip_outreach') {
-        const matches = customers
-          .filter((c) => matchesSearch(nameFragment, c.name, c.phone, (c as { customerNumber?: string }).customerNumber))
-          .slice(0, 5);
-        if (matches.length === 1) {
-          result.matchedCustomer = matches[0];
-        } else if (matches.length > 1) {
-          result.candidateCustomers = matches;
+        // INTEL-CUSTOMER-RESOLUTION-FIX-V1: phone-digit + name-token resolver
+        // (was: whole-fragment substring match that failed on "name + phone").
+        const resolved = resolveCustomerFragment(nameFragment, customers);
+        if (resolved.matched) {
+          result.matchedCustomer = resolved.matched;
+        } else if (resolved.candidates) {
+          result.candidateCustomers = resolved.candidates;
         }
       }
     }
