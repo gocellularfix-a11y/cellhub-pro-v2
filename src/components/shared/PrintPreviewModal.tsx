@@ -151,7 +151,15 @@ export default function PrintPreviewModal({
       // at 100% and spilling onto two pages. CSS transforms don't survive
       // the print pipeline; scaleFactor (passed to webContents.print) does.
       // R-PRINT-PAGE-RANGES-V1: parsed pageRanges (or undefined for "all").
-      const pageRanges = pageRangeMode === 'custom' ? parsePageRanges(pageRangeInput) : undefined;
+      // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1: the UI/parse is 1-based (what the
+      // owner types), but Electron's webContents.print expects 0-BASED page
+      // indices ({from: 0} = first page). Sending 1-based made "page 1"
+      // request index 1 (the second page) — out of bounds on single-page
+      // receipts → Chromium failed the whole print job with an error.
+      // Convert at the send boundary only; parse/validation stay 1-based.
+      const pageRanges = pageRangeMode === 'custom'
+        ? parsePageRanges(pageRangeInput)?.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
+        : undefined;
       const result = await window.electronAPI.printRun({
         html,
         deviceName: selectedPrinter,
@@ -202,13 +210,23 @@ export default function PrintPreviewModal({
   // sandboxed iframe re-parsed the entire receipt HTML. Memoising on the
   // only two inputs that actually affect the output makes unrelated
   // sidebar interactions feel instant.
+  // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1: debounce the PREVIEW's scale (150ms)
+  // so dragging the scale slider doesn't reload the iframe on every tick —
+  // each srcDoc change re-parses the whole receipt document, which made the
+  // module feel heavy on large reports. The actual print still uses the
+  // live effectiveScale value — only preview latency changes.
+  const [previewScale, setPreviewScale] = useState(100);
+  useEffect(() => {
+    const tid = window.setTimeout(() => setPreviewScale(effectiveScale), 150);
+    return () => window.clearTimeout(tid);
+  }, [effectiveScale]);
   const scaledHtml = useMemo(
     () => (
-      effectiveScale === 100
+      previewScale === 100
         ? html
-        : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${effectiveScale / 100}); transform-origin: center center;">`)
+        : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
     ),
-    [html, effectiveScale],
+    [html, previewScale],
   );
 
   if (!open) return null;

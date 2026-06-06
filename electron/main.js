@@ -387,6 +387,82 @@ function registerIpcHandlers() {
       await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       await Promise.race([ready, safety]);
 
+      // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1b: Chromium only paginates DURING
+      // the print, so a requested pageRange is never validated against a real
+      // page count — single-page receipts with a custom range, or ranges past
+      // the last page, fail the whole job with an opaque error. When (and
+      // only when) a custom range was requested, probe the actual page count
+      // via printToPDF on the already-loaded window (cheap for receipts):
+      //   pageCount <= 1 → drop pageRanges entirely (print-all is the
+      //                    identical output for a one-page document)
+      //   pageCount  > 1 → clamp ranges into [0, pageCount-1]; if nothing
+      //                    survives, fail fast with a CLEAR message.
+      // Probe failure → send ranges as-is (pre-existing behavior).
+      let effectiveRanges = Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0
+        ? payload.pageRanges
+        : null;
+      // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1: runtime confirmed that even a
+      // VALID {from:0,to:0} range fails the silent print job on the shop
+      // printer (Chromium/driver pageRanges quirk) while All-pages prints
+      // fine. For receipt-sized paper (width <= 4in: 80mm/4x6/label/cr80) a
+      // "page 1 only" custom range is OUTPUT-IDENTICAL to printing all pages
+      // of a one-page receipt — so drop the ranges entirely and print all.
+      // No probe needed, no error shown. Multipage/letter documents keep the
+      // probe-validated range path below.
+      if (effectiveRanges) {
+        const isReceiptSize = ((payload.pageSize && payload.pageSize.width) || 101600) <= 101600;
+        const onlyFirstPage = effectiveRanges.every((r) => (r.from || 0) === 0 && (r.to || 0) === 0);
+        if (isReceiptSize && onlyFirstPage) {
+          console.log('[print:run] receipt-size + page-1-only range → bypassing pageRanges (identical output)');
+          effectiveRanges = null;
+        }
+      }
+      if (effectiveRanges) {
+        try {
+          const probePdf = await printWin.webContents.printToPDF({
+            landscape: payload.landscape || false,
+            printBackground: true,
+            preferCSSPageSize: true,
+            pageSize: payload.pageSize || { width: 101600, height: 152400 },
+            margins: {
+              top: payload.margins?.top || 0,
+              bottom: payload.margins?.bottom || 0,
+              left: payload.margins?.left || 0,
+              right: payload.margins?.right || 0,
+            },
+          });
+          // Chromium/Skia PDFs list each page object as "/Type /Page" —
+          // count them (excluding the "/Type /Pages" tree node). 0 → heuristic
+          // failed → leave ranges untouched.
+          const pageCount = (probePdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+          console.log('[print:run] page-count probe:', pageCount, 'requested ranges:', JSON.stringify(effectiveRanges));
+          if (pageCount === 1) {
+            // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1: one-page document —
+            // a range covering page 1 prints all (identical output); a range
+            // that does NOT include page 1 is a clean validation error, never
+            // a generic "Print job failed".
+            const coversFirstPage = effectiveRanges.some((r) => (r.from || 0) === 0);
+            if (coversFirstPage) {
+              effectiveRanges = null;
+            } else {
+              if (!printWin.isDestroyed()) printWin.close();
+              return { success: false, error: 'Page range out of bounds — document has 1 page' };
+            }
+          } else if (pageCount > 1) {
+            const clamped = effectiveRanges
+              .map((r) => ({ from: Math.max(0, r.from || 0), to: Math.min(r.to || 0, pageCount - 1) }))
+              .filter((r) => r.from <= r.to);
+            if (clamped.length === 0) {
+              if (!printWin.isDestroyed()) printWin.close();
+              return { success: false, error: `Page range out of bounds — document has ${pageCount} pages` };
+            }
+            effectiveRanges = clamped;
+          }
+        } catch (probeErr) {
+          console.warn('[print:run] page-count probe failed, sending ranges as-is:', probeErr);
+        }
+      }
+
       return await new Promise((resolve) => {
         // r-print-contract-v2: margin unit consistency.
         // The modal UI labels margins as INCHES and printToPDF (preview path)
@@ -416,10 +492,12 @@ function registerIpcHandlers() {
             : { marginType: 'none' },
           // R-PRINT-PAGE-RANGES-V1: forward parsed pageRanges from the
           // print preview modal. webContents.print accepts an array of
-          // {from, to} (1-based, inclusive). Omitted = all pages.
-          ...(Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0
-            ? { pageRanges: payload.pageRanges }
-            : {}),
+          // {from, to} — 0-BASED page indices, inclusive (the renderer
+          // converts from the 1-based UI values before sending — see
+          // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1). Omitted = all pages.
+          // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1b: effectiveRanges is the
+          // probe-validated version (single-page → null, clamped otherwise).
+          ...(effectiveRanges ? { pageRanges: effectiveRanges } : {}),
         };
         console.log('[print:run] options:', JSON.stringify(printOptions));
         printWin.webContents.print(printOptions, (success, failureReason) => {
