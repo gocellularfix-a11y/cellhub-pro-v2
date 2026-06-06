@@ -378,6 +378,10 @@ export default function SpecialOrdersModule() {
         balanceAfterCents: displayBalance,
         history: soTraceRows,
         fallbackTodayCents: displayOverride?.depositAmount ?? 0,
+        // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: pre-tax split the
+        // receipt already computed (soFwd) — ORDER SUMMARY shows tax once.
+        subtotalCents: order.price || 0,
+        taxCents: soTaxable ? soFwd.taxCents : 0,
       }),
       paymentTraceI18n(t),
       escHtml,

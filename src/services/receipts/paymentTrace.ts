@@ -34,6 +34,11 @@ export interface PaymentTrace {
   /** Whether a per-payment history exists (layaway) vs summary-only (SO). */
   hasToday: boolean;
   history: PaymentTraceRow[];
+  // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: optional pre-tax split
+  // for the ORDER SUMMARY section. Display-only passthrough of values the
+  // receipt already computed — 0 means "not provided, show total only".
+  subtotalCents: number;
+  taxCents: number;
 }
 
 export interface BuildPaymentTraceInput {
@@ -52,6 +57,16 @@ export interface BuildPaymentTraceInput {
    * meaningful "Payment Today". Ignored when `history` is non-empty.
    */
   fallbackTodayCents?: number;
+  /**
+   * SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: optional pre-tax split
+   * the receipt ALREADY computed (never recomputed here). When both are
+   * provided and tax > 0, the ORDER SUMMARY section renders
+   * Subtotal + Tax (+"charged once" note) above Original Total, making it
+   * visually explicit that tax belongs to the order total — not re-added
+   * on every payment visit.
+   */
+  subtotalCents?: number;
+  taxCents?: number;
 }
 
 const c = (n: unknown): number => {
@@ -102,6 +117,8 @@ export function buildPaymentTrace(input: BuildPaymentTraceInput): PaymentTrace {
     isPaid: balanceAfterCents <= 0,
     hasToday,
     history,
+    subtotalCents: c(input.subtotalCents),
+    taxCents: c(input.taxCents),
   };
 }
 
@@ -125,13 +142,31 @@ export interface PaymentTraceI18n {
   typeFinal: string;
   unknownMethod: string;
   dateUnavailable: string;
+  // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1 — semantic sections
+  subtotal: string;
+  tax: string;
+  taxOnceNote: string;
+  statusTitle: string;
 }
 
 /**
- * Render the PAYMENT TRACE (+ PAYMENT HISTORY when rows exist) as a
- * self-contained HTML string. `esc` escapes any interpolated user text;
- * `money` formats cents → display string. Both come from the calling receipt
- * so formatting matches the rest of the ticket.
+ * Render the payment story as a self-contained HTML string. `esc` escapes any
+ * interpolated user text; `money` formats cents → display string. Both come
+ * from the calling receipt so formatting matches the rest of the ticket.
+ *
+ * SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: restructured into a clear
+ * financial timeline — same data, clearer story, NO money recomputation:
+ *
+ *   ORDER SUMMARY    (i18n.title) Subtotal / Tax (+charged-once note, when
+ *                    provided) / Original Total
+ *   PAYMENT HISTORY  chronological rows (only when per-payment rows exist —
+ *                    summary-mode receipts show a Previous Payments line in
+ *                    ORDER SUMMARY instead, so prior money never disappears)
+ *   PAID TODAY       standout bordered row — what the customer just paid
+ *   CURRENT STATUS   Total Paid / Remaining Balance / Paid|Balance Due
+ *
+ * Dropped from the old layout (display only — still computed): Balance
+ * Before and Payment Count, which duplicated the story and confused reads.
  */
 export function renderPaymentTraceHtml(
   trace: PaymentTrace,
@@ -147,16 +182,22 @@ export function renderPaymentTraceHtml(
   const line = (label: string, value: string, strong = false) =>
     `<div style="${row}${strong ? ';font-weight:800' : ''}"><span style="${k}">${esc(label)}</span><span style="${v}">${esc(value)}</span></div>`;
 
+  // ── ORDER SUMMARY ──────────────────────────────────────────
   const parts: string[] = [`<div style="${lbl}">${esc(i18n.title)}</div>`];
+  if (trace.subtotalCents > 0 && trace.taxCents > 0) {
+    parts.push(line(i18n.subtotal, money(trace.subtotalCents)));
+    parts.push(line(i18n.tax, money(trace.taxCents)));
+    // Tax belongs to the order total — make "charged once" explicit so later
+    // balance payments never read as "taxed again".
+    parts.push(`<div style="font-size:8px;color:#777;margin:0 0 2px">${esc(i18n.taxOnceNote)}</div>`);
+  }
   parts.push(line(i18n.originalTotal, money(trace.originalTotalCents)));
-  if (trace.previousPaymentsCents > 0 || trace.hasToday) parts.push(line(i18n.previousPayments, money(trace.previousPaymentsCents)));
-  if (trace.hasToday) parts.push(line(i18n.paymentToday, money(trace.paymentTodayCents)));
-  parts.push(line(i18n.totalPaid, money(trace.totalPaidCents)));
-  if (trace.hasToday) parts.push(line(i18n.balanceBefore, money(trace.balanceBeforeCents)));
-  parts.push(line(i18n.balanceAfter, money(trace.balanceAfterCents), true));
-  if (trace.paymentCount > 0) parts.push(line(i18n.paymentCount, String(trace.paymentCount)));
-  parts.push(line(i18n.statusLabel, trace.isPaid ? i18n.statusPaid : i18n.statusBalanceDue, true));
+  // Summary-mode receipts (no per-payment rows) keep prior money visible here.
+  if (trace.history.length === 0 && trace.previousPaymentsCents > 0) {
+    parts.push(line(i18n.previousPayments, money(trace.previousPaymentsCents)));
+  }
 
+  // ── PAYMENT HISTORY (chronological, when rows exist) ───────
   if (trace.history.length > 0) {
     const typeLabel = (t: PaymentTraceRowType) =>
       t === 'deposit' ? i18n.typeDeposit : t === 'final' ? i18n.typeFinal : i18n.typePayment;
@@ -169,6 +210,19 @@ export function renderPaymentTraceHtml(
       );
     });
   }
+
+  // ── PAID TODAY (standout — what was just paid) ─────────────
+  if (trace.hasToday) {
+    parts.push(
+      `<div style="display:flex;justify-content:space-between;margin:4px 0;padding:2px 0;border-top:1px solid #000;border-bottom:1px solid #000;font-size:12px;font-weight:800"><span>${esc(i18n.paymentToday)}</span><span>${esc(money(trace.paymentTodayCents))}</span></div>`,
+    );
+  }
+
+  // ── CURRENT STATUS ─────────────────────────────────────────
+  parts.push(`<div style="${lbl}">${esc(i18n.statusTitle)}</div>`);
+  parts.push(line(i18n.totalPaid, money(trace.totalPaidCents)));
+  parts.push(line(i18n.balanceAfter, money(trace.balanceAfterCents), true));
+  parts.push(line(i18n.statusLabel, trace.isPaid ? i18n.statusPaid : i18n.statusBalanceDue, true));
 
   return `<div style="margin:4px 0">${parts.join('')}</div>`;
 }
@@ -193,6 +247,11 @@ export function paymentTraceI18n(t: (key: string) => string): PaymentTraceI18n {
     typeFinal:        t('receipt.trace.typeFinal'),
     unknownMethod:    t('receipt.trace.unknownMethod'),
     dateUnavailable:  t('receipt.trace.dateUnavailable'),
+    // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1
+    subtotal:         t('receipt.trace.subtotal'),
+    tax:              t('receipt.trace.tax'),
+    taxOnceNote:      t('receipt.trace.taxOnceNote'),
+    statusTitle:      t('receipt.trace.statusTitle'),
   };
 }
 

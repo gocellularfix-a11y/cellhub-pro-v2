@@ -183,3 +183,57 @@ describe('renderPaymentTraceHtml', () => {
     expect(html).toContain('unknownMethod');
   });
 });
+
+// SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1 — semantic timeline layout.
+describe('renderPaymentTraceHtml — semantic sections', () => {
+  it('subtotal + tax provided → ORDER SUMMARY shows split + charged-once note', () => {
+    const t = buildPaymentTrace({
+      originalTotalCents: 10925, totalPaidCents: 5000, balanceAfterCents: 5925,
+      history: [], fallbackTodayCents: 5000,
+      subtotalCents: 10000, taxCents: 925,
+    });
+    expect(t.subtotalCents).toBe(10000);
+    expect(t.taxCents).toBe(925);
+    const html = renderPaymentTraceHtml(t, I18N, esc, money);
+    expect(html).toContain('subtotal');
+    expect(html).toContain('$100.00');
+    expect(html).toContain('$9.25');
+    expect(html).toContain('taxOnceNote');
+  });
+
+  it('no subtotal/tax (repairs/unlocks) → ORDER SUMMARY is total-only, no tax rows', () => {
+    const t = buildPaymentTrace({ originalTotalCents: 12000, totalPaidCents: 4000, balanceAfterCents: 8000, history: [], fallbackTodayCents: 4000 });
+    const html = renderPaymentTraceHtml(t, I18N, esc, money);
+    expect(html).not.toContain('subtotal');
+    expect(html).not.toContain('taxOnceNote');
+  });
+
+  it('always renders CURRENT STATUS; drops balanceBefore/paymentCount noise', () => {
+    const t = buildPaymentTrace({
+      originalTotalCents: 10000, totalPaidCents: 3500, balanceAfterCents: 6500,
+      history: [row({ type: 'deposit', amountCents: 2000 }), row({ amountCents: 1500 })],
+    });
+    const html = renderPaymentTraceHtml(t, I18N, esc, money);
+    expect(html).toContain('statusTitle');
+    expect(html).toContain('totalPaid');
+    expect(html).toContain('balanceAfter');
+    expect(html).not.toContain('balanceBefore');
+    expect(html).not.toContain('paymentCount');
+  });
+
+  it('PAID TODAY standout renders when hasToday, hidden on plain reprints', () => {
+    const withToday = buildPaymentTrace({
+      originalTotalCents: 5000, totalPaidCents: 2000, balanceAfterCents: 3000,
+      history: [], fallbackTodayCents: 2000,
+    });
+    expect(renderPaymentTraceHtml(withToday, I18N, esc, money)).toContain('paymentToday');
+    const reprint = buildPaymentTrace({
+      originalTotalCents: 5000, totalPaidCents: 2000, balanceAfterCents: 3000,
+      history: [], fallbackTodayCents: 0,
+    });
+    const html = renderPaymentTraceHtml(reprint, I18N, esc, money);
+    expect(html).not.toContain('paymentToday');
+    // prior money stays visible on summary-mode reprints
+    expect(html).toContain('previousPayments');
+  });
+});

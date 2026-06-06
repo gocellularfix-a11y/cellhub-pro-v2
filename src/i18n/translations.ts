@@ -1856,13 +1856,17 @@ export const translations: TranslationDictionary = {
   // R-CART-FEES BUG-6: receipt HTML — Screen Fee line, paralelo al CBE Fee existente.
   'receipt.screenFee': { en: 'Screen Fee:', es: 'Cuota Pantalla:', pt: 'Taxa de Tela:' },
   // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1 — Layaway/Special Order partial-payment audit trail.
-  'receipt.trace.title':            { en: 'PAYMENT TRACE',      es: 'RASTRO DE PAGOS',     pt: 'RASTREIO DE PAGAMENTOS' },
+  // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: the trace block now reads
+  // as a financial timeline — title became the ORDER SUMMARY section header,
+  // paymentToday is the standout PAID TODAY row, balanceAfter reads as the
+  // customer-facing Remaining Balance.
+  'receipt.trace.title':            { en: 'ORDER SUMMARY',      es: 'RESUMEN DE LA ORDEN', pt: 'RESUMO DO PEDIDO' },
   'receipt.trace.originalTotal':    { en: 'Original Total',     es: 'Total Original',      pt: 'Total Original' },
   'receipt.trace.previousPayments': { en: 'Previous Payments',  es: 'Pagos Anteriores',    pt: 'Pagamentos Anteriores' },
-  'receipt.trace.paymentToday':     { en: 'Payment Today',      es: 'Pago de Hoy',         pt: 'Pagamento de Hoje' },
+  'receipt.trace.paymentToday':     { en: 'PAID TODAY',         es: 'PAGADO HOY',          pt: 'PAGO HOJE' },
   'receipt.trace.totalPaid':        { en: 'Total Paid',         es: 'Total Pagado',        pt: 'Total Pago' },
   'receipt.trace.balanceBefore':    { en: 'Balance Before',     es: 'Saldo Anterior',      pt: 'Saldo Anterior' },
-  'receipt.trace.balanceAfter':     { en: 'Balance After',      es: 'Saldo Después',       pt: 'Saldo Depois' },
+  'receipt.trace.balanceAfter':     { en: 'Remaining Balance',  es: 'Saldo Restante',      pt: 'Saldo Restante' },
   'receipt.trace.paymentCount':     { en: 'Payment Count',      es: 'Número de Pagos',     pt: 'Número de Pagamentos' },
   'receipt.trace.statusLabel':      { en: 'Status',             es: 'Estado',              pt: 'Status' },
   'receipt.trace.statusPaid':       { en: 'Paid',               es: 'Pagado',              pt: 'Pago' },
@@ -1873,6 +1877,11 @@ export const translations: TranslationDictionary = {
   'receipt.trace.typeFinal':        { en: 'Final Payment',      es: 'Pago Final',          pt: 'Pagamento Final' },
   'receipt.trace.unknownMethod':    { en: 'Unknown method',     es: 'Método desconocido',  pt: 'Método desconhecido' },
   'receipt.trace.dateUnavailable':  { en: 'Date unavailable',   es: 'Fecha no disponible', pt: 'Data indisponível' },
+  // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1 — semantic section keys
+  'receipt.trace.subtotal':         { en: 'Subtotal',           es: 'Subtotal',            pt: 'Subtotal' },
+  'receipt.trace.tax':              { en: 'Sales Tax',          es: 'Impuesto',            pt: 'Imposto' },
+  'receipt.trace.taxOnceNote':      { en: 'Tax is part of the order total — charged once, not per payment.', es: 'El impuesto es parte del total de la orden — se cobra una sola vez, no en cada pago.', pt: 'O imposto faz parte do total do pedido — cobrado uma única vez, não a cada pagamento.' },
+  'receipt.trace.statusTitle':      { en: 'CURRENT STATUS',     es: 'ESTADO ACTUAL',       pt: 'STATUS ATUAL' },
   'cart.ccFee': { en: 'CC Fee', es: 'Cargo Tarjeta', pt: 'Taxa de Cartão' },
   'cart.split': { en: 'Split', es: 'Dividir', pt: 'Dividir' },
   'cart.cashReceived': { en: 'Cash Received', es: 'Efectivo Recibido', pt: 'Dinheiro Recebido' },

@@ -1238,6 +1238,10 @@ export default function LayawayModule() {
       balanceAfterCents: traceHasHistory ? lpTotals.remainingBalanceCents : Math.max(0, totalCents - paidCents),
       history: traceRows,
       fallbackTodayCents: traceHasHistory ? 0 : paidCents,
+      // SPECIAL-ORDER-PAYMENT-TRACE-SEMANTIC-CLARITY-V1: pre-tax split the
+      // receipt already computed — ORDER SUMMARY shows tax once.
+      subtotalCents,
+      taxCents: isTaxable ? taxCents : 0,
     });
     const paymentTraceHtml = renderPaymentTraceHtml(paymentTrace, paymentTraceI18n(t), esc, fmtMoney);
 
