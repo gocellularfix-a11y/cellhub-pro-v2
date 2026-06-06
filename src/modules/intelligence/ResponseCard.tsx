@@ -139,6 +139,9 @@ function ResponseCard({
         color: '#d1d5db',
         lineHeight: '1.7',
         whiteSpace: 'pre-wrap',
+        // INTELLIGENCE-CHAT-LAYOUT-CONTAINMENT-V1: long unbroken strings wrap
+        // instead of widening the bounded chat column.
+        overflowWrap: 'anywhere',
       }}>
         {primary}
       </div>
@@ -149,6 +152,7 @@ function ResponseCard({
           color: '#d1d5db',
           lineHeight: '1.7',
           whiteSpace: 'pre-wrap',
+          overflowWrap: 'anywhere',
         }}>
           {p}
         </div>

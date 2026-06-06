@@ -7,7 +7,7 @@
 // owner questions deterministically.
 // ============================================================
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
@@ -121,7 +121,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }, [settings, isAdminMode, currentEmployee]);
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  // INTEL-PERF-CHAT-MEMO-V1: the command-bar text state moved into
+  // ChatCommandBar (bottom of file) so keystrokes re-render only that small
+  // component instead of the whole chat (history + queue + modals).
   const [pendingWaAction, setPendingWaAction] = useState<{ action: ChatActionUI; url: string } | null>(null);
   const [actionFeedbackById, setActionFeedbackById] = useState<
     Record<string, { message: string; ts: number }>
@@ -508,9 +510,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     }
   }, [messages]);
 
-  const handleSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const query = input.trim();
+  // INTEL-PERF-CHAT-MEMO-V1: takes the submitted text as a param (was: read
+  // from the removed `input` state). ChatCommandBar owns the text and clears
+  // itself after onSend — submit semantics (trim, empty-guard, clear-after-
+  // send including the dedup early-return path) are unchanged.
+  const handleSubmit = (raw: string) => {
+    const query = raw.trim();
     if (!query) return;
 
     const userMsg: ChatMessage = {
@@ -560,7 +565,6 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // R-INTELLIGENCE-INTENT-DEDUP-ISOLATION: same dedup guard as fireQuery.
     if (response.text === lastResponseRef.current.text && now - lastResponseRef.current.ts < 500) {
       lastResponseRef.current.ts = now;
-      setInput('');
       return;
     }
     lastResponseRef.current = { text: response.text, ts: now };
@@ -599,7 +603,6 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       }
     }
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput('');
   };
 
   // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: short-lived per-(target+entity)
@@ -1049,6 +1052,19 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   }
   const peekItem = peekItemRef.current;
 
+  // INTEL-PERF-CHAT-MEMO-V1: referentially-stable wrappers (latest-ref
+  // pattern) so memo(MessageBubble) and memo(ChatCommandBar) aren't defeated
+  // by handleActionClick/handleSubmit getting a new identity every render.
+  // The refs are refreshed post-render, before any user interaction can fire.
+  const handleActionClickRef = useRef(handleActionClick);
+  const handleSubmitRef = useRef(handleSubmit);
+  useEffect(() => {
+    handleActionClickRef.current = handleActionClick;
+    handleSubmitRef.current = handleSubmit;
+  });
+  const onActionStable = useCallback((action: ChatActionUI) => { handleActionClickRef.current(action); }, []);
+  const onSendStable = useCallback((text: string) => { handleSubmitRef.current(text); }, []);
+
   return (
     <div
       className={compact ? 'overflow-hidden flex flex-col' : 'bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col'}
@@ -1136,7 +1152,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       <div
         ref={messageListRef}
         className={compact ? '' : 'flex-1 overflow-y-auto px-4 py-5'}
-        style={compact ? { flex: 1, overflowY: 'auto' } : undefined}
+        // INTELLIGENCE-CHAT-LAYOUT-CONTAINMENT-V1: explicit minHeight: 0 so the
+        // list can never force its flex parent taller than the bounded panel;
+        // overflowX hidden is the backstop so unbroken strings can't widen it.
+        style={compact ? { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } : undefined}
       >
         {compact ? (
           messages.length === 0 ? (
@@ -1145,7 +1164,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
               : <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
           ) : (
             <div style={{ padding: '14px 16px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)}
+              {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={onActionStable} feedbackById={actionFeedbackById} />)}
             </div>
           )
         ) : (
@@ -1153,7 +1172,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             {messages.length === 0 ? (
               <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
             ) : (
-              messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={handleActionClick} feedbackById={actionFeedbackById} />)
+              messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={onActionStable} feedbackById={actionFeedbackById} />)
             )}
           </div>
         )}
@@ -1290,86 +1309,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         </div>
       )}
 
-      {/* Command bar */}
+      {/* Command bar — INTEL-PERF-CHAT-MEMO-V1: extracted to ChatCommandBar
+          (memoized, owns its text state) so typing re-renders only the bar,
+          not the message history above. Same JSX, same submit semantics. */}
       {compact ? (
-        !hideInput && <div style={{
-          borderTop: `1px solid #1d2633`, padding: 18, flexShrink: 0,
-        }}>
-          <form
-            onSubmit={handleSubmit}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: '#171f2a', borderRadius: 16, padding: '12px 14px',
-            }}
-          >
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : locale === 'pt' ? 'Pergunte ao Intelligence…' : 'Ask Intelligence…'}
-              style={{
-                flex: 1, background: 'transparent', border: 'none',
-                outline: 'none', color: 'white', fontSize: 14,
-              }}
-            />
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              style={{
-                width: 42, height: 42, border: 'none', borderRadius: 12,
-                background: input.trim() ? '#2563eb' : '#1d2633',
-                color: 'white', fontSize: 18,
-                cursor: input.trim() ? 'pointer' : 'not-allowed',
-                flexShrink: 0, transition: 'background 0.12s',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              →
-            </button>
-          </form>
-        </div>
+        !hideInput && <ChatCommandBar compact locale={locale} onSend={onSendStable} />
       ) : (
-        <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
-            <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.09em' }}>
-              {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
-            </span>
-          </div>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
-            <input
-              type='text'
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias…'
-                : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
-                : 'Ask about customers, repairs, inventory, taxes, or profit…'
-              }
-              className='focus:border-slate-500/50'
-              style={{
-                flex: 1, background: '#0B1220', color: '#E2E8F0',
-                borderRadius: 8, padding: '11px 15px', fontSize: 13,
-                border: '1px solid #1F2937', outline: 'none', minWidth: 0,
-              }}
-            />
-            <button
-              type='submit'
-              disabled={!input.trim()}
-              style={{
-                padding: '10px 15px', borderRadius: 8,
-                background: input.trim() ? '#1E3A6E' : '#141E2E',
-                color: input.trim() ? '#93C5FD' : '#374151',
-                fontSize: 15,
-                border: input.trim() ? '1px solid #1D4ED844' : '1px solid #1A2332',
-                cursor: input.trim() ? 'pointer' : 'not-allowed',
-                transition: 'background 0.12s, color 0.12s', flexShrink: 0,
-              }}
-            >
-              ⏎
-            </button>
-          </form>
-        </div>
+        <ChatCommandBar locale={locale} onSend={onSendStable} />
       )}
 
       <Modal
@@ -1468,7 +1414,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
 }
 
 // ── Message bubble ──────────────────────────────────────────
-function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage; lang: string; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
+// INTEL-PERF-CHAT-MEMO-V1: memoized — a bubble re-renders only when its own
+// props change (msg objects are append-only; onAction is the stable wrapper),
+// not on every parent state change. Mirrors the existing memo(ResponseCard).
+const MessageBubble = memo(function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage; lang: string; onAction: (action: ChatActionUI) => void; feedbackById: Record<string, { message: string; ts: number }> }) {
   const isUser = msg.role === 'user';
 
   if (isUser) {
@@ -1483,6 +1432,9 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
           fontSize: 14,
           lineHeight: '1.5',
           whiteSpace: 'pre-wrap',
+          // INTELLIGENCE-CHAT-LAYOUT-CONTAINMENT-V1: long unbroken strings
+          // (URLs, IMEIs) wrap instead of widening the chat column.
+          overflowWrap: 'anywhere',
         }}>
           {msg.content}
         </div>
@@ -1505,7 +1457,113 @@ function MessageBubble({ msg, lang, onAction, feedbackById }: { msg: ChatMessage
       </div>
     </div>
   );
-}
+});
+
+// ── Command bar (INTEL-PERF-CHAT-MEMO-V1) ───────────────────────────
+// Owns its text state so keystrokes re-render ONLY this component — the
+// message history above never re-renders while typing. JSX copied verbatim
+// from the previous inline forms; submit semantics preserved (preventDefault,
+// trim + empty-guard, clear after send). `onSend` must be referentially
+// stable (see onSendStable in IntelligenceChat).
+const ChatCommandBar = memo(function ChatCommandBar({ compact, locale, onSend }: {
+  compact?: boolean;
+  locale: string;
+  onSend: (text: string) => void;
+}) {
+  const [text, setText] = useState('');
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    onSend(text);
+    setText('');
+  };
+
+  if (compact) {
+    return (
+      <div style={{
+        borderTop: `1px solid #1d2633`, padding: 18, flexShrink: 0,
+      }}>
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: '#171f2a', borderRadius: 16, padding: '12px 14px',
+          }}
+        >
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={locale === 'es' ? 'Pregunta a Intelligence…' : locale === 'pt' ? 'Pergunte ao Intelligence…' : 'Ask Intelligence…'}
+            style={{
+              flex: 1, background: 'transparent', border: 'none',
+              outline: 'none', color: 'white', fontSize: 14,
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            style={{
+              width: 42, height: 42, border: 'none', borderRadius: 12,
+              background: text.trim() ? '#2563eb' : '#1d2633',
+              color: 'white', fontSize: 18,
+              cursor: text.trim() ? 'pointer' : 'not-allowed',
+              flexShrink: 0, transition: 'background 0.12s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            →
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className='border-t border-surface-700 shrink-0' style={{ padding: '10px 14px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
+        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#4B5563', letterSpacing: '0.09em' }}>
+          {locale === 'es' ? 'OPERADOR LISTO' : locale === 'pt' ? 'OPERADOR PRONTO' : 'OPERATOR READY'}
+        </span>
+      </div>
+      <form onSubmit={submit} style={{ display: 'flex', gap: 8 }}>
+        <input
+          type='text'
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={
+            locale === 'es' ? 'Pregunta sobre clientes, reparaciones, inventario, impuestos o ganancias…'
+            : locale === 'pt' ? 'Pergunte sobre clientes, reparos, inventário, impostos ou lucros…'
+            : 'Ask about customers, repairs, inventory, taxes, or profit…'
+          }
+          className='focus:border-slate-500/50'
+          style={{
+            flex: 1, background: '#0B1220', color: '#E2E8F0',
+            borderRadius: 8, padding: '11px 15px', fontSize: 13,
+            border: '1px solid #1F2937', outline: 'none', minWidth: 0,
+          }}
+        />
+        <button
+          type='submit'
+          disabled={!text.trim()}
+          style={{
+            padding: '10px 15px', borderRadius: 8,
+            background: text.trim() ? '#1E3A6E' : '#141E2E',
+            color: text.trim() ? '#93C5FD' : '#374151',
+            fontSize: 15,
+            border: text.trim() ? '1px solid #1D4ED844' : '1px solid #1A2332',
+            cursor: text.trim() ? 'pointer' : 'not-allowed',
+            transition: 'background 0.12s, color 0.12s', flexShrink: 0,
+          }}
+        >
+          ⏎
+        </button>
+      </form>
+    </div>
+  );
+});
 
 // ── Quick Action Grid (R-INTELLIGENCE-INTERFACE-ORGANIZATION-V1) ─────
 // Replaces the old chip-style EmptyState with a 2-column grid of larger

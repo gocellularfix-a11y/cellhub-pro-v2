@@ -383,7 +383,10 @@ export default function SimpleOperatorView({
         padding: 28, background: BG_MAIN, minWidth: 0,
       }}>
 
-        <div style={{ marginBottom: 24 }}>
+        {/* INTELLIGENCE-CHAT-LAYOUT-CONTAINMENT-V1: header/grid/input get
+            flexShrink: 0 / minHeight: 0 so the 2×2 card grid keeps a stable
+            footprint and can never squeeze the input out of the column. */}
+        <div style={{ marginBottom: 24, flexShrink: 0 }}>
           <div style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
             {es ? 'Acciones Operacionales' : pt ? 'Ações Operacionais' : 'Operational Actions'}
           </div>
@@ -394,6 +397,8 @@ export default function SimpleOperatorView({
 
         <div style={{
           flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gridTemplateRows: '1fr 1fr',
@@ -412,7 +417,7 @@ export default function SimpleOperatorView({
           ))}
         </div>
 
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, flexShrink: 0 }}>
           <form
             onSubmit={handleSubmit}
             style={{
