@@ -5194,6 +5194,15 @@ function handlePreparedExecutions(engine: IntelligenceEngine, lang: Lang3): Chat
 
   const lines: string[] = [t('chat.execution.header'), ''];
 
+  // APPOINTMENTS-UX-ACTION-VISIBILITY-PLUS-INTEL-WA-V1: per-item WhatsApp
+  // button through the EXISTING action pipeline (handleActionClick →
+  // executeActionPayload → operator-confirm modal → buildWhatsAppUrl). No
+  // auto-send — the operator clicks, confirms, and sends manually.
+  // customMessage carries the EXACT visible draft (executor uses it verbatim).
+  // Items without a usable phone simply don't render a button (fail-safe:
+  // no broken button, no generic "Action not available").
+  const actions: ChatActionUI[] = [];
+
   for (const exec of report.executions.slice(0, 5)) {
     const icon = PRIORITY_ICON[exec.priority] ?? '•';
     const cat = CAT_ICON[exec.category] ?? '•';
@@ -5203,6 +5212,24 @@ function handlePreparedExecutions(engine: IntelligenceEngine, lang: Lang3): Chat
     lines.push(`${icon}${cat} **${exec.customerName ?? exec.category}**${impact}`);
     lines.push(`   ${exec.draftMessage}`);
     lines.push('');
+
+    const phoneDigits = (exec.customerPhone || '').replace(/\D/g, '');
+    if (phoneDigits.length > 0) {
+      actions.push({
+        id: `exec-wa-${exec.id}`,
+        label: `📱 WhatsApp — ${exec.customerName ?? exec.category}`,
+        actionType: 'whatsapp',
+        payload: {
+          type: 'whatsapp',
+          customerId: exec.entityType === 'customer' ? exec.entityId : undefined,
+          customerName: exec.customerName,
+          customerPhone: exec.customerPhone,
+          customMessage: exec.draftMessage,
+          executable: true,
+          executionTarget: 'whatsapp_url',
+        },
+      });
+    }
   }
 
   if (report.topExecution) {
@@ -5216,7 +5243,11 @@ function handlePreparedExecutions(engine: IntelligenceEngine, lang: Lang3): Chat
   lines.push('');
   lines.push(disclaimer);
 
-  return { kind: 'answer', text: lines.join('\n').trim() };
+  return {
+    kind: 'answer',
+    text: lines.join('\n').trim(),
+    ...(actions.length > 0 ? { actions } : {}),
+  };
 }
 
 // ── Morning operator digest ───────────────────────────────────────────────────

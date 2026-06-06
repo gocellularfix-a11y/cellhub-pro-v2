@@ -6747,7 +6747,7 @@ export const translations: TranslationDictionary = {
   'appt.toastCancelled':         { en: 'Appointment cancelled',             es: 'Cita cancelada',                        pt: 'Agendamento cancelado' },
   'appt.toastPrinting':          { en: 'Printing appointment...',           es: 'Imprimiendo cita...',                   pt: 'Imprimindo agendamento...' },
   // APPOINTMENTS-SEMANTIC-LIFECYCLE-V1 — no-show / restore / admin-protected delete
-  'appt.btnMore':                { en: 'More actions',                      es: 'Más acciones',                          pt: 'Mais ações' },
+  'appt.btnMore':                { en: 'Manage',                            es: 'Gestionar',                             pt: 'Gerenciar' },
   'appt.btnNoShow':              { en: 'Mark No Show',                      es: 'Marcar no apareció',                    pt: 'Marcar não compareceu' },
   'appt.btnRestore':             { en: 'Restore to Scheduled',              es: 'Restaurar a programada',                pt: 'Restaurar para agendada' },
   'appt.btnDelete':              { en: 'Delete (admin)',                    es: 'Eliminar (admin)',                      pt: 'Excluir (admin)' },

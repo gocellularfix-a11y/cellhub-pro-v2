@@ -639,7 +639,11 @@ export default function AppointmentsModule() {
                           📱 WhatsApp
                         </button>
                       )}
-                      {appt.status !== 'cancelled' && appt.status !== 'converted' && (
+                      {/* APPOINTMENTS-UX-ACTION-VISIBILITY-PLUS-INTEL-WA-V1:
+                          Cancel only for active states. no_show is already a
+                          terminal operational outcome — it restores via the
+                          Manage menu, it doesn't cancel. */}
+                      {(appt.status === 'scheduled' || appt.status === 'arrived') && (
                         <button onClick={() => setDeleteConfirm(appt.id)} className="btn btn-ghost btn-sm text-red-400" style={{ fontSize: '0.72rem' }}>
                           ✕ {t('appt.btnCancel')}
                         </button>
@@ -647,17 +651,18 @@ export default function AppointmentsModule() {
                       {/* APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: secondary actions
                           collapsed behind ⋯ — no large destructive buttons on
                           the card. Converted = immutable history → no menu. */}
-                      {/* APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: secondary actions
-                          collapsed behind ⋯ — no large destructive buttons on
-                          the card. Converted = immutable history → no menu. */}
+                      {/* APPOINTMENTS-UX-ACTION-VISIBILITY-PLUS-INTEL-WA-V1:
+                          discoverable labeled Manage button (bordered) instead
+                          of a bare ⋯ glyph. Converted = immutable lifecycle
+                          history → no Manage at all (Print/WhatsApp/Edit stay). */}
                       {appt.status !== 'converted' && (
                         <button
                           onClick={() => setOpenMenuId(openMenuId === appt.id ? null : appt.id)}
-                          className="btn btn-ghost btn-sm"
-                          style={{ fontSize: '0.72rem' }}
+                          className="btn btn-sm"
+                          style={{ fontSize: '0.72rem', background: 'rgba(148,163,184,0.08)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.3)' }}
                           title={t('appt.btnMore')}
                         >
-                          ⋯
+                          ⋯ {t('appt.btnMore')}
                         </button>
                       )}
                       {openMenuId === appt.id && appt.status !== 'converted' && (
