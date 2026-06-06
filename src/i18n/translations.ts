@@ -7611,6 +7611,12 @@ export const translations: TranslationDictionary = {
   // R-CAMPAIGN-QUEUE-V1: queue-mode strings (multi-select + progress UI).
   'intelligence.console.campaignSelectAll':    { en: 'Select all',                                                  es: 'Seleccionar todos',                                                    pt: 'Selecionar todos' },
   'intelligence.console.campaignDeselectAll':  { en: 'Deselect all',                                                es: 'Quitar todos',                                                         pt: 'Desmarcar todos' },
+  // PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1 — manual add-recipient flow
+  'intelligence.console.recipientAddBtn':       { en: 'Add Customer',                                               es: 'Agregar Cliente',                                                      pt: 'Adicionar Cliente' },
+  'intelligence.console.recipientSearchPh':     { en: 'Search customer by name or phone…',                          es: 'Buscar cliente por nombre o teléfono…',                                pt: 'Buscar cliente por nome ou telefone…' },
+  'intelligence.console.recipientNoPhone':      { en: 'This customer has no valid phone number — add a phone first.', es: 'Este cliente no tiene teléfono válido — agrega un teléfono primero.', pt: 'Este cliente não tem telefone válido — adicione um telefone primeiro.' },
+  'intelligence.console.recipientAlreadyAdded': { en: 'Already in the recipient list — selected.',                  es: 'Ya está en la lista de destinatarios — quedó seleccionado.',           pt: 'Já está na lista de destinatários — ficou selecionado.' },
+  'intelligence.console.recipientManualReason': { en: 'Added manually',                                             es: 'Agregado manualmente',                                                 pt: 'Adicionado manualmente' },
   'intelligence.console.campaignStartLabel': {
     en: (n: number) => `Start campaign (${n} ${n === 1 ? 'customer' : 'customers'})`,
     es: (n: number) => `Iniciar campaña (${n} ${n === 1 ? 'cliente' : 'clientes'})`,

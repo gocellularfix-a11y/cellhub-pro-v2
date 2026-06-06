@@ -37,6 +37,13 @@ import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
 // R-OPERATOR-PROMOTE-PANEL-PREVIEW-V1: canonical wa.me builder reused for
 // the per-recipient buttons inside the new panel widget. No new send path.
 import { buildWhatsAppUrl } from '@/services/whatsapp';
+// PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1: manual add-recipient support.
+// Reuses the SHARED CustomerPicker (same component Appointments/TopUp use),
+// the canonical normalizePhone, and the app toast — no second picker system.
+import CustomerPicker from '@/components/shared/CustomerPicker';
+import { normalizePhone } from '@/utils/normalize';
+import { useToast } from '@/components/ui/Toast';
+import type { Customer } from '@/store/types';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: import the flag so the
 // `performance.now()` calls in render-prep can be skipped entirely
@@ -178,6 +185,9 @@ export default function IntelligenceModule() {
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
+  // PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1: explicit operator feedback
+  // for manual-recipient fail-safes (no phone / duplicate).
+  const { toast } = useToast();
   // R-INTELLIGENCE-USE-APP-LANGUAGE-V1: the chat/operator view now receives the
   // FULL app locale (incl. pt). Previously a pt→en `apiLang` collapse forced
   // Portuguese users to see English chat responses even though tChat() has pt
@@ -239,6 +249,9 @@ export default function IntelligenceModule() {
   const [panelCampaign, setPanelCampaign] = useState<PanelCampaignDraft | null>(null);
   const [draftMessage, setDraftMessage] = useState<string>('');
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set());
+  // PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1: toggles the inline shared
+  // CustomerPicker under the Recipients header for manual additions.
+  const [showAddRecipient, setShowAddRecipient] = useState(false);
   type CampaignQueueItem = {
     customerId: string;
     name: string;
@@ -1195,6 +1208,41 @@ export default function IntelligenceModule() {
     });
   }, [panelCampaign]);
 
+  // PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1: append a manually-picked
+  // customer to the EXISTING candidate list (AI suggestions preserved — this
+  // never replaces the list). Fail-safes are explicit, never silent:
+  //   - no usable phone → error toast, nothing added
+  //   - already in the list → ensure selected + info toast (safe no-op)
+  // Manual rows reuse the existing reasonKey render path so they coexist
+  // visually with AI suggestions ("Added manually" line, no confidence badge).
+  const addManualRecipient = useCallback((cust: Customer | null) => {
+    if (!cust) return;
+    setShowAddRecipient(false);
+    const phone = normalizePhone(
+      cust.phone || (Array.isArray(cust.phones) ? cust.phones.find(Boolean) : '') || '',
+    );
+    if (phone.length < 10) {
+      toast(t('intelligence.console.recipientNoPhone'), 'error');
+      return;
+    }
+    const exists = panelCampaign?.candidates.some((c) => c.customerId === cust.id);
+    if (exists) {
+      setSelectedRecipientIds((prev) => new Set(prev).add(cust.id));
+      toast(t('intelligence.console.recipientAlreadyAdded'), 'info');
+      return;
+    }
+    setPanelCampaign((prev) => prev ? {
+      ...prev,
+      candidates: [...prev.candidates, {
+        customerId: cust.id,
+        name: cust.name,
+        phone,
+        reasonKey: 'intelligence.console.recipientManualReason',
+      }],
+    } : prev);
+    setSelectedRecipientIds((prev) => new Set(prev).add(cust.id));
+  }, [panelCampaign, toast, t]);
+
   // Build the queue from selected recipients and switch into in-campaign UI.
   const startCampaign = useCallback(() => {
     if (!panelCampaign) return;
@@ -1914,22 +1962,51 @@ export default function IntelligenceModule() {
                       header; in-campaign shows the queue with per-item
                       status icons. Switching modes is driven entirely
                       by `inCampaign` (campaignQueue.length > 0). */}
-                  {panelCampaign.candidates.length > 0 && !inCampaign && (
+                  {/* PROMOTE-INVENTORY-MANUAL-RECIPIENT-PICKER-V1: block now
+                      renders even with 0 AI candidates so the operator can
+                      hand-build a list; select-all + rows stay gated on
+                      length > 0. AI suggestions are never replaced — manual
+                      picks append. */}
+                  {!inCampaign && (
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <p className="text-[11px] text-slate-400">
                           {t('intelligence.console.campaignRecipientsLabel', panelCampaign.candidates.length)}
                         </p>
-                        <button
-                          type="button"
-                          onClick={toggleAllRecipients}
-                          className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-surface-600"
-                        >
-                          {selectedRecipientIds.size === panelCampaign.candidates.length
-                            ? t('intelligence.console.campaignDeselectAll')
-                            : t('intelligence.console.campaignSelectAll')}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddRecipient((v) => !v)}
+                            className="text-[10px] px-2 py-0.5 rounded border border-purple-500/50 text-purple-300 hover:bg-purple-500/10"
+                          >
+                            + {t('intelligence.console.recipientAddBtn')}
+                          </button>
+                          {panelCampaign.candidates.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={toggleAllRecipients}
+                              className="text-[10px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-surface-600"
+                            >
+                              {selectedRecipientIds.size === panelCampaign.candidates.length
+                                ? t('intelligence.console.campaignDeselectAll')
+                                : t('intelligence.console.campaignSelectAll')}
+                            </button>
+                          )}
+                        </div>
                       </div>
+                      {showAddRecipient && (
+                        <div className="rounded border border-purple-500/30 bg-surface-800 p-2">
+                          <CustomerPicker
+                            customers={customers}
+                            selectedCustomer={null}
+                            onSelect={addManualRecipient}
+                            lang={engineLang}
+                            placeholder={t('intelligence.console.recipientSearchPh')}
+                            allowClear={false}
+                          />
+                        </div>
+                      )}
+                      {panelCampaign.candidates.length > 0 && (
                       <div className="rounded border border-surface-700 divide-y divide-surface-700 overflow-hidden">
                         {panelCampaign.candidates.map((c) => {
                           const isSelected = selectedRecipientIds.has(c.customerId);
@@ -1983,6 +2060,7 @@ export default function IntelligenceModule() {
                           );
                         })}
                       </div>
+                      )}
                     </div>
                   )}
 
