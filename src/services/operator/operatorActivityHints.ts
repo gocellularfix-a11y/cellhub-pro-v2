@@ -23,6 +23,10 @@ import type {
   Sale,
 } from '@/store/types';
 import { calculateLayawayTotals } from '@/services/layaway/payments';
+// CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1 (day-boundary follow-up):
+// shared "last visit" cutoff — anything from TODAY is the visit in progress,
+// never the last one; distances are calendar days (yesterday = 1d, no 0d).
+import { lastVisitCutoffMs, calendarDaysBetween } from './customerSnapshot';
 
 // ── Public types ──────────────────────────────────────────
 
@@ -200,6 +204,28 @@ function daysAgo(iso: unknown): number | null {
   return Math.floor(delta / MS_PER_DAY);
 }
 
+// CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1: calendar-day distance for
+// "last visit" hints — yesterday evening reads 1d, never 0d. (daysAgo above
+// is elapsed-24h-based and stays for the inactivity insight, where calendar
+// precision is irrelevant at a 30d threshold.)
+function calendarDaysAgo(iso: unknown): number | null {
+  if (!iso) return null;
+  let ts: number;
+  if (typeof iso === 'number') ts = iso;
+  else if (typeof iso === 'string') {
+    const parsed = Date.parse(iso);
+    if (!Number.isFinite(parsed)) return null;
+    ts = parsed;
+  } else if (iso instanceof Date) {
+    ts = iso.getTime();
+  } else if (iso && typeof (iso as { toDate?: () => Date }).toDate === 'function') {
+    try { ts = (iso as { toDate: () => Date }).toDate().getTime(); } catch { return null; }
+  } else {
+    return null;
+  }
+  return calendarDaysBetween(ts, Date.now());
+}
+
 function findCustomer(customers: Customer[] | null | undefined, id: string): Customer | null {
   if (!id || !Array.isArray(customers)) return null;
   return customers.find((c) => c && c.id === id) || null;
@@ -211,7 +237,19 @@ function findSaleByInvoice(sales: Sale[] | null | undefined, invoice: string): S
   return sales.find((s) => (s.invoiceNumber || '').toLowerCase() === wanted) || null;
 }
 
-function latestSaleForCustomer(sales: Sale[] | null | undefined, customerId: string): Sale | null {
+/**
+ * CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1: optional `notNewerThanMs`
+ * cutoff — sales stamped after it (i.e. created during the CURRENT visit,
+ * like the deposit checkout the operator just ran) are skipped so "last
+ * visit" hints describe the PREVIOUS visit. Callers that want the absolute
+ * latest sale (e.g. the inactivity insight, where a 10-min-old sale must
+ * count as "active") simply omit the cutoff.
+ */
+function latestSaleForCustomer(
+  sales: Sale[] | null | undefined,
+  customerId: string,
+  notNewerThanMs?: number,
+): Sale | null {
   if (!customerId || !Array.isArray(sales)) return null;
   let best: Sale | null = null;
   let bestTs = -Infinity;
@@ -228,6 +266,7 @@ function latestSaleForCustomer(sales: Sale[] | null | undefined, customerId: str
       }
       return -Infinity;
     })();
+    if (typeof notNewerThanMs === 'number' && ts > notNewerThanMs) continue;
     if (ts > bestTs) { best = s; bestTs = ts; }
   }
   return best;
@@ -373,8 +412,11 @@ export function computeHintFromGlobalState(
   if (Array.isArray(inputs.cart) && inputs.cart.length > 0 && inputs.pendingPosCustomer) {
     const cust = findCustomer(inputs.customers, inputs.pendingPosCustomer);
     if (cust) {
-      const last = latestSaleForCustomer(inputs.sales, cust.id);
-      const days = last ? daysAgo(last.createdAt) : null;
+      // CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1: skip TODAY's sales
+      // (incl. a deposit just checked out) — "last visit" means a PREVIOUS
+      // calendar day. No prior-day sale → "First visit" hint below.
+      const last = latestSaleForCustomer(inputs.sales, cust.id, lastVisitCutoffMs(Date.now()) - 1);
+      const days = last ? calendarDaysAgo(last.createdAt) : null;
       if (days !== null) {
         return {
           kind: 'pos_cart_with_customer',
@@ -572,8 +614,10 @@ export function computeHintFromEvent(
   if (detail.type === 'customer.history_opened' && payload.customerId) {
     const cust = findCustomer(inputs.customers, payload.customerId);
     if (!cust) return null;
-    const last = latestSaleForCustomer(inputs.sales, cust.id);
-    const days = last ? daysAgo(last.createdAt) : null;
+    // CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1: same day-boundary rule
+    // as the POS hint — today's sales never read as the "last visit".
+    const last = latestSaleForCustomer(inputs.sales, cust.id, lastVisitCutoffMs(Date.now()) - 1);
+    const days = last ? calendarDaysAgo(last.createdAt) : null;
     if (days !== null) {
       return {
         kind: 'customer_history_opened',

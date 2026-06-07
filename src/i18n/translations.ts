@@ -6268,6 +6268,28 @@ export const translations: TranslationDictionary = {
   'operator.overlay.resetPosition': { en: 'Reset position',   es: 'Restablecer posición',  pt: 'Redefinir posição' },
   'operator.overlay.watching':      { en: 'Watching this screen.', es: 'Observando esta pantalla.', pt: 'Observando esta tela.' },
 
+  // CUSTOMER-SNAPSHOT-AMBIENT-INTELLIGENCE-V1 — compact customer HUD
+  'operator.snapshot.title':       { en: 'Customer Snapshot',  es: 'Resumen del Cliente',  pt: 'Resumo do Cliente' },
+  'operator.snapshot.since':       { en: 'Customer since',     es: 'Cliente desde',        pt: 'Cliente desde' },
+  'operator.snapshot.carrier':     { en: 'Carrier',            es: 'Compañía',             pt: 'Operadora' },
+  'operator.snapshot.bill':        { en: 'Monthly bill',       es: 'Pago mensual',         pt: 'Conta mensal' },
+  'operator.snapshot.lifetime':    { en: 'Lifetime spent',     es: 'Gasto total',          pt: 'Gasto total' },
+  'operator.snapshot.repairs':     { en: 'Repairs',            es: 'Reparaciones',         pt: 'Reparos' },
+  'operator.snapshot.lastVisit':   { en: 'Last visit',         es: 'Última visita',        pt: 'Última visita' },
+  'operator.snapshot.firstVisit':  { en: 'First visit',        es: 'Primera visita',       pt: 'Primeira visita' },
+  'operator.snapshot.openBalance': { en: 'Open balance',       es: 'Saldo pendiente',      pt: 'Saldo em aberto' },
+  'operator.snapshot.risk':        { en: 'Risk',               es: 'Riesgo',               pt: 'Risco' },
+  'operator.snapshot.risk.low':    { en: 'LOW',                es: 'BAJO',                 pt: 'BAIXO' },
+  'operator.snapshot.risk.med':    { en: 'MEDIUM',             es: 'MEDIO',                pt: 'MÉDIO' },
+  'operator.snapshot.risk.high':   { en: 'HIGH',               es: 'ALTO',                 pt: 'ALTO' },
+  'operator.snapshot.sig.vip':             { en: 'VIP customer',        es: 'Cliente VIP',           pt: 'Cliente VIP' },
+  'operator.snapshot.sig.loyal':           { en: 'Loyal customer',      es: 'Cliente leal',          pt: 'Cliente fiel' },
+  'operator.snapshot.sig.highValue':       { en: 'High value',          es: 'Alto valor',            pt: 'Alto valor' },
+  'operator.snapshot.sig.recovery':        { en: 'Recovery opportunity', es: 'Oportunidad de recuperación', pt: 'Oportunidade de recuperação' },
+  'operator.snapshot.sig.frequentRepairs': { en: 'Frequent repairs',    es: 'Reparaciones frecuentes', pt: 'Reparos frequentes' },
+  'operator.snapshot.sig.paymentRisk':     { en: 'Payment risk',        es: 'Riesgo de pago',        pt: 'Risco de pagamento' },
+  'operator.snapshot.sig.upsell':          { en: 'Upsell target',       es: 'Candidato a upsell',    pt: 'Alvo de upsell' },
+
   // R-OPERATOR-ACTIVITY-CONTEXT-V1 — persistent context block
   'operator.context.title.phone_payment': { en: 'Working on phone payment', es: 'Trabajando en pago de teléfono', pt: 'Trabalhando em pagamento de telefone' },
   'operator.context.title.customer':     { en: 'Working with customer',    es: 'Trabajando con cliente',         pt: 'Trabalhando com cliente' },

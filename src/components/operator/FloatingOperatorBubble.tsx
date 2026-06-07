@@ -42,6 +42,11 @@ import { resolveSuggestionActions } from '@/services/intelligence/actionExecutio
 import { logBubbleAction } from '@/services/intelligence/actionExecution/actionExecutionQueue';
 import type { OperatorExecutableAction } from '@/services/intelligence/actionExecution/actionExecutionTypes';
 import { AMBIENT_INSIGHT_EVENT, type AmbientInsightDetail } from '@/services/intelligence/ambient/ambientAwarenessService';
+// CUSTOMER-SNAPSHOT-AMBIENT-INTELLIGENCE-V1: compact customer HUD composer.
+import { composeCustomerSnapshot, type CustomerSnapshot, type SnapshotTone } from '@/services/operator/customerSnapshot';
+// LABEL-STUDIO-EDITOR-CONTROLS-PLUS-CUSTOMER-LAST-VISIT-FIX-V1: currently
+// opened entity ids — excluded from the snapshot's last-visit computation.
+import { getIntelligenceContext } from '@/services/intelligence/context/intelligenceContext';
 import {
   getPendingWorkflows,
   getPendingExternalPaymentWorkflow,
@@ -605,6 +610,42 @@ export default function FloatingOperatorBubble() {
     if (!custId || !enabled) return null;
     return getCustomerBusinessProfile(custId, customers, sales, repairs, layaways, unlocks ?? []);
   }, [liveCtx.activeCustomer?.id, customers, sales, repairs, layaways, unlocks, enabled]);
+
+  // CUSTOMER-SNAPSHOT-AMBIENT-INTELLIGENCE-V1: compact customer HUD.
+  // Customer resolution mirrors execCtx (liveCtx preferred, activeContext
+  // fallback). Memoized on the customer id + array references — recomputes
+  // ONLY when the contextual customer or store data changes, never on
+  // preview ticks or keystrokes. Pure single-pass aggregation inside.
+  const customerSnapshot = useMemo<CustomerSnapshot | null>(() => {
+    if (!enabled) return null;
+    const custId = liveCtx.activeCustomer?.id ?? activeContext?.customerId;
+    if (!custId) return null;
+    const cust = customers.find((c) => c && c.id === custId);
+    if (!cust) return null;
+    // LABEL-STUDIO-EDITOR-CONTROLS-PLUS-CUSTOMER-LAST-VISIT-FIX-V1: the
+    // entity the operator JUST opened must not count as the "last visit".
+    // Read at compute time — this memo re-runs exactly when modules set the
+    // context (entity open mutates liveCtx/activeContext), so it's fresh.
+    const intelCtx = getIntelligenceContext();
+    const excludeEntityIds = new Set(
+      [
+        intelCtx?.activeRepairId,
+        intelCtx?.activeLayawayId,
+        intelCtx?.activeUnlockId,
+        intelCtx?.activeSpecialOrderId,
+      ].filter((id): id is string => !!id),
+    );
+    return composeCustomerSnapshot({
+      customer: cust,
+      contextType: activeContext?.contextType ?? 'customer',
+      profile: activeCustomerProfile,
+      sales,
+      repairs,
+      layaways,
+      unlocks: unlocks ?? [],
+      excludeEntityIds,
+    });
+  }, [enabled, liveCtx.activeCustomer?.id, activeContext?.customerId, activeContext?.contextType, customers, sales, repairs, layaways, unlocks, activeCustomerProfile]);
 
   // Operational health snapshot — keyed on store data + pending workflow count.
   // Does NOT depend on previewTick so it doesn't recompute every 4 seconds.
@@ -1494,6 +1535,61 @@ export default function FloatingOperatorBubble() {
               minHeight: '2.6rem',
             }}>
               {hintText || (enabled ? t('operator.overlay.watching') : t('operator.menu.hintsOff'))}
+            </div>
+          )}
+
+          {/* CUSTOMER-SNAPSHOT-AMBIENT-INTELLIGENCE-V1: compact customer HUD —
+              "never open a customer blind". Label/value rows + tiny signal
+              chips, sourced from the memoized snapshot composer. Rendered
+              ABOVE insights/actions/suggestions; hidden when no contextual
+              customer or no rows (never an empty shell). */}
+          {customerSnapshot && (customerSnapshot.rows.length > 0 || customerSnapshot.signals.length > 0) && (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(148,163,184,0.18)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.65rem',
+              display: 'flex', flexDirection: 'column', gap: '0.22rem',
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.1rem' }}>
+                {t('operator.snapshot.title')}
+              </div>
+              {customerSnapshot.signals.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.15rem' }}>
+                  {customerSnapshot.signals.map((sig) => {
+                    const SIG_COLORS: Record<string, { bg: string; color: string }> = {
+                      vip:  { bg: 'rgba(167,139,250,0.18)', color: '#c4b5fd' },
+                      good: { bg: 'rgba(52,211,153,0.15)',  color: '#6ee7b7' },
+                      warn: { bg: 'rgba(251,191,36,0.15)',  color: '#fcd34d' },
+                      bad:  { bg: 'rgba(248,113,113,0.15)', color: '#fca5a5' },
+                      info: { bg: 'rgba(56,189,248,0.15)',  color: '#7dd3fc' },
+                    };
+                    const c = SIG_COLORS[sig.tone] ?? SIG_COLORS.info;
+                    return (
+                      <span key={sig.id} style={{
+                        fontSize: '0.58rem', fontWeight: 700, padding: '0.12rem 0.4rem',
+                        borderRadius: '0.8rem', background: c.bg, color: c.color,
+                        letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                      }}>
+                        {t(sig.labelKey)}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {customerSnapshot.rows.map((row) => {
+                const ROW_COLORS: Record<SnapshotTone, string> = {
+                  neutral: '#e2e8f0', good: '#6ee7b7', warn: '#fcd34d', bad: '#fca5a5',
+                };
+                return (
+                  <div key={row.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.76rem', lineHeight: 1.3 }}>
+                    <span style={{ color: '#94a3b8', flexShrink: 0 }}>{t(row.labelKey)}</span>
+                    <span style={{ color: ROW_COLORS[row.tone], fontWeight: 600, textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.valueKey ? t(row.valueKey) : row.value}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
 
