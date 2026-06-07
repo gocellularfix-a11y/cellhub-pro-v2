@@ -1,8 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { LabelJob, Product, ProductAdapter, TemplateId } from './types';
 import { useLabelHistory } from './hooks/useLabelHistory';
 import { usePrintLabel } from './hooks/usePrintLabel';
 import { useCustomLabel } from './hooks/useCustomLabel';
+// LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: per-station label printer
+// selection (localStorage) feeding the direct Electron print path.
+import { readLabelPrinter, saveLabelPrinter } from './services/printService';
 import { MockProductAdapter } from './mock/products';
 import { ProductSelector } from './components/ProductSelector';
 import { TemplateSelector } from './components/TemplateSelector';
@@ -38,7 +41,33 @@ export function PriceLabels({ adapter: adapterProp }: PriceLabelsProps = {}) {
 
   const adapter = useMemo(() => adapterProp ?? new MockProductAdapter(), [adapterProp]);
   const { jobs, addJob, deleteJob, clearAll } = useLabelHistory();
-  const { print, printCustom, isPrinting, printPortal } = usePrintLabel(addJob);
+
+  // LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: label printer profile.
+  // Electron → list printers + remember the chosen one per station; first
+  // run auto-selects a DYMO/label-named device when present. Browser dev →
+  // no bridge, prints fall back to the dev dialog (clearly labeled below).
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.printRun;
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [labelPrinter, setLabelPrinter] = useState<string>(() => readLabelPrinter());
+  useEffect(() => {
+    if (!window.electronAPI?.getPrinters) return;
+    window.electronAPI.getPrinters().then(list => {
+      const names = list.map(p => p.name);
+      setPrinters(names);
+      setLabelPrinter(prev => {
+        if (prev && names.includes(prev)) return prev;
+        const guess = names.find(n => /dymo|label/i.test(n)) || '';
+        if (guess) saveLabelPrinter(guess);
+        return guess;
+      });
+    }).catch(() => {});
+  }, []);
+  function handlePrinterChange(name: string) {
+    setLabelPrinter(name);
+    saveLabelPrinter(name);
+  }
+
+  const { print, printCustom, isPrinting, printPortal } = usePrintLabel(addJob, labelPrinter);
   const customLabel = useCustomLabel();
 
   // ── Product tab handlers ──────────────────────────────────────────────────
@@ -133,6 +162,42 @@ export function PriceLabels({ adapter: adapterProp }: PriceLabelsProps = {}) {
             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.2rem 0 0' }}>
               Design and print product labels
             </p>
+            {/* LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: per-station
+                label printer. Selected device receives silent direct prints
+                (no Chrome/Windows dialog). */}
+            {isElectron ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>🖨</span>
+                <select
+                  value={labelPrinter}
+                  onChange={e => handlePrinterChange(e.target.value)}
+                  style={{
+                    background: '#0a1120',
+                    border: '1px solid rgba(148,163,184,0.15)',
+                    color: labelPrinter ? '#e2e8f0' : '#f59e0b',
+                    borderRadius: '8px',
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.72rem',
+                    outline: 'none',
+                    maxWidth: '16rem',
+                  }}
+                >
+                  <option value="">— select label printer —</option>
+                  {printers.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                {!labelPrinter && (
+                  <span style={{ fontSize: '0.68rem', color: '#f59e0b' }}>
+                    no printer → preview opens instead
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.68rem', color: '#f59e0b', margin: '0.35rem 0 0' }}>
+                Browser dev mode — direct printing needs the Electron app
+              </p>
+            )}
           </div>
 
           {/* Tab switcher */}
@@ -289,6 +354,7 @@ export function PriceLabels({ adapter: adapterProp }: PriceLabelsProps = {}) {
                 onMove={customLabel.moveElement}
                 onUpdate={customLabel.updateElement}
                 onPasteText={customLabel.addTextWithValue}
+                onDelete={customLabel.deleteElement}
               />
             </div>
           </div>

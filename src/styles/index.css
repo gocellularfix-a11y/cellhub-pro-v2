@@ -554,9 +554,15 @@
   }
 }
 
-/* Price Labels print portal — hidden in normal UI, shown only during label print */
+/* Price Labels print portal — rendered OFFSCREEN (not display:none) so
+   JsBarcode SVGs, QR images and the DYMO-style text autofit measurement get
+   real layout before the HTML is captured for the direct Electron print
+   (LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1). Invisible to the user. */
 #price-label-print-root {
-  display: none;
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  pointer-events: none;
 }
 
 /* Print styles — hide everything except receipt content */

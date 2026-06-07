@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, createElement } from 'react';
 import { createPortal } from 'react-dom';
 import type { CustomLabelConfig, LabelJob, Product, TemplateId } from '../types';
 import { TEMPLATE_REGISTRY } from '../templates';
-import { getPrintContainer, triggerBrowserPrint } from '../services/printService';
+import { getPrintContainer, printLabelDirect } from '../services/printService';
 import { PrintWrapper } from '../components/PrintWrapper';
 import { deriveBarcodeValue } from '../utils';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,13 +11,33 @@ type PrintState =
   | { kind: 'product'; product: Product; templateId: TemplateId; copies: number }
   | { kind: 'custom'; customLabel: CustomLabelConfig; copies: number };
 
-export function usePrintLabel(onJobCreated: (job: LabelJob) => void) {
+/**
+ * LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1 — print pipeline.
+ *
+ * BEFORE: portal render → window.print() → Chrome/Windows dialog printed the
+ * whole document relying on @media print visibility rules.
+ *
+ * NOW: the portal still renders the label offscreen (JsBarcode SVGs and QR
+ * data-URLs paint for real), but after the ready-wait we CAPTURE the portal's
+ * innerHTML and send it through the existing Electron print bridge
+ * (printLabelDirect → openPrintWindow → printRun) with the exact label mm
+ * page size. Silent to the selected label printer — no native dialog.
+ * Browser dev mode falls back to a window.open print (dev-only).
+ *
+ * Job history is recorded after the print call resolves (the old `afterprint`
+ * listener never fires on the Electron silent path).
+ */
+export function usePrintLabel(onJobCreated: (job: LabelJob) => void, printerName: string) {
   const [printState, setPrintState] = useState<PrintState | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // Stable callback ref — never triggers re-registration of afterprint listener
+  // Stable refs — the ready callback always reads the latest values
   const onJobCreatedRef = useRef(onJobCreated);
   useEffect(() => { onJobCreatedRef.current = onJobCreated; });
+  const printerRef = useRef(printerName);
+  useEffect(() => { printerRef.current = printerName; });
+  const printStateRef = useRef(printState);
+  useEffect(() => { printStateRef.current = printState; });
 
   const print = useCallback((product: Product, templateId: TemplateId, copies: number) => {
     setPrintState({ kind: 'product', product, templateId, copies });
@@ -29,46 +49,58 @@ export function usePrintLabel(onJobCreated: (job: LabelJob) => void) {
     setIsPrinting(true);
   }, []);
 
-  const handlePrintReady = useCallback(() => {
-    triggerBrowserPrint();
-  }, []);
-
-  // afterprint fires after the native dialog is dismissed (print or cancel)
-  useEffect(() => {
-    if (!isPrinting || !printState) return;
-
-    const handler = () => {
-      let job: LabelJob;
-      if (printState.kind === 'product') {
-        const template = TEMPLATE_REGISTRY[printState.templateId];
-        job = {
-          id: uuidv4(),
-          createdAt: new Date().toISOString(),
-          product: { ...printState.product },
-          templateId: printState.templateId,
-          templateName: template.name,
-          copies: printState.copies,
-          barcodeValue: deriveBarcodeValue(printState.product),
-        };
-      } else {
-        job = {
-          id: uuidv4(),
-          createdAt: new Date().toISOString(),
-          templateName: 'Custom Label',
-          copies: printState.copies,
-          barcodeValue: '',
-          isCustom: true,
-          customLabel: printState.customLabel,
-        };
-      }
-      onJobCreatedRef.current(job);
+  // Called by PrintWrapper after barcodes/QRs have painted in the portal.
+  const handlePrintReady = useCallback(async () => {
+    const state = printStateRef.current;
+    const container = getPrintContainer();
+    const inner = container?.innerHTML || '';
+    if (!state || !inner) {
       setPrintState(null);
       setIsPrinting(false);
-    };
+      return;
+    }
 
-    window.addEventListener('afterprint', handler, { once: true });
-    return () => window.removeEventListener('afterprint', handler);
-  }, [isPrinting, printState]);
+    // Label dimensions: template registry for product labels, the canvas
+    // config for custom labels (default 89×36mm — 3.5×1.4in).
+    const dims = state.kind === 'product'
+      ? TEMPLATE_REGISTRY[state.templateId]
+      : state.customLabel;
+
+    try {
+      await printLabelDirect(inner, dims.widthMm, dims.heightMm, printerRef.current);
+    } catch (err) {
+      console.error('[priceLabels] direct label print failed:', err);
+    }
+
+    // Record the job (history) after dispatch — success or printer error,
+    // the attempt is part of the operator's history either way.
+    let job: LabelJob;
+    if (state.kind === 'product') {
+      const template = TEMPLATE_REGISTRY[state.templateId];
+      job = {
+        id: uuidv4(),
+        createdAt: new Date().toISOString(),
+        product: { ...state.product },
+        templateId: state.templateId,
+        templateName: template.name,
+        copies: state.copies,
+        barcodeValue: deriveBarcodeValue(state.product),
+      };
+    } else {
+      job = {
+        id: uuidv4(),
+        createdAt: new Date().toISOString(),
+        templateName: 'Custom Label',
+        copies: state.copies,
+        barcodeValue: '',
+        isCustom: true,
+        customLabel: state.customLabel,
+      };
+    }
+    onJobCreatedRef.current(job);
+    setPrintState(null);
+    setIsPrinting(false);
+  }, []);
 
   const printContainer = getPrintContainer();
 

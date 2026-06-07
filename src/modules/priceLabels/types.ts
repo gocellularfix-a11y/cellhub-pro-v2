@@ -42,7 +42,8 @@ export interface TextElement {
   y: number;
   value: string;
   bold: boolean;
-  /** Numeric font size 6–72 px (primary). If absent, derived from `size` preset. */
+  /** Numeric font size 6–72 px (primary). If absent, derived from `size` preset.
+   *  With overflow 'autofit' this is the MAX size — autofit only shrinks. */
   fontSize?: number;
   /** Quick-size preset — optional, kept for backward compat */
   size?: TextSize;
@@ -52,6 +53,16 @@ export interface TextElement {
   width?: number;
   /** Text-box height in px. When set, clips overflow. */
   height?: number;
+  // LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1 — DYMO-style fixed text
+  // box. All optional: absent = legacy behavior (left/top/wrap), so saved
+  // history jobs render exactly as before.
+  /** Horizontal alignment inside the box. Default 'left'. */
+  align?: 'left' | 'center' | 'right';
+  /** Vertical alignment inside the box (needs width+height). Default 'top'. */
+  valign?: 'top' | 'middle' | 'bottom';
+  /** Overflow mode when the box is set: 'clip' cuts at bounds, 'wrap' wraps
+   *  then cuts, 'autofit' shrinks font (never above fontSize) to fit. */
+  overflow?: 'clip' | 'wrap' | 'autofit';
 }
 
 export interface BarcodeElement {

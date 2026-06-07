@@ -33,6 +33,11 @@ export interface PrintOptions {
   printer?: string;
   /** Initial page size for the modal, or page size for silent print. */
   pageSize?: PrintPageSizeKey;
+  /** LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: exact page size in
+   *  microns for the SILENT path — takes precedence over `pageSize`. Lets
+   *  arbitrary label dimensions (e.g. 89×36mm) print exactly without adding
+   *  a fixed key per size. Ignored by the modal path. */
+  pageSizeMicrons?: { width: number; height: number };
   /** Number of copies (silent path uses this directly). */
   copies?: number;
   /** Landscape orientation. */
@@ -85,7 +90,7 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
     window.electronAPI?.printRun
   ) {
     try {
-      const ps = PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
+      const ps = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
       await window.electronAPI.printRun({
         html,
         deviceName: opts.printer,

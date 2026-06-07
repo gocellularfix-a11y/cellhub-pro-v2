@@ -15,6 +15,27 @@ const DEFAULT_CONFIG: CustomLabelConfig = {
   elements: [],
 };
 
+// LABEL-STUDIO-EDITOR-CONTROLS-PLUS-CUSTOMER-LAST-VISIT-FIX-V1: new and
+// pasted text now start WITH a fixed box, so the DYMO controls (align /
+// vertical / overflow=autofit) are effective immediately and the selection
+// shows real resize bounds — instead of a boxless element where those
+// options silently do nothing until the first manual resize.
+// Width estimate: avg glyph ≈ 0.62 × fontSize for Arial-class fonts.
+function defaultTextBox(
+  value: string,
+  fontSize: number,
+  cfg: CustomLabelConfig,
+  x: number,
+  y: number,
+): { width: number; height: number } {
+  const labelW = mmToPx(cfg.widthMm);
+  const labelH = mmToPx(cfg.heightMm);
+  const estW = Math.round(value.length * fontSize * 0.62) + 12;
+  const width = Math.max(40, Math.min(estW, Math.max(40, labelW - x - 4)));
+  const height = Math.max(18, Math.min(Math.round(fontSize * 1.2) + 10, Math.max(18, labelH - y - 4)));
+  return { width, height };
+}
+
 export function useCustomLabel() {
   const [config, setConfig] = useState<CustomLabelConfig>(DEFAULT_CONFIG);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -26,15 +47,25 @@ export function useCustomLabel() {
   latestConfigRef.current = config;
 
   const addText = useCallback(() => {
+    const value = 'New Text';
+    const box = defaultTextBox(value, 15, latestConfigRef.current, 10, 10);
     const el: TextElement = {
       id: uuidv4(),
       type: 'text',
       x: 10,
       y: 10,
-      value: 'New Text',
+      value,
       size: 'medium',
       fontSize: 15,
       bold: false,
+      // LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: DYMO-style defaults
+      // for NEW text (phone/PIN labels). Saved/legacy elements without these
+      // fields keep left/top/wrap.
+      align: 'center',
+      valign: 'middle',
+      overflow: 'autofit',
+      // V1 follow-up: start boxed so the controls work immediately.
+      ...box,
     };
     setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
     setSelectedId(el.id);
@@ -47,6 +78,7 @@ export function useCustomLabel() {
     const base = currentElements.find(el => el.id === currentSelectedId);
     const x = base ? Math.min(base.x + 15, 200) : 10;
     const y = base ? Math.min(base.y + 20, 200) : 10;
+    const box = defaultTextBox(value, 15, latestConfigRef.current, x, y);
     const el: TextElement = {
       id: uuidv4(),
       type: 'text',
@@ -56,6 +88,13 @@ export function useCustomLabel() {
       size: 'medium',
       fontSize: 15,
       bold: false,
+      // LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1: same DYMO defaults
+      // as addText for pasted text — identical element shape, identical
+      // properties panel (Font Size / Box / Align / Vertical / Overflow).
+      align: 'center',
+      valign: 'middle',
+      overflow: 'autofit',
+      ...box,
     };
     setConfig(prev => ({ ...prev, elements: [...prev.elements, el] }));
     setSelectedId(el.id);

@@ -288,7 +288,89 @@ function TextPanel({
       <p style={{ fontSize: '0.68rem', color: '#334155', marginTop: '-0.25rem' }}>
         Box W enables word-wrap · Box H clips overflow
       </p>
+
+      {/* LABEL-STUDIO-DIRECT-PRINT-AND-DYMO-LIKE-TEXT-V1 — DYMO-style box
+          controls. Effective when both Box W and Box H are set (fixed box). */}
+      <div>
+        <label style={labelStyle}>Align</label>
+        <ChoiceRow
+          options={[
+            { label: '⬅', value: 'left', title: 'Left' },
+            { label: '↔', value: 'center', title: 'Center' },
+            { label: '➡', value: 'right', title: 'Right' },
+          ]}
+          value={element.align ?? 'left'}
+          onChange={v => onUpdate({ ...element, align: v as TextElement['align'] })}
+        />
+      </div>
+      <div>
+        <label style={labelStyle}>Vertical</label>
+        <ChoiceRow
+          options={[
+            { label: '⬆', value: 'top', title: 'Top' },
+            { label: '↕', value: 'middle', title: 'Middle' },
+            { label: '⬇', value: 'bottom', title: 'Bottom' },
+          ]}
+          value={element.valign ?? 'top'}
+          onChange={v => onUpdate({ ...element, valign: v as TextElement['valign'] })}
+        />
+      </div>
+      <div>
+        <label style={labelStyle}>Overflow</label>
+        <ChoiceRow
+          options={[
+            { label: 'Clip', value: 'clip', title: 'Cut text at box bounds' },
+            { label: 'Wrap', value: 'wrap', title: 'Wrap lines, cut at box bounds' },
+            { label: 'AutoFit', value: 'autofit', title: 'Shrink font to fit box (never above Font Size)' },
+          ]}
+          value={element.overflow ?? 'wrap'}
+          onChange={v => onUpdate({ ...element, overflow: v as TextElement['overflow'] })}
+        />
+        <p style={{ fontSize: '0.68rem', color: '#334155', marginTop: '0.25rem' }}>
+          Needs Box W + Box H · AutoFit max = Font Size
+        </p>
+      </div>
     </>
+  );
+}
+
+/** Compact mutually-exclusive button row (Align / Vertical / Overflow). */
+function ChoiceRow({
+  options,
+  value,
+  onChange,
+}: {
+  options: { label: string; value: string; title: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: '0.25rem' }}>
+      {options.map(opt => {
+        const isActive = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            title={opt.title}
+            style={{
+              flex: 1,
+              height: '1.75rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              borderRadius: '6px',
+              border: isActive ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.15)',
+              background: isActive ? '#38bdf8' : '#141e30',
+              color: isActive ? '#000' : '#64748b',
+              cursor: 'pointer',
+              transition: 'all 0.1s ease',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
