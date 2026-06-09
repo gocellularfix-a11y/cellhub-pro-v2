@@ -386,6 +386,10 @@ export default function SpecialOrdersModule() {
       paymentTraceI18n(t),
       escHtml,
       money,
+      // SPECIAL-ORDER-RECEIPT-COMPACT-V1: the money table above already shows
+      // Price / Tax / Total / Paid / Balance — omit the duplicate ORDER SUMMARY
+      // so the trace only adds Payment History / Paid Today / Current Status.
+      { omitOrderSummary: true },
     );
 
     const html = `<!DOCTYPE html>

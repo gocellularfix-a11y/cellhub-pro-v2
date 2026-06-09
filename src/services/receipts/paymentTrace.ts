@@ -173,6 +173,14 @@ export function renderPaymentTraceHtml(
   i18n: PaymentTraceI18n,
   esc: (s: unknown) => string,
   money: (cents: number) => string,
+  // SPECIAL-ORDER-RECEIPT-COMPACT-V1: optional, additive. When
+  // `omitOrderSummary` is true the ORDER SUMMARY block (Subtotal / Tax /
+  // Original Total / Previous Payments) is skipped — used by the Special Order
+  // receipt, whose own money table already shows price/tax/total, so the
+  // summary was printing the same figures twice. Default (undefined) keeps the
+  // existing layout for Layaway / Repair / Unlock receipts unchanged. NO money
+  // is recomputed — this only suppresses a display section.
+  options?: { omitOrderSummary?: boolean },
 ): string {
   const lbl = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin:6px 0 3px';
   const row = 'display:flex;justify-content:space-between;margin-bottom:1px;font-size:11px';
@@ -183,18 +191,23 @@ export function renderPaymentTraceHtml(
     `<div style="${row}${strong ? ';font-weight:800' : ''}"><span style="${k}">${esc(label)}</span><span style="${v}">${esc(value)}</span></div>`;
 
   // ── ORDER SUMMARY ──────────────────────────────────────────
-  const parts: string[] = [`<div style="${lbl}">${esc(i18n.title)}</div>`];
-  if (trace.subtotalCents > 0 && trace.taxCents > 0) {
-    parts.push(line(i18n.subtotal, money(trace.subtotalCents)));
-    parts.push(line(i18n.tax, money(trace.taxCents)));
-    // Tax belongs to the order total — make "charged once" explicit so later
-    // balance payments never read as "taxed again".
-    parts.push(`<div style="font-size:8px;color:#777;margin:0 0 2px">${esc(i18n.taxOnceNote)}</div>`);
-  }
-  parts.push(line(i18n.originalTotal, money(trace.originalTotalCents)));
-  // Summary-mode receipts (no per-payment rows) keep prior money visible here.
-  if (trace.history.length === 0 && trace.previousPaymentsCents > 0) {
-    parts.push(line(i18n.previousPayments, money(trace.previousPaymentsCents)));
+  // SPECIAL-ORDER-RECEIPT-COMPACT-V1: skip entirely when the caller already
+  // shows these figures elsewhere on the ticket.
+  const parts: string[] = [];
+  if (!options?.omitOrderSummary) {
+    parts.push(`<div style="${lbl}">${esc(i18n.title)}</div>`);
+    if (trace.subtotalCents > 0 && trace.taxCents > 0) {
+      parts.push(line(i18n.subtotal, money(trace.subtotalCents)));
+      parts.push(line(i18n.tax, money(trace.taxCents)));
+      // Tax belongs to the order total — make "charged once" explicit so later
+      // balance payments never read as "taxed again".
+      parts.push(`<div style="font-size:8px;color:#777;margin:0 0 2px">${esc(i18n.taxOnceNote)}</div>`);
+    }
+    parts.push(line(i18n.originalTotal, money(trace.originalTotalCents)));
+    // Summary-mode receipts (no per-payment rows) keep prior money visible here.
+    if (trace.history.length === 0 && trace.previousPaymentsCents > 0) {
+      parts.push(line(i18n.previousPayments, money(trace.previousPaymentsCents)));
+    }
   }
 
   // ── PAYMENT HISTORY (chronological, when rows exist) ───────
