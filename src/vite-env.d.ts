@@ -56,6 +56,169 @@ interface ElectronAPI {
   // cleanups can remove the listener and prevent leaks on re-mount.
   onUpdateAvailable: (cb: (info: unknown) => void) => () => void;
   onUpdateDownloaded: (cb: (info: unknown) => void) => () => void;
+  // LAN pairing (LOCAL-LAN-PAIRING-PHASE-1-V1) — handshake only, no sync.
+  lanStartPrimary: (opts?: { primaryName?: string }) => Promise<LanStatus>;
+  lanStopPrimary: () => Promise<{ running: boolean }>;
+  lanGetStatus: () => Promise<LanStatus>;
+  lanGeneratePairCode: () => Promise<LanStatus>;
+  lanPairWithPrimary: (opts: {
+    primaryUrl: string; code: string; deviceId: string; deviceName: string;
+  }) => Promise<LanPairResult>;
+  // PHASE 2 (read-only snapshot)
+  lanSetSnapshot: (snap: LanSnapshot) => Promise<{ ok: boolean; error?: string }>;
+  lanFetchSnapshot: (opts: { primaryUrl: string; token: string }) => Promise<LanSnapshotResult>;
+  // PHASE 3A (operation forwarding skeleton)
+  lanSendOperation: (opts: { primaryUrl: string; token: string; operation: LanOperation }) => Promise<LanOperationAck>;
+  onLanOperation: (cb: (op: LanIncomingOperation) => void) => () => void;
+  // LAN-LICENSE-INHERITANCE-V1
+  lanFetchLicense: (opts: { primaryUrl: string; token: string }) => Promise<LanLicenseResult>;
+  // LOCAL-LAN-AUTO-DISCOVERY-V1
+  lanDiscoverPrimaries: (opts?: { timeoutMs?: number }) => Promise<LanDiscoveryResult>;
+  // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: Primary renderer dispatcher bridge.
+  onLanOperationDispatch: (cb: (req: LanOperationDispatchRequest) => void) => () => void;
+  lanSendOperationResult: (payload: { requestId: string; result: LanOperationDispatchResult }) => void;
+}
+
+// LOCAL-LAN-AUTO-DISCOVERY-V1 discovery wire types
+interface LanDiscoveredPrimary {
+  primaryName: string;
+  lanUrl: string;
+  port: number;
+  address: string;
+  lastSeen: number;
+}
+interface LanDiscoveryResult {
+  ok: boolean;
+  error?: string;
+  primaries: LanDiscoveredPrimary[];
+}
+
+// LAN-LICENSE-INHERITANCE-V1 license-status wire type
+interface LanLicenseResult {
+  ok: boolean;
+  valid?: boolean;
+  tier?: string;
+  expiresAt?: string | null;
+  isTrial?: boolean;
+  daysRemaining?: number | null;
+  allowedSecondaryCount?: number;
+  primaryName?: string;
+  pairedCount?: number;
+  features?: unknown;
+  error?: string;
+}
+
+// PHASE 3A/3B operation types
+// LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: forwarded customer payload.
+interface LanCustomerPayload {
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  communicationConsent?: boolean;
+}
+// LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: forwarded customer-note payload.
+interface LanCustomerNotePayload {
+  customerId: string;
+  text: string;
+  timestamp?: number;
+}
+// LAN-OPERATION-FORWARDING-APPOINTMENT-V1: forwarded appointment payload.
+interface LanAppointmentPayload {
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  device?: string;
+  issue?: string;
+  estimatedDropOff?: string;
+  notes?: string;
+  employeeName?: string;
+}
+interface LanOperation {
+  operationId: string;
+  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT';
+  payload: {
+    message?: string;
+    customer?: LanCustomerPayload;
+    note?: LanCustomerNotePayload;
+    appointment?: LanAppointmentPayload;
+  };
+  deviceId: string;
+  createdAt: number;
+}
+interface LanOperationAck {
+  ok: boolean;
+  receivedAt?: number;
+  operationId?: string;
+  type?: string;
+  // LAN-PHASE-3B / forwarding result fields.
+  customerId?: string;
+  appointmentId?: string;
+  duplicate?: boolean;
+  error?: string;
+}
+// LAN-PHASE-3B: a forwarded op handed from main to the Primary renderer.
+interface LanOperationDispatchRequest {
+  requestId: string;
+  op: LanOperation;
+}
+interface LanOperationDispatchResult {
+  ok: boolean;
+  customerId?: string;
+  appointmentId?: string;
+  duplicate?: boolean;
+  error?: string;
+}
+interface LanIncomingOperation {
+  operationId: string;
+  type: string;
+  deviceId: string;
+  message: string;
+  receivedAt: number;
+}
+
+// PHASE 2 snapshot types
+interface LanSnapshotCounts {
+  customers: number; inventory: number; sales: number; repairs: number;
+  layaways: number; unlocks: number; specialOrders: number; appointments: number;
+}
+interface LanSnapshot {
+  schemaVersion: number;
+  generatedAt: number;
+  primaryName: string;
+  storeId: string;
+  computerId: string;
+  counts: LanSnapshotCounts;
+  data?: Record<string, unknown> | null;
+}
+interface LanSnapshotResult extends Partial<LanSnapshot> {
+  ok: boolean;
+  stale?: boolean;
+  error?: string;
+}
+
+// LAN pairing wire types
+interface LanStatus {
+  running: boolean;
+  port?: number;
+  lanIp?: string | null;
+  lanUrl?: string | null;
+  primaryName?: string;
+  code?: string | null;
+  codeExpiresAt?: number | null;
+  pairedCount?: number;
+  // PHASE 2: snapshot endpoint meta (null until the renderer first pushes one)
+  snapshotServed?: { generatedAt?: number | null; receivedAt: number; stale: boolean } | null;
+  error?: string;
+}
+interface LanPairResult {
+  ok: boolean;
+  token?: string;
+  primaryName?: string;
+  primaryUrl?: string | null;
+  error?: string;
 }
 
 interface Window {

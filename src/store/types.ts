@@ -482,6 +482,15 @@ export interface TaxData {
 export interface Customer {
   id: string;
   storeId?: string;  // Multi-store: which store this belongs to
+  // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: set on the Primary when this
+  // customer was created from a forwarded Secondary CREATE_CUSTOMER operation.
+  // Used as the idempotency key so a re-sent operation never double-creates
+  // (survives restart because it is persisted on the record).
+  lanOperationId?: string;
+  // LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: operationIds of forwarded notes
+  // already appended to this customer — idempotency for note-add (a re-sent
+  // operation is ignored). Persisted so it survives a Primary restart.
+  lanNoteOpIds?: string[];
 
   // ── Name (firstName/lastName are canonical; `name` kept for legacy compat) ──
   firstName: string;       // required by form, backfilled by migration for old records
@@ -1027,6 +1036,18 @@ export interface Unlock {
 
 export type SpecialOrderStatus = string; // 'ordered' | 'in_transit' | 'received' | 'ready' | 'picked_up' | 'cancelled'
 
+// SPECIAL-ORDERS-MULTI-ITEM-V1: one requested line in a multi-item special
+// order. ADDITIVE + backward-compatible — legacy orders have no `items` array
+// and continue to use the scalar itemDescription/cost/price fields below.
+// Money is cents (project rule). qty/cost/price are optional per row.
+export interface SpecialOrderItem {
+  id: string;
+  description: string;
+  qty?: number;            // default 1 when absent
+  cost?: number;           // cents (optional per-row)
+  price?: number;          // cents (optional per-row)
+}
+
 export interface SpecialOrder {
   id: string;
   storeId?: string;  // Multi-store: which store this belongs to
@@ -1036,6 +1057,10 @@ export interface SpecialOrder {
   customerName: string;
   customerPhone: string;
   itemDescription: string;
+  // SPECIAL-ORDERS-MULTI-ITEM-V1: optional itemized list. When present the
+  // scalar itemDescription is the derived summary and cost/price are the
+  // summed totals (so receipts / POS / reports keep reading the scalars).
+  items?: SpecialOrderItem[];
   supplier?: string;
   cost: number;            // cents
   price: number;           // cents
@@ -1402,6 +1427,10 @@ export interface Appointment {
   employeeId?: string;
   employeeName?: string;
   repairId?: string;                // set when converted to repair ticket
+  // LAN-OPERATION-FORWARDING-APPOINTMENT-V1: set on the Primary when created
+  // from a forwarded Secondary CREATE_APPOINTMENT op — idempotency key (a
+  // re-sent operation does not create a duplicate; survives restart).
+  lanOperationId?: string;
   // R-COMMS-CONSENT-UNIFY: sendConfirmationSms removed (SMS path retired in Round 1).
   createdAt: string;
   updatedAt: string;

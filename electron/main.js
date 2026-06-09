@@ -13,6 +13,9 @@ const {
   computeHwFingerprint,
   checkClockRollback,
 } = require('./license');
+// LOCAL-LAN-PAIRING-PHASE-1-V1: LAN pairing handshake (no sync). Opt-in,
+// off by default — nothing starts unless the renderer calls lan:start-primary.
+const lanPairing = require('./lanPairing');
 
 // ── Single instance lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -387,6 +390,39 @@ function registerIpcHandlers() {
       await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       await Promise.race([ready, safety]);
 
+      // LAYAWAY-PAYMENT-CART-SEMANTICS-AND-MULTIPAGE-PRINT-FIX-V1: continuous
+      // thermal paper (receipt-class, width <= 80mm) uses a FIXED page height
+      // (e.g. 297mm), so long receipts (big payment histories) get paginated
+      // by Chromium — and the shop's driver only emits page 1 of multi-page
+      // receipt jobs (same driver that rejects valid pageRanges). Roll paper
+      // has no real page boundary: measure the actual content height at the
+      // paper's width and GROW the page to a single continuous page when the
+      // content exceeds the requested height. Short receipts (the normal
+      // case) keep their exact current pageSize — byte-identical output.
+      // Labels (89mm) and 4x6/letter sheet stock are untouched (width gate).
+      let effectivePageSize = payload.pageSize || { width: 101600, height: 152400 };
+      const MICRONS_PER_PX = 25400 / 96; // 96dpi CSS px
+      // Height gate (>= 150mm): only CONTINUOUS receipt paper stretches.
+      // Die-cut label stock (Label Studio small-price 57.15×31.75mm) is
+      // narrow too, but its multi-copy jobs are one page PER label — fusing
+      // them into one tall page would misalign the printer's label feed.
+      if (effectivePageSize.width <= 80000 && effectivePageSize.height >= 150000 && !payload.landscape) {
+        try {
+          const paperWidthPx = Math.max(1, Math.round(effectivePageSize.width / MICRONS_PER_PX));
+          printWin.setContentSize(paperWidthPx, 600);
+          const contentPx = await printWin.webContents.executeJavaScript(
+            'Math.max(document.body ? document.body.scrollHeight : 0, document.documentElement ? document.documentElement.scrollHeight : 0)'
+          );
+          const contentMicrons = Math.ceil((Number(contentPx) || 0) * MICRONS_PER_PX) + 8000; // +8mm cut tail
+          if (contentMicrons > effectivePageSize.height) {
+            console.log('[print:run] receipt-class long content → single continuous page:', contentPx, 'px →', contentMicrons, 'microns');
+            effectivePageSize = { width: effectivePageSize.width, height: contentMicrons };
+          }
+        } catch (probeErr) {
+          console.warn('[print:run] content-height probe failed, keeping requested pageSize:', probeErr);
+        }
+      }
+
       // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1b: Chromium only paginates DURING
       // the print, so a requested pageRange is never validated against a real
       // page count — single-page receipts with a custom range, or ranges past
@@ -401,29 +437,30 @@ function registerIpcHandlers() {
       let effectiveRanges = Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0
         ? payload.pageRanges
         : null;
-      // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1: runtime confirmed that even a
-      // VALID {from:0,to:0} range fails the silent print job on the shop
-      // printer (Chromium/driver pageRanges quirk) while All-pages prints
-      // fine. For receipt-sized paper (width <= 4in: 80mm/4x6/label/cr80) a
-      // "page 1 only" custom range is OUTPUT-IDENTICAL to printing all pages
-      // of a one-page receipt — so drop the ranges entirely and print all.
-      // No probe needed, no error shown. Multipage/letter documents keep the
-      // probe-validated range path below.
-      if (effectiveRanges) {
-        const isReceiptSize = ((payload.pageSize && payload.pageSize.width) || 101600) <= 101600;
-        const onlyFirstPage = effectiveRanges.every((r) => (r.from || 0) === 0 && (r.to || 0) === 0);
-        if (isReceiptSize && onlyFirstPage) {
-          console.log('[print:run] receipt-size + page-1-only range → bypassing pageRanges (identical output)');
-          effectiveRanges = null;
-        }
-      }
+      // SPECIAL-ORDERS-PRINT-RANGE-FIX-V1: the previous RECEIPT-PRINTER-CUSTOM-
+      // RANGE-BYPASS-V1 nulled a "page-1-only" range for ANY receipt-width
+      // document BEFORE counting pages — which silently printed ALL pages of a
+      // MULTI-page receipt (e.g. a long special-order receipt). We now defer:
+      // the request falls through to the page-count probe below, which nulls
+      // the range ONLY after confirming the document is genuinely 1 page
+      // (preserving the receipt-printer {from:0,to:0} quirk workaround), and
+      // otherwise honors the requested range so "page 1 only" prints page 1.
+      //
+      // These flags are computed here (not nulled) so the probe-FAILURE
+      // fallback can still apply the single-page quirk workaround.
+      // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1 (original rationale): a valid
+      // {from:0,to:0} range fails the silent job on the shop printer while
+      // All-pages prints fine; for a genuinely one-page receipt, dropping the
+      // range is output-identical and avoids that driver quirk.
+      const isReceiptSize = ((payload.pageSize && payload.pageSize.width) || 101600) <= 101600;
+      const onlyFirstPage = !!effectiveRanges && effectiveRanges.every((r) => (r.from || 0) === 0 && (r.to || 0) === 0);
       if (effectiveRanges) {
         try {
           const probePdf = await printWin.webContents.printToPDF({
             landscape: payload.landscape || false,
             printBackground: true,
             preferCSSPageSize: true,
-            pageSize: payload.pageSize || { width: 101600, height: 152400 },
+            pageSize: effectivePageSize,
             margins: {
               top: payload.margins?.top || 0,
               bottom: payload.margins?.bottom || 0,
@@ -459,7 +496,16 @@ function registerIpcHandlers() {
             effectiveRanges = clamped;
           }
         } catch (probeErr) {
-          console.warn('[print:run] page-count probe failed, sending ranges as-is:', probeErr);
+          // SPECIAL-ORDERS-PRINT-RANGE-FIX-V1: if the probe can't run, preserve
+          // the receipt-printer quirk workaround for the page-1-only case
+          // (null = print all = identical output for a 1-page receipt). Any
+          // other range keeps the pre-existing "send as-is" behavior.
+          if (isReceiptSize && onlyFirstPage) {
+            console.log('[print:run] probe failed; receipt-size + page-1-only → null range (quirk workaround)');
+            effectiveRanges = null;
+          } else {
+            console.warn('[print:run] page-count probe failed, sending ranges as-is:', probeErr);
+          }
         }
       }
 
@@ -480,7 +526,10 @@ function registerIpcHandlers() {
           color: payload.color !== false,
           landscape: payload.landscape || false,
           scaleFactor: payload.scaleFactor || 100,
-          pageSize: payload.pageSize || { width: 101600, height: 152400 },
+          // LAYAWAY-...-MULTIPAGE-PRINT-FIX-V1: grown to fit long receipt
+          // content on continuous paper (see probe above); identical to
+          // payload.pageSize for all other cases.
+          pageSize: effectivePageSize,
           margins: payload.margins
             ? {
                 marginType: 'custom',
@@ -552,16 +601,130 @@ function registerIpcHandlers() {
   // r-pkg-a2: re-added download-update (was removed in r-pkg-a1 as unused;
   // now needed by the new AutoUpdateNotifier component).
   ipcMain.on('download-update', () => { try { require('electron-updater').autoUpdater.downloadUpdate(); } catch (e) {} });
+
+  // ── LAN pairing (LOCAL-LAN-PAIRING-PHASE-1-V1) ──
+  // Handshake only. These handlers never touch sales/persist/print paths.
+  ipcMain.handle('lan:start-primary', async (_, opts) => {
+    try { return await lanPairing.startPrimary(opts || {}); }
+    catch (e) { return { running: false, error: e.message || 'start_failed' }; }
+  });
+  ipcMain.handle('lan:stop-primary',  () => lanPairing.stopPrimary());
+  ipcMain.handle('lan:get-status',    () => lanPairing.getStatus());
+  ipcMain.handle('lan:generate-code', () => lanPairing.regenerateCode());
+  ipcMain.handle('lan:pair', async (_, opts) => {
+    try { return await lanPairing.pairWithPrimary(opts || {}); }
+    catch (e) { return { ok: false, error: e.message || 'pair_failed' }; }
+  });
+  // PHASE 2 (read-only snapshot): Primary renderer pushes its snapshot;
+  // Secondary renderer fetches it. No writes, no persist changes.
+  ipcMain.handle('lan:set-snapshot', (_, snap) => {
+    try { return lanPairing.setSnapshot(snap); }
+    catch (e) { return { ok: false, error: e.message || 'set_failed' }; }
+  });
+  ipcMain.handle('lan:fetch-snapshot', async (_, opts) => {
+    try { return await lanPairing.fetchSnapshot(opts || {}); }
+    catch (e) { return { ok: false, error: e.message || 'fetch_failed' }; }
+  });
+  // PHASE 3A: Secondary sends a test operation to the Primary.
+  ipcMain.handle('lan:send-operation', async (_, opts) => {
+    try { return await lanPairing.sendOperation(opts || {}); }
+    catch (e) { return { ok: false, error: e.message || 'send_failed' }; }
+  });
+  // LAN-LICENSE-INHERITANCE-V1: Secondary fetches the Primary's license status.
+  ipcMain.handle('lan:fetch-license', async (_, opts) => {
+    try { return await lanPairing.fetchLicense(opts || {}); }
+    catch (e) { return { ok: false, error: e.message || 'fetch_failed' }; }
+  });
+  // LOCAL-LAN-AUTO-DISCOVERY-V1: Secondary listens for Primary UDP beacons.
+  ipcMain.handle('lan:discover', async (_, opts) => {
+    try { return await lanPairing.discoverPrimaries(opts || {}); }
+    catch (e) { return { ok: false, error: e.message || 'discover_failed', primaries: [] }; }
+  });
+  // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: the Primary renderer replies
+  // here after dispatching a forwarded operation; resolve the pending bridge.
+  ipcMain.on('lan:operation-result', (_, payload) => {
+    const requestId = payload && payload.requestId;
+    const pending = requestId && pendingDispatches.get(requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingDispatches.delete(requestId);
+      pending.resolve((payload && payload.result) || { ok: false, error: 'empty_result' });
+    }
+  });
+}
+
+// LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: main↔renderer request/reply
+// bridge. A forwarded business operation is sent to the Primary renderer (which
+// owns AppProvider + persist); the renderer replies on 'lan:operation-result'.
+// Resolves with a safe error on timeout / no window so the HTTP ACK is never
+// left hanging (the Secondary's send timeout is 8s; this is 6s).
+const pendingDispatches = new Map(); // requestId -> { resolve, timer }
+let _dispatchSeq = 0;
+function dispatchToRenderer(op) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) { resolve({ ok: false, error: 'no_renderer' }); return; }
+    _dispatchSeq += 1;
+    const requestId = `disp-${Date.now()}-${_dispatchSeq}`;
+    const timer = setTimeout(() => {
+      if (pendingDispatches.has(requestId)) {
+        pendingDispatches.delete(requestId);
+        resolve({ ok: false, error: 'dispatch_timeout' });
+      }
+    }, 6000);
+    pendingDispatches.set(requestId, { resolve, timer });
+    try {
+      mainWindow.webContents.send('lan:operation-dispatch', { requestId, op });
+    } catch (e) {
+      clearTimeout(timer);
+      pendingDispatches.delete(requestId);
+      resolve({ ok: false, error: 'dispatch_send_failed' });
+    }
+  });
 }
 
 // ── App lifecycle ─────────────────────────────────────────
 app.whenReady().then(() => {
+  // LOCAL-LAN-PAIRING-PHASE-1-V1: give the pairing module its state dir.
+  // LOCAL-LAN-PHASE-3A: onOperation forwards a validated test operation to the
+  // Primary renderer for display. Main NEVER mutates app state — display only.
+  lanPairing.init({
+    userDataPath: app.getPath('userData'),
+    onOperation: (op) => { try { if (mainWindow) mainWindow.webContents.send('lan:operation-received', op); } catch (e) {} },
+    // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: hand a business operation to
+    // the Primary renderer (which owns persist) and await its real ACK.
+    dispatchOperation: (op) => dispatchToRenderer(op),
+    // LAN-LICENSE-INHERITANCE-V1: SANITIZED license status for a paired
+    // Secondary to inherit. Strips the key + hardware fingerprint — only
+    // valid/tier/expiry/features/seat-count leave the Primary.
+    getLicense: () => {
+      try {
+        const s = getLicenseStatus();
+        const tier = s.tier || 'none';
+        const allowedSecondaryCount = ({ pro: 5, basic: 2, trial: 1 })[tier] ?? (s.valid ? 1 : 0);
+        return {
+          valid: !!s.valid,
+          tier,
+          expiresAt: s.expiresAt || null,
+          isTrial: tier === 'trial',
+          daysRemaining: typeof s.daysRemaining === 'number' ? s.daysRemaining : null,
+          allowedSecondaryCount,
+          features: getTierFeatures(tier),
+        };
+      } catch (e) {
+        return { valid: false, tier: 'none', expiresAt: null, features: getTierFeatures('none') };
+      }
+    },
+  });
   registerIpcHandlers();
   createWindow();
   createTray();
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+
+// LOCAL-LAN-PAIRING-PHASE-1-V1: tear down the LAN server before quitting so
+// the port is released cleanly.
+app.on('before-quit', () => { try { lanPairing.stopPrimary(); } catch (e) {} });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason));

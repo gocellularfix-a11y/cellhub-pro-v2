@@ -8,6 +8,7 @@ import type { CartTotals, DiscountState } from './types';
 import { formatCurrency } from '@/utils/currency';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 import { useApp } from '@/store/AppProvider';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { emitDiscountAttempted } from '@/services/intelligence/liveContext/liveContextEvents';
@@ -82,6 +83,8 @@ export default function Cart({
   L,
 }: CartProps) {
   const { t } = useTranslation();
+  // SECONDARY-UI-LOCK-V1: block checkout on a read-only LAN Secondary.
+  const lanReadOnly = useLanReadOnlyMode();
   const { toast } = useToast();
   const { state: { employees, currentEmployee } } = useApp();
   // R-APPROVAL-GATE-POS-OVERRIDES-V1: gate for per-line price/discount overrides.
@@ -1001,9 +1004,11 @@ export default function Cart({
         <button
           onClick={onCheckout}
           className="btn btn-success w-full text-base py-2"
-          disabled={cart.length === 0}
+          disabled={cart.length === 0 || lanReadOnly}
+          title={lanReadOnly ? t('lan.readOnlyTooltip') : undefined}
+          style={lanReadOnly ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
         >
-          {t('completeSale')} — {formatCurrency(totals.total)}
+          {lanReadOnly ? t('lan.readOnlyTooltip') : `${t('completeSale')} — ${formatCurrency(totals.total)}`}
         </button>
       </div>
 

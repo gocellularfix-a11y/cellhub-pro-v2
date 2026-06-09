@@ -15,6 +15,35 @@ import {
 } from 'firebase/firestore';
 import { COLLECTIONS } from '@/config/constants';
 import { saveLocal, loadLocal, removeLocal } from '@/services/storage';
+// LOCAL-LAN-READONLY-GUARD-V1: read-only enforcement for LAN Secondary mirrors.
+import { getConnection } from '@/services/lan/lanService';
+
+// ── LOCAL-LAN-READONLY-GUARD-V1 ───────────────────────────
+// When this machine is a paired LAN Secondary it is a READ-ONLY mirror of the
+// Primary. Every persistence path funnels through saveRecord / deleteRecord /
+// persistSettings / batchSave below, so blocking here blocks ALL writes
+// globally with one guard — no per-module changes, no business-logic edits.
+//
+// Snapshot hydration does NOT touch this layer (it applies Primary data via
+// in-memory AppProvider SET_* setters), so the mirror keeps refreshing. This
+// guard's job is to stop a stray module write from overwriting the Secondary's
+// own localStorage with mirrored Primary data, or pushing junk to Firebase.
+export const READONLY_BLOCKED_EVENT = 'cellhub:lan-readonly-blocked';
+
+function isReadOnlySecondary(): boolean {
+  try { return getConnection().role === 'secondary'; }
+  catch { return false; }
+}
+
+/** Emit a signal (→ friendly toast via <LanReadOnlyGuardListener>) that a write
+ *  was blocked. Dependency-free so it is safe to call from this service. */
+function signalReadOnlyBlock(action: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent(READONLY_BLOCKED_EVENT, { detail: { action } }));
+  } catch {
+    /* non-browser context — ignore */
+  }
+}
 
 // ── DB singleton ──────────────────────────────────────────
 let _db: Firestore | null = null;
@@ -135,6 +164,12 @@ export async function saveRecord(
   id: string,
   data: Record<string, unknown>,
 ): Promise<void> {
+  // LOCAL-LAN-READONLY-GUARD-V1: block writes on a read-only Secondary.
+  if (isReadOnlySecondary()) {
+    console.info(`[persist] read-only Secondary — blocked save ${collectionName}/${id}`);
+    signalReadOnlyBlock('save');
+    return;
+  }
   // r-multi-m1: auto-tag storeId on per-store collections.
   // Global collections (customers, settings) are exempt.
   const tagged = GLOBAL_COLLECTIONS.has(collectionName)
@@ -161,6 +196,12 @@ export async function deleteRecord(
   collectionName: string,
   id: string,
 ): Promise<void> {
+  // LOCAL-LAN-READONLY-GUARD-V1: block deletes on a read-only Secondary.
+  if (isReadOnlySecondary()) {
+    console.info(`[persist] read-only Secondary — blocked delete ${collectionName}/${id}`);
+    signalReadOnlyBlock('delete');
+    return;
+  }
   // Always delete locally first
   localDeleteRecord(collectionName, id);
 
@@ -174,6 +215,12 @@ export async function deleteRecord(
 }
 
 export async function persistSettings(data: Record<string, unknown>): Promise<void> {
+  // LOCAL-LAN-READONLY-GUARD-V1: block settings writes on a read-only Secondary.
+  if (isReadOnlySecondary()) {
+    console.info('[persist] read-only Secondary — blocked settings write');
+    signalReadOnlyBlock('settings');
+    return;
+  }
   // Save locally — MUST MERGE, not overwrite (r26 BLOCKER fix).
   // `data` is typically a delta (e.g. just { storeName }). Without merging,
   // every update wipes the entire settings blob in localStorage, breaking
@@ -197,6 +244,12 @@ export async function persistSettings(data: Record<string, unknown>): Promise<vo
 export async function batchSave(
   ops: Array<{ collection: string; id: string; data: Record<string, unknown> }>,
 ): Promise<void> {
+  // LOCAL-LAN-READONLY-GUARD-V1: block batch writes on a read-only Secondary.
+  if (isReadOnlySecondary()) {
+    console.info(`[persist] read-only Secondary — blocked batchSave (${ops.length} ops)`);
+    signalReadOnlyBlock('save');
+    return;
+  }
   // r-multi-m1: auto-tag storeId on per-store collections
   const taggedOps = ops.map((op) => ({
     ...op,

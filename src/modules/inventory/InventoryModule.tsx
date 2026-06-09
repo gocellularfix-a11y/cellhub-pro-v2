@@ -18,6 +18,7 @@ import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import JsBarcode from 'jsbarcode';
 import type { InventoryItem, Sale, PurchaseOrder, InventoryLoss, LossReason } from '@/store/types';
 import { persist, persistSettings, remove } from '@/services/persist';
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 // R-LOSSES-SHRINKAGE-V1: admin-PIN guard reused from the canonical
 // AdminPinGate component. Mark-as-Loss is owner/manager only.
 import AdminPinGate from '@/components/shared/AdminPinGate';
@@ -78,6 +79,8 @@ export default function InventoryModule() {
   const { t, locale } = useTranslation();
   const { features } = useLicense();
   const atLimit = features.maxProducts !== -1 && inventory.length >= features.maxProducts;
+  // SECONDARY-UI-LOCK-V1: block inventory create on a read-only LAN Secondary.
+  const lanReadOnly = useLanReadOnlyMode();
 
   const CONDITION_LABELS: Record<string, string> = {
     New: t('condition.new'),
@@ -679,8 +682,9 @@ export default function InventoryModule() {
             <button
               onClick={() => { setEditItem(null); setShowModal(true); }}
               className="btn btn-primary"
-              disabled={atLimit}
-              title={atLimit ? t('license.maxProductsReached') : undefined}
+              disabled={atLimit || lanReadOnly}
+              title={lanReadOnly ? t('lan.readOnlyTooltip') : atLimit ? t('license.maxProductsReached') : undefined}
+              style={lanReadOnly ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
             >
               + {t('inventory.addItem')}
             </button>

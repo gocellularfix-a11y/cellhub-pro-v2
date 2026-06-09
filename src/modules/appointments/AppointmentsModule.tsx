@@ -13,6 +13,8 @@ import CustomerPicker from '@/components/shared/CustomerPicker';
 import { generateId } from '@/utils/dates';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { persist, remove } from '@/services/persist';
+import { useLanReadOnlyMode, isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
+import { sendCreateAppointment } from '@/services/lan/lanService';
 // APPOINTMENTS-SEMANTIC-LIFECYCLE-V1: admin PIN gate reused for the protected
 // permanent-delete cleanup flow (duplicates / test entries only).
 import AdminPinGate from '@/components/shared/AdminPinGate';
@@ -51,6 +53,8 @@ export default function AppointmentsModule() {
   const { printHtml } = usePrint();
   const { t, locale } = useTranslation();
   const es = locale === 'es';
+  // SECONDARY-UI-LOCK-V1: block appointment create/convert on a read-only Secondary.
+  const lanReadOnly = useLanReadOnlyMode();
   const dateLoc = ({ en: 'en-US', es: 'es-MX', pt: 'pt-BR' } as Record<string, string>)[locale] ?? 'en-US';
   const waLang: 'en' | 'es' = locale === 'es' ? 'es' : 'en';
   const APPT_STATUS_LABELS: Record<AppointmentStatus, string> = {
@@ -258,7 +262,48 @@ export default function AppointmentsModule() {
     openWhatsApp(appt.customerPhone, msg);
   }, [settings, waLang, dateLoc]);
 
+  // LAN-OPERATION-FORWARDING-APPOINTMENT-V1: on a Secondary, a NEW appointment
+  // is forwarded to the Primary (not saved locally). Edits/conversions are not
+  // forwarded this round.
+  const forwardCreateAppointment = useCallback(async (data: Partial<Appointment>) => {
+    const rawFirst = (data as any).firstName as string | undefined;
+    const rawLast = (data as any).lastName as string | undefined;
+    const customerName = data.customerName
+      || `${(rawFirst || '').trim()} ${(rawLast || '').trim()}`.trim();
+    setShowModal(false);
+    setEditAppt(null);
+    toast(t('lan.appt.sending'), 'info');
+    const ack = await sendCreateAppointment({
+      customerId: data.customerId,
+      customerName,
+      customerPhone: data.customerPhone || '',
+      device: data.device || '',
+      issue: data.issue || '',
+      estimatedDropOff: data.estimatedDropOff || '',
+      notes: data.notes || '',
+      employeeName: currentEmployee?.name,
+    });
+    if (ack.ok) {
+      toast(t('lan.appt.savedPrimary'), 'success');
+    } else {
+      const map: Record<string, string> = {
+        not_paired: t('lan.fwd.notPaired'),
+        unreachable: t('lan.appt.offline'),
+        no_renderer: t('lan.appt.offline'),
+        timeout: t('lan.appt.offline'),
+        dispatch_timeout: t('lan.appt.offline'),
+        dispatch_unavailable: t('lan.appt.offline'),
+      };
+      toast(map[ack.error || ''] || t('lan.appt.failed'), 'error');
+    }
+  }, [toast, t, currentEmployee]);
+
   const handleSave = useCallback((data: Partial<Appointment>) => {
+    // LAN-OPERATION-FORWARDING-APPOINTMENT-V1: Secondary CREATE → forward.
+    if (!editAppt && isLanSecondaryReadOnly()) {
+      void forwardCreateAppointment(data);
+      return;
+    }
     const rawFirst = (data as any).firstName as string | undefined;
     const rawLast = (data as any).lastName as string | undefined;
     const customerName = data.customerName
@@ -368,7 +413,7 @@ export default function AppointmentsModule() {
     }
     setShowModal(false);
     setEditAppt(null);
-  }, [editAppt, setCustomers, currentEmployee, settings, setAppointments, toast, t]);
+  }, [editAppt, setCustomers, currentEmployee, settings, setAppointments, toast, t, forwardCreateAppointment]);
 
   const markArrived = useCallback((appt: Appointment) => {
     const updated: Appointment = { ...appt, status: 'arrived', updatedAt: new Date().toISOString() };
@@ -533,7 +578,13 @@ export default function AppointmentsModule() {
             <h1 className="text-2xl font-bold text-white">📅 {t('appt.title')}</h1>
             <p className="text-xs text-slate-500 mt-0.5">{t('appt.subtitle')}</p>
           </div>
-          <button onClick={() => { setEditAppt(null); setShowModal(true); }} className="btn btn-primary">
+          {/* LAN-OPERATION-FORWARDING-APPOINTMENT-V1: on a Secondary, New stays
+              ENABLED — the create is forwarded to the Primary (not saved locally). */}
+          <button
+            onClick={() => { setEditAppt(null); setShowModal(true); }}
+            className="btn btn-primary"
+            title={lanReadOnly ? t('lan.appt.newOnSecondary') : undefined}
+          >
             + {t('appt.newBtn')}
           </button>
         </div>
@@ -619,12 +670,12 @@ export default function AppointmentsModule() {
                     </div>
                     <div className="flex flex-col gap-1 flex-shrink-0">
                       {appt.status === 'scheduled' && (
-                        <button onClick={() => markArrived(appt)} className="btn btn-sm" style={{ background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)', fontSize: '0.72rem' }}>
+                        <button onClick={() => { if (!lanReadOnly) markArrived(appt); }} disabled={lanReadOnly} title={lanReadOnly ? t('lan.readOnlyTooltip') : undefined} className="btn btn-sm" style={{ background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)', fontSize: '0.72rem', ...(lanReadOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
                           ✅ {t('appt.btnArrived')}
                         </button>
                       )}
                       {appt.status === 'arrived' && (
-                        <button onClick={() => convertToRepair(appt)} className="btn btn-sm btn-primary" style={{ fontSize: '0.72rem' }}>
+                        <button onClick={() => { if (!lanReadOnly) convertToRepair(appt); }} disabled={lanReadOnly} title={lanReadOnly ? t('lan.readOnlyTooltip') : undefined} className="btn btn-sm btn-primary" style={{ fontSize: '0.72rem', ...(lanReadOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
                           🔧 {t('appt.btnCreateTicket')}
                         </button>
                       )}

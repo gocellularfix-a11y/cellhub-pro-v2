@@ -41,6 +41,35 @@ try {
       ipcRenderer.on('update-downloaded', handler);
       return () => ipcRenderer.removeListener('update-downloaded', handler);
     },
+
+    // LAN pairing (LOCAL-LAN-PAIRING-PHASE-1-V1) — handshake only, no sync.
+    lanStartPrimary:    (opts) => ipcRenderer.invoke('lan:start-primary', opts),
+    lanStopPrimary:     ()     => ipcRenderer.invoke('lan:stop-primary'),
+    lanGetStatus:       ()     => ipcRenderer.invoke('lan:get-status'),
+    lanGeneratePairCode:()     => ipcRenderer.invoke('lan:generate-code'),
+    lanPairWithPrimary: (opts) => ipcRenderer.invoke('lan:pair', opts),
+    // PHASE 2 (read-only snapshot)
+    lanSetSnapshot:     (snap) => ipcRenderer.invoke('lan:set-snapshot', snap),
+    lanFetchSnapshot:   (opts) => ipcRenderer.invoke('lan:fetch-snapshot', opts),
+    // PHASE 3A (operation forwarding skeleton)
+    lanSendOperation:   (opts) => ipcRenderer.invoke('lan:send-operation', opts),
+    onLanOperation: (cb) => {
+      const handler = (_, op) => cb(op);
+      ipcRenderer.on('lan:operation-received', handler);
+      return () => ipcRenderer.removeListener('lan:operation-received', handler);
+    },
+    // LAN-LICENSE-INHERITANCE-V1
+    lanFetchLicense:    (opts) => ipcRenderer.invoke('lan:fetch-license', opts),
+    // LOCAL-LAN-AUTO-DISCOVERY-V1
+    lanDiscoverPrimaries:(opts) => ipcRenderer.invoke('lan:discover', opts),
+    // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: Primary renderer dispatcher.
+    // Main forwards a business operation here; the renderer persists and replies.
+    onLanOperationDispatch: (cb) => {
+      const handler = (_, req) => cb(req);
+      ipcRenderer.on('lan:operation-dispatch', handler);
+      return () => ipcRenderer.removeListener('lan:operation-dispatch', handler);
+    },
+    lanSendOperationResult: (payload) => ipcRenderer.send('lan:operation-result', payload),
   });
   console.log('[preload] electronAPI exposed successfully');
 } catch (err) {

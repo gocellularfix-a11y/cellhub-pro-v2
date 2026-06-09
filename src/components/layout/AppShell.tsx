@@ -8,12 +8,22 @@ import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 // R-OFFLINE-MODE-GUARD-V1: turns offline-blocked action signals into a toast.
 import OfflineGuardListener from '@/components/OfflineGuardListener';
+// LOCAL-LAN-PAIRING-PHASE-2-V1
+import LanSnapshotPublisher from '@/components/lan/LanSnapshotPublisher';
+// LOCAL-LAN-PHASE-3A-V1
+import LanOperationListener from '@/components/lan/LanOperationListener';
+// LOCAL-LAN-SECONDARY-HYDRATION-V1: in-memory read-only mirror + banner.
+import LanSecondaryMirror from '@/components/lan/LanSecondaryMirror';
+import LanMirrorBanner from '@/components/lan/LanMirrorBanner';
+// LOCAL-LAN-READONLY-GUARD-V1: friendly toast when a write is blocked on a Secondary.
+import LanReadOnlyGuardListener from '@/components/lan/LanReadOnlyGuardListener';
+// LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: Primary-side dispatcher for forwarded ops.
+import LanOperationDispatcher from '@/components/lan/LanOperationDispatcher';
 import { CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
 import { useLicense } from '@/contexts/LicenseContext';
 import { readDashboardTheme } from '@/theme/dashboardTheme';
-import { useTheme } from '@/theme';
 
 // ── Lazy-load all modules ─────────────────────────────────
 const Dashboard        = lazy(() => import('@/modules/dashboard/Dashboard'));
@@ -90,7 +100,6 @@ export default function AppShell() {
   const { state, dispatch } = useApp();
   const { activeTab, isAdminMode, lang, settings, customers } = state;
   const { features } = useLicense();
-  const { theme } = useTheme();
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {
@@ -324,12 +333,17 @@ export default function AppShell() {
   const ADMIN_TABS = ['settings', 'reports', 'tax', 'employees', 'purchaseOrders', 'intelligence', 'companion'];
   const needsAdmin = ADMIN_TABS.includes(activeTab) && !isAdminMode;
 
-  // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (current
-  // production) is the default; 'list' restores the pre-redesign sidebar.
-  // Color theme drives sidebar selection: 'original' and 'bold-light' always
-  // use SidebarList; 'dark' uses dashboardTheme setting (tiles or list).
+  // R-DASHBOARD-THEME-V1: user-selectable interface skin. 'tiles' (default)
+  // and 'bold-blocks' use the grid Sidebar; 'list' restores the pre-redesign
+  // SidebarList.
+  // FIX-APPEARANCE-MODE-SELECTION-V1: the Appearance selection is now the
+  // SOLE authority for the sidebar. Previously this OR'd the COLOR theme
+  // ('original'/'bold-light' forced SidebarList), which silently overrode the
+  // user's Appearance choice on any non-dark color theme — so Tiles/Bold
+  // Blocks never applied and only Classic List appeared to "work". Color
+  // theme and layout skin are independent settings; they no longer couple.
   const dashboardTheme = readDashboardTheme(state.settings);
-  const usesListSidebar = theme === 'original' || theme === 'bold-light' || dashboardTheme === 'list';
+  const usesListSidebar = dashboardTheme === 'list';
 
   return (
     <div className={`flex h-screen max-h-screen overflow-hidden theme-${dashboardTheme}`}>
@@ -383,6 +397,24 @@ export default function AppShell() {
 
       {/* R-OFFLINE-MODE-GUARD-V1: offline-action toast bridge (renders nothing). */}
       <OfflineGuardListener />
+
+      {/* LOCAL-LAN-PAIRING-PHASE-2-V1: pushes a read-only snapshot to LAN main
+          when this machine is the Primary. Renders nothing; no writes. */}
+      <LanSnapshotPublisher />
+
+      {/* LOCAL-LAN-PHASE-3A-V1: records test operations forwarded from the LAN
+          server (Primary). Renders nothing; no state mutation. */}
+      <LanOperationListener />
+
+      {/* LOCAL-LAN-SECONDARY-HYDRATION-V1: when this machine is a paired
+          Secondary, hydrate in-memory state from the Primary snapshot
+          (read-only) and show the mirror banner. No persist, no writes. */}
+      <LanSecondaryMirror />
+      <LanMirrorBanner />
+      <LanReadOnlyGuardListener />
+      {/* LAN-PHASE-3B: on the Primary, dispatches forwarded ops (CREATE_CUSTOMER)
+          to persist + push a fresh snapshot. No-op on Secondary/standalone. */}
+      <LanOperationDispatcher />
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />

@@ -10,6 +10,8 @@
 
 import { type ReactNode } from 'react';
 import { SearchInput } from '@/components/ui';
+import { useTranslation } from '@/i18n';
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 
 interface StatCard {
   label: string;
@@ -66,6 +68,9 @@ export default function TicketListLayout({
   headerActions,
   globalSearchSlot,
 }: TicketListLayoutProps) {
+  const { t } = useTranslation();
+  // SECONDARY-UI-LOCK-V1: block "New" on a read-only LAN Secondary.
+  const readOnly = useLanReadOnlyMode();
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -75,7 +80,13 @@ export default function TicketListLayout({
         </h1>
         <div className="flex gap-3">
           {headerActions}
-          <button onClick={onNew} className="btn btn-primary">
+          <button
+            onClick={onNew}
+            className="btn btn-primary"
+            disabled={readOnly}
+            title={readOnly ? t('lan.readOnlyTooltip') : undefined}
+            style={readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          >
             + {newLabel}
           </button>
         </div>

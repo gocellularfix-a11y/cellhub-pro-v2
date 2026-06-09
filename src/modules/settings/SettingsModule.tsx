@@ -24,6 +24,8 @@ import {
 import { useTheme, THEMES } from '@/theme';
 import EmployeeSection from '@/modules/employees/EmployeeSection';
 import StoreManagement from './StoreManagement';
+// LOCAL-LAN-PAIRING-PHASE-1-V1
+import LocalNetworkPanel from './LocalNetworkPanel';
 import FirebaseSetupModal from './FirebaseSetupModal';
 import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
@@ -350,6 +352,9 @@ export default function SettingsModule() {
     // R-DASHBOARD-THEME-V1
     { id: 'appearance',  icon: '🎨',  label: t('settings.nav.appearance') },
     { id: 'multistore',  icon: '🏬',  label: t('settings.nav.multistore') },
+    // LOCAL-LAN-PAIRING-PHASE-1-V1: inline trilingual label (additive-only,
+    // matches the privacy-section precedent — no translations.ts churn).
+    { id: 'localNetwork', icon: '📡', label: lang === 'es' ? 'Red Local' : lang === 'pt' ? 'Rede Local' : 'Local Network' },
     { id: 'taxes',       icon: '💰',  label: t('settings.nav.taxes') },
     // r-settings-2b1: commissions tab unifies carriers + top-ups
     { id: 'commissions', icon: '💰',  label: t('settings.nav.commissions') },
@@ -463,6 +468,11 @@ export default function SettingsModule() {
     privacy:     lang === 'es' ? 'Privacidad financiera'
                  : lang === 'pt' ? 'Privacidade financeira'
                  : 'Financial privacy',
+    // LOCAL-LAN-PAIRING-PHASE-1-V1: same fix — sidebar render reads
+    // sectionLabels[id], so the entry must live here too (not only in SECTIONS).
+    localNetwork: lang === 'es' ? 'Red Local'
+                 : lang === 'pt' ? 'Rede Local'
+                 : 'Local Network',
     backup:      t('settings.nav.backup'),
   };
 
@@ -1767,6 +1777,11 @@ export default function SettingsModule() {
 
           {activeSection === 'multistore' && (
             <StoreManagement lang={lang} />
+          )}
+
+          {/* LOCAL-LAN-PAIRING-PHASE-1-V1: LAN pairing handshake (no sync). */}
+          {activeSection === 'localNetwork' && (
+            <LocalNetworkPanel lang={lang} />
           )}
 
           {activeSection === 'employees' && (

@@ -7,6 +7,7 @@ import { formatDate } from '@/utils/dates';
 import { forwardRef, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
 import { STATUS_LABELS } from '@/i18n/statusMap';
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 
 interface TicketCardProps {
   ticketNumber: string;
@@ -80,6 +81,10 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
   onEscalate,
 }, ref) {
   const { t } = useTranslation();
+  // SECONDARY-UI-LOCK-V1: disable write actions on a read-only LAN Secondary
+  // (view/print/WhatsApp stay enabled).
+  const readOnly = useLanReadOnlyMode();
+  const roTip = readOnly ? t('lan.readOnlyTooltip') : undefined;
   const statusLabels = STATUS_LABELS(t);
   const PRIORITY_LABELS: Record<string, string> = {
     Normal: t('priority.normal'),
@@ -153,10 +158,11 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
             {/* Primary buttons with labels */}
             {onDeposit && (
               <button
-                onClick={(e) => { e.stopPropagation(); onDeposit(); }}
+                onClick={(e) => { e.stopPropagation(); if (!readOnly) onDeposit(); }}
+                disabled={readOnly}
                 className="btn btn-secondary btn-sm"
-                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
-                title={t('ticket.deposit')}
+                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem', ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                title={roTip || t('ticket.deposit')}
               >
                 + {t('ticket.deposit')}
               </button>
@@ -164,8 +170,9 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
 
             {onComplete && (
               <button
-                onClick={(e) => { e.stopPropagation(); if (!completeDisabled) onComplete(); }}
-                disabled={completeDisabled}
+                onClick={(e) => { e.stopPropagation(); if (!completeDisabled && !readOnly) onComplete(); }}
+                disabled={completeDisabled || readOnly}
+                title={roTip || undefined}
                 style={{
                   width: '100%',
                   justifyContent: 'center',
@@ -173,8 +180,8 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
                   padding: '0.5rem 0.75rem',
                   borderRadius: '0.5rem',
                   border: '1px solid',
-                  cursor: completeDisabled ? 'not-allowed' : 'pointer',
-                  opacity: completeDisabled ? 0.6 : 1,
+                  cursor: (completeDisabled || readOnly) ? 'not-allowed' : 'pointer',
+                  opacity: (completeDisabled || readOnly) ? 0.6 : 1,
                   background: completeVariant === 'green' ? 'rgba(16,185,129,0.2)'
                             : completeVariant === 'amber' ? 'rgba(245,158,11,0.15)'
                             : 'rgba(255,255,255,0.05)',
@@ -193,9 +200,11 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
             {/* Legacy Collect (used by other modules that don't pass onComplete) */}
             {onCollectBalance && !onComplete && balance > 0 && (
               <button
-                onClick={(e) => { e.stopPropagation(); onCollectBalance(); }}
+                onClick={(e) => { e.stopPropagation(); if (!readOnly) onCollectBalance(); }}
+                disabled={readOnly}
+                title={roTip || undefined}
                 className="btn btn-success btn-sm"
-                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem' }}
+                style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem', ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 💰 {t('ticket.collectBalance')}
               </button>
@@ -234,15 +243,17 @@ const TicketCard = forwardRef<HTMLDivElement, TicketCardProps>(function TicketCa
 
                 {onDelete && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    onClick={(e) => { e.stopPropagation(); if (!readOnly) onDelete(); }}
+                    disabled={readOnly}
                     style={{
                       width: 38, height: 38, padding: 0,
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       borderRadius: '0.5rem', fontSize: '1rem',
                       background: 'rgba(239,68,68,0.15)', color: '#ef4444',
-                      border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer',
+                      border: '1px solid rgba(239,68,68,0.35)', cursor: readOnly ? 'not-allowed' : 'pointer',
+                      opacity: readOnly ? 0.5 : 1,
                     }}
-                    title={t('ticket.delete')}
+                    title={roTip || t('ticket.delete')}
                   >🗑</button>
                 )}
                 {onFollowUp && (

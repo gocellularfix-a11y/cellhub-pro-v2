@@ -7,6 +7,9 @@ import type React from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useToast } from '@/components/ui/Toast';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
+import { useLanReadOnlyMode, isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
+import { sendCreateCustomer, sendCustomerNote } from '@/services/lan/lanService';
+import { appendCustomerNote } from '@/utils/customerNotes';
 import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
@@ -39,6 +42,8 @@ export default function CustomerModule() {
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
   const { t } = useTranslation();
+  // SECONDARY-UI-LOCK-V1: block customer create on a read-only LAN Secondary.
+  const lanReadOnly = useLanReadOnlyMode();
 
   // Round 18: customersRef anti-stale-closure pattern (canonical project pattern).
   // setCustomers from AppProvider only accepts arrays (not functions), so handlers
@@ -306,11 +311,91 @@ export default function CustomerModule() {
   }, [customers, sales]);
 
   // ── CRUD ────────────────────────────────────────────────
+  // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: on a read-only Secondary, a NEW
+  // customer is not saved locally — it is forwarded to the Primary, which
+  // creates + persists it. On success the mirror re-syncs and the customer
+  // appears from the Primary snapshot. (Edits are not forwarded this round.)
+  const forwardCreateCustomer = useCallback(async (data: Partial<Customer>) => {
+    const firstName = (data.firstName || '').trim();
+    const lastName = (data.lastName || '').trim();
+    const composedName = `${firstName} ${lastName}`.trim() || data.name || '';
+    if (!composedName) { toast(t('lan.fwd.nameRequired'), 'error'); return; }
+    setShowModal(false);
+    setEditCustomer(null);
+    setPrefillPhone('');
+    toast(t('lan.fwd.sending'), 'info');
+    const ack = await sendCreateCustomer({
+      firstName, lastName, name: composedName,
+      phone: data.phone, email: data.email, notes: data.notes,
+      communicationConsent: data.communicationConsent,
+    });
+    if (ack.ok) {
+      toast(ack.duplicate ? t('lan.fwd.duplicate') : t('lan.fwd.created'), 'success');
+    } else {
+      const map: Record<string, string> = {
+        not_paired: t('lan.fwd.notPaired'),
+        unreachable: t('lan.fwd.offline'),
+        no_renderer: t('lan.fwd.offline'),
+        timeout: t('lan.fwd.timeout'),
+        dispatch_timeout: t('lan.fwd.timeout'),
+        dispatch_unavailable: t('lan.fwd.notReady'),
+      };
+      toast(map[ack.error || ''] || t('lan.fwd.failed'), 'error');
+    }
+  }, [toast, t]);
+
+  // LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: add a note to a customer.
+  // Secondary → forward to Primary (no local write). Primary/standalone →
+  // append locally + persist. Returns void; shows toast feedback.
+  const handleAddCustomerNote = useCallback(async (customer: Customer, text: string) => {
+    const clean = (text || '').trim();
+    if (!clean) return;
+    if (isLanSecondaryReadOnly()) {
+      toast(t('lan.note.sending'), 'info');
+      const ack = await sendCustomerNote({ customerId: customer.id, text: clean });
+      if (ack.ok) {
+        toast(t('lan.note.savedPrimary'), 'success');
+      } else {
+        const map: Record<string, string> = {
+          not_paired: t('lan.fwd.notPaired'),
+          unreachable: t('lan.note.offline'),
+          no_renderer: t('lan.note.offline'),
+          timeout: t('lan.note.offline'),
+          dispatch_timeout: t('lan.note.offline'),
+          dispatch_unavailable: t('lan.note.offline'),
+          customer_not_found: t('lan.note.notFound'),
+        };
+        toast(map[ack.error || ''] || t('lan.note.failed'), 'error');
+      }
+      return;
+    }
+    // Primary / standalone — append locally through the canonical persist path.
+    const fresh = customersRef.current.find((c) => c.id === customer.id) || customer;
+    const updated: Customer = {
+      ...fresh,
+      notes: appendCustomerNote(fresh.notes, clean),
+      updatedAt: new Date().toISOString(),
+    };
+    const next = customersRef.current.map((c) => (c.id === fresh.id ? updated : c));
+    customersRef.current = next;
+    setCustomers(next);
+    persist.customer(updated.id, updated as unknown as Record<string, unknown>);
+    // Keep the open history modal in sync so the new note shows immediately.
+    setViewHistory((v) => (v && v.id === updated.id ? updated : v));
+    toast(t('lan.note.added'), 'success');
+  }, [toast, t, setCustomers]);
+
   const handleSave = useCallback(
     (data: Partial<Customer>) => {
       const firstName = (data.firstName || '').trim();
       const lastName  = (data.lastName  || '').trim();
       const composedName = `${firstName} ${lastName}`.trim() || data.name || '';
+
+      // LAN-PHASE-3B: Secondary CREATE → forward to Primary (no local persist).
+      if (!editCustomer && isLanSecondaryReadOnly()) {
+        void forwardCreateCustomer(data);
+        return;
+      }
 
       if (editCustomer) {
         const updated: Customer = {
@@ -467,7 +552,7 @@ export default function CustomerModule() {
       setShowModal(false);
       setEditCustomer(null);
     },
-    [editCustomer, customers, settings, t, setCustomers, toast],
+    [editCustomer, customers, settings, t, setCustomers, toast, forwardCreateCustomer],
   );
 
   const handleDelete = useCallback(
@@ -589,7 +674,13 @@ export default function CustomerModule() {
             >
               ⬇ {t('customers.exportCsv')}
             </button>
-            <button onClick={() => { setEditCustomer(null); setShowModal(true); }} className="btn btn-primary">
+            {/* LAN-PHASE-3B: on a Secondary, New Customer stays ENABLED — the
+                create is forwarded to the Primary (not saved locally). */}
+            <button
+              onClick={() => { setEditCustomer(null); setShowModal(true); }}
+              className="btn btn-primary"
+              title={lanReadOnly ? t('lan.fwd.newOnSecondary') : undefined}
+            >
               + {t('customers.newCustomer')}
             </button>
           </div>
@@ -815,6 +906,7 @@ export default function CustomerModule() {
             // CUSTOMER-360-HEADER-V1: reuses the existing edit-modal handlers —
             // closes history, opens the same edit modal the card ✏️ button uses.
             onEdit={() => { setViewHistory(null); setEditCustomer(viewHistory); setShowModal(true); }}
+            onAddNote={(text) => handleAddCustomerNote(viewHistory, text)}
             settings={settings}
           />
         );
@@ -1294,7 +1386,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
 
 // ── Customer History ──────────────────────────────────────
 
-function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, onEdit, settings }: {
+function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, onEdit, onAddNote, settings }: {
   customer: Customer;
   sales: Sale[];
   repairs: any[];
@@ -1307,9 +1399,19 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   onClose: () => void;
   /** CUSTOMER-360-HEADER-V1: optional — opens the existing edit modal (parent handler reuse). */
   onEdit?: () => void;
+  /** LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: append a note (parent decides local vs forward). */
+  onAddNote?: (text: string) => void;
   settings: any;
 }) {
   const { t } = useTranslation();
+  // LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: quick note-add input state.
+  const [noteDraft, setNoteDraft] = useState('');
+  const submitNote = () => {
+    const v = noteDraft.trim();
+    if (!v || !onAddNote) return;
+    onAddNote(v);
+    setNoteDraft('');
+  };
   // R-FINANCIAL-PRIVACY-V2: gate profit + margin stat tiles inside this modal.
   const { state: { isAdminMode: _hxAdminMode, currentEmployee: _hxCurrentEmp } } = useApp();
   const canSeeOwnerFinancials = canViewOwnerFinancials(
@@ -1398,9 +1500,32 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             )}
           </div>
           {customer.notes && (
-            <p className="mt-2 text-xs text-slate-400 truncate" title={customer.notes}>
+            <p className="mt-2 text-xs text-slate-400 whitespace-pre-line" title={customer.notes}>
               📝 {customer.notes}
             </p>
+          )}
+          {/* LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: quick add-note row.
+              On a Secondary the parent forwards this to the Primary. */}
+          {onAddNote && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                className="input flex-1 text-xs"
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNote(); } }}
+                placeholder={t('lan.note.placeholder')}
+                maxLength={1000}
+                aria-label={t('lan.note.label')}
+              />
+              <button
+                className="btn btn-sm btn-secondary shrink-0"
+                onClick={submitNote}
+                disabled={!noteDraft.trim()}
+                style={!noteDraft.trim() ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
+                📝 {t('lan.note.addBtn')}
+              </button>
+            </div>
           )}
         </div>
 
