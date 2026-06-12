@@ -13,6 +13,7 @@ import { useTranslation } from '@/i18n';
 import { formatDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import type { PrintPageSizeKey } from '@/hooks/usePrint';
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 import { openWhatsApp } from '@/services/whatsapp';
 // R-COMMS-SMS-HARD-DISABLE: sendSms + buildReceiptSmsMessage imports removed
 // (post-sale SMS button retired; WhatsApp button is now the sole comm channel
@@ -102,6 +103,10 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   const { t } = useTranslation();
   const { printHtml } = usePrint();
   const { toast } = useToast();
+  // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't own printers — it
+  // forwards receipts to the Primary. Hide the local printer picker + skip the
+  // local printer scan; print forwarding (bridgeReceipt) is unchanged.
+  const lanReadOnly = useLanReadOnlyMode();
   // lang and L kept vestigial — parent compat; helper generateReceiptHtml still uses lang
   const [qrSvg, setQrSvg] = useState<string>('');
   // R-COMMS-SMS-HARD-DISABLE: removed `sending` state and `smsConfigured`
@@ -343,6 +348,8 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   // Load printers when modal opens
   useEffect(() => {
     if (!sale) return;
+    // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: never scan local printers on a Secondary.
+    if (lanReadOnly) return;
     if (typeof window === 'undefined' || !window.electronAPI?.getPrinters) return;
     window.electronAPI.getPrinters()
       .then((list) => {
@@ -364,7 +371,7 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       .catch(() => {
         // Silently fail — handlePrint will fallback gracefully
       });
-  }, [sale?.id]);
+  }, [sale?.id, lanReadOnly]);
 
   // Persist expanded/collapsed state
   const toggleOptionsExpanded = () => {
@@ -397,6 +404,11 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       printer: selectedPrinter || settings.detectedPrinters?.[0],
       copies: Math.max(1, copies),
       pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6',
+      // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: on a read-only LAN Secondary this
+      // receipt is forwarded to the Primary's printer (silent + toast). On the
+      // Primary / standalone it is ignored — local print is unchanged.
+      bridgeReceipt: true,
+      receiptType: 'pos_receipt',
     });
   };
 
@@ -578,34 +590,44 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
             flexDirection: 'column',
             gap: 10,
           }}>
-            {/* Printer dropdown */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {t('receiptModal.printer')}
-              </label>
-              <select
-                value={selectedPrinter}
-                onChange={(e) => setSelectedPrinter(e.target.value)}
-                style={{
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-default)',
-                  borderRadius: 4,
-                  padding: '6px 8px',
-                  fontSize: '0.85rem',
-                }}
-              >
-                {printers.length === 0 ? (
-                  <option value="">{t('receiptModal.noPrinters')}</option>
-                ) : (
-                  printers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.displayName || p.name}{p.isDefault ? ` ${t('receiptModal.systemDefault')}` : ''}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            {/* Printer dropdown — LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary
+                doesn't pick a local printer; receipts forward to the Primary. */}
+            {lanReadOnly ? (
+              <div style={{
+                fontSize: '0.78rem', color: '#93c5fd', padding: '8px 10px', borderRadius: 6,
+                background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)',
+              }}>
+                🖥️ {t('receiptModal.printsFromPrimary')}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  {t('receiptModal.printer')}
+                </label>
+                <select
+                  value={selectedPrinter}
+                  onChange={(e) => setSelectedPrinter(e.target.value)}
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 4,
+                    padding: '6px 8px',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  {printers.length === 0 ? (
+                    <option value="">{t('receiptModal.noPrinters')}</option>
+                  ) : (
+                    printers.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.displayName || p.name}{p.isDefault ? ` ${t('receiptModal.systemDefault')}` : ''}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
             {/* Copies input */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>

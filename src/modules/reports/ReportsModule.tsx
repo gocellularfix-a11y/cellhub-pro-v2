@@ -3436,6 +3436,11 @@ tr:last-child td { border-bottom: none; }
                   silent: false,
                   printer: settings.detectedPrinters?.[0],
                   pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6',
+                  // LAN-PRINT-BRIDGE-REPORTS-REPRINT-FLAG-FIX-V1: a sale-receipt
+                  // reprint must forward to the Primary on a read-only LAN
+                  // Secondary (print-routing only — ignored on Primary/standalone).
+                  bridgeReceipt: true,
+                  receiptType: 'pos_receipt',
                 });
                 setReprintSale(null);
               }}
@@ -3797,7 +3802,10 @@ tr:last-child td { border-bottom: none; }
                     // also uses the structured payload for scan parity.
                     const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
                     const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg, settings.paperSize);
-                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0], pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6' });
+                    // LAN-PRINT-BRIDGE-REPORTS-REPRINT-FLAG-FIX-V1: post-edit reprint
+                    // forwards to the Primary on a read-only LAN Secondary
+                    // (print-routing only — ignored on Primary/standalone).
+                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0], pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6', bridgeReceipt: true, receiptType: 'pos_receipt' });
                   } catch (err) {
                     console.error('[edit-sale-item] reprint failed', err);
                   }

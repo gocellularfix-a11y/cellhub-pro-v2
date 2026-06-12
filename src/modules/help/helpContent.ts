@@ -742,6 +742,102 @@ export const HELP_MODULES: HelpModuleEntry[] = [
     },
     related: ['customers', 'reports', 'inventory'],
   },
+
+  // ── Multi-Terminal / LAN Troubleshooting ──────────────────
+  {
+    id: 'lan-troubleshooting',
+    icon: '🌐',
+    title: {
+      en: 'Multi-Terminal / LAN Troubleshooting',
+      es: 'Solución de Problemas Multi-Terminal / Red Local',
+      pt: 'Solução de Problemas Multi-Terminal / Rede Local',
+    },
+    summary: {
+      en: 'Fix sync, printing, and greyed-button issues between Primary and Secondary computers.',
+      es: 'Resuelve problemas de sincronización, impresión y botones grises entre la computadora Principal y la Secundaria.',
+      pt: 'Resolva problemas de sincronização, impressão e botões acinzentados entre os computadores Principal e Secundário.',
+    },
+    whatItDoes: {
+      en: 'In a multi-terminal setup, one computer is the Primary — it owns the data and the printer — and the others are Secondary read-only mirrors that connect to it over your local network. After a router or internet outage, Windows can hold on to an old connection state, so both computers still say "connected" while sync and printing have actually stopped. The fix is usually a clean reconnect, started from the Primary.',
+      es: 'En una configuración de varias terminales, una computadora es la Principal — es dueña de los datos y de la impresora — y las demás son terminales Secundarias de solo lectura que se conectan a ella por tu red local. Después de una caída del router o del internet, Windows puede quedarse con un estado de conexión viejo, así que ambas computadoras siguen diciendo "conectado" mientras la sincronización y la impresión en realidad ya se detuvieron. La solución suele ser una reconexión limpia, empezando por la Principal.',
+      pt: 'Em uma configuração de vários terminais, um computador é o Principal — ele é dono dos dados e da impressora — e os outros são terminais Secundários somente leitura que se conectam a ele pela sua rede local. Após uma queda do roteador ou da internet, o Windows pode manter um estado de conexão antigo, então os dois computadores continuam dizendo "conectado" enquanto a sincronização e a impressão na verdade já pararam. A solução costuma ser uma reconexão limpa, começando pelo Principal.',
+    },
+    commonActions: {
+      en: [
+        'Both say connected but sync or printing stopped → do a clean reconnect (see Steps below).',
+        'Secondary buttons are greyed out → this is normal; use the Primary for those modules.',
+        'Receipts will not print from the Secondary → check the Primary and its printer.',
+        'After disconnecting → the computer returns to standalone; re-select its local printer.',
+      ],
+      es: [
+        'Ambas dicen conectado pero la sincronización o la impresión se detuvo → haz una reconexión limpia (ver Pasos abajo).',
+        'Los botones de la Secundaria están grises → es normal; usa la Principal para esos módulos.',
+        'No imprime recibos desde la Secundaria → revisa la Principal y su impresora.',
+        'Después de desconectar → la computadora vuelve a modo independiente; vuelve a seleccionar su impresora local.',
+      ],
+      pt: [
+        'Os dois dizem conectado mas a sincronização ou a impressão parou → faça uma reconexão limpa (veja os Passos abaixo).',
+        'Os botões do Secundário estão acinzentados → é normal; use o Principal para esses módulos.',
+        'Não imprime recibos do Secundário → verifique o Principal e a impressora dele.',
+        'Após desconectar → o computador volta ao modo autônomo; selecione novamente a impressora local.',
+      ],
+    },
+    steps: {
+      en: [
+        'Both computers say connected but sync/printing is not working? Do a clean reconnect:',
+        'Close CellHub on the Secondary computer.',
+        'Close CellHub on the Primary computer.',
+        'Open CellHub on the Primary first.',
+        'Wait until Local Network shows Primary mode.',
+        'Open CellHub on the Secondary.',
+        'If it still does not work, disconnect and re-pair with a new code.',
+      ],
+      es: [
+        '¿Ambas computadoras dicen conectado pero la sincronización/impresión no funciona? Haz una reconexión limpia:',
+        'Cierra CellHub en la computadora Secundaria.',
+        'Cierra CellHub en la computadora Principal.',
+        'Abre CellHub primero en la Principal.',
+        'Espera hasta que Red Local muestre el modo Principal.',
+        'Abre CellHub en la Secundaria.',
+        'Si aún no funciona, desconecta y vuelve a emparejar con un código nuevo.',
+      ],
+      pt: [
+        'Os dois computadores dizem conectado mas a sincronização/impressão não funciona? Faça uma reconexão limpa:',
+        'Feche o CellHub no computador Secundário.',
+        'Feche o CellHub no computador Principal.',
+        'Abra o CellHub primeiro no Principal.',
+        'Aguarde até Rede Local mostrar o modo Principal.',
+        'Abra o CellHub no Secundário.',
+        'Se ainda não funcionar, desconecte e pareie novamente com um novo código.',
+      ],
+    },
+    warnings: {
+      en: [
+        'Greyed-out buttons on a Secondary are normal. While connected to a Primary, the Secondary is a read-only mirror for protected modules. Use the Primary computer for Layaways, Special Orders, Repairs, Unlocks, and Inventory → Add Item.',
+      ],
+      es: [
+        'Los botones grises en una Secundaria son normales. Mientras está conectada a una Principal, la Secundaria es un espejo de solo lectura para los módulos protegidos. Usa la computadora Principal para Apartados, Pedidos Especiales, Reparaciones, Liberaciones e Inventario → Agregar Artículo.',
+      ],
+      pt: [
+        'Botões acinzentados em um Secundário são normais. Enquanto conectado a um Principal, o Secundário é um espelho somente leitura para os módulos protegidos. Use o computador Principal para Crediário, Pedidos Especiais, Reparos, Desbloqueios e Estoque → Adicionar Item.',
+      ],
+    },
+    troubleshooting: {
+      en: [
+        'Receipts do not print from the Secondary? The Secondary sends receipt prints to the Primary. Confirm: the Primary is open; the Primary is connected to the same network; the Primary has a printer selected in Settings → Hardware; the printer is powered on. Then retry from the Secondary.',
+        'After disconnecting from the Primary, the computer returns to standalone mode and its local buttons come back. The local printer may need to be selected again in Settings → Hardware.',
+      ],
+      es: [
+        '¿No imprime recibos desde la Secundaria? La Secundaria envía las impresiones de recibos a la Principal. Confirma: la Principal está abierta; la Principal está conectada a la misma red; la Principal tiene una impresora seleccionada en Configuración → Hardware; la impresora está encendida. Luego reintenta desde la Secundaria.',
+        'Después de desconectar de la Principal, la computadora vuelve a modo independiente y sus botones locales regresan. Puede que necesites volver a seleccionar la impresora local en Configuración → Hardware.',
+      ],
+      pt: [
+        'Não imprime recibos do Secundário? O Secundário envia as impressões de recibos para o Principal. Confirme: o Principal está aberto; o Principal está conectado à mesma rede; o Principal tem uma impressora selecionada em Configurações → Hardware; a impressora está ligada. Depois tente novamente no Secundário.',
+        'Após desconectar do Principal, o computador volta ao modo autônomo e os botões locais retornam. Pode ser necessário selecionar a impressora local novamente em Configurações → Hardware.',
+      ],
+    },
+    related: ['settings', 'backup'],
+  },
 ];
 
 /** Lookup helper used by HelpModule for related-module chips. */

@@ -19,6 +19,8 @@ import LanMirrorBanner from '@/components/lan/LanMirrorBanner';
 import LanReadOnlyGuardListener from '@/components/lan/LanReadOnlyGuardListener';
 // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: Primary-side dispatcher for forwarded ops.
 import LanOperationDispatcher from '@/components/lan/LanOperationDispatcher';
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: toast feedback for forwarded receipt prints.
+import LanPrintBridgeListener from '@/components/lan/LanPrintBridgeListener';
 import { CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
@@ -415,6 +417,7 @@ export default function AppShell() {
       {/* LAN-PHASE-3B: on the Primary, dispatches forwarded ops (CREATE_CUSTOMER)
           to persist + push a fresh snapshot. No-op on Secondary/standalone. */}
       <LanOperationDispatcher />
+      <LanPrintBridgeListener />
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />

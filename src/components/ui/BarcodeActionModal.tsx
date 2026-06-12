@@ -160,7 +160,18 @@ export default function BarcodeActionModal() {
     // print. Old reprints encoded only invoiceNumber.
     const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
     const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
-    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+    // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a scan→reprint is a
+    // POS receipt — on a read-only LAN Secondary it must forward to the Primary
+    // (which owns the printer), exactly like a fresh checkout receipt. Without
+    // these flags the Secondary skipped the bridge early-return, opened
+    // PrintPreviewModal, and greyed out Print (canBridge=false). On the
+    // Primary/standalone the flags are ignored → unchanged local print.
+    printHtml(html, {
+      silent: false,
+      printer: settings.detectedPrinters?.[0],
+      bridgeReceipt: true,
+      receiptType: 'pos_receipt',
+    });
     close();
   };
 

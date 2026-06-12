@@ -6,6 +6,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
+// LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't own/scan printers.
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
+// LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: forward bridged receipts.
+import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -29,6 +33,12 @@ interface PrintPreviewModalProps {
   initialPrinter?: string;
   initialCopies?: number;
   initialLandscape?: boolean;
+  // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: when a bridge-eligible
+  // receipt reaches this modal on a Secondary, keep Print ENABLED and forward
+  // it to the Primary (instead of a dead-end disabled state). Non-bridged prints
+  // (e.g. Print Desk) stay disabled on a Secondary.
+  bridgeReceipt?: boolean;
+  receiptType?: string;
 }
 
 interface PrinterInfo {
@@ -46,8 +56,17 @@ export default function PrintPreviewModal({
   initialPrinter,
   initialCopies,
   initialLandscape,
+  bridgeReceipt,
+  receiptType,
 }: PrintPreviewModalProps) {
   const { t } = useTranslation();
+  // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: on a LAN Secondary, hide the printer
+  // picker + skip the local printer scan (the Primary owns hardware).
+  const lanReadOnly = useLanReadOnlyMode();
+  // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a Secondary CAN still
+  // print a bridge-eligible receipt — it forwards to the Primary. Print Desk and
+  // other non-bridged prints have no bridgeReceipt flag → stay disabled here.
+  const canBridge = lanReadOnly && !!bridgeReceipt;
   // ── State ─────────────────────────────────────────────────
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => {
@@ -88,6 +107,8 @@ export default function PrintPreviewModal({
   // ── Load printers on open ─────────────────────────────────
   useEffect(() => {
     if (!open) return;
+    // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: never scan local printers on a Secondary.
+    if (lanReadOnly) return;
     if (!window.electronAPI?.getPrinters) return;
     window.electronAPI.getPrinters().then((list) => {
       setPrinters(list || []);
@@ -101,7 +122,7 @@ export default function PrintPreviewModal({
         if (def) setSelectedPrinter(def.name);
       }
     }).catch(() => {});
-  }, [open, html]);
+  }, [open, html, lanReadOnly]);
 
 
   // R-PRINT-PAGE-RANGES-V1: parse user-typed range like "1", "2", "1-2", "1,3",
@@ -129,6 +150,24 @@ export default function PrintPreviewModal({
 
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = async () => {
+    // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a bridge-eligible
+    // receipt on a Secondary forwards to the Primary (which owns the printer)
+    // instead of printing locally. Toast feedback via LanPrintBridgeListener.
+    if (canBridge) {
+      setPrinting(true);
+      try {
+        const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+        const micron = landscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
+        const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html, copies, pageSize: micron });
+        emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
+      } catch {
+        emitLanPrintResult({ ok: false, error: 'bridge_error' });
+      } finally {
+        setPrinting(false);
+        onClose();
+      }
+      return;
+    }
     if (!window.electronAPI?.printRun || !selectedPrinter) return;
     // Validate custom page range before sending to printer
     if (pageRangeMode === 'custom') {
@@ -258,21 +297,31 @@ export default function PrintPreviewModal({
             🖨️ Print
           </h2>
 
-          {/* Printer */}
-          <Field label="Printer">
-            <select
-              value={selectedPrinter}
-              onChange={(e) => setSelectedPrinter(e.target.value)}
-              style={selectStyle}
-            >
-              {printers.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.displayName || p.name}{p.isDefault ? ' ★' : ''}
-                </option>
-              ))}
-              {printers.length === 0 && <option value="">{t('print.noPrintersFound')}</option>}
-            </select>
-          </Field>
+          {/* Printer — LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't
+              own/pick local printers. Show a managed-by-Primary card instead. */}
+          {lanReadOnly ? (
+            <div style={{
+              fontSize: '0.8rem', color: '#93c5fd', padding: '0.6rem 0.75rem', borderRadius: '0.5rem',
+              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)',
+            }}>
+              🖥️ {canBridge ? t('print.willPrintOnPrimary') : t('print.managedByPrimary')}
+            </div>
+          ) : (
+            <Field label="Printer">
+              <select
+                value={selectedPrinter}
+                onChange={(e) => setSelectedPrinter(e.target.value)}
+                style={selectStyle}
+              >
+                {printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.displayName || p.name}{p.isDefault ? ' ★' : ''}
+                  </option>
+                ))}
+                {printers.length === 0 && <option value="">{t('print.noPrintersFound')}</option>}
+              </select>
+            </Field>
+          )}
 
           {/* Page Size */}
           <Field label="Page Size">
@@ -490,12 +539,20 @@ export default function PrintPreviewModal({
             </button>
             <button
               onClick={handlePrint}
-              disabled={printing || !selectedPrinter || (pageRangeMode === 'custom' && !!pageRangeError)}
+              // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: on a Secondary,
+              // a bridge-eligible receipt (canBridge) keeps Print ENABLED and
+              // forwards to the Primary. A non-bridged print (no bridgeReceipt) is
+              // disabled. Primary/standalone require a selected printer as before.
+              disabled={
+                printing
+                || (pageRangeMode === 'custom' && !!pageRangeError)
+                || (lanReadOnly ? !canBridge : !selectedPrinter)
+              }
               style={{
                 flex: 2, padding: '0.65rem', borderRadius: '0.5rem', border: 'none',
                 background: printing ? '#334155' : '#3b82f6', color: '#fff', cursor: printing ? 'wait' : 'pointer',
                 fontSize: '0.9rem', fontWeight: 700,
-                opacity: (!selectedPrinter || (pageRangeMode === 'custom' && !!pageRangeError)) ? 0.5 : 1,
+                opacity: ((lanReadOnly ? !canBridge : !selectedPrinter) || (pageRangeMode === 'custom' && !!pageRangeError)) ? 0.5 : 1,
               }}
             >
               {printing ? '⏳ Printing...' : `🖨️ Print${copies > 1 ? ` (×${copies})` : ''}`}

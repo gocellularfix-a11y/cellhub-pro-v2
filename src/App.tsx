@@ -238,6 +238,8 @@ export default function App() {
         initialPageSize={printModal.options?.pageSize}
         initialCopies={printModal.options?.copies}
         initialLandscape={printModal.options?.landscape}
+        bridgeReceipt={printModal.options?.bridgeReceipt}
+        receiptType={printModal.options?.receiptType}
       />
     </>
   );

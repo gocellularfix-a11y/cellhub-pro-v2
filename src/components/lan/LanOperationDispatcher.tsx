@@ -147,6 +147,34 @@ export default function LanOperationDispatcher() {
       return { ok: true, appointmentId: appt.id, duplicate: false };
     };
 
+    // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: print a forwarded receipt on the
+    // PRIMARY's own default printer. The Primary owns the hardware — the
+    // Secondary never names a device. Returns a clean printer error if the
+    // Primary has no default printer or the job fails.
+    const handlePrintReceipt = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
+      const a = appRef.current;
+      const p = op.payload && op.payload.print;
+      const html = p && String(p.html || '');
+      if (!p || !html) return { ok: false, error: 'bad_payload' };
+      if (!window.electronAPI?.printRun) return { ok: false, error: 'print_unavailable' };
+      const settings = a.state.settings as unknown as Record<string, unknown>;
+      const deviceName = ((settings?.detectedPrinters as string[] | undefined) || [])[0];
+      if (!deviceName) return { ok: false, error: 'no_printer' };
+      const copies = Math.max(1, Math.min(10, Math.round(Number(p.copies) || 1)));
+      try {
+        const res = await window.electronAPI.printRun({
+          html,
+          deviceName,
+          copies,
+          ...(p.pageSize ? { pageSize: p.pageSize } : {}),
+        });
+        if (res && res.success) return { ok: true, printed: true };
+        return { ok: false, error: (res && res.error) || 'print_failed' };
+      } catch {
+        return { ok: false, error: 'print_exception' };
+      }
+    };
+
     const handleCreateCustomer = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
       const a = appRef.current;
       const opId = String(op.operationId || '');
@@ -215,6 +243,7 @@ export default function LanOperationDispatcher() {
       if (op.type === 'CREATE_CUSTOMER') return handleCreateCustomer(op);
       if (op.type === 'LAN_CUSTOMER_NOTE_ADD') return handleCustomerNoteAdd(op);
       if (op.type === 'CREATE_APPOINTMENT') return handleCreateAppointment(op);
+      if (op.type === 'LAN_PRINT_RECEIPT_REQUEST') return handlePrintReceipt(op);
       return { ok: false, error: 'unsupported_operation' };
     };
 

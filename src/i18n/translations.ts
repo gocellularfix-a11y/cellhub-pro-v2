@@ -2048,6 +2048,8 @@ export const translations: TranslationDictionary = {
   'receiptModal.searchCustomerPlaceholder': { en: 'Search customer by name or phone...', es: 'Buscar cliente por nombre o teléfono...', pt: 'Buscar cliente por nome ou telefone...' },
   'receiptModal.printOptions': { en: 'Print options', es: 'Opciones de impresión', pt: 'Opções de impressão' },
   'receiptModal.printer': { en: 'Printer', es: 'Impresora', pt: 'Impressora' },
+  // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1
+  'receiptModal.printsFromPrimary': { en: 'Receipts print from the Primary Terminal.', es: 'Los recibos se imprimen desde la Terminal Principal.', pt: 'Os recibos são impressos no Terminal Principal.' },
   'receiptModal.noPrinters': { en: 'No printers detected', es: 'No se detectaron impresoras', pt: 'Nenhuma impressora detectada' },
   'receiptModal.systemDefault': { en: '(system default)', es: '(predeterminada)', pt: '(padrão do sistema)' },
   'receiptModal.copies': { en: 'Copies', es: 'Copias', pt: 'Cópias' },
@@ -5035,6 +5037,10 @@ export const translations: TranslationDictionary = {
   'settings.currentBadge':     { en: 'Current',                             es: 'Actual',                              pt: 'Atual' },
   'settings.timezone':         { en: 'Timezone',                            es: 'Zona Horaria',                        pt: 'Fuso Horário' },
   'print.noPrintersFound':     { en: 'No printers found',                   es: 'No se encontraron impresoras',        pt: 'Nenhuma impressora encontrada' },
+  // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: shown in the print preview on a Secondary.
+  'print.managedByPrimary':    { en: 'Managed by Primary Terminal — printing happens on the Primary computer.', es: 'Administrado por la Terminal Principal — la impresión ocurre en la computadora Principal.', pt: 'Gerenciado pelo Terminal Principal — a impressão ocorre no computador Principal.' },
+  // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: bridge-eligible receipt on a Secondary.
+  'print.willPrintOnPrimary':  { en: 'This receipt will print on the Primary Terminal.', es: 'Este recibo se imprimirá en la Terminal Principal.', pt: 'Este recibo será impresso no Terminal Principal.' },
   'settings.taxes.title':                  { en: 'Tax Rates & Fees',            es: 'Tasas de Impuesto y Cargos',    pt: 'Taxas de Imposto e Tarifas' },
   'settings.taxes.creditCardFeeDesc':      { en: 'Fixed credit card fee per transaction. Ex: 5.00 = $5.00. Cashiers can override at checkout.', es: 'Cargo fijo por tarjeta. Ej: 5.00 = $5.00 por transacción.', pt: 'Tarifa fixa de cartão por transação. Ex: 5.00 = $5.00.' },
   'settings.taxes.returnPolicyDays':       { en: 'Return Policy (days)',         es: 'Política de Devolución (días)', pt: 'Política de Devolução (dias)' },
@@ -5092,6 +5098,11 @@ export const translations: TranslationDictionary = {
   // Hardware section
   'settings.hardware.title':               { en: 'Hardware & Devices',          es: 'Hardware y Dispositivos',       pt: 'Hardware e Dispositivos' },
   'settings.hardware.printerTitle':        { en: 'Receipt Printer',             es: 'Impresora de Recibos',          pt: 'Impressora de Recibos' },
+  // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: shown on a Secondary's hardware section.
+  'settings.hardware.managedByPrimary':    { en: 'Managed by Primary Terminal — receipts print on the Primary computer.', es: 'Administrado por la Terminal Principal — los recibos se imprimen en la computadora Principal.', pt: 'Gerenciado pelo Terminal Principal — os recibos são impressos no computador Principal.' },
+  // LAN-PRINT-BRIDGE-SECONDARY-UI-LOCK-V1: two-line status card on a Secondary.
+  'settings.hardware.managedByPrimaryTitle':{ en: 'Managed by Primary Terminal',  es: 'Administrado por la Terminal Principal', pt: 'Gerenciado pelo Terminal Principal' },
+  'settings.hardware.managedByPrimarySub':  { en: 'Receipts print from the Primary computer.', es: 'Los recibos se imprimen desde la computadora Principal.', pt: 'Os recibos são impressos no computador Principal.' },
   'settings.hardware.printerDesc':         { en: 'Select the default printer for receipts, labels, and repair tickets.', es: 'Selecciona la impresora predeterminada para recibos, etiquetas, y tickets de reparación.', pt: 'Selecione a impressora padrão para recibos, etiquetas e tickets de reparo.' },
   'settings.hardware.scan':                { en: '🔍 Scan for Printers', es: '🔍 Escanear Impresoras', pt: '🔍 Escanear Impressoras' },
   'settings.hardware.scanning':            { en: '⏳ Scanning...',           es: '⏳ Escaneando...',           pt: '⏳ Escaneando...' },

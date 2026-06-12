@@ -27,7 +27,11 @@ const DISCOVERY_TAG = 'cellhub-lan-v1';
 const BEACON_INTERVAL_MS = 2000;    // Primary re-advertises every 2s
 const CODE_TTL_MS = 5 * 60 * 1000;  // 6-digit code expires after 5 min
 const MAX_FAILED = 5;               // wrong-code attempts before the code is burned
-const MAX_BODY = 8 * 1024;
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: raised 8KB → 512KB. A forwarded receipt
+// (LAN_PRINT_RECEIPT_REQUEST) carries rendered HTML with inline barcode + QR
+// SVGs, which can exceed 8KB. Still a hard cap (the snapshot endpoint allows
+// 25MB separately). Applies to /operation and /pair bodies.
+const MAX_BODY = 512 * 1024;
 // LOCAL-LAN-PAIRING-PHASE-2-READONLY-SNAPSHOT-V1: a snapshot older than this
 // (since the Primary renderer last pushed it) is served but flagged stale.
 const SNAPSHOT_STALE_MS = 60 * 1000;
@@ -49,9 +53,10 @@ let getLicense = null;
 // Accepted operation types. LAN_PING_OPERATION = harmless heartbeat (display
 // only). CREATE_CUSTOMER + LAN_CUSTOMER_NOTE_ADD = forwarded writes, dispatched
 // to the Primary renderer; every other type is rejected at the server.
-const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT']);
+const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST']);
 // Operations routed through the renderer dispatcher (not the display-only path).
-const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT']);
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: LAN_PRINT_RECEIPT_REQUEST → Primary prints.
+const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST']);
 let lastOperation = null;
 // Active pairing window: { code, expiresAt, failed } or null when none.
 let pairState = null;
@@ -375,6 +380,7 @@ function startPrimary(opts) {
                   type: op.type,
                   customerId: body.customerId || undefined,
                   appointmentId: body.appointmentId || undefined,
+                  printed: body.printed || undefined,
                   duplicate: !!body.duplicate,
                   error: body.ok ? undefined : (body.error || 'dispatch_failed'),
                 }));

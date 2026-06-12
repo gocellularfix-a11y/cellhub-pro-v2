@@ -146,6 +146,15 @@ export function requestMirrorResync(): void {
   try { window.dispatchEvent(new CustomEvent(LAN_RESYNC_EVENT)); } catch { /* ignore */ }
 }
 
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: result of a forwarded receipt print. The
+// print funnel (usePrint) is non-React, so it emits this event and a global
+// <LanPrintBridgeListener> turns it into a localized toast.
+export const LAN_PRINT_RESULT_EVENT = 'cellhub:lan-print-result';
+export interface LanPrintResultDetail { ok: boolean; error?: string }
+export function emitLanPrintResult(detail: LanPrintResultDetail): void {
+  try { window.dispatchEvent(new CustomEvent(LAN_PRINT_RESULT_EVENT, { detail })); } catch { /* ignore */ }
+}
+
 // ── Snapshot (PHASE 2, read-only) ──
 // Sensitive settings fields stripped before a snapshot ever leaves the
 // Primary. PIN hashes / Firebase config / detected printers are never shared.
@@ -349,6 +358,41 @@ export async function sendCreateAppointment(input: LanCreateAppointmentInput): P
   const ack = await window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
   if (ack && ack.ok) requestMirrorResync();
   return ack;
+}
+
+// ── LAN-HARDWARE-BRIDGE-FOUNDATION-V1 ──
+// Secondary: forward a rendered receipt to the Primary, which prints it on its
+// own default printer. NOT idempotent — printing must NOT be auto-retried, so
+// this sends exactly once and surfaces the Primary's success/failure as-is.
+export interface LanPrintReceiptInput {
+  receiptType?: string;
+  html: string;
+  copies?: number;
+  pageSize?: { width: number; height: number }; // microns
+}
+export async function sendPrintReceipt(input: LanPrintReceiptInput): Promise<LanOperationAck> {
+  if (!isElectron() || !window.electronAPI?.lanSendOperation) return { ok: false, error: 'not_electron' };
+  const conn = getConnection();
+  if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return { ok: false, error: 'not_paired' };
+  const html = String(input.html || '');
+  if (!html) return { ok: false, error: 'bad_payload' };
+  const operation: LanOperation = {
+    operationId: randomId(),
+    type: 'LAN_PRINT_RECEIPT_REQUEST',
+    payload: {
+      print: {
+        receiptType: String(input.receiptType || 'receipt').slice(0, 40),
+        html,
+        copies: Math.max(1, Math.min(10, Math.round(input.copies || 1))),
+        pageSize: input.pageSize,
+        printJobId: randomId(),
+        timestamp: Date.now(),
+      },
+    },
+    deviceId: getDeviceId(),
+    createdAt: Date.now(),
+  };
+  return window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
 }
 
 // Primary side: last operation received from a Secondary (display only).

@@ -1,4 +1,8 @@
 import { useCallback, useState } from 'react';
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: on a read-only LAN Secondary, receipt
+// prints are forwarded to the Primary (which owns the printer).
+import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
+import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
 
 /**
  * Print abstraction — routes to the best print path per environment.
@@ -42,6 +46,13 @@ export interface PrintOptions {
   copies?: number;
   /** Landscape orientation. */
   landscape?: boolean;
+  /** LAN-HARDWARE-BRIDGE-FOUNDATION-V1: when true AND this machine is a
+   *  read-only LAN Secondary, the print is FORWARDED to the Primary (which owns
+   *  the printer) instead of printing locally. Opt-in per receipt call site —
+   *  default false keeps every other print (labels, reports, Primary) local. */
+  bridgeReceipt?: boolean;
+  /** Optional label for the forwarded receipt (e.g. 'pos_receipt'). */
+  receiptType?: string;
 }
 
 /** State holder for the print modal — consumed by AppProvider or layout root */
@@ -81,6 +92,26 @@ export function registerPrintModalSetter(setter: (state: PrintModalState) => voi
  */
 export async function openPrintWindow(html: string, options?: PrintOptions): Promise<void> {
   const opts = options || {};
+
+  // ── LAN-HARDWARE-BRIDGE-FOUNDATION-V1: forward receipt prints to the Primary ──
+  // On a read-only LAN Secondary, a receipt print is sent to the Primary, which
+  // prints on its own hardware. Silent + toast-only feedback (no modal). NOT
+  // retried (printing isn't idempotent). Any other print / role is unaffected.
+  if (opts.bridgeReceipt && isLanSecondaryReadOnly()) {
+    const pageSize = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
+    try {
+      const ack = await sendPrintReceipt({
+        receiptType: opts.receiptType || 'receipt',
+        html,
+        copies: opts.copies || 1,
+        pageSize,
+      });
+      emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
+    } catch {
+      emitLanPrintResult({ ok: false, error: 'bridge_error' });
+    }
+    return;
+  }
 
   // ── Path 1: Electron silent print (bypass modal) ──────────
   if (
