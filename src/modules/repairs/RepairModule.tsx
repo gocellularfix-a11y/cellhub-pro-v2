@@ -335,6 +335,11 @@ export default function RepairModule() {
       paymentTraceI18n(t),
       escHtml,
       money,
+      // REPAIR-RECEIPT-CLEANUP-V2: repairs store only deposit + balance, and the
+      // money totals above already show Total / Deposit / Balance. Drop the whole
+      // trace (ORDER SUMMARY + PAID TODAY + CURRENT STATUS) — with no history rows
+      // it renders empty, ending the ticket cleanly at the warranty box. Display-only.
+      { omitOrderSummary: true, omitStatus: true },
     );
 
     // Pre-compute corrected-receipt annotations
@@ -356,9 +361,12 @@ export default function RepairModule() {
     }
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Repair ${escHtml(safe(repair.ticketNumber))}</title><style>
-@page{size:4in 6in;margin:0}*{box-sizing:border-box;margin:0;padding:0}
-html,body{width:4in;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff}
-body{padding:.1in .15in}
+/* REPAIR-RECEIPT-CLEANUP-V2: width-agnostic page. The old @page{size:4in 6in} forced a
+   fixed 6in height, so on an 80mm continuous roll the printer fed a full 6in per ticket
+   (huge blank space). Letting the selected paper drive the page + content-height removes it. */
+@page{margin:0}*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;max-width:100%;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff}
+body{padding:.1in .15in;overflow-x:hidden}
 .hdr{text-align:center;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
 .store{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .store-sub{font-size:9px;color:#444;margin-top:1px}
@@ -384,7 +392,7 @@ body{padding:.1in .15in}
 .sig-line{border-bottom:.5px solid #000;margin:14px 0 2px}
 .sig-lbl{font-size:8px;color:#666}
 .ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:6px;line-height:1.5}
-@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media screen{img,svg{max-width:100%;height:auto}}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
 <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
@@ -432,11 +440,9 @@ ${corrected ? `<div class="corrected-bar">&#9888; ${escHtml(t('repairs.print.cor
 <div class="dash" style="margin:4px 0"></div>
 ${repairTraceHtml}
 ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: ${escHtml(safe(repair.warranty))} ${escHtml(t('repairs.print.days'))}</div>` : ''}
-<div class="sig-sec">
-  <div class="sig-line"></div>
-  <div class="sig-lbl">Customer Signature / Pickup Authorization</div>
-</div>
-<div class="ftr" style="text-align:center;font-size:11px;font-weight:600;line-height:1.3;color:#000;border-top:none">${escHtml(t('repairs.print.thankYou'))}<br>${escHtml(storeName)}${settings.showReviewQr && settings.googleReviewUrl ? `<div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc"><div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('repairs.print.reviewPrompt'))}</div>${qrSvg ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>` : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}<div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div></div>` : ''}</div>
+<!-- REPAIR-RECEIPT-CLEANUP-V1: ticket ends after the warranty box. Removed:
+     Customer Signature / Pickup Authorization, thank-you + store-name footer,
+     Leave-us-a-review prompt, and Google review QR. Layout only — no math. -->
 </body></html>`;
     printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
   }, [settings, printHtml, t]);

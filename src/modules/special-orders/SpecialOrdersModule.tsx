@@ -324,11 +324,9 @@ export default function SpecialOrdersModule() {
     // (prevHtml), refund-owed line, status / supplier / ETA / notes. Money values
     // are formatted only — no financial math touched.
     const barcodeSvg = renderBarcodeSvg(ticketNum);
-    let qrSvg = '';
-    if (settings.showReviewQr && settings.googleReviewUrl) {
-      try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
-      catch { /* QR optional — template falls back to a remote img */ }
-    }
+    // SPECIAL-ORDER-RECEIPT-CLEANUP-V1: Google Reviews QR removed from this receipt
+    // — per receipt-type policy the QR appears only on sales / activation / payment
+    // receipts, not on Special Orders. (qrSvg generation deleted with its footer use.)
     // Full-order money display. Tax is the FULL order sales tax (forward from the
     // pre-tax price), NOT the deposit's reverse-tax split — that lives on the POS
     // payment receipt and is intentionally left untouched. Display-only: no stored
@@ -347,7 +345,6 @@ export default function SpecialOrdersModule() {
     const paidRowLabel = displayOverride?.depositAmount != null
       ? t('so.print.deposit')
       : t('so.print.totalPaid');
-    const thanks = settings.receiptFooter || t('so.print.thankYou');
 
     // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: payment trace. Uses
     // the SAME display values the receipt already computed — no money/tax/
@@ -388,8 +385,10 @@ export default function SpecialOrdersModule() {
       money,
       // SPECIAL-ORDER-RECEIPT-COMPACT-V1: the money table above already shows
       // Price / Tax / Total / Paid / Balance — omit the duplicate ORDER SUMMARY
-      // so the trace only adds Payment History / Paid Today / Current Status.
-      { omitOrderSummary: true },
+      // SPECIAL-ORDER-RECEIPT-COMPACT-POLISH-V1: also drop the redundant lower
+      // PAID TODAY / CURRENT STATUS block (Total/Paid/Balance/Status already
+      // shown above) so the trace adds ONLY Payment History. Darker labels.
+      { omitOrderSummary: true, omitStatus: true, darkLabels: true },
     );
 
     const html = `<!DOCTYPE html>
@@ -398,11 +397,13 @@ export default function SpecialOrdersModule() {
   @page { size: 4in 6in; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 4in; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
-  body { padding: 0.1in 0.15in; }
+  /* SPECIAL-ORDER-RECEIPT-COMPACT-POLISH-V1: extra bottom padding so the QR never clips. */
+  body { padding: 0.1in 0.15in 0.22in; }
   @media screen { html, body { width: 100% !important; max-width: 100% !important; } img, svg { max-width: 100%; height: auto; } }
   table { width: 100%; border-collapse: collapse; }
   .sep { border-top: 1px dashed #999; margin: 5px 0; }
-  .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
+  /* SPECIAL-ORDER-RECEIPT-COMPACT-POLISH-V1: darker section labels (#666 → #333). */
+  .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
   .corr-bar { background: #b91c1c; color: #fff; text-align: center; font-size: 10px; font-weight: 700; padding: 2px 0; margin: 4px 0; }
   .was { font-size: 9px; color: #999; font-style: italic; }
   @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
@@ -419,7 +420,6 @@ export default function SpecialOrdersModule() {
   <table style="margin-bottom:5px">
     <tr><td style="font-size:11px">${escHtml(new Date().toLocaleString())}</td><td style="text-align:right;font-size:12px;font-weight:900">#${escHtml(ticketNum)}</td></tr>
     <tr><td colspan="2" style="text-align:center;font-size:13px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;padding-top:3px">${escHtml(t('so.print.title'))}</td></tr>
-    <tr><td colspan="2" style="font-size:10px;padding-top:2px">${escHtml(t('so.print.status'))}: <strong>${escHtml(fmt(order.status))}</strong></td></tr>
     ${corrected ? `<tr><td colspan="2" style="font-size:10px">${escHtml(t('so.print.corrected'))}: ${escHtml(new Date().toLocaleString())}</td></tr>` : ''}
   </table>
   <div class="sep"></div>
@@ -450,18 +450,9 @@ export default function SpecialOrdersModule() {
   <div class="sep"></div>
   ${soTraceHtml}
   ${order.notes ? `<div class="sep"></div><div class="sec-lbl">${escHtml(t('so.print.notes'))}</div><div style="font-size:10px">${escHtml(fmt(order.notes))}</div>` : ''}
-  <div class="sep"></div>
-  <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
-    ${escHtml(thanks)}
-    ${settings.showReviewQr && settings.googleReviewUrl ? `
-    <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #ccc">
-      <div style="font-size:10px;font-weight:700;margin-bottom:4px">${escHtml(t('so.print.reviewPrompt'))}</div>
-      ${qrSvg
-        ? `<div style="width:72px;height:72px;margin:0 auto">${qrSvg}</div>`
-        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="72" height="72" style="display:block;margin:0 auto" />`}
-      <div style="font-size:8px;color:#555;margin-top:3px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
-    </div>` : ''}
-  </div>
+  <!-- SPECIAL-ORDER-RECEIPT-CLEANUP-V1: footer removed — Thank-you line,
+       Leave-us-a-review prompt, and Google review QR (QR only on sales /
+       activation / payment receipts). Receipt ends after Payment History / notes. -->
 </body></html>`;
     printHtml(html, {
       silent: false,

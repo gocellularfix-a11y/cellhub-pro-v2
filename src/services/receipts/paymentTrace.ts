@@ -180,9 +180,21 @@ export function renderPaymentTraceHtml(
   // summary was printing the same figures twice. Default (undefined) keeps the
   // existing layout for Layaway / Repair / Unlock receipts unchanged. NO money
   // is recomputed — this only suppresses a display section.
-  options?: { omitOrderSummary?: boolean },
+  // SPECIAL-ORDER-RECEIPT-COMPACT-POLISH-V1: additional additive, default-off
+  // options used only by the Special Order receipt:
+  //   omitStatus  → drop the lower PAID TODAY + CURRENT STATUS block (the SO
+  //                 receipt already shows Total / Total Paid / Balance / Status
+  //                 above, so it was duplicated and pushed the QR off-page).
+  //   darkLabels  → slightly darker section labels (#333 vs #666).
+  //   omitCurrentStatus → drop ONLY the CURRENT STATUS sub-block (Total Paid /
+  //                 Remaining Balance / Status) while KEEPING the PAID TODAY
+  //                 standout above it. Used by the Layaway receipt, which shows
+  //                 Total / Deposit / Balance Due in its own body already.
+  // Layaway / Repair / Unlock pass nothing → fully unchanged.
+  options?: { omitOrderSummary?: boolean; omitStatus?: boolean; omitCurrentStatus?: boolean; darkLabels?: boolean },
 ): string {
-  const lbl = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#666;border-bottom:1px solid #ccc;padding-bottom:1px;margin:6px 0 3px';
+  const labelColor = options?.darkLabels ? '#333' : '#666';
+  const lbl = `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${labelColor};border-bottom:1px solid #ccc;padding-bottom:1px;margin:6px 0 3px`;
   const row = 'display:flex;justify-content:space-between;margin-bottom:1px;font-size:11px';
   const k = 'color:#444';
   const v = 'font-weight:600';
@@ -224,18 +236,26 @@ export function renderPaymentTraceHtml(
     });
   }
 
-  // ── PAID TODAY (standout — what was just paid) ─────────────
-  if (trace.hasToday) {
-    parts.push(
-      `<div style="display:flex;justify-content:space-between;margin:4px 0;padding:2px 0;border-top:1px solid #000;border-bottom:1px solid #000;font-size:12px;font-weight:800"><span>${esc(i18n.paymentToday)}</span><span>${esc(money(trace.paymentTodayCents))}</span></div>`,
-    );
+  // ── PAID TODAY + CURRENT STATUS ────────────────────────────
+  // SPECIAL-ORDER-RECEIPT-COMPACT-POLISH-V1: skipped when omitStatus — the SO
+  // receipt already shows Total Paid / Balance / Status above, so this block
+  // was redundant and risked a 2-page thermal print / clipped QR.
+  if (!options?.omitStatus) {
+    // PAID TODAY (standout — what was just paid)
+    if (trace.hasToday) {
+      parts.push(
+        `<div style="display:flex;justify-content:space-between;margin:4px 0;padding:2px 0;border-top:1px solid #000;border-bottom:1px solid #000;font-size:12px;font-weight:800"><span>${esc(i18n.paymentToday)}</span><span>${esc(money(trace.paymentTodayCents))}</span></div>`,
+      );
+    }
+    // CURRENT STATUS — LAYAWAY-RECEIPT-CLEANUP-V2: omitCurrentStatus drops this
+    // sub-block only (Total Paid / Remaining Balance / Status); PAID TODAY stays.
+    if (!options?.omitCurrentStatus) {
+      parts.push(`<div style="${lbl}">${esc(i18n.statusTitle)}</div>`);
+      parts.push(line(i18n.totalPaid, money(trace.totalPaidCents)));
+      parts.push(line(i18n.balanceAfter, money(trace.balanceAfterCents), true));
+      parts.push(line(i18n.statusLabel, trace.isPaid ? i18n.statusPaid : i18n.statusBalanceDue, true));
+    }
   }
-
-  // ── CURRENT STATUS ─────────────────────────────────────────
-  parts.push(`<div style="${lbl}">${esc(i18n.statusTitle)}</div>`);
-  parts.push(line(i18n.totalPaid, money(trace.totalPaidCents)));
-  parts.push(line(i18n.balanceAfter, money(trace.balanceAfterCents), true));
-  parts.push(line(i18n.statusLabel, trace.isPaid ? i18n.statusPaid : i18n.statusBalanceDue, true));
 
   return `<div style="margin:4px 0">${parts.join('')}</div>`;
 }

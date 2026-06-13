@@ -1117,7 +1117,13 @@ export default function LayawayModule() {
       subtotalCents,
       taxCents: isTaxable ? taxCents : 0,
     });
-    const paymentTraceHtml = renderPaymentTraceHtml(paymentTrace, paymentTraceI18n(t), esc, fmtMoney);
+    // LAYAWAY-RECEIPT-CLEANUP-V1: omit the ORDER SUMMARY block (Subtotal / Sales Tax /
+    // "tax is part of the order total…" note / Original Total) — the main body above
+    // already shows Total / Deposit / Balance Due.
+    // LAYAWAY-RECEIPT-CLEANUP-V2: also omit the CURRENT STATUS sub-block (Total Paid /
+    // Remaining Balance / Status) while KEEPING Payment History + Paid Today (and the
+    // Conditions block, which lives in the main template). Display-only; no recompute.
+    const paymentTraceHtml = renderPaymentTraceHtml(paymentTrace, paymentTraceI18n(t), esc, fmtMoney, { omitOrderSummary: true, omitCurrentStatus: true });
 
     // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #). The Google Reviews QR is
     // intentionally OMITTED on layaway — it is the tallest receipt (tax split +
