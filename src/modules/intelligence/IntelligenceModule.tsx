@@ -135,6 +135,9 @@ import { getAttentionFeed } from '@/services/intelligence/attention/attentionEng
 import { setAttentionPressure, severityToLevel } from '@/services/intelligence/attention/attentionPressureStore';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+// R-REPORTS-MONEY-EXTRACT Phase B1: privacy flag for the engine's EOD money
+// pipeline accessor (getCanViewOwnerFinancials).
+import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { useTranslation } from '@/i18n';
 
 const CARD_BG     = '#111827';
@@ -182,6 +185,10 @@ export default function IntelligenceModule() {
     settings,
     // R-INTELLIGENCE-ROLE-ROUTING-V1: current operator for role-aware routing.
     currentEmployee,
+    // R-REPORTS-MONEY-EXTRACT Phase B1: vendor returns feed the EOD money
+    // pipeline (vendor-return COGS); isAdminMode resolves the privacy flag.
+    vendorReturns,
+    isAdminMode,
   } = state;
   const { locale, t } = useTranslation();
   const engineLang: 'en' | 'es' | 'pt' = locale as 'en' | 'es' | 'pt';
@@ -272,13 +279,21 @@ export default function IntelligenceModule() {
   const engineConfigSigRef = useRef<string>('');
   const engineConfigSig = `${engineLang}|${currentStoreId ?? ''}|${consolidatedView ? '1' : '0'}`;
 
+  // R-REPORTS-MONEY-EXTRACT Phase B1: resolve the financial-privacy flag here
+  // (same rule as ReportsModule) so the engine can expose it to the EOD money
+  // pipeline. Plumbing only — no consumer wired yet (Phase B2).
+  const canSeeFinancials = canViewOwnerFinancials(
+    settings,
+    isAdminMode || currentEmployee?.role === 'owner',
+  );
+
   if (!engineRef.current || engineConfigSigRef.current !== engineConfigSig) {
     // R-INTEL-RENDER-INSTRUMENTATION-CLEANUP: gate timestamp allocations.
     const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
-      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings },
+      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns, canViewOwnerFinancials: canSeeFinancials },
     );
     engineConfigSigRef.current = engineConfigSig;
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.create', _t);
@@ -288,7 +303,7 @@ export default function IntelligenceModule() {
   {
     const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engine.updateData(sales, customers, inventory, repairs, {
-      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings,
+      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns, canViewOwnerFinancials: canSeeFinancials,
     });
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
   }

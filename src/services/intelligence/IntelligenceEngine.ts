@@ -1,5 +1,5 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment, StoreCreditLedger } from '@/store/types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment, StoreCreditLedger, VendorReturn, StoreSettings } from '@/store/types';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
 import { computeContextualBaseline } from './baseline/contextualBaseline';
 import { computeTrendDirectionReport } from './trends/trendDirection';
@@ -112,10 +112,23 @@ export interface EngineExtras {
   // Without this, customer-history profit double-counts the carrier
   // pass-through portion of phone payments — the bug Jorge spotted
   // where Juan's 4 Verizon payments showed 91% margin.
-  settings?: ProfitAdjustmentSettings;
+  // R-REPORTS-MONEY-EXTRACT Phase B1: widened from ProfitAdjustmentSettings to
+  // the full StoreSettings (a superset) so the EOD money pipeline can read the
+  // same settings Reports reads. profitSettings (narrow) is still derived from
+  // this for the existing customer-history path — StoreSettings is assignable.
+  settings?: StoreSettings;
   // R-INTEL-CROSS-001: store credit ledger — global (no storeId filter),
   // same contract as customers. Consumers call getStoreCreditLedger().
   storeCreditLedger?: StoreCreditLedger[];
+  // R-REPORTS-MONEY-EXTRACT Phase B1: vendor returns (read-only pass-through).
+  // Needed by the EOD money pipeline — computeReportMoneyStats subtracts vendor
+  // return COGS from total cost. Engine stores + exposes via getVendorReturns().
+  vendorReturns?: VendorReturn[];
+  // R-REPORTS-MONEY-EXTRACT Phase B1: precomputed financial-privacy flag
+  // (canViewOwnerFinancials(settings, isAdminOrOwner)) resolved by the caller
+  // where role lives. Composer gate reads it via getCanViewOwnerFinancials().
+  // Defaults to true (visible) when omitted, matching financialPrivacy fail-open.
+  canViewOwnerFinancials?: boolean;
 }
 
 export class IntelligenceEngine {
@@ -132,6 +145,11 @@ export class IntelligenceEngine {
   private unlocks: Unlock[];
   private layaways: Layaway[];
   private customerReturns: CustomerReturn[];
+  // R-REPORTS-MONEY-EXTRACT Phase B1: vendor returns + full settings + privacy
+  // flag, held read-only for the EOD money pipeline (engine computes nothing here).
+  private vendorReturns: VendorReturn[];
+  private storeSettings: StoreSettings | undefined;
+  private canSeeOwnerFinancials = true;
   // R-DATA-EXPENSE-ACCESS-V1
   private expenses: Expense[];
   // R-DATA-EMPLOYEE-ACCESS-V1
@@ -205,6 +223,8 @@ export class IntelligenceEngine {
   private _rawUnlocks: Unlock[] = [];
   private _rawLayaways: Layaway[] = [];
   private _rawCustomerReturns: CustomerReturn[] = [];
+  // R-REPORTS-MONEY-EXTRACT Phase B1
+  private _rawVendorReturns: VendorReturn[] = [];
   // R-DATA-EXPENSE-ACCESS-V1
   private _rawExpenses: Expense[] = [];
   // R-DATA-EMPLOYEE-ACCESS-V1
@@ -247,6 +267,11 @@ export class IntelligenceEngine {
     // falls back to defaultRate=0 (no profit fabricated; just clears the
     // 100% margin bug for items where the stamped commissionRate is missing).
     this.profitSettings = extras.settings ?? {};
+    // R-REPORTS-MONEY-EXTRACT Phase B1: store full settings, vendor returns, and
+    // the precomputed privacy flag for the EOD money pipeline.
+    this.vendorReturns = extras.vendorReturns ?? [];
+    this.storeSettings = extras.settings;
+    this.canSeeOwnerFinancials = extras.canViewOwnerFinancials ?? true;
 
     // R-PERF-INTELLIGENCE-CACHE: snapshot raw input refs for updateData()
     // ref-equality skip. Stored AFTER extras defaults so the same defaults
@@ -259,6 +284,7 @@ export class IntelligenceEngine {
     this._rawUnlocks = this.unlocks;
     this._rawLayaways = this.layaways;
     this._rawCustomerReturns = this.customerReturns;
+    this._rawVendorReturns = this.vendorReturns;
     this._rawExpenses = this.expenses;
     this._rawEmployees = this.employees;
     this._rawAppointments = this.appointments;
@@ -597,6 +623,12 @@ export class IntelligenceEngine {
   getAppointments(): Appointment[] { return this.appointments; }
   // R-INTEL-CROSS-001: global ledger — no storeId filter, same contract as getCustomers().
   getStoreCreditLedger(): StoreCreditLedger[] { return this.storeCreditLedger; }
+  // R-REPORTS-MONEY-EXTRACT Phase B1: read-only accessors for the EOD money
+  // pipeline. No computation here — the composer feeds these into the shared
+  // buildReportMoneyInputs + computeReportMoneyStats services.
+  getVendorReturns(): VendorReturn[] { return this.vendorReturns; }
+  getStoreSettings(): StoreSettings { return this.storeSettings ?? ({} as unknown as StoreSettings); }
+  getCanViewOwnerFinancials(): boolean { return this.canSeeOwnerFinancials; }
 
   // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
   // today_summary intent. Filters sales by createdAt >= midnight + status
@@ -701,7 +733,13 @@ export class IntelligenceEngine {
     // R-CUSTOMER-PROFIT-PARITY-V1: keep settings live across re-renders.
     // Caller passes the latest settings each updateData() so commission
     // rate edits in Settings reflect immediately in customer history.
-    if (extras.settings) this.profitSettings = extras.settings;
+    if (extras.settings) { this.profitSettings = extras.settings; this.storeSettings = extras.settings; }
+    // R-REPORTS-MONEY-EXTRACT Phase B1: keep vendor returns + privacy flag live
+    // too. Applied BEFORE the ref-equality skip (like settings) so they refresh
+    // even when sale/repair refs are unchanged. No analyzer consumes them, so
+    // they intentionally do NOT participate in the cache-skip equality check.
+    if (extras.vendorReturns) { this.vendorReturns = extras.vendorReturns; this._rawVendorReturns = extras.vendorReturns; }
+    if (extras.canViewOwnerFinancials !== undefined) this.canSeeOwnerFinancials = extras.canViewOwnerFinancials;
 
     if (
       sales === this._rawSales
