@@ -25,13 +25,17 @@ import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 // R-DASHBOARD-PROFIT-RECONCILE-V1: reuse Reports' pseudo-item detection
 // + proportional-cost helpers so the Dashboard's profit pipeline applies
 // the SAME accounting rules as Reports (no duplicated math).
+// R-REPORTS-MONEY-EXTRACT Phase A: these pure pseudo-item / proportional-cost
+// helpers moved out of ReportsModule into the shared money-stats service so the
+// Reports UI, Dashboard, and Intelligence all reuse one pipeline. Same helpers,
+// new location — no behavior change.
 import {
   isPseudoItem,
   getLayawayProportionalCost,
   getSpecialOrderProportionalCost,
   getRepairProportionalCost,
   getUnlockProportionalCost,
-} from '@/modules/reports/ReportsModule';
+} from '@/services/reports/computeReportMoneyStats';
 
 /** Sale is countable for revenue if not voided/refunded. Handles legacy case variations. */
 function isSaleCountable(s: { status?: string }): boolean {
