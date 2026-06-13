@@ -8,7 +8,7 @@
 // the original inline ReportsModule `stats` useMemo; only its location moved.
 // No money/tax/profit/reconciliation rule was changed in this extraction.
 // ============================================================
-import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, StoreSettings } from '@/store/types';
+import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, StoreSettings, CustomerReturn } from '@/store/types';
 import { normalizeCarrier } from '@/utils/normalize';
 import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
 
@@ -111,6 +111,58 @@ export function isRepairCompleted(r: Repair): boolean {
   return completedStatuses.includes(status) && (r.balance ?? 0) === 0;
 }
 
+// R-REPORTS-MONEY-EXTRACT Phase A.2: pure helpers lifted VERBATIM from
+// ReportsModule so the shared input builder AND the Reports UI (via import)
+// use ONE definition. No logic change.
+
+/** Unlock counts as completed revenue iff status is complete/completed. */
+export function isUnlockCompleted(u: Unlock): boolean {
+  const status = String(u.status || '').toLowerCase();
+  return status === 'completed' || status === 'complete';
+}
+
+/** Sale counts as revenue iff status is not voided/refunded outright. */
+export function isCountableSale(s: Sale): boolean {
+  return s.status !== 'voided' && s.status !== 'refunded';
+}
+
+function isValidDate(d: Date): boolean {
+  return !isNaN(d.getTime());
+}
+
+/** Tolerant timestamp parser → Date | null (Firestore Timestamp, ISO string,
+ *  epoch number, or Date). null on anything unparseable. */
+export function toDateSafe(v: unknown): Date | null {
+  if (!v) return null;
+  if (v instanceof Date) return isValidDate(v) ? v : null;
+  if (typeof v === 'object' && v !== null && 'toDate' in v && typeof (v as { toDate: unknown }).toDate === 'function') {
+    try {
+      const d = (v as { toDate: () => Date }).toDate();
+      return isValidDate(d) ? d : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof v === 'string' || typeof v === 'number') {
+    const d = new Date(v);
+    return isValidDate(d) ? d : null;
+  }
+  return null;
+}
+
+/** THE shared period predicate — single source of truth for "is this timestamp
+ *  within [startDate 00:00:00 .. endDate 23:59:59.999]?". Both the Reports UI
+ *  (via inRange) and buildReportMoneyInputs call this so the money brief can
+ *  never drift from Reports on date boundaries. Equivalent to the former
+ *  ReportsModule periodRange + inRange logic. */
+export function isInPeriod(createdAt: unknown, startDate: string, endDate: string): boolean {
+  const d = toDateSafe(createdAt);
+  if (!d) return false;
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T23:59:59.999');
+  return d >= start && d <= end;
+}
+
 export function normalizeCarrierName(raw: string): string {
   const s = String(raw || '').trim();
   if (!s) return '';
@@ -165,6 +217,159 @@ export function classifyItem(item: SaleItem): ItemKind {
     return 'service';
   }
   return 'product';
+}
+
+/** Normalized customer-return row (canonical cents). Superset of the structural
+ *  ReportPeriodReturn below — also carries the UI display fields ReportsModule
+ *  renders. Lifted VERBATIM from ReportsModule. */
+export interface NormalizedReturn {
+  id: string;
+  returnNumber: string;
+  originalInvoice: string;
+  originalSaleId: string | null;
+  customerName: string;
+  reason: string;
+  resolution: string;
+  createdAt: Date | null;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE
+  employeeName?: string;
+  certificateNumber?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+}
+
+/** Normalize raw CustomerReturn records (live AppState) into NormalizedReturn[]
+ *  with canonical cents. VERBATIM lift of ReportsModule's prior `allReturns`
+ *  map body — prefers canonical *Cents fields, falls back to legacy dollar
+ *  fields for pre-Round-9 records. */
+export function normalizeReturns(customerReturns: CustomerReturn[]): NormalizedReturn[] {
+  const src = Array.isArray(customerReturns) ? customerReturns : [];
+  return src.map((r) => ({
+    id: r.id,
+    returnNumber: r.returnNumber || '',
+    originalInvoice: r.originalInvoice || '',
+    originalSaleId: r.originalSaleId,
+    customerName: r.customerName || '',
+    reason: r.reason || '',
+    resolution: r.resolution || '',
+    createdAt: toDateSafe(r.createdAt),
+    // Canonical cents fields always present on new records; fall back to
+    // legacy dollar fields for old records created before Round 9 migration.
+    subtotalCents: r.subtotalCents ?? Math.round((r.subtotal || 0) * 100),
+    taxCents: r.taxCents ?? Math.round((r.taxRefunded || 0) * 100),
+    totalCents: r.totalCents ?? Math.round((r.total || 0) * 100),
+    // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE (additive)
+    employeeName: r.employeeName || '',
+    certificateNumber: r.certificateNumber,
+    recipientName: r.recipientName,
+    recipientPhone: r.recipientPhone,
+  }));
+}
+
+/** Raw inputs for buildReportMoneyInputs — entity arrays + the period range. */
+export interface BuildReportMoneyInputsArgs {
+  sales: Sale[];
+  repairs: Repair[];
+  unlocks: Unlock[];
+  vendorReturns: any[];
+  customerReturns: CustomerReturn[];
+  startDate: string;
+  endDate: string;
+}
+
+/** The eight period-derived collections computeReportMoneyStats consumes. */
+export interface ReportMoneyInputs {
+  allFilteredSales: Sale[];
+  filteredSales: Sale[];
+  filteredRepairs: Repair[];
+  filteredUnlocks: Unlock[];
+  filteredVendorReturns: any[];
+  returnsFromPeriodSales: NormalizedReturn[];
+  standaloneRepairs: Repair[];
+  standaloneUnlocks: Unlock[];
+}
+
+/**
+ * Build the period-filtered money inputs that feed computeReportMoneyStats.
+ * VERBATIM lift of ReportsModule's prior allFilteredSales / filteredSales /
+ * filteredRepairs / filteredUnlocks / filteredVendorReturns /
+ * returnsFromPeriodSales / standaloneRepairs / standaloneUnlocks useMemo
+ * bodies — same filters, same double-count guards, same sort. The ONLY change
+ * is location + the shared isInPeriod predicate (previously the inline
+ * periodRange/inRange). Reports and the EOD brief MUST share this so the money
+ * numbers can't diverge.
+ */
+export function buildReportMoneyInputs(args: BuildReportMoneyInputsArgs): ReportMoneyInputs {
+  const { sales, repairs, unlocks, vendorReturns, customerReturns, startDate, endDate } = args;
+  const safeSales: Sale[] = Array.isArray(sales) ? sales : [];
+  const safeRepairs: Repair[] = Array.isArray(repairs) ? repairs : [];
+  const safeUnlocks: Unlock[] = Array.isArray(unlocks) ? unlocks : [];
+  const safeVendorReturns = Array.isArray(vendorReturns) ? vendorReturns : [];
+
+  // All sales in period (includes voided/refunded for visibility), newest first.
+  const allFilteredSales = safeSales
+    .filter((s) => isInPeriod(s.createdAt, startDate, endDate))
+    .sort((a, b) => {
+      const da = toDateSafe(a.createdAt)?.getTime() || 0;
+      const db = toDateSafe(b.createdAt)?.getTime() || 0;
+      return db - da;
+    });
+
+  // Countable sales — used for ALL revenue/profit/tax calculations.
+  const filteredSales = allFilteredSales.filter(isCountableSale);
+
+  const filteredRepairs = safeRepairs.filter((r) => isInPeriod(r.createdAt, startDate, endDate));
+  const filteredUnlocks = safeUnlocks.filter((u) => isInPeriod(u.createdAt, startDate, endDate));
+  const filteredVendorReturns = safeVendorReturns.filter((v) => isInPeriod((v as any).createdAt, startDate, endDate));
+
+  // Returns whose original sale was in this period (gross→net adjustment view).
+  // Round 10.2: match against ALL sales in period (not just countable) — after
+  // R11 migration the original sale is marked refunded and drops out of
+  // filteredSales, but its return still belongs to this period.
+  const allReturns = normalizeReturns(customerReturns);
+  const periodSaleIds = new Set(allFilteredSales.map((s) => s.id));
+  const returnsFromPeriodSales = allReturns.filter((r) => r.originalSaleId && periodSaleIds.has(r.originalSaleId));
+
+  // Repair-in-sale tracking (prevents double counting): ids + ticket numbers of
+  // repairs paid through POS in this period.
+  const repairsAlreadyInSales = new Set<string>();
+  for (const sale of filteredSales) {
+    for (const item of (sale.items || [])) {
+      if (item.repairId) repairsAlreadyInSales.add(item.repairId);
+      const ticket = (item as unknown as { ticketNumber?: string; meta?: { repairId?: string; ticketNumber?: string } }).ticketNumber
+        || (item as unknown as { meta?: { ticketNumber?: string } }).meta?.ticketNumber;
+      if (ticket) repairsAlreadyInSales.add(ticket);
+      const metaRepairId = (item as unknown as { meta?: { repairId?: string } }).meta?.repairId;
+      if (metaRepairId) repairsAlreadyInSales.add(metaRepairId);
+    }
+  }
+  // Standalone completed repairs not already counted in POS sales.
+  const standaloneRepairs = filteredRepairs.filter((r) => isRepairCompleted(r) && !repairsAlreadyInSales.has(r.id));
+
+  // Unlock-in-sale tracking.
+  const unlocksAlreadyInSales = new Set<string>();
+  for (const sale of filteredSales) {
+    for (const item of (sale.items || [])) {
+      if (item.unlockId) unlocksAlreadyInSales.add(item.unlockId);
+      const metaUnlockId = (item as unknown as { meta?: { unlockId?: string } }).meta?.unlockId;
+      if (metaUnlockId) unlocksAlreadyInSales.add(metaUnlockId);
+    }
+  }
+  const standaloneUnlocks = filteredUnlocks.filter((u) => isUnlockCompleted(u) && !unlocksAlreadyInSales.has(u.id));
+
+  return {
+    allFilteredSales,
+    filteredSales,
+    filteredRepairs,
+    filteredUnlocks,
+    filteredVendorReturns,
+    returnsFromPeriodSales,
+    standaloneRepairs,
+    standaloneUnlocks,
+  };
 }
 
 /** Minimal structural shape of a period return row consumed by the pipeline

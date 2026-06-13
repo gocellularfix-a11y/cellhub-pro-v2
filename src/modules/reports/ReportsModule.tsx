@@ -41,7 +41,8 @@ import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
 // match the audit conventions used by repair/unlock/SO modules.
 import { calculateCartTotals } from '@/modules/pos/types';
 import { captureSnapshot, appendEditEntry } from '@/services/editAudit';
-import { computeReportMoneyStats, normalizeCategoryKey, isRepairCompleted, normalizeCarrierName, lineRevenueCents, classifyItem } from '@/services/reports/computeReportMoneyStats';
+import { computeReportMoneyStats, buildReportMoneyInputs, normalizeReturns, normalizeCategoryKey, isRepairCompleted, isUnlockCompleted, normalizeCarrierName, lineRevenueCents, classifyItem, toDateSafe, isInPeriod } from '@/services/reports/computeReportMoneyStats';
+import type { NormalizedReturn } from '@/services/reports/computeReportMoneyStats';
 
 // ── Constants & helpers ──────────────────────────────────────
 
@@ -50,27 +51,9 @@ function toLocalYMD(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function isValidDate(d: Date): boolean {
-  return !isNaN(d.getTime());
-}
-
-function toDateSafe(v: unknown): Date | null {
-  if (!v) return null;
-  if (v instanceof Date) return isValidDate(v) ? v : null;
-  if (typeof v === 'object' && v !== null && 'toDate' in v && typeof (v as { toDate: unknown }).toDate === 'function') {
-    try {
-      const d = (v as { toDate: () => Date }).toDate();
-      return isValidDate(d) ? d : null;
-    } catch {
-      return null;
-    }
-  }
-  if (typeof v === 'string' || typeof v === 'number') {
-    const d = new Date(v);
-    return isValidDate(d) ? d : null;
-  }
-  return null;
-}
+// R-REPORTS-MONEY-EXTRACT Phase A.2: isValidDate + toDateSafe moved to
+// @/services/reports/computeReportMoneyStats (single source of truth, imported
+// above). No behavior change.
 
 /**
  * HTML escape for print window interpolation. Used by printReport to sanitize
@@ -87,12 +70,6 @@ function escHtml(s: unknown): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-
-/** Sale counts as revenue iff status is not voided/refunded outright. */
-function isCountableSale(s: Sale): boolean {
-  return s.status !== 'voided' && s.status !== 'refunded';
-}
-
 
 
 // R-REPORTS-I18N-V1: localized DISPLAY label for a category. The internal
@@ -122,14 +99,6 @@ function reportCategoryLabel(name: string, t: (k: string) => string): string {
 
 
 
-function isUnlockCompleted(u: Unlock): boolean {
-  const status = String(u.status || '').toLowerCase();
-  return status === 'completed' || status === 'complete';
-}
-
-
-
-
 // ── Returns: bridge legacy localStorage (DOLLARS) to cents ───
 
 interface CustomerReturnRecord {
@@ -150,24 +119,8 @@ interface CustomerReturnRecord {
   total: number;        // DOLLARS in storage
 }
 
-interface NormalizedReturn {
-  id: string;
-  returnNumber: string;
-  originalInvoice: string;
-  originalSaleId: string | null;
-  customerName: string;
-  reason: string;
-  resolution: string;
-  createdAt: Date | null;
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-  // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE
-  employeeName?: string;
-  certificateNumber?: string;
-  recipientName?: string;
-  recipientPhone?: string;
-}
+// R-REPORTS-MONEY-EXTRACT Phase A.2: NormalizedReturn moved to
+// @/services/reports/computeReportMoneyStats (imported as a type above).
 
 function loadReturns(): NormalizedReturn[] {
   const raw = loadLocal<CustomerReturnRecord[]>('customer_returns', []);
@@ -543,44 +496,40 @@ export default function ReportsModule() {
     end: new Date(endDate + 'T23:59:59.999'),
   }), [startDate, endDate]);
 
-  const inRange = useCallback((createdAt: unknown): boolean => {
-    const d = toDateSafe(createdAt);
-    if (!d) return false;
-    return d >= periodRange.start && d <= periodRange.end;
-  }, [periodRange]);
+  // R-REPORTS-MONEY-EXTRACT Phase A.2: inRange now delegates to the shared
+  // isInPeriod predicate (single source of truth) — no separate date logic.
+  const inRange = useCallback(
+    (createdAt: unknown): boolean => isInPeriod(createdAt, startDate, endDate),
+    [startDate, endDate],
+  );
 
   // ── Filtered collections ──────────────────────────────────
-  /** All sales in period (used by transactions table — includes voided/refunded for visibility). */
-  const allFilteredSales = useMemo(() =>
-    safeSales
-      .filter((s) => inRange(s.createdAt))
-      .sort((a, b) => {
-        const da = toDateSafe(a.createdAt)?.getTime() || 0;
-        const db = toDateSafe(b.createdAt)?.getTime() || 0;
-        return db - da;
-      }),
-    [safeSales, inRange]
-  );
-
-  /** Countable sales — used for ALL revenue/profit/tax calculations. */
-  const filteredSales = useMemo(() =>
-    allFilteredSales.filter(isCountableSale),
-    [allFilteredSales]
-  );
-
-  const filteredRepairs = useMemo(() =>
-    safeRepairs.filter((r) => inRange(r.createdAt)),
-    [safeRepairs, inRange]
-  );
-
-  const filteredUnlocks = useMemo(() =>
-    safeUnlocks.filter((u) => inRange(u.createdAt)),
-    [safeUnlocks, inRange]
-  );
-
-  const filteredVendorReturns = useMemo(() =>
-    safeVendorReturns.filter((v) => inRange((v as any).createdAt)),
-    [safeVendorReturns, inRange]
+  // R-REPORTS-MONEY-EXTRACT Phase A.2: the eight period-derived money inputs
+  // (allFilteredSales, filteredSales, filteredRepairs, filteredUnlocks,
+  // filteredVendorReturns, returnsFromPeriodSales, standaloneRepairs,
+  // standaloneUnlocks) are now produced by the shared buildReportMoneyInputs
+  // service so the Reports UI and the EOD brief derive them identically. Same
+  // const names, same values — only the derivation moved out of the component.
+  const {
+    allFilteredSales,
+    filteredSales,
+    filteredRepairs,
+    filteredUnlocks,
+    filteredVendorReturns,
+    returnsFromPeriodSales,
+    standaloneRepairs,
+    standaloneUnlocks,
+  } = useMemo(
+    () => buildReportMoneyInputs({
+      sales: safeSales,
+      repairs: safeRepairs,
+      unlocks: safeUnlocks,
+      vendorReturns: safeVendorReturns,
+      customerReturns,
+      startDate,
+      endDate,
+    }),
+    [safeSales, safeRepairs, safeUnlocks, safeVendorReturns, customerReturns, startDate, endDate],
   );
 
   // R-LOSSES-SHRINKAGE-V1: filtered losses + summary for the Losses /
@@ -614,29 +563,9 @@ export default function ReportsModule() {
   }, [filteredLosses]);
 
   // ── Returns (live AppState — replaces legacy localStorage bridge) ──
-  const allReturns = useMemo((): NormalizedReturn[] => {
-    const src = Array.isArray(customerReturns) ? customerReturns : [];
-    return src.map((r) => ({
-      id: r.id,
-      returnNumber: r.returnNumber || '',
-      originalInvoice: r.originalInvoice || '',
-      originalSaleId: r.originalSaleId,
-      customerName: r.customerName || '',
-      reason: r.reason || '',
-      resolution: r.resolution || '',
-      createdAt: toDateSafe(r.createdAt),
-      // Canonical cents fields always present on new records; fall back to
-      // legacy dollar fields for old records created before Round 9 migration.
-      subtotalCents: r.subtotalCents ?? Math.round((r.subtotal || 0) * 100),
-      taxCents: r.taxCents ?? Math.round((r.taxRefunded || 0) * 100),
-      totalCents: r.totalCents ?? Math.round((r.total || 0) * 100),
-      // R-RETURNS-CREDIT-OWNER + STORE-CREDIT-CERTIFICATE (additive)
-      employeeName: r.employeeName || '',
-      certificateNumber: r.certificateNumber,
-      recipientName: r.recipientName,
-      recipientPhone: r.recipientPhone,
-    }));
-  }, [customerReturns]);
+  // R-REPORTS-MONEY-EXTRACT Phase A.2: normalization moved to the shared
+  // normalizeReturns service so Reports and the EOD brief normalize identically.
+  const allReturns = useMemo((): NormalizedReturn[] => normalizeReturns(customerReturns), [customerReturns]);
 
   // R-STORE-CREDIT-REDEMPTION-SYSTEM: ledger summary + void wiring.
   const ledgerSummary = useMemo(() => summarizeLedger(storeCreditLedger), [storeCreditLedger]);
@@ -663,60 +592,15 @@ export default function ReportsModule() {
   }, [storeCreditLedger, setStoreCreditLedger, currentEmployee]);
 
   /** Returns that happened during this period (net daily view). */
+  // R-REPORTS-MONEY-EXTRACT Phase A.2: uses the shared isInPeriod predicate.
   const returnsInPeriod = useMemo(() =>
-    allReturns.filter((r) => r.createdAt && r.createdAt >= periodRange.start && r.createdAt <= periodRange.end),
-    [allReturns, periodRange]
+    allReturns.filter((r) => isInPeriod(r.createdAt, startDate, endDate)),
+    [allReturns, startDate, endDate]
   );
 
-  /** Returns whose original sale was in this period (gross→net adjustment view). */
-  const returnsFromPeriodSales = useMemo(() => {
-    // Round 10.2: match returns against ALL sales in period, not just countable.
-    // After R11 migration, original sales are marked refunded and get filtered
-    // out of filteredSales, but their returns still belong to this period.
-    const periodSaleIds = new Set(allFilteredSales.map((s) => s.id));
-    return allReturns.filter((r) => r.originalSaleId && periodSaleIds.has(r.originalSaleId));
-  }, [allReturns, allFilteredSales]);
-
-  // ── Repair-in-sale tracking (prevents double counting) ────
-  /** IDs and ticket numbers of repairs that were paid through POS in this period. */
-  const repairsAlreadyInSales = useMemo(() => {
-    const ids = new Set<string>();
-    for (const sale of filteredSales) {
-      for (const item of (sale.items || [])) {
-        if (item.repairId) ids.add(item.repairId);
-        const ticket = (item as unknown as { ticketNumber?: string; meta?: { repairId?: string; ticketNumber?: string } }).ticketNumber
-          || (item as unknown as { meta?: { ticketNumber?: string } }).meta?.ticketNumber;
-        if (ticket) ids.add(ticket);
-        const metaRepairId = (item as unknown as { meta?: { repairId?: string } }).meta?.repairId;
-        if (metaRepairId) ids.add(metaRepairId);
-      }
-    }
-    return ids;
-  }, [filteredSales]);
-
-  /** Standalone completed repairs not already counted in POS sales. */
-  const standaloneRepairs = useMemo(() =>
-    filteredRepairs.filter((r) => isRepairCompleted(r) && !repairsAlreadyInSales.has(r.id)),
-    [filteredRepairs, repairsAlreadyInSales]
-  );
-
-  // ── Unlock-in-sale tracking ───────────────────────────────
-  const unlocksAlreadyInSales = useMemo(() => {
-    const ids = new Set<string>();
-    for (const sale of filteredSales) {
-      for (const item of (sale.items || [])) {
-        if (item.unlockId) ids.add(item.unlockId);
-        const metaUnlockId = (item as unknown as { meta?: { unlockId?: string } }).meta?.unlockId;
-        if (metaUnlockId) ids.add(metaUnlockId);
-      }
-    }
-    return ids;
-  }, [filteredSales]);
-
-  const standaloneUnlocks = useMemo(() =>
-    filteredUnlocks.filter((u) => isUnlockCompleted(u) && !unlocksAlreadyInSales.has(u.id)),
-    [filteredUnlocks, unlocksAlreadyInSales]
-  );
+  // R-REPORTS-MONEY-EXTRACT Phase A.2: returnsFromPeriodSales,
+  // repairsAlreadyInSales, standaloneRepairs, unlocksAlreadyInSales, and
+  // standaloneUnlocks now come from buildReportMoneyInputs (destructured above).
 
   // ── r-new-8: Cancellations in period ─────────────────────
   // Rows sourced from entity state (SO/Repair/Unlock) using the cancellation
