@@ -4508,6 +4508,29 @@ export const translations: TranslationDictionary = {
   'chat.eodBrief.actionViewRepair':    { en: 'View repair',                   es: 'Ver reparación',               pt: 'Ver reparo' },
   'chat.eodBrief.actionViewLayaway':   { en: 'View layaway',                  es: 'Ver apartado',                  pt: 'Ver layaway' },
   'chat.eodBrief.actionVerifyPayment': { en: 'Verify payment',                es: 'Verificar pago',                pt: 'Verificar pagamento' },
+  // R-REPORTS-MONEY-EXTRACT Phase B2: real money section rendering. Currency
+  // args arrive pre-formatted (e.g. "$123.45"); margin arrives as a string %.
+  'chat.eodBrief.moneyHeader':         { en: '💰 Today',                      es: '💰 Hoy',                        pt: '💰 Hoje' },
+  'chat.eodBrief.revenue': {
+    en: (gross: string, net: string) => `  • Revenue ${gross} · net ${net}`,
+    es: (gross: string, net: string) => `  • Ventas ${gross} · neto ${net}`,
+    pt: (gross: string, net: string) => `  • Receita ${gross} · líquido ${net}`,
+  },
+  'chat.eodBrief.profit': {
+    en: (profit: string, margin: string) => `  • Profit ${profit} · ${margin}% margin`,
+    es: (profit: string, margin: string) => `  • Ganancia ${profit} · ${margin}% margen`,
+    pt: (profit: string, margin: string) => `  • Lucro ${profit} · ${margin}% margem`,
+  },
+  'chat.eodBrief.salesCount': {
+    en: (count: number) => `  • ${count} sale${count === 1 ? '' : 's'}`,
+    es: (count: number) => `  • ${count} venta${count === 1 ? '' : 's'}`,
+    pt: (count: number) => `  • ${count} venda${count === 1 ? '' : 's'}`,
+  },
+  'chat.eodBrief.returnsLine': {
+    en: (count: number, amount: string) => `  • Returns ${count} · ${amount}`,
+    es: (count: number, amount: string) => `  • Devoluciones ${count} · ${amount}`,
+    pt: (count: number, amount: string) => `  • Devoluções ${count} · ${amount}`,
+  },
   'returns.vendor.title':            { en: 'Vendor Return / RMA',   es: 'Devolución al Proveedor',     pt: 'Devolução ao Fornecedor / RMA' },
   'returns.vendor.searchLabel':      { en: 'Search inventory product', es: 'Buscar producto en inventario', pt: 'Buscar produto no inventário' },
   'returns.vendor.searchPlaceholder':{ en: 'Name, SKU, supplier...', es: 'Nombre, SKU, proveedor...', pt: 'Nome, SKU, fornecedor...' },

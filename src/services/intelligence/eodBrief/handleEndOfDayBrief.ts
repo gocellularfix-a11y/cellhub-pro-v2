@@ -51,12 +51,26 @@ export function handleEndOfDayBrief(
   lines.push(t('chat.eodBrief.headerDate', dateStr));
   lines.push('');
 
-  // ── Money section (placeholder-aware) ────────────────────
-  // Phase 2 renders a single transparency line when confidence is
-  // 'placeholder'. Once money math is extracted, this branch will
-  // expand to revenue / profit / tender breakdown rendering.
+  // ── Money section ────────────────────────────────────────
+  // R-REPORTS-MONEY-EXTRACT Phase B2: real money rendering for high/low
+  // confidence (numbers come from the shared Reports pipeline via the
+  // composer). The single placeholder transparency line remains as the
+  // fail-safe fallback — only reached if the money pipeline threw.
   if (money.confidence === 'placeholder') {
     lines.push(t('chat.eodBrief.moneyPending', money.saleCount));
+    lines.push('');
+  } else {
+    lines.push(t('chat.eodBrief.moneyHeader'));
+    lines.push(t('chat.eodBrief.revenue', COP(money.grossRevenueCents), COP(money.netRevenueCents)));
+    // Profit line omitted when the privacy gate zeroed profit (or there's
+    // none). Revenue / returns / tender stay visible regardless.
+    if (money.grossProfitCents !== 0 || money.profitMarginPct !== 0) {
+      lines.push(t('chat.eodBrief.profit', COP(money.grossProfitCents), money.profitMarginPct.toFixed(1)));
+    }
+    lines.push(t('chat.eodBrief.salesCount', money.saleCount));
+    if (money.returnCount > 0) {
+      lines.push(t('chat.eodBrief.returnsLine', money.returnCount, COP(money.returnedAmountCents)));
+    }
     lines.push('');
   }
 

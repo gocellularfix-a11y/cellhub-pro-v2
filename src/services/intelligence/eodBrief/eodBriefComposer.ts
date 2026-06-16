@@ -33,6 +33,10 @@ import { parseTimestampSafe, startOfDayMs } from '../utils/timestamps';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
 import { getDueVerification } from '../paymentVerification/paymentVerificationService';
 import { calculateLayawayTotals } from '@/services/layaway/payments';
+// R-REPORTS-MONEY-EXTRACT Phase B2: the EOD money section derives from the SAME
+// shared Reports pipeline so the numbers can never drift from the Reports
+// "daily" view. EOD maps fields only — it never re-implements money math.
+import { buildReportMoneyInputs, computeReportMoneyStats } from '@/services/reports/computeReportMoneyStats';
 import type {
   EODBriefResult,
   EODMoneySection,
@@ -69,14 +73,12 @@ function countTodaySales(engine: IntelligenceEngine): number {
   return engine.getTodayMetrics().transactions;
 }
 
-// R-FINANCIAL-PRIVACY-V4: TODO — once placeholderMoneySection is replaced
-// with the real EOD aggregation (currently placeholder zeros) the populated
-// branch MUST consult canViewOwnerFinancials and zero out grossProfitCents
-// + profitMarginPct for non-admin viewers. The EOD brief route is already
-// short-circuited at the IntelligenceChat dispatch gate for the
-// 'end_of_day_brief' intent path that mentions profit, but a direct call
-// (operator brief widget, scheduled push, etc.) would bypass the gate.
-// Wire the helper here when settings + role become accessible.
+// R-FINANCIAL-PRIVACY-V4 → resolved in B2: realReportMoneySection now consults
+// engine.getCanViewOwnerFinancials() and zeroes grossProfitCents +
+// profitMarginPct for non-admin viewers — applied IN the composer so EVERY
+// caller (chat, operator widget, scheduled push) is gated, not just the chat
+// dispatch path. This placeholder remains as the fail-safe fallback (zeros)
+// used only if the money pipeline throws.
 function placeholderMoneySection(saleCount: number): EODMoneySection {
   return {
     grossRevenueCents: 0,
@@ -103,6 +105,105 @@ function placeholderMoneySection(saleCount: number): EODMoneySection {
     },
     confidence: 'placeholder',
   };
+}
+
+// ── Real money (B2) ──────────────────────────────────────
+
+/** Local YYYY-MM-DD for the given epoch ms. Matches ReportsModule's daily
+ *  period key (local calendar day, NOT UTC) so EOD and Reports bucket the same
+ *  sales into "today". */
+function localYMD(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * R-REPORTS-MONEY-EXTRACT Phase B2 — real EOD money section.
+ *
+ * Derives EVERY value from the shared Reports pipeline
+ * (buildReportMoneyInputs → computeReportMoneyStats) over today's local
+ * calendar day, then MAPS fields into EODMoneySection. No money/profit/tax
+ * math is re-implemented here — drift from the Reports "daily" view is
+ * structurally impossible.
+ *
+ * Privacy: grossProfitCents + profitMarginPct are zeroed when the engine's
+ * precomputed financial-privacy flag is false. Revenue, returns, taxes, and
+ * tender are NEVER hidden.
+ *
+ * Fail-safe: any pipeline error falls back to the zero placeholder so the
+ * brief never crashes.
+ */
+function realReportMoneySection(engine: IntelligenceEngine, nowMs: number): EODMoneySection {
+  try {
+    const ymd = localYMD(nowMs);
+    const moneyInputs = buildReportMoneyInputs({
+      sales: engine.getSales(),
+      repairs: engine.getRepairs(),
+      unlocks: engine.getUnlocks(),
+      vendorReturns: engine.getVendorReturns(),
+      customerReturns: engine.getReturns(),
+      startDate: ymd,
+      endDate: ymd,
+    });
+    const stats = computeReportMoneyStats({
+      ...moneyInputs,
+      inventory: engine.getInventory(),
+      settings: engine.getStoreSettings(),
+      safeRepairs: engine.getRepairs(),
+      safeUnlocks: engine.getUnlocks(),
+      safeSpecialOrders: engine.getSpecialOrders(),
+      safeLayaways: engine.getLayaways(),
+      // EOD money totals are translator-independent; `t` only labels display
+      // buckets (employee/provider/carrier) the money section never reads.
+      t: (key: string) => key,
+    });
+
+    const canSeeProfit = engine.getCanViewOwnerFinancials();
+
+    // Locked mapping (B2): legacy tax folds into salesTax so it never drops.
+    const salesTaxCents = stats.productSalesTaxCents + stats.legacyTaxAmountCents;
+    const feesTotalCents =
+      salesTaxCents
+      + stats.utilityTaxCents
+      + stats.mobilitySurchargeCents
+      + stats.cbeCollectedCents
+      + stats.screenFeeCents;
+
+    const saleCount = stats.cleanSalesCount;
+
+    return {
+      grossRevenueCents: stats.grossRevenueCents,
+      netRevenueCents: stats.netRevenueCents,
+      grossProfitCents: canSeeProfit ? stats.totalProfitCents : 0,
+      profitMarginPct: canSeeProfit ? stats.profitMargin : 0,
+      saleCount,
+      returnCount: moneyInputs.returnsFromPeriodSales.length,
+      returnedAmountCents: stats.totalReturnsCents,
+      tenderBreakdown: {
+        cashCents: stats.cashCents,
+        cardCents: stats.cardCents,
+        storeCreditCents: stats.storeCreditCents,
+        externalCents: 0,
+        otherCents: Math.max(
+          0,
+          stats.grossRevenueCents - stats.cashCents - stats.cardCents - stats.storeCreditCents,
+        ),
+      },
+      feesAndTaxes: {
+        salesTaxCents,
+        utilityTaxCents: stats.utilityTaxCents,
+        caMobilityFeeCents: stats.mobilitySurchargeCents,
+        cbeFeeCents: stats.cbeCollectedCents,
+        screenFeeCents: stats.screenFeeCents,
+        totalCents: feesTotalCents,
+      },
+      // 'low' = sparse day (no real sales and no returns); else 'high'.
+      confidence: (saleCount === 0 && stats.totalReturnsCents === 0) ? 'low' : 'high',
+    };
+  } catch {
+    // Fail-safe: never let a money-pipeline error break the whole brief.
+    return placeholderMoneySection(countTodaySales(engine));
+  }
 }
 
 // ── Open items ───────────────────────────────────────────
@@ -239,13 +340,15 @@ export function composeEODBrief(
   const now = nowMs ?? Date.now();
   const dayStartMs = startOfDayMs(now);
   const dayEndMs   = now;
-  const saleCount  = countTodaySales(engine);
 
   return {
     generatedAtMs: now,
     dayStartMs,
     dayEndMs,
-    money: placeholderMoneySection(saleCount),
+    // R-REPORTS-MONEY-EXTRACT Phase B2: real money from the shared Reports
+    // pipeline (was placeholderMoneySection zeros). Placeholder remains the
+    // fail-safe fallback inside realReportMoneySection.
+    money: realReportMoneySection(engine, now),
     openItems: buildOpenItemsSection(engine, now),
     lang,
   };
