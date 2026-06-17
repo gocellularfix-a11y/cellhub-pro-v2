@@ -27,7 +27,7 @@ import { persist } from '@/services/persist';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import type { PrintPageSizeKey } from '@/hooks/usePrint';
-import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { generateReceiptHtml, renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 import { normalizeCarrier } from '@/utils/normalize';
 import { matchesSearchPhones } from '@/utils/search';
@@ -3430,7 +3430,9 @@ tr:last-child td { border-bottom: none; }
                 // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: reprint now encodes the
                 // structured CHP|SALE|... payload (with optional |CUST|customerId)
                 // so reprinted copies scan equivalent to a fresh print.
-                const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale));
+                // R-RECEIPT-REPRINT-BARCODE-HEIGHT-PARITY-V1: pass the same
+                // height the live POS receipt uses so reprints aren't fat (default 90).
+                const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale), getReceiptBarcodeHeight(settings.paperSize));
                 const html = generateReceiptHtml(reprintSale, settings, locale, undefined, bsvg, settings.paperSize);
                 printHtml(html, {
                   silent: false,
@@ -3800,7 +3802,8 @@ tr:last-child td { border-bottom: none; }
                   try {
                     // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: post-edit reprint
                     // also uses the structured payload for scan parity.
-                    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
+                    // R-RECEIPT-REPRINT-BARCODE-HEIGHT-PARITY-V1: same height as live POS receipt.
+                    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale), getReceiptBarcodeHeight(settings.paperSize));
                     const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg, settings.paperSize);
                     // LAN-PRINT-BRIDGE-REPORTS-REPRINT-FLAG-FIX-V1: post-edit reprint
                     // forwards to the Primary on a read-only LAN Secondary

@@ -16,7 +16,7 @@ import { Modal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
 import { usePrint } from '@/hooks/usePrint';
-import { generateReceiptHtml, renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { generateReceiptHtml, renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import { buildReceiptBarcodePayload, CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
@@ -158,8 +158,13 @@ export default function BarcodeActionModal() {
     // R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1: reprint encodes the
     // structured payload so the new copy is scan-equivalent to a fresh
     // print. Old reprints encoded only invoiceNumber.
-    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale));
-    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg);
+    // R-RECEIPT-REPRINT-BARCODE-HEIGHT-PARITY-V1: same barcode height as the
+    // live POS receipt (45 for 4x6/80mm) so the scan→reprint isn't fat (default 90).
+    const bsvg = renderBarcodeSvg(buildReceiptBarcodePayload(sale), getReceiptBarcodeHeight(settings.paperSize));
+    // R-RECEIPT-REPRINT-PAPERSIZE-PARITY-V1: pass settings.paperSize so the
+    // scan→reprint uses the SAME template routing as normal POS / Reports reprint
+    // (dedicated-80mm when 80mm). Without it this path always rendered shared-4x6.
+    const html = generateReceiptHtml(sale, settings, locale, undefined, bsvg, settings.paperSize);
     // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a scan→reprint is a
     // POS receipt — on a read-only LAN Secondary it must forward to the Primary
     // (which owns the printer), exactly like a fresh checkout receipt. Without

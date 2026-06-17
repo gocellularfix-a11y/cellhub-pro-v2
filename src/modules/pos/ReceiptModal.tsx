@@ -58,33 +58,56 @@ async function generateQrSvg(url: string): Promise<string> {
  * Used to inject barcode into the print window template without CDN.
  * Exported so ReportsModule and BarcodeActionModal can also use it.
  */
-export function renderBarcodeSvg(value: string): string {
+export function renderBarcodeSvg(value: string, barcodeHeight: number = 90): string {
   if (!value) return '';
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    // R-PHONE-PAYMENT-RECEIPT-BARCODE-SCAN-V1: width 1.2 + height 50 for
-    // reliable thermal scanning. Prior width:0.8 / height:26 produced bars
-    // too thin/short at 203 DPI. The SVG is rendered at width:100%;height:50px
-    // in the receipt template so bars always fill the container width while
-    // maintaining a scannable 50px height regardless of payload length.
-    // R-RECEIPT-BARCODE-MATCH-WORKING-V1: copied verbatim from the two
-    // CellHub barcodes that scan reliably today — the price-label
-    // BarcodeRenderer (width:1.5/height:50) and the CredentialMaker
-    // (width:1.5/height:35). The receipt previously used width:1.2 and
-    // then forced the SVG to CSS width:100% inside a ~1.9in column,
-    // which compressed the bars below the scanner's module threshold.
-    // displayValue stays false because the invoice number is already
-    // printed in the invoice-info table just below the barcode.
+    // R-RECEIPT-BARCODE-THERMAL-CRISP-V1: 80mm thermal scan fix.
+    //
+    // CellHub invoice numbers are long (e.g. INV-260613-1432-0381 ≈ 20 chars),
+    // so a fixed module width made the natural CODE128 wider than the ~72mm
+    // printable area. The receipt template's max-width:100% then DOWNSCALED the
+    // SVG, producing fractional bar widths the scanner could not decode (the
+    // "fuzzy / won't scan" report). displayValue stays false — the invoice
+    // number is already printed in the info table just below the barcode.
+    //
+    // Fix: pick the widest bar that still FITS the printable width at natural
+    // size (so the template never has to scale it down) + a real quiet zone,
+    // render taller for vertical sampling, and snap edges crisp so the 203 DPI
+    // head prints solid black bars. Short tickets get bold ~2px bars; long
+    // invoices get ~1.2px bars that still fit without any CSS downscaling.
+    const QUIET_PX = 10;                       // quiet zone (margin) each side
+    const PRINTABLE_PX = 230;                  // ~61mm @96dpi — barcode stays 60–64mm, inside the 64mm safe content area
+    const estModules = value.length * 11 + 35; // CODE128 upper-bound estimate
+    const moduleWidthPx = Math.max(1.2, Math.min(2.5, (PRINTABLE_PX - QUIET_PX * 2) / estModules));
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.5, height: 50,
-      displayValue: false, margin: 2,
+      format: 'CODE128', width: moduleWidthPx, height: barcodeHeight,
+      displayValue: false, margin: QUIET_PX,
       background: '#ffffff', lineColor: '#000000',
     });
+    // Crisp, non-anti-aliased bar edges (inherited by the child <rect>s) — the
+    // key fix for fuzzy/faded bars on thermal printers.
+    svg.setAttribute('shape-rendering', 'crispEdges');
     return svg.outerHTML;
   } catch {
     return '';
   }
 }
+
+/**
+ * R-RECEIPT-REPRINT-BARCODE-HEIGHT-PARITY-V1: single source of truth for the
+ * POS receipt barcode HEIGHT. The normal POS receipt (ReceiptModal) halves the
+ * barcode to 45 for 80mm/4x6 thermal, but the REPRINT paths (ReportsModule,
+ * BarcodeActionModal) called renderBarcodeSvg() with NO height → the exported
+ * default of 90 → a fat/tall barcode on reprints. Routing every POS receipt /
+ * reprint barcode through this helper keeps fresh prints and reprints identical.
+ * label/cr80 keep 90 (their barcode behavior is unchanged); everything else = 30.
+ * R-RECEIPT-80MM-TIGHTEN-V1: dropped 45 → 30 — the 45px bars still printed
+ * too tall/fat on the 80mm + 4x6 POS receipts. Width / module math / payload
+ * are untouched — only the HEIGHT is decided here, so the bars stay scannable.
+ */
+export const getReceiptBarcodeHeight = (paperSize?: string): number =>
+  (paperSize === 'label' || paperSize === 'cr80') ? 90 : 30;
 
 interface ReceiptModalProps {
   open: boolean;
@@ -268,7 +291,17 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
   // reference. The visible text under the barcode stays as the
   // human-readable invoiceNumber — only the bars change.
   const barcodePayload = useMemo(() => buildReceiptBarcodePayload(sale), [sale?.invoiceNumber, sale?.id, sale?.customerId]);
-  const barcodeSvg = useMemo(() => renderBarcodeSvg(barcodePayload), [barcodePayload]);
+  // R-RECEIPT-80MM-FORENSIC-AUDIT + R-RECEIPT-4X6-TWO-PAGE-INTENTIONAL-LAYOUT:
+  // halve the barcode HEIGHT (90 → 45, ~24mm → ~12mm) for the POS receipt sizes
+  // (80mm AND 4x6). Only the height changes — width/module math (PRINTABLE_PX /
+  // moduleWidthPx) is untouched so the scanner read is unaffected. label/cr80
+  // keep 90 (their barcode behavior is unchanged), and the exported
+  // renderBarcodeSvg default stays 90 (ReportsModule + BarcodeActionModal callers
+  // are byte-identical).
+  const barcodeSvg = useMemo(
+    () => renderBarcodeSvg(barcodePayload, getReceiptBarcodeHeight(settings.paperSize)),
+    [barcodePayload, settings.paperSize]
+  );
 
   // R-RECEIPT-PREVIEW-OVERFLOW-FIX: dynamic iframe height. Iframes don't
   // auto-size to srcDoc content, so without measurement we either get a
@@ -400,6 +433,10 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
     }
 
     printHtml(previewHtml, {
+      // R-RECEIPT-PRINT-MODAL-RESTORE: route through PrintPreviewModal again
+      // (printer picker, page size, margins, copies, scale). The V3 `silent:true`
+      // direct-print experiment bypassed that window and made it disappear;
+      // restored to the known-good committed value so the modal shows once more.
       silent: false,
       printer: selectedPrinter || settings.detectedPrinters?.[0],
       copies: Math.max(1, copies),
@@ -885,6 +922,22 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   const is4x6 = paperSize !== '80mm' && paperSize !== 'label' && paperSize !== 'cr80';
   const isActivation4x6 = is4x6 && activationLines.length > 0;
 
+  // R-RECEIPT-4X6-QR-PAGINATION-FIX: a full 4x6 receipt + the review-QR block
+  // could overflow the fixed 6in label, and because the QR block is atomic
+  // (can't split) it was paginated WHOLE onto a blank second label. Tighten the
+  // 4x6 footer/QR vertical rhythm so the QR stays on the single 6in label,
+  // directly under the thank-you block. Scoped to the 4x6 path via is4x6 — the
+  // 80mm/label/cr80 footer values are unchanged (is4x6 is false there), and the
+  // already-fixed activation case keeps its existing 54px/tight values.
+  const qrPx        = isActivation4x6 ? 54 : (is4x6 ? 64 : 72);
+  const qrTopMargin = is4x6 ? 4 : 8;
+  const qrPadTop    = is4x6 ? 3 : 6;
+  const qrLabelMb   = is4x6 ? 2 : 4;
+  const qrStarMt    = is4x6 ? 1 : 3;
+  // Constrain the QR SVG to fill its (smaller) box on 4x6 so the lib's natural
+  // 80px render doesn't overflow and overlap the stars. 80mm keeps the raw SVG.
+  const qrInner     = qrSvg ? (is4x6 ? qrSvg.replace('<svg', '<svg style="display:block;width:100%;height:100%"') : qrSvg) : '';
+
   const activationBlock = activationLines.length > 0
     ? `<div style="text-align:center;margin:${isActivation4x6 ? '3px' : '6px'} 0;padding:${isActivation4x6 ? '4px' : '8px'} 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
         activationLines.map((phone) =>
@@ -900,10 +953,173 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   const is80mm  = paperSize === '80mm';
   const isLabel = paperSize === 'label';
   const isCr80  = paperSize === 'cr80';
+
+  // ── R-RECEIPT-80MM-DEDICATED-THERMAL-TEMPLATE ───────────────────────────────
+  // The 80mm receipt gets its OWN print layout, independent of the 4x6/desktop
+  // <table> markup (which kept clipping on real thermal heads at 100% scale).
+  // Safe geometry: body 68mm, LEFT-anchored (margin:0), padding 2mm 3mm →
+  // content width = 62mm, with its right edge at ~65mm from paper-left — well
+  // inside the ~72mm printable head and clear of the left dead-zone. Every
+  // money line is a 2-col CSS grid `minmax(0,1fr) 13mm`: the right-aligned
+  // amount lives in a fixed 13mm track anchored to the safe right edge so it
+  // can NEVER be pushed off-paper, while long label/item/customer text wraps
+  // (overflow-wrap:anywhere) instead of shoving the price out. No margin-auto
+  // centering, no transform scale(), no tables. Money/tax VALUES come straight
+  // from `sale.*` and reuse the SAME perItemDiscount / discountAmount display
+  // allocation as the shared template — no money math is duplicated here.
+  // 4x6 / label / cr80 fall through to the existing template untouched.
+  if (is80mm) {
+    // 2-col money row: [flexible label | fixed 12mm right-aligned amount].
+    const r80 = (label: string, amount: string, o: { row?: string; lab?: string; amt?: string } = {}) =>
+      `<div style="display:grid;grid-template-columns:minmax(0,1fr) 11mm;column-gap:1.5mm;align-items:baseline;${o.row || ''}">` +
+        `<div style="min-width:0;overflow-wrap:anywhere;${o.lab || ''}">${label}</div>` +
+        `<div style="text-align:right;white-space:nowrap;${o.amt || ''}">${amount}</div>` +
+      `</div>`;
+
+    // Items — same effective-price + per-line/cart discount display as the
+    // shared template, rendered as grid rows so the amount stays in the safe track.
+    const items80 = sale.items.map((item) => {
+      const lineTotal = item.price * item.qty;
+      const cartShare = perItemDiscount[item.id] || 0;
+      const effectiveTotal = lineTotal - cartShare;
+      const safeNotes = sanitizeReceiptNotes(item.notes);
+      const itemIdValue = item.imei || item.sku || '';
+      const subLines =
+        (safeNotes ? `<div style="font-size:9px;color:#888">${renderReceiptNotesHtml(safeNotes)}</div>` : '') +
+        (itemIdValue ? `<div style="font-size:9px;font-family:'Courier New',monospace;font-weight:700;letter-spacing:0.04em;color:#555">ID: ${escHtml(itemIdValue)}</div>` : '') +
+        (cartShare > 0 ? `<div style="font-size:9px;font-style:italic;color:#c00">${es ? 'Descuento aplicado' : 'Discount Applied'}: -${fmt(cartShare)}</div>` : '');
+      return r80(
+        `<div style="font-size:11px">${escHtml(item.name)}${item.qty > 1 ? ` &times;${item.qty}` : ''}</div>${subLines}`,
+        fmt(effectiveTotal),
+        { amt: 'font-size:11px;font-weight:600', row: 'padding:1px 0' }
+      );
+    }).join('');
+
+    // Savings callout — identical calc to the shared template (display only).
+    let lineSavings80 = 0;
+    for (const it of sale.items) {
+      const o = (it.originalPrice ?? it.price) * it.qty;
+      const p = it.price * it.qty;
+      if (o > p) lineSavings80 += (o - p);
+    }
+    const totalSaved80 = discountAmount + lineSavings80;
+
+    const taxRows80 =
+      (sale.salesTax !== undefined || sale.utilityTax !== undefined || sale.mobileSurcharge !== undefined)
+        ? ((sale.salesTax || 0) > 0 ? r80(`${es ? 'Impuesto de Venta' : pt ? 'Imposto de Venda' : 'Sales Tax'}:`, fmt(sale.salesTax!)) : '') +
+          ((sale.utilityTax || 0) > 0 ? r80(`${es ? 'Impuesto de Servicios' : pt ? 'Imposto de Serviços' : 'Utility Users Tax'} (${((settings.utilityUsersTax || 0.055) * 100).toFixed(2)}%):`, fmt(sale.utilityTax!)) : '') +
+          ((sale.mobileSurcharge || 0) > 0 ? r80(`${es ? 'Cargo de Movilidad CDTFA' : pt ? 'Taxa de Mobilidade CDTFA' : 'CDTFA Mobility Fee'}:`, fmt(sale.mobileSurcharge!)) : '')
+        : ((sale.taxAmount || 0) > 0 ? r80(`${es ? 'Impuesto' : pt ? 'Imposto' : 'Tax'}:`, fmt(sale.taxAmount)) : '');
+
+    const feeRows80 =
+      ((sale.cbeTotal || 0) > 0 ? r80(`${es ? 'Cuota CBE:' : pt ? 'Taxa CBE:' : 'CBE Fee:'}`, fmt(sale.cbeTotal!)) : '') +
+      ((sale.screenFeeTotal || 0) > 0 ? r80(`${es ? 'Cuota Pantalla:' : pt ? 'Taxa Tela:' : 'Screen Fee:'}`, fmt(sale.screenFeeTotal!)) : '') +
+      ((sale.creditCardFee || 0) > 0 ? r80(`${es ? 'Cargo de Tarjeta:' : pt ? 'Taxa de Cartão:' : 'Card Fee:'}`, fmt(sale.creditCardFee!)) : '');
+
+    // Compact, centered review QR — constrained to its box so it never overflows.
+    const qrInner80 = qrSvg ? qrSvg.replace('<svg', '<svg style="display:block;width:100%;height:100%"') : '';
+    const reviewBlock80 = (settings.showReviewQr && settings.googleReviewUrl)
+      ? `<div style="text-align:center;margin-top:6px;padding-top:6px;border-top:1px dashed #000">` +
+          `<div style="font-size:10px;font-weight:700;margin-bottom:3px">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>` +
+          `<div style="width:64px;height:64px;margin:0 auto">${qrInner80 || `<img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(settings.googleReviewUrl)}" width="64" height="64" style="display:block;margin:0 auto" />`}</div>` +
+          `<div style="font-size:8px;color:#555;margin-top:2px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>` +
+        `</div>`
+      : '';
+
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Receipt</title>
+<style>
+  /* R-RECEIPT-80MM-PHYSICAL-X-OFFSET: dumb/simple full-width 80mm body — no
+     centering, no margin auto, no padding, no scale, no tables. The PHYSICAL
+     left-shift lives entirely on the inner .thermal80-content wrapper so the
+     whole receipt is pulled left, away from the printer's right dead zone. */
+  @page { size: 80mm auto; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { width: 80mm; font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; }
+  * { box-sizing: border-box; }
+  /* R-RECEIPT-80MM-OFFSET-RECENTER-V1: the previous left:-5mm over-corrected and
+     clipped the LEFT edge. Shift content RIGHT to +3mm with a 58mm box → content
+     spans 3mm..61mm, safely inside the ~72mm thermal head: enough left margin and
+     right-side prices stay clear of the right dead zone. NOT a scale. If the left
+     still clips, raise to left:4mm; if the right clips, drop width to 56mm. */
+  .thermal80-content { position: relative; left: 3mm; width: 58mm; }
+  .t80sep { border-top: 1px dashed #000; margin: 4px 0; }
+  /* Preview iframe only — neutralize the physical offset so the on-screen
+     preview stays readable and fills the modal width. */
+  @media screen {
+    html, body { width: 100% !important; max-width: 100% !important; }
+    .thermal80-content { left: 0; width: 100%; }
+  }
+  @media print {
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body, body * { color: #000 !important; }
+  }
+</style>
+</head><body>
+  <div class="thermal80-content">
+  <!-- Header (centered) -->
+  <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:3px;margin-bottom:4px">
+    <div style="font-size:16px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow-wrap:anywhere">${escHtml(settings.storeName || 'GO CELLULAR')}</div>
+    ${settings.storeAddress ? `<div style="font-size:9px;font-weight:500;overflow-wrap:anywhere">${escHtml(settings.storeAddress)}</div>` : ''}
+    ${settings.storePhone ? `<div style="font-size:9px;font-weight:500;overflow-wrap:anywhere">${escHtml(settings.storePhone)}</div>` : ''}
+  </div>
+
+  <!-- Barcode (compact, centered, constrained to safe width) -->
+  <div style="text-align:center;margin:0 0 2px 0;overflow:hidden">
+    ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}
+  </div>
+  <!-- Invoice / customer / cashier (full-width, wrap — never clip) -->
+  <div style="font-size:10px">${formatDate(sale.createdAt)}</div>
+  <div style="font-size:12px;font-weight:900;overflow-wrap:anywhere">${escHtml(sale.invoiceNumber)}</div>
+  ${sale.customerName ? `<div style="font-size:10px;overflow-wrap:anywhere">${es || pt ? 'Cliente' : 'Customer'}: <strong>${escHtml(sale.customerName)}</strong>${sale.customerPhone ? ` &middot; ${escHtml(sale.customerPhone)}` : ''}</div>` : ''}
+  ${sale.employeeName ? `<div style="font-size:9px;overflow-wrap:anywhere">${es ? 'Cajero' : pt ? 'Caixa' : 'Cashier'}: ${escHtml(sale.employeeName)}</div>` : ''}
+
+  <div class="t80sep"></div>
+  <!-- Items -->
+  ${items80}
+  <div class="t80sep"></div>
+  ${activationBlock}
+
+  <!-- Totals / payment -->
+  ${r80('Subtotal:', fmt(sale.subtotalAfterDiscount ?? sale.subtotal))}
+  ${totalSaved80 > 0 ? `<div style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : pt ? 'Economizado' : 'Saved'}: ${fmt(totalSaved80)}</div>` : ''}
+  ${taxRows80}
+  ${feeRows80}
+  ${r80('TOTAL:', fmt(sale.total), { row: 'border-top:1px solid #000;padding-top:3px;margin-top:2px', lab: 'font-size:14px;font-weight:900', amt: 'font-size:15px;font-weight:900' })}
+  ${r80(`${es ? 'Pago' : pt ? 'Pagamento' : 'Payment'}:`, escHtml(sale.paymentMethod), { lab: 'font-size:11px;font-weight:600', amt: 'font-size:11px;font-weight:900' })}
+  ${sale.cashReceived
+    ? r80(`${es ? 'Efectivo' : pt ? 'Dinheiro' : 'Cash'}:`, fmt(sale.cashReceived)) +
+      r80(`${es ? 'Cambio' : pt ? 'Troco' : 'Change'}:`, fmt(sale.changeDue || 0), { lab: 'font-weight:900', amt: 'font-weight:900' })
+    : ''}
+
+  <div class="t80sep"></div>
+  <!-- Footer / review (compact) -->
+  <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
+    ${settings.receiptFooter ? escHtml(settings.receiptFooter) : (es ? '¡Gracias por su compra!' : pt ? 'Obrigado pela sua compra!' : 'Thank you for your purchase!')}
+    ${settings.warrantyText ? `<div style="font-size:9px;font-weight:400;margin-top:3px;overflow-wrap:anywhere">${escHtml(settings.warrantyText)}</div>` : ''}
+    ${settings.returnPolicy ? `<div style="font-size:9px;font-weight:400;margin-top:3px;overflow-wrap:anywhere">${escHtml(settings.returnPolicy)}</div>` : ''}
+    ${reviewBlock80}
+  </div>
+  </div><!-- /.thermal80-content -->
+</body></html>`;
+  }
+
   const pageStyle = is80mm
+    // R-RECEIPT-80MM-FORENSIC-AUDIT: the paper is 80mm but an 80mm thermal
+    // head's real printable area is ~72mm and it prints LEFT-ANCHORED from the
+    // paper's left edge (the right ~8mm is dead). A *centered* 72mm body
+    // (prior R-RECEIPT-80MM-PRINTABLE-WIDTH) pushed the right-aligned price
+    // column to ~72mm — right at the cut — so totals still clipped at scale
+    // 100% (only top-left-anchored 90% shrink rescued it). Fix: left-anchor the
+    // body (margin:0, not auto) so all slack moves to the right away from the
+    // cut, width 70mm + padding 2mm 3mm → content box x=3..67mm, ~5mm inside
+    // the 72mm head and clear of the left dead-zone. No transform: scale().
+    // @page stays 80mm (physical paper). 4x6/label/cr80/screen-preview untouched.
     ? `@page { size: 80mm auto; margin: 0; }
-  html, body { width: 80mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }
-  body { padding: 2mm 4mm; box-sizing: border-box; }`
+  html { width: 80mm; margin: 0; padding: 0; background: #fff; }
+  body { width: 70mm; margin: 0; padding: 2mm 3mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }`
     : isLabel
     ? `@page { size: 57.15mm 31.75mm; margin: 0; }
   html, body { width: 57.15mm; height: 31.75mm; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 7px; color: #000; background: #fff; overflow: hidden; }
@@ -917,9 +1133,13 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     // actual content. 4×6 stays the print page size via @page; body grows
     // naturally when content exceeds 6in (multi-page print) without
     // producing a scroll arrow in the preview.
+    // R-RECEIPT-4X6-QR-PAGINATION-FIX: trim top/bottom body padding (0.1in →
+    // 0.06in) to recover ~0.08in of vertical room on the 6in label so the
+    // review-QR footer fits on page one. Horizontal padding unchanged. 4x6 path
+    // only — 80mm/label/cr80 branches above are untouched.
     : `@page { size: 4in 6in; margin: 0; }
   html, body { width: 4in; margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
-  body { padding: 0.1in 0.15in; box-sizing: border-box; }`;
+  body { padding: 0.06in 0.15in; box-sizing: border-box; }`;
 
   // R-RECEIPT-BARCODE-MATCH-WORKING-V1: barcode goes in its own row below
   // the header (single-column store info above) so it can render at its
@@ -951,7 +1171,14 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   }
   table { width: 100%; border-collapse: collapse; }
   .sep { border-top: 1px dashed #999; margin: 5px 0; }
-  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print {
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* R-RECEIPT-BARCODE-THERMAL-CRISP-V1: gray/colored helper text (#555/#888/
+       green/red accents) prints faded on a monochrome thermal head — force
+       solid black so small text stays sharp. Scoped to @media print, so the
+       on-screen preview keeps its colors. */
+    body, body * { color: #000 !important; }
+  }
 </style>
 </head><body>
   <!-- Header: store info, single column.
@@ -975,7 +1202,6 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">
     ${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : '<svg style="display:block"></svg>'}
   </div>
-
   <!-- Invoice info -->
   <table style="margin-bottom:5px">
     <tr>
@@ -1036,18 +1262,25 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   </table>
   <div class="sep"></div>
 
-  <!-- Footer -->
+  <!-- Footer / review block.
+       R-RECEIPT-4X6-CONTINUOUS-RECEIPT-NOT-QR-PAGE: the prior forced page break
+       (page-break-before:always) was WRONG — it created a blank gap and made the
+       QR look like a separate receipt. Removed. The footer/review/QR now flows
+       continuously right after the totals/change line; a short receipt prints on
+       one 4x6 page, a long one spills naturally. break-inside:avoid is applied
+       NOT here (the whole footer would jump pages and leave a gap) but only to
+       the inner QR block below, so just the QR can't split mid-image. -->
   <div style="text-align:center;font-size:11px;font-weight:600;line-height:1.3">
     ${settings.receiptFooter ? escHtml(settings.receiptFooter) : (es ? '¡Gracias por su compra!' : pt ? 'Obrigado pela sua compra!' : 'Thank you for your purchase!')}
     ${settings.warrantyText ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.warrantyText)}</div>` : ''}
     ${settings.returnPolicy ? `<div style="font-size:9px;font-weight:400;margin-top:3px">${escHtml(settings.returnPolicy)}</div>` : ''}
     ${settings.showReviewQr && settings.googleReviewUrl ? `
-    <div style="text-align:center;margin-top:${isActivation4x6 ? '4px' : '8px'};padding-top:${isActivation4x6 ? '3px' : '6px'};border-top:1px dashed #ccc">
-      <div style="font-size:10px;font-weight:700;margin-bottom:${isActivation4x6 ? '2px' : '4px'}">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>
+    <div style="${is4x6 ? 'break-inside:avoid;' : ''}text-align:center;margin-top:${qrTopMargin}px;padding-top:${qrPadTop}px;border-top:1px dashed #ccc">
+      <div style="font-size:10px;font-weight:700;margin-bottom:${qrLabelMb}px">${es ? '¡Déjanos tu reseña!' : pt ? 'Deixe-nos uma avaliação!' : 'Leave us a review!'}</div>
       ${qrSvg
-        ? `<div style="width:${isActivation4x6 ? '54px' : '72px'};height:${isActivation4x6 ? '54px' : '72px'};margin:0 auto">${qrSvg}</div>`
-        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(settings.googleReviewUrl)}" width="${isActivation4x6 ? '54' : '72'}" height="${isActivation4x6 ? '54' : '72'}" style="display:block;margin:0 auto" />`}
-      <div style="font-size:8px;color:#555;margin-top:${isActivation4x6 ? '1px' : '3px'}">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
+        ? `<div style="width:${qrPx}px;height:${qrPx}px;margin:0 auto">${qrInner}</div>`
+        : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrPx}x${qrPx}&data=${encodeURIComponent(settings.googleReviewUrl)}" width="${qrPx}" height="${qrPx}" style="display:block;margin:0 auto" />`}
+      <div style="font-size:8px;color:#555;margin-top:${qrStarMt}px">&#9733;&#9733;&#9733;&#9733;&#9733; Google</div>
     </div>` : ''}
   </div>
 

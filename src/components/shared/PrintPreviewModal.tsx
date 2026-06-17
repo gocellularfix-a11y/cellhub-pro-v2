@@ -59,10 +59,21 @@ export default function PrintPreviewModal({
   bridgeReceipt,
   receiptType,
 }: PrintPreviewModalProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: on a LAN Secondary, hide the printer
   // picker + skip the local printer scan (the Primary owns hardware).
   const lanReadOnly = useLanReadOnlyMode();
+  // R-PAPERSIZE-DESYNC-LOCK-V1: a POS receipt's HTML is baked from
+  // settings.paperSize BEFORE this modal opens (dedicated-80mm vs shared-4x6
+  // template). Letting the user change the page size here only resized the
+  // physical page — it never re-baked the template — so the printed layout and
+  // the page size could silently diverge (Jorge's 80mm-on-4x6-template bug).
+  // For POS receipts we LOCK the page size to the baked value and make Settings
+  // → Hardware → Paper Size the single source of truth. Scoped to pos_receipt
+  // only: labels, reports, repair/special-order tickets keep the full picker.
+  const lockPageSize = receiptType === 'pos_receipt';
+  // The baked template size = what ReceiptModal passed as pageSize (settings.paperSize).
+  const bakedPageSizeKey = initialPageSize || '4x6';
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a Secondary CAN still
   // print a bridge-eligible receipt — it forwards to the Primary. Print Desk and
   // other non-bridged prints have no bridgeReceipt flag → stay disabled here.
@@ -156,7 +167,8 @@ export default function PrintPreviewModal({
     if (canBridge) {
       setPrinting(true);
       try {
-        const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+        // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
+        const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
         const micron = landscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
         const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html, copies, pageSize: micron });
         emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
@@ -182,7 +194,8 @@ export default function PrintPreviewModal({
     setPrinting(true);
     setPrintResult(null);
     try {
-      const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+      // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
+      const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
       // R-PRINT-SHRINK-FIX-V1: pass the effective scale to Electron's
       // printRun. Previously this was hardcoded to 100 — the "Shrink to
       // fit" toggle scaled the PREVIEW iframe via CSS transform but never
@@ -210,8 +223,16 @@ export default function PrintPreviewModal({
         pageRanges,
       });
       if (result.success) {
-        setPrintResult('✅ Sent to printer');
-        setTimeout(() => onClose(), 1200);
+        // RECEIPT-PRINTER-RANGE-FALLBACK-V1: the receipt printer can't select
+        // pages — it printed the full receipt. Show a clear, non-error message
+        // (and leave it up a bit longer so the operator can read it).
+        if (result.rangeUnsupported) {
+          setPrintResult(`⚠️ ${t('print.rangeUnsupported')}`);
+          setTimeout(() => onClose(), 2800);
+        } else {
+          setPrintResult('✅ Sent to printer');
+          setTimeout(() => onClose(), 1200);
+        }
       } else {
         setPrintResult(`❌ ${result.error || 'Print failed'}`);
       }
@@ -268,9 +289,25 @@ export default function PrintPreviewModal({
     [html, previewScale],
   );
 
+  // R-PAPERSIZE-DESYNC-LOCK-V1 guard: a POS receipt's template is already baked
+  // from the baked page size. If the size that will actually be sent to the
+  // printer (`pageSize`) ever drifts from that baked value, the printed page
+  // and the receipt layout would desync. With the picker locked this can't
+  // happen via the UI, but the guard surfaces any future/regressed path.
+  useEffect(() => {
+    if (open && lockPageSize && pageSize !== bakedPageSizeKey) {
+      console.warn(
+        `[print:desync] POS receipt page size "${pageSize}" != baked template size "${bakedPageSizeKey}". ` +
+        'Receipt template was generated from Settings → Paper Size; forcing the baked value to avoid layout/page desync.',
+      );
+    }
+  }, [open, lockPageSize, pageSize, bakedPageSizeKey]);
+
   if (!open) return null;
 
-  const ps = PAGE_SIZES[pageSize] || PAGE_SIZES['4x6'];
+  // R-PAPERSIZE-DESYNC-LOCK-V1: for a locked POS receipt, ALWAYS resolve the
+  // physical page from the baked template size — never from a drifted `pageSize`.
+  const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
 
   return (
     <div style={{
@@ -323,13 +360,34 @@ export default function PrintPreviewModal({
             </Field>
           )}
 
-          {/* Page Size */}
-          <Field label="Page Size">
-            <select value={pageSize} onChange={(e) => setPageSize(e.target.value)} style={selectStyle}>
-              {Object.entries(PAGE_SIZES).map(([key, val]) => (
-                <option key={key} value={key}>{val.label}</option>
-              ))}
-            </select>
+          {/* Page Size — R-PAPERSIZE-DESYNC-LOCK-V1: for POS receipts the size is
+              read-only (the template is already baked from Settings → Paper Size).
+              Every other print flow keeps the editable picker. */}
+          <Field label={locale === 'es' ? 'Tamaño de Papel' : locale === 'pt' ? 'Tamanho do Papel' : 'Page Size'}>
+            {lockPageSize ? (
+              <div style={{
+                padding: '0.5rem 0.6rem', fontSize: '0.85rem', borderRadius: '0.4rem',
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                color: '#e2e8f0',
+              }}>
+                <div style={{ fontWeight: 700 }}>
+                  {PAGE_SIZES[bakedPageSizeKey]?.label || bakedPageSizeKey}
+                </div>
+                <div style={{ marginTop: '0.3rem', fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.35 }}>
+                  {locale === 'es'
+                    ? 'Cambiar en Ajustes → Hardware → Tamaño de Papel'
+                    : locale === 'pt'
+                    ? 'Alterar em Configurações → Hardware → Tamanho do Papel'
+                    : 'Change in Settings → Hardware → Paper Size'}
+                </div>
+              </div>
+            ) : (
+              <select value={pageSize} onChange={(e) => setPageSize(e.target.value)} style={selectStyle}>
+                {Object.entries(PAGE_SIZES).map(([key, val]) => (
+                  <option key={key} value={key}>{val.label}</option>
+                ))}
+              </select>
+            )}
           </Field>
 
           {/* Orientation */}
@@ -521,8 +579,9 @@ export default function PrintPreviewModal({
           {printResult && (
             <div style={{
               padding: '0.5rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 600,
-              background: printResult.startsWith('✅') ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-              color: printResult.startsWith('✅') ? '#22c55e' : '#ef4444',
+              // RECEIPT-PRINTER-RANGE-FALLBACK-V1: amber for the ⚠️ warning (not red — the print succeeded).
+              background: printResult.startsWith('✅') ? 'rgba(34,197,94,0.15)' : printResult.startsWith('⚠️') ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+              color: printResult.startsWith('✅') ? '#22c55e' : printResult.startsWith('⚠️') ? '#f59e0b' : '#ef4444',
               textAlign: 'center',
             }}>
               {printResult}
