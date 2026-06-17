@@ -53,6 +53,13 @@ export interface PrintOptions {
   bridgeReceipt?: boolean;
   /** Optional label for the forwarded receipt (e.g. 'pos_receipt'). */
   receiptType?: string;
+  /** R-PRINT-MULTIPAGE-PREVIEW-V1: opt-in for multi-page sheet documents
+   *  (e.g. the Tax Organizer Letter summary). When true, PrintPreviewModal
+   *  lets the preview iframe grow to the full document height and scroll
+   *  vertically instead of clamping to one fixed page (overflow:hidden).
+   *  Default/undefined keeps the single-fixed-page receipt behavior. The
+   *  actual print is unaffected — print:run already paginates the full HTML. */
+  multiPage?: boolean;
 }
 
 /** State holder for the print modal — consumed by AppProvider or layout root */

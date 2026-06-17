@@ -956,69 +956,111 @@ export function organizerToPrintHtml(org: TaxOrganizer): string {
     : org.meta.entityMode === 'c_corp' ? 'C-Corporation (1120 · CA 100)'
     : 'Sole Proprietor (Schedule C · CA 540)';
 
+  // Page label word per locale (kept inline so PRINT_STRINGS stays untouched).
+  const pageWord = org.meta.locale === 'es' ? 'Página' : org.meta.locale === 'pt' ? 'Página' : 'Page';
+  const pageLabel = (n: number, total: number) =>
+    `<div class="page-label">${escHtml(S.title)} ${org.meta.year} — ${escHtml(pageWord)} ${n} / ${total}</div>`;
+
+  // R-TAX-ORGANIZER-PRINT-PAGINATION-V1: explicit Letter pages with print-safe
+  // CSS. No fixed-height wrappers, no overflow:hidden on body/page — content
+  // flows and paginates. `.page + .page{break-before:page}` forces page 2 onto
+  // a fresh sheet; `.section{break-inside:avoid}` keeps headings with their
+  // tables. Works at 100% scale (does NOT depend on the modal's shrink-to-fit).
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(S.title)} ${org.meta.year}</title><style>
-    @page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#111;background:#fff;padding:0.25in}
-    h1{font-size:16pt;margin-bottom:2px}h2{font-size:11pt;margin:14px 0 4px;border-bottom:1px solid #999;padding-bottom:2px}
+    @page{size:letter;margin:0.5in}
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{background:#fff}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .page{padding:0}
+    .page + .page{page-break-before:always;break-before:page}
+    .section{break-inside:avoid;page-break-inside:avoid;margin-bottom:6px}
+    h1{font-size:16pt;margin-bottom:2px}
+    h2{font-size:11pt;margin:14px 0 4px;border-bottom:1px solid #999;padding-bottom:2px}
     .muted{color:#555;font-size:8.5pt}
-    .disc{background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:7px 10px;font-size:8.5pt;color:#92400e;margin:8px 0}
-    table{width:100%;border-collapse:collapse;margin-top:4px}th,td{padding:3px 6px;border-bottom:1px solid #ddd;font-size:9pt;text-align:left}
+    .disc{background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:7px 10px;font-size:8.5pt;color:#92400e;margin:8px 0;break-inside:avoid;page-break-inside:avoid}
+    table{width:100%;border-collapse:collapse;margin-top:4px}
+    th,td{padding:3px 6px;border-bottom:1px solid #ddd;font-size:9pt;text-align:left}
     th{background:#f3f3f3;font-weight:700}td.r,th.r{text-align:right}
+    thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}
     .summary{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}
-    .stat{border:1px solid #ccc;border-radius:6px;padding:8px 12px;min-width:120px}
+    .stat{border:1px solid #ccc;border-radius:6px;padding:8px 12px;min-width:120px;break-inside:avoid;page-break-inside:avoid}
     .stat .lbl{font-size:8pt;color:#666;text-transform:uppercase}.stat .val{font-size:14pt;font-weight:800}
     ul{margin:6px 0 0 18px}li{font-size:8.5pt;margin:2px 0}
     .flow li{list-style:none;margin:3px 0}
     .w-error{color:#b91c1c}.w-warning{color:#b45309}.w-info{color:#1d4ed8}
     .foot{margin-top:18px;font-size:8pt;color:#888}
+    .page-label{margin-top:14px;padding-top:6px;border-top:1px solid #ccc;font-size:8pt;color:#888;text-align:right}
   </style></head><body>
-    <h1>${escHtml(S.title)} — ${org.meta.year}</h1>
-    <div class="muted">${escHtml(b.name)}${b.ein ? ' · EIN ' + escHtml(b.ein) : ''}<br>
-      ${escHtml(b.address)} ${escHtml(b.city)} ${escHtml(b.state)} ${escHtml(b.zip)}<br>
-      ${escHtml(b.phone)}${b.email ? ' · ' + escHtml(b.email) : ''} · ${escHtml(entityLabel)}${org.meta.entityModeConfigured ? '' : ' ⚠️ mode not configured'}</div>
+    <!-- ── Page 1: header · disclaimer · summary · federal flow · expenses · Schedule C · CA 568 ── -->
+    <div class="page">
+      <h1>${escHtml(S.title)} — ${org.meta.year}</h1>
+      <div class="muted">${escHtml(b.name)}${b.ein ? ' · EIN ' + escHtml(b.ein) : ''}<br>
+        ${escHtml(b.address)} ${escHtml(b.city)} ${escHtml(b.state)} ${escHtml(b.zip)}<br>
+        ${escHtml(b.phone)}${b.email ? ' · ' + escHtml(b.email) : ''} · ${escHtml(entityLabel)}${org.meta.entityModeConfigured ? '' : ' ⚠️ mode not configured'}</div>
 
-    <div class="disc">${escHtml(org.meta.disclaimer)}</div>
+      <div class="disc">${escHtml(org.meta.disclaimer)}</div>
 
-    <h2>${escHtml(S.summary)}</h2>
-    <div class="summary">
-      <div class="stat"><div class="lbl">${escHtml(S.totalIncome)}</div><div class="val">$${escHtml(org.summary.totalIncome)}</div></div>
-      <div class="stat"><div class="lbl">${escHtml(S.cogs)}</div><div class="val">$${escHtml(org.summary.cogs)}</div></div>
-      <div class="stat"><div class="lbl">${escHtml(S.operatingExpenses)}</div><div class="val">$${escHtml(org.summary.operatingExpenses)}</div></div>
-      <div class="stat"><div class="lbl">${escHtml(S.netProfit)}</div><div class="val">$${escHtml(org.summary.netProfit)}</div></div>
+      <div class="section">
+        <h2>${escHtml(S.summary)}</h2>
+        <div class="summary">
+          <div class="stat"><div class="lbl">${escHtml(S.totalIncome)}</div><div class="val">$${escHtml(org.summary.totalIncome)}</div></div>
+          <div class="stat"><div class="lbl">${escHtml(S.cogs)}</div><div class="val">$${escHtml(org.summary.cogs)}</div></div>
+          <div class="stat"><div class="lbl">${escHtml(S.operatingExpenses)}</div><div class="val">$${escHtml(org.summary.operatingExpenses)}</div></div>
+          <div class="stat"><div class="lbl">${escHtml(S.netProfit)}</div><div class="val">$${escHtml(org.summary.netProfit)}</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>${escHtml(S.federalFlow)}</h2>
+        <ul class="flow">
+          <li>📥 ${escHtml(fm.grossIncome.where)}</li>
+          <li>📦 ${escHtml(fm.cogs.where)}</li>
+          <li>➖ ${escHtml(fm.grossProfit.where)}</li>
+          <li>✅ ${escHtml(fm.netProfit.where)} — <b>$${escHtml(org.summary.netProfit)}</b></li>
+          <li>🧾 ${escHtml(fm.selfEmploymentTax.where)} — $${escHtml(fm.selfEmploymentTax.amount)}</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>${escHtml(S.expenses)}</h2>
+        <table><thead><tr><th>${escHtml(S.category)}</th><th class="r">${escHtml(S.amount)}</th><th class="r">${escHtml(S.deductible)}</th></tr></thead><tbody>${expRows}</tbody></table>
+      </div>
+
+      <div class="section">
+        <h2>${escHtml(S.schedC)}</h2>
+        <table><thead><tr><th>${escHtml(S.line)}</th><th>${escHtml(S.category)}</th><th class="r">${escHtml(S.amount)}</th></tr></thead><tbody>${schedRows}</tbody></table>
+      </div>
+
+      <div class="section">
+        <h2>${escHtml(S.california)} (${escHtml(ca.form)})</h2>
+        <table><tbody>
+          <tr><td>LLC Gross Receipts</td><td class="r">$${escHtml(ca.llcGrossReceipts)}</td></tr>
+          <tr><td>Total Income</td><td class="r">$${escHtml(ca.totalIncome)}</td></tr>
+          <tr><td>Total Deductions</td><td class="r">$${escHtml(ca.totalDeductions)}</td></tr>
+          <tr><td>Ordinary Income/Loss</td><td class="r">$${escHtml(ca.ordinaryIncomeLoss)}</td></tr>
+          <tr><td>$800 Annual Minimum Tax</td><td class="r">${f568.annualTax800 ? '$' + escHtml(centsToFixed(f568.annualTax800Cents)) : 'n/a'}</td></tr>
+          <tr><td>Estimated LLC Fee (${escHtml(f568.estimatedFeeTier)})</td><td class="r">$${escHtml(centsToFixed(f568.estimatedFee))}</td></tr>
+          <tr><td>CA Adjustments</td><td class="r">$${escHtml(ca.caAdjustments)}</td></tr>
+        </tbody></table>
+      </div>
+
+      ${pageLabel(1, 2)}
     </div>
 
-    <h2>${escHtml(S.federalFlow)}</h2>
-    <ul class="flow">
-      <li>📥 ${escHtml(fm.grossIncome.where)}</li>
-      <li>📦 ${escHtml(fm.cogs.where)}</li>
-      <li>➖ ${escHtml(fm.grossProfit.where)}</li>
-      <li>✅ ${escHtml(fm.netProfit.where)} — <b>$${escHtml(org.summary.netProfit)}</b></li>
-      <li>🧾 ${escHtml(fm.selfEmploymentTax.where)} — $${escHtml(fm.selfEmploymentTax.amount)}</li>
-    </ul>
+    <!-- ── Page 2: member split · warnings & notes · preparer notes ── -->
+    <div class="page">
+      ${memberRows ? `<div class="section">
+        <h2>${escHtml(S.members)}</h2>
+        <table><thead><tr><th>${escHtml(S.member)}</th><th class="r">%</th><th class="r">${escHtml(S.share)}</th></tr></thead><tbody>${memberRows}</tbody></table>
+      </div>` : ''}
 
-    <h2>${escHtml(S.expenses)}</h2>
-    <table><thead><tr><th>${escHtml(S.category)}</th><th class="r">${escHtml(S.amount)}</th><th class="r">${escHtml(S.deductible)}</th></tr></thead><tbody>${expRows}</tbody></table>
+      <div class="section">
+        <h2>${escHtml(S.warnings)}</h2>
+        <ul>${warnRows}${org.notes.map((n) => `<li class="w-info">${escHtml(n)}</li>`).join('')}</ul>
+      </div>
 
-    <h2>${escHtml(S.schedC)}</h2>
-    <table><thead><tr><th>${escHtml(S.line)}</th><th>${escHtml(S.category)}</th><th class="r">${escHtml(S.amount)}</th></tr></thead><tbody>${schedRows}</tbody></table>
-
-    <h2>${escHtml(S.california)} (${escHtml(ca.form)})</h2>
-    <table><tbody>
-      <tr><td>LLC Gross Receipts</td><td class="r">$${escHtml(ca.llcGrossReceipts)}</td></tr>
-      <tr><td>Total Income</td><td class="r">$${escHtml(ca.totalIncome)}</td></tr>
-      <tr><td>Total Deductions</td><td class="r">$${escHtml(ca.totalDeductions)}</td></tr>
-      <tr><td>Ordinary Income/Loss</td><td class="r">$${escHtml(ca.ordinaryIncomeLoss)}</td></tr>
-      <tr><td>$800 Annual Minimum Tax</td><td class="r">${f568.annualTax800 ? '$' + escHtml(centsToFixed(f568.annualTax800Cents)) : 'n/a'}</td></tr>
-      <tr><td>Estimated LLC Fee (${escHtml(f568.estimatedFeeTier)})</td><td class="r">$${escHtml(centsToFixed(f568.estimatedFee))}</td></tr>
-      <tr><td>CA Adjustments</td><td class="r">$${escHtml(ca.caAdjustments)}</td></tr>
-    </tbody></table>
-
-    ${memberRows ? `<h2>${escHtml(S.members)}</h2>
-    <table><thead><tr><th>${escHtml(S.member)}</th><th class="r">%</th><th class="r">${escHtml(S.share)}</th></tr></thead><tbody>${memberRows}</tbody></table>` : ''}
-
-    <h2>${escHtml(S.warnings)}</h2>
-    <ul>${warnRows}${org.notes.map((n) => `<li class="w-info">${escHtml(n)}</li>`).join('')}</ul>
-
-    <div class="foot">${escHtml(S.generated)} · ${escHtml(org.meta.schema)}</div>
+      <div class="foot">${escHtml(S.generated)} · ${escHtml(org.meta.schema)}</div>
+      ${pageLabel(2, 2)}
+    </div>
   </body></html>`;
 }

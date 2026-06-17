@@ -240,6 +240,7 @@ export default function App() {
         initialLandscape={printModal.options?.landscape}
         bridgeReceipt={printModal.options?.bridgeReceipt}
         receiptType={printModal.options?.receiptType}
+        multiPage={printModal.options?.multiPage}
       />
     </>
   );

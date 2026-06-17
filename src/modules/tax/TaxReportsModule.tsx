@@ -645,7 +645,11 @@ export default function TaxReportsModule() {
   const handlePrintOrganizer = useCallback(() => {
     try {
       const org = buildTaxOrganizer(buildOrganizerInput());
-      printHtml(organizerToPrintHtml(org), { silent: false, printer: settings.detectedPrinters?.[0] });
+      // R-TAX-ORGANIZER-PRINT-PAGINATION-V1: force Letter so PrintPreviewModal
+      // sizes the page (and the print job) to 8.5×11 instead of the 4x6 default,
+      // which clipped the organizer to a single page. The HTML paginates via
+      // @page + page-break CSS across multiple Letter pages.
+      printHtml(organizerToPrintHtml(org), { silent: false, pageSize: 'letter', multiPage: true, printer: settings.detectedPrinters?.[0] });
     } catch (err) {
       toast(es ? 'No se pudo imprimir el organizador.' : 'Could not print the tax organizer.', 'error');
       // eslint-disable-next-line no-console

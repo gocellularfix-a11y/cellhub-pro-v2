@@ -39,6 +39,11 @@ interface PrintPreviewModalProps {
   // (e.g. Print Desk) stay disabled on a Secondary.
   bridgeReceipt?: boolean;
   receiptType?: string;
+  /** R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page Letter document (e.g. Tax
+   *  Organizer). Lets the preview iframe grow to full document height and
+   *  scroll, instead of clamping to one fixed page. Receipts leave this
+   *  undefined → unchanged single-fixed-page preview. */
+  multiPage?: boolean;
 }
 
 interface PrinterInfo {
@@ -58,6 +63,7 @@ export default function PrintPreviewModal({
   initialLandscape,
   bridgeReceipt,
   receiptType,
+  multiPage,
 }: PrintPreviewModalProps) {
   const { t, locale } = useTranslation();
   // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: on a LAN Secondary, hide the printer
@@ -259,9 +265,13 @@ export default function PrintPreviewModal({
   // R-PRINT-PREVIEW-PERF-V1: memoised so unrelated keystrokes (copies,
   // margins, zoom, page ranges) don't recompute the effective scale.
   // Hooks must run BEFORE the early-return below — Rules of Hooks.
+  // R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page sheet documents print at the
+  // user's scale (100% by default) and must NOT be auto-shrunk — shrinking a
+  // multi-page Letter doc to fit "one page" is exactly the wrong behavior.
+  // Receipts/reports (multiPage falsy) keep the existing shrink-to-fit formula.
   const effectiveScale = useMemo(
-    () => (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor),
-    [shrinkToFit, pageSize, scaleFactor],
+    () => (multiPage ? scaleFactor : (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor)),
+    [multiPage, shrinkToFit, pageSize, scaleFactor],
   );
 
   // R-PRINT-PREVIEW-PERF-V1: previously this regex-replace ran on every
@@ -280,14 +290,26 @@ export default function PrintPreviewModal({
     const tid = window.setTimeout(() => setPreviewScale(effectiveScale), 150);
     return () => window.clearTimeout(tid);
   }, [effectiveScale]);
+  // R-PRINT-MULTIPAGE-PREVIEW-V1: never apply the center-origin scale transform
+  // for multi-page docs — it would shift/clip a tall scrolling document. The
+  // preview shows the full document at 100% and scrolls; the user's zoom slider
+  // still works (it transforms the outer #print-content wrapper).
   const scaledHtml = useMemo(
     () => (
-      previewScale === 100
+      multiPage || previewScale === 100
         ? html
         : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
     ),
-    [html, previewScale],
+    [html, previewScale, multiPage],
   );
+
+  // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
+  // multi-page preview iframe. Set on iframe load from the (same-origin)
+  // content body scrollHeight so the iframe is exactly as tall as the whole
+  // document and the outer Preview Area scrolls. Reset whenever the rendered
+  // HTML or page size changes so a stale height never clips a new document.
+  const [measuredDocHeight, setMeasuredDocHeight] = useState<number | null>(null);
+  useEffect(() => { setMeasuredDocHeight(null); }, [scaledHtml, pageSize, landscape, multiPage]);
 
   // R-PAPERSIZE-DESYNC-LOCK-V1 guard: a POS receipt's template is already baked
   // from the baked page size. If the size that will actually be sent to the
@@ -654,10 +676,26 @@ export default function PrintPreviewModal({
               // already scrolls (overflow:auto), so duplicate scroll
               // controls on the iframe are pure noise on the receipt
               // surface.
-              scrolling="no"
+              // R-PRINT-MULTIPAGE-PREVIEW-V1: for multi-page docs the iframe is
+              // allowed to scroll/grow so all pages are visible.
+              scrolling={multiPage ? 'yes' : 'no'}
+              // R-PRINT-MULTIPAGE-PREVIEW-V1: measure the full document height
+              // so the iframe shows every page instead of one clipped sheet.
+              onLoad={(e) => {
+                if (!multiPage) return;
+                try {
+                  const doc = e.currentTarget.contentDocument;
+                  if (doc?.body) setMeasuredDocHeight(doc.body.scrollHeight);
+                } catch { /* cross-origin guard — keep fixed height fallback */ }
+              }}
               style={{
                 width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
-                height: landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
+                // R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page → full measured height
+                // (px) once known, else fall back to one page. Receipts keep the
+                // exact fixed single-page height.
+                height: multiPage
+                  ? (measuredDocHeight ? `${measuredDocHeight}px` : `${(landscape ? ps.width : ps.height) / 25400}in`)
+                  : (landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`),
                 minWidth: '300px',
                 minHeight: '400px',
                 background: '#fff',
@@ -665,7 +703,9 @@ export default function PrintPreviewModal({
                 borderRadius: '4px',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
                 display: 'block',
-                overflow: 'hidden',
+                // R-PRINT-MULTIPAGE-PREVIEW-V1: only the single-page receipt
+                // preview clips; multi-page docs let content flow.
+                overflow: multiPage ? 'visible' : 'hidden',
               }}
             />
           </div>
