@@ -17,6 +17,14 @@ import { toDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { normalizeCarrier } from '@/utils/normalize';
 import { calcMemberK1 } from './taxData';
+import {
+  buildTaxOrganizer,
+  organizerToCsv,
+  organizerToPrintHtml,
+  type TaxOrganizerInput,
+  type OrgLocale,
+  type OrgEntityMode,
+} from '@/services/tax/taxOrganizerExport';
 import PartnershipMembersTab from './PartnershipMembersTab';
 import TaxExpensesTab from './TaxExpensesTab';
 import TaxIncomeTab from './TaxIncomeTab';
@@ -533,6 +541,117 @@ export default function TaxReportsModule() {
   // object, so any unrelated settings edit (storeName, smsTemplate, etc.) would
   // re-run the entire annual P&L computation including loops over sales/repairs.
   }, [sales, repairs, inventory, expenses, selectedYear, settings.taxData, settings.partnership, settings.defaultCommissionRate]);
+
+  // ── R-TAX-ORGANIZER-V1: year-end export ─────────────────
+  // Reads the already-computed `annual` totals + the year's taxData and
+  // builds a JSON/CSV/print organizer. No tax math is recomputed here.
+  const buildOrganizerInput = useCallback((): TaxOrganizerInput => {
+    const yearKey = String(selectedYear);
+    const taxYear = settings.taxData?.byYear?.[yearKey];
+    const members = settings.partnership?.members ?? [];
+    // Tax entity mode is an EXPLICIT setting — never inferred from tax
+    // treatment. Read settings.taxEntityMode (double-cast: not yet in the
+    // StoreSettings type). When absent, fall back to a member-count heuristic
+    // and flag entityModeConfigured=false so the organizer emits a warning.
+    const configuredMode = (settings as any).taxEntityMode as OrgEntityMode | undefined;
+    const VALID_MODES: OrgEntityMode[] = ['sole_prop', 'partnership', 's_corp', 'c_corp'];
+    const entityModeConfigured = !!configuredMode && VALID_MODES.includes(configuredMode);
+    const entityMode: OrgEntityMode = entityModeConfigured
+      ? (configuredMode as OrgEntityMode)
+      : (members.length >= 2 ? 'partnership' : 'sole_prop');
+    const orgLocale: OrgLocale = (locale === 'es' || locale === 'pt') ? locale : 'en';
+    return {
+      year: selectedYear,
+      locale: orgLocale,
+      entityMode,
+      entityModeConfigured,
+      business: {
+        name: settings.storeName || '',
+        address: settings.storeAddress || '',
+        city: settings.storeCity || '',
+        state: settings.storeState || '',
+        zip: settings.storeZip || '',
+        phone: settings.storePhone || '',
+        email: settings.storeEmail || '',
+        ein: settings.partnership?.ein || '',
+      },
+      totals: {
+        totalIncome: annual.displayTotalIncome,
+        posProfit: annual.totalIncome,
+        manualIncome: annual.taxIncomeAdditional,
+        cogs: annual.cogsV1,
+        operatingExpenses: annual.operatingExpensesV1,
+        netProfit: annual.netProfit,
+        guaranteedPayments: annual.guaranteedPaymentsTotal,
+      },
+      posIncomeBreakdown: {
+        productGross: annual.productGross,
+        productCOGS: annual.productCOGS,
+        productProfit: annual.productProfit,
+        phoneGross: annual.phoneGross,
+        phonePaidToCarrier: annual.phonePaidToCarrier,
+        phoneNetCommission: annual.phoneNetCommission,
+        repairRevenue: annual.repairRevenue,
+        repairCOGS: annual.repairCOGS,
+        repairProfit: annual.repairProfit,
+      },
+      manualIncomeEntries: taxYear?.income ?? [],
+      suppliers: taxYear?.suppliers ?? [],
+      supplierReturns: taxYear?.returns ?? [],
+      inventory: {
+        beginningInventory: taxYear?.inventory?.beginningInventory ?? 0,
+        endingInventory: taxYear?.inventory?.endingInventory ?? 0,
+      },
+      taxExpenses: taxYear?.expenses ?? [],
+      generalExpenses: annual.yearExpenses,
+      adjustments: {
+        otherIncome: annual.taxAdjustments.otherIncome,
+        returnsRefunds: annual.taxAdjustments.returnsRefunds,
+      },
+      members,
+    };
+  }, [annual, settings, selectedYear, locale]);
+
+  const downloadBlob = useCallback((data: string, filename: string, mime: string) => {
+    const blob = new Blob([data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExportOrganizer = useCallback(() => {
+    try {
+      const org = buildTaxOrganizer(buildOrganizerInput());
+      downloadBlob(JSON.stringify(org, null, 2), `tax-organizer-${selectedYear}.json`, 'application/json');
+      downloadBlob(organizerToCsv(org), `tax-organizer-${selectedYear}.csv`, 'text/csv;charset=utf-8');
+      const errs = org.warnings.filter((w) => w.level === 'error').length;
+      const warns = org.warnings.filter((w) => w.level === 'warning').length;
+      const msg = es
+        ? `Organizador ${selectedYear} exportado (JSON + CSV).${errs ? ` ⚠️ ${errs} error(es)` : ''}${warns ? ` · ${warns} aviso(s)` : ''}`
+        : `Tax Organizer ${selectedYear} exported (JSON + CSV).${errs ? ` ⚠️ ${errs} error(s)` : ''}${warns ? ` · ${warns} warning(s)` : ''}`;
+      toast(msg, errs ? 'error' : 'success');
+    } catch (err) {
+      toast(es ? 'No se pudo exportar el organizador.' : 'Could not export the tax organizer.', 'error');
+      // eslint-disable-next-line no-console
+      console.error('[tax-organizer] export failed', err);
+    }
+  }, [buildOrganizerInput, downloadBlob, selectedYear, es, toast]);
+
+  const handlePrintOrganizer = useCallback(() => {
+    try {
+      const org = buildTaxOrganizer(buildOrganizerInput());
+      printHtml(organizerToPrintHtml(org), { silent: false, printer: settings.detectedPrinters?.[0] });
+    } catch (err) {
+      toast(es ? 'No se pudo imprimir el organizador.' : 'Could not print the tax organizer.', 'error');
+      // eslint-disable-next-line no-console
+      console.error('[tax-organizer] print failed', err);
+    }
+  }, [buildOrganizerInput, printHtml, settings.detectedPrinters, es, toast]);
 
   // ── W-9 state ────────────────────────────────────────────
   const [w9, setW9] = useState({
@@ -1114,7 +1233,13 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={() => printSection('1065 / K-1 / 1040')} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>🖨️ {t('tax.printPackage')}</button>
-                {/* r29b-1: removed dead "Export Year-End Package" button (had no onClick handler) */}
+                {/* R-TAX-ORGANIZER-V1: year-end organizer export (JSON + CSV) + printable summary */}
+                <button onClick={handleExportOrganizer} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>
+                  📤 {es ? `Organizador ${selectedYear}` : locale === 'pt' ? `Organizador ${selectedYear}` : `Tax Organizer ${selectedYear}`}
+                </button>
+                <button onClick={handlePrintOrganizer} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>
+                  🖨️ {es ? 'Resumen Organizador' : locale === 'pt' ? 'Resumo Organizador' : 'Organizer Summary'}
+                </button>
               </div>
             </div>
 
