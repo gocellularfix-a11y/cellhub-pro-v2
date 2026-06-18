@@ -42,7 +42,7 @@ import { escHtml } from '@/utils/escHtml';
 import { buildPaymentTrace, renderPaymentTraceHtml, classifyHistoryRows, paymentTraceI18n } from '@/services/receipts/paymentTrace';
 // R-RECEIPT-UNIFY-SPECIALORDER-V1: reuse the POS payment-receipt barcode renderer
 // + bundled QR lib so the special-order receipt shares the same visual system.
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import QRCode from 'qrcode';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitSpecialOrderAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
@@ -323,7 +323,7 @@ export default function SpecialOrdersModule() {
     // data/logic preserved: corrected-reprint bar, previous-value annotations
     // (prevHtml), refund-owed line, status / supplier / ETA / notes. Money values
     // are formatted only — no financial math touched.
-    const barcodeSvg = renderBarcodeSvg(ticketNum);
+    const barcodeSvg = renderBarcodeSvg(ticketNum, getReceiptBarcodeHeight(settings.paperSize));
     // SPECIAL-ORDER-RECEIPT-CLEANUP-V1: Google Reviews QR removed from this receipt
     // — per receipt-type policy the QR appears only on sales / activation / payment
     // receipts, not on Special Orders. (qrSvg generation deleted with its footer use.)

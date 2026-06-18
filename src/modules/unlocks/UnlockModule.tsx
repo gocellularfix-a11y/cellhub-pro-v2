@@ -46,7 +46,7 @@ import { emitUnlockAmbient } from '@/services/intelligence/ambient/ambientAwaren
 import { escHtml } from '@/utils/escHtml';
 // R-RECEIPT-UNIFY-UNLOCK-V1: reuse the POS payment-receipt barcode renderer +
 // bundled QR lib so the unlock receipt shares the same visual system.
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import QRCode from 'qrcode';
 
 // Typed accessor for `taxable` — present at runtime but absent from the Unlock interface.
@@ -419,7 +419,7 @@ export default function UnlockModule() {
     // data/logic preserved: corrected-reprint bar, previous-value annotations
     // (prevHtml), refund-owed line, carrier/type/supplier/code/dates/notes.
     // Money values formatted only — no financial math touched.
-    const barcodeSvg = renderBarcodeSvg(ticketNum);
+    const barcodeSvg = renderBarcodeSvg(ticketNum, getReceiptBarcodeHeight(settings.paperSize));
     let qrSvg = '';
     if (settings.showReviewQr && settings.googleReviewUrl) {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }
@@ -1166,7 +1166,7 @@ export default function UnlockModule() {
     // R-RECEIPT-UNIFY-UNLOCK-V2: always render the barcode so the 4x6 ticket
     // matches the other receipts. For an unsaved ticket the value is "NEW"
     // (becomes the real id-derived number once the unlock is saved/reprinted).
-    const barcodeSvg = renderBarcodeSvg(ticketNum || 'NEW');
+    const barcodeSvg = renderBarcodeSvg(ticketNum || 'NEW', getReceiptBarcodeHeight(settings.paperSize));
     let qrSvg = '';
     if (settings.showReviewQr && settings.googleReviewUrl) {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }

@@ -27,7 +27,7 @@ import { escHtml } from '@/utils/escHtml';
 // R-RECEIPT-UNIFY-APPOINTMENT-V1: reuse the POS payment-receipt barcode renderer
 // (the exact scannable CODE128 used by the master receipt) + the bundled QR lib
 // so the appointment receipt shares the same visual system as the payment receipt.
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import QRCode from 'qrcode';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
 import { useTranslation } from '@/i18n';
@@ -158,7 +158,7 @@ export default function AppointmentsModule() {
 
     // Barcode (confirmation number) + Google Reviews QR — same generators the
     // payment receipt uses, so scan + QR behaviour is identical.
-    const barcodeSvg = renderBarcodeSvg(conf);
+    const barcodeSvg = renderBarcodeSvg(conf, getReceiptBarcodeHeight(settings.paperSize));
     let qrSvg = '';
     if (settings.showReviewQr && settings.googleReviewUrl) {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }

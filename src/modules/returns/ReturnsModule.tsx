@@ -25,7 +25,7 @@ import { forwardTaxFromBase } from '@/utils/depositTax';
 import { persist, batchSave } from '@/services/persist';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { COLLECTIONS } from '@/config/constants';
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { issueLedgerEntry } from '@/services/storeCredit/ledger';
 import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem, StoreCreditLedger } from '@/store/types';
 
@@ -956,7 +956,7 @@ export default function ReturnsModule() {
     const cert = rec.certificateNumber || rec.returnNumber;
     const amount = `$${((rec.totalCents || 0) / 100).toFixed(2)}`;
     const issued = new Date(rec.createdAt).toLocaleString();
-    const barcodeSvg = renderBarcodeSvg(cert);
+    const barcodeSvg = renderBarcodeSvg(cert, getReceiptBarcodeHeight(settings.paperSize));
     const storeName = settings.storeName || 'GO CELLULAR';
     const phoneLine = rec.recipientPhone || rec.customerPhone;
     const html = `<!DOCTYPE html><html><head><title>Store Credit Certificate</title>

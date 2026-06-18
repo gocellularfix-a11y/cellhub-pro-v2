@@ -31,7 +31,7 @@ import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { usePrint } from '@/hooks/usePrint';
 // R-RECEIPT-UNIFY-REPAIR-V1: reuse the POS payment-receipt barcode renderer +
 // bundled QR lib so the (corrected-capable) repair ticket shares the same shell.
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import QRCode from 'qrcode';
 import RepairModal, { type RepairAuditMeta } from './RepairModal';
 import CancelRepairModal from './CancelRepairModal';
@@ -353,7 +353,7 @@ export default function RepairModule() {
 
     // R-RECEIPT-UNIFY-REPAIR-V1: barcode (ticket #) + Google Reviews QR — same
     // generators the payment receipt uses, so scan + QR behaviour is identical.
-    const barcodeSvg = renderBarcodeSvg(safe(repair.ticketNumber) || (repair.id ? String(repair.id).slice(-8).toUpperCase() : ''));
+    const barcodeSvg = renderBarcodeSvg(safe(repair.ticketNumber) || (repair.id ? String(repair.id).slice(-8).toUpperCase() : ''), getReceiptBarcodeHeight(settings.paperSize));
     let qrSvg = '';
     if (settings.showReviewQr && settings.googleReviewUrl) {
       try { qrSvg = await QRCode.toString(settings.googleReviewUrl, { type: 'svg', margin: 1, width: 80 }); }

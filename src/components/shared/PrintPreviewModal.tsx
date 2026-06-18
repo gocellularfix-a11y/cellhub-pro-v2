@@ -294,13 +294,22 @@ export default function PrintPreviewModal({
   // for multi-page docs — it would shift/clip a tall scrolling document. The
   // preview shows the full document at 100% and scrolls; the user's zoom slider
   // still works (it transforms the outer #print-content wrapper).
+  // R-PRINT-80MM-PREVIEW-FIT-V1: narrow thermal receipts (80mm / Dymo label /
+  // CR80) are single-column documents already authored to their own page width
+  // (the 80mm template even has a dedicated @media screen block). The shrink-to-
+  // fit body transform — a 4x6/Letter concern — only shifted/clipped these in the
+  // on-screen preview ("zoomed/clipped" look). Render them 1:1 in the preview so
+  // they fit the panel with no right-edge clip. PREVIEW-ONLY: the physical print
+  // still uses `effectiveScale` via printRun (unchanged), and the 80mm template
+  // CSS is untouched.
+  const isNarrowThermal = pageSize === '80mm' || pageSize === 'label' || pageSize === 'cr80';
   const scaledHtml = useMemo(
     () => (
-      multiPage || previewScale === 100
+      multiPage || previewScale === 100 || isNarrowThermal
         ? html
         : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
     ),
-    [html, previewScale, multiPage],
+    [html, previewScale, multiPage, isNarrowThermal],
   );
 
   // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
@@ -330,6 +339,22 @@ export default function PrintPreviewModal({
   // R-PAPERSIZE-DESYNC-LOCK-V1: for a locked POS receipt, ALWAYS resolve the
   // physical page from the baked template size — never from a drifted `pageSize`.
   const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
+
+  // R-PRINT-MULTIPAGE-SHEETS-V1: preview geometry for the Adobe-style separated
+  // sheet view. CSS renders 1in = 96px, so convert the physical page (microns)
+  // to preview pixels. numPages is derived from the measured full-document height
+  // divided by one page's pixel height (geometric slicing). PREVIEW-ONLY — none
+  // of this touches the print pipeline; the actual page breaks come from the
+  // document's own @page CSS, unchanged.
+  const pageWidthPx = (landscape ? ps.height : ps.width) / 25400 * 96;
+  const pageHeightPx = (landscape ? ps.width : ps.height) / 25400 * 96;
+  const numPages = multiPage && measuredDocHeight
+    ? Math.max(1, Math.ceil(measuredDocHeight / pageHeightPx))
+    : 1;
+  const pageLabel = (n: number, total: number) =>
+    locale === 'es' ? `Página ${n} de ${total}`
+    : locale === 'pt' ? `Página ${n} de ${total}`
+    : `Page ${n} of ${total}`;
 
   return (
     <div style={{
@@ -667,47 +692,71 @@ export default function PrintPreviewModal({
               transition: 'transform 0.15s ease',
             }}
           >
-            <iframe
-              srcDoc={scaledHtml}
-              title="Print preview"
-              sandbox="allow-same-origin"
-              // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: suppress the
-              // iframe's own scrollbar/down-arrow. The outer Preview Area
-              // already scrolls (overflow:auto), so duplicate scroll
-              // controls on the iframe are pure noise on the receipt
-              // surface.
-              // R-PRINT-MULTIPAGE-PREVIEW-V1: for multi-page docs the iframe is
-              // allowed to scroll/grow so all pages are visible.
-              scrolling={multiPage ? 'yes' : 'no'}
-              // R-PRINT-MULTIPAGE-PREVIEW-V1: measure the full document height
-              // so the iframe shows every page instead of one clipped sheet.
-              onLoad={(e) => {
-                if (!multiPage) return;
-                try {
-                  const doc = e.currentTarget.contentDocument;
-                  if (doc?.body) setMeasuredDocHeight(doc.body.scrollHeight);
-                } catch { /* cross-origin guard — keep fixed height fallback */ }
-              }}
-              style={{
-                width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
-                // R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page → full measured height
-                // (px) once known, else fall back to one page. Receipts keep the
-                // exact fixed single-page height.
-                height: multiPage
-                  ? (measuredDocHeight ? `${measuredDocHeight}px` : `${(landscape ? ps.width : ps.height) / 25400}in`)
-                  : (landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`),
-                minWidth: '300px',
-                minHeight: '400px',
-                background: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-                display: 'block',
-                // R-PRINT-MULTIPAGE-PREVIEW-V1: only the single-page receipt
-                // preview clips; multi-page docs let content flow.
-                overflow: multiPage ? 'visible' : 'hidden',
-              }}
-            />
+            {multiPage ? (
+              // R-PRINT-MULTIPAGE-SHEETS-V1: Adobe-style separated sheets. Each
+              // sheet is a fixed page-size card (gap + shadow + border) that shows
+              // ONE page-height slice of the same document — the iframe is shifted
+              // up by i × pageHeight inside an overflow:hidden card — with a
+              // "Page X of N" label beneath. The first sheet's iframe measures the
+              // full document height to derive the page count. PREVIEW-ONLY: the
+              // print pipeline still paginates from the document's own @page CSS.
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+                {Array.from({ length: numPages }).map((_, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}>
+                    <div style={{
+                      width: `${pageWidthPx}px`, height: `${pageHeightPx}px`, overflow: 'hidden',
+                      background: '#fff', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.18)',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+                    }}>
+                      <iframe
+                        srcDoc={scaledHtml}
+                        title={`Print preview page ${i + 1}`}
+                        sandbox="allow-same-origin"
+                        scrolling="no"
+                        onLoad={i === 0 ? (e) => {
+                          try {
+                            const doc = e.currentTarget.contentDocument;
+                            if (doc?.body) setMeasuredDocHeight(doc.body.scrollHeight);
+                          } catch { /* cross-origin guard — keep single-page fallback */ }
+                        } : undefined}
+                        style={{
+                          width: `${pageWidthPx}px`,
+                          height: measuredDocHeight ? `${measuredDocHeight}px` : `${pageHeightPx}px`,
+                          marginTop: `${-i * pageHeightPx}px`,
+                          border: 'none', display: 'block', background: '#fff',
+                        }}
+                      />
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>
+                      {pageLabel(i + 1, numPages)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <iframe
+                srcDoc={scaledHtml}
+                title="Print preview"
+                sandbox="allow-same-origin"
+                // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: suppress the
+                // iframe's own scrollbar/down-arrow. The outer Preview Area
+                // already scrolls (overflow:auto), so duplicate scroll
+                // controls on the iframe are pure noise on the receipt surface.
+                scrolling="no"
+                style={{
+                  width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
+                  height: landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
+                  minWidth: '300px',
+                  minHeight: '400px',
+                  background: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                  display: 'block',
+                  overflow: 'hidden',
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -67,7 +67,7 @@ import { emitLayawayAmbient } from '@/services/intelligence/ambient/ambientAware
 import { escHtml } from '@/utils/escHtml';
 // R-RECEIPT-UNIFY-LAYAWAY-V1: reuse the POS payment-receipt barcode renderer.
 // (Google Reviews QR intentionally omitted on layaway — see printLayawayTicket.)
-import { renderBarcodeSvg } from '@/modules/pos/ReceiptModal';
+import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 
 const STATUS_FILTERS = ['active', 'overdue', 'completed', 'cancelled'] as const;
 
@@ -1128,7 +1128,7 @@ export default function LayawayModule() {
     // R-RECEIPT-UNIFY-LAYAWAY-V1: barcode (ticket #). The Google Reviews QR is
     // intentionally OMITTED on layaway — it is the tallest receipt (tax split +
     // payment history + 4 conditions) and the QR pushed it past the 4x6 page.
-    const barcodeSvg = renderBarcodeSvg(safe(l.ticketNumber) || (l.id ? String(l.id).slice(-8).toUpperCase() : ''));
+    const barcodeSvg = renderBarcodeSvg(safe(l.ticketNumber) || (l.id ? String(l.id).slice(-8).toUpperCase() : ''), getReceiptBarcodeHeight(settings.paperSize));
     // R-RECEIPT-UNIFY-LAYAWAY-V1: master visual shell (centered Go Cellular
     // header, barcode, Arial typography, dashed separators, footer + Google
     // Reviews QR). All money / payment-history / conditions rows are preserved
