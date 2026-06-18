@@ -971,6 +971,7 @@ export default function ReturnsModule() {
   .footer{text-align:center;font-weight:700;margin-top:6px}
   .small{font-size:10px;color:#555;text-align:center}
   hr{border:none;border-top:1px dashed #000;margin:6px 0}
+  @media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}body,body *{color:#000!important;border-color:#000!important}}
 </style></head><body>
 <div style="text-align:center;font-weight:800">${escHtml(storeName)}</div>
 <div class="small">${escHtml(settings.storeAddress || '')}</div>

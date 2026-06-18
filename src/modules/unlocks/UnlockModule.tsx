@@ -443,7 +443,7 @@ export default function UnlockModule() {
   .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
   .corr-bar { background: #b91c1c; color: #fff; text-align: center; font-size: 10px; font-weight: 700; padding: 2px 0; margin: 4px 0; }
   .was { font-size: 9px; color: #999; font-style: italic; }
-  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } body, body * { color: #000 !important; border-color: #000 !important; } .corr-bar, .corr-bar * { color: #fff !important; background: #000 !important; } }
 </style></head><body>
   <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
   <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
@@ -1188,7 +1188,7 @@ export default function UnlockModule() {
   table { width: 100%; border-collapse: collapse; }
   .sep { border-top: 1px dashed #999; margin: 5px 0; }
   .sec-lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 1px; margin-bottom: 3px; }
-  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } body, body * { color: #000 !important; border-color: #000 !important; } .corr-bar, .corr-bar * { color: #fff !important; background: #000 !important; } }
 </style></head><body>
   <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
   ${barcodeSvg ? `<div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"')}</div>` : ''}

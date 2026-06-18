@@ -347,7 +347,7 @@ body{padding:.1in .15in;overflow-x:hidden}
 .sig-line{border-bottom:.5px solid #000;margin:12px 0 2px}
 .sig-lbl{font-size:8px;color:#666}
 .ftr{text-align:center;font-size:8px;color:#888;border-top:.5px solid #ddd;padding-top:3px;margin-top:5px;line-height:1.5}
-@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body,body *{color:#000!important;border-color:#000!important}}
 </style></head><body>
 <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center"><div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>${storeAddr ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeAddr)}</div>` : ''}${storePhone ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storePhone)}</div>` : ''}</div>
 <div style="width:100%;box-sizing:border-box;text-align:center;margin:0 0 6px 0;overflow:hidden">${barcodeSvg ? barcodeSvg.replace('<svg', '<svg style="display:inline-block;max-width:100%"') : ''}</div>
@@ -437,7 +437,7 @@ ${financialSection}
     font-weight: 900;
     letter-spacing: 0.05em;
   }
-  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } body, body * { color: #000 !important; border-color: #000 !important; } }
 </style>
 </head>
 <body>

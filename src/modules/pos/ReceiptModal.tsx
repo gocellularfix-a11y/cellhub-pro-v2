@@ -1063,7 +1063,12 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   }
   @media print {
     html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body, body * { color: #000 !important; }
+    /* R-RECEIPT-THERMAL-BLACK-V1: force ALL ink to solid black on a monochrome
+       thermal head — not just text color but BORDERS too (dashed separators /
+       table rules), which a color-only override left gray and faded. Scoped to
+       @media print so the on-screen preview keeps its colors. Barcode/QR are
+       already #000-on-#fff and are intentionally not touched (kept high-contrast). */
+    body, body * { color: #000 !important; border-color: #000 !important; }
   }
 </style>
 </head><body>
@@ -1185,8 +1190,11 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     /* R-RECEIPT-BARCODE-THERMAL-CRISP-V1: gray/colored helper text (#555/#888/
        green/red accents) prints faded on a monochrome thermal head — force
        solid black so small text stays sharp. Scoped to @media print, so the
-       on-screen preview keeps its colors. */
-    body, body * { color: #000 !important; }
+       on-screen preview keeps its colors.
+       R-RECEIPT-THERMAL-BLACK-V1: also force BORDERS black — the .sep dashed
+       separator (#999) and any table rules otherwise printed faded gray.
+       Barcode/QR stay #000-on-#fff (untouched) to keep them scannable. */
+    body, body * { color: #000 !important; border-color: #000 !important; }
   }
 </style>
 </head><body>

@@ -157,7 +157,12 @@ export default function TaxReportsModule() {
       th{background:#f5f5f5;font-weight:700}h1,h2,h3{margin:8px 0 4px}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body>${el.innerHTML}</body></html>`;
-    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0] });
+    // R-TAX-PRINT-PACKAGE-MULTIPAGE-V1: Letter tax documents (Print Report AND
+    // Print Package: 1065 / K-1 / 1040) routinely span multiple pages. Print
+    // these with the SAME multipage behavior the Organizer Summary already uses
+    // (pageSize:'letter' + multiPage:true) so the preview shows every page as a
+    // separate sheet and the print sends all pages — instead of clamping to one.
+    printHtml(html, { silent: false, pageSize: 'letter', multiPage: true, printer: settings.detectedPrinters?.[0] });
   }, [printHtml, settings]);
 
   const [activeSection, setActiveSection] = useState('ca_tax');  const [selectedQuarter, setSelectedQuarter] = useState(getCurrentQuarter());

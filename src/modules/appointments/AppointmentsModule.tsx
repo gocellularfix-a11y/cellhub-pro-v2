@@ -200,7 +200,7 @@ export default function AppointmentsModule() {
   @media screen { html, body { width: 100% !important; max-width: 100% !important; } * { box-sizing: border-box; max-width: 100%; } img, svg { max-width: 100%; height: auto; } }
   table { width: 100%; border-collapse: collapse; }
   .sep { border-top: 1px dashed #999; margin: 5px 0; }
-  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } body, body * { color: #000 !important; border-color: #000 !important; } }
 </style></head><body>
   <div style="width:100%;box-sizing:border-box;margin-bottom:4px;border-bottom:2px solid #000;padding-bottom:4px;overflow:hidden;text-align:center">
     <div style="font-size:18px;font-weight:900;line-height:1.1;letter-spacing:0.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(storeName)}</div>
