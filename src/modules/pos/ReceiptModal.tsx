@@ -446,6 +446,15 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
       // Primary / standalone it is ignored — local print is unchanged.
       bridgeReceipt: true,
       receiptType: 'pos_receipt',
+      // R-POS-PAGESIZE-REBAKE-V1: lets the print modal re-enable the page-size
+      // picker and regenerate THIS receipt for a temporarily-chosen size — same
+      // template routing + size-aware skinny barcode as the live preview. Default
+      // still comes from Settings → Paper Size (the baked previewHtml above).
+      rebakeForPageSize: (size) => generateReceiptHtml(
+        sale, settings, lang, qrSvg,
+        renderBarcodeSvg(barcodePayload, getReceiptBarcodeHeight(size)),
+        size,
+      ),
     });
   };
 

@@ -3443,6 +3443,14 @@ tr:last-child td { border-bottom: none; }
                   // Secondary (print-routing only — ignored on Primary/standalone).
                   bridgeReceipt: true,
                   receiptType: 'pos_receipt',
+                  // R-POS-PAGESIZE-REBAKE-V1: re-enable the modal page-size picker
+                  // and regenerate this reprint for the chosen size (correct
+                  // template + skinny barcode). Default stays Settings → Paper Size.
+                  rebakeForPageSize: (size) => generateReceiptHtml(
+                    reprintSale, settings, locale, undefined,
+                    renderBarcodeSvg(buildReceiptBarcodePayload(reprintSale), getReceiptBarcodeHeight(size)),
+                    size,
+                  ),
                 });
                 setReprintSale(null);
               }}
@@ -3808,7 +3816,20 @@ tr:last-child td { border-bottom: none; }
                     // LAN-PRINT-BRIDGE-REPORTS-REPRINT-FLAG-FIX-V1: post-edit reprint
                     // forwards to the Primary on a read-only LAN Secondary
                     // (print-routing only — ignored on Primary/standalone).
-                    printHtml(html, { silent: false, printer: settings.detectedPrinters?.[0], pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6', bridgeReceipt: true, receiptType: 'pos_receipt' });
+                    printHtml(html, {
+                      silent: false,
+                      printer: settings.detectedPrinters?.[0],
+                      pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6',
+                      bridgeReceipt: true,
+                      receiptType: 'pos_receipt',
+                      // R-POS-PAGESIZE-REBAKE-V1: post-edit reprint can re-bake
+                      // for a temporarily-chosen page size in the print modal.
+                      rebakeForPageSize: (size) => generateReceiptHtml(
+                        sale, settings, locale, undefined,
+                        renderBarcodeSvg(buildReceiptBarcodePayload(sale), getReceiptBarcodeHeight(size)),
+                        size,
+                      ),
+                    });
                   } catch (err) {
                     console.error('[edit-sale-item] reprint failed', err);
                   }

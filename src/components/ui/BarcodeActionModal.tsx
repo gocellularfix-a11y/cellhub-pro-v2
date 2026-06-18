@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import { Modal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
-import { usePrint } from '@/hooks/usePrint';
+import { usePrint, type PrintPageSizeKey } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
@@ -174,8 +174,16 @@ export default function BarcodeActionModal() {
     printHtml(html, {
       silent: false,
       printer: settings.detectedPrinters?.[0],
+      // R-POS-PAGESIZE-REBAKE-V1: open the modal at the baked (Settings) size so
+      // the picker default matches the template, then allow re-bake on change.
+      pageSize: (settings.paperSize as PrintPageSizeKey) || '4x6',
       bridgeReceipt: true,
       receiptType: 'pos_receipt',
+      rebakeForPageSize: (size) => generateReceiptHtml(
+        sale, settings, locale, undefined,
+        renderBarcodeSvg(buildReceiptBarcodePayload(sale), getReceiptBarcodeHeight(size)),
+        size,
+      ),
     });
     close();
   };

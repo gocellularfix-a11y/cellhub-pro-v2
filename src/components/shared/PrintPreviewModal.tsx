@@ -10,6 +10,8 @@ import { useTranslation } from '@/i18n';
 import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: forward bridged receipts.
 import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
+// R-POS-PAGESIZE-REBAKE-V1: type for the optional receipt re-bake callback.
+import type { PrintPageSizeKey } from '@/hooks/usePrint';
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -44,6 +46,10 @@ interface PrintPreviewModalProps {
    *  scroll, instead of clamping to one fixed page. Receipts leave this
    *  undefined → unchanged single-fixed-page preview. */
   multiPage?: boolean;
+  /** R-POS-PAGESIZE-REBAKE-V1: when supplied for a pos_receipt, the page-size
+   *  picker is re-enabled and this regenerates the receipt HTML for the chosen
+   *  size (preview + print). Omit → picker stays locked (legacy behavior). */
+  rebakeForPageSize?: (size: PrintPageSizeKey) => string;
 }
 
 interface PrinterInfo {
@@ -64,6 +70,7 @@ export default function PrintPreviewModal({
   bridgeReceipt,
   receiptType,
   multiPage,
+  rebakeForPageSize,
 }: PrintPreviewModalProps) {
   const { t, locale } = useTranslation();
   // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: on a LAN Secondary, hide the printer
@@ -77,7 +84,12 @@ export default function PrintPreviewModal({
   // For POS receipts we LOCK the page size to the baked value and make Settings
   // → Hardware → Paper Size the single source of truth. Scoped to pos_receipt
   // only: labels, reports, repair/special-order tickets keep the full picker.
-  const lockPageSize = receiptType === 'pos_receipt';
+  // R-POS-PAGESIZE-REBAKE-V1: when the caller supplies a rebake callback, the
+  // desync risk is gone — changing the size REGENERATES the receipt from the
+  // correct template — so the POS picker is re-enabled. No callback → keep the
+  // lock so a baked receipt can never silently diverge from its page size.
+  const canRebake = receiptType === 'pos_receipt' && typeof rebakeForPageSize === 'function';
+  const lockPageSize = receiptType === 'pos_receipt' && !canRebake;
   // The baked template size = what ReceiptModal passed as pageSize (settings.paperSize).
   const bakedPageSizeKey = initialPageSize || '4x6';
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a Secondary CAN still
@@ -91,6 +103,11 @@ export default function PrintPreviewModal({
     catch { return initialPrinter || ''; }
   });
   const [pageSize, setPageSize] = useState(initialPageSize || '4x6');
+  // R-POS-PAGESIZE-REBAKE-V1: the receipt markup actually previewed/printed.
+  // Starts as the caller's baked html; when the POS page-size picker changes AND
+  // a rebake callback was supplied, it is replaced with freshly-regenerated HTML
+  // for the chosen size so preview + print never reuse stale 4x6/80mm markup.
+  const [currentHtml, setCurrentHtml] = useState(html);
   const [landscape, setLandscape] = useState(initialLandscape || false);
   const [scaleFactor, setScaleFactor] = useState(100);
   // R-PRINT-SHRINK-TO-FIT: default ON — auto-shrinks oversized content to fit page width.
@@ -114,6 +131,15 @@ export default function PrintPreviewModal({
   const [copiesInput, setCopiesInput] = useState<string>(String(copies));
   useEffect(() => { setScaleInput(String(scaleFactor)); }, [scaleFactor]);
   useEffect(() => { setCopiesInput(String(copies)); }, [copies]);
+  // R-POS-PAGESIZE-REBAKE-V1: a freshly-opened print resets the working HTML to
+  // the caller's baked markup. For POS receipts also snap the page-size picker
+  // back to the Settings-derived default so a prior temporary override from a
+  // previous receipt doesn't carry over. Other flows keep their picker as-is.
+  useEffect(() => {
+    setCurrentHtml(html);
+    if (receiptType === 'pos_receipt') setPageSize(initialPageSize || '4x6');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
   // R-PRINT-PAGE-RANGES-V1: page-range UI. 'all' is the default; 'custom'
   // exposes a free-text input where the owner enters "1", "2", "1-2",
   // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
@@ -176,7 +202,7 @@ export default function PrintPreviewModal({
         // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
         const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
         const micron = landscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
-        const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html, copies, pageSize: micron });
+        const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html: currentHtml, copies, pageSize: micron });
         emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
       } catch {
         emitLanPrintResult({ ok: false, error: 'bridge_error' });
@@ -219,7 +245,7 @@ export default function PrintPreviewModal({
         ? parsePageRanges(pageRangeInput)?.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
         : undefined;
       const result = await window.electronAPI.printRun({
-        html,
+        html: currentHtml,
         deviceName: selectedPrinter,
         pageSize: { width: ps.width, height: ps.height },
         landscape,
@@ -306,10 +332,10 @@ export default function PrintPreviewModal({
   const scaledHtml = useMemo(
     () => (
       multiPage || previewScale === 100 || isNarrowThermal
-        ? html
-        : html.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
+        ? currentHtml
+        : currentHtml.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
     ),
-    [html, previewScale, multiPage, isNarrowThermal],
+    [currentHtml, previewScale, multiPage, isNarrowThermal],
   );
 
   // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
@@ -429,7 +455,22 @@ export default function PrintPreviewModal({
                 </div>
               </div>
             ) : (
-              <select value={pageSize} onChange={(e) => setPageSize(e.target.value)} style={selectStyle}>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setPageSize(next);
+                  // R-POS-PAGESIZE-REBAKE-V1: regenerate the receipt for the chosen
+                  // size so preview + print use the correct template (dedicated-80mm
+                  // with skinny barcode vs shared-4x6) instead of resizing stale
+                  // markup. Only fires when the caller supplied the callback.
+                  if (canRebake && rebakeForPageSize) {
+                    try { setCurrentHtml(rebakeForPageSize(next as PrintPageSizeKey)); }
+                    catch { /* keep current html on rebake failure */ }
+                  }
+                }}
+                style={selectStyle}
+              >
                 {Object.entries(PAGE_SIZES).map(([key, val]) => (
                   <option key={key} value={key}>{val.label}</option>
                 ))}

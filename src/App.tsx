@@ -241,6 +241,7 @@ export default function App() {
         bridgeReceipt={printModal.options?.bridgeReceipt}
         receiptType={printModal.options?.receiptType}
         multiPage={printModal.options?.multiPage}
+        rebakeForPageSize={printModal.options?.rebakeForPageSize}
       />
     </>
   );

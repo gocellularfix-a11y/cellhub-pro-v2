@@ -60,6 +60,14 @@ export interface PrintOptions {
    *  Default/undefined keeps the single-fixed-page receipt behavior. The
    *  actual print is unaffected — print:run already paginates the full HTML. */
   multiPage?: boolean;
+  /** R-POS-PAGESIZE-REBAKE-V1: re-bake the receipt HTML for a different page
+   *  size. When provided AND receiptType==='pos_receipt', PrintPreviewModal
+   *  RE-ENABLES the page-size picker — changing the size calls this to
+   *  regenerate the correctly-templated receipt (dedicated-80mm vs shared-4x6,
+   *  with the matching skinny barcode) for BOTH preview and print, instead of
+   *  resizing stale 4x6/80mm markup. Omit it → the picker stays locked and
+   *  Settings → Paper Size remains the single source of truth (legacy behavior). */
+  rebakeForPageSize?: (size: PrintPageSizeKey) => string;
 }
 
 /** State holder for the print modal — consumed by AppProvider or layout root */
