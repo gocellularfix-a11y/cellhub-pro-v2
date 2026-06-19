@@ -192,6 +192,8 @@ import type { EntityIntentResult } from '../entityAccess/entityIntentResolver';
 import type { ResolvedEntity, EntityAction } from '../entityAccess/types';
 // R-GOER-V2: deterministic follow-up entity resolution
 import { resolveEntityReference } from '../oce/entityResolution/resolveEntityReference';
+// R-ENTITY-VALIDATION-V1: live re-validation of resolved references before action.
+import { validateResolvedEntity, type EntityValidationResult } from '../oce/entityResolution/validateResolvedEntity';
 // R-GOER-V3: session-only active entity memory
 import { rememberResolvedEntity } from '../oce/entityResolution/activeEntityMemory';
 // R-ACTION-REGISTRY-V1: centralized action descriptors
@@ -5818,6 +5820,23 @@ function isGoerTrigger(q: string): boolean {
   return GOER_TRIGGER_RE.test(q);
 }
 
+// R-ENTITY-VALIDATION-V1: safe operator message when a resolved reference no
+// longer validates against live store data. No action attached — the caller
+// returns this instead of an executable open action. Type-specific copy; the
+// reason is folded into one honest sentence (missing / cancelled / completed).
+function goerUnavailableResponse(
+  failure: Extract<EntityValidationResult, { ok: false }>,
+  lang: Lang3,
+): ChatResponse {
+  const tc = tChat(lang);
+  const key =
+    failure.type === 'customer'  ? 'chat.entityResolution.unavailableCustomer'
+    : failure.type === 'repair'  ? 'chat.entityResolution.unavailableRepair'
+    : failure.type === 'layaway' ? 'chat.entityResolution.unavailableLayaway'
+    : 'chat.entityResolution.unavailableInventory';
+  return { kind: 'answer', text: tc(key) };
+}
+
 function handleGoerFollowUp(
   query: string,
   operationalContext: unknown,
@@ -5827,6 +5846,16 @@ function handleGoerFollowUp(
   const tc = tChat(lang);
   const goer = resolveEntityReference({ query, operationalContext });
   if (!goer) return null;
+
+  // R-ENTITY-VALIDATION-V1: re-validate the resolved reference against live
+  // store data BEFORE producing any executable action or stamping session
+  // memory. Missing / cancelled / completed entities short-circuit to a safe
+  // operator message (no action). 'unsupported' (sale) falls through to the
+  // existing text-only sale branch, which performs no action.
+  const validation = validateResolvedEntity(goer, engine);
+  if (!validation.ok && validation.reason !== 'unsupported') {
+    return goerUnavailableResponse(validation, lang);
+  }
 
   // R-GOER-V3: stamp the resolved entity into session memory so subsequent
   // follow-ups ("open it", "contact him") can resolve without re-stating.

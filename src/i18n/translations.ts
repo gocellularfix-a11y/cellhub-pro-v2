@@ -8317,6 +8317,28 @@ export const translations: TranslationDictionary = {
   'chat.entityResolution.resolvedInventory': { en: (n: string) => `Product: **${n}**`, es: (n: string) => `Producto: **${n}**`, pt: (n: string) => `Produto: **${n}**` },
   'chat.entityResolution.resolvedLayaway':   { en: (n: string) => `Layaway: **${n}**`, es: (n: string) => `Apartado: **${n}**`, pt: (n: string) => `Layaway: **${n}**` },
   'chat.entityResolution.resolvedSale':      { en: (n: string) => `Sale: **${n}**`, es: (n: string) => `Venta: **${n}**`, pt: (n: string) => `Venda: **${n}**` },
+  // R-ENTITY-VALIDATION-V1: safe messages when a resolved reference no longer
+  // validates against live store data (missing / cancelled / completed).
+  'chat.entityResolution.unavailableCustomer': {
+    en: 'I found that reference, but that customer no longer exists in the current store data, so I didn’t act on it.',
+    es: 'Encontré esa referencia, pero ese cliente ya no existe en los datos actuales de la tienda, así que no hice nada.',
+    pt: 'Encontrei essa referência, mas esse cliente não existe mais nos dados atuais da loja, então não fiz nada.',
+  },
+  'chat.entityResolution.unavailableRepair': {
+    en: 'I found that reference, but that repair no longer appears active (it may be completed, cancelled, or removed), so I didn’t act on it.',
+    es: 'Encontré esa referencia, pero esa reparación ya no aparece activa (puede estar completada, cancelada o eliminada), así que no hice nada.',
+    pt: 'Encontrei essa referência, mas esse reparo não aparece mais como ativo (pode estar concluído, cancelado ou removido), então não fiz nada.',
+  },
+  'chat.entityResolution.unavailableLayaway': {
+    en: 'That layaway is no longer active (completed, cancelled, or removed), so I left it unchanged.',
+    es: 'Ese apartado ya no está activo (completado, cancelado o eliminado), así que lo dejé sin cambios.',
+    pt: 'Esse layaway não está mais ativo (concluído, cancelado ou removido), então o deixei sem alterações.',
+  },
+  'chat.entityResolution.unavailableInventory': {
+    en: 'That item no longer exists in the current inventory, so I didn’t act on it.',
+    es: 'Ese artículo ya no existe en el inventario actual, así que no hice nada.',
+    pt: 'Esse item não existe mais no inventário atual, então não fiz nada.',
+  },
 
   // R-INTELLIGENCE-TODAY-SALES-DATA-INTENT: focused today-only sales answer.
   'chat.todaySales.header':           { en: '📊 Today\'s sales', es: '📊 Ventas de hoy', pt: '📊 Vendas de hoje' },
