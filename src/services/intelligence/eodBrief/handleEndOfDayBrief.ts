@@ -21,6 +21,10 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { tChat, COP, type ChatResponse, type ChatActionUI, type Lang3 } from '../chat/handlers';
 import { composeEODBrief } from './eodBriefComposer';
 
+// R-EOD-MONEY-WIRE: 4th arg threads the financial-privacy decision from the
+// dispatch layer (IntelligenceChat → handleIntent). Default true preserves
+// every existing caller (and the solo/owner operator) seeing full money.
+
 const LOCALE_BY_LANG: Record<Lang3, string> = {
   en: 'en-US',
   es: 'es-MX',
@@ -39,9 +43,10 @@ export function handleEndOfDayBrief(
   engine: IntelligenceEngine,
   lang: Lang3,
   nowMs?: number,
+  canSeeOwnerFinancials: boolean = true,
 ): ChatResponse {
   const t = tChat(lang);
-  const brief = composeEODBrief(engine, lang, nowMs);
+  const brief = composeEODBrief(engine, lang, nowMs, canSeeOwnerFinancials);
   const { money, openItems } = brief;
 
   const dateStr = formatBriefDate(brief.generatedAtMs, lang);
@@ -51,13 +56,36 @@ export function handleEndOfDayBrief(
   lines.push(t('chat.eodBrief.headerDate', dateStr));
   lines.push('');
 
-  // ── Money section (placeholder-aware) ────────────────────
-  // Phase 2 renders a single transparency line when confidence is
-  // 'placeholder'. Once money math is extracted, this branch will
-  // expand to revenue / profit / tender breakdown rendering.
+  // ── Money section ─────────────────────────────────────────
+  // R-EOD-MONEY-WIRE: core money is now real (engine.getTodayMoney).
+  //   - 'placeholder' (defensive legacy path) → single transparency line.
+  //   - empty day (no sales, no returns)      → "no sales yet" line.
+  //   - otherwise                              → sales / revenue / profit /
+  //     returns lines. Profit + margin render ONLY when money.profitVisible
+  //     (financial-privacy gate). Tender + fees/taxes are NOT rendered — they
+  //     are flagged unavailable (Priority A2) and must not appear as real.
   if (money.confidence === 'placeholder') {
     lines.push(t('chat.eodBrief.moneyPending', money.saleCount));
     lines.push('');
+  } else {
+    const noActivity =
+      money.saleCount === 0 &&
+      money.returnCount === 0 &&
+      money.grossRevenueCents === 0;
+    if (noActivity) {
+      lines.push(t('chat.eodBrief.noSalesToday'));
+      lines.push('');
+    } else {
+      lines.push(t('chat.eodBrief.salesCount', money.saleCount));
+      lines.push(t('chat.eodBrief.revenueLine', COP(money.grossRevenueCents), COP(money.netRevenueCents)));
+      if (money.profitVisible) {
+        lines.push(t('chat.eodBrief.profitLine', COP(money.grossProfitCents), money.profitMarginPct.toFixed(1)));
+      }
+      if (money.returnCount > 0) {
+        lines.push(t('chat.eodBrief.returnsLine', money.returnCount, COP(money.returnedAmountCents)));
+      }
+      lines.push('');
+    }
   }
 
   // ── Open items ────────────────────────────────────────────

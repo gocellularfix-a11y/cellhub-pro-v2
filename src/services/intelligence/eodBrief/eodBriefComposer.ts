@@ -69,39 +69,63 @@ function countTodaySales(engine: IntelligenceEngine): number {
   return engine.getTodayMetrics().transactions;
 }
 
-// R-FINANCIAL-PRIVACY-V4: TODO — once placeholderMoneySection is replaced
-// with the real EOD aggregation (currently placeholder zeros) the populated
-// branch MUST consult canViewOwnerFinancials and zero out grossProfitCents
-// + profitMarginPct for non-admin viewers. The EOD brief route is already
-// short-circuited at the IntelligenceChat dispatch gate for the
-// 'end_of_day_brief' intent path that mentions profit, but a direct call
-// (operator brief widget, scheduled push, etc.) would bypass the gate.
-// Wire the helper here when settings + role become accessible.
-function placeholderMoneySection(saleCount: number): EODMoneySection {
+// R-EOD-MONEY-WIRE: real money section sourced from the engine's canonical
+// today-money pipeline (engine.getTodayMoney → adjustSalesItemCosts +
+// computeCustomerProfit, parity with TaxReportsModule / customer history).
+//
+// Financial-privacy gate: `canSeeOwnerFinancials` is computed by the caller
+// (IntelligenceChat dispatch) via canViewOwnerFinancials(settings, isOwner).
+// When false, grossProfitCents + profitMarginPct are zeroed AND profitVisible
+// is set false so the renderer drops profit/margin lines entirely (no "0%"
+// lie). Revenue + saleCount stay visible — sales totals are employee-allowed.
+// Default true keeps the solo/unregistered operator (role resolves to 'owner')
+// and all existing callers seeing full money, consistent with
+// canViewOwnerFinancials' own no-settings default.
+//
+// tenderBreakdown + feesAndTaxes are NOT computed this round (Priority A2):
+// shape preserved as zeros but flagged *Available=false so downstream never
+// renders them as real. confidence='partial' when real core data exists,
+// 'low' on an empty day.
+const ZERO_TENDER = {
+  cashCents: 0,
+  cardCents: 0,
+  storeCreditCents: 0,
+  externalCents: 0,
+  otherCents: 0,
+} as const;
+
+const ZERO_FEES = {
+  salesTaxCents: 0,
+  utilityTaxCents: 0,
+  caMobilityFeeCents: 0,
+  cbeFeeCents: 0,
+  screenFeeCents: 0,
+  totalCents: 0,
+} as const;
+
+function buildMoneySection(
+  engine: IntelligenceEngine,
+  saleCount: number,
+  canSeeOwnerFinancials: boolean,
+): EODMoneySection {
+  const m = engine.getTodayMoney();
+  const profitVisible = canSeeOwnerFinancials;
   return {
-    grossRevenueCents: 0,
-    netRevenueCents: 0,
-    grossProfitCents: 0,
-    profitMarginPct: 0,
+    grossRevenueCents: m.grossRevenueCents,
+    netRevenueCents: m.netRevenueCents,
+    grossProfitCents: profitVisible ? m.grossProfitCents : 0,
+    profitMarginPct: profitVisible ? m.profitMarginPct : 0,
+    profitVisible,
     saleCount,
-    returnCount: 0,
-    returnedAmountCents: 0,
-    tenderBreakdown: {
-      cashCents: 0,
-      cardCents: 0,
-      storeCreditCents: 0,
-      externalCents: 0,
-      otherCents: 0,
-    },
-    feesAndTaxes: {
-      salesTaxCents: 0,
-      utilityTaxCents: 0,
-      caMobilityFeeCents: 0,
-      cbeFeeCents: 0,
-      screenFeeCents: 0,
-      totalCents: 0,
-    },
-    confidence: 'placeholder',
+    returnCount: m.returnCount,
+    returnedAmountCents: m.returnedAmountCents,
+    // Priority A2 — tender + fees/taxes pending. Flagged unavailable, never
+    // emitted as real numbers by the renderer.
+    tenderBreakdown: { ...ZERO_TENDER },
+    tenderBreakdownAvailable: false,
+    feesAndTaxes: { ...ZERO_FEES },
+    feesAndTaxesAvailable: false,
+    confidence: m.hasData ? 'partial' : 'low',
   };
 }
 
@@ -235,6 +259,7 @@ export function composeEODBrief(
   engine: IntelligenceEngine,
   lang: Lang3,
   nowMs?: number,
+  canSeeOwnerFinancials: boolean = true,
 ): EODBriefResult {
   const now = nowMs ?? Date.now();
   const dayStartMs = startOfDayMs(now);
@@ -245,7 +270,7 @@ export function composeEODBrief(
     generatedAtMs: now,
     dayStartMs,
     dayEndMs,
-    money: placeholderMoneySection(saleCount),
+    money: buildMoneySection(engine, saleCount, canSeeOwnerFinancials),
     openItems: buildOpenItemsSection(engine, now),
     lang,
   };

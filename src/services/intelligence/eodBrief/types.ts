@@ -18,11 +18,17 @@ import type { Lang3 } from '../chat/handlers';
  *   medium      — derived with documented approximation.
  *   low         — section was scanned but underlying data is sparse
  *                 (e.g. empty day → zero sales).
+ *   partial     — core values are REAL and deterministic, but one or
+ *                 more sub-breakdowns are not yet computed and are
+ *                 flagged unavailable (see *Available booleans). Used by
+ *                 the EOD money section after R-EOD-MONEY-WIRE: gross /
+ *                 net / profit / margin / returns are real; tender +
+ *                 fees/taxes remain pending (Priority A2).
  *   placeholder — shape is populated but the values are stubs (all
  *                 zeros). Downstream UI MUST NOT render the numbers
  *                 as financial truth when this tag is present.
  */
-export type EODBriefConfidence = 'high' | 'medium' | 'low' | 'placeholder';
+export type EODBriefConfidence = 'high' | 'medium' | 'low' | 'partial' | 'placeholder';
 
 // ── Money section ────────────────────────────────────────
 
@@ -46,13 +52,25 @@ export interface EODMoneyFeesAndTaxes {
 export interface EODMoneySection {
   grossRevenueCents: number;
   netRevenueCents: number;       // revenue − returns
-  grossProfitCents: number;
-  profitMarginPct: number;       // 0–100
+  grossProfitCents: number;      // 0 when profitVisible === false (redacted)
+  profitMarginPct: number;       // 0–100; 0 when profitVisible === false
+  // R-EOD-MONEY-WIRE: financial-privacy gate. When false (non-owner viewer
+  // with hideOwnerFinancialsFromEmployees ON), grossProfitCents +
+  // profitMarginPct are zeroed and downstream UI MUST NOT render profit/
+  // margin lines. Revenue + saleCount stay visible (sales totals are
+  // employee-allowed per the financial-privacy spec).
+  profitVisible: boolean;
   saleCount: number;
   returnCount: number;
   returnedAmountCents: number;
+  // R-EOD-MONEY-WIRE: tender + fees/taxes are NOT yet computed (Priority A2).
+  // The zero objects below preserve shape stability for downstream consumers,
+  // but *Available === false marks them as PENDING, not real. UI MUST NOT
+  // render these as financial truth while their Available flag is false.
   tenderBreakdown: EODMoneyTenderBreakdown;
+  tenderBreakdownAvailable: boolean;
   feesAndTaxes: EODMoneyFeesAndTaxes;
+  feesAndTaxesAvailable: boolean;
   confidence: EODBriefConfidence;
 }
 

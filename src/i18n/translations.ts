@@ -4488,6 +4488,32 @@ export const translations: TranslationDictionary = {
     es: (count: number) => `📊 ${count} venta${count === 1 ? '' : 's'} hoy — números detallados próximamente`,
     pt: (count: number) => `📊 ${count} venda${count === 1 ? '' : 's'} hoje — números detalhados em breve`,
   },
+  // R-EOD-MONEY-WIRE: real today-money lines.
+  'chat.eodBrief.noSalesToday': {
+    en: '📊 No sales recorded today yet',
+    es: '📊 Aún no hay ventas registradas hoy',
+    pt: '📊 Ainda não há vendas registradas hoje',
+  },
+  'chat.eodBrief.salesCount': {
+    en: (count: number) => `📊 ${count} sale${count === 1 ? '' : 's'} today`,
+    es: (count: number) => `📊 ${count} venta${count === 1 ? '' : 's'} hoy`,
+    pt: (count: number) => `📊 ${count} venda${count === 1 ? '' : 's'} hoje`,
+  },
+  'chat.eodBrief.revenueLine': {
+    en: (gross: string, net: string) => `💰 Revenue: ${gross} (net ${net})`,
+    es: (gross: string, net: string) => `💰 Ingresos: ${gross} (neto ${net})`,
+    pt: (gross: string, net: string) => `💰 Receita: ${gross} (líquido ${net})`,
+  },
+  'chat.eodBrief.profitLine': {
+    en: (profit: string, margin: string) => `📈 Profit: ${profit} · ${margin}% margin`,
+    es: (profit: string, margin: string) => `📈 Ganancia: ${profit} · ${margin}% margen`,
+    pt: (profit: string, margin: string) => `📈 Lucro: ${profit} · ${margin}% margem`,
+  },
+  'chat.eodBrief.returnsLine': {
+    en: (count: number, amount: string) => `↩️ Returns: ${count} · ${amount}`,
+    es: (count: number, amount: string) => `↩️ Devoluciones: ${count} · ${amount}`,
+    pt: (count: number, amount: string) => `↩️ Devoluções: ${count} · ${amount}`,
+  },
   'chat.eodBrief.repairsHeader': {
     en: (count: number) => `🔧 Repairs pending tomorrow (${count}):`,
     es: (count: number) => `🔧 Reparaciones pendientes para mañana (${count}):`,

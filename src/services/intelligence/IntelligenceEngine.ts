@@ -659,6 +659,70 @@ export class IntelligenceEngine {
     return { revenueCents, transactions, avgTicketCents, topSeller };
   }
 
+  // R-EOD-MONEY-WIRE: today-only money aggregation for the End-of-Day brief.
+  // Mirrors the canonical profit pipeline used by getCustomerHistory (which
+  // is itself aligned to TaxReportsModule via R-CUSTOMER-PROFIT-PARITY-V1):
+  // adjustSalesItemCosts() corrects phone_payment / repair costs, then
+  // computeCustomerProfit() derives gross / net / profit / margin / returns.
+  // Scope = today (createdAt >= local midnight). computeCustomerProfit()
+  // excludes voided sales internally; refunds are accounted via today's
+  // CustomerReturn records (totalCents || total*100, handled by the helper).
+  //
+  // ONLY core money is real here. tenderBreakdown + fees/taxes are NOT
+  // computed (Priority A2) and are intentionally absent from this payload —
+  // the composer flags them unavailable rather than emitting fake zeros.
+  // All values are integer cents; profitMarginPct is a 0–100 percentage.
+  getTodayMoney(): {
+    grossRevenueCents: number;
+    netRevenueCents: number;
+    grossProfitCents: number;
+    profitMarginPct: number;
+    returnCount: number;
+    returnedAmountCents: number;
+    hasData: boolean;
+  } {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
+
+    // Same timestamp resolution as getTodayMetrics — handles Firestore
+    // Timestamp (.toDate) and ISO strings/Date alike. 0 ⇒ unparseable ⇒
+    // excluded from "today".
+    const tsOf = (rec: { createdAt?: unknown }): number => {
+      const ca = rec.createdAt;
+      if (!ca) return 0;
+      try {
+        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
+          ? (ca as { toDate: () => Date }).toDate()
+          : (ca as string | Date);
+        return new Date(d).getTime();
+      } catch { return 0; }
+    };
+
+    const todaySales = this.sales.filter((s) => {
+      const t = tsOf(s as { createdAt?: unknown });
+      return !!t && t >= todayMs;
+    });
+    const todayReturns = this.customerReturns.filter((r) => {
+      const t = tsOf(r as { createdAt?: unknown });
+      return !!t && t >= todayMs;
+    });
+
+    const adjusted = adjustSalesItemCosts(todaySales, this.profitSettings);
+    const stats = computeCustomerProfit(adjusted, todayReturns);
+
+    return {
+      grossRevenueCents: stats.grossRevenue,
+      netRevenueCents: stats.netRevenue,
+      grossProfitCents: stats.profit,
+      // Round to one decimal — display-stable, deterministic.
+      profitMarginPct: Math.round(stats.margin * 10) / 10,
+      returnCount: todayReturns.length,
+      returnedAmountCents: stats.totalRefunded,
+      hasData: todaySales.length > 0 || todayReturns.length > 0,
+    };
+  }
+
   // R-INTEL-MULTI-PHONE-CUSTOMERS: exact count of customers carrying more
   // than one phone number. Uses the canonical phones[] array (Customer
   // model field set by multi-line phone support); legacy customers with

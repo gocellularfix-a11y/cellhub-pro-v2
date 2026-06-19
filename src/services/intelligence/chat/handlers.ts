@@ -327,6 +327,10 @@ export function handleIntent(
   match: IntentMatch,
   engine: IntelligenceEngine,
   lang: Lang3,
+  // R-EOD-MONEY-WIRE: financial-privacy decision from the dispatch layer.
+  // Default true preserves all existing callers / the solo-owner operator.
+  // Currently consumed only by the end_of_day_brief path (profit/margin gate).
+  canSeeOwnerFinancials: boolean = true,
 ): ChatResponse {
   const es = lang === 'es';
 
@@ -565,7 +569,7 @@ export function handleIntent(
 
     // R-EOD-BRIEF F2: end-of-day operator digest.
     case 'end_of_day_brief':
-      return handleEndOfDayBrief(engine, lang);
+      return handleEndOfDayBrief(engine, lang, undefined, canSeeOwnerFinancials);
 
     // R-INTELLIGENCE-CUSTOMER-RETENTION-INSIGHTS: returning-customer view.
     case 'customer_retention_insights':

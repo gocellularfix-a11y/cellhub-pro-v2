@@ -347,7 +347,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         matchedIntentId = match.id;
       } else {
         response = perfTime(`intel.chat.handleIntent.${match.id}`,
-          () => handleIntent(match, engineRef.current, langRef.current));
+          () => handleIntent(match, engineRef.current, langRef.current, canSeeOwnerFinancialsRef.current));
         matchedIntentId = match.id;
       }
     }
@@ -571,7 +571,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             : 'This view (profit, cost, margin) is hidden by the Financial Privacy setting. Ask the owner to grant access if you need it.',
         };
       } else {
-        response = handleIntent(match, engine, lang);
+        response = handleIntent(match, engine, lang, canSeeOwnerFinancialsRef.current);
       }
       matchedIntentId = match.id;
     }
