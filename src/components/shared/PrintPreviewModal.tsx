@@ -21,7 +21,12 @@ const PAGE_SIZES: Record<string, { label: string; width: number; height: number 
   'legal':  { label: 'Legal (8.5×14)',   width: 215900, height: 355600 },
   'a4':     { label: 'A4',              width: 210000, height: 297000 },
   'label':  { label: 'Dymo Label (2¼×1¼")', width: 57150, height: 31750 },
-  'cr80':   { label: 'Credential / ID Card (CR80)', width: 85600, height: 54000 },
+  // R-CR80-ORIENTATION-V1: canonical PORTRAIT/base media (short side = width).
+  // webContents.print() ignores the credential HTML @page, so the physical job
+  // is driven by this pageSize + landscape. Defining CR80 portrait lets
+  // landscape:true rotate it to the correct 85.6×54mm card output (the preview
+  // swap logic already handles width/height when landscape is on).
+  'cr80':   { label: 'Credential / ID Card (CR80)', width: 54000, height: 85600 },
 };
 
 interface PrintPreviewModalProps {

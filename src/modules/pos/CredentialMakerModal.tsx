@@ -310,7 +310,13 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
     `;
 
     // r-print-audit: open in system Chrome for full print preview.
-    openPrintWindow(html);
+    // R-CR80-RESTORE-V1 + R-CR80-ORIENTATION-V1: pass the CR80 page size so
+    // PrintPreviewModal renders at card size (no blank 4x6 canvas), and
+    // landscape:true so the physical print rotates the portrait/base CR80 media
+    // (54×85.6mm) to the standard landscape card (3.375×2.125in). Credentials
+    // are landscape by default. webContents.print() ignores the HTML @page, so
+    // this payload (pageSize + landscape) is what drives the physical output.
+    openPrintWindow(html, { pageSize: 'cr80', landscape: true });
   };
 
   if (!open) return null;
