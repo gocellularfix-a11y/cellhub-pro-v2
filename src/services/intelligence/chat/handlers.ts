@@ -551,7 +551,9 @@ export function handleIntent(
 
     // R-INTELLIGENCE-LOW-STOCK-OPPORTUNITY-ENGINE: deterministic restock list.
     case 'restock_opportunity':
-      return handleRestockOpportunity(engine, lang);
+      // R-FINANCIAL-PRIVACY-V5 Tier 2: thread the privacy flag so the handler
+      // omits the per-item margin line for employees (operational list stays).
+      return handleRestockOpportunity(engine, lang, canSeeOwnerFinancials);
 
     // R-INTELLIGENCE-WHAT-IS-LOSING-ME-MONEY: deterministic money-leak detector.
     case 'what_is_losing_money':

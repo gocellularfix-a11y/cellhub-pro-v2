@@ -280,7 +280,15 @@ export function computeRestockRecommendations(
   return top;
 }
 
-export function handleRestockOpportunity(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+export function handleRestockOpportunity(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+  // R-FINANCIAL-PRIVACY-V5 Tier 2: when false (employee + Financial Privacy
+  // ON), the operational restock list is preserved but the per-item margin
+  // line is omitted entirely — no margin/cost/profit text, no fake zeros.
+  // Default true preserves owner/admin behavior and every existing caller.
+  canSeeOwnerFinancials: boolean = true,
+): ChatResponse {
   const t = tChat(lang);
   const inventory = engine.getInventory() || [];
 
@@ -323,7 +331,9 @@ export function handleRestockOpportunity(engine: IntelligenceEngine, lang: Lang3
   for (let i = 0; i < top.length; i++) {
     const r = top[i];
     const marginPct = Math.round(r.marginRatio * 100);
-    const marginLabel = r.priceCents > 0
+    // R-FINANCIAL-PRIVACY-V5 Tier 2: margin $ / margin % are owner-only.
+    // Skip computing and rendering the label when the viewer can't see them.
+    const marginLabel = (canSeeOwnerFinancials && r.priceCents > 0)
       ? t('chat.restock.marginLabel', COP(r.marginCents), marginPct)
       : '';
     lines.push(`${i + 1}. 📦 **${r.name}**${r.sku ? ` · ${r.sku}` : ''}`);

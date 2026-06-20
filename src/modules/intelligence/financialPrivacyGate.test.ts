@@ -1,21 +1,22 @@
 // ============================================================
-// R-FINANCIAL-PRIVACY-V5 (audit Priority B, Tier 1)
+// R-FINANCIAL-PRIVACY-V5 (audit Priority B)
 //
-// Locks the chat profit-intent gate for the two leaks confirmed by the
-// role-aware financial-visibility audit:
-//   - restock_opportunity   (emits per-item margin $ + margin %)
-//   - product_opportunities (emits HIGH/LOW margin + profit upside)
+// Locks the chat profit-intent gate after Tier 1 + Tier 2:
+//   - product_opportunities : FULL BLOCK for employees (Tier 1) — its whole
+//                             reply is margin/profit framing.
+//   - restock_opportunity   : PARTIAL REDACTION (Tier 2) — employees keep the
+//                             operational restock list; only the per-item
+//                             margin line is omitted inside the handler.
 //
-// The gate lives inline in IntelligenceChat.tsx (fireQuery + onSubmit) as
+// The dispatch gate lives inline in IntelligenceChat.tsx (fireQuery + onSubmit):
 //   if (!canSeeOwnerFinancials && PROFIT_SENSITIVE_INTENTS.has(match.id)) { redact }
-// The set is not exported, so this suite proves the gate in three layers:
-//   1. SOURCE   — both intent ids are present in BOTH PROFIT_SENSITIVE_INTENTS
-//                 declarations in the production file (regression guard that
-//                 fails if either dispatch site loses the ids).
-//   2. DECISION — canViewOwnerFinancials() returns the right boolean for
-//                 employee / owner / privacy-off / settings-null (real helper).
-//   3. COMPOSED — source-derived gated set + real helper = exact runtime
-//                 predicate: employee blocked, owner allowed, off/null preserved.
+// The set is not exported, so the gate is asserted in three layers:
+//   1. SOURCE   — both declarations gate product_opportunities (+ the original
+//                 four) and NO LONGER gate restock_opportunity.
+//   2. DECISION — canViewOwnerFinancials() returns the right boolean.
+//   3. COMPOSED — source-derived set + real helper = exact runtime predicate.
+// Plus a Tier-2 behavioral layer that drives the real restock handler and
+// asserts the margin line is present for owner and absent for employee.
 //
 // NOTE: intent ROUTING (which phrases reach these ids) is intentionally NOT
 // asserted here — classifyIntent carries session/operational context and is
@@ -26,10 +27,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { handleRestockOpportunity } from '@/services/intelligence/chat/restockOpportunity';
 
-// The two leaks gated by this round.
-const TIER1_GATED = ['restock_opportunity', 'product_opportunities'] as const;
-// The four originally gated intents — must stay gated.
+// Intent fully blocked for employees (Tier 1).
+const FULL_BLOCK_INTENTS = ['product_opportunities'] as const;
+// The four originally gated intents — must stay fully gated.
 const ORIGINAL_GATED = [
   'best_customer', 'least_profitable_customers',
   'what_hurting_profit', 'what_is_losing_money',
@@ -46,6 +48,9 @@ function gateRedacts(intentId: string, canSeeOwnerFinancials: boolean, gated: Re
   return !canSeeOwnerFinancials && gated.has(intentId);
 }
 
+// Owner-only financial terms that must never reach a redacted employee reply.
+const FINANCIAL_TERMS = /margin|margen|margem|profit|ganancia|lucro|\bcost\b|costo|custo|cogs/i;
+
 // Parse the real PROFIT_SENSITIVE_INTENTS declarations out of the production
 // component so the assertions track the shipped code, not a copy.
 const SRC = readFileSync(
@@ -54,19 +59,41 @@ const SRC = readFileSync(
 );
 const SET_BLOCKS = SRC.match(/PROFIT_SENSITIVE_INTENTS[\s\S]*?new Set\(\[([\s\S]*?)\]\)/g) ?? [];
 
-describe('Financial privacy gate — Tier 1 (restock + product opportunities)', () => {
+// Minimal mock engine that yields exactly one high-priority restock rec with a
+// real margin: out of stock (qty 0) + one recent sale + price > cost. Scores
+// well above MIN_SCORE_THRESHOLD and renders the margin label for owners.
+function makeRestockEngine() {
+  const item: any = {
+    id: 'inv-screen-1', name: 'Test Screen', sku: 'SCRN-1',
+    category: 'parts', qty: 0, minQty: 2, price: 10000, cost: 4000, // $100 price / $40 cost → $60 margin (60%)
+  };
+  const sale: any = {
+    id: 'sale-1', status: 'completed',
+    createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago (within 7d/14d windows)
+    items: [{ inventoryId: 'inv-screen-1', qty: 1 }],
+  };
+  return { getInventory: () => [item], getSales: () => [sale] } as any;
+}
+
+describe('Financial privacy gate — Tier 1 + Tier 2', () => {
   // ── Layer 1: source-level regression guard (both dispatch sites) ────────
-  describe('source guard: both intent ids gated in both dispatch sites', () => {
+  describe('source guard: full-block set is product_opportunities only', () => {
     it('has exactly two PROFIT_SENSITIVE_INTENTS declarations (fireQuery + onSubmit)', () => {
       expect(SET_BLOCKS.length).toBe(2);
     });
 
-    it('every declaration gates the two Tier-1 intents (and keeps the original four)', () => {
+    it('every declaration full-blocks product_opportunities + the original four', () => {
       expect(SET_BLOCKS.length).toBeGreaterThan(0);
       for (const block of SET_BLOCKS) {
-        for (const id of [...TIER1_GATED, ...ORIGINAL_GATED]) {
+        for (const id of [...FULL_BLOCK_INTENTS, ...ORIGINAL_GATED]) {
           expect(block).toContain(`'${id}'`);
         }
+      }
+    });
+
+    it('no declaration full-blocks restock_opportunity (Tier 2 partial redaction)', () => {
+      for (const block of SET_BLOCKS) {
+        expect(block).not.toContain("'restock_opportunity'");
       }
     });
   });
@@ -89,40 +116,65 @@ describe('Financial privacy gate — Tier 1 (restock + product opportunities)', 
     });
   });
 
-  // ── Layer 3: composed gate — exact runtime behavior, end to end ─────────
-  describe('composed gate (source-derived set + real helper)', () => {
-    // Build the gated set from the FIRST production declaration, so the
-    // composed predicate runs against the shipped intent ids.
+  // ── Layer 3: composed dispatch gate (source-derived set + real helper) ──
+  describe('composed dispatch gate', () => {
     const idsInSource = (SET_BLOCKS[0] ?? '').match(/'([a-z_]+)'/g)?.map((s) => s.slice(1, -1)) ?? [];
     const GATED = new Set(idsInSource);
 
-    it('the two Tier-1 intents are present in the source-derived gated set', () => {
-      for (const id of TIER1_GATED) expect(GATED.has(id)).toBe(true);
+    it('product_opportunities is in the source-derived gated set; restock_opportunity is not', () => {
+      expect(GATED.has('product_opportunities')).toBe(true);
+      expect(GATED.has('restock_opportunity')).toBe(false);
     });
 
-    it('employee + privacy ON → both Tier-1 intents are redacted', () => {
-      const canSee = canViewOwnerFinancials(PRIVACY_ON, false);
-      for (const id of TIER1_GATED) expect(gateRedacts(id, canSee, GATED)).toBe(true);
+    it('employee + privacy ON → product_opportunities fully blocked', () => {
+      expect(gateRedacts('product_opportunities', canViewOwnerFinancials(PRIVACY_ON, false), GATED)).toBe(true);
     });
 
-    it('owner/admin + privacy ON → both Tier-1 intents run normally (not redacted)', () => {
-      const canSee = canViewOwnerFinancials(PRIVACY_ON, true);
-      for (const id of TIER1_GATED) expect(gateRedacts(id, canSee, GATED)).toBe(false);
+    it('employee + privacy ON → restock_opportunity NOT full-blocked (handler still runs)', () => {
+      expect(gateRedacts('restock_opportunity', canViewOwnerFinancials(PRIVACY_ON, false), GATED)).toBe(false);
     });
 
-    it('privacy OFF / default / null → both intents run normally for everyone', () => {
+    it('owner/admin + privacy ON → product_opportunities runs normally', () => {
+      expect(gateRedacts('product_opportunities', canViewOwnerFinancials(PRIVACY_ON, true), GATED)).toBe(false);
+    });
+
+    it('privacy OFF / default / null → nothing is full-blocked', () => {
       for (const canSee of [
         canViewOwnerFinancials(PRIVACY_OFF, false),
         canViewOwnerFinancials(PRIVACY_DEFAULT, false),
         canViewOwnerFinancials(null, false),
       ]) {
-        for (const id of TIER1_GATED) expect(gateRedacts(id, canSee, GATED)).toBe(false);
+        expect(gateRedacts('product_opportunities', canSee, GATED)).toBe(false);
+        expect(gateRedacts('restock_opportunity', canSee, GATED)).toBe(false);
       }
     });
+  });
 
-    it('an ungated operational intent is never redacted (gate is scoped)', () => {
-      const canSee = canViewOwnerFinancials(PRIVACY_ON, false); // employee, privacy ON
-      expect(gateRedacts('repairs_ready', canSee, GATED)).toBe(false);
+  // ── Layer 4: Tier-2 partial redaction — real handler behavior ───────────
+  describe('restock_opportunity partial redaction (real handler)', () => {
+    it('employee (canSee=false): operational guidance kept, NO margin/cost/profit', () => {
+      const res = handleRestockOpportunity(makeRestockEngine(), 'en', false);
+      // operational content preserved
+      expect(res.text).toContain('Test Screen');
+      expect(res.text).toContain('Out of stock'); // operational reason
+      // financial content fully omitted (no terms, no dollar figures, no fake zeros)
+      expect(res.text).not.toMatch(FINANCIAL_TERMS);
+      expect(res.text).not.toContain('$');
+      expect(res.text).not.toContain('60%');
+    });
+
+    it('owner/admin (canSee=true): original financial detail still shown', () => {
+      const res = handleRestockOpportunity(makeRestockEngine(), 'en', true);
+      expect(res.text).toContain('Test Screen');
+      expect(res.text).toMatch(/margin/i);
+      expect(res.text).toContain('$60.00'); // COP(6000) margin dollars
+      expect(res.text).toContain('60%');    // margin percent
+    });
+
+    it('default param (no flag) preserves legacy owner behavior', () => {
+      const res = handleRestockOpportunity(makeRestockEngine(), 'en');
+      expect(res.text).toMatch(/margin/i);
+      expect(res.text).toContain('$60.00');
     });
   });
 });
