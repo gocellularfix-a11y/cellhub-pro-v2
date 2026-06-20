@@ -54,6 +54,10 @@ import { consumePendingExplicitCustomer } from '@/services/intelligence/context/
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
 import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+// R-INTEL-ROUTER-V1 (shadow mode): deterministic route classification computed
+// before handleIntent. Observed only (dev console + ref); changes no behavior.
+import { routeIntelligenceRequest } from '@/services/intelligence/router/routeIntelligenceRequest';
+import type { IntelligenceRoute } from '@/services/intelligence/router/types';
 // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: temporary perf instrumentation.
 import { perfLog, perfTime } from '@/services/intelligence/perfDebug';
 import { recordOperatorAction } from '@/services/intelligence/history/operatorActionHistory';
@@ -186,6 +190,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // enrichFollowUpQuery rewrite step below. Ref-based (no re-render),
   // not persisted, not synced — a page refresh clears it. O(1) read.
   const operationalContextRef = useRef<OperationalContext | null>(null);
+  // R-INTEL-ROUTER-V1 (shadow): last computed route — dev/debug only, no render.
+  const lastRouteRef = useRef<IntelligenceRoute | null>(null);
 
   // Auto-submit when parent fires a quick-action chip.
   const engineRef = useRef(engine);
@@ -328,6 +334,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           match.candidateCustomers = undefined;
         }
       }
+      // R-INTEL-ROUTER-V1 (shadow mode): classify the route BEFORE dispatch.
+      // Pure + deterministic; observed only — does NOT alter the response.
+      const _route = routeIntelligenceRequest({
+        source: 'chat', query, intentId: match.id, devMode: import.meta.env.DEV,
+      });
+      lastRouteRef.current = _route;
+      if (import.meta.env.DEV) console.debug('[IntelligenceRouter:shadow]', _route.reasonCode, _route);
       // R-FINANCIAL-PRIVACY-V2: intercept profit-intent queries when the
       // viewer cannot see owner financials. We never invoke the handler so
       // its profit/margin/cost numbers cannot leak. Operational intents are
@@ -562,6 +575,12 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       matchedIntentId = 'followup_no_context';
     } else {
       const match = classifyIntent(query, customers, lang);
+      // R-INTEL-ROUTER-V1 (shadow mode): classify the route BEFORE dispatch.
+      const _route = routeIntelligenceRequest({
+        source: 'chat', query, intentId: match.id, devMode: import.meta.env.DEV,
+      });
+      lastRouteRef.current = _route;
+      if (import.meta.env.DEV) console.debug('[IntelligenceRouter:shadow]', _route.reasonCode, _route);
       // R-FINANCIAL-PRIVACY-V2: same gate as fireQuery — short-circuit
       // profit-intent dispatches when the viewer is not admin/owner.
       const PROFIT_SENSITIVE_INTENTS: ReadonlySet<string> = new Set([
