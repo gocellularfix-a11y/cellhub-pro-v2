@@ -50,3 +50,65 @@ export function canViewOwnerFinancials(
   if (!hideEnabled) return true;
   return !!isAdminOrOwner;
 }
+
+// ============================================================
+// R-FINANCIAL-PRIVACY-POLICY-C (C1: helper + tests only)
+//
+// Single source of truth for role-aware owner-financial visibility.
+// Decouples financial visibility from `isAdminMode` (admin/module unlock):
+// admin/PIN unlock alone must NEVER grant profit/cost/margin visibility to a
+// manager or employee. Owner sees by ROLE; managers see only when the owner
+// opts in via `managersCanViewFinancials`.
+//
+// C1 ships the helper + tests ONLY. No call site uses it yet, so behavior is
+// unchanged until a later phase (C3+) migrates call sites onto it.
+// ============================================================
+
+/**
+ * Canonical settings key for the "managers may view owner financials" opt-in.
+ * Default behavior when missing is `false` (managers restricted) — owner must
+ * explicitly enable it. Stored on StoreSettings via the double-cast pattern
+ * (not formally typed), same as FINANCIAL_PRIVACY_SETTING_KEY.
+ */
+export const MANAGERS_CAN_VIEW_FINANCIALS_SETTING_KEY = 'managersCanViewFinancials' as const;
+
+/**
+ * Role-aware resolution of "can THIS viewer see owner-only financial fields?"
+ *
+ * Decision matrix (Financial Privacy = `hideOwnerFinancialsFromEmployees`):
+ *   - settings null/undefined                      → true  (legacy fallback)
+ *   - Financial Privacy OFF / missing              → true  (legacy behavior)
+ *   - role === 'owner'                             → true  (owner sees all)
+ *   - role null/undefined (solo/unregistered)      → true  (solo-owner fallback)
+ *   - role === 'manager'                           → managersCanViewFinancials === true
+ *   - any other role (cashier/technician/sales/…)  → false (restricted)
+ *
+ * IMPORTANT: `isAdminMode` is accepted ONLY for caller convenience / debug
+ * context. It is intentionally NEVER consulted to grant access — an admin/PIN
+ * unlock must not silently turn a manager or employee into a financial viewer.
+ *
+ * @param args.settings        Current StoreSettings (or null during boot).
+ * @param args.currentEmployee The logged-in employee (or null for solo owner).
+ * @param args.isAdminMode     Accepted for compatibility/debug only; ignored.
+ */
+export function resolveOwnerFinancialAccess(args: {
+  settings: StoreSettings | Record<string, unknown> | null | undefined;
+  currentEmployee?: { role?: string | null } | null;
+  isAdminMode?: boolean;
+}): boolean {
+  const { settings, currentEmployee, isAdminMode } = args;
+  // Accepted for compatibility/debug context only — NEVER grants access.
+  void isAdminMode;
+
+  if (!settings) return true; // rule 1: legacy fallback
+  const hideEnabled = !!(settings as Record<string, unknown>)[FINANCIAL_PRIVACY_SETTING_KEY];
+  if (!hideEnabled) return true; // rule 2: privacy OFF → legacy behavior
+
+  const role = currentEmployee?.role;
+  if (role === 'owner') return true;        // rule 3
+  if (role == null) return true;            // rule 4: solo-owner / unregistered
+  if (role === 'manager') {                 // rule 5: owner-controlled opt-in
+    return (settings as Record<string, unknown>)[MANAGERS_CAN_VIEW_FINANCIALS_SETTING_KEY] === true;
+  }
+  return false;                             // rule 6: cashier/technician/sales/etc.
+}
