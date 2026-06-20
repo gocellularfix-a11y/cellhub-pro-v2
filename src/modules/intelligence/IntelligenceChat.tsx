@@ -335,6 +335,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const PROFIT_SENSITIVE_INTENTS: ReadonlySet<string> = new Set([
         'best_customer', 'least_profitable_customers',
         'what_hurting_profit', 'what_is_losing_money',
+        // R-FINANCIAL-PRIVACY-V5 (audit Priority B, Tier 1): these intents
+        // emit per-item margin/cost/profit-upside in their reply text, so
+        // gate them with the same short-circuit. Block-the-whole-intent
+        // (not partial redaction) is intentional for Tier 1.
+        'restock_opportunity', 'product_opportunities',
       ]);
       if (!canSeeOwnerFinancialsRef.current && PROFIT_SENSITIVE_INTENTS.has(match.id)) {
         const es = langRef.current === 'es';
@@ -561,6 +566,11 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       const PROFIT_SENSITIVE_INTENTS: ReadonlySet<string> = new Set([
         'best_customer', 'least_profitable_customers',
         'what_hurting_profit', 'what_is_losing_money',
+        // R-FINANCIAL-PRIVACY-V5 (audit Priority B, Tier 1): these intents
+        // emit per-item margin/cost/profit-upside in their reply text, so
+        // gate them with the same short-circuit. Block-the-whole-intent
+        // (not partial redaction) is intentional for Tier 1.
+        'restock_opportunity', 'product_opportunities',
       ]);
       if (!canSeeOwnerFinancialsRef.current && PROFIT_SENSITIVE_INTENTS.has(match.id)) {
         const es = lang === 'es';
