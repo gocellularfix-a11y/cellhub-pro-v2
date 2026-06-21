@@ -173,7 +173,16 @@ export function calculateCartTotals(
     : toIntCents((discountableAmount * safeDiscountAmount) / 100);
 
   const loyaltyDiscountAmount = selectedCustomerLoyaltyDiscount || 0;
-  const discountAmount = toIntCents(Math.min(manualDiscountAmount + loyaltyDiscountAmount, discountableAmount));
+  // R-RETURNS-NEGATIVE-CART-CALC-FIX (Phase 1): clamp the discount CAP to >= 0.
+  // On a net-negative cart (e.g. an exchange credit larger than the replacement
+  // item), `discountableAmount` is negative, so `Math.min(0, discountableAmount)`
+  // returned a phantom NEGATIVE discount. That made
+  // `subtotalAfterDiscount = subtotal - (negative) = 0`, collapsing the total to
+  // tax-only (the -$29.16 / +$7.31 bug). Capping at >= 0 (and guarding the final
+  // value >= 0) keeps discounts non-negative. Net-positive carts are unaffected:
+  // Math.max(0, x) === x when x >= 0, so behavior is byte-identical there.
+  const discountCap = Math.max(0, discountableAmount);
+  const discountAmount = toIntCents(Math.max(0, Math.min(manualDiscountAmount + loyaltyDiscountAmount, discountCap)));
 
   const subtotalAfterDiscount = toIntCents(subtotal - discountAmount);
 
