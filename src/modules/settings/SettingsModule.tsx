@@ -1870,6 +1870,38 @@ export default function SettingsModule() {
                     : 'When enabled, employees can see sales and operations, but cannot see profit, cost, margin, markup, or net income. Admin still sees all financial data.'}
                 </p>
 
+                {/* R-FINANCIAL-PRIVACY-POLICY-C C2: manager opt-in. Only relevant
+                    while Financial Privacy is ON, so it's shown only then (the
+                    Toggle component has no disabled prop — visual dependency via
+                    conditional render). Default false (Toggle reads
+                    !!settings[key]). Persists via the same `update` delta path.
+                    NOTE: not yet wired to any financial call site — C3+ migrates
+                    them onto resolveOwnerFinancialAccess(); this only stores the
+                    owner's choice, so behavior is unchanged in C2. */}
+                {flagOn && (
+                  <div className="border-t border-white/10 pt-3 space-y-2">
+                    <Toggle
+                      settings={settings}
+                      update={update}
+                      label={
+                        lang === 'es'
+                          ? 'Permitir que los gerentes vean finanzas'
+                          : lang === 'pt'
+                          ? 'Permitir que gerentes vejam finanças'
+                          : 'Allow managers to view financials'
+                      }
+                      settingsKey="managersCanViewFinancials"
+                    />
+                    <p style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.5, margin: 0 }}>
+                      {lang === 'es'
+                        ? 'Cuando está activado, los gerentes pueden ver ganancia, costo, margen y reportes financieros del propietario. Los demás empleados siguen restringidos.'
+                        : lang === 'pt'
+                        ? 'Quando ativado, os gerentes podem ver lucro, custo, margem e relatórios financeiros do proprietário. Os demais funcionários continuam restritos.'
+                        : 'When enabled, managers can view profit, cost, margin, and owner financial reports. Other employees remain restricted.'}
+                    </p>
+                  </div>
+                )}
+
                 {/* V4.1: active-state notice (replaces stale amber "follow-up update" copy). */}
                 {flagOn && (
                   <div style={{
