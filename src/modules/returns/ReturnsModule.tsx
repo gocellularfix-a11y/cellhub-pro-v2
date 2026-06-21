@@ -474,6 +474,42 @@ export default function ReturnsModule() {
       ...(certificateNumber ? { certificateNumber, storeCreditStatus: 'active' as const } : {}),
     };
 
+    // R-RETURNS-PHASE-2A: finalization extracted into finalizeCustomerReturn().
+    // 2a calls it immediately here, so runtime behavior is unchanged. 2b will
+    // DEFER this call for resolution==='exchange' (build a pendingReturn draft
+    // on the cart line instead, and finalize at POS Complete Sale).
+    finalizeCustomerReturn({
+      returnNumber, nowIso, returnItems, subtotalCents, taxCentsTotal,
+      totalCents, certificateNumber, returnRecord, finalRecipientName, finalRecipientPhone,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
+      currentEmployee, taxRate, t,
+      recipientCustomerId, recipientName, recipientPhone,
+      setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
+      setReturnHistory, toast, approvalGate.requestApproval]);
+
+  // ── Finalization (R-RETURNS-PHASE-2A: extracted verbatim) ──────────────────
+  // Hoisted so processReturn can call it. Closes over the SAME refs/setters/
+  // state as before (the Round-19 anti-stale-closure refs), so the persistence
+  // semantics are identical. Only the per-request values built above cross the
+  // boundary via `input`. UNCHANGED BEHAVIOR vs the prior inline version.
+  function finalizeCustomerReturn(input: {
+    returnNumber: string;
+    nowIso: string;
+    returnItems: CustomerReturnItem[];
+    subtotalCents: number;
+    taxCentsTotal: number;
+    totalCents: number;
+    certificateNumber: string | undefined;
+    returnRecord: CustomerReturn;
+    finalRecipientName: string;
+    finalRecipientPhone: string;
+  }) {
+    const {
+      returnNumber, nowIso, returnItems, subtotalCents, taxCentsTotal,
+      totalCents, certificateNumber, returnRecord, finalRecipientName, finalRecipientPhone,
+    } = input;
     // Phase 2: update foundSale.items (returnedQty / fullyReturned / hasReturn).
     // Hold commit — R9-1 may add status='refunded' before we persist.
     let updatedSale: Sale | null = null;
@@ -937,12 +973,7 @@ export default function ReturnsModule() {
       } catch { /* print failure is non-fatal */ }
     }
     resetSearch();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
-      currentEmployee, taxRate, t,
-      recipientCustomerId, recipientName, recipientPhone,
-      setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
-      setReturnHistory, toast, approvalGate.requestApproval]);
+  }
 
   // ── Print return receipt ───────────────────────────────────
   // Round 19 fixes:

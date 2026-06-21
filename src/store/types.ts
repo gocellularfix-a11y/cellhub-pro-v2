@@ -640,6 +640,30 @@ export interface InventoryFieldConfig {
 
 // ── Cart ──────────────────────────────────────────────────
 
+// R-RETURNS-PHASE-2 (PREP-ONLY; wired in 2b): metadata attached to an
+// exchange_credit cart line so POS Complete Sale can finalize the customer
+// return atomically with the replacement sale. UNUSED in 2a — no runtime path
+// reads or writes this yet.
+export interface PendingExchangeReturn {
+  draftId: string;
+  resolution: 'exchange';
+  source: 'returns-modal';
+  createdAt: string;
+  originalSaleId: string;
+  originalReceiptNumber: string;
+  recipientCustomerId?: string;
+  recipientName: string;
+  recipientPhone?: string;
+  reason: string;
+  notes?: string;
+  returnSubtotalCents: number;
+  returnTaxCents: number;
+  returnTotalCents: number;
+  itemMutations: { saleItemId: string; qty: number }[];
+  inventoryRestock: { inventoryId: string; qty: number }[];
+  returnItems: CustomerReturnItem[];
+}
+
 export interface CartItem {
   id: string;              // unique cart line ID
   inventoryId?: string;    // link to inventory item
@@ -690,6 +714,8 @@ export interface CartItem {
   // them correctly (negative price, not taxable, cbe-exempt).
   storeCreditLedgerId?: string;
   storeCreditCertNumber?: string;
+  // R-RETURNS-PHASE-2 (PREP-ONLY, wired in 2b): pending exchange-return draft.
+  pendingReturn?: PendingExchangeReturn;
   // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: hint that this line was
   // produced by the Phone Payments ACTIVATION flow (not a recurring bill
   // payment). Receipt rendering uses it to surface the "NEW PHONE NUMBER"
