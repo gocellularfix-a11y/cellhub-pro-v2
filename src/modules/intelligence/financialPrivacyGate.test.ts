@@ -26,7 +26,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { canViewOwnerFinancials, resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { handleRestockOpportunity } from '@/services/intelligence/chat/restockOpportunity';
 
 // Intent fully blocked for employees (Tier 1).
@@ -42,6 +42,9 @@ const PRIVACY_ON = { hideOwnerFinancialsFromEmployees: true } as const;
 // Privacy OFF (explicit) and the implicit default (key absent).
 const PRIVACY_OFF = { hideOwnerFinancialsFromEmployees: false } as const;
 const PRIVACY_DEFAULT = {} as const;
+// Policy C (C3) manager opt-in states (privacy ON).
+const PRIVACY_ON_MGR_ON = { hideOwnerFinancialsFromEmployees: true, managersCanViewFinancials: true } as const;
+const PRIVACY_ON_MGR_OFF = { hideOwnerFinancialsFromEmployees: true, managersCanViewFinancials: false } as const;
 
 // Mirror of the runtime gate predicate in IntelligenceChat.tsx.
 function gateRedacts(intentId: string, canSeeOwnerFinancials: boolean, gated: ReadonlySet<string>) {
@@ -176,5 +179,67 @@ describe('Financial privacy gate — Tier 1 + Tier 2', () => {
       expect(res.text).toMatch(/margin/i);
       expect(res.text).toContain('$60.00');
     });
+  });
+});
+
+// ============================================================
+// Policy C C3 — IntelligenceChat dispatch gate now derives canSee from the
+// role-aware resolveOwnerFinancialAccess() helper (not isAdminMode||owner).
+// ============================================================
+describe('Policy C C3 — IntelligenceChat uses resolveOwnerFinancialAccess', () => {
+  // Source guard: the chat gate value must come from the Policy C helper, and
+  // the old low-level canViewOwnerFinancials must no longer be used there.
+  it('IntelligenceChat computes canSee via resolveOwnerFinancialAccess (old helper removed)', () => {
+    expect(SRC).toContain('resolveOwnerFinancialAccess({');
+    expect(SRC).not.toContain('canViewOwnerFinancials');
+  });
+
+  // Source-derived gated set + helper-derived canSee = exact runtime predicate.
+  const GATED = new Set((SET_BLOCKS[0] ?? '').match(/'([a-z_]+)'/g)?.map((s) => s.slice(1, -1)) ?? []);
+  const canSee = (settings: any, role: string | null, isAdminMode = false) =>
+    resolveOwnerFinancialAccess({ settings, currentEmployee: role == null ? null : { role }, isAdminMode });
+
+  it('owner + privacy ON → financial intents visible (product_opportunities NOT blocked)', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON, 'owner'), GATED)).toBe(false);
+  });
+
+  it('employee + privacy ON → product_opportunities blocked', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON, 'technician'), GATED)).toBe(true);
+  });
+
+  it('manager + privacy ON + managersCanViewFinancials false/missing → product_opportunities blocked', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON, 'manager'), GATED)).toBe(true);
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON_MGR_OFF, 'manager'), GATED)).toBe(true);
+  });
+
+  it('manager + privacy ON + managersCanViewFinancials true → product_opportunities allowed', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON_MGR_ON, 'manager'), GATED)).toBe(false);
+  });
+
+  it('isAdminMode true alone does NOT grant manager visibility when setting is off', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_ON, 'manager', true), GATED)).toBe(true);
+  });
+
+  it('privacy OFF → legacy visible for everyone', () => {
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_OFF, 'technician'), GATED)).toBe(false);
+    expect(gateRedacts('product_opportunities', canSee(PRIVACY_OFF, 'manager'), GATED)).toBe(false);
+  });
+
+  // restock_opportunity partial redaction follows the SAME canSee value.
+  it('manager + privacy ON + setting OFF → restock runs but margin redacted', () => {
+    const cs = canSee(PRIVACY_ON_MGR_OFF, 'manager');
+    expect(cs).toBe(false);
+    const res = handleRestockOpportunity(makeRestockEngine(), 'en', cs);
+    expect(res.text).toContain('Test Screen');
+    expect(res.text).not.toMatch(FINANCIAL_TERMS);
+    expect(res.text).not.toContain('$');
+  });
+
+  it('manager + privacy ON + setting ON → restock margin visible', () => {
+    const cs = canSee(PRIVACY_ON_MGR_ON, 'manager');
+    expect(cs).toBe(true);
+    const res = handleRestockOpportunity(makeRestockEngine(), 'en', cs);
+    expect(res.text).toMatch(/margin/i);
+    expect(res.text).toContain('$60.00');
   });
 });

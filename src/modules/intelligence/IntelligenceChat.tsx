@@ -53,7 +53,7 @@ import { consumePendingExplicitCustomer } from '@/services/intelligence/context/
 // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: convert approved deal → POS cart line.
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 // R-INTEL-ROUTER-V1 (shadow mode): deterministic route classification computed
 // before handleIntent. Observed only (dev console + ref); changes no behavior.
 import { routeIntelligenceRequest } from '@/services/intelligence/router/routeIntelligenceRequest';
@@ -113,18 +113,22 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     setCart,
     dispatch,
   } = useApp();
-  // R-FINANCIAL-PRIVACY-V2: intercept dispatch of profit-intent queries so
-  // employees see a redacted operational reply instead of profit/margin/cost
-  // numbers. Owner/admin remain unaffected.
-  const canSeeOwnerFinancialsRef = useRef(canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-V2 + R-FINANCIAL-PRIVACY-POLICY-C C3: intercept dispatch
+  // of profit-intent queries so non-owner employees see a redacted reply instead
+  // of profit/margin/cost. Policy C: role-aware via resolveOwnerFinancialAccess —
+  // owner always sees; managers see ONLY when managersCanViewFinancials is on;
+  // isAdminMode (admin/PIN unlock) alone does NOT grant manager/employee access.
+  const canSeeOwnerFinancialsRef = useRef(resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  ));
+    currentEmployee,
+    isAdminMode,
+  }));
   useEffect(() => {
-    canSeeOwnerFinancialsRef.current = canViewOwnerFinancials(
+    canSeeOwnerFinancialsRef.current = resolveOwnerFinancialAccess({
       settings,
-      isAdminMode || currentEmployee?.role === 'owner',
-    );
+      currentEmployee,
+      isAdminMode,
+    });
   }, [settings, isAdminMode, currentEmployee]);
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
