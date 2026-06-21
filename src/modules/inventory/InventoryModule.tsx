@@ -11,7 +11,7 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { usePrint, openPrintWindow } from '@/hooks/usePrint';
@@ -68,10 +68,13 @@ export default function InventoryModule() {
   } = useApp();
   // R-FINANCIAL-PRIVACY-V2: cost column, profit-potential stat card, and the
   // margin section inside InventoryFormModal are owner-only when the flag is on.
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4B: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLTableRowElement>();
@@ -1837,10 +1840,13 @@ function InventoryFormModal({
   // isAdminMode + currentEmployee inline (settings is already available
   // via props) so InventoryFormModal stays additive.
   const { state: { isAdminMode: _isAdminFormMode, currentEmployee: _currentEmpForm } } = useApp();
-  const formCanSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4B: role-aware visibility for the in-form
+  // margin indicator (manager via setting; admin/PIN unlock alone does not grant).
+  const formCanSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    _isAdminFormMode || _currentEmpForm?.role === 'owner',
-  );
+    currentEmployee: _currentEmpForm,
+    isAdminMode: _isAdminFormMode,
+  });
 
   const CATEGORIES = [
     { value: 'phone',     label: t('inventory.form.cat.phones') },

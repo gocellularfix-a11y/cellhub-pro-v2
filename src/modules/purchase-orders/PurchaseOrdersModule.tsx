@@ -12,7 +12,7 @@ import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { persist, remove, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
 import { matchesSearch } from '@/utils/fuzzyMatch';
@@ -47,10 +47,13 @@ export default function PurchaseOrdersModule() {
   // R-FINANCIAL-PRIVACY-V3: PO cost surfaces are owner-only. Employees
   // can still create/edit/receive POs and see qty + supplier names; cost
   // inputs, per-PO totals, and aggregated cost stats are hidden.
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4B: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   const { toast } = useToast();
   const { highlightRef, isHighlighted } = useHighlightRecord<HTMLDivElement>();

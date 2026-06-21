@@ -10,7 +10,7 @@ import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { persist, batchSave } from '@/services/persist';
 import { COLLECTIONS } from '@/config/constants';
 import { generateId } from '@/utils/dates';
@@ -32,10 +32,13 @@ export default function POReceiveModal({ po, onClose, onSave }: Props) {
   // R-FINANCIAL-PRIVACY-V3: hide supplier cost label in the receiving modal
   // when the viewer cannot see owner financials. Employees still receive
   // inventory, see ordered qty, mark received qty, etc.
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4B: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   const { toast } = useToast();
   const { t } = useTranslation();
