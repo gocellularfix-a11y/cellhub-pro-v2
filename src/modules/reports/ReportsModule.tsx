@@ -16,7 +16,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { formatDate, formatDateTime } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { SearchInput, Modal, useToast } from '@/components/ui';
@@ -347,10 +347,13 @@ export default function ReportsModule() {
   // category/provider tables, printable HTML report, and JSON export.
   // Aggregation logic and stats math are unchanged — only the surfaces
   // that ship values to the screen, printer, or disk.
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4A: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   const { t, locale } = useTranslation();
   const { printHtml } = usePrint();

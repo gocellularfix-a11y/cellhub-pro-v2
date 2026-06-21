@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getLabels } from '@/config/i18n';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import { toDate } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
 import { normalizeCarrier } from '@/utils/normalize';
@@ -140,10 +140,13 @@ export default function TaxReportsModule() {
   // a short notice and skip the rest of the screen. Aggregation logic
   // above this hook still runs only because hooks-rule requires fixed
   // order; the gated return below means the result is never displayed.
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4A: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   // r-print-audit: print the current section in a standalone window instead
   // of window.print() which would print the entire CellHub Pro UI.

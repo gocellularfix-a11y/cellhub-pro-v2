@@ -16,7 +16,7 @@ import {
 import type { TaxIncomeEntry, TaxIncomeCategory } from '@/store/types';
 // R-FINANCIAL-PRIVACY-V2: gate POS profit card + total net income summary.
 import { useApp } from '@/store/AppProvider';
-import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 
 interface Props {
   year: number;
@@ -29,10 +29,13 @@ export default function TaxIncomeTab({ year, posProfitCents }: Props) {
   const tax = useTaxYear(year);
   // R-FINANCIAL-PRIVACY-V2: POS profit / total net income are owner-only.
   const { state: { settings, isAdminMode, currentEmployee } } = useApp();
-  const canSeeOwnerFinancials = canViewOwnerFinancials(
+  // R-FINANCIAL-PRIVACY-POLICY-C C4A: role-aware visibility (manager via the
+  // managersCanViewFinancials setting; admin/PIN unlock alone does not grant it).
+  const canSeeOwnerFinancials = resolveOwnerFinancialAccess({
     settings,
-    isAdminMode || currentEmployee?.role === 'owner',
-  );
+    currentEmployee,
+    isAdminMode,
+  });
 
   const [editing, setEditing] = useState<TaxIncomeEntry | null>(null);
   const [showModal, setShowModal] = useState(false);
