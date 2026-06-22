@@ -54,6 +54,11 @@ import { consumePendingExplicitCustomer } from '@/services/intelligence/context/
 import { useApp } from '@/store/AppProvider';
 import { generateId } from '@/utils/dates';
 import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
+// R-INTELLIGENCE-DECISION-LAYER-F2C: approval enforcement for the one money-
+// changing Intelligence path (deal → discounted cart line). Narrow by design.
+import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { approvalRequestFromPendingDeal } from '@/services/intelligence/decision/approval/IntelligenceApprovalAdapter';
+import { getConnection } from '@/services/lan/lanService';
 // R-INTEL-ROUTER-V1 (shadow mode): deterministic route classification computed
 // before handleIntent. Observed only (dev console + ref); changes no behavior.
 import { routeIntelligenceRequest } from '@/services/intelligence/router/routeIntelligenceRequest';
@@ -109,7 +114,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // for converting approved deals into POS cart lines. Mirrors the pattern
   // used by RepairModule, UnlockModule, SpecialOrdersModule, ReturnsModule.
   const {
-    state: { cart, inventory, settings, isAdminMode, currentEmployee },
+    state: { cart, inventory, settings, isAdminMode, currentEmployee, employees },
     setCart,
     dispatch,
   } = useApp();
@@ -131,6 +136,17 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     });
   }, [settings, isAdminMode, currentEmployee]);
   const { toast } = useToast();
+  // R-INTELLIGENCE-DECISION-LAYER-F2C: PIN gate for deal → discounted-cart-line.
+  // Own instance (the hook is intentionally per-module). Modal rendered below.
+  const dealApprovalGate = useApprovalGate({
+    employees,
+    settings,
+    attemptedByName: currentEmployee?.name,
+  });
+  // F2C: ref-mirror of cart so the post-approval (post-await) cart write in
+  // handleAddDealToCart appends to the freshest array, not a stale closure.
+  const cartRef = useRef(cart);
+  useEffect(() => { cartRef.current = cart; }, [cart]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // INTEL-PERF-CHAT-MEMO-V1: the command-bar text state moved into
   // ChatCommandBar (bottom of file) so keystrokes re-render only that small
@@ -960,7 +976,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // a POS cart line. Re-validates against current inventory (stock + cost
   // floor); does NOT decrement inventory, NOT create a sale, NOT auto-checkout.
   // Owner runs the normal POS checkout afterwards.
-  function handleAddDealToCart(id: string) {
+  async function handleAddDealToCart(id: string) {
     const item = automationQueue.find((i) => i.id === id);
     if (!item) return;
     const deal = (item.payload as { pendingDeal?: import('@/services/intelligence/deals/dealTypes').PendingDeal })?.pendingDeal;
@@ -991,6 +1007,31 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       return;
     }
 
+    // ── R-INTELLIGENCE-DECISION-LAYER-F2C: money-change enforcement ──
+    // Adding the deal injects a DISCOUNTED price line — the same change a manual
+    // cart discount would gate. Enforce here (the single Intelligence money path).
+    //
+    // 1. Secondary-terminal rule: never run the hard-gate money action on a
+    //    read-only LAN Secondary, and never prompt for a local PIN there (that
+    //    would be a bypass). Block BEFORE the PIN modal. The cart is ephemeral
+    //    state (not a persist write), so the persist LAN guard does not catch it.
+    let isSecondaryTerminal = false;
+    try { isSecondaryTerminal = getConnection().role === 'secondary'; } catch { /* default primary */ }
+    if (isSecondaryTerminal) {
+      toast(t('chat.proposeDeal.secondaryBlocked'), 'warning');
+      return;
+    }
+
+    // 2. Approval gate. requestApproval returns approved when approvals are
+    //    disabled (feature_disabled) or not required for the role — so existing
+    //    behavior is preserved for shops not using approvals. Only mutate on approval.
+    const approvalReq = approvalRequestFromPendingDeal(deal, { currentEmployee });
+    const approval = await dealApprovalGate.requestApproval(approvalReq);
+    if (!approval.approved) {
+      toast(t('chat.proposeDeal.approvalDenied'), 'warning');
+      return; // denied/cancelled → no cart mutation, no navigation, no markExecuted
+    }
+
     const taxable = !['service', 'quick_charge', 'phone_payment', 'top_up'].includes(inv.category);
 
     const cartItem: CartItem = {
@@ -1013,7 +1054,9 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // Direct push — DO NOT merge with any existing line at the original price
     // (different intent). New cart line keyed by generateId(); inventoryId is
     // preserved for stock decrement at checkout.
-    setCart([...cart, cartItem]);
+    // F2C: read the freshest cart via cartRef — the approval await above means
+    // the closure `cart` may be stale (anti-stale-closure pattern).
+    setCart([...cartRef.current, cartItem]);
 
     dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: deal.customerId });
     dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
@@ -1125,6 +1168,8 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       className={compact ? 'overflow-hidden flex flex-col' : 'bg-surface-800 rounded-lg border border-surface-700 overflow-hidden flex flex-col'}
       style={compact ? { flex: 1, minHeight: 0, background: 'transparent' } : { minHeight: '560px', maxHeight: '760px' }}
     >
+      {/* R-INTELLIGENCE-DECISION-LAYER-F2C: PIN gate for deal → discounted cart line. */}
+      {dealApprovalGate.modal}
       {/* Header — full mode only */}
       {!compact && (
         <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(31,41,55,0.8)' }}>

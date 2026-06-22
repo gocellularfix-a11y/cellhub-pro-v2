@@ -10,6 +10,7 @@
 
 import type { ApprovalRequest } from '@/services/security/approvalGuard';
 import type { ApprovalActionType } from '@/store/types';
+import type { PendingDeal } from '@/services/intelligence/deals/dealTypes';
 import type { IntelligenceDecision } from '../IntelligenceDecision';
 import { classifyAction } from './classifyAction';
 
@@ -91,4 +92,28 @@ export function toApprovalRequest(
   const cls = classifyAction(decision);
   if (cls.kind !== 'hard-gate' || !cls.approvalActionType) return null;
   return buildApprovalRequest(cls.approvalActionType, decision, ctx);
+}
+
+/**
+ * R-INTELLIGENCE-DECISION-LAYER-F2C: build an ApprovalRequest directly from a
+ * PendingDeal. Used by handleAddDealToCart, which already holds the raw deal —
+ * wrapping it in an IntelligenceDecision would add a pointless translation layer.
+ *
+ * A deal is a discount → DISCOUNT_OVERRIDE. affectedAmount is the exact price
+ * delta (pendingDeal always carries it here, so impactCents is never needed):
+ *   max(0, originalPriceCents − proposedPriceCents) × qty
+ */
+export function approvalRequestFromPendingDeal(
+  deal: PendingDeal,
+  ctx: IntelligenceApprovalContext,
+): ApprovalRequest {
+  const qty = Number.isFinite(deal.qty) && deal.qty > 0 ? deal.qty : 1;
+  const affectedAmount = Math.max(0, deal.originalPriceCents - deal.proposedPriceCents) * qty;
+  return {
+    actionType: 'DISCOUNT_OVERRIDE',
+    requestedByEmployeeId: ctx.currentEmployee?.id ?? '',
+    entityId: deal.inventoryId,
+    affectedAmount,
+    reason: deal.reason || deal.offerText,
+  };
 }

@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatActionUI } from '@/services/intelligence/chat/handlers';
 import type { IntelligenceDecision } from '../IntelligenceDecision';
+import type { PendingDeal } from '@/services/intelligence/deals/dealTypes';
 import {
   toApprovalRequest,
   buildApprovalRequest,
   deriveAffectedAmount,
   deriveEntityId,
+  approvalRequestFromPendingDeal,
 } from './IntelligenceApprovalAdapter';
 
 // ── Fixtures ──────────────────────────────────────────────
@@ -129,5 +131,55 @@ describe('determinism', () => {
   it('same decision + ctx → deep-equal request', () => {
     const d = decision([dealAction]);
     expect(toApprovalRequest(d, ctx)).toEqual(toApprovalRequest(d, ctx));
+  });
+});
+
+describe('approvalRequestFromPendingDeal — F2C direct helper', () => {
+  function deal(over: Record<string, unknown> = {}): PendingDeal {
+    return {
+      customerId: 'cust1',
+      customerName: 'Jane',
+      inventoryId: 'inv-9',
+      productName: 'Case',
+      originalPriceCents: 10000,
+      proposedPriceCents: 8000,
+      qty: 2,
+      reason: 'loyal customer',
+      offerText: 'special offer',
+      guardResult: 'ok',
+      createdAt: '2026-06-22T00:00:00.000Z',
+      ...over,
+    } as PendingDeal;
+  }
+
+  it('maps a deal to DISCOUNT_OVERRIDE with exact delta', () => {
+    expect(approvalRequestFromPendingDeal(deal(), ctx)).toEqual({
+      actionType: 'DISCOUNT_OVERRIDE',
+      requestedByEmployeeId: 'emp-7',
+      entityId: 'inv-9',
+      affectedAmount: 4000, // (10000 - 8000) * 2
+      reason: 'loyal customer',
+    });
+  });
+
+  it('falls back to offerText when reason is empty', () => {
+    const req = approvalRequestFromPendingDeal(deal({ reason: '' }), ctx);
+    expect(req.reason).toBe('special offer');
+  });
+
+  it('clamps negative delta to 0 and defaults qty', () => {
+    const req = approvalRequestFromPendingDeal(
+      deal({ originalPriceCents: 5000, proposedPriceCents: 9000, qty: 0 }),
+      ctx,
+    );
+    expect(req.affectedAmount).toBe(0);
+  });
+
+  it('missing employee → empty requestedByEmployeeId', () => {
+    expect(approvalRequestFromPendingDeal(deal(), { currentEmployee: null }).requestedByEmployeeId).toBe('');
+  });
+
+  it('is deterministic', () => {
+    expect(approvalRequestFromPendingDeal(deal(), ctx)).toEqual(approvalRequestFromPendingDeal(deal(), ctx));
   });
 });

@@ -7928,6 +7928,9 @@ export const translations: TranslationDictionary = {
   'chat.proposeDeal.addedToCart':     { en: 'Deal added to POS cart.',                      es: 'Oferta agregada al carrito POS.',                     pt: 'Oferta adicionada ao carrinho POS.' },
   'chat.proposeDeal.outOfStock':      { en: 'Out of stock — cannot add deal to cart.',      es: 'Sin stock — no se puede agregar la oferta al carrito.', pt: 'Sem estoque — não é possível adicionar a oferta ao carrinho.' },
   'chat.proposeDeal.invalidDeal':     { en: 'Deal is no longer valid (price or product changed). Cart not updated.', es: 'La oferta ya no es válida (precio o producto cambió). Carrito no actualizado.', pt: 'A oferta não é mais válida (preço ou produto mudou). Carrinho não atualizado.' },
+  // R-INTELLIGENCE-DECISION-LAYER-F2C: deal cart-insertion approval messages.
+  'chat.proposeDeal.approvalDenied':  { en: 'Approval required to add this discounted deal to the cart.', es: 'Se requiere aprobación para agregar esta oferta con descuento al carrito.', pt: 'Aprovação necessária para adicionar esta oferta com desconto ao carrinho.' },
+  'chat.proposeDeal.secondaryBlocked':{ en: 'Discounted deals must be added to the cart on the Primary terminal.', es: 'Las ofertas con descuento deben agregarse al carrito en la terminal Principal.', pt: 'Ofertas com desconto devem ser adicionadas ao carrinho no terminal Principal.' },
   // R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner-recorded outcome buttons.
   'chat.proposeDeal.won':             { en: 'Won',         es: 'Ganada',     pt: 'Ganha' },
   'chat.proposeDeal.lost':            { en: 'Lost',        es: 'Perdida',    pt: 'Perdida' },
