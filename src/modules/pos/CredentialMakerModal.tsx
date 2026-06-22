@@ -231,8 +231,11 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
 
     (async () => {
       try {
+        // R-CREDENTIAL-CAMERA-FIX: ideal (non-exact) constraints so webcams that
+        // can't hit exactly 640×480 still negotiate a close mode instead of
+        // throwing OverconstrainedError. Video only — never request audio.
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: 640, height: 480 },
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
         });
         if (cancelled) {
           // User closed before permissions resolved — clean up immediately
@@ -245,8 +248,27 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
         }
       } catch (err) {
         if (cancelled) return;
-        console.error('Camera error:', err);
-        toast(t('credentialMaker.cameraError'), 'error');
+        // R-CREDENTIAL-CAMERA-FIX: map the DOMException name to a specific,
+        // actionable message instead of one generic "check permissions" toast.
+        const e = err as { name?: string; message?: string };
+        console.error('Camera error:', e?.name, e?.message);
+        let msgKey = 'credentialMaker.cameraError';
+        switch (e?.name) {
+          case 'NotAllowedError':
+          case 'PermissionDeniedError':
+            msgKey = 'credentialMaker.cameraPermissionDenied'; break;
+          case 'NotFoundError':
+          case 'DevicesNotFoundError':
+            msgKey = 'credentialMaker.cameraNotFound'; break;
+          case 'NotReadableError':
+          case 'TrackStartError':
+            msgKey = 'credentialMaker.cameraBusy'; break;
+          case 'OverconstrainedError':
+          case 'ConstraintNotSatisfiedError':
+            msgKey = 'credentialMaker.cameraConstraintError'; break;
+          default: break;
+        }
+        toast(t(msgKey), 'error');
         setShowCamera(false);
       }
     })();

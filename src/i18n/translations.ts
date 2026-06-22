@@ -1999,6 +1999,11 @@ export const translations: TranslationDictionary = {
   'quickServicePanel.emptyHint': { en: 'Select a service to continue', es: 'Selecciona un servicio para continuar', pt: 'Selecione um serviço para continuar' },
   'credentialMaker.typeCustomerHint': { en: 'Type customer name or phone', es: 'Escribe el nombre o teléfono del cliente', pt: 'Digite o nome ou telefone do cliente' },
   'credentialMaker.cameraError': { en: 'Could not access camera. Check permissions.', es: 'No se pudo acceder a la cámara. Verifica permisos.', pt: 'Não foi possível acessar a câmera. Verifique permissões.' },
+  // R-CREDENTIAL-CAMERA-FIX: specific getUserMedia failure diagnostics.
+  'credentialMaker.cameraPermissionDenied': { en: 'Camera permission denied. Allow camera access in Windows Settings → Privacy → Camera.', es: 'Permiso de cámara denegado. Permite el acceso en Configuración de Windows → Privacidad → Cámara.', pt: 'Permissão de câmera negada. Permita o acesso em Configurações do Windows → Privacidade → Câmera.' },
+  'credentialMaker.cameraNotFound': { en: 'No camera found. Connect a webcam and try again.', es: 'No se encontró cámara. Conecta una webcam e intenta de nuevo.', pt: 'Nenhuma câmera encontrada. Conecte uma webcam e tente novamente.' },
+  'credentialMaker.cameraBusy': { en: 'Camera is in use by another app (Zoom, Meet, etc.). Close it and try again.', es: 'La cámara está en uso por otra app (Zoom, Meet, etc.). Ciérrala e intenta de nuevo.', pt: 'A câmera está em uso por outro app (Zoom, Meet, etc.). Feche-o e tente novamente.' },
+  'credentialMaker.cameraConstraintError': { en: 'Camera does not support the requested settings.', es: 'La cámara no soporta la configuración solicitada.', pt: 'A câmera não suporta as configurações solicitadas.' },
   'credentialMaker.takePhotoTitle': { en: '📸 Take Photo', es: '📸 Tomar Foto', pt: '📸 Tirar Foto' },
   'credentialMaker.takePhotoMessage': { en: 'Would you like to take a photo for the credential?\n\nYES = Open camera\nNO = Print without photo', es: '¿Desea tomar una foto para la credencial?\n\n✅ SÍ = Abrir cámara\n❌ NO = Imprimir sin foto', pt: 'Deseja tirar uma foto para a credencial?\n\nSIM = Abrir câmera\nNÃO = Imprimir sem foto' },
   'credentialMaker.takePhotoYes': { en: 'Yes, take photo', es: 'Sí, tomar foto', pt: 'Sim, tirar foto' },

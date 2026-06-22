@@ -135,6 +135,17 @@ function createWindow() {
     backgroundColor: '#0f172a', show: false,
   });
 
+  // R-CREDENTIAL-CAMERA-FIX: Electron requires the MAIN process to approve the
+  // renderer's camera request. Without this, getUserMedia in the Credential
+  // Maker is rejected because Chromium's permission CHECK for 'media' has no
+  // approver. Scope STRICTLY to 'media' (camera) — never blanket-grant every
+  // permission. NOTE: this also denies non-media web permissions (notifications,
+  // clipboard-read, geolocation, etc.); add to the allowlist here if a future
+  // feature needs one.
+  const ses = mainWindow.webContents.session;
+  ses.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
+  ses.setPermissionRequestHandler((_webContents, permission, callback) => callback(permission === 'media'));
+
   if (isDev) {
     mainWindow.loadURL(DEV_URL);
   } else {
