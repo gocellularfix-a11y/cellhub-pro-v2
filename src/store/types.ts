@@ -662,6 +662,11 @@ export interface PendingExchangeReturn {
   itemMutations: { saleItemId: string; qty: number }[];
   inventoryRestock: { inventoryId: string; qty: number }[];
   returnItems: CustomerReturnItem[];
+  // R-RETURNS-PHASE-2B (wired): return number + the fully-built CustomerReturn
+  // record, carried verbatim so POS Complete Sale persists it full-spread and
+  // stamps the exchange-sale link — without re-deriving from ReturnsModule state.
+  returnNumber: string;
+  returnRecord: CustomerReturn;
 }
 
 export interface CartItem {
@@ -869,6 +874,10 @@ export interface CustomerReturn {
   recipientPhone?: string;
   certificateNumber?: string;
   storeCreditStatus?: 'active' | 'redeemed' | 'voided';
+  // R-RETURNS-PHASE-2B: link to the POS replacement sale that finalized a
+  // deferred exchange return. Stamped at POS Complete Sale, not at draft time.
+  exchangeSaleId?: string;
+  exchangeInvoiceNumber?: string;
 }
 
 // ── Store Credit Ledger (R-STORE-CREDIT-REDEMPTION-SYSTEM) ────

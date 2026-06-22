@@ -3453,6 +3453,13 @@ export const translations: TranslationDictionary = {
     es: (n: number) => ` · ${n} registros linkeados cancelados`,
     pt: (n: number) => ` · ${n} registros vinculados cancelados`,
   },
+  // R-RETURNS-PHASE-2B: exchange returns now defer-commit — the credit line is
+  // added to the cart but the return is only finalized at POS Complete Sale.
+  'returns.exchangeDraftToast': {
+    en: 'Exchange credit added to cart — complete the sale to finalize the return',
+    es: 'Crédito de cambio agregado al carrito — completa la venta para finalizar la devolución',
+    pt: 'Crédito de troca adicionado ao carrinho — conclua a venda para finalizar a devolução',
+  },
   'returns.print.receipt':           { en: 'RETURN RECEIPT',        es: 'RECIBO DE DEVOLUCIÓN',        pt: 'RECIBO DE DEVOLUÇÃO' },
   'returns.print.returnNo':          { en: 'Return #',              es: 'No.',                         pt: 'Dev. nº' },
   'returns.print.date':              { en: 'Date',                  es: 'Fecha',                       pt: 'Data' },

@@ -32,12 +32,13 @@ import TopUpModal from './TopUpModal';
 import ApplyStoreCreditModal from './ApplyStoreCreditModal';
 import type { CartTotals, DiscountState, CustomCategory, calculateCartTotals } from './types';
 import { calculateCartTotals as calcTotals } from './types';
-import type { Customer, Sale, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
+import type { Customer, Sale, InventoryItem, CartItem, StoreCreditLedger, PendingExchangeReturn } from '@/store/types';
 
 import { persist, batchSave } from '@/services/persist';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { addLayawayPayment } from '@/services/layaway/payments';
 import { redeemLedgerEntry } from '@/services/storeCredit/ledger';
+import { finalizeExchangeReturn } from '@/services/returns/finalizeExchangeReturn';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
@@ -61,11 +62,11 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
-      pendingPosCustomer, storeCreditLedger,
+      pendingPosCustomer, storeCreditLedger, customerReturns,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
-    setStoreCreditLedger,
+    setStoreCreditLedger, setCustomerReturns,
   } = useApp();
 
   const { toast } = useToast();
@@ -99,6 +100,10 @@ export default function POSModule() {
   // R-STORE-CREDIT-REDEMPTION-SYSTEM
   const storeCreditLedgerRef = useRef(storeCreditLedger);
   useEffect(() => { storeCreditLedgerRef.current = storeCreditLedger; }, [storeCreditLedger]);
+  // R-RETURNS-PHASE-2B: ref-mirror so exchange-return finalization in
+  // handleCompleteSale sees the freshest returns array (idempotency guard).
+  const customerReturnsRef = useRef(customerReturns);
+  useEffect(() => { customerReturnsRef.current = customerReturns; }, [customerReturns]);
 
   // ── Local State ─────────────────────────────────────────
 
@@ -979,6 +984,55 @@ export default function POSModule() {
         }
       }
 
+      // ── 4f. Exchange return finalization (R-RETURNS-PHASE-2B) ──
+      // Cart lines carrying `pendingReturn` are deferred exchange-return drafts.
+      // The Returns modal added the negative `exchange_credit` line but did NOT
+      // yet mutate the original sale, restock inventory, or persist the
+      // CustomerReturn — so the original item stayed returnable until now.
+      // finalizeExchangeReturn applies those three mutations purely (idempotent
+      // on retry); we commit + persist the ids it reports below.
+      const exchangeDrafts = sale.items
+        .map((it) => (it as any).pendingReturn as PendingExchangeReturn | undefined)
+        .filter((d): d is PendingExchangeReturn => !!d);
+      if (exchangeDrafts.length > 0) {
+        const exRes = finalizeExchangeReturn({
+          drafts: exchangeDrafts,
+          sales: salesRef.current,
+          inventory: inventoryRef.current,
+          returns: customerReturnsRef.current,
+          exchangeSaleId: sale.id,
+          exchangeInvoiceNumber: sale.invoiceNumber,
+        });
+        if (exRes.salesChanged) {
+          salesRef.current = exRes.sales;
+          setSales(exRes.sales);
+          for (const id of exRes.updatedSaleIds) {
+            const s = exRes.sales.find((x) => x.id === id);
+            if (s) persist.sale(s.id, s as unknown as Record<string, unknown>);
+          }
+        }
+        if (exRes.inventoryChanged) {
+          inventoryRef.current = exRes.inventory;
+          setInventory(exRes.inventory);
+          const exInvOps = exRes.updatedInventoryIds
+            .map((id) => exRes.inventory.find((x) => x.id === id))
+            .filter((inv): inv is InventoryItem => !!inv)
+            .map((inv) => ({
+              collection: 'inventory',
+              id: inv.id,
+              data: inv as unknown as Record<string, unknown>,
+            }));
+          if (exInvOps.length > 0) batchSave(exInvOps);
+        }
+        if (exRes.returnsChanged) {
+          customerReturnsRef.current = exRes.returns;
+          setCustomerReturns(exRes.returns);
+          for (const rec of exRes.persistedReturns) {
+            persist.customerReturn(rec.id, rec as unknown as Record<string, unknown>);
+          }
+        }
+      }
+
       // 6. Clear cart and reset
       cartRef.current = [];
       setCart([]);
@@ -998,7 +1052,7 @@ export default function POSModule() {
     [
       setSales, setInventory, setCustomers,
       selectedCustomer, setRepairs, setSpecialOrders, setUnlocks, setLayaways,
-      setCart, settings, toast, lang,
+      setCart, settings, toast, lang, setCustomerReturns,
     ],
   );
 

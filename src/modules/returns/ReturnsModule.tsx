@@ -27,7 +27,7 @@ import { useApprovalGate } from '@/hooks/useApprovalGate';
 import { COLLECTIONS } from '@/config/constants';
 import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { issueLedgerEntry } from '@/services/storeCredit/ledger';
-import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem, StoreCreditLedger } from '@/store/types';
+import type { Sale, CartItem, Customer, CustomerReturn, CustomerReturnItem, VendorReturn, InventoryItem, StoreCreditLedger, PendingExchangeReturn } from '@/store/types';
 
 const rc = (n: number) => Math.round(n * 100) / 100;
 const fc = (n: number) => formatCurrency(n);
@@ -474,13 +474,54 @@ export default function ReturnsModule() {
       ...(certificateNumber ? { certificateNumber, storeCreditStatus: 'active' as const } : {}),
     };
 
+    // R-RETURNS-PHASE-2B: for resolution==='exchange', build a deferred-commit
+    // draft instead of finalizing the 3 dangerous mutations now (original-sale
+    // returnedQty, inventory restock, CustomerReturn persist). finalizeCustomerReturn
+    // attaches this draft to the exchange_credit cart line and SKIPS those three
+    // effects; POS Complete Sale replays them after the replacement sale persists.
+    // Loyalty reversal + linked-entity cancellation STILL run immediately (Option A —
+    // not deferred this pass; see Phase 2c risk note).
+    let exchangeDraft: PendingExchangeReturn | undefined;
+    if (resolution === 'exchange' && totalCents > 0) {
+      const itemMutations = Object.entries(selectedItems).map(([id, sel]) => ({
+        saleItemId: id, qty: sel.qty,
+      }));
+      const inventoryRestock: { inventoryId: string; qty: number }[] = [];
+      for (const [id, sel] of Object.entries(selectedItems)) {
+        const si = foundSale?.items.find((i) => i.id === id);
+        if (si?.inventoryId) inventoryRestock.push({ inventoryId: si.inventoryId, qty: sel.qty });
+      }
+      exchangeDraft = {
+        // draftId === returnRecord.id → deterministic idempotency key at checkout.
+        draftId: returnRecord.id,
+        resolution: 'exchange',
+        source: 'returns-modal',
+        createdAt: nowIso,
+        originalSaleId: foundSale?.id || '',
+        originalReceiptNumber: foundSale?.invoiceNumber || returnRecord.originalInvoice,
+        recipientCustomerId: recipientCustomerId || undefined,
+        recipientName: finalRecipientName,
+        recipientPhone: finalRecipientPhone || undefined,
+        reason,
+        notes,
+        returnSubtotalCents: subtotalCents,
+        returnTaxCents: taxCentsTotal,
+        returnTotalCents: totalCents,
+        itemMutations,
+        inventoryRestock,
+        returnItems,
+        returnNumber,
+        returnRecord,
+      };
+    }
+
     // R-RETURNS-PHASE-2A: finalization extracted into finalizeCustomerReturn().
-    // 2a calls it immediately here, so runtime behavior is unchanged. 2b will
-    // DEFER this call for resolution==='exchange' (build a pendingReturn draft
-    // on the cart line instead, and finalize at POS Complete Sale).
+    // When exchangeDraft is present, the 3 dangerous mutations are DEFERRED to
+    // POS Complete Sale; otherwise behavior is unchanged (immediate finalize).
     finalizeCustomerReturn({
       returnNumber, nowIso, returnItems, subtotalCents, taxCentsTotal,
       totalCents, certificateNumber, returnRecord, finalRecipientName, finalRecipientPhone,
+      exchangeDraft,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
@@ -505,11 +546,18 @@ export default function ReturnsModule() {
     returnRecord: CustomerReturn;
     finalRecipientName: string;
     finalRecipientPhone: string;
+    // R-RETURNS-PHASE-2B: present only for deferred exchanges. When set, the 3
+    // dangerous mutations (sale returnedQty, inventory restock, CustomerReturn
+    // persist) are SKIPPED here and the draft is attached to the cart line for
+    // POS Complete Sale to replay. Loyalty/linked-cancel still run immediately.
+    exchangeDraft?: PendingExchangeReturn;
   }) {
     const {
       returnNumber, nowIso, returnItems, subtotalCents, taxCentsTotal,
       totalCents, certificateNumber, returnRecord, finalRecipientName, finalRecipientPhone,
+      exchangeDraft,
     } = input;
+    const deferCore = !!exchangeDraft;
     // Phase 2: update foundSale.items (returnedQty / fullyReturned / hasReturn).
     // Hold commit — R9-1 may add status='refunded' before we persist.
     let updatedSale: Sale | null = null;
@@ -528,29 +576,33 @@ export default function ReturnsModule() {
     }
 
     // Phase 3: restore inventory (atomic batch write).
-    const updatedInv = inventoryRef.current.map((invItem) => {
-      const entry = Object.entries(selectedItems).find(([id]) => {
-        const si = foundSale?.items.find((i) => i.id === id);
-        return si?.inventoryId === invItem.id;
+    // R-RETURNS-PHASE-2B: DEFERRED for exchange drafts — restock happens at POS
+    // Complete Sale so a cleared cart leaves inventory untouched.
+    if (!deferCore) {
+      const updatedInv = inventoryRef.current.map((invItem) => {
+        const entry = Object.entries(selectedItems).find(([id]) => {
+          const si = foundSale?.items.find((i) => i.id === id);
+          return si?.inventoryId === invItem.id;
+        });
+        if (!entry) return invItem;
+        const newQty = invItem.qty + entry[1].qty;
+        return { ...invItem, qty: newQty };
       });
-      if (!entry) return invItem;
-      const newQty = invItem.qty + entry[1].qty;
-      return { ...invItem, qty: newQty };
-    });
-    inventoryRef.current = updatedInv;
-    setInventory(updatedInv);
-    const changedInvItems = updatedInv.filter((invItem) =>
-      Object.entries(selectedItems).some(([id]) => {
-        const si = foundSale?.items.find((i) => i.id === id);
-        return si?.inventoryId === invItem.id;
-      }),
-    );
-    if (changedInvItems.length > 0) {
-      batchSave(changedInvItems.map((i) => ({
-        collection: COLLECTIONS.inventory,
-        id: i.id,
-        data: i as unknown as Record<string, unknown>,
-      })));
+      inventoryRef.current = updatedInv;
+      setInventory(updatedInv);
+      const changedInvItems = updatedInv.filter((invItem) =>
+        Object.entries(selectedItems).some(([id]) => {
+          const si = foundSale?.items.find((i) => i.id === id);
+          return si?.inventoryId === invItem.id;
+        }),
+      );
+      if (changedInvItems.length > 0) {
+        batchSave(changedInvItems.map((i) => ({
+          collection: COLLECTIONS.inventory,
+          id: i.id,
+          data: i as unknown as Record<string, unknown>,
+        })));
+      }
     }
 
     // Phase 4: build refund sale (only if cash/card). Hold commit — R9-1 may
@@ -620,6 +672,8 @@ export default function ReturnsModule() {
     }
 
     // Phase 5: exchange → negative cart item.
+    // R-RETURNS-PHASE-2B: attach the deferred-commit draft so POS Complete Sale
+    // can finalize the return atomically with the replacement sale.
     if (resolution === 'exchange' && totalCents > 0) {
       const exchangeItem: CartItem = {
         id: generateId(),
@@ -628,6 +682,7 @@ export default function ReturnsModule() {
         price: -totalCents,
         qty: 1, taxable: false, cbeEligible: false,
         notes: t('returns.exchangeFrom', returnRecord.originalInvoice),
+        ...(exchangeDraft ? { pendingReturn: exchangeDraft } : {}),
       };
       const nextCart = [...cartRef.current, exchangeItem];
       cartRef.current = nextCart;
@@ -906,7 +961,10 @@ export default function ReturnsModule() {
     }
 
     // Phase 9: commit foundSale (with returnedQty and possibly refunded status).
-    if (updatedSale && foundSale) {
+    // R-RETURNS-PHASE-2B: DEFERRED for exchange drafts — POS Complete Sale writes
+    // returnedQty/fullyReturned/hasReturn so the original item stays returnable
+    // until the replacement sale succeeds.
+    if (!deferCore && updatedSale && foundSale) {
       const nextSales = salesRef.current.map((s) => s.id === foundSale.id ? updatedSale as Sale : s);
       salesRef.current = nextSales;
       setSales(nextSales);
@@ -921,10 +979,15 @@ export default function ReturnsModule() {
     }
 
     // Phase 10: persist return record.
-    const history = [returnRecord, ...customerReturnsRef.current];
-    customerReturnsRef.current = history;
-    setReturnHistory(history);
-    persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+    // R-RETURNS-PHASE-2B: DEFERRED for exchange drafts — POS Complete Sale persists
+    // the CustomerReturn (stamped with the exchange-sale link) so a cleared cart
+    // leaves no orphan return record.
+    if (!deferCore) {
+      const history = [returnRecord, ...customerReturnsRef.current];
+      customerReturnsRef.current = history;
+      setReturnHistory(history);
+      persist.customerReturn(returnRecord.id, returnRecord as unknown as Record<string, unknown>);
+    }
 
     // R-STORE-CREDIT-REDEMPTION-SYSTEM: mint a ledger entry for the certificate
     // we just printed. The certificate is now a traceable redeemable instrument.
@@ -959,6 +1022,18 @@ export default function ReturnsModule() {
     if (skippedAlreadyDone.length > 0) {
       toast(t('returns.alreadyCompleteWarning', skippedAlreadyDone.join(', ')), 'warning');
     }
+
+    // R-RETURNS-PHASE-2B: deferred exchange draft — the return is NOT finalized
+    // yet (no success banner, no return receipt). Phase 5 already added the credit
+    // line and switched to POS; POS Complete Sale will finalize. Just inform and
+    // reset the search so the cashier can ring up the replacement.
+    if (deferCore) {
+      const linkedDraftMsg = cancelledCount > 0 ? t('returns.linkedCancelledMsg', cancelledCount) : '';
+      toast(t('returns.exchangeDraftToast') + linkedDraftMsg, 'info');
+      resetSearch();
+      return;
+    }
+
     const mainMsg = t('returns.processedToast', returnNumber, fc(totalCents));
     const linkedMsg = cancelledCount > 0 ? t('returns.linkedCancelledMsg', cancelledCount) : '';
     toast(mainMsg + linkedMsg, 'success');
