@@ -79,10 +79,13 @@ module.exports = {
   },
 
   // ── Auto-update publish ────────────────────────────────
+  // R-RELEASE-B2: production update feed. Public release repo so auto-update
+  // clients never need an embedded GitHub token. Artifacts (Setup .exe,
+  // latest.yml, *.blockmap) are published to GitHub Releases on this repo.
   publish: {
     provider: 'github',
-    owner:    'jorgeochoa-cellhub',     // TODO: replace with real GitHub handle before release
+    owner:    'gocellularfix-a11y',
     repo:     'cellhub-pro-releases',
-    private:  true,
+    private:  false,
   },
 };
