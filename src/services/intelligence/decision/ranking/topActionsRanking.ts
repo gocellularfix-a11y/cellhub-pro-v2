@@ -28,6 +28,8 @@ export interface TopAction {
   impactCents?: number;
   approvalRequired: boolean;
   approvalKind: ApprovalKind;
+  /** True when impactCents surfaces owner-only margin/cost — the UI redacts it for non-owners. */
+  financialSensitive: boolean;
 }
 
 export interface TopActionsOptions {
@@ -88,6 +90,7 @@ export function toTopAction(scored: ScoredDecision, opts: TopActionsOptions = {}
     impactCents: d.impactCents,
     approvalRequired: req.approvalRequired,
     approvalKind: req.approvalKind,
+    financialSensitive: d.financialSensitive,
   };
 }
 

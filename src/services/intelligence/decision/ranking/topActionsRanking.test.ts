@@ -109,6 +109,7 @@ describe('rankToTopActions — TopAction output', () => {
       impactCents: 15_000,
       approvalRequired: true,
       approvalKind: 'soft-queue',
+      financialSensitive: false,
     });
   });
 

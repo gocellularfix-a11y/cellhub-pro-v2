@@ -6714,6 +6714,11 @@ export const translations: TranslationDictionary = {
   'intelligence.noSalesForCustomer':      { en: 'No sales recorded for this customer.', es: 'Sin ventas registradas para este cliente.', pt: 'Nenhuma venda registrada para este cliente.' },
   'intelligence.approxProfit':            { en: (pct: number) => `Approximate profit — only ${pct}% of sales have cost recorded.`, es: (pct: number) => `Profit aproximado — solo ${pct}% de las ventas tienen cost registrado.`, pt: (pct: number) => `Lucro aproximado — apenas ${pct}% das vendas têm custo registrado.` },
   'intelligence.askYourShop':             { en: 'Ask Your Shop',             es: 'Pregúntale a tu Tienda',                  pt: 'Pergunte à sua Loja' },
+  // R-INTELLIGENCE-F3C: Top 3 Actions Today (canonical Track A consumer).
+  'intelligence.topActions.title':            { en: 'Top 3 Actions Today',   es: 'Top 3 Acciones de Hoy',          pt: 'Top 3 Ações de Hoje' },
+  'intelligence.topActions.empty':            { en: 'No priority actions today', es: 'Sin acciones prioritarias hoy', pt: 'Sem ações prioritárias hoje' },
+  'intelligence.topActions.confidence':       { en: 'Confidence',            es: 'Confianza',                       pt: 'Confiança' },
+  'intelligence.topActions.approvalRequired': { en: 'Approval required',     es: 'Requiere aprobación',             pt: 'Requer aprovação' },
   'intelligence.chatDescription':         { en: 'Local answers, no external APIs. Type "help" to see what I can answer.', es: 'Respuestas locales, sin APIs externas. Escribe "ayuda" para ver qué puedo responder.', pt: 'Respostas locais, sem APIs externas. Digite "ajuda" para ver o que posso responder.' },
   'intelligence.chatPlaceholder':         { en: 'Ex: "history of John" or "how are sales"', es: 'Ej: "historial de Juan" o "cómo van las ventas"', pt: 'Ex: "histórico de João" ou "como estão as vendas"' },
   'intelligence.send':                    { en: 'Send',                      es: 'Enviar',                                  pt: 'Enviar' },

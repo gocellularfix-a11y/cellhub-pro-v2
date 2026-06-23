@@ -126,6 +126,12 @@ import {
   type RoleRoutingResult,
 } from '@/services/intelligence/routing/roleIntelligenceRouting';
 import SimpleOperatorView from './SimpleOperatorView';
+// R-INTELLIGENCE-F3C: first visible Track A consumer — canonical Top 3 Actions
+// Today. Read-only card; uses getTopActionsToday (F3B) directly, no duplicate
+// ranking. Margin redaction via resolveOwnerFinancialAccess (Policy C).
+import TopActionsTodayCard from './TopActionsTodayCard';
+import { getTopActionsToday } from '@/services/intelligence/decision/ranking/getTopActionsToday';
+import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 import FloatingOperatorBubble from '@/components/FloatingOperatorBubble';
 import PaymentVerificationNudge from '@/components/PaymentVerificationNudge';
 import type { LiveAssistSuggestion, LiveAssistContext } from '@/services/intelligence/live/types';
@@ -1497,6 +1503,18 @@ export default function IntelligenceModule() {
   const kpi = result.kpiDashboard;
   const totalAlerts = kpi.inventory.lowStockCount + kpi.repairs.overdue;
 
+  // R-INTELLIGENCE-F3C: canonical Top 3 Actions Today (read-only). Recomputed
+  // only when the engine re-analyzes (keyed on `result`) — never per render or
+  // in the background. Margin figures redacted for non-owners (Policy C).
+  const canSeeTopActionFinancials = useMemo(
+    () => resolveOwnerFinancialAccess({ settings, currentEmployee }),
+    [settings, currentEmployee],
+  );
+  const topActionsToday = useMemo(
+    () => getTopActionsToday(engine, engineLang),
+    [result, engine, engineLang], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // R-INTELLIGENCE-PERFORMANCE-AUDIT-V1: total render-prep cost for the
   // module. JSX construction itself is React-internal and not measured
   // here — only the synchronous work above (engine + memos + cards).
@@ -1508,6 +1526,13 @@ export default function IntelligenceModule() {
 
   return (
     <div style={{ background: PAGE_BG, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+
+      {/* R-INTELLIGENCE-F3C: canonical Top 3 Actions Today (read-only display). */}
+      <TopActionsTodayCard
+        actions={topActionsToday}
+        t={t}
+        canSeeOwnerFinancials={canSeeTopActionFinancials}
+      />
 
       {/* ── OPERATOR COMMAND CENTER — 3-column layout ── */}
       <SimpleOperatorView
