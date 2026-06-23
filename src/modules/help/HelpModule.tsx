@@ -9,6 +9,10 @@
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
 import { HELP_MODULES, getHelpModule, type HelpLocale, type HelpModuleEntry } from './helpContent';
+import { getSafeDiagnosticsInfo } from '@/config/appInfo';
+
+// R-PRODUCTION-B6.1: injected by Vite `define` from package.json at build time.
+declare const __APP_VERSION__: string;
 
 const OVERVIEW = 'overview';
 
@@ -52,11 +56,43 @@ export default function HelpModule() {
   const selected = getHelpModule(selectedId);
   const showOverview = !query && selectedId === OVERVIEW;
 
+  // R-PRODUCTION-B6.1: non-sensitive identification for remote support.
+  const diag = getSafeDiagnosticsInfo(
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
+    typeof navigator !== 'undefined' ? navigator.platform || '' : '',
+  );
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-white">📖 {t('help.title')}</h1>
         <p className="text-sm text-slate-400 mt-1">{t('help.subtitle')}</p>
+      </div>
+
+      {/* R-PRODUCTION-B6.1: About / Diagnostics — version/platform/logs only.
+          No secrets, no license key, no hardware fingerprint, no customer data. */}
+      <div className="glass-card p-4 space-y-1.5 text-sm">
+        <h2 className="text-base font-semibold text-white">
+          {L === 'es' ? '🛟 Acerca de / Diagnóstico' : L === 'pt' ? '🛟 Sobre / Diagnóstico' : '🛟 About / Diagnostics'}
+        </h2>
+        <div className="text-slate-300">
+          <span className="text-slate-500">{L === 'es' ? 'Versión' : L === 'pt' ? 'Versão' : 'Version'}:</span>{' '}
+          CellHub Pro {diag.version}
+        </div>
+        <div className="text-slate-300">
+          <span className="text-slate-500">{L === 'es' ? 'Plataforma' : 'Platform'}:</span> {diag.platform}
+        </div>
+        <div className="text-slate-300">
+          <span className="text-slate-500">{L === 'es' ? 'Ubicación de logs' : L === 'pt' ? 'Local dos logs' : 'Logs location'}:</span>{' '}
+          <code className="text-xs break-all">{diag.logsHint}</code>
+        </div>
+        <p className="text-xs text-slate-500 pt-1">
+          {L === 'es'
+            ? 'Si el soporte pide logs, abre esa carpeta manualmente y envía el archivo de log más reciente.'
+            : L === 'pt'
+              ? 'Se o suporte pedir logs, abra essa pasta manualmente e envie o arquivo de log mais recente.'
+              : 'If support asks for logs, open this folder manually and send the latest cellhub log file.'}
+        </p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">

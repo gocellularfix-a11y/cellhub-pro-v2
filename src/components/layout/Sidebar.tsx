@@ -8,6 +8,9 @@ import { useTranslation } from '@/i18n';
 // R-OFFLINE-MODE-GUARD-V1: live online/offline status for the sidebar badge.
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
+// R-PRODUCTION-B6.1: injected by Vite `define` from package.json at build time.
+declare const __APP_VERSION__: string;
+
 // R-SIDEBAR-QUICKACTIONS-STYLE: per-module gradient palette. Keyed by
 // the NAV_TABS id. Unmapped ids fall back to the slate tone below so
 // the grid never breaks if a new module is added to constants.ts.
@@ -432,7 +435,7 @@ export default function Sidebar() {
 
         {/* Version info */}
         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-          CellHub Pro — Build 2026.04.01
+          CellHub Pro — v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
         </div>
 
         {/* Clock In / Clock Out */}

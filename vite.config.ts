@@ -2,11 +2,20 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
+import { createRequire } from 'node:module';
+
+// R-PRODUCTION-B6.1: single source of truth for the displayed app version —
+// pulled from package.json at build time so the About/Diagnostics screen always
+// reflects the real build (no hardcoded version string in the UI).
+const pkg = createRequire(import.meta.url)('./package.json') as { version: string };
 
 export default defineConfig(({ mode }) => {
   const isWeb = mode === 'web';
 
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
     plugins: [
       react(),
       VitePWA({
