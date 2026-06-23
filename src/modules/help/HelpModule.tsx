@@ -62,6 +62,28 @@ export default function HelpModule() {
     typeof navigator !== 'undefined' ? navigator.platform || '' : '',
   );
 
+  // R-PRODUCTION-B3.2: open the local logs folder (desktop only). Reads/sends
+  // nothing — main opens a FIXED diagnostics path. Inline status (no toast here).
+  const [logsStatus, setLogsStatus] = useState('');
+  const openLogsFolder = async () => {
+    const api = window.electronAPI;
+    if (!api?.openDiagnosticsLogsFolder) {
+      setLogsStatus(L === 'es' ? 'Solo disponible en la app de escritorio.' : L === 'pt' ? 'Disponível apenas no app desktop.' : 'Only available in the desktop app.');
+      return;
+    }
+    try {
+      const res = await api.openDiagnosticsLogsFolder();
+      if (res?.ok) {
+        setLogsStatus(L === 'es' ? '✓ Carpeta de logs abierta.' : L === 'pt' ? '✓ Pasta de logs aberta.' : '✓ Logs folder opened.');
+      } else {
+        const prefix = L === 'es' ? 'No se pudo abrir: ' : L === 'pt' ? 'Não foi possível abrir: ' : 'Could not open: ';
+        setLogsStatus(prefix + (res?.error || 'unknown'));
+      }
+    } catch {
+      setLogsStatus(L === 'es' ? 'No se pudo abrir la carpeta de logs.' : L === 'pt' ? 'Não foi possível abrir a pasta de logs.' : 'Could not open logs folder.');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -93,6 +115,14 @@ export default function HelpModule() {
               ? 'Se o suporte pedir logs, abra essa pasta manualmente e envie o arquivo de log mais recente.'
               : 'If support asks for logs, open this folder manually and send the latest cellhub log file.'}
         </p>
+        <button
+          type="button"
+          onClick={openLogsFolder}
+          className="mt-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-xs font-semibold text-white hover:bg-white/15"
+        >
+          {L === 'es' ? '📂 Abrir carpeta de logs' : L === 'pt' ? '📂 Abrir pasta de logs' : '📂 Open Logs Folder'}
+        </button>
+        {logsStatus && <div className="text-xs text-slate-400 mt-1">{logsStatus}</div>}
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">

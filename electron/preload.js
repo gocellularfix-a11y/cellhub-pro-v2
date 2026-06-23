@@ -30,6 +30,9 @@ try {
     // Backup
     getBackupFolder:  ()       => ipcRenderer.invoke('get-backup-folder'),
     setBackupFolder:  ()       => ipcRenderer.invoke('set-backup-folder'),
+    // R-PRODUCTION-B3.2: open the local diagnostics logs folder (fixed path in
+    // main; no renderer-supplied path, no shell/openPath surface exposed).
+    openDiagnosticsLogsFolder: () => ipcRenderer.invoke('diagnostics:open-logs'),
     // r-batch-a (5): returns unsubscribe function to prevent listener leaks.
     onUpdateAvailable: (cb) => {
       const handler = (_, info) => cb(info);

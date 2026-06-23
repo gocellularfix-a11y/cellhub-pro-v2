@@ -593,6 +593,21 @@ function registerIpcHandlers() {
     return null;
   });
 
+  // R-PRODUCTION-B3.2: open the LOCAL diagnostics logs folder. FIXED path only —
+  // computed from diagnostics.getDiagnosticsLogDir(app); NEVER a renderer-supplied
+  // path. Reads no log contents, uploads nothing. Returns a controlled result.
+  ipcMain.handle('diagnostics:open-logs', async () => {
+    try {
+      const logsDir = diagnostics.getDiagnosticsLogDir(app);
+      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+      const res = await shell.openPath(logsDir);
+      if (res) return { ok: false, error: String(res) };
+      return { ok: true, path: logsDir };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : 'open-logs failed' };
+    }
+  });
+
   // Auto-update — r-pkg-a1: listener dedup to prevent accumulation
   // when check-for-updates is called multiple times.
   let updateListenersRegistered = false;

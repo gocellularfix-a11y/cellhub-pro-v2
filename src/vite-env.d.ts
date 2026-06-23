@@ -77,6 +77,8 @@ interface ElectronAPI {
   // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: Primary renderer dispatcher bridge.
   onLanOperationDispatch: (cb: (req: LanOperationDispatchRequest) => void) => () => void;
   lanSendOperationResult: (payload: { requestId: string; result: LanOperationDispatchResult }) => void;
+  // R-PRODUCTION-B3.2: open the local diagnostics logs folder (fixed path).
+  openDiagnosticsLogsFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>;
 }
 
 // LOCAL-LAN-AUTO-DISCOVERY-V1 discovery wire types
