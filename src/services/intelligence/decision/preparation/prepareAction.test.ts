@@ -80,7 +80,7 @@ describe('prepareAction', () => {
     expect(p.type).toBe('READY_PICKUP');
     expect(p.title).toBe('Ready repair not picked up');
     expect(p.summary).toBe('ready 5 days');
-    expect(p.createdAt).toBe(1234);
+    expect(p.preparedAt).toBe(1234); // stamped only because now was passed
     expect(p.draftContent).toContain('Maria');
   });
 
@@ -104,10 +104,17 @@ describe('prepareAction', () => {
     expect(prepareAction(d, { lang: 'es', now: 7 })).toEqual(prepareAction(d, { lang: 'es', now: 7 }));
   });
 
-  it('defaults: lang=en, now=0', () => {
+  it('defaults: lang=en, no preparedAt stamped (identity-stable)', () => {
     const p = prepareAction(decision({ source: attention('repair'), entityRef: { type: 'repair', id: 'r', name: 'Bo' } }));
-    expect(p.createdAt).toBe(0);
+    expect(p.preparedAt).toBeUndefined();
+    expect('preparedAt' in p).toBe(false);
     expect(p.draftContent).toContain('Hi Bo,');
+  });
+
+  it('preparedAt is present ONLY when now is explicitly provided', () => {
+    const d = decision({ id: 'z', source: attention('layaway'), entityRef: { type: 'layaway', id: 'l9' } });
+    expect(prepareAction(d).preparedAt).toBeUndefined();
+    expect(prepareAction(d, { now: 999 }).preparedAt).toBe(999);
   });
 });
 

@@ -7,9 +7,11 @@
 // order, same dedupe. Ranking/scoring/approval are NOT altered — this only adds
 // a preparation projection on top.
 //
-// Impure boundary: reads the engine (via collectDecisions) and stamps
-// `createdAt` from the clock. The actual preparation math (prepareAction) stays
-// pure. Has NO consumer yet — additive, recommendation-only, no execution.
+// Impure only in that it reads the engine (via collectDecisions). It does NOT
+// stamp a wall-clock timestamp: the output is identity-stable and deterministic
+// for a given engine state, so repeated calls produce equal PreparedActions
+// (lifecycle timestamps are deferred to F5/F6). Has NO consumer yet — additive,
+// recommendation-only, no execution.
 // ============================================================
 
 import type { IntelligenceEngine } from '@/services/intelligence/IntelligenceEngine';
@@ -28,8 +30,7 @@ export function getPreparedActionsToday(
   lang: Lang3,
   opts: TopActionsOptions = {},
 ): PreparedAction[] {
-  const now = Date.now();
   return normalizeAndRank(collectDecisions(engine, lang), opts)
     .slice(0, MAX_TOP_ACTIONS)
-    .map((s) => prepareAction(s.decision, { lang, now, isSecondary: opts.isSecondary }));
+    .map((s) => prepareAction(s.decision, { lang, isSecondary: opts.isSecondary }));
 }

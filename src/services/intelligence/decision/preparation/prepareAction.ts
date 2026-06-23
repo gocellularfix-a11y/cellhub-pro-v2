@@ -3,9 +3,9 @@
 //
 // Converts ONE ranked IntelligenceDecision (the canonical object a Top Action is
 // a projection of) into a PreparedAction. Pure + deterministic: same
-// (decision, lang) → same PreparedAction, except for the explicitly-injected
-// `createdAt`. NO execution, NO persistence, NO sending, NO AI/LLM, NO
-// randomness, NO Date.now().
+// (decision, lang) → a byte-identical PreparedAction. An optional `preparedAt`
+// is stamped ONLY when a caller explicitly passes opts.now. NO execution, NO
+// persistence, NO sending, NO AI/LLM, NO randomness, NO Date.now().
 //
 // Template selection reads the verbatim `source` discriminated union — never
 // parses translated text — so it is structurally exact and zero-info-loss.
@@ -22,7 +22,11 @@ import { renderDraft } from './templates';
 
 export interface PrepareOptions {
   lang?: Lang3;
-  /** Injected timestamp (epoch ms). Omitted → 0, keeping the builder pure. */
+  /**
+   * Optional preparation timestamp (epoch ms). When omitted, the resulting
+   * PreparedAction has no `preparedAt` and the output is fully deterministic —
+   * the same (decision, lang) yields a byte-identical object every call.
+   */
   now?: number;
   /** Whether the request originates from a secondary terminal (passed to approval). */
   isSecondary?: boolean;
@@ -97,7 +101,7 @@ export function prepareAction(
     action: decision.decision,
   });
 
-  return {
+  const prepared: PreparedAction = {
     id: `prep:${decision.id}`,
     sourceTopActionId: decision.id,
     type,
@@ -107,6 +111,8 @@ export function prepareAction(
     approvalKind: req.approvalKind,
     draftContent,
     financialSensitive: decision.financialSensitive,
-    createdAt: opts.now ?? 0,
   };
+  // Stamp preparedAt ONLY when a caller explicitly supplies a timestamp.
+  if (typeof opts.now === 'number') prepared.preparedAt = opts.now;
+  return prepared;
 }

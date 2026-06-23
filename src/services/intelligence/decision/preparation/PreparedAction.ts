@@ -8,13 +8,15 @@
 // contact, NO persistence, and NO side effects.
 //
 // It is PURELY ADDITIVE. It does not alter F3B ranking, scoring, or approval
-// enforcement. Each PreparedAction links back 1:1 to the Top Action it was
-// derived from via `sourceTopActionId` (== the decision id == TopAction.decisionId).
+// enforcement. A PreparedAction's IDENTITY is its `id` + `sourceTopActionId`
+// (both derived from the decision id == TopAction.decisionId) — NOT a timestamp.
+// Each PreparedAction links back 1:1 to the Top Action it was derived from.
 //
-// Determinism contract: the same IntelligenceDecision + lang always produce the
-// same PreparedAction (modulo the explicitly-injected `createdAt`). No Date.now()
-// and no randomness inside the pure builder — the timestamp is supplied by the
-// impure wiring boundary (see getPreparedActionsToday.ts).
+// Determinism contract: the same IntelligenceDecision + lang always produce a
+// byte-identical PreparedAction. No Date.now() and no randomness anywhere in the
+// preparation path. Lifecycle timestamps (queuedAt / approvedAt / executedAt)
+// belong to F5/F6; `preparedAt` is optional and present ONLY when a caller
+// explicitly stamps it (opts.now) — the default F4A output carries none.
 // ============================================================
 
 import type { ApprovalKind } from '../approval/types';
@@ -59,6 +61,11 @@ export interface PreparedAction {
   draftContent: string;
   /** True when the action surfaces owner-only money figures (UI redaction hint). */
   financialSensitive: boolean;
-  /** Injected at the impure boundary (epoch ms). 0 when not supplied. */
-  createdAt: number;
+  /**
+   * Optional preparation timestamp (epoch ms). NOT part of identity. Present
+   * only when a caller explicitly stamps it via opts.now; the default F4A
+   * pipeline leaves it undefined so output stays deterministic. Lifecycle
+   * timestamps (queued/approved/executed) are an F5/F6 concern.
+   */
+  preparedAt?: number;
 }
