@@ -10,6 +10,7 @@ import EmployeeLogin from '@/components/shared/EmployeeLogin';
 import AdminPinGate from '@/components/shared/AdminPinGate';
 import SetupWizard from '@/components/shared/SetupWizard';
 import PWAInstallPrompt from '@/components/shared/PWAInstallPrompt';
+import { useStorageQuotaWarning } from '@/hooks/useStorageQuotaWarning';
 import PrintPreviewModal from '@/components/shared/PrintPreviewModal';
 import { usePrintModal } from '@/hooks/usePrint';
 import { LoadingSpinner } from '@/components/ui';
@@ -205,6 +206,9 @@ export default function App() {
     }
   };
 
+  // ── B5.1: storage quota warning (read-only; never blocks saves/checkout) ──
+  const storageLevel = useStorageQuotaWarning();
+
   // ── Loading ─────────────────────────────────────────────
 
   if (loading) {
@@ -250,6 +254,39 @@ export default function App() {
 
       {/* PWA install prompt — only shows in browser, never in Electron */}
       <PWAInstallPrompt />
+
+      {/* R-PRODUCTION-B5.1: proactive storage quota warning. Read-only banner —
+          never blocks saves or checkout. Prompts the owner to export a backup
+          before localStorage fills up. */}
+      {storageLevel !== 'ok' && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            padding: '8px 16px',
+            textAlign: 'center',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            background: storageLevel === 'critical' ? '#dc2626' : '#f59e0b',
+            color: storageLevel === 'critical' ? '#ffffff' : '#1f2937',
+          }}
+        >
+          {storageLevel === 'critical'
+            ? lang === 'es'
+              ? '⚠️ El almacenamiento está casi lleno. Exporta un respaldo ahora para evitar problemas al guardar.'
+              : lang === 'pt'
+                ? '⚠️ O armazenamento está quase cheio. Exporte um backup agora para evitar problemas ao salvar.'
+                : '⚠️ Storage is almost full. Export a backup now to avoid save problems.'
+            : lang === 'es'
+              ? 'El almacenamiento se está llenando. Exporta un respaldo pronto.'
+              : lang === 'pt'
+                ? 'O armazenamento está ficando cheio. Exporte um backup em breve.'
+                : 'Storage is getting full. Export a backup soon.'}
+        </div>
+      )}
 
       {/* Print Preview Modal — internal print UI with live preview.
           r-print-contract: forward caller options as initial state. */}
