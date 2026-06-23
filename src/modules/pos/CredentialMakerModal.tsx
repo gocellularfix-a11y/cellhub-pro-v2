@@ -35,12 +35,24 @@ function CredentialCard({
   useEffect(() => {
     if (barcodeRef.current && customerCode) {
       try {
+        // R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: adopt the proven receipt barcode
+        // sizing rules (renderBarcodeSvg). A fixed 1.5px module width + 2px
+        // margin made longer customer codes wider than the CR80 right column
+        // (~190px), forcing overflow/downscale. Pick the widest module that
+        // still FITS at natural size + a real 10px CODE128 quiet zone, and snap
+        // edges crisp. displayValue stays TRUE — the credential intentionally
+        // prints the scannable customer number under the bars.
+        const QUIET_PX = 10;
+        const PRINTABLE_PX = 190; // CR80 right column width @96dpi
+        const estModules = customerCode.length * 11 + 35;
+        const moduleWidthPx = Math.max(1.0, Math.min(2.2, (PRINTABLE_PX - QUIET_PX * 2) / estModules));
         JsBarcode(barcodeRef.current, customerCode, {
-          format: 'CODE128', width: 1.5, height: 35,
+          format: 'CODE128', width: moduleWidthPx, height: 35,
           displayValue: true, fontSize: 11, fontOptions: 'bold',
           background: '#ffffff', lineColor: '#000000',
-          margin: 2, marginTop: 2, marginBottom: 2, textMargin: 3,
+          margin: QUIET_PX, marginTop: 2, marginBottom: 2, textMargin: 3,
         });
+        barcodeRef.current.setAttribute('shape-rendering', 'crispEdges');
       } catch { /* barcode rendering failed */ }
     }
   }, [customerCode]);
@@ -140,7 +152,10 @@ function CredentialCard({
         background: footerColor, color: 'white', padding: '8px 16px',
         textAlign: 'center', fontSize: '11px', fontWeight: 600, letterSpacing: '0.5px',
       }}>
-        {settings.storeName || ''}{settings.storePhone ? ` · Tel: ${formatPhone(settings.storePhone)}` : ''}
+        {/* R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: footer now carries the full Go
+            Cellular contact — name · phone · website (all from store settings).
+            The body "Web:" line is intentionally kept. */}
+        {settings.storeName || ''}{settings.storePhone ? ` · Tel: ${formatPhone(settings.storePhone)}` : ''}{settings.storeWebsite ? ` · ${settings.storeWebsite}` : ''}
       </div>
     </div>
   );

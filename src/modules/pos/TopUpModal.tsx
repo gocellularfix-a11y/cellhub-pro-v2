@@ -4,7 +4,7 @@
 // Provider selector + sender + multi-line recipients with frequent suggestions
 // ============================================================
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/store/AppProvider';
@@ -46,6 +46,37 @@ interface TopUpLine {
   amount: string;
 }
 
+// R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: robust clipboard write mirroring
+// PhonePaymentModal.autoCopyPhone. navigator.clipboard.writeText silently fails
+// in Chromium/Electron when called without an active user gesture (e.g. from a
+// prefill effect), so fall back to the textarea + execCommand path which has no
+// gesture requirement. `onSuccess` runs only when the copy actually succeeded.
+function robustCopy(text: string, onSuccess: () => void): void {
+  const fallback = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      const prevActive = document.activeElement as HTMLElement | null;
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (prevActive && typeof prevActive.focus === 'function') prevActive.focus();
+      if (ok) onSuccess();
+    } catch { /* clipboard genuinely unavailable */ }
+  };
+  try {
+    const p = navigator.clipboard?.writeText(text);
+    if (p && typeof p.then === 'function') p.then(onSuccess).catch(fallback);
+    else fallback();
+  } catch { fallback(); }
+}
+
 export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalProps) {
   const { state: { lang, settings, sales, customers }, setCustomers } = useApp();
   const { t } = useTranslation();
@@ -59,11 +90,12 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
       toast(t('topUpModal.nothingToCopy'), 'info');
       return;
     }
-    navigator.clipboard.writeText(v).then(
-      () => toast(t('topUpModal.copied', label), 'success'),
-      () => toast(t('topUpModal.nothingToCopy'), 'error'),
-    );
+    // R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: was navigator.clipboard-only (no
+    // fallback) → silently failed in Electron. Now uses the shared robust path.
+    robustCopy(v, () => toast(t('topUpModal.copied', label), 'success'));
   }, [t, toast]);
+  // R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: dedupe sentinel for sender auto-copy.
+  const lastCopiedSenderRef = useRef<string | null>(null);
 
   // r28b: customer-aware mode. When a customer is selected, the modal renders
   // their persistent topUpHistory cards. When NULL (walk-in), the legacy
@@ -78,6 +110,22 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
   const [provider, setProvider] = useState('');
   const [sender, setSender] = useState('');
   const [lines, setLines] = useState<TopUpLine[]>([{ recipient: '', amount: '' }]);
+
+  // R-CREDENTIAL-TOPUP-COPY-BARCODE-FIX: auto-copy the sender when it is set,
+  // mirroring PhonePaymentModal. Gated to a complete 10-digit number so typing
+  // doesn't copy/toast on every keystroke; deduped so it fires once per sender.
+  useEffect(() => {
+    const digits = (sender || '').replace(/\D/g, '');
+    if (digits.length !== 10) {
+      if (digits.length === 0) lastCopiedSenderRef.current = null;
+      return;
+    }
+    if (lastCopiedSenderRef.current === digits) return;
+    robustCopy(digits, () => {
+      lastCopiedSenderRef.current = digits;
+      toast(t('topUpModal.copied', t('topUpModal.senderNumber')), 'success');
+    });
+  }, [sender, t, toast]);
   const [error, setError] = useState('');
 
   // Auto-fill sender when customer is selected
