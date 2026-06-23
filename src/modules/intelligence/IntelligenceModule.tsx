@@ -1539,6 +1539,7 @@ export default function IntelligenceModule() {
         engine={engine}
         customers={customers}
         lang={engineLang}
+        topActions={topActionsToday}
         externalQuery={externalQuery}
         onOpenPromote={handleOpenPromote}
         onPanelCampaign={handlePanelCampaign}

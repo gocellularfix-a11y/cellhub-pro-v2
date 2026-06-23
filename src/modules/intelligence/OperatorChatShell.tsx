@@ -4,6 +4,7 @@ import IntelligenceChat from './IntelligenceChat';
 import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+import type { TopAction } from '@/services/intelligence/decision/ranking/topActionsRanking';
 import type { ChipData } from './SuggestionChips';
 
 export interface OperatorChatShellProps {
@@ -14,6 +15,8 @@ export interface OperatorChatShellProps {
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
+  // R-INTELLIGENCE-F3D: forwarded F3B Top 3 Actions Today (computed in IntelligenceModule).
+  topActions?: TopAction[];
   compact?: boolean;
   hideInput?: boolean;
   clearSeq?: number;
@@ -27,6 +30,7 @@ export default function OperatorChatShell({
   onOpenPromote,
   onPanelCampaign,
   chipData,
+  topActions,
   compact,
   hideInput,
   clearSeq,
@@ -41,6 +45,7 @@ export default function OperatorChatShell({
         onOpenPromote={onOpenPromote}
         onPanelCampaign={onPanelCampaign}
         chipData={chipData}
+        topActions={topActions}
         compact={compact}
         hideInput={hideInput}
         clearSeq={clearSeq}

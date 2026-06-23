@@ -12,8 +12,12 @@ import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
 import type { OperationalContext } from '@/services/intelligence/chat/intentRouter';
-import { handleIntent, handleFollowUp } from '@/services/intelligence/chat/handlers';
-import type { ChatActionUI, PanelCampaignDraft, WorkflowSection } from '@/services/intelligence/chat/handlers';
+import { handleIntent, handleFollowUp, tChat } from '@/services/intelligence/chat/handlers';
+import type { ChatActionUI, PanelCampaignDraft, WorkflowSection, Lang3 } from '@/services/intelligence/chat/handlers';
+// R-INTELLIGENCE-F3D: canonical Top 3 Actions Today (F3B) — the Daily Brief's
+// single priority source. Prop-drilled in (computed once in IntelligenceModule,
+// F3C); never recomputed here.
+import type { TopAction } from '@/services/intelligence/decision/ranking/topActionsRanking';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: deterministic post-action next-steps.
 import { resolvePostActionContinuity } from '@/services/intelligence/continuity/postActionContinuity';
@@ -91,6 +95,9 @@ interface Props {
   // the existing buildWhatsAppUrl helper. No autonomous send, no API.
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData?: ChipData;
+  // R-INTELLIGENCE-F3D: canonical Top 3 Actions Today (F3B), computed once in
+  // IntelligenceModule and drilled in. The Daily Brief renders these directly.
+  topActions?: TopAction[];
   compact?: boolean;
   hideInput?: boolean;
   clearSeq?: number;
@@ -108,7 +115,7 @@ interface ChatMessage {
 
 const AUTOMATION_QUEUE_STORAGE_KEY = 'cellhub:intelligence:automationQueue:v1';
 
-export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, compact, hideInput, clearSeq }: Props) {
+export default function IntelligenceChat({ engine, customers, lang, externalQuery, onOpenPromote, onPanelCampaign, chipData, topActions, compact, hideInput, clearSeq }: Props) {
   const { locale, t } = useTranslation();
   // R-INTELLIGENCE-PENDING-DEAL-ADD-TO-CART-V1: cart + inventory + dispatch
   // for converting approved deals into POS cart lines. Mirrors the pattern
@@ -1261,7 +1268,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
           messages.length === 0 ? (
             hideInput
               ? <RightColumnWelcome locale={locale} />
-              : <OperatorCommandWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} />
+              : <OperatorCommandWelcome locale={locale} chipData={chipData} topActions={topActions} onSuggestion={handleSuggestion} />
           ) : (
             <div style={{ padding: '14px 16px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={onActionStable} feedbackById={actionFeedbackById} />)}
@@ -1270,7 +1277,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
             {messages.length === 0 ? (
-              <OperatorWelcome locale={locale} chipData={chipData} onSuggestion={handleSuggestion} canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
+              <OperatorWelcome locale={locale} chipData={chipData} topActions={topActions} onSuggestion={handleSuggestion} canSeeOwnerFinancials={canSeeOwnerFinancialsRef.current} />
             ) : (
               messages.map((msg) => <MessageBubble key={msg.id} msg={msg} lang={locale} onAction={onActionStable} feedbackById={actionFeedbackById} />)
             )}
@@ -1683,9 +1690,13 @@ const ChatCommandBar = memo(function ChatCommandBar({ compact, locale, onSend }:
 // inline ternary, matching the existing welcome-component pattern (these
 // components deliberately avoid new translation keys — see the
 // QuickActionGrid note below).
-function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true, onSuggestion }: {
+function OperatorTodayBriefing({ chipData, locale, topActions, canSeeOwnerFinancials = true, onSuggestion }: {
   chipData?: ChipData;
   locale: string;
+  // R-INTELLIGENCE-F3D: canonical Top 3 Actions Today (F3B) — the single
+  // priority source. Rendered at the top; the legacy action-priority lines that
+  // overlapped these were removed (F3D2). Info-only counts stay below.
+  topActions?: TopAction[];
   canSeeOwnerFinancials?: boolean;
   // R-INTELLIGENCE-OPERATOR-ACTIONS-V1: optional callback to fire an existing
   // deterministic chat prompt. When absent the lines render info-only.
@@ -1694,6 +1705,9 @@ function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true,
   const es = locale === 'es';
   const pt = locale === 'pt';
   const todayLabel = es ? 'HOY' : pt ? 'HOJE' : 'TODAY';
+  // R-INTELLIGENCE-F3D: standalone translator for the reused intelligence.topActions.* strings.
+  const tc = tChat(locale as Lang3);
+  const topList = topActions ?? [];
 
   // R-INTELLIGENCE-OPERATOR-ACTIONS-V1: action labels (EN/ES/PT). Each briefing
   // line may carry ONE compact action that reuses an existing mechanism only:
@@ -1710,18 +1724,8 @@ function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true,
     push:          es ? 'Promover Productos'     : pt ? 'Promover Produtos'        : 'Push Products',
     collect:       es ? 'Cobrar Pagos'           : pt ? 'Cobrar Pagamentos'        : 'Collect Payments',
   };
-  // Deterministic chat prompts — copied verbatim from the existing welcome
-  // cards (OperatorCommandWelcome) so they route through the same intent router.
-  // CONTACT-CUSTOMERS-CARD-ROUTE-TO-ATTENTION-V1: contact now fires the PROVEN
-  // attention prompt (routes to attention_feed → outstanding repair/layaway
-  // balances + Open/View/WhatsApp buttons) instead of the old who_to_contact
-  // outreach handler that often returned "No customers qualify".
-  const Q = {
-    contact:  es ? 'qué necesita atención'             : 'what needs attention',
-    push:     es ? 'qué productos debo promover hoy'   : 'what products should I promote today',
-    collect:  es ? 'qué reparaciones están retrasadas' : 'what repairs are delayed',
-  };
-
+  // R-INTELLIGENCE-F3D2: the deterministic chat-prompt map (Q) was removed with
+  // the action-priority lines that used it — those actions now come from F3B.
   type BriefAction =
     | { kind: 'nav'; tab: string; label: string }
     | { kind: 'chat'; query: string; label: string };
@@ -1731,59 +1735,11 @@ function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true,
   // Deterministic lines built ONLY from the existing ChipData counts the
   // action chips already consume — no engine calls, no new data access.
   if (chipData) {
-    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: ready-for-pickup (actionable now).
-    if ((chipData.readyPickupCount ?? 0) > 0) {
-      lines.push({ id: 'readyPickup', icon: '📲',
-        text: es ? `${chipData.readyPickupCount} reparaciones listas para recoger`
-            : pt ? `${chipData.readyPickupCount} reparos prontos para retirada`
-            : `${chipData.readyPickupCount} repairs ready for pickup`,
-        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
-    }
-    if (chipData.staleRepairCount > 0) {
-      lines.push({ id: 'staleRepair', icon: '🔧',
-        text: es ? `${chipData.staleRepairCount} reparaciones sin recoger`
-            : pt ? `${chipData.staleRepairCount} reparos não retirados`
-            : `${chipData.staleRepairCount} repairs uncollected`,
-        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
-    }
-    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: overdue layaways (collection risk).
-    if ((chipData.overdueLayawayCount ?? 0) > 0) {
-      lines.push({ id: 'overdueLayaway', icon: '⏰',
-        text: es ? `${chipData.overdueLayawayCount} apartados vencidos`
-            : pt ? `${chipData.overdueLayawayCount} reservas vencidas`
-            : `${chipData.overdueLayawayCount} layaways overdue`,
-        action: { kind: 'nav', tab: 'layaways', label: L.openLayaways } });
-    }
-    // R-INTELLIGENCE-OPERATOR-SIGNALS-V3: open balances to collect (COUNT only,
-    // no money value — safe for all roles).
-    if ((chipData.paymentOpportunityCount ?? 0) > 0) {
-      lines.push({ id: 'paymentOpp', icon: '💳',
-        text: es ? `${chipData.paymentOpportunityCount} balances por cobrar`
-            : pt ? `${chipData.paymentOpportunityCount} saldos a receber`
-            : `${chipData.paymentOpportunityCount} open balances to collect`,
-        action: { kind: 'chat', query: Q.collect, label: L.collect } });
-    }
-    if (chipData.repairsPending > 0) {
-      lines.push({ id: 'repairsPending', icon: '✅',
-        text: es ? `${chipData.repairsPending} reparaciones listas para entrega`
-            : pt ? `${chipData.repairsPending} reparos prontos para retirada`
-            : `${chipData.repairsPending} repairs ready for pickup`,
-        action: { kind: 'nav', tab: 'repairs', label: L.openRepairs } });
-    }
-    if (chipData.outreachCount >= 2) {
-      lines.push({ id: 'outreach', icon: '📞',
-        text: es ? `${chipData.outreachCount} clientes por contactar`
-            : pt ? `${chipData.outreachCount} clientes para contatar`
-            : `${chipData.outreachCount} customers to contact`,
-        action: { kind: 'chat', query: Q.contact, label: L.contact } });
-    }
-    if (chipData.productOppsCount > 0) {
-      lines.push({ id: 'productOpps', icon: '🚀',
-        text: es ? `${chipData.productOppsCount} productos para promover`
-            : pt ? `${chipData.productOppsCount} produtos para promover`
-            : `${chipData.productOppsCount} products to promote`,
-        action: { kind: 'chat', query: Q.push, label: L.push } });
-    }
+    // R-INTELLIGENCE-F3D2: the action-priority lines (ready pickups, stale
+    // repairs, overdue layaways, balance collection, ready-for-delivery,
+    // outreach, product opportunities) were REMOVED — those recommendations now
+    // come from the canonical Top 3 Actions Today (F3B), rendered above. Only
+    // the informational counts below remain (no ranking, no duplicate actions).
     // R-INTELLIGENCE-OPERATOR-SIGNALS-V2: deterministic active-count signals
     // (already-computed module useMemos). Non-financial — shown for all roles.
     if ((chipData.activeLayawayCount ?? 0) > 0) {
@@ -1845,46 +1801,85 @@ function OperatorTodayBriefing({ chipData, locale, canSeeOwnerFinancials = true,
 
   return (
     <div style={{ marginBottom: 14, textAlign: 'left' }}>
-      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8 }}>
-        {todayLabel}
-      </div>
-      {lines.length === 0 ? (
+      {/* R-INTELLIGENCE-F3D: canonical Top 3 Actions Today (F3B) — the single
+          priority source. Read-only; $ redacted for non-owners (financialSensitive). */}
+      {topList.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8 }}>
+            ⚡ {tc('intelligence.topActions.title')}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {topList.map((a, i) => {
+              const showImpact = a.impactCents !== undefined && a.impactCents > 0
+                && (!a.financialSensitive || canSeeOwnerFinancials);
+              return (
+                <div key={a.decisionId} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
+                  <span style={{ flexShrink: 0, color: '#64748B', fontWeight: 700 }}>{i + 1}.</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: '#E2E8F0' }}>{a.title}</div>
+                    <div style={{ fontSize: 11.5, color: '#94A3B8' }}>{a.reason}</div>
+                    <div style={{ fontSize: 10.5, color: '#64748B', display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                      <span>{tc('intelligence.topActions.confidence')}: {a.confidence}%</span>
+                      {showImpact && <span>· ${Math.round((a.impactCents as number) / 100).toLocaleString()}</span>}
+                      {a.approvalRequired && (
+                        <span style={{ color: '#FBBF24' }}>· 🔒 {tc('intelligence.topActions.approvalRequired')}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Informational counts only (no ranking, no actions duplicated from F3B). */}
+      {lines.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#64748B', marginBottom: 8 }}>
+            {todayLabel}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {lines.map((l) => (
+              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#CBD5E1' }}>
+                <span style={{ fontSize: 13, flexShrink: 0 }}>{l.icon}</span>
+                <span style={{ flex: 1 }}>{l.text}</span>
+                {l.action && (
+                  <button
+                    type="button"
+                    onClick={() => runAction(l.action!)}
+                    style={{
+                      flexShrink: 0, fontSize: 10.5, fontWeight: 600,
+                      padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
+                      background: 'rgba(59,130,246,0.12)', color: '#93C5FD',
+                      border: '1px solid rgba(59,130,246,0.28)', whiteSpace: 'nowrap' as const,
+                    }}
+                  >
+                    {l.action.label}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* All-clear only when there is truly nothing to surface. */}
+      {topList.length === 0 && lines.length === 0 && (
         <div style={{ fontSize: 12.5, color: '#94A3B8', lineHeight: '1.5' }}>
           {es ? '✓ Todo al día. Sin pendientes urgentes — revisa las oportunidades abajo.'
            : pt ? '✓ Tudo em dia. Nada urgente — veja as oportunidades abaixo.'
            : '✓ All clear. No urgent items — review the opportunities below.'}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {lines.map((l) => (
-            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#CBD5E1' }}>
-              <span style={{ fontSize: 13, flexShrink: 0 }}>{l.icon}</span>
-              <span style={{ flex: 1 }}>{l.text}</span>
-              {l.action && (
-                <button
-                  type="button"
-                  onClick={() => runAction(l.action!)}
-                  style={{
-                    flexShrink: 0, fontSize: 10.5, fontWeight: 600,
-                    padding: '2px 8px', borderRadius: 5, cursor: 'pointer',
-                    background: 'rgba(59,130,246,0.12)', color: '#93C5FD',
-                    border: '1px solid rgba(59,130,246,0.28)', whiteSpace: 'nowrap' as const,
-                  }}
-                >
-                  {l.action.label}
-                </button>
-              )}
-            </div>
-          ))}
         </div>
       )}
     </div>
   );
 }
 
-function OperatorWelcome({ locale, chipData, onSuggestion, canSeeOwnerFinancials = true }: {
+function OperatorWelcome({ locale, chipData, topActions, onSuggestion, canSeeOwnerFinancials = true }: {
   locale: string;
   chipData?: ChipData;
+  topActions?: TopAction[];
   onSuggestion: (text: string) => void;
   canSeeOwnerFinancials?: boolean;
 }) {
@@ -1898,7 +1893,7 @@ function OperatorWelcome({ locale, chipData, onSuggestion, canSeeOwnerFinancials
           like an operator console; action chips/cards below stay unchanged.
           R-INTELLIGENCE-OPERATOR-ACTIONS-V1: onSuggestion enables per-line
           executable buttons (reuses existing chat + navigate-tab handlers). */}
-      <OperatorTodayBriefing chipData={chipData} locale={locale} canSeeOwnerFinancials={canSeeOwnerFinancials} onSuggestion={onSuggestion} />
+      <OperatorTodayBriefing chipData={chipData} locale={locale} topActions={topActions} canSeeOwnerFinancials={canSeeOwnerFinancials} onSuggestion={onSuggestion} />
 
       {pendingWorkflows.length > 0 && (
         <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1968,9 +1963,10 @@ function RightColumnWelcome({ locale }: { locale: string }) {
 }
 
 // ── Option-2 welcome: large action cards for compact/command-center mode ──
-function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
+function OperatorCommandWelcome({ locale, chipData, topActions, onSuggestion }: {
   locale: string;
   chipData?: ChipData;
+  topActions?: TopAction[];
   onSuggestion: (text: string) => void;
 }) {
   const hour = new Date().getHours();
@@ -2042,7 +2038,7 @@ function OperatorCommandWelcome({ locale, chipData, onSuggestion }: {
           compact command-center cards.
           R-INTELLIGENCE-OPERATOR-ACTIONS-V1: onSuggestion enables per-line
           executable buttons (reuses existing chat + navigate-tab handlers). */}
-      <OperatorTodayBriefing chipData={chipData} locale={locale} canSeeOwnerFinancials={false} onSuggestion={onSuggestion} />
+      <OperatorTodayBriefing chipData={chipData} locale={locale} topActions={topActions} canSeeOwnerFinancials={false} onSuggestion={onSuggestion} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {cards.map((card) => (
           <button

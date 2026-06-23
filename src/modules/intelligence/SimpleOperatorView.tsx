@@ -5,6 +5,7 @@ import type { IntelligenceEngine } from '@/services/intelligence';
 import type { Customer } from '@/store/types';
 import type { ChipData } from './SuggestionChips';
 import type { PanelCampaignDraft } from '@/services/intelligence/chat/handlers';
+import type { TopAction } from '@/services/intelligence/decision/ranking/topActionsRanking';
 import { formatCurrency } from '@/utils/currency';
 import { useTranslation } from '@/i18n';
 import OperatorChatShell from './OperatorChatShell';
@@ -190,6 +191,8 @@ interface SimpleOperatorViewProps {
   onOpenPromote?: (productId: string, productName: string) => void;
   onPanelCampaign?: (draft: PanelCampaignDraft) => void;
   chipData: ChipData;
+  // R-INTELLIGENCE-F3D: F3B Top 3 Actions Today, forwarded to the chat brief.
+  topActions?: TopAction[];
   todayRevenue: number;
   todaySalesCount: number;
   totalAlerts: number;
@@ -207,7 +210,7 @@ interface SimpleOperatorViewProps {
 
 export default function SimpleOperatorView({
   engine, customers, lang, externalQuery,
-  onOpenPromote, onPanelCampaign, chipData,
+  onOpenPromote, onPanelCampaign, chipData, topActions,
   todayRevenue, todaySalesCount,
   staleRecoverable,
   yesterdayRevenue, activeCustomers30d,
@@ -498,6 +501,7 @@ export default function SimpleOperatorView({
           onOpenPromote={onOpenPromote}
           onPanelCampaign={onPanelCampaign}
           chipData={chipData}
+          topActions={topActions}
           compact
           hideInput
           clearSeq={clearSeq}
