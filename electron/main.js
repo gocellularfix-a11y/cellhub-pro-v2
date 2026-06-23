@@ -18,6 +18,8 @@ const {
 const lanPairing = require('./lanPairing');
 // R-PRODUCTION-B3.1: local-only crash/error diagnostics (main process).
 const diagnostics = require('./diagnostics');
+// R-PRODUCTION-B5.2: startup-if-stale auto-backup runner (write-only, local).
+const autoBackup = require('./autoBackup');
 
 // ── Single instance lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -155,6 +157,12 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => { mainWindow.show(); mainWindow.focus(); });
+  // R-PRODUCTION-B5.2: startup-if-stale auto-backup. Runs once after the renderer
+  // has loaded localStorage. Reuses the same snapshot as the on-close backup;
+  // fire-and-forget (never blocks startup, never throws, never restores).
+  mainWindow.webContents.once('did-finish-load', () => {
+    autoBackup.runStartupAutoBackup({ app, mainWindow, loadConfig, saveConfig, diagnostics });
+  });
   // ── Close confirmation + auto-backup ──────────────────
   let forceClose = false;
   mainWindow.on('close', async (e) => {
