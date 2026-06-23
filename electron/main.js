@@ -16,6 +16,8 @@ const {
 // LOCAL-LAN-PAIRING-PHASE-1-V1: LAN pairing handshake (no sync). Opt-in,
 // off by default — nothing starts unless the renderer calls lan:start-primary.
 const lanPairing = require('./lanPairing');
+// R-PRODUCTION-B3.1: local-only crash/error diagnostics (main process).
+const diagnostics = require('./diagnostics');
 
 // ── Single instance lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -602,6 +604,8 @@ function registerIpcHandlers() {
       if (!updateListenersRegistered) {
         autoUpdater.on('update-available', (info) => { if (mainWindow) mainWindow.webContents.send('update-available', info); });
         autoUpdater.on('update-downloaded', (info) => { if (mainWindow) mainWindow.webContents.send('update-downloaded', info); });
+        // R-PRODUCTION-B3.1: log updater errors (log-only, no behavior change).
+        autoUpdater.on('error', (err) => { try { diagnostics.logDiagnosticEvent('error', 'autoUpdater-error', err && (err.stack || err.message) || 'unknown'); } catch (_e) {} });
         updateListenersRegistered = true;
       }
       await autoUpdater.checkForUpdates();
@@ -729,6 +733,10 @@ app.whenReady().then(() => {
   registerIpcHandlers();
   createWindow();
   createTray();
+  // R-PRODUCTION-B3.1: wire crash/error diagnostics once the app + window exist.
+  // Renderer crashes are captured app-wide (web-contents-created), so this is
+  // robust to window recreation. Local-only; no UI, no upload.
+  try { diagnostics.initDiagnostics({ app, getMainWindow: () => mainWindow }); } catch (_e) {}
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
