@@ -40,6 +40,7 @@ export function buildQueueItem(
     status,
     approvalState,
     approvalKind: prepared.approvalKind,
+    preparedActionType: prepared.type,
   };
   // Stamp lifecycle timestamps ONLY when a caller supplies one.
   if (typeof opts.now === 'number') {

@@ -17,6 +17,7 @@
 // ============================================================
 
 import type { ApprovalKind } from '../approval/types';
+import type { PreparedActionType } from '../preparation/PreparedAction';
 
 /**
  * Lifecycle status of a queue item.
@@ -53,6 +54,12 @@ export interface QueueItem {
   approvalState: QueueApprovalState;
   /** How approval would be obtained (mirrors the prepared action; not enforced here). */
   approvalKind: ApprovalKind;
+  /**
+   * Preparation category carried verbatim from the source PreparedAction (F4A).
+   * Populated by buildQueueItem from `prepared.type` — never parsed/inferred — so
+   * downstream summaries can break down by type without re-ranking or ID parsing.
+   */
+  preparedActionType: PreparedActionType;
   /**
    * Optional creation timestamp (epoch ms). NOT part of identity. Present only
    * when a caller explicitly stamps it via opts.now; the default F5A pipeline

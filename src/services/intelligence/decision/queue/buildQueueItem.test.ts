@@ -28,6 +28,11 @@ describe('buildQueueItem — id + linkage', () => {
     expect(q.preparedActionId).toBe('prep:attention:r1');
     expect(q.sourceTopActionId).toBe('attention:r1');
   });
+
+  it('carries preparedActionType verbatim from the PreparedAction (no inference)', () => {
+    expect(buildQueueItem(prepared({ type: 'READY_PICKUP' })).preparedActionType).toBe('READY_PICKUP');
+    expect(buildQueueItem(prepared({ type: 'GENERIC' })).preparedActionType).toBe('GENERIC');
+  });
 });
 
 describe('buildQueueItem — status + approval mapping', () => {

@@ -16,6 +16,7 @@ function item(status: QueueStatus, approvalState: QueueApprovalState, over: Part
     status,
     approvalState,
     approvalKind: approvalState === 'NOT_REQUIRED' ? 'none' : 'soft-queue',
+    preparedActionType: 'GENERIC',
     ...over,
   };
 }
