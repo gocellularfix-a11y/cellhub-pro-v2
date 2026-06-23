@@ -61,4 +61,14 @@ export interface QueueItem {
   createdAt?: number;
   /** Optional enqueue timestamp (epoch ms). Same optionality rules as createdAt. */
   queuedAt?: number;
+  /**
+   * Optional reason an approval was DENIED (F5B). Set by denyQueueItem when a
+   * reason is supplied; cleared by resetQueueItemApproval. Not part of identity.
+   */
+  denialReason?: string;
+  /**
+   * Optional reason for an OPERATIONAL block (F5B) — distinct from approval
+   * denial. Set by blockQueueItem when a reason is supplied. Not part of identity.
+   */
+  blockReason?: string;
 }
