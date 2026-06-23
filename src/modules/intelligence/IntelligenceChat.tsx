@@ -18,6 +18,8 @@ import type { ChatActionUI, PanelCampaignDraft, WorkflowSection, Lang3 } from '@
 // single priority source. Prop-drilled in (computed once in IntelligenceModule,
 // F3C); never recomputed here.
 import type { TopAction } from '@/services/intelligence/decision/ranking/topActionsRanking';
+// R-INTELLIGENCE-F3D3: shared row renderer (same data rendering as the panel card).
+import TopActionRow from './TopActionRow';
 import { executeActionPayload } from '@/services/intelligence/actions/actionExecutor';
 // R-INTELLIGENCE-OPERATOR-CONTINUITY-V2: deterministic post-action next-steps.
 import { resolvePostActionContinuity } from '@/services/intelligence/continuity/postActionContinuity';
@@ -1809,26 +1811,16 @@ function OperatorTodayBriefing({ chipData, locale, topActions, canSeeOwnerFinanc
             ⚡ {tc('intelligence.topActions.title')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {topList.map((a, i) => {
-              const showImpact = a.impactCents !== undefined && a.impactCents > 0
-                && (!a.financialSensitive || canSeeOwnerFinancials);
-              return (
-                <div key={a.decisionId} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
-                  <span style={{ flexShrink: 0, color: '#64748B', fontWeight: 700 }}>{i + 1}.</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: '#E2E8F0' }}>{a.title}</div>
-                    <div style={{ fontSize: 11.5, color: '#94A3B8' }}>{a.reason}</div>
-                    <div style={{ fontSize: 10.5, color: '#64748B', display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
-                      <span>{tc('intelligence.topActions.confidence')}: {a.confidence}%</span>
-                      {showImpact && <span>· ${Math.round((a.impactCents as number) / 100).toLocaleString()}</span>}
-                      {a.approvalRequired && (
-                        <span style={{ color: '#FBBF24' }}>· 🔒 {tc('intelligence.topActions.approvalRequired')}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {topList.map((a, i) => (
+              <TopActionRow
+                key={a.decisionId}
+                action={a}
+                index={i}
+                t={tc}
+                canSeeOwnerFinancials={canSeeOwnerFinancials}
+                variant="brief"
+              />
+            ))}
           </div>
         </div>
       )}

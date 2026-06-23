@@ -10,6 +10,8 @@
 
 import type { TopAction } from '@/services/intelligence/decision/ranking/topActionsRanking';
 
+import TopActionRow from './TopActionRow';
+
 type TFn = (key: string, ...args: any[]) => string;
 
 interface Props {
@@ -17,10 +19,6 @@ interface Props {
   t: TFn;
   /** When false, financialSensitive $ impact is hidden (Policy C). */
   canSeeOwnerFinancials: boolean;
-}
-
-function formatImpact(cents: number): string {
-  return `$${Math.round(cents / 100).toLocaleString()}`;
 }
 
 export default function TopActionsTodayCard({ actions, t, canSeeOwnerFinancials }: Props) {
@@ -44,30 +42,16 @@ export default function TopActionsTodayCard({ actions, t, canSeeOwnerFinancials 
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {actions.map((a, i) => {
-            const showImpact = a.impactCents !== undefined && a.impactCents > 0
-              && (!a.financialSensitive || canSeeOwnerFinancials);
-            return (
-              <div key={a.decisionId} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{
-                  flexShrink: 0, width: 20, height: 20, borderRadius: '50%',
-                  background: '#0f172a', color: '#94A3B8', fontSize: 12, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>{i + 1}</span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{a.title}</div>
-                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 1 }}>{a.reason}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <span>{t('intelligence.topActions.confidence')}: {a.confidence}%</span>
-                    {showImpact && <span>· {formatImpact(a.impactCents as number)}</span>}
-                    {a.approvalRequired && (
-                      <span style={{ color: '#fbbf24' }}>· 🔒 {t('intelligence.topActions.approvalRequired')}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {actions.map((a, i) => (
+            <TopActionRow
+              key={a.decisionId}
+              action={a}
+              index={i}
+              t={t}
+              canSeeOwnerFinancials={canSeeOwnerFinancials}
+              variant="card"
+            />
+          ))}
         </div>
       )}
     </div>
