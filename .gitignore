@@ -35,3 +35,16 @@ diff*.txt
 snippet*.txt
 snippet*.md
 scripts/.pt-cache.json
+
+# ──────────────────────────────────────────────────────────────
+# R-RELEASE-B1: code-signing material — NEVER commit certs/keys.
+# (Signing secrets are supplied via env vars at build time; see
+#  RELEASE_SIGNING.md.)
+# ──────────────────────────────────────────────────────────────
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+certs/
