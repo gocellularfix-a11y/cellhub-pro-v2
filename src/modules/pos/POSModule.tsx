@@ -41,6 +41,7 @@ import { redeemLedgerEntry } from '@/services/storeCredit/ledger';
 import { finalizeExchangeReturn } from '@/services/returns/finalizeExchangeReturn';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
+import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 
@@ -374,6 +375,27 @@ export default function POSModule() {
 
   const handleCompleteSale = useCallback(
     (sale: Sale) => {
+      // ── R-PRODUCTION-B4: block taxable checkout until tax setup is confirmed ──
+      // A fresh external install must NOT silently ring up tax using the CA
+      // starter defaults. If tax settings were never explicitly confirmed and
+      // this sale carries any tax (sales tax / utility users tax / mobile
+      // surcharge → aggregated in taxAmount), abort the whole checkout
+      // pre-persist and route the owner to Settings to confirm. Non-taxable
+      // sales (taxAmount 0) are never blocked. Existing installs are
+      // grandfathered to confirmed at boot, so this never blocks Go Cellular.
+      if (isTaxableCheckoutBlocked((settings as any).taxSettingsConfirmed, sale.taxAmount)) {
+        toast(
+          lang === 'es'
+            ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
+            : lang === 'pt'
+              ? 'Configuração de impostos necessária antes de uma venda tributável.'
+              : 'Tax setup required before taxable sale.',
+          'error',
+        );
+        dispatch({ type: 'SET_ACTIVE_TAB', payload: 'settings' });
+        return;
+      }
+
       // ── R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: pre-flight validation ──
       // Walk every linked entity in the sale BEFORE persisting anything so a
       // cancelled repair or cancelled/forfeited layaway aborts the whole
@@ -1052,7 +1074,7 @@ export default function POSModule() {
     [
       setSales, setInventory, setCustomers,
       selectedCustomer, setRepairs, setSpecialOrders, setUnlocks, setLayaways,
-      setCart, settings, toast, lang, setCustomerReturns,
+      setCart, settings, toast, lang, setCustomerReturns, dispatch,
     ],
   );
 

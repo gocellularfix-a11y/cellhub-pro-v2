@@ -933,6 +933,39 @@ export default function SettingsModule() {
           {activeSection === 'taxes' && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white mb-4">{t('settings.taxes.title')}</h2>
+              {/* R-PRODUCTION-B4: explicit tax-setup confirmation. Until confirmed,
+                  taxable checkout is blocked in POS so a fresh install never rings
+                  up tax using the California starter defaults silently. */}
+              {(settings as any).taxSettingsConfirmed === true ? (
+                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                  ✓ {lang === 'es'
+                    ? 'Configuración de impuestos confirmada.'
+                    : lang === 'pt'
+                      ? 'Configuração de impostos confirmada.'
+                      : 'Tax settings confirmed.'}
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-2">
+                  <p className="text-xs text-amber-300">
+                    ⚠️ {lang === 'es'
+                      ? 'Revisa las tasas de impuesto para tu ubicación. Las ventas con impuesto están bloqueadas hasta confirmar. Los valores de California son solo iniciales.'
+                      : lang === 'pt'
+                        ? 'Revise as taxas de imposto para sua localização. Vendas tributáveis estão bloqueadas até confirmar. Os valores da Califórnia são apenas iniciais.'
+                        : 'Review the tax rates for your location. Taxable sales are blocked until confirmed. California values are starter defaults only.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => update('taxSettingsConfirmed', true)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-xs font-semibold hover:bg-amber-400"
+                  >
+                    {lang === 'es'
+                      ? 'Confirmar configuración de impuestos'
+                      : lang === 'pt'
+                        ? 'Confirmar configuração de impostos'
+                        : 'Confirm tax setup'}
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Field settings={settings} update={update} label="Sales Tax Rate" settingsKey="taxRate" type="number" step="0.0001" placeholder="0.0925" />
                 <Field settings={settings} update={update} label="Utility Users Tax" settingsKey="utilityUsersTax" type="number" step="0.001" placeholder="0.055" />

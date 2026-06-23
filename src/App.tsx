@@ -21,6 +21,7 @@ export default function App() {
     state: { loading, currentEmployee, employees, lang, settings, isAdminMode },
     setCurrentEmployee,
     setAdminMode,
+    setSettings,
     dispatch,
   } = useApp();
 
@@ -69,6 +70,28 @@ export default function App() {
     })();
     // We deliberately don't include employees / settings in deps —
     // the ref guard ensures this only runs once per session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // R-PRODUCTION-B4: one-time tax-confirmation back-compat stamp. Freezes the
+  // taxSettingsConfirmed flag exactly once so an install that ALREADY completed
+  // setup before this guard existed is grandfathered as confirmed (Go Cellular
+  // is never blocked), while a genuinely fresh install — which has no
+  // 'cellhub_setup_complete' marker yet at first boot — stays unconfirmed until
+  // the owner explicitly confirms tax settings in Settings → Taxes. Delta-only
+  // persist (settings collection merges). Idempotent: once the flag is a
+  // definite boolean it never re-evaluates, so a fresh install that later
+  // finishes the wizard does NOT get silently grandfathered.
+  const taxConfirmMigrationRef = useRef(false);
+  useEffect(() => {
+    if (taxConfirmMigrationRef.current) return;
+    if (loading) return;
+    taxConfirmMigrationRef.current = true;
+    if ((settings as any)?.taxSettingsConfirmed === undefined) {
+      const existingInstall = !!localStorage.getItem('cellhub_setup_complete');
+      setSettings({ taxSettingsConfirmed: existingInstall } as any);
+      persistSettings({ taxSettingsConfirmed: existingInstall } as Record<string, unknown>);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
