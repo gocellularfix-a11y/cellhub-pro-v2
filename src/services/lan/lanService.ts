@@ -139,6 +139,19 @@ export function promoteToPrimaryRole(): void {
   setConnection({ role: 'primary', primaryUrl: undefined, token: undefined, primaryName: undefined, pairedAt: undefined });
 }
 
+// R-FAILOVER-HARDENING: restore a previously-captured connection state. Used by
+// the transactional promotion rollback to put the machine back to its exact
+// prior role/link if any restore step fails — never a partial role.
+export function restoreConnection(conn: Partial<LanConnection>): void {
+  setConnection({
+    role: conn.role || 'standalone',
+    primaryUrl: conn.primaryUrl,
+    token: conn.token,
+    primaryName: conn.primaryName,
+    pairedAt: conn.pairedAt,
+  });
+}
+
 // ── Auto-discovery (LOCAL-LAN-AUTO-DISCOVERY-V1) ──
 // Listen for Primary UDP beacons on the LAN. Returns convenience candidates
 // only — pairing still requires the 6-digit code. No-op outside Electron.
