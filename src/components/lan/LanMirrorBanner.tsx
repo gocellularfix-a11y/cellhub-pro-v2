@@ -9,15 +9,51 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { subscribeMirror, type LanMirrorStatus } from '@/services/lan/lanMirror';
+import AdminPinGate from '@/components/shared/AdminPinGate';
+import { promoteToPrimary, isPrimaryReachable } from '@/services/lan/promotion';
 
 export default function LanMirrorBanner() {
-  const { state: { lang } } = useApp();
+  const { state: { lang, settings, currentEmployee } } = useApp();
   const es = lang === 'es';
   const pt = lang === 'pt';
   const tr = (en: string, esT: string, ptT: string) => (es ? esT : pt ? ptT : en);
 
   const [mirror, setMirror] = useState<LanMirrorStatus | null>(null);
   useEffect(() => subscribeMirror(setMirror), []);
+
+  // R-PROMOTE-TO-PRIMARY: manual, Admin-gated failover promotion. No automatic
+  // trigger — only this explicit button (shown solely while the Primary is
+  // offline) starts the flow. Split-brain guarded twice: the button only renders
+  // when offline, AND isPrimaryReachable() re-probes before allowing the PIN.
+  const [promo, setPromo] = useState<'idle' | 'pin' | 'working'>('idle');
+  const [promoMsg, setPromoMsg] = useState('');
+
+  const startPromote = async () => {
+    setPromoMsg('');
+    if (await isPrimaryReachable()) {
+      setPromoMsg(tr('Primary still available. Promotion blocked.',
+                     'La Principal sigue disponible. Promoción bloqueada.',
+                     'O Principal ainda está disponível. Promoção bloqueada.'));
+      return;
+    }
+    setPromo('pin');
+  };
+
+  const onPinOk = async () => {
+    setPromo('working');
+    const res = await promoteToPrimary({ promotedBy: currentEmployee?.name || 'admin' });
+    if (res.ok) { window.location.reload(); return; }
+    setPromo('idle');
+    setPromoMsg(
+      res.reason === 'primary-reachable'
+        ? tr('Primary still available. Promotion blocked.', 'La Principal sigue disponible. Promoción bloqueada.', 'O Principal ainda está disponível. Promoção bloqueada.')
+        : (res.reason === 'no-snapshot' || res.reason === 'no-file')
+          ? tr('No saved Primary snapshot to restore.', 'No hay respaldo de la Principal para restaurar.', 'Nenhum backup do Principal para restaurar.')
+          : res.reason === 'unsupported-schema'
+            ? tr('Saved snapshot version is not supported.', 'La versión del respaldo no es compatible.', 'A versão do backup não é compatível.')
+            : tr('Promotion failed. Try again.', 'La promoción falló. Intenta de nuevo.', 'A promoção falhou. Tente novamente.'),
+    );
+  };
 
   if (!mirror || !mirror.active) return null;
 
@@ -76,26 +112,57 @@ export default function LanMirrorBanner() {
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
-        padding: '0.3rem 0.75rem',
-        background, color, fontSize: '0.78rem', fontWeight: 600,
-        boxShadow: '0 1px 6px rgba(0,0,0,0.25)',
-      }}
-    >
-      <span>{icon} {text}</span>
-      {showSynced && synced && (
-        <span style={{ opacity: 0.85 }}>
-          · {tr('last sync', 'última sincronización', 'última sincronização')} {synced}
-          {mirror.stale && mirror.connState === 'connected'
-            ? ` (${tr('stale', 'desactualizado', 'desatualizado')})`
-            : ''}
-        </span>
-      )}
-      {/* Preserve read-only awareness regardless of connection state. */}
-      <span style={{ opacity: 0.7 }}>· {tr('read-only', 'solo lectura', 'somente leitura')}</span>
-    </div>
+    <>
+      <div
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
+          padding: '0.3rem 0.75rem',
+          background, color, fontSize: '0.78rem', fontWeight: 600,
+          boxShadow: '0 1px 6px rgba(0,0,0,0.25)',
+        }}
+      >
+        <span>{icon} {text}</span>
+        {showSynced && synced && (
+          <span style={{ opacity: 0.85 }}>
+            · {tr('last sync', 'última sincronización', 'última sincronização')} {synced}
+            {mirror.stale && mirror.connState === 'connected'
+              ? ` (${tr('stale', 'desactualizado', 'desatualizado')})`
+              : ''}
+          </span>
+        )}
+        {/* Preserve read-only awareness regardless of connection state. */}
+        <span style={{ opacity: 0.7 }}>· {tr('read-only', 'solo lectura', 'somente leitura')}</span>
+
+        {/* R-PROMOTE-TO-PRIMARY: manual failover. Button shows ONLY while the
+            Primary is offline (split-brain guard #1). Clicking re-probes the
+            Primary (guard #2), then requires the Admin PIN. */}
+        {mirror.connState === 'offline' && (
+          <button
+            type="button"
+            onClick={startPromote}
+            disabled={promo === 'working'}
+            style={{
+              marginLeft: '0.4rem', padding: '0.15rem 0.6rem', borderRadius: '0.4rem',
+              border: '1px solid rgba(0,0,0,0.3)', background: 'rgba(0,0,0,0.18)',
+              color: '#1f2937', fontSize: '0.72rem', fontWeight: 700,
+              cursor: promo === 'working' ? 'wait' : 'pointer',
+            }}
+          >
+            {promo === 'working'
+              ? tr('Promoting…', 'Promoviendo…', 'Promovendo…')
+              : tr('⬆ Promote to Primary', '⬆ Promover a Principal', '⬆ Promover a Principal')}
+          </button>
+        )}
+        {promoMsg && <span style={{ opacity: 0.9, fontWeight: 700 }}>· {promoMsg}</span>}
+      </div>
+
+      <AdminPinGate
+        open={promo === 'pin'}
+        adminPin={settings.adminPin}
+        onSuccess={onPinOk}
+        onCancel={() => setPromo('idle')}
+      />
+    </>
   );
 }

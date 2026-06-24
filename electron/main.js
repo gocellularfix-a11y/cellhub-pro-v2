@@ -626,6 +626,13 @@ function registerIpcHandlers() {
     return mirrorFailover.saveMirrorSnapshot(app, snapshot, app.getVersion());
   });
 
+  // R-PROMOTE-TO-PRIMARY: read the persisted failover snapshot for the manual,
+  // Admin-gated promotion flow. Read-only — main NEVER restores or promotes;
+  // the renderer's promotion service consumes the returned envelope.
+  ipcMain.handle('mirror:read-failover', async () => {
+    return mirrorFailover.readMirrorSnapshot(app);
+  });
+
   // Auto-update — r-pkg-a1: listener dedup to prevent accumulation
   // when check-for-updates is called multiple times.
   let updateListenersRegistered = false;

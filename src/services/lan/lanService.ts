@@ -128,6 +128,17 @@ export function disconnectSecondary(): void {
   if (getConnection().role === 'secondary') setConnection({ role: 'standalone', primaryUrl: undefined, token: undefined, primaryName: undefined, pairedAt: undefined });
 }
 
+// R-PROMOTE-TO-PRIMARY: flip this machine from Secondary to Primary and sever
+// the old-Primary link. Clearing primaryUrl/token disables operation
+// forwarding (every forwarder bails when role !== 'secondary') and the
+// read-only persist guard (which keys off role === 'secondary'), so normal
+// local persistence + local hardware ownership resume. Caller is responsible
+// for the Admin-PIN gate and split-brain check BEFORE calling this — there is
+// NO automatic promotion anywhere.
+export function promoteToPrimaryRole(): void {
+  setConnection({ role: 'primary', primaryUrl: undefined, token: undefined, primaryName: undefined, pairedAt: undefined });
+}
+
 // ── Auto-discovery (LOCAL-LAN-AUTO-DISCOVERY-V1) ──
 // Listen for Primary UDP beacons on the LAN. Returns convenience candidates
 // only — pairing still requires the 6-digit code. No-op outside Electron.

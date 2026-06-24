@@ -35,6 +35,8 @@ try {
     openDiagnosticsLogsFolder: () => ipcRenderer.invoke('diagnostics:open-logs'),
     // R-SECONDARY-FAILOVER-PERSIST: persist latest LAN mirror snapshot (Secondary).
     saveMirrorFailover: (snapshot) => ipcRenderer.invoke('mirror:save-failover', snapshot),
+    // R-PROMOTE-TO-PRIMARY: read the persisted failover snapshot (manual promotion).
+    readMirrorFailover: () => ipcRenderer.invoke('mirror:read-failover'),
     // r-batch-a (5): returns unsubscribe function to prevent listener leaks.
     onUpdateAvailable: (cb) => {
       const handler = (_, info) => cb(info);

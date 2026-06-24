@@ -62,4 +62,23 @@ function saveMirrorSnapshot(appLike, snapshot, appVersion) {
   }
 }
 
-module.exports = { buildFailoverEnvelope, getMirrorDir, saveMirrorSnapshot, SCHEMA_VERSION };
+/**
+ * Read + parse the persisted failover envelope from disk. Read-only — does NOT
+ * restore or promote (the renderer's promotion flow consumes this). Returns a
+ * controlled result; never throws.
+ */
+function readMirrorSnapshot(appLike) {
+  try {
+    if (!appLike || typeof appLike.getPath !== 'function') return { ok: false, reason: 'no-app' };
+    const finalPath = path.join(getMirrorDir(appLike), 'primary-snapshot.json');
+    if (!fs.existsSync(finalPath)) return { ok: false, reason: 'no-file' };
+    const raw = fs.readFileSync(finalPath, 'utf8');
+    const envelope = JSON.parse(raw);
+    return { ok: true, envelope };
+  } catch (e) {
+    try { console.warn('[mirrorFailover] read failed:', e && e.message ? e.message : e); } catch (_e) { /* noop */ }
+    return { ok: false, reason: 'error' };
+  }
+}
+
+module.exports = { buildFailoverEnvelope, getMirrorDir, saveMirrorSnapshot, readMirrorSnapshot, SCHEMA_VERSION };

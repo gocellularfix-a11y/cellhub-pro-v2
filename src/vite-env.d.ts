@@ -81,6 +81,8 @@ interface ElectronAPI {
   openDiagnosticsLogsFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>;
   // R-SECONDARY-FAILOVER-PERSIST: persist the latest LAN mirror snapshot (Secondary).
   saveMirrorFailover: (snapshot: unknown) => Promise<{ ok: boolean; path?: string; reason?: string }>;
+  // R-PROMOTE-TO-PRIMARY: read the persisted failover snapshot (manual promotion).
+  readMirrorFailover: () => Promise<{ ok: boolean; envelope?: unknown; reason?: string }>;
 }
 
 // LOCAL-LAN-AUTO-DISCOVERY-V1 discovery wire types
