@@ -38,7 +38,9 @@ describe('Electron backup paths consume the canonical JSON (no duplicate lists)'
     expect(src).not.toContain("'sales','customers','inventory'");
   });
 
-  // NOTE: storage.ts (renderer manual export/import) is intentionally NOT yet
-  // unified — importing the canonical file into the Vite renderer bundle needs a
-  // build-config decision (resolveJsonModule). Deferred per the round report.
+  it('storage.ts imports backupKeys.json and dropped its local BACKUP_KEYS list', () => {
+    const src = read('../../../src/services/storage.ts');
+    expect(src).toContain("from '../../electron/backupKeys.json'");
+    expect(src).not.toContain('const BACKUP_KEYS = [');
+  });
 });

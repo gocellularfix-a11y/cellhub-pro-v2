@@ -9,6 +9,9 @@ import {
   normalizeLegacyBackup,
   NormalizationResult,
 } from './import/legacyAdapter';
+// R-BACKUP-KEYS: canonical single source — same JSON consumed by Electron
+// backup-on-close (main.js) and startup auto-backup (autoBackup.js).
+import BACKUP_KEYS from '../../electron/backupKeys.json';
 
 const STORAGE_PREFIX = 'cellhub_';
 
@@ -79,24 +82,11 @@ export function getStorageUsage(): { usedKB: number; limitKB: number; percent: n
   return { usedKB, limitKB, percent: Math.round((usedKB / limitKB) * 100) };
 }
 
-/**
- * r-batch-a (1a): single source of truth for backup keys — shared by
- * exportBackup and importBackup so they can never drift apart again.
- * Previously each function had its own hardcoded list which had already
- * drifted and was missing: appointments, customer_returns, vendor_returns,
- * expenses. All of these are real persisted arrays touched by running
- * modules in the app.
- *
- * `settings` is special-cased inside exportBackup because it's a
- * singleton object, not an array (see the `key === 'settings' ? {} : []`
- * default in the loop below).
- */
-const BACKUP_KEYS = [
-  'sales', 'customers', 'inventory', 'repairs',
-  'unlocks', 'special_orders', 'employees', 'settings', 'layaways',
-  'purchase_orders', 'appointments', 'expenses',
-  'customer_returns', 'vendor_returns',
-] as const;
+// R-BACKUP-KEYS: BACKUP_KEYS is now the canonical electron/backupKeys.json
+// (imported above) — the single source shared by manual export/import,
+// backup-on-close, and startup auto-backup, so the lists can never drift.
+// `settings` is special-cased in exportBackup/importBackup because it's a
+// singleton object, not an array (see the `key === 'settings' ? {} : []` default).
 
 /**
  * Export all CellHub data from localStorage as a JSON backup.
