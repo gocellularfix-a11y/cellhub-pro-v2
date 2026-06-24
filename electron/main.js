@@ -20,6 +20,9 @@ const lanPairing = require('./lanPairing');
 const diagnostics = require('./diagnostics');
 // R-PRODUCTION-B5.2: startup-if-stale auto-backup runner (write-only, local).
 const autoBackup = require('./autoBackup');
+// R-BACKUP-KEYS: canonical backup key list (single source of data: backupKeys.json,
+// shared with autoBackup; renderer manual-export join deferred — see report).
+const BACKUP_KEYS = require('./backupKeys.json');
 
 // ── Single instance lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -187,9 +190,7 @@ function createWindow() {
         const backupData = await mainWindow.webContents.executeJavaScript(`
           (function() {
             try {
-              const KEYS = ['sales','customers','inventory','repairs','unlocks','special_orders',
-                'employees','settings','layaways','purchase_orders','appointments','expenses',
-                'customer_returns','vendor_returns'];
+              const KEYS = ${JSON.stringify(BACKUP_KEYS)};
               const backup = {};
               for (const key of KEYS) {
                 const raw = localStorage.getItem('cellhub_' + key);

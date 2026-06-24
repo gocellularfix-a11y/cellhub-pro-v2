@@ -15,22 +15,16 @@
 //     or the existing on-close backup. No IPC, no renderer UI.
 //   • Never throws to the app; never blocks startup.
 //
-// NOTE: LOCALSTORAGE_BACKUP_KEYS duplicates the inline list in main.js's
-// on-close backup and storage.ts BACKUP_KEYS. Extracting a shared source would
-// require modifying on-close (out of scope this round), so the list is kept
-// here with this sync warning. KEEP IN SYNC if collections are added.
+// R-BACKUP-KEYS: the backup key list is the canonical electron/backupKeys.json
+// (shared with main.js on-close) — no list is duplicated here anymore. The
+// renderer's manual export/import (storage.ts) join is deferred (see report).
 // ============================================================
 
 const path = require('path');
 const fs = require('fs');
-
-// MUST stay in sync with main.js on-close KEYS and storage.ts BACKUP_KEYS.
-const LOCALSTORAGE_BACKUP_KEYS = [
-  'sales', 'customers', 'inventory', 'repairs',
-  'unlocks', 'special_orders', 'employees', 'settings', 'layaways',
-  'purchase_orders', 'appointments', 'expenses',
-  'customer_returns', 'vendor_returns',
-];
+// R-BACKUP-KEYS: canonical single source of data — electron/backupKeys.json,
+// shared with the on-close backup in main.js.
+const BACKUP_KEYS = require('./backupKeys.json');
 
 // Strict match — ONLY auto-backup files. Manual backups (cellhub-backup-*.json)
 // and any other file never match, so they are never pruned.
@@ -151,7 +145,7 @@ async function runStartupAutoBackup(opts) {
       return { ran: false, reason: 'recent' };
     }
 
-    const snapStr = await readLocalStorageSnapshot(mainWindow, LOCALSTORAGE_BACKUP_KEYS);
+    const snapStr = await readLocalStorageSnapshot(mainWindow, BACKUP_KEYS);
     if (!snapStr || !snapshotHasData(snapStr)) {
       return { ran: false, reason: 'empty-snapshot' };
     }
@@ -177,6 +171,5 @@ module.exports = {
   shouldRunStartupBackup,
   pruneAutoBackups,
   runStartupAutoBackup,
-  LOCALSTORAGE_BACKUP_KEYS,
   AUTO_BACKUP_PATTERN,
 };

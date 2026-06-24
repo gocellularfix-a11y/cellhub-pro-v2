@@ -1,0 +1,16 @@
+[
+  "sales",
+  "customers",
+  "inventory",
+  "repairs",
+  "unlocks",
+  "special_orders",
+  "employees",
+  "settings",
+  "layaways",
+  "purchase_orders",
+  "appointments",
+  "expenses",
+  "customer_returns",
+  "vendor_returns"
+]
