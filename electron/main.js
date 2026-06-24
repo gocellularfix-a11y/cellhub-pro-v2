@@ -23,6 +23,8 @@ const autoBackup = require('./autoBackup');
 // R-BACKUP-KEYS: canonical backup key list (single source of data: backupKeys.json,
 // shared with autoBackup; renderer manual-export join deferred — see report).
 const BACKUP_KEYS = require('./backupKeys.json');
+// R-SECONDARY-FAILOVER-PERSIST: persist latest LAN mirror snapshot to disk (Secondary).
+const mirrorFailover = require('./mirrorFailover');
 
 // ── Single instance lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -615,6 +617,13 @@ function registerIpcHandlers() {
     } catch (e) {
       return { ok: false, error: (e && e.message) ? String(e.message) : 'open-logs failed' };
     }
+  });
+
+  // R-SECONDARY-FAILOVER-PERSIST: a LAN Secondary persists the latest Primary
+  // snapshot to userData/mirror/primary-snapshot.json (atomic write). Write-only
+  // — NO restore, NO promotion. Never throws; returns a controlled result.
+  ipcMain.handle('mirror:save-failover', async (_e, snapshot) => {
+    return mirrorFailover.saveMirrorSnapshot(app, snapshot, app.getVersion());
   });
 
   // Auto-update — r-pkg-a1: listener dedup to prevent accumulation

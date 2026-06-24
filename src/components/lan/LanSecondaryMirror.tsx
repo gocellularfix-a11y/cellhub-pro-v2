@@ -81,6 +81,10 @@ export default function LanSecondaryMirror() {
       const prev = getMirrorStatus();
       if (res.ok && res.data) {
         applySnapshot(res.data as Record<string, unknown>);
+        // R-SECONDARY-FAILOVER-PERSIST: persist the latest Primary snapshot to
+        // disk so the Secondary retains last-known data across restarts.
+        // Fire-and-forget — never blocks the UI; no restore/promote here.
+        try { void window.electronAPI?.saveMirrorFailover?.(res.data); } catch { /* best-effort */ }
         // Only a recovery from a real offline drop shows "Reconnected"; the
         // first-ever connect (from 'connecting') goes straight to 'connected'.
         const cameBackOnline = prev.connState === 'offline';
