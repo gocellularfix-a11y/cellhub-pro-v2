@@ -7,8 +7,7 @@
 //        Cloud Sync (optional) → Done
 // ============================================================
 
-import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { persistSettings, saveRecord, setFirestoreInstance } from '@/services/persist';
 import { saveFirebaseConfig, initFirebase } from '@/config/firebase';
 import { generateId } from '@/utils/dates';
@@ -83,39 +82,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   // collection has documents, this PC is joining an existing store.
   const [isSecondaryDevice, setIsSecondaryDevice] = useState(false);
   const [detectingSecondary, setDetectingSecondary] = useState(false);
+  // R-PILOT-CLOUD-LOCKOUT: explicit Step 5 connection choice (default = local
+  // primary). No path here auto-enables Firebase; cloud stays off until the
+  // owner turns it on later in Settings → Cloud Sync.
+  const [cloudMode, setCloudMode] = useState<'local' | 'join' | 'cloud-later'>('local');
 
-  // R-MULTIPC-WIZARD: auto-connect on mount when ENV_READY. Mirrors the sync
-  // pattern of handleTestFirebase (initFirebase is sync, returns Firestore|null
-  // — NOT a Promise). Mount-trigger (vs step===4 trigger) is intentional so
-  // isSecondaryDevice is known by the time the user clicks Continue on Step 0,
-  // letting handleNext skip Steps 1/2/3.
-  useEffect(() => {
-    if (!ENV_READY) return;
-    let cancelled = false;
-    saveFirebaseConfig(ENV_FIREBASE_CONFIG);
-    const db = initFirebase();
-    if (!db) return;
-    setFirestoreInstance(db);
-    setFbConnected(true);
-    setDetectingSecondary(true);
-    getDocs(collection(db, 'customers'))
-      .then((snap) => {
-        if (cancelled) return;
-        if (snap.size > 0) {
-          setIsSecondaryDevice(true);
-          localStorage.setItem('cellhub_device_role', 'secondary');
-        }
-      })
-      .catch((err) => {
-        // Network/permission failure — fall through to manual config UI.
-        // eslint-disable-next-line no-console
-        console.warn('[SetupWizard] secondary detection failed:', err);
-      })
-      .finally(() => {
-        if (!cancelled) setDetectingSecondary(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+  // R-PILOT-CLOUD-LOCKOUT: the on-mount Firebase auto-connect + secondary
+  // auto-detection (getDocs(customers) → snap.size>0 → isSecondaryDevice +
+  // device_role='secondary') was REMOVED. It was unsafe: any build can carry a
+  // Firebase config (e.g. Go Cellular's), so a clean external machine with
+  // internet would auto-connect to that project, see its customers, and silently
+  // join as a secondary device — skipping its own setup and inheriting another
+  // store's data. Cloud is now strictly opt-in: nothing connects to Firebase
+  // during setup. The connection mode is an explicit choice in Step 5
+  // (Local Only / Join on LAN / Cloud later) and defaults to Local Only.
+  // LAN pairing remains available separately in Settings → Local Network.
 
   const next = () => { setError(''); setStep((s) => s + 1); };
   const back = () => { setError(''); setStep((s) => s - 1); };
@@ -354,23 +335,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         {step === 1 && <StepStoreInfo store={store} setStore={setStore} />}
         {step === 2 && <StepAdminPin pin={adminPin} setPin={setAdminPin} confirm={adminPinConfirm} setConfirm={setAdminPinConfirm} />}
         {step === 3 && <StepFirstEmployee emp={emp} setEmp={setEmp} />}
-        {step === 4 && (
-          ENV_READY ? (
-            <StepCloudSyncEnvReady
-              projectId={fb.projectId}
-              connected={fbConnected}
-              detecting={detectingSecondary}
-              isSecondary={isSecondaryDevice}
-            />
-          ) : (
-            <StepCloudSync
-              fb={fb} setFb={setFb}
-              testing={testingFb} connected={fbConnected}
-              onTest={handleTestFirebase}
-              skip={skipCloud} setSkip={setSkipCloud}
-            />
-          )
-        )}
+        {step === 4 && <StepConnectionChoice mode={cloudMode} setMode={setCloudMode} />}
         {step === 5 && <StepDone storeName={store.storeName} empName={emp.name} cloudEnabled={fbConnected} />}
 
         {/* Error */}
@@ -392,7 +357,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             disabled={saving || testingFb}
             style={{ flex: 2, padding: '0.7rem', background: 'linear-gradient(135deg,#667eea,#22d3ee)', border: 'none', borderRadius: '0.5rem', color: '#fff', cursor: (saving || testingFb) ? 'wait' : 'pointer', fontSize: '0.9rem', fontWeight: 700, opacity: (saving || testingFb) ? 0.7 : 1 }}
           >
-            {saving ? 'Saving…' : step === TOTAL - 1 ? '🚀 Launch CellHub Pro' : step === 4 ? (fbConnected ? '☁️ Continue with Cloud' : '➜ Continue without Cloud') : step === 3 ? '→ Cloud Sync Setup' : 'Continue →'}
+            {saving ? 'Saving…' : step === TOTAL - 1 ? '🚀 Launch CellHub Pro' : step === 4 ? 'Continue →' : step === 3 ? '→ Connection Setup' : 'Continue →'}
           </button>
         </div>
       </div>
@@ -635,6 +600,55 @@ function StepCloudSyncEnvReady({ projectId, connected, detecting, isSecondary }:
           or proceed offline.
         </div>
       )}
+    </div>
+  );
+}
+
+// R-PILOT-CLOUD-LOCKOUT: explicit connection choice — replaces the unsafe
+// Firebase auto-detect. Default = Local Only (this computer is the Primary).
+// No option here connects to Firebase; cloud is enabled later in Settings.
+// LAN pairing (joining an existing store on the network) is done after setup
+// in Settings → Local Network — the existing flow, unchanged.
+function StepConnectionChoice({ mode, setMode }: {
+  mode: 'local' | 'join' | 'cloud-later';
+  setMode: (m: 'local' | 'join' | 'cloud-later') => void;
+}) {
+  const card = (selected: boolean, disabled = false): CSSProperties => ({
+    width: '100%',
+    textAlign: 'left',
+    padding: '0.85rem 1rem',
+    marginBottom: '0.6rem',
+    borderRadius: '0.6rem',
+    border: `1px solid ${selected ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.12)'}`,
+    background: selected ? 'rgba(34,211,238,0.10)' : 'rgba(255,255,255,0.04)',
+    color: disabled ? '#64748b' : '#e2e8f0',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+  });
+  const title: CSSProperties = { fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.2rem' };
+  const desc: CSSProperties = { fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 };
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '0.35rem' }}>Connection</h2>
+      <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '1rem' }}>
+        Choose how this computer connects. Cloud sync is off — you can enable it later in Settings → Cloud Sync.
+      </p>
+
+      <button type="button" style={card(mode === 'local')} onClick={() => setMode('local')}>
+        <div style={title}>💾 Local Only — This is the Primary</div>
+        <div style={desc}>This computer stores the business data locally. Recommended for a single-computer store (and the pilot). Auto-backups run automatically.</div>
+      </button>
+
+      <button type="button" style={card(mode === 'join')} onClick={() => setMode('join')}>
+        <div style={title}>🔗 Join Store on Local Network</div>
+        <div style={desc}>This computer will mirror a Primary already running on your LAN/WiFi. After finishing setup, pair it in Settings → Local Network. No cloud account needed.</div>
+      </button>
+
+      <div style={card(false, true)} aria-disabled>
+        <div style={title}>☁️ Cloud Sync — Disabled for pilot</div>
+        <div style={desc}>Cloud sync stays off for now. You can turn it on later in Settings → Cloud Sync once you choose a cloud project. CellHub never auto-connects to the cloud.</div>
+      </div>
     </div>
   );
 }
