@@ -71,6 +71,12 @@ export interface ScoredDecision {
   urgencyScore: number;
   confidence: number;
   cooldownPenalty: number;
+  // R-INTEL-LEARNING-WIRE: diagnostics, set ONLY when a bounded advisory
+  // learning influence changed `priority`. Absent ⇒ no learning was applied.
+  /** The pre-learning priority, preserved for diagnostics. */
+  basePriority?: number;
+  /** The bounded modifier that was applied, in [-0.10, +0.10]. */
+  learningModifier?: number;
 }
 
 /**

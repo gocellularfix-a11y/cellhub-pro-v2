@@ -16,6 +16,7 @@ import type { IntelligenceDecision, DecisionDomain } from '../IntelligenceDecisi
 import type { ApprovalKind } from '../approval/types';
 import { computeApprovalRequirement } from '../approval/computeApprovalRequirement';
 import { scoreDecision, compareScoredDecisions, type ScoredDecision } from './scoreDecision';
+import { applyLearningInfluence } from '../learning/applyLearningInfluence';
 
 export const MAX_TOP_ACTIONS = 3;
 
@@ -40,6 +41,12 @@ export interface TopActionsOptions {
   recentlyActioned?: (decision: IntelligenceDecision) => boolean;
   /** Whether the request originates from a secondary terminal (passed to approval). */
   isSecondary?: boolean;
+  /**
+   * R-INTEL-LEARNING-WIRE: optional per-entity advisory modifiers
+   * (Map<entityId, modifier∈[-0.10,+0.10]>) applied to each decision's base
+   * priority before sorting. Omit ⇒ ranking is unaffected (fail-safe).
+   */
+  learningModifiers?: Map<string, number>;
 }
 
 /**
@@ -61,9 +68,12 @@ export function normalizeAndRank(
   decisions: IntelligenceDecision[],
   opts: TopActionsOptions = {},
 ): ScoredDecision[] {
-  const scored = decisions.map((d) =>
+  const baseScored = decisions.map((d) =>
     scoreDecision(d, { recentlyActioned: opts.recentlyActioned?.(d) ?? false }),
   );
+  // R-INTEL-LEARNING-WIRE: bounded advisory adjustment after base scoring,
+  // before sorting. No-op when opts.learningModifiers is absent/empty.
+  const scored = applyLearningInfluence(baseScored, opts.learningModifiers);
   scored.sort(compareScoredDecisions);
 
   const seen = new Set<string>();

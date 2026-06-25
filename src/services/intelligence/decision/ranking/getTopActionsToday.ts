@@ -19,6 +19,9 @@ import { computeTodaySlowCauses } from '@/services/intelligence/chat/whyIsTodayS
 import type { IntelligenceDecision } from '../IntelligenceDecision';
 import { normalizeDecisions } from '../normalizeDecision';
 import { rankToTopActions, type TopAction, type TopActionsOptions } from './topActionsRanking';
+import { getFeedbackEvents } from '@/services/intelligence/feedback/store';
+import { buildScoreMap } from '@/services/intelligence/feedback/scoring';
+import { buildEntityLearningModifiers } from '../learning/applyLearningInfluence';
 
 /**
  * Collect all six sources and normalize them to IntelligenceDecision[].
@@ -36,11 +39,28 @@ export function collectDecisions(engine: IntelligenceEngine, lang: Lang3): Intel
   ];
 }
 
+/**
+ * R-INTEL-LEARNING-WIRE: build the per-entity advisory learning modifiers from
+ * the already-wired operator feedback log (which also receives outcome-driven
+ * feedback). Impure (reads localStorage) — kept here in the wrapper, never in the
+ * pure ranking core. Fail-safe: any read error yields no modifiers, so ranking is
+ * unaffected.
+ */
+function buildLearningModifiers(): Map<string, number> {
+  try {
+    return buildEntityLearningModifiers(buildScoreMap(getFeedbackEvents()));
+  } catch {
+    return new Map();
+  }
+}
+
 /** Canonical Top 3 Actions Today. */
 export function getTopActionsToday(
   engine: IntelligenceEngine,
   lang: Lang3,
   opts: TopActionsOptions = {},
 ): TopAction[] {
-  return rankToTopActions(collectDecisions(engine, lang), opts);
+  // Caller-supplied modifiers win; otherwise derive them from feedback history.
+  const learningModifiers = opts.learningModifiers ?? buildLearningModifiers();
+  return rankToTopActions(collectDecisions(engine, lang), { ...opts, learningModifiers });
 }
