@@ -142,14 +142,26 @@ interface LanAppointmentPayload {
   notes?: string;
   employeeName?: string;
 }
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: forwarded receipt-print payload. The
+// Secondary renders the HTML and ships it; the Primary prints on ITS own
+// default printer (it never receives/uses a Secondary device name).
+interface LanPrintReceiptPayload {
+  receiptType: string;
+  html: string;
+  copies: number;
+  pageSize?: { width: number; height: number }; // microns; omitted → Primary default (4x6)
+  printJobId: string;
+  timestamp: number;
+}
 interface LanOperation {
   operationId: string;
-  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT';
+  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT' | 'LAN_PRINT_RECEIPT_REQUEST';
   payload: {
     message?: string;
     customer?: LanCustomerPayload;
     note?: LanCustomerNotePayload;
     appointment?: LanAppointmentPayload;
+    print?: LanPrintReceiptPayload;
   };
   deviceId: string;
   createdAt: number;
@@ -162,6 +174,8 @@ interface LanOperationAck {
   // LAN-PHASE-3B / forwarding result fields.
   customerId?: string;
   appointmentId?: string;
+  // LAN-HARDWARE-BRIDGE-FOUNDATION-V1
+  printed?: boolean;
   duplicate?: boolean;
   error?: string;
 }
@@ -174,6 +188,7 @@ interface LanOperationDispatchResult {
   ok: boolean;
   customerId?: string;
   appointmentId?: string;
+  printed?: boolean;
   duplicate?: boolean;
   error?: string;
 }
