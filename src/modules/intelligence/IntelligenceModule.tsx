@@ -16,6 +16,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
 // R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1
 import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem, snoozeQueueItem } from '@/services/intelligence/managerQueue/actions';
+import { enrollIntelligenceRisksToManagerQueue } from '@/services/intelligence/managerQueue/riskEnrollment';
 import { advanceWorkflowStep } from '@/services/intelligence/workflows/flowEngine';
 import { getPendingItems, getQueueSummary } from '@/services/intelligence/managerQueue/selectors';
 import type { ManagerQueueItem, QueueItemSeverity } from '@/services/intelligence/managerQueue/types';
@@ -343,7 +344,12 @@ export default function IntelligenceModule() {
   // changed (count > 0) to avoid a spurious state update on every render.
   useEffect(() => {
     const resolved = engine.runAutoResolution();
-    if (resolved > 0) reloadQueue();
+    // R-INTEL-RISK-TO-QUEUE: enroll already-computed proactive risks into the
+    // manager queue AFTER auto-resolution (so a freshly-cleared issue isn't
+    // re-enrolled). Reuses addManagerQueueItem's dedup + persistence; creates
+    // no new signals and executes nothing. Fail-safe: never throws into render.
+    const enrolled = enrollIntelligenceRisksToManagerQueue(engine.getProactiveReport().actions).enrolled;
+    if (resolved > 0 || enrolled > 0) reloadQueue();
   }, [engine, sales, repairs, layaways, inventory, reloadQueue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-INTELLIGENCE-FEEDBACK-LOOP-V1: scoreMap rebuilt whenever feedback changes.
