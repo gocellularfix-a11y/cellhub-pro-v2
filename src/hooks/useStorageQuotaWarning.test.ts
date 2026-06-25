@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { classifyStorageUsage } from './useStorageQuotaWarning';
 
-describe('classifyStorageUsage (R-PRODUCTION-B5.1)', () => {
-  it('< 80 → ok', () => {
+describe('classifyStorageUsage (R-STORAGE-WARNING-FIX)', () => {
+  it('< 90 → ok (no false-positive banner on healthy stores)', () => {
     expect(classifyStorageUsage(0)).toBe('ok');
-    expect(classifyStorageUsage(79.99)).toBe('ok');
+    expect(classifyStorageUsage(80)).toBe('ok');
+    expect(classifyStorageUsage(89.99)).toBe('ok');
   });
 
-  it('[80, 95) → warn', () => {
-    expect(classifyStorageUsage(80)).toBe('warn');
+  it('[90, 95) → warn', () => {
+    expect(classifyStorageUsage(90)).toBe('warn');
     expect(classifyStorageUsage(94.99)).toBe('warn');
   });
 
@@ -25,7 +26,7 @@ describe('classifyStorageUsage (R-PRODUCTION-B5.1)', () => {
   });
 
   it('is deterministic — same input → same output', () => {
-    expect(classifyStorageUsage(80)).toBe(classifyStorageUsage(80));
+    expect(classifyStorageUsage(90)).toBe(classifyStorageUsage(90));
     expect(classifyStorageUsage(95)).toBe(classifyStorageUsage(95));
   });
 });

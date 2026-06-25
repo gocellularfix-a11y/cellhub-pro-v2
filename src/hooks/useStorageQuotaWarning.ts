@@ -12,17 +12,24 @@ import { getStorageUsage } from '@/services/storage';
 
 export type StorageUsageLevel = 'ok' | 'warn' | 'critical';
 
+// R-STORAGE-WARNING-FIX: real Chromium/Electron localStorage per-origin cap
+// (~10MB = 5M UTF-16 code units × 2 bytes). getStorageUsage() divides measured
+// bytes by a legacy 5MB heuristic, which under-counts the cap ~2x and produced
+// false-positive "almost full" banners on healthy stores. We recompute percent
+// against the real cap and only warn when usage is genuinely high.
+const REAL_LIMIT_KB = 10 * 1024; // 10,240 KB
+
 /**
  * Pure severity classification (deterministic):
- *   < 80      → 'ok'
- *   [80, 95)  → 'warn'
+ *   < 90      → 'ok'
+ *   [90, 95)  → 'warn'
  *   >= 95     → 'critical'
  * Non-finite input is treated as 'ok' (fail-safe — never warn on bad data).
  */
 export function classifyStorageUsage(percent: number): StorageUsageLevel {
   if (!Number.isFinite(percent)) return 'ok';
   if (percent >= 95) return 'critical';
-  if (percent >= 80) return 'warn';
+  if (percent >= 90) return 'warn';
   return 'ok';
 }
 
@@ -40,7 +47,15 @@ export function useStorageQuotaWarning(): StorageUsageLevel {
   useEffect(() => {
     const check = () => {
       try {
-        const { percent } = getStorageUsage();
+        const { usedKB } = getStorageUsage();
+        // Reliability guard: if usage is unmeasurable or empty, do NOT warn.
+        if (!Number.isFinite(usedKB) || usedKB <= 0) {
+          setLevel('ok');
+          return;
+        }
+        // Recompute percent against the real cap (ignore getStorageUsage's
+        // legacy 5MB denominator that caused false positives).
+        const percent = (usedKB / REAL_LIMIT_KB) * 100;
         setLevel(classifyStorageUsage(percent));
       } catch {
         setLevel('ok');
