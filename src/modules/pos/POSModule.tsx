@@ -42,6 +42,7 @@ import { finalizeExchangeReturn } from '@/services/returns/finalizeExchangeRetur
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
+import { finalizeSaleCore } from './finalizeSaleCore';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 
@@ -375,656 +376,134 @@ export default function POSModule() {
 
   const handleCompleteSale = useCallback(
     (sale: Sale) => {
-      // ── R-PRODUCTION-B4: block taxable checkout until tax setup is confirmed ──
-      // A fresh external install must NOT silently ring up tax using the CA
-      // starter defaults. If tax settings were never explicitly confirmed and
-      // this sale carries any tax (sales tax / utility users tax / mobile
-      // surcharge → aggregated in taxAmount), abort the whole checkout
-      // pre-persist and route the owner to Settings to confirm. Non-taxable
-      // sales (taxAmount 0) are never blocked. Existing installs are
-      // grandfathered to confirmed at boot, so this never blocks Go Cellular.
-      if (isTaxableCheckoutBlocked((settings as any).taxSettingsConfirmed, sale.taxAmount)) {
-        toast(
-          lang === 'es'
-            ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
-            : lang === 'pt'
-              ? 'Configuração de impostos necessária antes de uma venda tributável.'
-              : 'Tax setup required before taxable sale.',
-          'error',
-        );
-        dispatch({ type: 'SET_ACTIVE_TAB', payload: 'settings' });
-        return;
-      }
+      // R-FINALIZE-SALE-CORE-EXTRACT-SCOPED: all global data mutations +
+      // reconciliation + validation now live in the headless finalizeSaleCore.
+      // POSModule keeps every UI effect (toasts, navigation, cart reset, receipt)
+      // and applies the returned updates with the exact same state/persist
+      // patterns as before. Behaviour is byte-identical to the prior inline flow.
+      const coreResult = finalizeSaleCore({
+        sale,
+        sales: salesRef.current,
+        inventory: inventoryRef.current,
+        customers: customersRef.current,
+        repairs: repairsRef.current,
+        specialOrders: specialOrdersRef.current,
+        unlocks: unlocksRef.current,
+        layaways: layawaysRef.current,
+        storeCreditLedger: storeCreditLedgerRef.current,
+        customerReturns: customerReturnsRef.current,
+        settings,
+        selectedCustomer,
+        currentEmployee,
+      });
 
-      // ── R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: pre-flight validation ──
-      // Walk every linked entity in the sale BEFORE persisting anything so a
-      // cancelled repair or cancelled/forfeited layaway aborts the whole
-      // checkout cleanly. Previously these guards lived inside §4a (line ~639)
-      // and §4d (line ~775), AFTER the sale was persisted and inventory was
-      // decremented — a failing guard there returned mid-mutation, leaving
-      // persisted Sale + decremented stock + still-active linked entity +
-      // uncleared cart. Refs are stable across a single synchronous handler
-      // invocation, so the lookups here see exactly the same data §4a/§4d
-      // would have seen, which is why the in-loop guards below are now
-      // redundant and have been removed (same toasts, same return points,
-      // pre-persist).
-      const repairIdsInSale = new Set<string>();
-      const layawayIdsInSale = new Set<string>();
-      for (const saleItem of sale.items) {
-        if (saleItem.repairId) repairIdsInSale.add(saleItem.repairId);
-        if (saleItem.layawayId) layawayIdsInSale.add(saleItem.layawayId);
-      }
-      for (const repairId of repairIdsInSale) {
-        const repair = repairsRef.current.find((r) => r.id === repairId);
-        if (!repair) continue;
-        const freshStatus = String(repair.status || '').toLowerCase();
-        if (freshStatus === 'cancelled') {
-          toast(t('pos.repairCancelledPayment'), 'error');
-          return;
-        }
-        if (freshStatus === 'picked_up' || freshStatus === 'completed') {
-          toast(t('pos.repairAlreadyCompleted'), 'error');
-          return;
-        }
-      }
-      for (const layawayId of layawayIdsInSale) {
-        const layaway = layawaysRef.current.find((l) => l.id === layawayId);
-        if (!layaway) continue;
-        const freshStatus = String(layaway.status || '').toLowerCase();
-        if (freshStatus === 'cancelled' || freshStatus === 'forfeited') {
-          toast(t('pos.layawayCancelledSale'), 'error');
-          return;
-        }
-      }
-
-      // R-REPAIRS-OVERPAYMENT-BLOCK-H1: overpayment pre-flight — must run before
-      // §1 persist so a return here aborts ALL mutations (sale, inventory, customer,
-      // repair). The §4a overpayment console.warn is left as a belt-and-suspenders
-      // sentinel; it should never fire in practice once this guard is in place.
-      // Duplicates the §4a discount-ratio + itemPaidCents math in a block scope so
-      // variable names don't shadow the §4a declarations that follow.
-      {
-        const _taxRate = settings.taxRate ?? 0.0925;
-        let _discountableBase = 0;
-        for (const si of sale.items) {
-          if (si.category === 'phone_payment' || si.category === 'top_up') continue;
-          _discountableBase += (si.price || 0) * (si.qty || 1);
-        }
-        const _saleDiscount = Math.max(
-          0,
-          (sale.subtotal || 0) - (sale.subtotalAfterDiscount ?? sale.subtotal ?? 0),
-        );
-        const _discountRatio = _discountableBase > 0
-          ? Math.max(0, (_discountableBase - _saleDiscount) / _discountableBase)
-          : 1;
-        const _repairPaid = new Map<string, number>();
-        for (const si of sale.items) {
-          if (!si.repairId) continue;
-          const isDisc = si.category !== 'phone_payment' && si.category !== 'top_up';
-          const effBase = isDisc ? Math.round((si.price || 0) * _discountRatio) : (si.price || 0);
-          const fwd = forwardTaxFromBase(effBase, _taxRate, !!si.taxable);
-          _repairPaid.set(
-            si.repairId,
-            (_repairPaid.get(si.repairId) || 0) + fwd.totalCents * (si.qty || (si as any).quantity || 1),
-          );
-        }
-        for (const [_repairId, _paidCents] of _repairPaid) {
-          const _repair = repairsRef.current.find((r) => r.id === _repairId);
-          if (!_repair) continue;
-          const _expected = _repair.balance || 0;
-          if (_paidCents > _expected + 1) {
-            console.warn(
-              `[repair-reconcile] Overpayment pre-flight: repair ${_repairId}`,
-              `paid ${_paidCents} cents, balance ${_expected} cents.`,
-              `Diff: ${_paidCents - _expected} cents. Possible stale cart.`,
+      if (!coreResult.ok) {
+        switch (coreResult.reason) {
+          case 'tax_setup_required':
+            toast(
+              lang === 'es'
+                ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
+                : lang === 'pt'
+                  ? 'Configuração de impostos necessária antes de uma venda tributável.'
+                  : 'Tax setup required before taxable sale.',
+              'error',
             );
+            dispatch({ type: 'SET_ACTIVE_TAB', payload: 'settings' });
+            return;
+          case 'repair_cancelled':
+            toast(t('pos.repairCancelledPayment'), 'error');
+            return;
+          case 'repair_completed':
+            toast(t('pos.repairAlreadyCompleted'), 'error');
+            return;
+          case 'layaway_cancelled':
+            toast(t('pos.layawayCancelledSale'), 'error');
+            return;
+          case 'repair_overpayment':
             toast(t('pos.repairOverpaymentBlocked'), 'error');
             return;
-          }
+          default:
+            return;
         }
       }
 
-      // 1. Save sale (use ref to avoid stale closure if Firestore listener
-      //    or another module wrote sales between render and now)
-      const nextSales = [...salesRef.current, sale];
-      salesRef.current = nextSales;
-      setSales(nextSales);
+      // §1. Save sale (apply from core result).
+      salesRef.current = coreResult.nextSales;
+      setSales(coreResult.nextSales);
       setLastSale(sale);
       persist.sale(sale.id, sale as unknown as Record<string, unknown>);
       try {
         window.dispatchEvent(new CustomEvent('cellhub:operator-activity', {
-          detail: {
-            type: 'sale.completed',
-            payload: { customerId: sale.customerId || undefined, amountCents: sale.total || 0 },
-          },
+          detail: { type: 'sale.completed', payload: coreResult.sideEffects.operatorActivity },
         }));
       } catch { /* env without CustomEvent */ }
-
-      // R-INTELLIGENCE-CONTINUITY-V1: sale completed — clear any interrupted
-      // workflow tracking for the phone_payment portal flow.
-      try { clearWorkflowTrack('phone_payment_portal'); } catch { /* non-critical */ }
-
-      // R-INTELLIGENCE-PAYMENT-VERIFY-V1: after phone_payment checkout,
-      // schedule a 2-min nudge to remind cashier to confirm carrier portal.
-      //
-      // R-EXTERNAL-PAYMENT-ONLY-NUDGE-GUARD: only carrier-bound phone_payment
-      // items qualify. A phone_payment line without a carrier (rare — usually
-      // a manual entry) is treated as internal POS and skipped. The service
-      // also enforces the allowlist + carrier-required guard as defense in
-      // depth, so this filter and the service guard are independent.
-      try {
-        const externalPhoneItems = sale.items.filter((i) =>
-          i.category === 'phone_payment'
-          && typeof (i as any).carrier === 'string'
-          && String((i as any).carrier).trim().length > 0
-        );
-        if (externalPhoneItems.length > 0) {
-          const carrier = String((externalPhoneItems[0] as any).carrier).trim();
-          const amountCents = externalPhoneItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
-          const created = addVerification({
-            saleId: sale.id,
-            customerName: sale.customerName || selectedCustomer?.name || '',
-            carrier,
-            amountCents,
-            source: 'phone_payment',
-          });
+      // R-INTELLIGENCE-CONTINUITY-V1: clear the interrupted phone_payment portal track.
+      if (coreResult.sideEffects.clearWorkflowTrack) {
+        try { clearWorkflowTrack(coreResult.sideEffects.clearWorkflowTrack); } catch { /* non-critical */ }
+      }
+      // R-INTELLIGENCE-PAYMENT-VERIFY-V1: schedule the carrier-portal confirm nudge.
+      if (coreResult.sideEffects.phonePaymentVerify) {
+        try {
+          const created = addVerification(coreResult.sideEffects.phonePaymentVerify);
           if (created) {
             window.dispatchEvent(new CustomEvent('cellhub:payment-verify-nudge'));
           }
-        }
-      } catch { /* non-critical */ }
-
-      // 2. Deduct inventory (using ref)
-      const updatedInventory = [...inventoryRef.current];
-      const inventoryOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-
-      for (const saleItem of sale.items) {
-        if (!saleItem.inventoryId) continue;
-        const idx = updatedInventory.findIndex((i) => i.id === saleItem.inventoryId);
-        if (idx >= 0 && updatedInventory[idx].category !== 'service') {
-          // R-SIM-INTAKE: surface a warning if the item we're "decrementing"
-          // already shows qty=0. The Math.max(0, ...) clamps to zero (no
-          // negative qty), but the physical sale still happened — log so it
-          // can be reconciled (typical cause: same SIM scanned twice in
-          // back-to-back transactions before the first persist landed).
-          if ((updatedInventory[idx].qty || 0) <= 0 && (saleItem.qty || 0) > 0) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              '[POS] Sale item with inventoryId but inventory qty already 0:',
-              { name: saleItem.name, id: saleItem.inventoryId, soldQty: saleItem.qty },
-            );
-          }
-          updatedInventory[idx] = {
-            ...updatedInventory[idx],
-            qty: Math.max(0, updatedInventory[idx].qty - saleItem.qty),
-          };
-          inventoryOps.push({
-            collection: 'inventory',
-            id: updatedInventory[idx].id,
-            data: updatedInventory[idx] as unknown as Record<string, unknown>,
-          });
-        }
-      }
-      if (inventoryOps.length > 0) {
-        inventoryRef.current = updatedInventory;
-        setInventory(updatedInventory);
-        batchSave(inventoryOps);
+        } catch { /* non-critical */ }
       }
 
-      // 3. + 5. COLLAPSED — Build the final customer state in ONE pass.
-      // Previously this was two separate setCustomers calls (store credit, then
-      // loyalty), and the second one's `customers.map()` operated on the closure-
-      // captured `customers`, sobreescribiendo la deducción de store credit del
-      // primer call. CRITICAL: must be a single setCustomers, single map.
-      let workingCustomers = customersRef.current;
-      let workingCustomer = selectedCustomer;
-      let customerChanged = false;
-
-      // 3. Store credit deduction
-      const isStoreCreditPayment =
-        sale.paymentMethod === 'store_credit' || sale.paymentMethod === 'Store Credit';
-      if (isStoreCreditPayment && selectedCustomer) {
-        const creditUsed = Math.min(selectedCustomer.storeCredit || 0, sale.total);
-        if (creditUsed > 0) {
-          workingCustomer = {
-            ...workingCustomer!,
-            storeCredit: Math.max(0, (workingCustomer!.storeCredit || 0) - creditUsed),
-          };
-          workingCustomers = workingCustomers.map((c) =>
-            c.id === workingCustomer!.id ? workingCustomer! : c,
-          );
-          customerChanged = true;
-        }
+      // §2. Deduct inventory (apply from core result).
+      if (coreResult.inventoryOps.length > 0) {
+        inventoryRef.current = coreResult.inventory;
+        setInventory(coreResult.inventory);
+        batchSave(coreResult.inventoryOps);
       }
 
-      // 5. Loyalty points
-      // NOTE: Loyalty feature is not yet customer-facing — Jorge will activate it
-      // when CellHub Pro is at 100%. Code accumulates correctly at 1 point per $1
-      // (pointsBase is in cents, divided by 100). Phone payments and top-ups are
-      // excluded because they have low margin and would erode profitability.
-      if (sale.customerId && settings.loyaltyEnabled && workingCustomer) {
-        // CRITICAL: loyaltyBase is the canonical source. Previously this used
-        // `sale.subtotalAfterDiscount ?? loyaltyBase` which silently included
-        // phone_payment/top_up items (the ?? fallback was never hit), making
-        // the .filter() above a no-op. Also diverged from ReceiptModal's
-        // walk-in assign formula, so the same customer got different point
-        // counts depending on when the sale was assigned to them. Use the
-        // filtered loyaltyBase directly — matches ReceiptModal.
-        const loyaltyBase = sale.items
-          .filter((i) => i.category !== 'phone_payment' && i.category !== 'top_up')
-          .reduce((sum, i) => sum + i.price * i.qty, 0);
-        // 1 loyalty point per $1 spent (loyaltyBase is in cents → divide by 100)
-        const pts = Math.trunc(loyaltyBase / 100);
-        if (pts > 0) {
-          workingCustomer = {
-            ...workingCustomer,
-            loyaltyPoints: (workingCustomer.loyaltyPoints || 0) + pts,
-          };
-          workingCustomers = workingCustomers.map((c) =>
-            c.id === workingCustomer!.id ? workingCustomer! : c,
-          );
-          customerChanged = true;
-        }
+      // §3 + §5 + §6. Customer single-pass (apply from core result —
+      // store credit deduction, loyalty points, top-up history).
+      if (coreResult.customerChanged && coreResult.workingCustomer) {
+        customersRef.current = coreResult.customers;
+        setCustomers(coreResult.customers);
+        persist.customer(coreResult.workingCustomer.id, coreResult.workingCustomer as unknown as Record<string, unknown>);
       }
 
-      // 6. r28b — Top-up history. If this sale has any top_up items AND a customer,
-      // append/update the customer's persistent recipient memory. Helper is pure
-      // and idempotent at the entry level — repeat recipients increment count.
-      if (sale.customerId && workingCustomer) {
-        const topUpItems = sale.items.filter((i) => i.category === 'top_up');
-        if (topUpItems.length > 0) {
-          const updatedCustomer = recordTopUpsToCustomer(
-            workingCustomer,
-            topUpItems,
-            new Date().toISOString(),
-          );
-          // recordTopUpsToCustomer returns the same reference if no items contributed
-          if (updatedCustomer !== workingCustomer) {
-            workingCustomer = updatedCustomer;
-            workingCustomers = workingCustomers.map((c) =>
-              c.id === workingCustomer!.id ? workingCustomer! : c,
-            );
-            customerChanged = true;
-          }
-        }
+      // §4. Linked entity reconciliation (computed in core). §4a Repairs (apply).
+      if (coreResult.repairOps.length > 0) {
+        repairsRef.current = coreResult.repairs;
+        setRepairs(coreResult.repairs);
+        batchSave(coreResult.repairOps);
       }
 
-      // Single setCustomers + single persist call at the end
-      if (customerChanged && workingCustomer) {
-        customersRef.current = workingCustomers;
-        setCustomers(workingCustomers);
-        persist.customer(workingCustomer.id, workingCustomer as unknown as Record<string, unknown>);
+      // §4b. Special Orders (apply from core result).
+      if (coreResult.specialOrderOps.length > 0) {
+        specialOrdersRef.current = coreResult.specialOrders;
+        setSpecialOrders(coreResult.specialOrders);
+        batchSave(coreResult.specialOrderOps);
       }
 
-      // 4. ── r-deposit-integrity-1 P1: Linked Entity Reconciliation ──
-      //
-      // PREVIOUSLY: RepairModule/SpecialOrdersModule/UnlockModule/LayawayModule
-      // decremented `balance` and persisted `depositAmount`>0 at CREATE time,
-      // BEFORE the POS checkout confirmed the payment. If the cashier abandoned
-      // the cart, the entity was left with a ghost deposit = false revenue in
-      // Dashboard/Reports. The repair handler here was written defensively to
-      // NOT double-subtract, which baked the bug into the invariant.
-      //
-      // NOW: Entity modules persist with depositAmount/paidAmount = 0 and
-      // full balance at CREATE. The deposit lives only in the cart until this
-      // handler confirms the sale. POSModule is the SINGLE SOURCE OF TRUTH for
-      // incrementing depositAmount/paidAmount and decrementing balance.
-      //
-      // Algorithm:
-      //   For each cart item with a linked entity ID (repairId / specialOrderId
-      //   / unlockId / layawayId), reconstruct the tax-inclusive dollar amount
-      //   the customer actually paid for that item using forwardTaxFromBase
-      //   (the inverse of reverseTaxFromPayment, which the modules used to push
-      //   pre-tax base into the cart). Sum per entity, increment, recalc
-      //   balance. If balance hits 0, mark as picked_up / completed.
-      // Round POS-T1: ?? not || so taxRate=0 (tax-exempt stores) stays 0.
-      const taxRateForReconcile = settings.taxRate ?? 0.0925;
-
-      // r-deposit-integrity-1b P1: discount ratio reconstruction.
-      //
-      // The main round's helper read item.price as the pre-tax base the
-      // customer paid, but item.price is the PRE-discount base. When the
-      // cashier applied a cart discount, calculateCartTotals spread the
-      // discount proportionally across all discountable items (repair-
-      // deposit items are category === 'service', which IS discountable).
-      // That meant the customer paid (base * ratio + tax) but the entity
-      // was credited with (base + tax) — silent overcounting.
-      //
-      // We reconstruct discountableAmount from sale.items using the SAME
-      // filter calculateCartTotals uses (exclude phone_payment and top_up),
-      // derive discountAmount from sale.subtotal vs subtotalAfterDiscount,
-      // and compute the discountable-only ratio. Exact across 200K+ test
-      // cases (49,901 deposits × 4 discount rates @ 9.25%, zero drift).
-      //
-      // NOTE: we do NOT use (subtotalAfterDiscount / subtotal) as the ratio
-      // — that would blend discountable + non-discountable items and give
-      // the wrong answer any time a phone_payment or top_up is in the cart.
-      let discountableBaseSum = 0;
-      for (const saleItem of sale.items) {
-        if (saleItem.category === 'phone_payment' || saleItem.category === 'top_up') continue;
-        discountableBaseSum += (saleItem.price || 0) * (saleItem.qty || 1);
-      }
-      const saleDiscountAmount = Math.max(
-        0,
-        (sale.subtotal || 0) - (sale.subtotalAfterDiscount ?? sale.subtotal ?? 0),
-      );
-      const discountRatioForReconcile =
-        discountableBaseSum > 0
-          ? Math.max(0, (discountableBaseSum - saleDiscountAmount) / discountableBaseSum)
-          : 1;
-
-      // Helper: compute total cents the customer paid for a sale item
-      // (includes tax if the item was taxable, AND accounts for cart
-      // discount). Matches what PaymentModal ended up charging for that
-      // line. Non-discountable items (phone_payment, top_up) bypass the
-      // ratio but also never appear as linked-entity items, so they
-      // never reach this helper in practice.
-      const itemPaidCents = (item: Sale['items'][number]): number => {
-        const isDiscountable =
-          item.category !== 'phone_payment' && item.category !== 'top_up';
-        const effectiveBase = isDiscountable
-          ? Math.round((item.price || 0) * discountRatioForReconcile)
-          : (item.price || 0);
-        const fwd = forwardTaxFromBase(effectiveBase, taxRateForReconcile, !!item.taxable);
-        return fwd.totalCents * (item.qty || (item as any).quantity || 1);
-      };
-
-      // ── 4a. Repairs ─────────────────────────────────────
-      const updatedRepairs = [...repairsRef.current];
-      const repairOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-      const repairDeltas = new Map<string, number>();
-      for (const saleItem of sale.items) {
-        if (!saleItem.repairId) continue;
-        repairDeltas.set(
-          saleItem.repairId,
-          (repairDeltas.get(saleItem.repairId) || 0) + itemPaidCents(saleItem),
-        );
-      }
-      for (const [repairId, paidCents] of repairDeltas) {
-        const ri = updatedRepairs.findIndex((r) => r.id === repairId);
-        if (ri < 0) continue;
-        const repair = updatedRepairs[ri];
-
-        // R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: the prior H2 cancel guard
-        // (Round R-POS-PARITY F3) lived here and returned mid-handler if
-        // repair.status was 'cancelled' — but by that point §1+§2 had
-        // already persisted the sale and decremented inventory. The guard
-        // is now hoisted into the pre-flight block at the top of
-        // handleCompleteSale, which runs against the same repairsRef.
-
-        // r-new-7: defensive sanity check — overpayment detection.
-        // The cart consolidation invariant in RepairModule should prevent
-        // overpayment, but log if it ever fires. 1 cent tolerance for rounding
-        // drift in mixed-tax carts.
-        const expectedBalance = repair.balance || 0;
-        if (paidCents > expectedBalance + 1) {
-          console.warn(
-            `[repair-reconcile] Overpayment on repair ${repairId}:`,
-            `paid ${paidCents} cents, balance was ${expectedBalance} cents.`,
-            `Diff: ${paidCents - expectedBalance} cents (possible stale cart).`,
-          );
-        }
-
-        const newDeposit = (repair.depositAmount || 0) + paidCents;
-        const newBalance = Math.max(0, (repair.balance || 0) - paidCents);
-        // R-COMPLETEDAT-FIELD: stamp completedAt only on the transition to
-        // picked_up; preserve existing value if already set; leave untouched
-        // when balance > 0 (still active).
-        const nowIso = new Date().toISOString();
-        updatedRepairs[ri] = {
-          ...repair,
-          depositAmount: newDeposit,
-          balance: newBalance,
-          status: newBalance === 0 ? 'picked_up' as const : repair.status,
-          updatedAt: nowIso,
-          completedAt: newBalance === 0 ? (repair.completedAt ?? nowIso) : repair.completedAt,
-        };
-        repairOps.push({
-          collection: 'repairTickets',
-          id: updatedRepairs[ri].id,
-          data: updatedRepairs[ri] as unknown as Record<string, unknown>,
-        });
-      }
-      if (repairOps.length > 0) {
-        repairsRef.current = updatedRepairs;
-        setRepairs(updatedRepairs);
-        batchSave(repairOps);
+      // §4c. Unlocks (apply from core result).
+      if (coreResult.unlockOps.length > 0) {
+        unlocksRef.current = coreResult.unlocks;
+        setUnlocks(coreResult.unlocks);
+        batchSave(coreResult.unlockOps);
       }
 
-      // ── 4b. Special Orders ──────────────────────────────
-      const updatedSOs = [...specialOrdersRef.current];
-      const soOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-      const soDeltas = new Map<string, number>();
-      for (const saleItem of sale.items) {
-        if (!saleItem.specialOrderId) continue;
-        soDeltas.set(
-          saleItem.specialOrderId,
-          (soDeltas.get(saleItem.specialOrderId) || 0) + itemPaidCents(saleItem),
-        );
-      }
-      for (const [soId, paidCents] of soDeltas) {
-        const si = updatedSOs.findIndex((o) => o.id === soId);
-        if (si < 0) continue;
-        const so = updatedSOs[si];
-        const newDeposit = (so.depositAmount || 0) + paidCents;
-        const newBalance = Math.max(0, (so.balance || 0) - paidCents);
-        updatedSOs[si] = {
-          ...so,
-          depositAmount: newDeposit,
-          balance: newBalance,
-          // SPECIAL-ORDER-PAYMENT-TRACE-FIX-V1: append-only per-payment log so
-          // receipts can separate deposit / previous payments / payment today.
-          // Display/audit only — depositAmount/balance/status math unchanged.
-          payments: [
-            ...(so.payments || []),
-            {
-              date: new Date().toISOString(),
-              method: sale.paymentMethod,
-              amountCents: paidCents,
-            },
-          ],
-          status: newBalance === 0 ? 'picked_up' : so.status,
-          updatedAt: new Date().toISOString(),
-        };
-        soOps.push({
-          collection: 'specialOrders',
-          id: updatedSOs[si].id,
-          data: updatedSOs[si] as unknown as Record<string, unknown>,
-        });
-      }
-      if (soOps.length > 0) {
-        specialOrdersRef.current = updatedSOs;
-        setSpecialOrders(updatedSOs);
-        batchSave(soOps);
+      // §4d. Layaways (apply from core result).
+      if (coreResult.layawayOps.length > 0) {
+        layawaysRef.current = coreResult.layaways;
+        setLayaways(coreResult.layaways);
+        batchSave(coreResult.layawayOps);
       }
 
-      // ── 4c. Unlocks ─────────────────────────────────────
-      const updatedUnlocks = [...unlocksRef.current];
-      const unlockOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-      const unlockDeltas = new Map<string, number>();
-      for (const saleItem of sale.items) {
-        if (!saleItem.unlockId) continue;
-        unlockDeltas.set(
-          saleItem.unlockId,
-          (unlockDeltas.get(saleItem.unlockId) || 0) + itemPaidCents(saleItem),
-        );
-      }
-      for (const [unlockId, paidCents] of unlockDeltas) {
-        const ui = updatedUnlocks.findIndex((u) => u.id === unlockId);
-        if (ui < 0) continue;
-        const unlock = updatedUnlocks[ui];
-        const newDeposit = (unlock.depositAmount || 0) + paidCents;
-        const newBalance = Math.max(0, (unlock.balance || 0) - paidCents);
-        updatedUnlocks[ui] = {
-          ...unlock,
-          depositAmount: newDeposit,
-          balance: newBalance,
-          updatedAt: new Date().toISOString(),
-        };
-        unlockOps.push({
-          collection: 'unlocks',
-          id: updatedUnlocks[ui].id,
-          data: updatedUnlocks[ui] as unknown as Record<string, unknown>,
-        });
-      }
-      if (unlockOps.length > 0) {
-        unlocksRef.current = updatedUnlocks;
-        setUnlocks(updatedUnlocks);
-        batchSave(unlockOps);
+      // §4e. Store-credit redemption (apply from core result).
+      if (coreResult.ledgerOps.length > 0) {
+        storeCreditLedgerRef.current = coreResult.storeCreditLedger;
+        setStoreCreditLedger(coreResult.storeCreditLedger);
+        batchSave(coreResult.ledgerOps);
       }
 
-      // ── 4d. Layaways ────────────────────────────────────
-      // Layaway uses `paidAmount` (not `depositAmount`) as its cumulative
-      // paid field. When balance hits 0, status → 'completed' (not
-      // 'picked_up' — that's a repair concept).
-      const updatedLayaways = [...layawaysRef.current];
-      const layawayOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-      const layawayDeltas = new Map<string, number>();
-      for (const saleItem of sale.items) {
-        if (!saleItem.layawayId) continue;
-        layawayDeltas.set(
-          saleItem.layawayId,
-          (layawayDeltas.get(saleItem.layawayId) || 0) + itemPaidCents(saleItem),
-        );
-      }
-      for (const [layawayId, paidCents] of layawayDeltas) {
-        const li = updatedLayaways.findIndex((l) => l.id === layawayId);
-        if (li < 0) continue;
-        const layaway = updatedLayaways[li];
-        // R-POS-PARTIAL-COMMIT-WINDOW-HIGH-FIX: the prior Round-15b H2 guard
-        // (cancelled/forfeited abort) lived here and returned mid-handler —
-        // after §1+§2 had persisted the sale and decremented inventory.
-        // The guard is now hoisted into the pre-flight block at the top of
-        // handleCompleteSale, which runs against the same layawaysRef.
-
-        // Round 15b M4: write depositMethod on the FIRST payment only. Refund
-        // policy is refund-to-original-method, so we must lock the method in
-        // at first deposit and never overwrite on subsequent partials.
-        const depositMethodUpdate = layaway.depositMethod
-          ? {}
-          : { depositMethod: sale.paymentMethod };
-        // R-LAYAWAY-MULTIPAY-V1 (audit-integrity blocker fix):
-        // 1) addLayawayPayment clamps the appended record to remaining
-        //    balance, so payments[] can never sum to more than totalPrice.
-        // 2) Aggregate paidAmount is DERIVED from payments[] sum, not from
-        //    the additive `paidAmount + paidCents` legacy formula. This
-        //    guarantees sum(payments[]) === paidAmount on every commit and
-        //    eliminates the silent drift the auditor flagged.
-        // 3) try/catch is now a corruption-only fallback: helper throws
-        //    only on non-positive / non-finite amount. On the rare throw
-        //    we drop back to the legacy additive math (loud via warn) so
-        //    the layaway aggregate still moves and POS doesn't lock up.
-        // 4) Existing overpay tolerance is preserved: balance still ends
-        //    at 0 when paidCents > remaining; the overpay portion lives
-        //    only in the Sale record (cash drawer) and is intentionally
-        //    NOT mirrored into the layaway log.
-        let withPaymentLog: typeof layaway = layaway;
-        let helperSucceeded = false;
-        try {
-          withPaymentLog = addLayawayPayment(layaway, {
-            amountCents: paidCents,
-            method: sale.paymentMethod,
-            employeeId: sale.employeeId,
-            date: new Date().toISOString(),
-          });
-          helperSucceeded = true;
-        } catch (err) {
-          console.warn('[POS §4d] addLayawayPayment threw, falling back to legacy aggregate update:', err);
-        }
-        const reconciledPaid = helperSucceeded && Array.isArray(withPaymentLog.payments)
-          ? withPaymentLog.payments.reduce((s, p) => s + (p.amount || 0), 0)
-          : (layaway.paidAmount || 0) + paidCents;
-        const newPaid = reconciledPaid;
-        const newBalance = Math.max(0, (layaway.totalPrice || 0) - newPaid);
-        const nowIsoLay = new Date().toISOString();
-        updatedLayaways[li] = {
-          ...withPaymentLog,
-          ...depositMethodUpdate,
-          paidAmount: newPaid,
-          balance: newBalance,
-          status: newBalance === 0 ? 'completed' : layaway.status,
-          completedAt: newBalance === 0 ? (layaway.completedAt ?? nowIsoLay) : layaway.completedAt,
-          updatedAt: nowIsoLay,
-        };
-        layawayOps.push({
-          collection: 'layaways',
-          id: updatedLayaways[li].id,
-          data: updatedLayaways[li] as unknown as Record<string, unknown>,
-        });
-      }
-      if (layawayOps.length > 0) {
-        layawaysRef.current = updatedLayaways;
-        setLayaways(updatedLayaways);
-        batchSave(layawayOps);
-      }
-
-      // ── 4e. Store-credit redemption ──────────────────────
-      // R-STORE-CREDIT-REDEMPTION-SYSTEM: every cart line that came from
-      // ApplyStoreCreditModal carries `storeCreditLedgerId` + a negative
-      // `price`. Record one redemption per line against the matching
-      // ledger entry. Aggregates per ledgerId in case two lines target
-      // the same cert (defensive — modal blocks this today via
-      // alreadyAppliedLedgerIds, but the post-hook must still be safe).
-      const ledgerDeltas = new Map<string, { cents: number; cert: string }>();
-      for (const item of sale.items) {
-        const lid = (item as any).storeCreditLedgerId as string | undefined;
-        if (!lid) continue;
-        const cert = (item as any).storeCreditCertNumber || '';
-        const absCents = Math.abs((item.price || 0) * (item.qty || 1));
-        if (absCents <= 0) continue;
-        const prev = ledgerDeltas.get(lid);
-        ledgerDeltas.set(lid, { cents: (prev?.cents || 0) + absCents, cert: cert || prev?.cert || '' });
-      }
-      if (ledgerDeltas.size > 0) {
-        const updatedLedger = [...storeCreditLedgerRef.current];
-        const ledgerOps: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
-        for (const [lid, { cents }] of ledgerDeltas) {
-          const idx = updatedLedger.findIndex((l) => l.id === lid);
-          if (idx < 0) continue;
-          try {
-            const { ledger: nextLedger } = redeemLedgerEntry(updatedLedger[idx], {
-              amountCents: cents,
-              saleId: sale.id,
-              invoiceNumber: sale.invoiceNumber,
-              employeeId: sale.employeeId,
-              employeeName: sale.employeeName || currentEmployee?.name || '',
-            });
-            updatedLedger[idx] = nextLedger;
-            ledgerOps.push({
-              collection: 'storeCreditLedger',
-              id: nextLedger.id,
-              data: nextLedger as unknown as Record<string, unknown>,
-            });
-          } catch (err) {
-            console.warn('[POS §4e] redeemLedgerEntry rejected:', err);
-          }
-        }
-        if (ledgerOps.length > 0) {
-          storeCreditLedgerRef.current = updatedLedger;
-          setStoreCreditLedger(updatedLedger);
-          batchSave(ledgerOps);
-        }
-      }
-
-      // ── 4f. Exchange return finalization (R-RETURNS-PHASE-2B) ──
-      // Cart lines carrying `pendingReturn` are deferred exchange-return drafts.
-      // The Returns modal added the negative `exchange_credit` line but did NOT
-      // yet mutate the original sale, restock inventory, or persist the
-      // CustomerReturn — so the original item stayed returnable until now.
-      // finalizeExchangeReturn applies those three mutations purely (idempotent
-      // on retry); we commit + persist the ids it reports below.
-      const exchangeDrafts = sale.items
-        .map((it) => (it as any).pendingReturn as PendingExchangeReturn | undefined)
-        .filter((d): d is PendingExchangeReturn => !!d);
-      if (exchangeDrafts.length > 0) {
-        const exRes = finalizeExchangeReturn({
-          drafts: exchangeDrafts,
-          sales: salesRef.current,
-          inventory: inventoryRef.current,
-          returns: customerReturnsRef.current,
-          exchangeSaleId: sale.id,
-          exchangeInvoiceNumber: sale.invoiceNumber,
-        });
+      // §4f. Exchange/return finalization (apply from core result).
+      if (coreResult.exchange) {
+        const exRes = coreResult.exchange;
         if (exRes.salesChanged) {
           salesRef.current = exRes.sales;
           setSales(exRes.sales);
