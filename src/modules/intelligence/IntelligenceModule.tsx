@@ -374,9 +374,13 @@ export default function IntelligenceModule() {
 
   const handleQueueDismiss = useCallback((item: ManagerQueueItem) => {
     dismissQueueItem(item.id);
+    // R-INTEL-LEARNING-WIRE-FIX: dismiss writes the lightest negative signal
+    // ('ignored' = -1) — weaker than 'snoozed' (-2) and 'not_useful' (-3) — so a
+    // dismissed recommendation slightly lowers similar future ones without
+    // punishing as hard as an explicit "not useful". Ranking formula unchanged.
+    writeFeedback(item, 'ignored');
     setQueueItems(getQueue());
-    // No auto-feedback on dismiss — neutral, operator may dismiss for any reason.
-  }, []);
+  }, [writeFeedback]);
 
   const handleQueueResolve = useCallback((item: ManagerQueueItem) => {
     resolveQueueItem(item.id);
