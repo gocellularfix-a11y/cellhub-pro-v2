@@ -70,6 +70,28 @@ describe('resolvePosCheckout (R-LAN-POS-CHECKOUT-FORWARDING)', () => {
     expect((r as { result?: unknown }).result).toBeUndefined();
   });
 
+  it('dedupes by sale.id even when the operationId differs (no double charge / mutation)', () => {
+    // The Primary already committed sale-X via the first forward (op-A). A
+    // re-forward of the SAME built Sale arrives with a NEW operationId (op-B) —
+    // sendPosCheckout mints a fresh operationId per call. Must still dedupe.
+    const committed = sale({ id: 'sale-X' });
+    (committed as unknown as Record<string, unknown>).lanOperationId = 'op-A';
+    const inv = { id: 'inv-1', name: 'Case', category: 'accessory', qty: 5 } as unknown as InventoryItem;
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-X', items: [item({ inventoryId: 'inv-1', qty: 1 })], total: 1000 }),
+      'op-B', // DIFFERENT operationId than the committed sale
+      state({ sales: [committed], inventory: [inv] }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.duplicate).toBe(true);
+    if (!r.duplicate) return;
+    expect(r.saleId).toBe('sale-X');
+    // duplicate short-circuits → no result, so the caller applies NOTHING.
+    expect((r as { result?: unknown }).result).toBeUndefined();
+    expect(inv.qty).toBe(5); // inventory never decremented a second time
+  });
+
   it('resolves the customer from the PRIMARY authoritative array (not the Secondary mirror)', () => {
     // Secondary-built sale references c1; the Primary holds c1 with $50 store credit.
     const primaryCust = { id: 'c1', name: 'Joe', storeCredit: 5000, loyaltyPoints: 0 } as unknown as Customer;

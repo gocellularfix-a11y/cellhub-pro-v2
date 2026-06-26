@@ -609,11 +609,18 @@ export default function POSModule() {
   // built Sale to the Primary, which finalizes it headlessly; the Secondary
   // NEVER persists or calls finalizeSaleCore locally. Only Secondary-local UI is
   // reset on success; on failure the cart is preserved so the cashier can retry.
+  const forwardingRef = useRef(false);
   const completeOrForwardSale = useCallback((sale: Sale) => {
     if (!isLanSecondaryReadOnly()) {
       handleCompleteSale(sale);
       return;
     }
+    // R-LAN-POS-CHECKOUT-FORWARDING-FIX: in-flight guard. A rapid double-click
+    // rebuilds a NEW sale.id each time (which the Primary's sale.id dedup cannot
+    // catch), so block a second forward while the first is still pending.
+    // Released in .finally() below whether the forward resolves or rejects.
+    if (forwardingRef.current) return;
+    forwardingRef.current = true;
     void (async () => {
       const ack = await sendPosCheckout(sale);
       if (ack && ack.ok) {
@@ -659,7 +666,7 @@ export default function POSModule() {
             'error',
           );
       }
-    })();
+    })().finally(() => { forwardingRef.current = false; });
   }, [
     handleCompleteSale, toast, t, lang,
     setCart, setDiscount, setPaymentMethod, setCashAmount, setCardAmount,

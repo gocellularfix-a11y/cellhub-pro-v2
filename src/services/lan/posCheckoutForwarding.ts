@@ -64,9 +64,18 @@ export function resolvePosCheckout(
     return { ok: false, error: 'bad_payload' };
   }
 
-  // Idempotency: a sale already finalized for this operationId → duplicate.
-  const existing = state.sales.find((s) => readTag(s) === operationId);
-  if (existing) return { ok: true, duplicate: true, saleId: existing.id };
+  // Idempotency — dedup by BOTH sale.id AND the operationId tag. The
+  // Secondary's sendPosCheckout() mints a fresh operationId per call, so a
+  // re-forward of the SAME built Sale (PaymentModal double-fire, retry after a
+  // lost ACK) arrives with a DIFFERENT operationId but the SAME sale.id. The
+  // sale.id check is the authoritative guard against a double charge: a
+  // committed sale.id is unique, so if the Primary already holds it we must NOT
+  // append a second sale or re-apply any inventory/customer/repair/layaway/
+  // store-credit/return mutation. Either match → duplicate, zero side effects.
+  const existingById = sale.id ? state.sales.find((s) => s.id === sale.id) : undefined;
+  if (existingById) return { ok: true, duplicate: true, saleId: existingById.id };
+  const existingByOp = state.sales.find((s) => readTag(s) === operationId);
+  if (existingByOp) return { ok: true, duplicate: true, saleId: existingByOp.id };
 
   // Tag for idempotency (extra JSON; Sale type has no field).
   const taggedSale = { ...sale, [LAN_CHECKOUT_OP_TAG]: operationId } as unknown as Sale;
