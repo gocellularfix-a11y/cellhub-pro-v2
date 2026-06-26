@@ -1259,12 +1259,35 @@ export function handleFollowUp(
     return { kind: 'answer', text: t('chat.followup.staleContext') };
   };
 
+  // R-INTELLIGENCE-ENTITY-VALIDATION-TIER1: state-aware guards layered on top
+  // of the existence checks above. Existence stays contextValidator's job;
+  // these reject entities that still EXIST but are in a terminal/removed state
+  // (deleted/archived customer; cancelled/refunded/refund_pending/picked_up
+  // repair) by reusing the canonical validateResolvedEntity. The session
+  // context value may be an id OR a name, so each guard maps it to a concrete
+  // entity id first. On no-match or ambiguity they return true (silent) so they
+  // NEVER newly reject a currently-valid active follow-up — they only ADD
+  // terminal-state rejection on top of the existing existence behavior. Pure
+  // reads, no mutation.
+  const customerStateValid = (ctxValue: string): boolean => {
+    const c = engine.getCustomers().find((cu) => cu.id === ctxValue || cu.name === ctxValue);
+    if (!c) return true; // existence is the caller's concern — don't double-judge
+    return validateResolvedEntity({ type: 'customer', customerId: c.id, confidence: 1 }, engine).ok;
+  };
+  const repairStateValid = (ctxValue: string): boolean => {
+    const matches = engine.getRepairs().filter((r) => r.id === ctxValue || r.customerName === ctxValue);
+    if (matches.length !== 1) return true; // none / ambiguous → never guess a state
+    return validateResolvedEntity({ type: 'repair', repairId: matches[0].id, confidence: 1 }, engine).ok;
+  };
+
   // "contact him/her/them" — customer pronoun reference
   const isContactRef = /^(contact h[ei]m|contact her|contact them|call h[ei]m|call her|message h[ei]m|message her|contactal[oa]|contactalos|llamal[oa]|contata ele|contata ela)\b/.test(cq);
   if (isContactRef) {
     if (operationalContext?.type === 'customer') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block execution if entity gone from store
-      if (!validateCustomerContext(engine, operationalContext).valid) {
+      // R-INTELLIGENCE-ENTITY-VALIDATION-TIER1: + reject deleted/archived customer
+      if (!validateCustomerContext(engine, operationalContext).valid
+          || !customerStateValid(operationalContext.value)) {
         return rejectStaleEntity('customer/contact');
       }
       const custId = operationalContext.value;
@@ -1300,7 +1323,10 @@ export function handleFollowUp(
   if (isOpenRef && operationalContext) {
     if (operationalContext.type === 'repair') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if repair no longer in store
-      if (!validateRepairContext(engine, operationalContext).valid) {
+      // R-INTELLIGENCE-ENTITY-VALIDATION-TIER1: + reject cancelled/refunded/
+      // refund_pending/picked_up repair
+      if (!validateRepairContext(engine, operationalContext).valid
+          || !repairStateValid(operationalContext.value)) {
         return rejectStaleEntity('repair/open');
       }
       const action: ChatActionUI = {
@@ -1313,7 +1339,9 @@ export function handleFollowUp(
     }
     if (operationalContext.type === 'customer') {
       // R-INTELLIGENCE-CONTEXT-VALIDATOR-V1: block if customer no longer in store
-      if (!validateCustomerContext(engine, operationalContext).valid) {
+      // R-INTELLIGENCE-ENTITY-VALIDATION-TIER1: + reject deleted/archived customer
+      if (!validateCustomerContext(engine, operationalContext).valid
+          || !customerStateValid(operationalContext.value)) {
         return rejectStaleEntity('customer/open');
       }
       const custId = operationalContext.value;
