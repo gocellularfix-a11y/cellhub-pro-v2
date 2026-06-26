@@ -53,10 +53,12 @@ let getLicense = null;
 // Accepted operation types. LAN_PING_OPERATION = harmless heartbeat (display
 // only). CREATE_CUSTOMER + LAN_CUSTOMER_NOTE_ADD = forwarded writes, dispatched
 // to the Primary renderer; every other type is rejected at the server.
-const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST']);
+// R-LAN-POS-CHECKOUT-FORWARDING: LAN_POS_CHECKOUT = Secondary forwards a completed
+// Sale; the Primary renderer finalizes it headlessly via finalizeSaleCore.
+const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT']);
 // Operations routed through the renderer dispatcher (not the display-only path).
 // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: LAN_PRINT_RECEIPT_REQUEST → Primary prints.
-const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST']);
+const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT']);
 let lastOperation = null;
 // Active pairing window: { code, expiresAt, failed } or null when none.
 let pairState = null;

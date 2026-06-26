@@ -18,12 +18,14 @@
 // ============================================================
 import { useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
-import { persist } from '@/services/persist';
+import { persist, batchSave } from '@/services/persist';
 import { getConnection, buildSnapshot, pushSnapshot } from '@/services/lan/lanService';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { appendCustomerNote } from '@/utils/customerNotes';
-import type { Customer, Appointment } from '@/store/types';
+import type { Customer, Appointment, Sale, InventoryItem, StoreSettings } from '@/store/types';
+import { resolvePosCheckout } from '@/services/lan/posCheckoutForwarding';
+import type { FinalizeSaleCoreSuccess } from '@/modules/pos/finalizeSaleCore';
 
 // Intra-session idempotency: operationIds already handled (race guard before
 // the first persist is visible in state).
@@ -236,6 +238,96 @@ export default function LanOperationDispatcher() {
       return { ok: true, customerId: newCustomer.id, duplicate: false };
     };
 
+    // R-LAN-POS-CHECKOUT-FORWARDING: finalize a forwarded Secondary checkout on
+    // the PRIMARY, headlessly. Reuses finalizeSaleCore (via resolvePosCheckout) —
+    // the SAME engine as local POS, no duplication. Applies the result with the
+    // global app setters + persist + batchSave; pushes a fresh snapshot so the
+    // Secondary re-fetch sees the committed sale. CRITICAL: never calls
+    // POSModule.handleCompleteSale and never touches the Primary POS UI (no cart
+    // reset, no receipt modal, no payment modal) — only global business data.
+    const pushCheckoutSnapshot = async (result: FinalizeSaleCoreSuccess): Promise<void> => {
+      try {
+        const s = appRef.current.state;
+        const settings = s.settings as unknown as Record<string, unknown>;
+        const ex = result.exchange;
+        const snap = buildSnapshot(
+          {
+            customers: result.customerChanged ? result.customers : s.customers,
+            inventory: ex && ex.inventoryChanged ? ex.inventory : (result.inventoryOps.length > 0 ? result.inventory : s.inventory),
+            sales: ex && ex.salesChanged ? ex.sales : result.nextSales,
+            repairs: result.repairOps.length > 0 ? result.repairs : s.repairs,
+            layaways: result.layawayOps.length > 0 ? result.layaways : s.layaways,
+            unlocks: result.unlockOps.length > 0 ? result.unlocks : s.unlocks,
+            specialOrders: result.specialOrderOps.length > 0 ? result.specialOrders : s.specialOrders,
+            appointments: s.appointments,
+            settings: s.settings as unknown as Record<string, unknown>,
+          },
+          (settings?.storeName as string) || 'CellHub Primary',
+        );
+        await pushSnapshot(snap);
+      } catch { /* best-effort — the 15s publisher catches up */ }
+    };
+
+    const handlePosCheckout = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
+      const a = appRef.current;
+      const opId = String(op.operationId || '');
+      const sale = op.payload && op.payload.checkout ? (op.payload.checkout.sale as Sale | undefined) : undefined;
+      const s = a.state;
+      const resolution = resolvePosCheckout(sale ?? null, opId, {
+        sales: s.sales || [],
+        inventory: s.inventory || [],
+        customers: s.customers || [],
+        repairs: s.repairs || [],
+        specialOrders: s.specialOrders || [],
+        unlocks: s.unlocks || [],
+        layaways: s.layaways || [],
+        storeCreditLedger: s.storeCreditLedger || [],
+        customerReturns: s.customerReturns || [],
+        settings: s.settings as unknown as StoreSettings,
+      });
+      if (!resolution.ok) return { ok: false, error: resolution.error };
+      if (resolution.duplicate) return { ok: true, saleId: resolution.saleId, duplicate: true };
+
+      const { taggedSale, result } = resolution;
+      // Apply headlessly. Same order/conditionals as POSModule's local apply.
+      a.setSales(result.nextSales);
+      persist.sale(taggedSale.id, taggedSale as unknown as Record<string, unknown>);
+      if (result.inventoryOps.length > 0) { a.setInventory(result.inventory); batchSave(result.inventoryOps); }
+      if (result.customerChanged && result.workingCustomer) {
+        a.setCustomers(result.customers);
+        persist.customer(result.workingCustomer.id, result.workingCustomer as unknown as Record<string, unknown>);
+      }
+      if (result.repairOps.length > 0) { a.setRepairs(result.repairs); batchSave(result.repairOps); }
+      if (result.specialOrderOps.length > 0) { a.setSpecialOrders(result.specialOrders); batchSave(result.specialOrderOps); }
+      if (result.unlockOps.length > 0) { a.setUnlocks(result.unlocks); batchSave(result.unlockOps); }
+      if (result.layawayOps.length > 0) { a.setLayaways(result.layaways); batchSave(result.layawayOps); }
+      if (result.ledgerOps.length > 0) { a.setStoreCreditLedger(result.storeCreditLedger); batchSave(result.ledgerOps); }
+      if (result.exchange) {
+        const ex = result.exchange;
+        if (ex.salesChanged) {
+          a.setSales(ex.sales);
+          for (const id of ex.updatedSaleIds) {
+            const x = ex.sales.find((y) => y.id === id);
+            if (x) persist.sale(x.id, x as unknown as Record<string, unknown>);
+          }
+        }
+        if (ex.inventoryChanged) {
+          a.setInventory(ex.inventory);
+          const exInvOps = ex.updatedInventoryIds
+            .map((id) => ex.inventory.find((y) => y.id === id))
+            .filter((iv): iv is InventoryItem => !!iv)
+            .map((iv) => ({ collection: 'inventory', id: iv.id, data: iv as unknown as Record<string, unknown> }));
+          if (exInvOps.length > 0) batchSave(exInvOps);
+        }
+        if (ex.returnsChanged) {
+          a.setCustomerReturns(ex.returns);
+          for (const rec of ex.persistedReturns) persist.customerReturn(rec.id, rec as unknown as Record<string, unknown>);
+        }
+      }
+      await pushCheckoutSnapshot(result);
+      return { ok: true, saleId: taggedSale.id, duplicate: false };
+    };
+
     const dispatch = async (op: LanOperation | undefined): Promise<LanOperationDispatchResult> => {
       if (!op) return { ok: false, error: 'unsupported_operation' };
       // Only the Primary persists. Defensive — a Secondary's main never sends this.
@@ -244,6 +336,7 @@ export default function LanOperationDispatcher() {
       if (op.type === 'LAN_CUSTOMER_NOTE_ADD') return handleCustomerNoteAdd(op);
       if (op.type === 'CREATE_APPOINTMENT') return handleCreateAppointment(op);
       if (op.type === 'LAN_PRINT_RECEIPT_REQUEST') return handlePrintReceipt(op);
+      if (op.type === 'LAN_POS_CHECKOUT') return handlePosCheckout(op);
       return { ok: false, error: 'unsupported_operation' };
     };
 

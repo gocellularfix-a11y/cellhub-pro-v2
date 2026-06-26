@@ -153,15 +153,23 @@ interface LanPrintReceiptPayload {
   printJobId: string;
   timestamp: number;
 }
+// R-LAN-POS-CHECKOUT-FORWARDING: the Secondary builds a completed Sale via the
+// existing saleBuilder flow and forwards it; the Primary finalizes it headlessly
+// via finalizeSaleCore (never the Primary POS UI). `sale` is the full Sale object
+// (typed unknown here — this ambient file cannot import the Sale type).
+interface LanCheckoutPayload {
+  sale: unknown;
+}
 interface LanOperation {
   operationId: string;
-  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT' | 'LAN_PRINT_RECEIPT_REQUEST';
+  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT' | 'LAN_PRINT_RECEIPT_REQUEST' | 'LAN_POS_CHECKOUT';
   payload: {
     message?: string;
     customer?: LanCustomerPayload;
     note?: LanCustomerNotePayload;
     appointment?: LanAppointmentPayload;
     print?: LanPrintReceiptPayload;
+    checkout?: LanCheckoutPayload;
   };
   deviceId: string;
   createdAt: number;
@@ -176,6 +184,8 @@ interface LanOperationAck {
   appointmentId?: string;
   // LAN-HARDWARE-BRIDGE-FOUNDATION-V1
   printed?: boolean;
+  // R-LAN-POS-CHECKOUT-FORWARDING: id of the sale the Primary committed.
+  saleId?: string;
   duplicate?: boolean;
   error?: string;
 }
@@ -189,6 +199,8 @@ interface LanOperationDispatchResult {
   customerId?: string;
   appointmentId?: string;
   printed?: boolean;
+  // R-LAN-POS-CHECKOUT-FORWARDING: id of the sale the Primary committed.
+  saleId?: string;
   duplicate?: boolean;
   error?: string;
 }

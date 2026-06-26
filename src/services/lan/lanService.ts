@@ -7,6 +7,8 @@
 // records "we are paired" so a later phase can build sync on top.
 // ============================================================
 
+import type { Sale } from '@/store/types';
+
 export type LanRole = 'standalone' | 'primary' | 'secondary';
 
 export interface LanConnection {
@@ -417,6 +419,30 @@ export async function sendPrintReceipt(input: LanPrintReceiptInput): Promise<Lan
     createdAt: Date.now(),
   };
   return window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
+}
+
+// ── R-LAN-POS-CHECKOUT-FORWARDING ──
+// Secondary: forward a completed Sale (built by the existing saleBuilder flow) to
+// the paired Primary, which finalizes it headlessly via finalizeSaleCore and
+// returns the committed saleId (or a structured rejection reason in `error`).
+// NOTHING is persisted on the Secondary. On ACK success we trigger a mirror
+// re-sync so the committed sale/inventory/etc. appear from the Primary snapshot.
+// Idempotent: the operationId lets the Primary dedup retries (no double charge).
+export async function sendPosCheckout(sale: Sale): Promise<LanOperationAck> {
+  if (!isElectron() || !window.electronAPI?.lanSendOperation) return { ok: false, error: 'not_electron' };
+  const conn = getConnection();
+  if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return { ok: false, error: 'not_paired' };
+  if (!sale || !Array.isArray((sale as Sale).items)) return { ok: false, error: 'bad_payload' };
+  const operation: LanOperation = {
+    operationId: randomId(),
+    type: 'LAN_POS_CHECKOUT',
+    payload: { checkout: { sale } },
+    deviceId: getDeviceId(),
+    createdAt: Date.now(),
+  };
+  const ack = await window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
+  if (ack && ack.ok) requestMirrorResync();
+  return ack;
 }
 
 // Primary side: last operation received from a Secondary (display only).

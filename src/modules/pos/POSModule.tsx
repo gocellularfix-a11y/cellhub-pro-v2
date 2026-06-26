@@ -43,6 +43,8 @@ import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
 import { finalizeSaleCore } from './finalizeSaleCore';
+import { sendPosCheckout, requestMirrorResync } from '@/services/lan/lanService';
+import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 
@@ -602,6 +604,68 @@ export default function POSModule() {
   //
   // Both paths use buildSale + computePaidCents from saleBuilder.ts —
   // zero drift in sale construction or payment guard (I3, I7).
+  // R-LAN-POS-CHECKOUT-FORWARDING: single entry point for a finished Sale.
+  // Standalone/Primary → local finalize (unchanged). Secondary → forward the
+  // built Sale to the Primary, which finalizes it headlessly; the Secondary
+  // NEVER persists or calls finalizeSaleCore locally. Only Secondary-local UI is
+  // reset on success; on failure the cart is preserved so the cashier can retry.
+  const completeOrForwardSale = useCallback((sale: Sale) => {
+    if (!isLanSecondaryReadOnly()) {
+      handleCompleteSale(sale);
+      return;
+    }
+    void (async () => {
+      const ack = await sendPosCheckout(sale);
+      if (ack && ack.ok) {
+        // Secondary-only UI cleanup (UI state only — no persist, no global writes).
+        setLastSale(sale);
+        cartRef.current = [];
+        setCart([]);
+        setDiscount({ amount: 0, type: 'percent', reason: '' });
+        setPaymentMethod('Cash');
+        setCashAmount(0);
+        setCardAmount(0);
+        setAddCreditCardFee(false);
+        setSelectedCustomer(null);
+        setShowPayment(false);
+        setShowReceipt(true);
+        requestMirrorResync();
+        toast(t('pos.saleCompleted', sale.invoiceNumber), 'success');
+        return;
+      }
+      // Rejection → same user-facing toast mapping as local checkout. Cart preserved.
+      switch (ack?.error) {
+        case 'tax_setup_required':
+          toast(
+            lang === 'es'
+              ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
+              : lang === 'pt'
+                ? 'Configuração de impostos necessária antes de uma venda tributável.'
+                : 'Tax setup required before taxable sale.',
+            'error',
+          );
+          break;
+        case 'repair_cancelled': toast(t('pos.repairCancelledPayment'), 'error'); break;
+        case 'repair_completed': toast(t('pos.repairAlreadyCompleted'), 'error'); break;
+        case 'layaway_cancelled': toast(t('pos.layawayCancelledSale'), 'error'); break;
+        case 'repair_overpayment': toast(t('pos.repairOverpaymentBlocked'), 'error'); break;
+        default:
+          toast(
+            lang === 'es'
+              ? 'No se pudo completar en la Principal. Revisa la conexión e intenta de nuevo.'
+              : lang === 'pt'
+                ? 'Não foi possível concluir no Principal. Verifique a conexão e tente novamente.'
+                : 'Could not complete on the Primary. Check the connection and try again.',
+            'error',
+          );
+      }
+    })();
+  }, [
+    handleCompleteSale, toast, t, lang,
+    setCart, setDiscount, setPaymentMethod, setCashAmount, setCardAmount,
+    setAddCreditCardFee, setSelectedCustomer,
+  ]);
+
   const handleCartCheckout = useCallback(() => {
     // [I6] Mismo discriminator que PaymentModal.tsx:60-64. Intencionalmente
     // duplicado (no helper compartido) — refactor a saleBuilder en ticket
@@ -672,13 +736,14 @@ export default function POSModule() {
     });
 
     // [I1] Única capa post-sale — misma función que consume onComplete
-    // de PaymentModal (path B). Persist, inventory, customer, reconcile,
-    // SMS (I4), reset (I5), receipt — todo ahí.
-    handleCompleteSale(sale);
+    // de PaymentModal (path B). R-LAN-POS-CHECKOUT-FORWARDING: routes through
+    // completeOrForwardSale so a Secondary forwards to the Primary instead of
+    // finalizing locally (standalone/Primary behaviour unchanged).
+    completeOrForwardSale(sale);
   }, [
     cart, totals, paymentMethod, cashAmount, cardAmount,
     selectedCustomer, currentEmployee, settings, lang, toast,
-    handleCompleteSale,
+    completeOrForwardSale,
   ]);
 
   // ── Clear Cart ──────────────────────────────────────────
@@ -1039,7 +1104,7 @@ export default function POSModule() {
           selectedCustomer={selectedCustomer}
           currentEmployee={currentEmployee}
           settings={settings}
-          onComplete={handleCompleteSale}
+          onComplete={completeOrForwardSale}
           lang={lang}
           L={L}
         />

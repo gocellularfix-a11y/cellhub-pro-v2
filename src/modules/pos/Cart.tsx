@@ -1001,14 +1001,16 @@ export default function Cart({
 
       {/* Checkout button */}
       <div className="px-4 py-2 border-t border-white/10">
+        {/* R-LAN-POS-CHECKOUT-FORWARDING: a Secondary may complete checkout — the
+            sale is forwarded to the Primary (which finalizes it authoritatively).
+            The persist-layer read-only guard still blocks every DIRECT write on a
+            Secondary; only this checkout button (→ forwarding) is enabled. */}
         <button
           onClick={onCheckout}
           className="btn btn-success w-full text-base py-2"
-          disabled={cart.length === 0 || lanReadOnly}
-          title={lanReadOnly ? t('lan.readOnlyTooltip') : undefined}
-          style={lanReadOnly ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          disabled={cart.length === 0}
         >
-          {lanReadOnly ? t('lan.readOnlyTooltip') : `${t('completeSale')} — ${formatCurrency(totals.total)}`}
+          {`${t('completeSale')} — ${formatCurrency(totals.total)}`}
         </button>
       </div>
 
