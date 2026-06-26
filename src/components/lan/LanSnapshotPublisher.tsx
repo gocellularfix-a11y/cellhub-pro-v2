@@ -31,7 +31,9 @@ export default function LanSnapshotPublisher() {
         {
           customers: s.customers, inventory: s.inventory, sales: s.sales, repairs: s.repairs,
           layaways: s.layaways, unlocks: s.unlocks, specialOrders: s.specialOrders,
-          appointments: s.appointments, settings: s.settings as unknown as Record<string, unknown>,
+          appointments: s.appointments,
+          storeCreditLedger: s.storeCreditLedger, customerReturns: s.customerReturns,
+          settings: s.settings as unknown as Record<string, unknown>,
         },
         (s.settings as { storeName?: string })?.storeName || 'CellHub Primary',
       );

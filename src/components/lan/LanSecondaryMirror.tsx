@@ -24,6 +24,7 @@ import { getConnection, fetchSnapshot, LAN_RESYNC_EVENT } from '@/services/lan/l
 import { setMirrorStatus, getMirrorStatus } from '@/services/lan/lanMirror';
 import type {
   Customer, InventoryItem, Sale, Repair, Unlock, SpecialOrder, Layaway, Appointment,
+  StoreCreditLedger, CustomerReturn,
 } from '@/store/types';
 
 const REFRESH_MS = 20_000; // auto-refresh cadence (within the 15–30s requirement)
@@ -55,6 +56,8 @@ export default function LanSecondaryMirror() {
       const unlocks = asArr(data.unlocks);
       const specialOrders = asArr(data.specialOrders);
       const appointments = asArr(data.appointments);
+      const storeCreditLedger = asArr(data.storeCreditLedger);
+      const customerReturns = asArr(data.customerReturns);
       // In-memory only. NOTE: settings are intentionally NOT hydrated so the
       // Secondary keeps its own printers / license / tax config untouched.
       if (customers) a.setCustomers(customers as Customer[]);
@@ -65,6 +68,8 @@ export default function LanSecondaryMirror() {
       if (unlocks) a.setUnlocks(unlocks as Unlock[]);
       if (specialOrders) a.setSpecialOrders(specialOrders as SpecialOrder[]);
       if (appointments) a.setAppointments(appointments as Appointment[]);
+      if (storeCreditLedger) a.setStoreCreditLedger(storeCreditLedger as StoreCreditLedger[]);
+      if (customerReturns) a.setCustomerReturns(customerReturns as CustomerReturn[]);
     };
 
     const tick = async () => {

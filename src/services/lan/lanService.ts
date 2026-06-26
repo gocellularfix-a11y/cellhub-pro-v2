@@ -189,6 +189,7 @@ const SETTINGS_SECRET_KEYS = ['adminPin', 'firebaseConfig', 'detectedPrinters'];
 export interface SnapshotState {
   customers?: unknown[]; inventory?: unknown[]; sales?: unknown[]; repairs?: unknown[];
   layaways?: unknown[]; unlocks?: unknown[]; specialOrders?: unknown[]; appointments?: unknown[];
+  storeCreditLedger?: unknown[]; customerReturns?: unknown[];
   settings?: Record<string, unknown>;
 }
 
@@ -224,6 +225,8 @@ export function buildSnapshot(state: SnapshotState, primaryName: string): LanSna
       unlocks: arr(state.unlocks),
       specialOrders: arr(state.specialOrders),
       appointments: arr(state.appointments),
+      storeCreditLedger: arr(state.storeCreditLedger),
+      customerReturns: arr(state.customerReturns),
       settings,
     },
   };
