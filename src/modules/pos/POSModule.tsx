@@ -43,8 +43,9 @@ import { forwardTaxFromBase } from '@/utils/depositTax';
 import { buildSale, computePaidCents } from './saleBuilder';
 import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
 import { finalizeSaleCore } from './finalizeSaleCore';
-import { sendPosCheckout, requestMirrorResync } from '@/services/lan/lanService';
+import { sendPosCheckout, requestMirrorResync, generateLanOperationId } from '@/services/lan/lanService';
 import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
+import { classifyCheckoutAck } from '@/services/lan/posCheckoutForwarding';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 
@@ -610,22 +611,31 @@ export default function POSModule() {
   // NEVER persists or calls finalizeSaleCore locally. Only Secondary-local UI is
   // reset on success; on failure the cart is preserved so the cashier can retry.
   const forwardingRef = useRef(false);
+  // R-LAN-POS-CHECKOUT-FORWARDING-FIX-2: an in-doubt forward (ACK lost/timed out —
+  // the Primary MAY have committed). Held so a retry reuses the SAME sale +
+  // operationId, letting the Primary dedupe instead of double charging. Cleared on
+  // a committed/determinate-rejected outcome, or when the cashier changes the
+  // cart/payment/customer (manual abandon — see the effect below).
+  const pendingForwardRef = useRef<{ sale: Sale; operationId: string } | null>(null);
   const completeOrForwardSale = useCallback((sale: Sale) => {
     if (!isLanSecondaryReadOnly()) {
       handleCompleteSale(sale);
       return;
     }
-    // R-LAN-POS-CHECKOUT-FORWARDING-FIX: in-flight guard. A rapid double-click
-    // rebuilds a NEW sale.id each time (which the Primary's sale.id dedup cannot
-    // catch), so block a second forward while the first is still pending.
-    // Released in .finally() below whether the forward resolves or rejects.
+    // In-flight guard: ignore re-clicks while a forward is pending.
     if (forwardingRef.current) return;
+    // Reuse an unresolved (in-doubt) pending forward so the retry keeps the same
+    // sale.id + operationId; otherwise start a new one with the freshly built sale.
+    const pending = pendingForwardRef.current ?? { sale, operationId: generateLanOperationId() };
+    pendingForwardRef.current = pending;
     forwardingRef.current = true;
     void (async () => {
-      const ack = await sendPosCheckout(sale);
-      if (ack && ack.ok) {
+      const ack = await sendPosCheckout(pending.sale, pending.operationId);
+      const outcome = classifyCheckoutAck(ack);
+      if (outcome === 'committed') {
+        pendingForwardRef.current = null;
         // Secondary-only UI cleanup (UI state only — no persist, no global writes).
-        setLastSale(sale);
+        setLastSale(pending.sale);
         cartRef.current = [];
         setCart([]);
         setDiscount({ amount: 0, type: 'percent', reason: '' });
@@ -637,41 +647,64 @@ export default function POSModule() {
         setShowPayment(false);
         setShowReceipt(true);
         requestMirrorResync();
-        toast(t('pos.saleCompleted', sale.invoiceNumber), 'success');
+        toast(t('pos.saleCompleted', pending.sale.invoiceNumber), 'success');
         return;
       }
-      // Rejection → same user-facing toast mapping as local checkout. Cart preserved.
-      switch (ack?.error) {
-        case 'tax_setup_required':
-          toast(
-            lang === 'es'
-              ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
-              : lang === 'pt'
-                ? 'Configuração de impostos necessária antes de uma venda tributável.'
-                : 'Tax setup required before taxable sale.',
-            'error',
-          );
-          break;
-        case 'repair_cancelled': toast(t('pos.repairCancelledPayment'), 'error'); break;
-        case 'repair_completed': toast(t('pos.repairAlreadyCompleted'), 'error'); break;
-        case 'layaway_cancelled': toast(t('pos.layawayCancelledSale'), 'error'); break;
-        case 'repair_overpayment': toast(t('pos.repairOverpaymentBlocked'), 'error'); break;
-        default:
-          toast(
-            lang === 'es'
-              ? 'No se pudo completar en la Principal. Revisa la conexión e intenta de nuevo.'
-              : lang === 'pt'
-                ? 'Não foi possível concluir no Principal. Verifique a conexão e tente novamente.'
-                : 'Could not complete on the Primary. Check the connection and try again.',
-            'error',
-          );
+      if (outcome === 'rejected') {
+        // Primary definitively did NOT commit → safe to abandon; cart preserved so
+        // the cashier can fix the issue and ring up a fresh sale.
+        pendingForwardRef.current = null;
+        switch (ack?.error) {
+          case 'tax_setup_required':
+            toast(
+              lang === 'es'
+                ? 'Configuración de impuestos requerida antes de una venta con impuesto.'
+                : lang === 'pt'
+                  ? 'Configuração de impostos necessária antes de uma venda tributável.'
+                  : 'Tax setup required before taxable sale.',
+              'error',
+            );
+            break;
+          case 'repair_cancelled': toast(t('pos.repairCancelledPayment'), 'error'); break;
+          case 'repair_completed': toast(t('pos.repairAlreadyCompleted'), 'error'); break;
+          case 'layaway_cancelled': toast(t('pos.layawayCancelledSale'), 'error'); break;
+          case 'repair_overpayment': toast(t('pos.repairOverpaymentBlocked'), 'error'); break;
+          default:
+            toast(
+              lang === 'es'
+                ? 'No se pudo completar en la Principal.'
+                : lang === 'pt'
+                  ? 'Não foi possível concluir no Principal.'
+                  : 'Could not complete on the Primary.',
+              'error',
+            );
+        }
+        return;
       }
+      // outcome === 'unknown' — INDETERMINATE (lost/timed-out ACK; the Primary may
+      // have committed). KEEP the pending forward so the next attempt retries the
+      // SAME sale.id + operationId (the Primary dedupes). Never auto-rebuild.
+      toast(
+        lang === 'es'
+          ? 'Estado del cobro desconocido. Verifica la Principal antes de reintentar.'
+          : lang === 'pt'
+            ? 'Status do pagamento desconhecido. Verifique o Principal antes de tentar novamente.'
+            : 'Checkout status unknown. Check the Primary before retrying.',
+        'error',
+      );
     })().finally(() => { forwardingRef.current = false; });
   }, [
     handleCompleteSale, toast, t, lang,
     setCart, setDiscount, setPaymentMethod, setCashAmount, setCardAmount,
     setAddCreditCardFee, setSelectedCustomer,
   ]);
+
+  // R-LAN-POS-CHECKOUT-FORWARDING-FIX-2: a cart/payment/customer change abandons an
+  // in-doubt forward (the built sale no longer matches), so the next checkout starts
+  // a fresh sale. Skipped while a forward is in-flight.
+  useEffect(() => {
+    if (!forwardingRef.current) pendingForwardRef.current = null;
+  }, [cart, paymentMethod, selectedCustomer]);
 
   const handleCartCheckout = useCallback(() => {
     // [I6] Mismo discriminator que PaymentModal.tsx:60-64. Intencionalmente

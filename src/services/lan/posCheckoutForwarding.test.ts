@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Sale, InventoryItem, Customer, Repair, StoreSettings } from '@/store/types';
-import { resolvePosCheckout, type PrimaryCheckoutState } from './posCheckoutForwarding';
+import { resolvePosCheckout, classifyCheckoutAck, type PrimaryCheckoutState } from './posCheckoutForwarding';
 
 function sale(over: Partial<Sale> = {}): Sale {
   return {
@@ -70,6 +70,20 @@ describe('resolvePosCheckout (R-LAN-POS-CHECKOUT-FORWARDING)', () => {
     expect((r as { result?: unknown }).result).toBeUndefined();
   });
 
+  it('retry with the SAME sale.id and SAME operationId dedupes (no double commit)', () => {
+    const committed = sale({ id: 'sale-X' });
+    (committed as unknown as Record<string, unknown>).lanOperationId = 'op-A';
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-X', items: [item({ inventoryId: 'inv-1', qty: 1 })] }),
+      'op-A', // same operationId as the committed sale
+      state({ sales: [committed], inventory: [{ id: 'inv-1', category: 'accessory', qty: 5 } as unknown as InventoryItem] }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.duplicate) return;
+    expect(r.saleId).toBe('sale-X');
+    expect((r as { result?: unknown }).result).toBeUndefined();
+  });
+
   it('dedupes by sale.id even when the operationId differs (no double charge / mutation)', () => {
     // The Primary already committed sale-X via the first forward (op-A). A
     // re-forward of the SAME built Sale arrives with a NEW operationId (op-B) —
@@ -117,5 +131,30 @@ describe('resolvePosCheckout (R-LAN-POS-CHECKOUT-FORWARDING)', () => {
     expect(r.ok).toBe(true);
     if (!r.ok || r.duplicate) return;
     expect(r.result.inventory.find((i) => i.id === 'inv-1')!.qty).toBe(0);
+  });
+});
+
+describe('classifyCheckoutAck (R-LAN-POS-CHECKOUT-FORWARDING-FIX-2)', () => {
+  it('ok ACK → committed', () => {
+    expect(classifyCheckoutAck({ ok: true, saleId: 's1' })).toBe('committed');
+  });
+
+  it('definitive not-committed reasons → rejected (safe to abandon)', () => {
+    for (const e of [
+      'tax_setup_required', 'repair_cancelled', 'repair_completed', 'layaway_cancelled',
+      'repair_overpayment', 'bad_payload', 'bad_operation', 'not_paired', 'not_electron',
+      'not_primary', 'dispatch_unavailable',
+    ]) {
+      expect(classifyCheckoutAck({ ok: false, error: e })).toBe('rejected');
+    }
+  });
+
+  it('ambiguous transport/dispatch failures → unknown (KEEP pending, retry same id)', () => {
+    for (const e of ['unreachable', 'timeout', 'dispatch_failed', 'dispatch_exception', 'http_500', '']) {
+      expect(classifyCheckoutAck({ ok: false, error: e })).toBe('unknown');
+    }
+    expect(classifyCheckoutAck({ ok: false })).toBe('unknown');
+    expect(classifyCheckoutAck(null)).toBe('unknown');
+    expect(classifyCheckoutAck(undefined)).toBe('unknown');
   });
 });

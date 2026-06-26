@@ -104,3 +104,33 @@ export function resolvePosCheckout(
   if (!result.ok) return { ok: false, error: result.reason };
   return { ok: true, duplicate: false, saleId: taggedSale.id, taggedSale, result };
 }
+
+// ── R-LAN-POS-CHECKOUT-FORWARDING-FIX-2: forward outcome classification ──
+// Reasons where the Primary DEFINITIVELY did not commit (a pre-send guard, a
+// malformed payload, a never-mounted dispatcher, or a finalizeSaleCore pre-flight
+// rejection). Safe to abandon the pending forward. Anything NOT in this set after
+// an !ok ACK is INDETERMINATE — the Primary MAY have committed but the ACK was
+// lost/timed out — so the pending forward MUST be kept and retried with the SAME
+// sale.id + operationId (which the Primary then dedupes). Biased toward 'unknown'
+// so an ambiguous transport error never permits a fresh sale.id that double-charges.
+const DETERMINATE_NOT_COMMITTED = new Set<string>([
+  // finalizeSaleCore pre-flight business rejections (no mutation applied)
+  'tax_setup_required', 'repair_cancelled', 'repair_completed', 'layaway_cancelled', 'repair_overpayment',
+  // never reached / never ran the finalize handler
+  'bad_payload', 'bad_operation', 'not_paired', 'not_electron', 'not_primary', 'dispatch_unavailable',
+]);
+
+export type ForwardOutcome = 'committed' | 'rejected' | 'unknown';
+
+/**
+ * Classify a forwarded-checkout ACK. Pure.
+ *   committed → the Primary finalized the sale (ack.ok).
+ *   rejected  → the Primary definitively did NOT commit (safe to abandon/rebuild).
+ *   unknown   → indeterminate transport/dispatch failure (KEEP pending; retry same id).
+ */
+export function classifyCheckoutAck(ack: LanOperationAck | null | undefined): ForwardOutcome {
+  if (ack && ack.ok) return 'committed';
+  const err = ack && typeof ack.error === 'string' ? ack.error : '';
+  if (DETERMINATE_NOT_COMMITTED.has(err)) return 'rejected';
+  return 'unknown';
+}

@@ -428,13 +428,17 @@ export async function sendPrintReceipt(input: LanPrintReceiptInput): Promise<Lan
 // NOTHING is persisted on the Secondary. On ACK success we trigger a mirror
 // re-sync so the committed sale/inventory/etc. appear from the Primary snapshot.
 // Idempotent: the operationId lets the Primary dedup retries (no double charge).
-export async function sendPosCheckout(sale: Sale): Promise<LanOperationAck> {
+// R-LAN-POS-CHECKOUT-FORWARDING-FIX-2: operationId is now caller-supplied so a
+// retry of the SAME built Sale reuses the SAME operationId (and sale.id), letting
+// the Primary dedupe a re-send after a lost/timed-out ACK without double charging.
+// When omitted (first attempt convenience) one is minted.
+export async function sendPosCheckout(sale: Sale, operationId?: string): Promise<LanOperationAck> {
   if (!isElectron() || !window.electronAPI?.lanSendOperation) return { ok: false, error: 'not_electron' };
   const conn = getConnection();
   if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return { ok: false, error: 'not_paired' };
   if (!sale || !Array.isArray((sale as Sale).items)) return { ok: false, error: 'bad_payload' };
   const operation: LanOperation = {
-    operationId: randomId(),
+    operationId: operationId || randomId(),
     type: 'LAN_POS_CHECKOUT',
     payload: { checkout: { sale } },
     deviceId: getDeviceId(),
@@ -444,6 +448,9 @@ export async function sendPosCheckout(sale: Sale): Promise<LanOperationAck> {
   if (ack && ack.ok) requestMirrorResync();
   return ack;
 }
+
+/** Stable operationId for a forwarded checkout (so retries reuse the same one). */
+export function generateLanOperationId(): string { return randomId(); }
 
 // Primary side: last operation received from a Secondary (display only).
 // Module-level store — the LanOperationListener writes it, the settings panel
