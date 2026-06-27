@@ -88,6 +88,47 @@ export function handleEndOfDayBrief(
     }
   }
 
+  // ── Tender breakdown (R-INTELLIGENCE-EOD-A2B) ─────────────
+  // Decomposition of already-visible revenue (cash/card/store credit). Sales
+  // totals are employee-allowed, so tender is NOT gated by profitVisible. Only
+  // non-zero buckets render; section is skipped entirely when unavailable.
+  if (money.tenderBreakdownAvailable) {
+    const tb = money.tenderBreakdown;
+    const tenderLines: string[] = [];
+    if (tb.cashCents > 0)        tenderLines.push(`  • ${t('chat.eodBrief.tenderCash')} — ${COP(tb.cashCents)}`);
+    if (tb.cardCents > 0)        tenderLines.push(`  • ${t('chat.eodBrief.tenderCard')} — ${COP(tb.cardCents)}`);
+    if (tb.storeCreditCents > 0) tenderLines.push(`  • ${t('chat.eodBrief.tenderStoreCredit')} — ${COP(tb.storeCreditCents)}`);
+    if (tb.externalCents > 0)    tenderLines.push(`  • ${t('chat.eodBrief.tenderExternal')} — ${COP(tb.externalCents)}`);
+    if (tb.otherCents > 0)       tenderLines.push(`  • ${t('chat.eodBrief.tenderOther')} — ${COP(tb.otherCents)}`);
+    if (tenderLines.length > 0) {
+      lines.push(t('chat.eodBrief.tenderHeader'));
+      lines.push(...tenderLines);
+      lines.push('');
+    }
+  }
+
+  // ── Taxes & fees collected (R-INTELLIGENCE-EOD-A2B) ───────
+  // Gated behind money.profitVisible so employees (and any non-financial
+  // viewer) never see the tax/fee breakdown. Owner sees it; the financial-
+  // privacy gate already resolved profitVisible upstream. Only non-zero lines
+  // render; totalCents === sum of the lines above (engine invariant).
+  if (money.feesAndTaxesAvailable && money.profitVisible) {
+    const ft = money.feesAndTaxes;
+    const feeLines: string[] = [];
+    if (ft.salesTaxCents > 0)      feeLines.push(`  • ${t('chat.eodBrief.taxSales')} — ${COP(ft.salesTaxCents)}`);
+    if (ft.utilityTaxCents > 0)    feeLines.push(`  • ${t('chat.eodBrief.taxUtility')} — ${COP(ft.utilityTaxCents)}`);
+    if (ft.caMobilityFeeCents > 0) feeLines.push(`  • ${t('chat.eodBrief.feeMobility')} — ${COP(ft.caMobilityFeeCents)}`);
+    if (ft.cbeFeeCents > 0)        feeLines.push(`  • ${t('chat.eodBrief.feeCbe')} — ${COP(ft.cbeFeeCents)}`);
+    if (ft.screenFeeCents > 0)     feeLines.push(`  • ${t('chat.eodBrief.feeScreen')} — ${COP(ft.screenFeeCents)}`);
+    if (ft.creditCardFeeCents > 0) feeLines.push(`  • ${t('chat.eodBrief.feeCreditCard')} — ${COP(ft.creditCardFeeCents)}`);
+    if (feeLines.length > 0) {
+      lines.push(t('chat.eodBrief.taxesHeader'));
+      lines.push(...feeLines);
+      lines.push(`  • ${t('chat.eodBrief.taxesTotal')} — ${COP(ft.totalCents)}`);
+      lines.push('');
+    }
+  }
+
   // ── Open items ────────────────────────────────────────────
   const {
     repairsPendingTomorrow,
