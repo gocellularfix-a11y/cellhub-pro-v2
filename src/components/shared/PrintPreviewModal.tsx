@@ -300,9 +300,23 @@ export default function PrintPreviewModal({
   // user's scale (100% by default) and must NOT be auto-shrunk — shrinking a
   // multi-page Letter doc to fit "one page" is exactly the wrong behavior.
   // Receipts/reports (multiPage falsy) keep the existing shrink-to-fit formula.
+  // PRINT-PREVIEW-80MM-CONTROLS-V1: the 80mm thermal receipt has a dedicated
+  // template that authors its own printer-safe content width (70mm body inside
+  // 80mm paper). Print Scale / Shrink-to-fit / Margins are 4x6/Letter concerns
+  // that never applied to it — and a manual scale left over from a prior Letter
+  // print could silently leak into the 80mm job (effectiveScale = scaleFactor
+  // when shrinkToFit was off). Pin 80mm to a single fixed printer-safe scale.
+  // 95 is EXACTLY the value the default shrink-to-fit path already produced for
+  // 80mm, so the physical receipt output is unchanged; this only removes the
+  // leak path. PREVIEW/PRINT-SCALE ONLY — no template, payload, or money change.
+  const is80mm = pageSize === '80mm';
   const effectiveScale = useMemo(
-    () => (multiPage ? scaleFactor : (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor)),
-    [multiPage, shrinkToFit, pageSize, scaleFactor],
+    () => (
+      is80mm
+        ? 95
+        : (multiPage ? scaleFactor : (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor))
+    ),
+    [is80mm, multiPage, shrinkToFit, pageSize, scaleFactor],
   );
 
   // R-PRINT-PREVIEW-PERF-V1: previously this regex-replace ran on every
@@ -492,6 +506,26 @@ export default function PrintPreviewModal({
             </label>
           </Field>
 
+          {/* Scale + Margins — PRINT-PREVIEW-80MM-CONTROLS-V1: 80mm thermal uses
+              fixed printer-safe scaling (see effectiveScale), so the Print Scale,
+              Shrink-to-fit and Margins controls — all 4x6/Letter concerns — are
+              replaced by a short note. Every other page size keeps full controls. */}
+          {is80mm ? (
+            <Field label={locale === 'es' ? 'Escala de Impresión' : locale === 'pt' ? 'Escala de Impressão' : 'Print Scale'}>
+              <div style={{
+                fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.4,
+                padding: '0.5rem 0.6rem', background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.4rem',
+              }}>
+                {locale === 'es'
+                  ? 'Los recibos de 80mm usan escala fija segura para impresora.'
+                  : locale === 'pt'
+                  ? 'Recibos de 80mm usam escala fixa segura para impressora.'
+                  : '80mm receipts use fixed printer-safe scaling.'}
+              </div>
+            </Field>
+          ) : (
+          <>
           {/* Scale */}
           <Field label="Print Scale">
             {/* R-PRINT-SHRINK-TO-FIT: toggle disables manual scale and uses calculateAutoScale() */}
@@ -570,6 +604,8 @@ export default function PrintPreviewModal({
               ))}
             </div>
           </Field>
+          </>
+          )}
 
           {/* Copies */}
           <Field label="Copies">
