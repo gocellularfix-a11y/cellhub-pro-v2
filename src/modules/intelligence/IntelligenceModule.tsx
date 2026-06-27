@@ -348,7 +348,13 @@ export default function IntelligenceModule() {
     // manager queue AFTER auto-resolution (so a freshly-cleared issue isn't
     // re-enrolled). Reuses addManagerQueueItem's dedup + persistence; creates
     // no new signals and executes nothing. Fail-safe: never throws into render.
-    const enrolled = enrollIntelligenceRisksToManagerQueue(engine.getProactiveReport().actions).enrolled;
+    // R-INTELLIGENCE-ENTITY-VALIDATION-TIER3: pass the engine as the live store
+    // so enrollment drops any risk whose entity went stale (cancelled/refunded/
+    // picked_up repair, deleted customer/inventory, or missing) since the scan.
+    const enrolled = enrollIntelligenceRisksToManagerQueue(
+      engine.getProactiveReport().actions,
+      { store: engine },
+    ).enrolled;
     if (resolved > 0 || enrolled > 0) reloadQueue();
   }, [engine, sales, repairs, layaways, inventory, reloadQueue]); // eslint-disable-line react-hooks/exhaustive-deps
 

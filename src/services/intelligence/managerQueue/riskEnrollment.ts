@@ -15,6 +15,12 @@
 import type { ProactiveAction } from '@/services/intelligence/proactive/types';
 import type { QueueEntityType, QueueItemSeverity } from './types';
 import { getQueue, buildFingerprint, addManagerQueueItem } from './actions';
+// R-INTELLIGENCE-ENTITY-VALIDATION-TIER3: live re-validation at enrollment time.
+import {
+  validateResolvedEntity,
+  type EntityValidationStore,
+} from '@/services/intelligence/oce/entityResolution/validateResolvedEntity';
+import type { ResolvedEntity } from '@/services/intelligence/oce/entityResolution/types';
 
 export interface RiskEnrollmentSummary {
   /** Candidates evaluated this run (manager-worthy, after the per-run cap). */
@@ -27,6 +33,28 @@ export interface RiskEnrollmentSummary {
   skippedResolved: number;
   /** Skipped — malformed action (no usable title) or persistence failure. */
   skippedInvalid: number;
+  /**
+   * R-INTELLIGENCE-ENTITY-VALIDATION-TIER3: skipped — the entity went stale
+   * (cancelled/refunded/refund_pending/picked_up repair, deleted customer or
+   * inventory, or a record that no longer exists) between scan and enrollment.
+   * Only ever non-zero when a validation store is supplied via opts.store.
+   */
+  skippedStale: number;
+}
+
+// R-INTELLIGENCE-ENTITY-VALIDATION-TIER3: map a queue entity reference to the
+// resolution-oriented ResolvedEntity the canonical validator understands. Only
+// customer/repair/layaway/inventory have a validator path; sale carries no
+// executable action and unlock/special_order have no resolver — those return
+// null and pass through enrollment unchanged (Tier3 only DROPS known-stale).
+function toResolvedEntity(entityType: QueueEntityType, entityId: string): ResolvedEntity | null {
+  switch (entityType) {
+    case 'customer':  return { type: 'customer',  customerId: entityId, confidence: 1 };
+    case 'repair':    return { type: 'repair',    repairId: entityId,   confidence: 1 };
+    case 'layaway':   return { type: 'layaway',   layawayId: entityId,  confidence: 1 };
+    case 'inventory': return { type: 'inventory', sku: entityId,        confidence: 1 };
+    default:          return null; // sale | unlock | special_order
+  }
 }
 
 // Per-run flood guard: enroll at most this many risks per data update. The
@@ -67,7 +95,7 @@ function coerceEntityType(s: string | undefined): QueueEntityType | undefined {
  */
 export function enrollIntelligenceRisksToManagerQueue(
   actions: ProactiveAction[] | null | undefined,
-  opts: { cap?: number } = {},
+  opts: { cap?: number; store?: EntityValidationStore } = {},
 ): RiskEnrollmentSummary {
   const summary: RiskEnrollmentSummary = {
     considered: 0,
@@ -75,6 +103,7 @@ export function enrollIntelligenceRisksToManagerQueue(
     skippedDuplicate: 0,
     skippedResolved: 0,
     skippedInvalid: 0,
+    skippedStale: 0,
   };
 
   try {
@@ -122,6 +151,30 @@ export function enrollIntelligenceRisksToManagerQueue(
         typeof action.entityId === 'string' && action.entityId.trim()
           ? action.entityId.trim()
           : undefined;
+
+      // R-INTELLIGENCE-ENTITY-VALIDATION-TIER3: revalidate the entity against
+      // LIVE store state immediately before enrollment. A risk scanned earlier
+      // may now point to a cancelled/refunded/picked_up repair, a deleted
+      // customer/inventory record, or an entity that no longer exists. Drop it —
+      // never persist a queue item for a stale entity. Runs only when a store is
+      // supplied and the type has a validator path (sale/unlock/special_order
+      // pass through). Fail-open: a validator error must never block a real
+      // enrollment, preserving the pre-Tier3 behavior on the safe side.
+      if (opts.store && entityType && entityId) {
+        const resolved = toResolvedEntity(entityType, entityId);
+        if (resolved) {
+          let stale = false;
+          try {
+            stale = !validateResolvedEntity(resolved, opts.store).ok;
+          } catch {
+            stale = false;
+          }
+          if (stale) {
+            summary.skippedStale++;
+            continue;
+          }
+        }
+      }
 
       // Same args order as addManagerQueueItem's internal fingerprint so our
       // pre-check matches what the persisted item will carry.
