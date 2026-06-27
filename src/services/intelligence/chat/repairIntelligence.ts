@@ -12,6 +12,7 @@ import type { ChatResponse, ChatActionUI, Lang3 } from './handlers';
 import { tChat } from './handlers';
 import { isDoneRepairStatus } from '@/utils/repairStatus';
 import { scoreRepairFollowUp, scoreRepairEscalate } from '../operatorQueue/priorityScoring';
+import { validateResolvedEntity } from '../oce/entityResolution/validateResolvedEntity';
 // R-EOD-BRIEF F1: parseTimestampSafe extracted to shared util so EOD brief
 // composer and future intelligence modules can reuse the same parsing contract.
 // Origin context preserved: Repair.createdAt is Timestamp|Date|string; raw
@@ -52,6 +53,15 @@ export function handleRepairFollowUp(
     : oldestActiveRepair(engine);
 
   if (!repair) return { kind: 'answer', text: t('chat.repairFollowUp.noRepair') };
+
+  // R-INTELLIGENCE-ENTITY-VALIDATION-TIER2: the active-selection filter
+  // (!isDoneRepairStatus) excludes picked_up/cancelled/refunded but NOT
+  // refund_pending. Re-validate the selected repair against live store state
+  // via the canonical validator so a refund_pending (or any terminal) repair
+  // never receives a follow-up action. Safe no-op message on failure.
+  if (!validateResolvedEntity({ type: 'repair', repairId: repair.id, confidence: 1 }, engine).ok) {
+    return { kind: 'answer', text: t('chat.repairFollowUp.noRepair') };
+  }
 
   const firstName = repair.customerName.split(' ')[0] || repair.customerName;
   const deviceLabel = repair.device || repair.issue || 'device';
@@ -155,6 +165,13 @@ export function handleRepairEscalate(
     : oldestActiveRepair(engine);
 
   if (!repair) return { kind: 'answer', text: t('chat.repairEscalate.noRepair') };
+
+  // R-INTELLIGENCE-ENTITY-VALIDATION-TIER2: re-validate the selected repair so
+  // a refund_pending (or any terminal) repair never receives an escalation
+  // action — the active-selection filter does not cover refund_pending.
+  if (!validateResolvedEntity({ type: 'repair', repairId: repair.id, confidence: 1 }, engine).ok) {
+    return { kind: 'answer', text: t('chat.repairEscalate.noRepair') };
+  }
 
   const firstName = repair.customerName.split(' ')[0] || repair.customerName;
   const deviceLabel = repair.device || repair.issue || 'device';
