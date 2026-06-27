@@ -129,10 +129,20 @@ describe('composeEODBrief — privacy gate on the money section', () => {
     expect(money.grossProfitCents).toBe(3200);
     expect(money.profitMarginPct).toBe(40);
     expect(money.grossRevenueCents).toBe(10000);
-    // Core real, but tender + fees/taxes pending → partial + unavailable flags.
+    // Core real; confidence stays 'partial' (render deferred to A2B).
     expect(money.confidence).toBe('partial');
-    expect(money.tenderBreakdownAvailable).toBe(false);
-    expect(money.feesAndTaxesAvailable).toBe(false);
+    // R-INTELLIGENCE-EOD-A2A: tender + fees/taxes are now wired (data core).
+    expect(money.tenderBreakdownAvailable).toBe(true);
+    expect(money.feesAndTaxesAvailable).toBe(true);
+    // The $100 cash sale shows up entirely under cash; tender reconciles to gross.
+    expect(money.tenderBreakdown.cashCents).toBe(10000);
+    expect(
+      money.tenderBreakdown.cashCents +
+        money.tenderBreakdown.cardCents +
+        money.tenderBreakdown.storeCreditCents +
+        money.tenderBreakdown.externalCents +
+        money.tenderBreakdown.otherCents,
+    ).toBe(money.grossRevenueCents);
   });
 
   it('employee (canSee=false) → profit/margin zeroed, revenue still present', () => {

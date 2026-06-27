@@ -82,26 +82,12 @@ function countTodaySales(engine: IntelligenceEngine): number {
 // and all existing callers seeing full money, consistent with
 // canViewOwnerFinancials' own no-settings default.
 //
-// tenderBreakdown + feesAndTaxes are NOT computed this round (Priority A2):
-// shape preserved as zeros but flagged *Available=false so downstream never
-// renders them as real. confidence='partial' when real core data exists,
-// 'low' on an empty day.
-const ZERO_TENDER = {
-  cashCents: 0,
-  cardCents: 0,
-  storeCreditCents: 0,
-  externalCents: 0,
-  otherCents: 0,
-} as const;
-
-const ZERO_FEES = {
-  salesTaxCents: 0,
-  utilityTaxCents: 0,
-  caMobilityFeeCents: 0,
-  cbeFeeCents: 0,
-  screenFeeCents: 0,
-  totalCents: 0,
-} as const;
+// R-INTELLIGENCE-EOD-A2A: tender + fees/taxes are now computed by the engine's
+// getTodayMoney() over the same today + non-voided set used for gross. We carry
+// the real breakdown values through and flag *Available based on hasSalesData
+// (any active sale backs them). Rendering of these lines is deferred to A2B
+// (needs bilingual labels in the parked translations.ts). confidence stays
+// 'partial' when core data exists, 'low' on an empty day — unchanged.
 
 function buildMoneySection(
   engine: IntelligenceEngine,
@@ -119,12 +105,12 @@ function buildMoneySection(
     saleCount,
     returnCount: m.returnCount,
     returnedAmountCents: m.returnedAmountCents,
-    // Priority A2 — tender + fees/taxes pending. Flagged unavailable, never
-    // emitted as real numbers by the renderer.
-    tenderBreakdown: { ...ZERO_TENDER },
-    tenderBreakdownAvailable: false,
-    feesAndTaxes: { ...ZERO_FEES },
-    feesAndTaxesAvailable: false,
+    // Real breakdowns (cents). Available when active sales back them; on an
+    // empty day every bucket is 0 and *Available is false.
+    tenderBreakdown: { ...m.tenderBreakdown },
+    tenderBreakdownAvailable: m.hasSalesData,
+    feesAndTaxes: { ...m.feesAndTaxes },
+    feesAndTaxesAvailable: m.hasSalesData,
     confidence: m.hasData ? 'partial' : 'low',
   };
 }

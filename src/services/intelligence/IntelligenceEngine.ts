@@ -680,6 +680,28 @@ export class IntelligenceEngine {
     returnCount: number;
     returnedAmountCents: number;
     hasData: boolean;
+    // R-INTELLIGENCE-EOD-A2A: tender + fees/tax breakdowns aggregated from
+    // existing Sale fields over the SAME today + non-voided set used for gross.
+    // Pure display aggregation — no new tax/checkout math. tenderBreakdown
+    // reconciles to grossRevenueCents; feesAndTaxes.totalCents === sum of lines.
+    // hasSalesData marks whether any active sale backs these (else all zero).
+    tenderBreakdown: {
+      cashCents: number;
+      cardCents: number;
+      storeCreditCents: number;
+      externalCents: number;
+      otherCents: number;
+    };
+    feesAndTaxes: {
+      salesTaxCents: number;
+      utilityTaxCents: number;
+      caMobilityFeeCents: number;
+      cbeFeeCents: number;
+      screenFeeCents: number;
+      creditCardFeeCents: number;
+      totalCents: number;
+    };
+    hasSalesData: boolean;
   } {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -711,6 +733,50 @@ export class IntelligenceEngine {
     const adjusted = adjustSalesItemCosts(todaySales, this.profitSettings);
     const stats = computeCustomerProfit(adjusted, todayReturns);
 
+    // R-INTELLIGENCE-EOD-A2A: tender + fees/tax display aggregation. Same
+    // counted set as computeCustomerProfit's gross (today, status !== 'voided'),
+    // so the tender buckets reconcile to grossRevenueCents and voided/refunded
+    // activity never inflates these totals. Reads ONLY existing Sale fields —
+    // no tax formulas, no checkout math, no mutation.
+    const activeTodaySales = todaySales.filter((s) => s.status !== 'voided');
+
+    let cashCents = 0, cardCents = 0, storeCreditCents = 0, otherCents = 0;
+    let salesTaxCents = 0, utilityTaxCents = 0, caMobilityFeeCents = 0;
+    let cbeFeeCents = 0, screenFeeCents = 0, creditCardFeeCents = 0;
+
+    for (const s of activeTodaySales) {
+      const total = s.total || 0;
+      const pm = String(s.paymentMethod || '').trim().toLowerCase().replace(/\s+/g, '_');
+      const sp = s.splitPayment;
+      if (pm === 'split' && sp) {
+        // Use the stored split buckets directly (sum to total by POS contract).
+        cashCents += sp.cash || 0;
+        cardCents += sp.card || 0;
+        storeCreditCents += sp.storeCredit || 0;
+      } else if (pm === 'cash') {
+        cashCents += total;
+      } else if (pm === 'card') {
+        cardCents += total;
+      } else if (pm === 'store_credit') {
+        storeCreditCents += total;
+      } else {
+        // Unknown/legacy method, or 'split' with no buckets to decompose →
+        // keep the dollars accounted for so tender reconciles to gross.
+        otherCents += total;
+      }
+
+      salesTaxCents      += s.salesTax || 0;
+      utilityTaxCents    += s.utilityTax || 0;
+      caMobilityFeeCents += s.mobileSurcharge || 0;
+      cbeFeeCents        += s.cbeTotal || 0;
+      screenFeeCents     += s.screenFeeTotal || 0;
+      creditCardFeeCents += s.creditCardFee || 0;
+    }
+
+    const feesTotalCents =
+      salesTaxCents + utilityTaxCents + caMobilityFeeCents +
+      cbeFeeCents + screenFeeCents + creditCardFeeCents;
+
     return {
       grossRevenueCents: stats.grossRevenue,
       netRevenueCents: stats.netRevenue,
@@ -720,6 +786,23 @@ export class IntelligenceEngine {
       returnCount: todayReturns.length,
       returnedAmountCents: stats.totalRefunded,
       hasData: todaySales.length > 0 || todayReturns.length > 0,
+      tenderBreakdown: {
+        cashCents,
+        cardCents,
+        storeCreditCents,
+        externalCents: 0, // no external/carrier PaymentMethod exists today
+        otherCents,
+      },
+      feesAndTaxes: {
+        salesTaxCents,
+        utilityTaxCents,
+        caMobilityFeeCents,
+        cbeFeeCents,
+        screenFeeCents,
+        creditCardFeeCents,
+        totalCents: feesTotalCents,
+      },
+      hasSalesData: activeTodaySales.length > 0,
     };
   }
 

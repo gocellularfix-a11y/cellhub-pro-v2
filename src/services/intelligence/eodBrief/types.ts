@@ -46,6 +46,10 @@ export interface EODMoneyFeesAndTaxes {
   caMobilityFeeCents: number;
   cbeFeeCents: number;
   screenFeeCents: number;
+  // R-INTELLIGENCE-EOD-A2A: surcharge income passed to the customer on
+  // Card/Split sales (Sale.creditCardFee). Surfaced here as a breakdown line;
+  // included in totalCents so total === sum of the lines above.
+  creditCardFeeCents: number;
   totalCents: number;
 }
 
