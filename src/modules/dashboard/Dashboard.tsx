@@ -61,7 +61,7 @@ export default function Dashboard() {
   const {
     state: {
       sales, repairs, unlocks, inventory, customers,
-      specialOrders, layaways, lang, settings,
+      specialOrders, layaways, appointments, lang, settings,
       // R-FINANCIAL-PRIVACY-V2: needed to gate owner-only profit tile.
       isAdminMode, currentEmployee,
     },
@@ -427,6 +427,22 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [repairs, minuteTick]);
 
+  // R-DASHBOARD-HERO-V1: scheduled appointments due today. Mirrors
+  // AppointmentsModule.todayCount (same-day estimatedDropOff + status
+  // 'scheduled') — reads the existing appointments state, no new plumbing.
+  // minuteTick dep → recomputes across the midnight boundary like todaySales.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const appointmentsTodayCount = useMemo(
+    () => (appointments || []).filter((a) => a.status === 'scheduled' && isToday(a.estimatedDropOff)).length,
+    [appointments, minuteTick],
+  );
+  // R-DASHBOARD-HERO-V1: "Open Opportunities" = a display-only roll-up of the
+  // SAME follow-up signals already surfaced as banners below (abandoned repairs +
+  // overdue layaways + unpicked special orders + lapsed customers). No new logic,
+  // no new data source — just one headline number for the hero.
+  const opportunitiesCount =
+    abandonedRepairs.length + overdueLayaways.length + unpickedOrders.length + lapsedCustomers.length;
+
   // Recent activity
   const recentRepairs = useMemo(
     () => [...repairs]
@@ -531,8 +547,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Stat Cards — 6 cards with icons ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+      {/* ── Hero Stat Cards — R-DASHBOARD-HERO-V1: focused, owner-first set.
+          Responsive auto-fit grid (no fixed 6-col → no empty column when the
+          gated profit tile is hidden, and no horizontal overflow on laptop). ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
         <div className="stat-card" data-kpi="green" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('reports')}>
           <StatIcon icon="💲" color="rgba(34, 197, 94, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
@@ -571,16 +589,31 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Repairs In Progress */}
         <div className="stat-card" data-kpi="orange" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
           <StatIcon icon="🔧" color="rgba(249, 115, 22, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-            {t('activeRepairs')}
+            {lang === 'es' ? 'Reparaciones en proceso' : lang === 'pt' ? 'Reparos em andamento' : 'Repairs In Progress'}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f97316', marginTop: '0.5rem' }}>
             {activeRepairs.length}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            {readyRepairs.length} {t('readyForPickup')}
+            {lang === 'es' ? 'tickets activos' : lang === 'pt' ? 'tickets ativos' : 'active tickets'}
+          </div>
+        </div>
+
+        {/* Ready For Pickup */}
+        <div className="stat-card" data-kpi="violet" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('repairs')}>
+          <StatIcon icon="📦" color="rgba(139, 92, 246, 0.2)" />
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+            {t('readyForPickup')}
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: readyRepairs.length > 0 ? '#a78bfa' : 'var(--text-primary)', marginTop: '0.5rem' }}>
+            {readyRepairs.length}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            {lang === 'es' ? 'esperan recoger' : lang === 'pt' ? 'aguardando retirada' : 'awaiting pickup'}
           </div>
         </div>
 
@@ -597,29 +630,31 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card" data-kpi="pink" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('customers')}>
-          <StatIcon icon="👥" color="rgba(236, 72, 153, 0.2)" />
+        {/* Open Opportunities — headline roll-up of the follow-up signals below */}
+        <div className="stat-card" data-kpi="pink" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('intelligence')}>
+          <StatIcon icon="🎯" color="rgba(236, 72, 153, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-            {t('totalCustomers')}
+            {lang === 'es' ? 'Oportunidades' : 'Opportunities'}
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '0.5rem' }}>
-            {customers.length}
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: opportunitiesCount > 0 ? '#ec4899' : 'var(--text-primary)', marginTop: '0.5rem' }}>
+            {opportunitiesCount}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            {newCustomersToday.length} {t('newToday')}
+            {lang === 'es' ? 'requieren seguimiento' : lang === 'pt' ? 'requerem acompanhamento' : 'need follow-up'}
           </div>
         </div>
 
-        <div className="stat-card" data-kpi="violet" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('unlocks')}>
-          <StatIcon icon="🔓" color="rgba(139, 92, 246, 0.2)" />
+        {/* Appointments Today */}
+        <div className="stat-card" data-kpi="orange" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('appointments')}>
+          <StatIcon icon="📅" color="rgba(56, 189, 248, 0.2)" />
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-            {t('activeUnlocks')}
+            {lang === 'es' ? 'Citas de hoy' : lang === 'pt' ? 'Agendamentos hoje' : 'Appointments Today'}
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#a78bfa', marginTop: '0.5rem' }}>
-            {activeUnlocks.length}
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#38bdf8', marginTop: '0.5rem' }}>
+            {appointmentsTodayCount}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            {unlocks.filter((u) => normStatus(u.status || '') === 'code_received').length} {t('codesReceived')}
+            {lang === 'es' ? 'agendadas' : lang === 'pt' ? 'agendados' : 'scheduled'}
           </div>
         </div>
       </div>
@@ -877,12 +912,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Quick Stats — 3 equal columns ── */}
+      {/* ── Quick Stats — R-DASHBOARD-HERO-V1: responsive grid; now also hosts
+          Total Customers + Active Unlocks relocated from the hero (kept here so
+          the focused hero stays uncluttered and no count is lost). ── */}
       <div className="card" style={{ padding: '1.5rem' }}>
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
           {t('quickStats')}
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }}>
           <div style={{ padding: '0.75rem 1rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
               {t('dashboard.inventoryValueRetail')}
@@ -896,7 +933,7 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          <div style={{ padding: '0.75rem 1rem', borderLeft: '1px solid var(--border-default)', borderRight: '1px solid var(--border-default)' }}>
+          <div style={{ padding: '0.75rem 1rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
               {t('avgSaleValue').toUpperCase()}
             </div>
@@ -910,6 +947,27 @@ export default function Dashboard() {
             </div>
             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {totalItemsInStock}
+            </div>
+          </div>
+          <div style={{ padding: '0.75rem 1rem', cursor: 'pointer' }} onClick={() => setActiveTab('customers')}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              {t('totalCustomers').toUpperCase()}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {customers.length}
+            </div>
+            {newCustomersToday.length > 0 && (
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                {newCustomersToday.length} {t('newToday')}
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '0.75rem 1rem', cursor: 'pointer' }} onClick={() => setActiveTab('unlocks')}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              {t('activeUnlocks').toUpperCase()}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {activeUnlocks.length}
             </div>
           </div>
         </div>
