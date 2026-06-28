@@ -48,6 +48,54 @@ const THERMAL80_PREVIEW_CSS =
   + 'body{padding-left:4mm !important;padding-right:4mm !important;box-sizing:border-box !important;}'
   + '}</style>';
 
+// PRINT-MODAL-CONTROLS-HARDENING-V1: a single capability map describing which
+// sidebar controls actually apply to each page size. Every visible control must
+// be truthful — if a control can't be honored by the selected media, it is
+// hidden (and, for fixed printer-safe sizes, replaced by a clear note). Keeping
+// every pageSize-specific decision here avoids scattering `pageSize === '80mm'`
+// checks through the JSX and the print path.
+interface PrintControlCaps {
+  /** Fixed printer-safe sizing (80mm thermal): the printer/template own the
+   *  geometry, so no user scale / margins / orientation are exposed. */
+  fixedPrinterSafeSizing: boolean;
+  /** Print Scale field — manual % + slider + shrink-to-fit toggle. */
+  showPrintScale: boolean;
+  showMargins: boolean;
+  showOrientation: boolean;
+  showPages: boolean;
+  showCopies: boolean;
+  showPreviewZoom: boolean;
+}
+
+function getPrintControlCaps(pageSize: string): PrintControlCaps {
+  // 80mm thermal prints from a dedicated template at fixed printer-safe sizing.
+  // Scale / margins / orientation / page-range are meaningless for a single-page
+  // continuous thermal receipt, so showing them would be untruthful.
+  if (pageSize === '80mm') {
+    return {
+      fixedPrinterSafeSizing: true,
+      showPrintScale: false,
+      showMargins: false,
+      showOrientation: false,
+      showPages: false,
+      showCopies: true,
+      showPreviewZoom: true,
+    };
+  }
+  // 4x6 / Letter / Legal / A4 / Dymo label / CR80 card: full controls. Label and
+  // CR80 keep their existing behavior — scale/margins/orientation are meaningful
+  // for fixed-dimension card/label stock (rotation, fit), so they stay available.
+  return {
+    fixedPrinterSafeSizing: false,
+    showPrintScale: true,
+    showMargins: true,
+    showOrientation: true,
+    showPages: true,
+    showCopies: true,
+    showPreviewZoom: true,
+  };
+}
+
 interface PrintPreviewModalProps {
   open: boolean;
   html: string;
@@ -225,7 +273,7 @@ export default function PrintPreviewModal({
       try {
         // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
         const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
-        const micron = landscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
+        const micron = effectiveLandscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
         const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html: currentHtml, copies, pageSize: micron });
         emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
       } catch {
@@ -272,10 +320,10 @@ export default function PrintPreviewModal({
         html: currentHtml,
         deviceName: selectedPrinter,
         pageSize: { width: ps.width, height: ps.height },
-        landscape,
+        landscape: effectiveLandscape,
         scaleFactor: effectiveScale,
         copies,
-        margins,
+        margins: effectiveMargins,
         pageRanges,
       });
       if (result.success) {
@@ -328,15 +376,24 @@ export default function PrintPreviewModal({
   // 95 is EXACTLY the value the default shrink-to-fit path already produced for
   // 80mm, so the physical receipt output is unchanged; this only removes the
   // leak path. PREVIEW/PRINT-SCALE ONLY — no template, payload, or money change.
-  const is80mm = pageSize === '80mm';
+  // PRINT-MODAL-CONTROLS-HARDENING-V1: single source of truth for which controls
+  // apply to the selected page size — consumed by both the print path and the
+  // sidebar render, so no scattered pageSize checks downstream.
+  const caps = getPrintControlCaps(pageSize);
   const effectiveScale = useMemo(
     () => (
-      is80mm
+      caps.fixedPrinterSafeSizing
         ? 95
         : (multiPage ? scaleFactor : (shrinkToFit ? (pageSize === 'letter' ? 80 : 95) : scaleFactor))
     ),
-    [is80mm, multiPage, shrinkToFit, pageSize, scaleFactor],
+    [caps.fixedPrinterSafeSizing, multiPage, shrinkToFit, pageSize, scaleFactor],
   );
+  // Stale-state guards: a fixed printer-safe size (80mm) exposes no scale /
+  // margins / orientation control, so a value left over from a prior Letter/4x6
+  // print must never leak into its print job. For every other size these are the
+  // raw user values verbatim → zero behavior change.
+  const effectiveMargins = caps.fixedPrinterSafeSizing ? { top: 0, bottom: 0, left: 0, right: 0 } : margins;
+  const effectiveLandscape = caps.fixedPrinterSafeSizing ? false : landscape;
 
   // R-PRINT-PREVIEW-PERF-V1: previously this regex-replace ran on every
   // render, so every keystroke (copies / page range / margin / zoom slider)
@@ -374,7 +431,7 @@ export default function PrintPreviewModal({
       // @media screen rule) — this stops the iframe clip edge from shaving the
       // right-aligned money columns. PREVIEW ONLY: printRun uses `currentHtml`,
       // which is never modified here, so the physical receipt is byte-identical.
-      if (is80mm) {
+      if (caps.fixedPrinterSafeSizing) {
         return currentHtml.includes('</head>')
           ? currentHtml.replace('</head>', `${THERMAL80_PREVIEW_CSS}</head>`)
           : THERMAL80_PREVIEW_CSS + currentHtml;
@@ -383,7 +440,7 @@ export default function PrintPreviewModal({
       if (multiPage || previewScale === 100 || isNarrowThermal) return currentHtml;
       return currentHtml.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`);
     },
-    [currentHtml, previewScale, multiPage, isNarrowThermal, is80mm],
+    [currentHtml, previewScale, multiPage, isNarrowThermal, caps.fixedPrinterSafeSizing],
   );
 
   // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
@@ -420,8 +477,8 @@ export default function PrintPreviewModal({
   // divided by one page's pixel height (geometric slicing). PREVIEW-ONLY — none
   // of this touches the print pipeline; the actual page breaks come from the
   // document's own @page CSS, unchanged.
-  const pageWidthPx = (landscape ? ps.height : ps.width) / 25400 * 96;
-  const pageHeightPx = (landscape ? ps.width : ps.height) / 25400 * 96;
+  const pageWidthPx = (effectiveLandscape ? ps.height : ps.width) / 25400 * 96;
+  const pageHeightPx = (effectiveLandscape ? ps.width : ps.height) / 25400 * 96;
   const numPages = multiPage && measuredDocHeight
     ? Math.max(1, Math.ceil(measuredDocHeight / pageHeightPx))
     : 1;
@@ -527,6 +584,7 @@ export default function PrintPreviewModal({
           </Field>
 
           {/* Orientation */}
+          {caps.showOrientation && (
           <Field label="Orientation">
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={landscape} onChange={(e) => setLandscape(e.target.checked)}
@@ -534,28 +592,29 @@ export default function PrintPreviewModal({
               Landscape
             </label>
           </Field>
+          )}
 
-          {/* Scale + Margins — PRINT-PREVIEW-80MM-CONTROLS-V1: 80mm thermal uses
-              fixed printer-safe scaling (see effectiveScale), so the Print Scale,
-              Shrink-to-fit and Margins controls — all 4x6/Letter concerns — are
-              replaced by a short note. Every other page size keeps full controls. */}
-          {is80mm ? (
-            <Field label={locale === 'es' ? 'Escala de Impresión' : locale === 'pt' ? 'Escala de Impressão' : 'Print Scale'}>
+          {/* PRINT-MODAL-CONTROLS-HARDENING-V1: fixed printer-safe sizes (80mm)
+              show a clear "Thermal Sizing" note instead of a Print Scale control
+              the user can't actually change. Other sizes show the real controls. */}
+          {caps.fixedPrinterSafeSizing && (
+            <Field label={locale === 'es' ? 'Tamaño térmico' : locale === 'pt' ? 'Tamanho térmico' : 'Thermal Sizing'}>
               <div style={{
                 fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.4,
                 padding: '0.5rem 0.6rem', background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.4rem',
               }}>
                 {locale === 'es'
-                  ? 'Los recibos de 80mm usan escala fija segura para impresora.'
+                  ? 'Los recibos de 80mm usan tamaño fijo seguro para impresora.'
                   : locale === 'pt'
-                  ? 'Recibos de 80mm usam escala fixa segura para impressora.'
-                  : '80mm receipts use fixed printer-safe scaling.'}
+                  ? 'Recibos de 80mm usam tamanho fixo seguro para impressora.'
+                  : '80mm receipts use fixed printer-safe sizing.'}
               </div>
             </Field>
-          ) : (
-          <>
+          )}
+
           {/* Scale */}
+          {caps.showPrintScale && (
           <Field label="Print Scale">
             {/* R-PRINT-SHRINK-TO-FIT: toggle disables manual scale and uses calculateAutoScale() */}
             <label
@@ -618,8 +677,10 @@ export default function PrintPreviewModal({
               <span>25%</span><span>100%</span><span>200%</span>
             </div>
           </Field>
+          )}
 
           {/* Margins */}
+          {caps.showMargins && (
           <Field label="Margins (inches)">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
               {(['top', 'bottom', 'left', 'right'] as const).map((side) => (
@@ -633,10 +694,10 @@ export default function PrintPreviewModal({
               ))}
             </div>
           </Field>
-          </>
           )}
 
           {/* Copies */}
+          {caps.showCopies && (
           <Field label="Copies">
             <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.4rem' }}>
               {[1, 2, 3].map((n) => (
@@ -688,8 +749,10 @@ export default function PrintPreviewModal({
               >+</button>
             </div>
           </Field>
+          )}
 
           {/* Page range picker */}
+          {caps.showPages && (
           <Field label="Pages">
             <select
               value={pageRangeMode}
@@ -722,13 +785,16 @@ export default function PrintPreviewModal({
               </>
             )}
           </Field>
+          )}
 
           {/* Preview Zoom */}
+          {caps.showPreviewZoom && (
           <Field label={`Preview Zoom: ${zoom}%`}>
             <input type="range" min={25} max={300} step={5} value={zoom}
               onChange={(e) => setZoom(Number(e.target.value))}
               style={{ width: '100%', cursor: 'pointer' }} />
           </Field>
+          )}
 
           {/* Spacer */}
           <div style={{ flex: 1 }} />
@@ -855,8 +921,8 @@ export default function PrintPreviewModal({
                 // controls on the iframe are pure noise on the receipt surface.
                 scrolling="no"
                 style={{
-                  width: landscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
-                  height: landscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
+                  width: effectiveLandscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
+                  height: effectiveLandscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
                   minWidth: '300px',
                   minHeight: '400px',
                   background: '#fff',
