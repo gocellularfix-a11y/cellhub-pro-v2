@@ -29,6 +29,25 @@ const PAGE_SIZES: Record<string, { label: string; width: number; height: number 
   'cr80':   { label: 'Credential / ID Card (CR80)', width: 54000, height: 85600 },
 };
 
+// PRINT-PREVIEW-80MM-CLIP-FIX-V1 — preview-only CSS, injected into the PREVIEW
+// srcDoc ONLY (never into the html sent to printRun). ROOT CAUSE: the dedicated
+// 80mm receipt template renders two different geometries from the SAME html —
+// @media print keeps the content ~58mm wide, LEFT-anchored inside the 80mm
+// paper (so the right-aligned money column lands at ~61mm, leaving a wide right
+// margin and never reaching the cut), but its @media screen rule stretches the
+// content to width:100%, FLUSH against both edges. The preview iframe is exactly
+// the paper width with overflow:hidden, so the right-aligned TOTAL / Cash /
+// Change column — which print keeps clear via that right margin — sits on the
+// iframe's clip edge and gets shaved. This re-adds symmetric horizontal gutters
+// in the preview so those columns sit back inside the visible paper. Print
+// output is unaffected (printRun never sees this style). Scoped to @media screen
+// as a belt-and-suspenders so it can have no effect even if it ever leaked.
+const THERMAL80_PREVIEW_CSS =
+  '<style data-cellhub-preview-only="1">@media screen{'
+  + 'html,body{overflow-x:visible !important;}'
+  + 'body{padding-left:4mm !important;padding-right:4mm !important;box-sizing:border-box !important;}'
+  + '}</style>';
+
 interface PrintPreviewModalProps {
   open: boolean;
   html: string;
@@ -349,12 +368,22 @@ export default function PrintPreviewModal({
   // CSS is untouched.
   const isNarrowThermal = pageSize === '80mm' || pageSize === 'label' || pageSize === 'cr80';
   const scaledHtml = useMemo(
-    () => (
-      multiPage || previewScale === 100 || isNarrowThermal
-        ? currentHtml
-        : currentHtml.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`)
-    ),
-    [currentHtml, previewScale, multiPage, isNarrowThermal],
+    () => {
+      // PRINT-PREVIEW-80MM-CLIP-FIX-V1: the 80mm preview gets the gutter style
+      // injected (right before </head> so it wins the cascade over the template's
+      // @media screen rule) — this stops the iframe clip edge from shaving the
+      // right-aligned money columns. PREVIEW ONLY: printRun uses `currentHtml`,
+      // which is never modified here, so the physical receipt is byte-identical.
+      if (is80mm) {
+        return currentHtml.includes('</head>')
+          ? currentHtml.replace('</head>', `${THERMAL80_PREVIEW_CSS}</head>`)
+          : THERMAL80_PREVIEW_CSS + currentHtml;
+      }
+      // 4x6 / Letter / label / cr80 keep their existing preview behavior.
+      if (multiPage || previewScale === 100 || isNarrowThermal) return currentHtml;
+      return currentHtml.replace(/<body([^>]*)>/i, `<body$1 style="transform: scale(${previewScale / 100}); transform-origin: center center;">`);
+    },
+    [currentHtml, previewScale, multiPage, isNarrowThermal, is80mm],
   );
 
   // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
