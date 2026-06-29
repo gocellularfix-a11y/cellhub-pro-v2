@@ -14,6 +14,8 @@ import { sanitizeToBMP } from '@/services/whatsapp';
 import { DEFAULT_PAYMENT_PORTALS, type PaymentPortal } from '@/config/paymentPortals';
 import { isWeakPin } from '@/utils/pinHash';
 import { isElectron, getElectronAPI } from '@/utils/platform';
+// LAN-HARDWARE-BRIDGE-FOUNDATION-V1: on a Secondary, hardware is owned by the Primary.
+import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import {
   readDashboardTheme,
@@ -347,6 +349,9 @@ export default function SettingsModule() {
   // that the chosen name becomes detectedPrinters[0].
   const [scanningPrinters, setScanningPrinters] = useState(false);
   const { t, locale } = useTranslation();
+  // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: a Secondary terminal doesn't own
+  // printers — printer scan/select become read-only ("Managed by Primary").
+  const lanReadOnly = useLanReadOnlyMode();
   const SECTIONS = [
     { id: 'store',       icon: '🏪',  label: t('settings.nav.store') },
     // R-DASHBOARD-THEME-V1
@@ -1552,54 +1557,72 @@ export default function SettingsModule() {
                 <h3 className="text-sm font-semibold text-white mb-2">
                   🖨️ {t('settings.hardware.printerTitle')}
                 </h3>
-                <p className="text-xs text-slate-400 mb-3">{t('settings.hardware.printerDesc')}</p>
-
-                <div className="flex items-center gap-2 mb-3">
-                  <button
-                    type="button"
-                    onClick={scanForPrinters}
-                    disabled={scanningPrinters || !isElectron()}
-                    className="btn btn-secondary btn-sm"
-                  >
-                    {scanningPrinters ? t('settings.hardware.scanning') : t('settings.hardware.scan')}
-                  </button>
-                  {(settings.detectedPrinters || []).length > 0 && (
-                    <span className="text-xs text-slate-400">
-                      {t('settings.hardware.nDetected', (settings.detectedPrinters || []).length)}
-                    </span>
-                  )}
-                </div>
-
-                {!isElectron() && (
-                  <div className="text-xs text-amber-400 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                    ⚠️ {t('settings.hardware.browserWarning')}
+                {/* LAN-PRINT-BRIDGE-SECONDARY-UI-LOCK-V1: a Secondary terminal does
+                    NOT own printers. HIDE the local scan button + printer list
+                    entirely and show a clear "managed by Primary" status card.
+                    No local printer scan ever runs on a Secondary. The Primary
+                    (role !== secondary) keeps the full, unchanged printer UI. */}
+                {lanReadOnly ? (
+                  <div className="p-3 rounded-lg" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                    <div className="text-sm font-semibold flex items-center gap-2" style={{ color: '#93c5fd' }}>
+                      🖥️ {t('settings.hardware.managedByPrimaryTitle')}
+                    </div>
+                    <div className="text-xs mt-1 text-slate-400">
+                      {t('settings.hardware.managedByPrimarySub')}
+                    </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-400 mb-3">{t('settings.hardware.printerDesc')}</p>
 
-                {isElectron() && (settings.detectedPrinters || []).length === 0 && (
-                  <p className="text-xs text-slate-500">
-                    {t('settings.hardware.noPrintersYet')}
-                  </p>
-                )}
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={scanForPrinters}
+                        disabled={scanningPrinters || !isElectron()}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {scanningPrinters ? t('settings.hardware.scanning') : t('settings.hardware.scan')}
+                      </button>
+                      {(settings.detectedPrinters || []).length > 0 && (
+                        <span className="text-xs text-slate-400">
+                          {t('settings.hardware.nDetected', (settings.detectedPrinters || []).length)}
+                        </span>
+                      )}
+                    </div>
 
-                {isElectron() && (settings.detectedPrinters || []).length > 0 && (
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">
-                      {t('settings.hardware.defaultPrinter')}
-                    </label>
-                    <select
-                      value={(settings.detectedPrinters || [])[0] || ''}
-                      onChange={(e) => selectPrinter(e.target.value)}
-                      className="select"
-                    >
-                      {(settings.detectedPrinters || []).map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-emerald-400 mt-1">
-                      ✓ {t('settings.hardware.usingPrinter', (settings.detectedPrinters || [])[0])}
-                    </p>
-                  </div>
+                    {!isElectron() && (
+                      <div className="text-xs text-amber-400 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                        ⚠️ {t('settings.hardware.browserWarning')}
+                      </div>
+                    )}
+
+                    {isElectron() && (settings.detectedPrinters || []).length === 0 && (
+                      <p className="text-xs text-slate-500">
+                        {t('settings.hardware.noPrintersYet')}
+                      </p>
+                    )}
+
+                    {isElectron() && (settings.detectedPrinters || []).length > 0 && (
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">
+                          {t('settings.hardware.defaultPrinter')}
+                        </label>
+                        <select
+                          value={(settings.detectedPrinters || [])[0] || ''}
+                          onChange={(e) => selectPrinter(e.target.value)}
+                          className="select"
+                        >
+                          {(settings.detectedPrinters || []).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-emerald-400 mt-1">
+                          ✓ {t('settings.hardware.usingPrinter', (settings.detectedPrinters || [])[0])}
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
