@@ -1101,7 +1101,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   ${totalSaved80 > 0 ? `<div style="font-size:9px;font-style:italic;color:#16a34a;padding-top:1px">${es ? 'Ahorro' : pt ? 'Economizado' : 'Saved'}: ${fmt(totalSaved80)}</div>` : ''}
   ${taxRows80}
   ${feeRows80}
-  ${r80('TOTAL:', fmt(sale.total), { row: 'border-top:1px solid #000;padding-top:3px;margin-top:2px', lab: 'font-size:14px;font-weight:900', amt: 'font-size:15px;font-weight:900' })}
+  ${r80('TOTAL:', fmt(sale.total), { row: 'border-top:1px solid #000;padding-top:3px;margin-top:2px', lab: 'font-size:14px;font-weight:800', amt: 'font-size:15px;font-weight:900' })}
   ${r80(`${es ? 'Pago' : pt ? 'Pagamento' : 'Payment'}:`, escHtml(sale.paymentMethod), { lab: 'font-size:11px;font-weight:600', amt: 'font-size:11px;font-weight:900' })}
   ${sale.cashReceived
     ? r80(`${es ? 'Efectivo' : pt ? 'Dinheiro' : 'Cash'}:`, fmt(sale.cashReceived)) +
