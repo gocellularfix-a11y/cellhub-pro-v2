@@ -437,9 +437,19 @@ function registerIpcHandlers() {
           const contentPx = await printWin.webContents.executeJavaScript(
             'Math.max(document.body ? document.body.scrollHeight : 0, document.documentElement ? document.documentElement.scrollHeight : 0)'
           );
-          const contentMicrons = Math.ceil((Number(contentPx) || 0) * MICRONS_PER_PX) + 8000; // +8mm cut tail
-          if (contentMicrons > effectivePageSize.height) {
-            console.log('[print:run] receipt-class long content → single continuous page:', contentPx, 'px →', contentMicrons, 'microns');
+          // R-RECEIPT-80MM-CALIBRATION-V1: fit the page to the MEASURED content
+          // height (shrink AND grow), not just grow. A short 80mm receipt was
+          // previously printed onto the fixed 297mm page, so the driver fed/
+          // vertically-centered it → large blank space at the top and a long
+          // trailing feed. Sizing the page to content (the same content height
+          // the on-screen preview shows) makes the physical receipt start at the
+          // very top and match the preview. Gated to receipt-class continuous
+          // paper only (width<=80mm, requested height>=150mm) — 4x6, letter, and
+          // die-cut labels never enter this branch.
+          const measuredPx = Number(contentPx) || 0;
+          if (measuredPx > 0) {
+            const contentMicrons = Math.ceil(measuredPx * MICRONS_PER_PX) + 8000; // +8mm cut tail
+            console.log('[print:run] receipt-class → fit page to content:', measuredPx, 'px →', contentMicrons, 'microns (was', effectivePageSize.height, ')');
             effectivePageSize = { width: effectivePageSize.width, height: contentMicrons };
           }
         } catch (probeErr) {
@@ -477,7 +487,20 @@ function registerIpcHandlers() {
       // All-pages prints fine; for a genuinely one-page receipt, dropping the
       // range is output-identical and avoids that driver quirk.
       const isReceiptSize = ((payload.pageSize && payload.pageSize.width) || 101600) <= 101600;
+      // R-RECEIPT-4X6-CONTINUOUS-RECEIPT-NOT-QR-PAGE: distinguish TRUE continuous
+      // roll media (80mm: narrow width AND tall auto height — printed as ONE grown
+      // page by the content-height probe above, so the driver genuinely cannot
+      // select pages) from FIXED-size 4x6 label stock (real page boundaries). Only
+      // continuous media drops a requested range; 4x6 honors it via the clamp
+      // branch. Mirrors the width<=80mm && height>=150mm gate used to grow 80mm.
+      const reqW = (payload.pageSize && payload.pageSize.width) || 101600;
+      const reqH = (payload.pageSize && payload.pageSize.height) || 152400;
+      const isContinuousReceipt = reqW <= 80000 && reqH >= 150000 && !payload.landscape;
       const onlyFirstPage = !!effectiveRanges && effectiveRanges.every((r) => (r.from || 0) === 0 && (r.to || 0) === 0);
+      // RECEIPT-PRINTER-RANGE-FALLBACK-V1: set when a custom range was requested
+      // on receipt media but could not be honored (driver can't select pages on
+      // a multi-page receipt) — we print the full receipt and tell the renderer.
+      let rangeUnsupportedWarning = false;
       if (effectiveRanges) {
         try {
           const probePdf = await printWin.webContents.printToPDF({
@@ -510,14 +533,27 @@ function registerIpcHandlers() {
               return { success: false, error: 'Page range out of bounds — document has 1 page' };
             }
           } else if (pageCount > 1) {
-            const clamped = effectiveRanges
-              .map((r) => ({ from: Math.max(0, r.from || 0), to: Math.min(r.to || 0, pageCount - 1) }))
-              .filter((r) => r.from <= r.to);
-            if (clamped.length === 0) {
-              if (!printWin.isDestroyed()) printWin.close();
-              return { success: false, error: `Page range out of bounds — document has ${pageCount} pages` };
+            if (isContinuousReceipt) {
+              // RECEIPT-PRINTER-RANGE-FALLBACK-V1 (scoped by R-RECEIPT-4X6-
+              // CONTINUOUS-RECEIPT-NOT-QR-PAGE): only TRUE continuous 80mm roll
+              // media is printed as one grown page, so the driver genuinely
+              // cannot select pages — drop the range, print the FULL receipt,
+              // and flag a warning. Fixed-size 4x6 label stock has real page
+              // boundaries and now falls through to the clamp branch so a
+              // user-selected page range IS honored. Letter/Legal/A4 likewise.
+              console.log('[print:run] continuous (80mm) multi-page + custom range → printing full receipt (driver cannot select pages)');
+              effectiveRanges = null;
+              rangeUnsupportedWarning = true;
+            } else {
+              const clamped = effectiveRanges
+                .map((r) => ({ from: Math.max(0, r.from || 0), to: Math.min(r.to || 0, pageCount - 1) }))
+                .filter((r) => r.from <= r.to);
+              if (clamped.length === 0) {
+                if (!printWin.isDestroyed()) printWin.close();
+                return { success: false, error: `Page range out of bounds — document has ${pageCount} pages` };
+              }
+              effectiveRanges = clamped;
             }
-            effectiveRanges = clamped;
           }
         } catch (probeErr) {
           // SPECIAL-ORDERS-PRINT-RANGE-FIX-V1: if the probe can't run, preserve
@@ -534,14 +570,16 @@ function registerIpcHandlers() {
       }
 
       return await new Promise((resolve) => {
-        // r-print-contract-v2: margin unit consistency.
+        // r-print-margin-unit-fix: margin unit consistency.
         // The modal UI labels margins as INCHES and printToPDF (preview path)
         // expects inches. But webContents.print with marginType:'custom'
-        // expects MICRONS, not inches. Without conversion, a "0.25 in" margin
-        // in the UI becomes 0.25 microns at the printer (effectively zero) —
-        // preview and real print disagree silently.
-        // 1 inch = 25400 microns.
-        const inchesToMicrons = (n) => Math.round((n || 0) * 25400);
+        // expects PIXELS (verified against Electron 31 types: electron.d.ts
+        // documents top/bottom/left/right as "in pixels"). The previous
+        // inches→microns conversion (×25400) made a "0.25 in" margin become
+        // 6350 *pixels* (~66 in) at the printer — blowing out the layout and
+        // pushing content off the page. Convert inches→CSS pixels at 96 DPI.
+        // NOTE: pageSize stays in microns (that field IS microns) — unchanged.
+        const inchesToPrintPixels = (n) => Math.round((n || 0) * 96);
         const printOptions = {
           silent: true,
           printBackground: true,
@@ -557,10 +595,10 @@ function registerIpcHandlers() {
           margins: payload.margins
             ? {
                 marginType: 'custom',
-                top: inchesToMicrons(payload.margins.top),
-                bottom: inchesToMicrons(payload.margins.bottom),
-                left: inchesToMicrons(payload.margins.left),
-                right: inchesToMicrons(payload.margins.right),
+                top: inchesToPrintPixels(payload.margins.top),
+                bottom: inchesToPrintPixels(payload.margins.bottom),
+                left: inchesToPrintPixels(payload.margins.left),
+                right: inchesToPrintPixels(payload.margins.right),
               }
             : { marginType: 'none' },
           // R-PRINT-PAGE-RANGES-V1: forward parsed pageRanges from the
@@ -576,7 +614,9 @@ function registerIpcHandlers() {
         printWin.webContents.print(printOptions, (success, failureReason) => {
           console.log('[print:run] result:', success, failureReason);
           if (!printWin.isDestroyed()) printWin.close();
-          resolve({ success, error: failureReason || null });
+          // RECEIPT-PRINTER-RANGE-FALLBACK-V1: surface the "couldn't select
+          // pages → printed full receipt" warning on a successful print.
+          resolve({ success, error: failureReason || null, rangeUnsupported: rangeUnsupportedWarning });
         });
       });
     } catch (err) {

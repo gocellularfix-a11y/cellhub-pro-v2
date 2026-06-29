@@ -44,7 +44,10 @@ interface ElectronAPI {
     // R-PRINT-PAGE-RANGES-V1: optional page-range filter (Electron expects
     // 1-based, inclusive {from, to} pairs). Empty/undefined = all pages.
     pageRanges?: Array<{ from: number; to: number }>;
-  }) => Promise<{ success: boolean; error?: string | null }>;
+    // RECEIPT-PRINTER-RANGE-FALLBACK-V1: true when a custom range could not be
+    // honored on receipt media (driver can't select pages) — the full receipt
+    // was printed instead; the renderer shows a friendly warning.
+  }) => Promise<{ success: boolean; error?: string | null; rangeUnsupported?: boolean }>;
   checkForUpdates: () => Promise<void>;
   installUpdate: () => void;
   // r-pkg-a2: re-added — triggers download after update-available notification.
