@@ -18,6 +18,9 @@ import {
   type ReactNode,
 } from 'react';
 import { isElectron, getElectronAPI } from '@/utils/platform';
+// LAN-LICENSE-INHERITANCE-V1: a paired Secondary inherits the Primary's
+// license instead of requiring its own key.
+import { getConnection, resolveInheritedLicense } from '@/services/lan/lanService';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -37,6 +40,10 @@ export interface LicenseState {
   daysRemaining: number | null;
   features: LicenseFeatures;
   loading: boolean;
+  // LAN-LICENSE-INHERITANCE-V1: true when validity comes from a paired Primary.
+  inherited?: boolean;
+  // true when inherited validity is being served from the offline grace cache.
+  graceWarning?: boolean;
 }
 
 interface LicenseContextValue extends LicenseState {
@@ -121,11 +128,41 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         daysRemaining?: number | null;
         features?: unknown;
       };
+      // Local (this machine's) license takes precedence — standalone and
+      // Primary modes are byte-identical to before.
+      if (result.valid) {
+        setState({
+          tier: normalizeTier(result.tier),
+          valid: true,
+          daysRemaining: typeof result.daysRemaining === 'number' ? result.daysRemaining : null,
+          features: normalizeFeatures(result.features),
+          loading: false,
+        });
+        return;
+      }
+      // LAN-LICENSE-INHERITANCE-V1: local invalid → ONLY a paired Secondary
+      // may inherit the Primary's license over the LAN. Standalone/Primary
+      // never reach this branch (getConnection().role !== 'secondary').
+      if (getConnection().role === 'secondary') {
+        const inh = await resolveInheritedLicense();
+        if (inh.valid) {
+          setState({
+            tier: normalizeTier(inh.tier),
+            valid: true,
+            daysRemaining: null,
+            features: normalizeFeatures(inh.features),
+            loading: false,
+            inherited: true,
+            graceWarning: inh.grace,
+          });
+          return;
+        }
+      }
+      // No local and no inherited license → fail-closed (gate shows).
       setState({
         tier: normalizeTier(result.tier),
-        valid: !!result.valid,
-        daysRemaining:
-          typeof result.daysRemaining === 'number' ? result.daysRemaining : null,
+        valid: false,
+        daysRemaining: typeof result.daysRemaining === 'number' ? result.daysRemaining : null,
         features: normalizeFeatures(result.features),
         loading: false,
       });
