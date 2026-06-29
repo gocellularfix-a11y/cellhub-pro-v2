@@ -1170,6 +1170,35 @@ export const translations: TranslationDictionary = {
   'qaServices': { en: 'Services', es: 'Servicios', pt: 'Serviços' },
   'qaServicesDesc':    { en: 'Repairs & unlocking services',      es: 'Reparaciones y desbloqueos',         pt: 'Reparos e serviços de desbloqueio' },
   'notepadDesc':       { en: 'Write and print quick notes',       es: 'Escribe e imprime notas rápidas',    pt: 'Escreva e imprima notas rápidas' },
+  // PRINT-DESK-MODULE-V1-UI-ONLY
+  'printDeskDesc':     { en: 'Paste, rotate & print labels',      es: 'Pega, rota e imprime etiquetas',     pt: 'Cole, gire e imprima etiquetas' },
+  'printDesk.title':         { en: 'Print Desk',                  es: 'Mesa de Impresión',                 pt: 'Mesa de Impressão' },
+  'printDesk.upload':        { en: 'Upload',                      es: 'Subir',                             pt: 'Enviar' },
+  'printDesk.pasteHint':     { en: '…or press Ctrl+V to paste, or drag & drop an image', es: '…o presiona Ctrl+V para pegar, o arrastra una imagen', pt: '…ou pressione Ctrl+V para colar, ou arraste uma imagem' },
+  'printDesk.empty':         { en: 'Paste, upload, or drop a label image to start', es: 'Pega, sube o suelta una imagen de etiqueta para empezar', pt: 'Cole, envie ou solte uma imagem de etiqueta para começar' },
+  'printDesk.zoom':          { en: 'Zoom',                        es: 'Zoom',                              pt: 'Zoom' },
+  'printDesk.rotateLeft':    { en: 'Left 90°',                    es: 'Izq. 90°',                          pt: 'Esq. 90°' },
+  'printDesk.rotateRight':   { en: 'Right 90°',                   es: 'Der. 90°',                          pt: 'Dir. 90°' },
+  'printDesk.flip':          { en: 'Flip 180°',                   es: 'Girar 180°',                        pt: 'Girar 180°' },
+  'printDesk.reset':         { en: 'Reset',                       es: 'Restablecer',                       pt: 'Redefinir' },
+  'printDesk.autoRotate':    { en: 'Auto-Rotate',                 es: 'Auto-Rotar',                        pt: 'Auto-Girar' },
+  'printDesk.fit':           { en: 'Fit',                         es: 'Ajustar',                           pt: 'Ajustar' },
+  'printDesk.fit4x6':        { en: '4×6',                         es: '4×6',                               pt: '4×6' },
+  'printDesk.fitLetter':     { en: '8.5×11',                      es: '8.5×11',                            pt: '8.5×11' },
+  'printDesk.portrait':      { en: 'Portrait',                    es: 'Vertical',                          pt: 'Retrato' },
+  'printDesk.landscape':     { en: 'Landscape',                   es: 'Horizontal',                        pt: 'Paisagem' },
+  'printDesk.clear':         { en: 'Clear',                       es: 'Limpiar',                           pt: 'Limpar' },
+  'printDesk.notAnImage':    { en: 'That file is not an image.',  es: 'Ese archivo no es una imagen.',     pt: 'Esse arquivo não é uma imagem.' },
+  'printDesk.sidewaysHelper':{ en: 'This label looks sideways. Rotate automatically?', es: 'Esta etiqueta se ve de lado. ¿Rotar automáticamente?', pt: 'Esta etiqueta parece estar de lado. Girar automaticamente?' },
+  'printDesk.rotateNow':     { en: 'Rotate',                      es: 'Rotar',                             pt: 'Girar' },
+  'printDesk.dismiss':       { en: 'Dismiss',                     es: 'Descartar',                         pt: 'Dispensar' },
+  // PRINT-DESK-BARCODE-QUALITY-MODE-V1
+  'printDesk.quality':       { en: 'Print quality',               es: 'Calidad de impresión',              pt: 'Qualidade de impressão' },
+  'printDesk.standard':      { en: 'Standard',                    es: 'Estándar',                          pt: 'Padrão' },
+  'printDesk.barcodeSharp':  { en: 'Barcode Sharp',               es: 'Código de barras nítido',           pt: 'Código de barras nítido' },
+  'printDesk.source':        { en: 'Source',                      es: 'Origen',                            pt: 'Origem' },
+  'printDesk.output':        { en: 'Output',                      es: 'Salida',                            pt: 'Saída' },
+  'printDesk.barcodeHelp':   { en: 'For barcodes, use Barcode Sharp mode and avoid low-resolution screenshots.', es: 'Para códigos de barras, usa el modo Código de barras nítido y evita capturas de baja resolución.', pt: 'Para códigos de barras, use o modo Código de barras nítido e evite capturas de baixa resolução.' },
   'estimates':         { en: 'Estimates',                        es: 'Estimados',                          pt: 'Cotizações' },
   'estimatesDesc':     { en: 'Quick estimate with receipt',       es: 'Estimado rápido con recibo',         pt: 'Orçamento rápido com recibo' },
   'rmaLabelDesc':      { en: 'Create return shipping label 4×6', es: 'Crea etiqueta de devolución 4×6',   pt: 'Criar etiqueta de devolução 4×6' },
@@ -6941,6 +6970,8 @@ export const translations: TranslationDictionary = {
 
   // ── Quick Actions (POS grid) ──────────────────────────────
   'quick.notepad':      { en: 'Notepad',       es: 'Bloc de Notas',  pt: 'Bloco de Notas' },
+  // PRINT-DESK-MODULE-V1-UI-ONLY: tile label for the repurposed quick action.
+  'quick.printDesk':    { en: 'Print Desk',    es: 'Mesa de Impresión', pt: 'Mesa de Impressão' },
   'quick.labelPrinter': { en: 'Label Printer', es: 'Impres. Etiq.',  pt: 'Impr. Etiqueta' },
 
   // ── Reports ───────────────────────────────────────────────

@@ -24,7 +24,9 @@ import PhonePaymentModal from './PhonePaymentModal';
 import PaymentModal from './PaymentModal';
 import ReceiptModal from './ReceiptModal';
 import CredentialMakerModal from './CredentialMakerModal';
-import NotepadModal from './NotepadModal';
+// PRINT-DESK-MODULE-V1-UI-ONLY: Notepad transformed into Print Desk (paste→rotate→fit→print).
+// (NotepadModal.tsx is left on disk, unwired, for a possible future "quick notes" phase.)
+import PrintDeskModal from './PrintDeskModal';
 import EstimateModal from './EstimateModal';
 import RMALabelModal from './RMALabelModal';
 import PriceLabelsModal from '../priceLabels/PriceLabelsModal';
@@ -1324,9 +1326,11 @@ export default function POSModule() {
         />
       )}
 
-      {/* Notepad */}
+      {/* PRINT-DESK-MODULE-V1-UI-ONLY: the 'notepad' quick action now opens
+          Print Desk (paste→rotate→fit→print). NotepadModal is left in place,
+          unwired, for a possible future "quick notes" phase. */}
       {showNotepad && (
-        <NotepadModal
+        <PrintDeskModal
           open={showNotepad}
           onClose={() => setShowNotepad(false)}
         />
