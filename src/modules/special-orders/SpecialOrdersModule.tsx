@@ -23,7 +23,7 @@ import TicketCard from '@/components/shared/TicketCard';
 import CustomerSearchHeader from '@/components/shared/CustomerSearchHeader';
 import { useHighlightRecord } from '@/hooks/useHighlightRecord';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
-import type { SpecialOrder, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
+import type { SpecialOrder, SpecialOrderItem, CartItem, Customer, Sale, EditAuditEntry } from '@/store/types';
 import CancelSpecialOrderModal from './CancelSpecialOrderModal';
 import { usePrint } from '@/hooks/usePrint';
 import AdminPinGate from '@/components/shared/AdminPinGate';
@@ -1449,6 +1449,103 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
   const [pendingAuditPayload, setPendingAuditPayload] = useState<{ changes: FieldChange[] } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // ── SPECIAL-ORDERS-MULTI-ITEM-V1: editable item rows ──
+  // UI shape keeps money as dollar strings for the inputs; converted to cents
+  // when synced into the parent `form` (so handleSave's money logic is untouched).
+  // Per-row price/cost stay OPTIONAL — when none are used the order keeps its
+  // single scalar price/cost (backward-compatible "simple mode").
+  const itemsDisabled = isLocked && !pin.editUnlocked;
+  type ItemRow = { id: string; description: string; qty: string; cost: string; price: string };
+  const seedRows = (): ItemRow[] => {
+    const existing = (editOrder?.items || (form as any).items) as SpecialOrderItem[] | undefined;
+    if (existing && existing.length > 0) {
+      return existing.map((it) => ({
+        id: it.id || generateId(),
+        description: it.description || '',
+        qty: String(it.qty ?? 1),
+        cost: it.cost ? (it.cost / 100).toFixed(2) : '',
+        price: it.price ? (it.price / 100).toFixed(2) : '',
+      }));
+    }
+    // Legacy / new single-item order: one descriptive row. Per-row price/cost
+    // stay EMPTY so the order keeps using its scalar price/cost.
+    return [{ id: generateId(), description: form.itemDescription || '', qty: '1', cost: '', price: '' }];
+  };
+  const [itemRows, setItemRows] = useState<ItemRow[]>(seedRows);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const rowQty = (r: ItemRow) => Math.max(1, parseInt(r.qty, 10) || 1);
+  const rowCostCents = (r: ItemRow) => Math.round((parseFloat(r.cost) || 0) * 100);
+  const rowPriceCents = (r: ItemRow) => Math.round((parseFloat(r.price) || 0) * 100);
+  // "Itemized" = the user opted into per-row pricing (any row has a price/cost).
+  // Multiple descriptive rows alone do NOT trigger it, so listing several items
+  // under one combined order-level price keeps the order-level price editable.
+  const isItemized = (rows: ItemRow[]) =>
+    rows.some((r) => r.price.trim() !== '' || r.cost.trim() !== '');
+  const itemized = isItemized(itemRows);
+
+  const deriveDescription = (rows: ItemRow[]): string =>
+    rows
+      .filter((r) => r.description.trim())
+      .map((r) => { const q = rowQty(r); return q > 1 ? `${r.description.trim()} (x${q})` : r.description.trim(); })
+      .join(', ');
+
+  const rowsToItems = (rows: ItemRow[]): SpecialOrderItem[] =>
+    rows.filter((r) => r.description.trim()).map((r) => {
+      const item: SpecialOrderItem = { id: r.id, description: r.description.trim() };
+      const q = rowQty(r); if (q !== 1) item.qty = q;
+      const c = rowCostCents(r); if (c) item.cost = c;
+      const p = rowPriceCents(r); if (p) item.price = p;
+      return item;
+    });
+
+  // Sync rows → parent form so the existing save path persists `items` plus the
+  // derived summary/totals. When itemized, price/cost become the summed totals
+  // (driving all downstream money math, unchanged). When NOT itemized, the
+  // order-level price/cost the user typed are left untouched.
+  const applyRows = (nextRows: ItemRow[]) => {
+    setItemRows(nextRows);
+    const patch: Record<string, unknown> = {
+      ...form,
+      itemDescription: deriveDescription(nextRows),
+      items: rowsToItems(nextRows),
+    };
+    if (isItemized(nextRows)) {
+      const pCents = nextRows.reduce((s, r) => s + rowPriceCents(r) * rowQty(r), 0);
+      const cCents = nextRows.reduce((s, r) => s + rowCostCents(r) * rowQty(r), 0);
+      patch.price = (pCents / 100).toFixed(2);
+      patch.cost = (cCents / 100).toFixed(2);
+    }
+    setForm(patch as unknown as Partial<SpecialOrder>);
+  };
+  const updateRow = (id: string, field: keyof ItemRow, val: string) => {
+    if (itemsDisabled) return;
+    applyRows(itemRows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+  };
+  const addRow = () => {
+    if (itemsDisabled) return;
+    applyRows([...itemRows, { id: generateId(), description: '', qty: '1', cost: '', price: '' }]);
+  };
+  const removeRow = (id: string) => {
+    if (itemsDisabled) return;
+    if (itemRows.length <= 1) return; // always keep at least one row
+    applyRows(itemRows.filter((r) => r.id !== id));
+  };
+
+  // ── Data-loss guard: only prompt "Discard?" when something actually changed ──
+  const serializeState = (): string => JSON.stringify({
+    firstName: (form as any).firstName || '', lastName: (form as any).lastName || '',
+    customerPhone: form.customerPhone || '', supplier: form.supplier || '',
+    status: form.status || '', notes: form.notes || '', estimatedArrival: form.estimatedArrival || '',
+    taxable: !!(form as any).taxable,
+    cost: String(form.cost ?? ''), price: String(form.price ?? ''), depositAmount: String(form.depositAmount ?? ''),
+    itemDescription: form.itemDescription || '',
+    rows: itemRows.map((r) => ({ d: r.description, q: r.qty, c: r.cost, p: r.price })),
+  });
+  const initialSnapshotRef = useRef<string | null>(null);
+  if (initialSnapshotRef.current === null) initialSnapshotRef.current = serializeState();
+  const isDirty = () => initialSnapshotRef.current !== serializeState();
+
   // Wrap close so we reset the PIN unlock and saving guard.
   const handleClose = () => {
     pin.resetLock();
@@ -1456,6 +1553,13 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
     setShowReasonSelector(false);
     setPendingAuditPayload(null);
     onClose();
+  };
+
+  // Close attempt from X / Cancel — confirm discard only when there are
+  // unsaved changes. Backdrop clicks do NOT call this (no close on backdrop).
+  const attemptClose = () => {
+    if (isDirty()) { setShowDiscardConfirm(true); return; }
+    handleClose();
   };
 
   // Dollar helpers for display (prices stored as dollar strings)
@@ -1617,7 +1721,10 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
   };
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    // SPECIAL-ORDERS-MODAL-GUARD-V1: NO close-on-backdrop-click. The overlay
+    // intentionally has no onClick handler — the modal closes only via X /
+    // Cancel (which route through attemptClose's discard guard).
+    <div className="modal-overlay">
       <div
         className="modal-content"
         style={{ maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto' }}
@@ -1628,7 +1735,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           <h3 style={{ margin: 0, fontWeight: 700 }}>
             📋 {editOrder ? t('so.modal.editTitle') : t('so.modal.newTitle')}
           </h3>
-          <button onClick={handleClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={attemptClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
         </div>
 
         {/* Body */}
@@ -1729,17 +1836,69 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
             </div>
           </CustomerSearchHeader>
 
-          {/* Item */}
+          {/* Items (SPECIAL-ORDERS-MULTI-ITEM-V1) — one or more requested items. */}
           <div>
-            <label className="label">📦 {t('so.modal.itemDesc')}</label>
-            <AutocompleteInput
-              value={form.itemDescription || ''}
-              onChange={(val) => upd('itemDescription', val)}
-              onSelect={(opt) => upd('itemDescription', opt.value)}
-              options={itemOptions}
-              placeholder={t('so.modal.itemDescPlaceholder')}
-              maxResults={8}
-            />
+            <label className="label">📦 {t('so.modal.items')}</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {itemRows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 48px 76px 76px 28px',
+                    gap: '0.4rem',
+                    alignItems: 'start',
+                  }}
+                >
+                  <AutocompleteInput
+                    value={row.description}
+                    onChange={(val) => updateRow(row.id, 'description', val)}
+                    onSelect={(opt) => updateRow(row.id, 'description', opt.value)}
+                    options={itemOptions}
+                    placeholder={t('so.modal.itemDescPlaceholder')}
+                    maxResults={8}
+                    disabled={itemsDisabled}
+                  />
+                  <input
+                    className="input" type="number" min="1" step="1"
+                    value={row.qty}
+                    onChange={(e) => updateRow(row.id, 'qty', e.target.value)}
+                    title={t('so.modal.itemQty')} aria-label={t('so.modal.itemQty')}
+                    disabled={itemsDisabled}
+                  />
+                  <input
+                    className="input" type="number" min="0" step="0.01"
+                    value={row.cost}
+                    onChange={(e) => updateRow(row.id, 'cost', e.target.value)}
+                    placeholder={t('so.modal.itemRowCost')} title={t('so.modal.itemRowCost')} aria-label={t('so.modal.itemRowCost')}
+                    disabled={itemsDisabled}
+                  />
+                  <input
+                    className="input" type="number" min="0" step="0.01"
+                    value={row.price}
+                    onChange={(e) => updateRow(row.id, 'price', e.target.value)}
+                    placeholder={t('so.modal.itemRowPrice')} title={t('so.modal.itemRowPrice')} aria-label={t('so.modal.itemRowPrice')}
+                    disabled={itemsDisabled}
+                    style={{ fontWeight: 600 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => removeRow(row.id)}
+                    disabled={itemsDisabled || itemRows.length <= 1}
+                    title={t('so.modal.removeItem')} aria-label={t('so.modal.removeItem')}
+                    style={{ padding: '0 0.4rem', opacity: (itemsDisabled || itemRows.length <= 1) ? 0.4 : 1 }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={addRow}
+              disabled={itemsDisabled}
+              style={{ marginTop: '0.5rem', fontSize: '0.82rem', opacity: itemsDisabled ? 0.5 : 1 }}
+            >{t('so.modal.addItem')}</button>
           </div>
 
           {/* Supplier */}
@@ -1771,8 +1930,9 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   value={form.cost as any}
                   onChange={(e) => upd('cost', e.target.value)}
                   placeholder="0.00"
-                  disabled={isLocked && !pin.editUnlocked}
-                  style={isLocked && !pin.editUnlocked ? { opacity: 0.6 } : undefined}
+                  disabled={(isLocked && !pin.editUnlocked) || itemized}
+                  title={itemized ? t('so.modal.itemsTotalHint') : undefined}
+                  style={(isLocked && !pin.editUnlocked) || itemized ? { opacity: 0.6 } : undefined}
                 />
                 {isLocked && !pin.editUnlocked && (
                   <span
@@ -1793,8 +1953,9 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
                   className="input" type="number" step="0.01" min="0"
                   value={form.price as any}
                   onChange={(e) => upd('price', e.target.value)}
-                  placeholder="0.00" style={{ fontWeight: 700, opacity: isLocked && !pin.editUnlocked ? 0.6 : 1 }}
-                  disabled={isLocked && !pin.editUnlocked}
+                  placeholder="0.00" style={{ fontWeight: 700, opacity: (isLocked && !pin.editUnlocked) || itemized ? 0.6 : 1 }}
+                  disabled={(isLocked && !pin.editUnlocked) || itemized}
+                  title={itemized ? t('so.modal.itemsTotalHint') : undefined}
                 />
                 {isLocked && !pin.editUnlocked && (
                   <span
@@ -1829,6 +1990,13 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               )}
             </div>
           </div>
+
+          {/* SPECIAL-ORDERS-MULTI-ITEM-V1: explain that cost/price are summed. */}
+          {itemized && (
+            <p style={{ fontSize: '0.72rem', color: '#93c5fd', marginTop: '-0.4rem' }}>
+              ℹ️ {t('so.modal.itemsTotalHint')}
+            </p>
+          )}
 
           {/* r-new-8: hint for already-delivered orders — redirect to Returns module */}
           {editOrder && editOrder.status === 'picked_up' && (
@@ -1936,7 +2104,7 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
 
         {/* Footer */}
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleClose}>{t('so.cancelBtn')}</button>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={attemptClose}>{t('so.cancelBtn')}</button>
           {onPrint && editOrder && (
             <button
               type="button"
@@ -1987,6 +2155,20 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
           onSuccess={pin.handleSuccess}
           onCancel={pin.handleCancel}
         />
+
+        {/* SPECIAL-ORDERS-MODAL-GUARD-V1: data-loss confirmation on close/cancel. */}
+        {showDiscardConfirm && (
+          <ConfirmDialog
+            open
+            title={t('so.modal.discardTitle')}
+            message={t('so.modal.discardMessage')}
+            variant="warning"
+            confirmLabel={t('so.modal.discardConfirm')}
+            cancelLabel={t('so.modal.keepEditing')}
+            onConfirm={() => { setShowDiscardConfirm(false); handleClose(); }}
+            onCancel={() => setShowDiscardConfirm(false)}
+          />
+        )}
       </div>
     </div>
   );
