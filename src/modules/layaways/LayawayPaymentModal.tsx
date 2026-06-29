@@ -1,7 +1,9 @@
-// R-LAYAWAY-DIRECT-PAYMENT-V1
-// Direct partial-payment modal for layaways.
-// Records the payment immediately — NO POS cart required.
-// Replaces the old DepositModal → cart → POS-checkout flow.
+// LAYAWAY-PAYMENT-CART-SEMANTICS-AND-MULTIPAGE-PRINT-FIX-V1
+// Collect-balance amount picker for layaways. The chosen amount is sent to
+// the POS CART (canonical payment pipeline) — payment method, finalize,
+// Sale creation, reports and the receipt all happen at POS checkout
+// (POSModule §4d reconcile). The R-LAYAWAY-DIRECT-PAYMENT-V1 immediate-write
+// behavior was removed; method/note pickers went with it (POS owns those).
 
 import { useState } from 'react';
 import type { Layaway } from '@/store/types';
@@ -10,11 +12,10 @@ import { calculateLayawayTotals } from '@/services/layaway/payments';
 interface LayawayPaymentModalProps {
   layaway: Layaway;
   lang: string;
-  onConfirm: (amountCents: number, method: string, note: string) => void;
+  /** Adds the amount to the POS cart — does NOT record the payment itself. */
+  onConfirm: (amountCents: number) => void;
   onClose: () => void;
 }
-
-const METHODS = ['Cash', 'Card', 'Store Credit'];
 
 export default function LayawayPaymentModal({
   layaway,
@@ -27,8 +28,6 @@ export default function LayawayPaymentModal({
   const remaining = totals.remainingBalanceCents;
 
   const [amountInput, setAmountInput] = useState((remaining / 100).toFixed(2));
-  const [method, setMethod] = useState('Cash');
-  const [note, setNote] = useState('');
 
   const enteredCents = Math.round((parseFloat(amountInput) || 0) * 100);
   const isPartial = enteredCents > 0 && enteredCents < remaining;
@@ -135,43 +134,11 @@ export default function LayawayPaymentModal({
             </div>
           </div>
 
-          {/* Payment method */}
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-              {es ? 'Método de pago' : 'Payment method'}
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {METHODS.map(m => (
-                <button key={m} onClick={() => setMethod(m)}
-                  style={{
-                    flex: 1, padding: '0.5rem 0.4rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: method === m ? 700 : 500, cursor: 'pointer',
-                    border: method === m ? '1.5px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
-                    background: method === m ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.04)',
-                    color: method === m ? '#a5b4fc' : '#94a3b8',
-                  }}>
-                  {m === 'Cash' ? (es ? '💵 Efectivo' : '💵 Cash')
-                   : m === 'Card' ? (es ? '💳 Tarjeta' : '💳 Card')
-                   : (es ? '🏷️ Crédito' : '🏷️ Store Credit')}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Optional note */}
-          <div style={{ marginBottom: '0.75rem' }}>
-            <input
-              type="text"
-              placeholder={es ? 'Nota (opcional)' : 'Note (optional)'}
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              maxLength={120}
-              style={{
-                width: '100%', padding: '0.55rem 0.85rem',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px', color: '#e2e8f0', fontSize: '0.85rem',
-                outline: 'none', boxSizing: 'border-box',
-              }}
-            />
+          {/* Cart-pipeline hint — method/finalize happen at POS checkout */}
+          <div style={{ marginBottom: '0.75rem', padding: '0.55rem 0.85rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.22)', borderRadius: '8px', fontSize: '0.8rem', color: '#a5b4fc' }}>
+            🛒 {es
+              ? 'El pago se agrega al carrito — método de pago y cobro se completan en el POS.'
+              : 'The payment is added to the cart — payment method and checkout are completed at the POS.'}
           </div>
 
           {/* New balance preview */}
@@ -210,7 +177,7 @@ export default function LayawayPaymentModal({
               {es ? 'Cancelar' : 'Cancel'}
             </button>
             <button
-              onClick={() => { if (isValid) onConfirm(Math.min(enteredCents, remaining), method, note.trim()); }}
+              onClick={() => { if (isValid) onConfirm(Math.min(enteredCents, remaining)); }}
               disabled={!isValid}
               style={{
                 flex: 2, padding: '0.7rem', borderRadius: '0.625rem', border: 'none',
@@ -221,11 +188,11 @@ export default function LayawayPaymentModal({
               }}>
               {isValid
                 ? (isFull
-                  ? (es ? `✅ Registrar pago completo ${fc(Math.min(enteredCents, remaining))}` : `✅ Record full payment ${fc(Math.min(enteredCents, remaining))}`)
+                  ? (es ? `🛒 Agregar pago completo al carrito ${fc(Math.min(enteredCents, remaining))}` : `🛒 Add full payment to cart ${fc(Math.min(enteredCents, remaining))}`)
                   : isPartial
-                  ? (es ? `💰 Registrar pago parcial ${fc(enteredCents)}` : `💰 Record partial payment ${fc(enteredCents)}`)
-                  : (es ? 'Registrar pago' : 'Record payment'))
-                : (es ? 'Registrar pago' : 'Record payment')}
+                  ? (es ? `🛒 Agregar pago parcial al carrito ${fc(enteredCents)}` : `🛒 Add partial payment to cart ${fc(enteredCents)}`)
+                  : (es ? 'Agregar al carrito' : 'Add to cart'))
+                : (es ? 'Agregar al carrito' : 'Add to cart')}
             </button>
           </div>
         </div>
