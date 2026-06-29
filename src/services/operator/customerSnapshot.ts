@@ -35,7 +35,11 @@ export interface SnapshotSignal {
   id: string;
   /** operator.snapshot.sig.* label key */
   labelKey: string;
-  tone: 'vip' | 'good' | 'warn' | 'bad' | 'info';
+  // CUSTOMER-SNAPSHOT-OPERATOR-SIGNALS-V1: spec tone set ('danger'/'neutral'
+  // added, 'bad' renamed 'danger') + 'vip' kept for the distinct violet chip.
+  tone: 'vip' | 'good' | 'warn' | 'danger' | 'info' | 'neutral';
+  /** Context-resolved render order — lower renders first. */
+  priority: number;
 }
 
 export interface CustomerSnapshot {
@@ -44,7 +48,19 @@ export interface CustomerSnapshot {
 }
 
 const MAX_ROWS = 6;
-const MAX_SIGNALS = 3;
+const MAX_SIGNALS = 4;
+
+// CUSTOMER-SNAPSHOT-OPERATOR-SIGNALS-V1 — deterministic signal thresholds.
+// Raw-aggregate based (work even when the scoring profile is unavailable);
+// kept as named constants so the auditor can tune them in one place.
+const SIG_VIP_LIFETIME_CENTS        = 250_000; // $2,500 lifetime → VIP
+const SIG_HIGH_VALUE_LIFETIME_CENTS = 100_000; // $1,000 lifetime → HIGH VALUE
+const SIG_LOYAL_AGE_DAYS            = 365;     // customer on file ≥ 1 year
+const SIG_LOYAL_ACTIVITY_COUNT      = 6;       // repairs + sales combined
+const SIG_PAYMENT_RISK_STALE_DAYS   = 14;      // owes money + this stale
+const SIG_HIGH_BALANCE_CENTS        = 10_000;  // $100 open balance
+const SIG_FREQUENT_REPAIRS_COUNT    = 5;
+const SIG_RECOVERY_DAYS             = 60;      // inactive this long
 
 // CUSTOMER-LAST-VISIT-CURRENT-SESSION-WINDOW-V1 (day-boundary follow-up):
 // "last visit" must be a PREVIOUS CALENDAR DAY. Any same-day activity —
@@ -136,11 +152,13 @@ export function composeCustomerSnapshot(args: ComposeSnapshotArgs): CustomerSnap
   };
 
   let lifetimeCents = 0;
+  let salesCount = 0;
   for (const s of sales) {
     if ((s as { customerId?: string }).customerId !== cid) continue;
     const st = statusKey((s as { status?: string }).status);
     if (st === 'voided' || st === 'refunded') continue;
     lifetimeCents += (s as { total?: number }).total || 0;
+    salesCount++;
     trackVisit((s as { id?: string }).id, (s as { createdAt?: unknown }).createdAt);
   }
 
@@ -197,13 +215,14 @@ export function composeCustomerSnapshot(args: ComposeSnapshotArgs): CustomerSnap
 
   // Last visit = most recent activity from a PREVIOUS calendar day —
   // calendar-day distance, so yesterday evening reads "1d", never "0d".
-  if (prevVisitMs !== null) {
-    const days = calendarDaysBetween(prevVisitMs, now);
+  // (prevVisitDays also feeds the signal rules below.)
+  const prevVisitDays = prevVisitMs !== null ? calendarDaysBetween(prevVisitMs, now) : null;
+  if (prevVisitDays !== null) {
     rows.set('lastVisit', {
       id: 'lastVisit',
       labelKey: 'operator.snapshot.lastVisit',
-      value: `${days}d`,
-      tone: days >= 60 ? 'warn' : 'neutral',
+      value: `${prevVisitDays}d`,
+      tone: prevVisitDays >= 60 ? 'warn' : 'neutral',
     });
   } else if (hasCurrentVisitActivity || (exclude && exclude.size > 0)) {
     // The only known activity IS the current visit / currently-opened record.
@@ -247,31 +266,72 @@ export function composeCustomerSnapshot(args: ComposeSnapshotArgs): CustomerSnap
     if (orderedRows.length >= MAX_ROWS) break;
   }
 
-  // ── Deterministic operator signals (PART B) — priority order, cap 3 ──
-  const signals: SnapshotSignal[] = [];
-  if (profile) {
-    if (profile.collectionPriority >= 60 && openBalanceCents > 0) {
-      signals.push({ id: 'paymentRisk', labelKey: 'operator.snapshot.sig.paymentRisk', tone: 'bad' });
-    }
-    if (profile.churnRisk >= 60 && lifetimeCents > 0) {
-      signals.push({ id: 'recovery', labelKey: 'operator.snapshot.sig.recovery', tone: 'warn' });
-    }
-    if (profile.estimatedCustomerTier === 'VIP') {
-      signals.push({ id: 'vip', labelKey: 'operator.snapshot.sig.vip', tone: 'vip' });
-    } else if (profile.estimatedCustomerTier === 'Loyal') {
-      signals.push({ id: 'loyal', labelKey: 'operator.snapshot.sig.loyal', tone: 'good' });
-    } else if (profile.vipScore >= 70) {
-      signals.push({ id: 'highValue', labelKey: 'operator.snapshot.sig.highValue', tone: 'info' });
-    }
-    if (repairCount >= 5) {
-      signals.push({ id: 'frequentRepairs', labelKey: 'operator.snapshot.sig.frequentRepairs', tone: 'info' });
-    }
-    if (profile.upsellOpportunity >= 60) {
-      signals.push({ id: 'upsell', labelKey: 'operator.snapshot.sig.upsell', tone: 'good' });
-    }
-  } else if (repairCount >= 5) {
-    signals.push({ id: 'frequentRepairs', labelKey: 'operator.snapshot.sig.frequentRepairs', tone: 'info' });
+  // ── Deterministic operator signals — CUSTOMER-SNAPSHOT-OPERATOR-SIGNALS-V1 ──
+  // Raw-aggregate rules FIRST (they work even when the scoring profile is
+  // null — e.g. context-only customer resolution); profile scores act as
+  // additional OR-triggers, never the sole gate. No LLM, no randomness.
+  const fired = new Map<string, SnapshotSignal['tone']>();
+
+  // 1. VIP / HIGH VALUE — mutually exclusive, VIP wins.
+  if (lifetimeCents >= SIG_VIP_LIFETIME_CENTS || profile?.estimatedCustomerTier === 'VIP') {
+    fired.set('vip', 'vip');
+  } else if (lifetimeCents >= SIG_HIGH_VALUE_LIFETIME_CENTS || (profile?.vipScore ?? 0) >= 70) {
+    fired.set('highValue', 'info');
   }
+
+  // 2. LOYAL — on file ≥ 1 year, or sustained activity volume.
+  const ageDays = sinceMs ? Math.floor((now - sinceMs) / 86400000) : null;
+  if ((ageDays !== null && ageDays >= SIG_LOYAL_AGE_DAYS && salesCount + repairCount > 0)
+    || salesCount + repairCount >= SIG_LOYAL_ACTIVITY_COUNT
+    || profile?.estimatedCustomerTier === 'Loyal') {
+    fired.set('loyal', 'good');
+  }
+
+  // 3. PAYMENT RISK — owes money AND has gone stale (or scorer flags collection).
+  const paymentRisk =
+    (openBalanceCents > 0 && prevVisitDays !== null && prevVisitDays >= SIG_PAYMENT_RISK_STALE_DAYS)
+    || (openBalanceCents > 0 && (profile?.collectionPriority ?? 0) >= 60);
+  if (paymentRisk) fired.set('paymentRisk', 'danger');
+
+  // 4. HIGH BALANCE — magnitude regardless of staleness.
+  if (openBalanceCents >= SIG_HIGH_BALANCE_CENTS) fired.set('highBalance', 'warn');
+
+  // 5. FREQUENT REPAIRS.
+  if (repairCount >= SIG_FREQUENT_REPAIRS_COUNT) fired.set('frequentRepairs', 'info');
+
+  // 6. RECOVERY — long inactive with real history, not blocked by payment risk.
+  if (!paymentRisk && lifetimeCents > 0 && prevVisitDays !== null && prevVisitDays >= SIG_RECOVERY_DAYS) {
+    fired.set('recovery', 'warn');
+  }
+
+  // 7. UPSELL — clean account with history, in a sell-adjacent context.
+  const upsellContext = contextType === 'repair' || contextType === 'phone_payment' || contextType === 'sale';
+  if (lifetimeCents > 0 && openBalanceCents === 0
+    && (upsellContext || (profile?.upsellOpportunity ?? 0) >= 60)) {
+    fired.set('upsell', 'good');
+  }
+
+  // ── Context-aware priority (PART C) — lower index renders first ──
+  const SIGNAL_ORDER: Record<string, string[]> = {
+    repair:        ['frequentRepairs', 'paymentRisk', 'upsell', 'vip', 'highBalance', 'loyal', 'highValue', 'recovery'],
+    layaway:       ['highBalance', 'paymentRisk', 'recovery', 'vip', 'loyal', 'highValue', 'frequentRepairs', 'upsell'],
+    phone_payment: ['upsell', 'loyal', 'vip', 'paymentRisk', 'highBalance', 'highValue', 'recovery', 'frequentRepairs'],
+    sale:          ['upsell', 'loyal', 'vip', 'paymentRisk', 'highBalance', 'highValue', 'recovery', 'frequentRepairs'],
+    default:       ['vip', 'loyal', 'highValue', 'recovery', 'paymentRisk', 'highBalance', 'frequentRepairs', 'upsell'],
+  };
+  const signalOrder = SIGNAL_ORDER[contextType] ?? SIGNAL_ORDER.default;
+
+  const signals: SnapshotSignal[] = [];
+  for (const [id, tone] of fired) {
+    const idx = signalOrder.indexOf(id);
+    signals.push({
+      id,
+      labelKey: `operator.snapshot.sig.${id}`,
+      tone,
+      priority: idx === -1 ? signalOrder.length : idx,
+    });
+  }
+  signals.sort((a, b) => a.priority - b.priority);
 
   return { rows: orderedRows, signals: signals.slice(0, MAX_SIGNALS) };
 }

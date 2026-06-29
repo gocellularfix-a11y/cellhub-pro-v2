@@ -1557,12 +1557,14 @@ export default function FloatingOperatorBubble() {
               {customerSnapshot.signals.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.15rem' }}>
                   {customerSnapshot.signals.map((sig) => {
+                    // CUSTOMER-SNAPSHOT-OPERATOR-SIGNALS-V1 tone set
                     const SIG_COLORS: Record<string, { bg: string; color: string }> = {
-                      vip:  { bg: 'rgba(167,139,250,0.18)', color: '#c4b5fd' },
-                      good: { bg: 'rgba(52,211,153,0.15)',  color: '#6ee7b7' },
-                      warn: { bg: 'rgba(251,191,36,0.15)',  color: '#fcd34d' },
-                      bad:  { bg: 'rgba(248,113,113,0.15)', color: '#fca5a5' },
-                      info: { bg: 'rgba(56,189,248,0.15)',  color: '#7dd3fc' },
+                      vip:     { bg: 'rgba(167,139,250,0.18)', color: '#c4b5fd' },
+                      good:    { bg: 'rgba(52,211,153,0.15)',  color: '#6ee7b7' },
+                      warn:    { bg: 'rgba(251,191,36,0.15)',  color: '#fcd34d' },
+                      danger:  { bg: 'rgba(248,113,113,0.15)', color: '#fca5a5' },
+                      info:    { bg: 'rgba(56,189,248,0.15)',  color: '#7dd3fc' },
+                      neutral: { bg: 'rgba(148,163,184,0.15)', color: '#cbd5e1' },
                     };
                     const c = SIG_COLORS[sig.tone] ?? SIG_COLORS.info;
                     return (
