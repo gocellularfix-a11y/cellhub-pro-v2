@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CellHub — Look B · Professional Light</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{
+      --bg:#FAFAF7;
+      --panel:#FFFFFF;
+      --panel-soft:#F4F4EF;
+      --border:#E7E5E0;
+      --border-strong:#D6D3CC;
+      --text:#1A1D24;
+      --text-2:#4B5060;
+      --muted:#7C8290;
+      --dim:#A9AEBA;
+    }
+    html,body{margin:0;padding:0;height:100%;overflow:hidden}
+    body{
+      font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+      color:var(--text);background:var(--bg);
+      -webkit-font-smoothing:antialiased;letter-spacing:-0.005em;
+    }
+    iconify-icon{display:inline-flex;line-height:0}
+    .shell{display:flex;width:100%;height:100vh}
+
+    /* ============= SIDEBAR ============= */
+    .sb{
+      width:200px;flex:0 0 200px;height:100vh;
+      background:#F4F2EC;border-right:1px solid var(--border);
+      padding:16px 12px;display:flex;flex-direction:column;gap:14px;
+    }
+    .sb-logo{display:flex;align-items:center;gap:9px;padding:0 6px}
+    .sb-logo .mark{
+      width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;
+      background:linear-gradient(135deg,#1A1D24 0%,#3F4554 100%);
+      box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .sb-logo .mark iconify-icon{width:15px;height:15px}
+    .sb-logo .nm{font-size:14px;font-weight:800;letter-spacing:-0.02em;color:var(--text)}
+    .sb-logo .sub{font-size:8px;font-weight:700;letter-spacing:0.30em;color:var(--muted);margin-top:1px}
+
+    .sb-section{display:flex;flex-direction:column;gap:1px;margin-top:4px}
+    .sb-section-lbl{
+      font-size:9.5px;font-weight:700;letter-spacing:0.24em;color:var(--dim);text-transform:uppercase;
+      padding:6px 10px 4px;
+    }
+    .sb a{
+      position:relative;display:flex;align-items:center;gap:9px;
+      height:32px;padding:0 10px;border-radius:7px;
+      text-decoration:none;font-size:12.5px;font-weight:500;color:var(--text-2);
+      transition:background .15s ease, color .15s ease;
+    }
+    .sb a iconify-icon{width:16px;height:16px;color:var(--muted);flex-shrink:0}
+    .sb a .txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sb a .kbd{
+      font-size:9.5px;color:var(--muted);padding:1px 5px;border-radius:4px;
+      background:#FFFFFF;border:1px solid var(--border);
+    }
+    .sb a:hover{background:#EDEAE2;color:var(--text)}
+    .sb a:hover iconify-icon{color:var(--text-2)}
+    .sb a.active{
+      color:var(--text);font-weight:600;background:#FFFFFF;
+      box-shadow:0 1px 0 rgba(255,255,255,1) inset, 0 1px 2px rgba(0,0,0,0.05);
+      border:1px solid var(--border);
+    }
+    .sb a.active iconify-icon{color:#1A1D24}
+
+    .sb-footer{margin-top:auto}
+    .sb-user{
+      display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;
+      background:#FFFFFF;border:1px solid var(--border);
+    }
+    .sb-user .av{
+      width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+      font-weight:700;font-size:10px;color:#fff;
+      background:linear-gradient(135deg,#1A1D24,#4B5060);
+    }
+    .sb-user .nm{font-size:11.5px;font-weight:700;color:var(--text);line-height:1.2}
+    .sb-user .role{font-size:9.5px;color:var(--muted);line-height:1.2}
+
+    /* ============= MAIN ============= */
+    .main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+    .top{
+      height:52px;flex:0 0 52px;padding:0 22px;
+      display:flex;align-items:center;gap:12px;
+      background:var(--panel);border-bottom:1px solid var(--border);
+    }
+    .search{position:relative;width:380px;margin-left:auto}
+    .search iconify-icon.ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--muted)}
+    .search input{
+      width:100%;height:32px;padding:0 56px 0 32px;
+      background:#FFFFFF;border:1px solid var(--border);border-radius:8px;
+      color:var(--text);font-family:inherit;font-size:12.5px;outline:none;
+    }
+    .search input::placeholder{color:var(--muted)}
+    .search input:focus{border-color:#1A1D24;box-shadow:0 0 0 3px rgba(26,29,36,0.06)}
+    .search .kbd{
+      position:absolute;right:7px;top:50%;transform:translateY(-50%);
+      font-size:9.5px;color:var(--muted);padding:3px 6px;border-radius:5px;
+      background:#F4F4EF;border:1px solid var(--border);
+    }
+    .top-add{
+      height:32px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+      font-family:inherit;font-size:12px;font-weight:600;color:#fff;
+      background:#1A1D24;border:1px solid #1A1D24;
+      box-shadow:0 1px 2px rgba(0,0,0,0.08);
+    }
+    .top-add iconify-icon{width:13px;height:13px}
+    .top-icbtn{
+      width:32px;height:32px;display:grid;place-items:center;border-radius:8px;cursor:pointer;
+      background:#FFFFFF;border:1px solid var(--border);color:var(--text-2);
+    }
+    .top-icbtn iconify-icon{width:14px;height:14px}
+
+    .body{
+      flex:1;min-height:0;padding:18px 22px;overflow:hidden;
+      display:flex;flex-direction:column;gap:14px;
+    }
+
+    .greet{display:flex;align-items:baseline;justify-content:space-between;flex-shrink:0}
+    .greet h1{
+      margin:0;font-size:24px;font-weight:800;letter-spacing:-0.025em;line-height:1.1;color:var(--text);
+    }
+    .greet .meta{font-size:11.5px;color:var(--muted);font-weight:500}
+    .greet .meta b{color:var(--text-2);font-weight:600}
+
+    /* KPI GRID — 6 cards */
+    .kpis{display:grid;grid-template-columns:repeat(6, 1fr);gap:10px;flex-shrink:0}
+    .kpi{
+      position:relative;padding:14px 16px;border-radius:12px;
+      background:var(--panel);border:1px solid var(--border);
+      display:flex;flex-direction:column;gap:6px;cursor:pointer;
+      transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    }
+    .kpi:hover{transform:translateY(-1px);border-color:var(--border-strong);box-shadow:0 4px 12px rgba(0,0,0,0.04)}
+    .kpi-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .kpi-lbl{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em}
+    .kpi-ic{
+      width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;
+      background:var(--ic-bg);border:1px solid var(--ic-bd);
+    }
+    .kpi-ic iconify-icon{width:14px;height:14px;color:var(--ic-c);stroke-width:2}
+    .kpi-val{font-size:24px;font-weight:800;letter-spacing:-0.03em;color:var(--text);line-height:1.05}
+    .kpi-val .unit{font-size:13px;font-weight:600;color:var(--muted);margin-left:3px}
+    .kpi-sub{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:4px}
+    .kpi-sub .up{color:#047857;font-weight:600}
+    .kpi-sub .dn{color:#B91C1C;font-weight:600}
+    .kpi-sub iconify-icon{width:11px;height:11px}
+
+    /* ALERT BANNERS */
+    .alerts{display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+    .alert{
+      display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;
+      background:var(--a-bg);border:1px solid var(--a-bd);
+    }
+    .alert.red{--a-bg:#FFF1F1;--a-bd:#FECACA;--a-c:#B91C1C}
+    .alert.amber{--a-bg:#FFF8EB;--a-bd:#FED7AA;--a-c:#B45309}
+    .alert.indigo{--a-bg:#EEF2FF;--a-bd:#C7D2FE;--a-c:#3730A3}
+    .alert iconify-icon.ic{width:18px;height:18px;color:var(--a-c);flex-shrink:0}
+    .alert-text{flex:1;display:flex;flex-direction:column;gap:3px}
+    .alert-ttl{font-size:12.5px;font-weight:700;color:var(--a-c)}
+    .alert-list{display:flex;flex-wrap:wrap;gap:5px}
+    .alert-chip{
+      font-size:10.5px;padding:2px 8px;border-radius:6px;
+      background:rgba(255,255,255,0.7);border:1px solid var(--a-bd);color:var(--text-2);
+    }
+    .alert-chip b{color:var(--a-c);font-weight:600}
+    .alert-btn{
+      flex-shrink:0;height:28px;padding:0 12px;border-radius:7px;cursor:pointer;
+      font-family:inherit;font-size:11.5px;font-weight:600;color:var(--a-c);
+      background:rgba(255,255,255,0.8);border:1px solid var(--a-bd);
+    }
+
+    /* RECENT ACTIVITY — 2 columns */
+    .activity{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .panel{
+      display:flex;flex-direction:column;border-radius:12px;overflow:hidden;
+      background:var(--panel);border:1px solid var(--border);
+    }
+    .panel-head{
+      flex-shrink:0;display:flex;align-items:center;gap:8px;
+      padding:12px 16px;border-bottom:1px solid var(--border);
+    }
+    .panel-ttl{font-size:13px;font-weight:700;color:var(--text)}
+    .panel-meta{font-size:11px;color:var(--muted);margin-left:6px}
+    .panel-more{margin-left:auto;font-size:11px;color:var(--text-2);font-weight:500;cursor:pointer;display:flex;align-items:center;gap:3px}
+    .panel-more iconify-icon{width:12px;height:12px}
+    .panel-body{flex:1;min-height:0;overflow:auto}
+    .panel-body::-webkit-scrollbar{width:6px}
+    .panel-body::-webkit-scrollbar-thumb{background:#E0DCD3;border-radius:6px}
+
+    .row{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 16px;border-bottom:1px solid #F1EFEA;cursor:pointer;
+    }
+    .row:hover{background:#FAFAF7}
+    .row:last-child{border-bottom:0}
+    .row-tag{
+      flex-shrink:0;font-size:10.5px;font-weight:700;color:var(--text-2);
+      padding:3px 7px;border-radius:5px;background:#F4F4EF;border:1px solid var(--border);
+      font-variant-numeric:tabular-nums;
+    }
+    .row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+    .row-ttl{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .row-sub{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .row-val{flex-shrink:0;font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+    .row-status{
+      flex-shrink:0;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;
+      background:var(--s-bg);color:var(--s-c);border:1px solid var(--s-bd);
+    }
+    .row-status.green{--s-bg:#ECFDF5;--s-c:#047857;--s-bd:#A7F3D0}
+    .row-status.amber{--s-bg:#FFFBEB;--s-c:#B45309;--s-bd:#FDE68A}
+    .row-status.red{--s-bg:#FEF2F2;--s-c:#B91C1C;--s-bd:#FECACA}
+    .row-status.blue{--s-bg:#EFF6FF;--s-c:#1D4ED8;--s-bd:#BFDBFE}
+
+    .status-bar{
+      flex-shrink:0;display:flex;align-items:center;gap:14px;
+      padding:8px 14px;border-radius:9px;
+      background:var(--panel);border:1px solid var(--border);
+      font-size:11px;color:var(--text-2);
+    }
+    .status-bar .item{display:flex;align-items:center;gap:5px}
+    .status-bar .item iconify-icon{width:12px;height:12px;color:var(--muted)}
+    .status-bar .item b{color:var(--text);font-weight:600}
+    .status-bar .sep{width:1px;height:11px;background:var(--border)}
+    .status-bar .ok{margin-left:auto;display:inline-flex;align-items:center;gap:5px;color:#047857;font-weight:600;font-size:10.5px}
+    .status-bar .ok .dt{width:6px;height:6px;border-radius:50%;background:#10B981}
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <aside class="sb">
+      <div class="sb-logo">
+        <div class="mark"><iconify-icon icon="lucide:zap"></iconify-icon></div>
+        <div>
+          <div class="nm">CellHub</div>
+          <div class="sub">GO CELLULAR</div>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Workspace</div>
+        <a href="#" class="active"><iconify-icon icon="lucide:layout-dashboard"></iconify-icon><span class="txt">Dashboard</span></a>
+        <a href="#"><iconify-icon icon="lucide:scan-line"></iconify-icon><span class="txt">POS</span><span class="kbd">⌘P</span></a>
+        <a href="#"><iconify-icon icon="lucide:wrench"></iconify-icon><span class="txt">Repairs</span></a>
+        <a href="#"><iconify-icon icon="lucide:users"></iconify-icon><span class="txt">Customers</span></a>
+        <a href="#"><iconify-icon icon="lucide:boxes"></iconify-icon><span class="txt">Inventory</span></a>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Activity</div>
+        <a href="#"><iconify-icon icon="lucide:inbox"></iconify-icon><span class="txt">Messages</span><span class="kbd">2</span></a>
+        <a href="#"><iconify-icon icon="lucide:check-circle-2"></iconify-icon><span class="txt">Approvals</span><span class="kbd">1</span></a>
+        <a href="#"><iconify-icon icon="lucide:calendar-clock"></iconify-icon><span class="txt">Appointments</span></a>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Insights</div>
+        <a href="#"><iconify-icon icon="lucide:sparkles"></iconify-icon><span class="txt">Companion</span></a>
+        <a href="#"><iconify-icon icon="lucide:bar-chart-3"></iconify-icon><span class="txt">Reports</span></a>
+        <a href="#"><iconify-icon icon="lucide:settings"></iconify-icon><span class="txt">Settings</span></a>
+      </div>
+
+      <div class="sb-footer">
+        <div class="sb-user">
+          <div class="av">JO</div>
+          <div>
+            <div class="nm">Jorge Ochoa</div>
+            <div class="role">Owner</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <div class="top">
+        <div class="search" style="margin-left:0">
+          <iconify-icon class="ico" icon="lucide:search"></iconify-icon>
+          <input readonly placeholder="Search customer, ticket, SKU, sale#…" />
+          <span class="kbd">⌘K</span>
+        </div>
+        <button class="top-add" style="margin-left:auto"><iconify-icon icon="lucide:plus"></iconify-icon>New sale</button>
+        <button class="top-icbtn"><iconify-icon icon="lucide:bell"></iconify-icon></button>
+      </div>
+
+      <div class="body">
+
+        <div class="greet">
+          <h1>Dashboard</h1>
+          <div class="meta">Monday, May 12, 2026 <b>·</b> Go Cellular <b>·</b> 9:15 AM</div>
+        </div>
+
+        <div class="kpis">
+
+          <div class="kpi" style="--ic-bg:#ECFDF5; --ic-bd:#A7F3D0; --ic-c:#047857">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Today's sales</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:dollar-sign"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">$2,341<span class="unit">.50</span></div>
+            <div class="kpi-sub"><span>12 transactions</span></div>
+          </div>
+
+          <div class="kpi" style="--ic-bg:#ECFDF5; --ic-bd:#A7F3D0; --ic-c:#047857">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Gross profit</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:trending-up"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">$873<span class="unit">.20</span></div>
+            <div class="kpi-sub"><span class="up">37.3% margin</span></div>
+          </div>
+
+          <div class="kpi" style="--ic-bg:#FFF8EB; --ic-bd:#FED7AA; --ic-c:#B45309">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Active repairs</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:wrench"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">8<span class="unit">tickets</span></div>
+            <div class="kpi-sub"><span>3 ready for pickup</span></div>
+          </div>
+
+          <div class="kpi" style="--ic-bg:#FEF2F2; --ic-bd:#FECACA; --ic-c:#B91C1C">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Low stock</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:alert-triangle"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">5<span class="unit">SKUs</span></div>
+            <div class="kpi-sub"><span class="dn">need restock</span></div>
+          </div>
+
+          <div class="kpi" style="--ic-bg:#FDF2F8; --ic-bd:#FBCFE8; --ic-c:#BE185D">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Customers</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:users"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">420<span class="unit">total</span></div>
+            <div class="kpi-sub"><span>3 new today</span></div>
+          </div>
+
+          <div class="kpi" style="--ic-bg:#F5F3FF; --ic-bd:#DDD6FE; --ic-c:#6D28D9">
+            <div class="kpi-head">
+              <div class="kpi-lbl">Active unlocks</div>
+              <div class="kpi-ic"><iconify-icon icon="lucide:lock-open"></iconify-icon></div>
+            </div>
+            <div class="kpi-val">7<span class="unit">in queue</span></div>
+            <div class="kpi-sub"><span>2 codes received</span></div>
+          </div>
+
+        </div>
+
+        <div class="alerts">
+
+          <div class="alert red">
+            <iconify-icon class="ic" icon="lucide:alert-triangle"></iconify-icon>
+            <div class="alert-text">
+              <div class="alert-ttl">5 items below stock threshold</div>
+              <div class="alert-list">
+                <span class="alert-chip">USB-C 6ft <b>· 4</b></span>
+                <span class="alert-chip">iPhone 14 glass <b>· 2</b></span>
+                <span class="alert-chip">Samsung S22 back <b>· 1</b></span>
+                <span class="alert-chip">Charger 20W <b>· 3</b></span>
+                <span class="alert-chip">AirPods case <b>· 2</b></span>
+              </div>
+            </div>
+            <button class="alert-btn">View inventory</button>
+          </div>
+
+          <div class="alert amber">
+            <iconify-icon class="ic" icon="lucide:clock"></iconify-icon>
+            <div class="alert-text">
+              <div class="alert-ttl">2 repairs ready 3+ days · 3 overdue layaways</div>
+              <div class="alert-list">
+                <span class="alert-chip">Lupita H. <b>· iPhone 12</b></span>
+                <span class="alert-chip">Roberto C. <b>· iPad Mini</b></span>
+                <span class="alert-chip">Diego R. <b>· $145 due</b></span>
+              </div>
+            </div>
+            <button class="alert-btn">Follow up</button>
+          </div>
+
+          <div class="alert indigo">
+            <iconify-icon class="ic" icon="lucide:user-x"></iconify-icon>
+            <div class="alert-text">
+              <div class="alert-ttl">12 lapsed customers (30+ days no activity)</div>
+              <div class="alert-list">
+                <span class="alert-chip">Marta V.</span>
+                <span class="alert-chip">Ana L.</span>
+                <span class="alert-chip">Carlos M.</span>
+                <span class="alert-chip">Sofia R.</span>
+                <span class="alert-chip">+8 more</span>
+              </div>
+            </div>
+            <button class="alert-btn">Re-engage</button>
+          </div>
+
+        </div>
+
+        <div class="activity">
+
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-ttl">Recent repair tickets</div>
+              <div class="panel-meta">last 24 hours</div>
+              <div class="panel-more">View all <iconify-icon icon="lucide:arrow-right"></iconify-icon></div>
+            </div>
+            <div class="panel-body">
+              <div class="row">
+                <span class="row-tag">R-879</span>
+                <div class="row-main">
+                  <div class="row-ttl">iPhone 12 · Screen replacement</div>
+                  <div class="row-sub">Lupita H. · 9 days ago</div>
+                </div>
+                <span class="row-status red">STALE</span>
+              </div>
+              <div class="row">
+                <span class="row-tag">R-885</span>
+                <div class="row-main">
+                  <div class="row-ttl">Samsung S22 · Battery</div>
+                  <div class="row-sub">Awaiting parts · ETA Wed</div>
+                </div>
+                <span class="row-status amber">WAITING</span>
+              </div>
+              <div class="row">
+                <span class="row-tag">R-891</span>
+                <div class="row-main">
+                  <div class="row-ttl">iPhone 14 Pro · Charging port</div>
+                  <div class="row-sub">Diego R. · Maria · 2h ago</div>
+                </div>
+                <span class="row-status blue">IN PROGRESS</span>
+              </div>
+              <div class="row">
+                <span class="row-tag">R-892</span>
+                <div class="row-main">
+                  <div class="row-ttl">Pixel 7 · Water damage diag</div>
+                  <div class="row-sub">Sofia M. · Carlos · 38m ago</div>
+                </div>
+                <span class="row-status blue">IN PROGRESS</span>
+              </div>
+              <div class="row">
+                <span class="row-tag">R-883</span>
+                <div class="row-main">
+                  <div class="row-ttl">iPad Mini · Screen + digitizer</div>
+                  <div class="row-sub">Roberto C. · balance $210</div>
+                </div>
+                <span class="row-status green">READY</span>
+              </div>
+              <div class="row">
+                <span class="row-tag">R-886</span>
+                <div class="row-main">
+                  <div class="row-ttl">iPhone 13 · Speaker</div>
+                  <div class="row-sub">Marta V. · balance $95</div>
+                </div>
+                <span class="row-status green">READY</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-ttl">Recent sales</div>
+              <div class="panel-meta">today</div>
+              <div class="panel-more">View all <iconify-icon icon="lucide:arrow-right"></iconify-icon></div>
+            </div>
+            <div class="panel-body">
+              <div class="row">
+                <span class="row-tag">#2341</span>
+                <div class="row-main">
+                  <div class="row-ttl">Carlos Rivera</div>
+                  <div class="row-sub">iPhone 14 case + glass · card · 9:42 AM</div>
+                </div>
+                <div class="row-val">$87.50</div>
+              </div>
+              <div class="row">
+                <span class="row-tag">#2340</span>
+                <div class="row-main">
+                  <div class="row-ttl">Walk-in</div>
+                  <div class="row-sub">Lightning cable + adapter · cash · 9:28 AM</div>
+                </div>
+                <div class="row-val">$32.00</div>
+              </div>
+              <div class="row">
+                <span class="row-tag">#2339</span>
+                <div class="row-main">
+                  <div class="row-ttl">Ana Lopez</div>
+                  <div class="row-sub">Repair R-887 pickup · card · 9:11 AM</div>
+                </div>
+                <div class="row-val">$145.00</div>
+              </div>
+              <div class="row">
+                <span class="row-tag">#2338</span>
+                <div class="row-main">
+                  <div class="row-ttl">Walk-in</div>
+                  <div class="row-sub">Screen protector · cash · 8:54 AM</div>
+                </div>
+                <div class="row-val">$15.00</div>
+              </div>
+              <div class="row">
+                <span class="row-tag">#2337</span>
+                <div class="row-main">
+                  <div class="row-ttl">Sofia Mendez</div>
+                  <div class="row-sub">Boost Mobile activation · card · 8:42 AM</div>
+                </div>
+                <div class="row-val">$65.00</div>
+              </div>
+              <div class="row">
+                <span class="row-tag">#2336</span>
+                <div class="row-main">
+                  <div class="row-ttl">Diego Ramirez</div>
+                  <div class="row-sub">AirPods Pro · card · 8:28 AM</div>
+                </div>
+                <div class="row-val">$249.00</div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <div class="status-bar">
+          <div class="item"><iconify-icon icon="lucide:store"></iconify-icon>Store: <b>Go Cellular</b></div>
+          <div class="sep"></div>
+          <div class="item"><iconify-icon icon="lucide:scan-barcode"></iconify-icon>Register: <b>Front Counter</b></div>
+          <div class="sep"></div>
+          <div class="item"><iconify-icon icon="lucide:clock"></iconify-icon>Session: <b>9:15 AM</b></div>
+          <div class="ok"><span class="dt"></span>All systems operational</div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>

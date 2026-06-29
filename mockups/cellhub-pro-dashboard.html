@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>CellHub Pro — Operational Dashboard</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{
+      --bg:#0a0d14;
+      --panel:#11161f;
+      --border:rgba(255,255,255,0.07);
+      --text:#e7eaf2;
+      --text-mute:#8a93a6;
+      --text-dim:#5b6478;
+    }
+    html,body{margin:0;padding:0;height:100%}
+    body{
+      font-family:'DM Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1500px 900px at 12% -14%, rgba(124,58,237,0.30), transparent 60%),
+        radial-gradient(1100px 700px at 96% -10%, rgba(56,189,248,0.16), transparent 65%),
+        radial-gradient(1300px 800px at 80% 115%, rgba(45,212,191,0.13), transparent 60%),
+        linear-gradient(180deg,#080b11,#0a0d14 55%,#060810);
+      min-height:100vh;height:100vh;overflow:hidden;
+      -webkit-font-smoothing:antialiased;letter-spacing:0.01em;
+    }
+    body::before{
+      content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+      background:
+        radial-gradient(2px 2px at 18% 22%, rgba(167,139,250,0.35), transparent 60%),
+        radial-gradient(2px 2px at 78% 16%, rgba(56,189,248,0.28), transparent 60%),
+        radial-gradient(2px 2px at 62% 78%, rgba(45,212,191,0.25), transparent 60%);
+      opacity:.5;mix-blend-mode:screen;
+    }
+    .shell{display:flex;width:100%;height:100vh;position:relative;z-index:1}
+
+    /* ===================== SIDEBAR ===================== */
+    .sidebar{
+      width:220px;flex:0 0 220px;
+      background:linear-gradient(180deg,#060910,#090d15 35%,#060810);
+      border-right:1px solid rgba(255,255,255,0.05);
+      padding:18px 14px;display:flex;flex-direction:column;gap:14px;
+      position:relative;overflow:hidden;
+      box-shadow:inset -1px 0 0 rgba(255,255,255,0.02), 8px 0 40px rgba(0,0,0,0.45);
+    }
+    .sidebar::before{
+      content:"";position:absolute;inset:-1px auto auto -1px;width:140%;height:260px;
+      background:
+        radial-gradient(280px 180px at 18% 0%, rgba(124,58,237,0.32), transparent 70%),
+        radial-gradient(220px 140px at 80% 6%, rgba(56,189,248,0.14), transparent 70%);
+      pointer-events:none;
+    }
+    .sidebar::after{
+      content:"";position:absolute;left:0;right:0;bottom:0;height:200px;
+      background:radial-gradient(200px 140px at 50% 100%, rgba(192,132,252,0.18), transparent 70%);
+      pointer-events:none;
+    }
+    .sidebar > *{position:relative;z-index:1}
+
+    .logo{display:flex;flex-direction:column;gap:3px;padding:6px 6px 8px}
+    .logo .name{
+      font-weight:800;font-size:21px;letter-spacing:-0.015em;
+      background:linear-gradient(120deg,#c4b5fd 0%,#a78bfa 40%,#60a5fa 75%,#22d3ee);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+      filter:drop-shadow(0 4px 14px rgba(124,58,237,0.40));
+    }
+    .logo .sub{font-size:9px;font-weight:700;letter-spacing:0.34em;color:#525c70}
+
+    .user-card{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 11px;border-radius:13px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.012));
+      border:1px solid rgba(255,255,255,0.07);
+      box-shadow:0 1px 0 rgba(255,255,255,0.05) inset, 0 8px 22px rgba(0,0,0,0.40);
+    }
+    .avatar{
+      width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+      font-weight:700;font-size:12px;color:#fff;position:relative;
+      background:
+        radial-gradient(20px 14px at 30% 25%, rgba(255,255,255,0.40), transparent 65%),
+        linear-gradient(135deg,#7c3aed,#3b82f6);
+      box-shadow:0 0 0 1px rgba(255,255,255,0.12) inset, 0 8px 22px rgba(124,58,237,0.45), 0 0 18px rgba(124,58,237,0.30);
+    }
+    .avatar .dot{
+      position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;
+      background:#22c55e;border:2px solid #060910;box-shadow:0 0 10px rgba(34,197,94,0.80);
+    }
+    .user-card .who{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+    .user-card .nm{font-size:12.5px;font-weight:700;color:#eef0f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .user-card .rl{font-size:10px;color:var(--text-mute)}
+
+    .nav{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+    .nav a{
+      display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:11px;
+      color:#aab2c4;text-decoration:none;font-size:12.5px;font-weight:500;
+      border:1px solid transparent;position:relative;
+      transition:background .22s ease, color .22s ease, border-color .22s ease;
+    }
+    .nav a i{font-size:16px;color:#7a8295;width:18px;text-align:center;transition:color .2s ease}
+    .nav a .txt{flex:1}
+    .nav a:hover{background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015));color:#fff;border-color:rgba(255,255,255,0.06)}
+    .nav a:hover i{color:#dde2ee}
+    .nav a.active{
+      background:linear-gradient(135deg, rgba(124,58,237,0.45) 0%, rgba(99,102,241,0.30) 55%, rgba(59,130,246,0.22) 100%);
+      color:#fff;border-color:rgba(167,139,250,0.55);
+      box-shadow:
+        0 0 0 1px rgba(167,139,250,0.32) inset,
+        0 1px 0 rgba(255,255,255,0.10) inset,
+        0 14px 30px rgba(124,58,237,0.40),
+        0 0 32px rgba(124,58,237,0.22);
+    }
+    .nav a.active::before{
+      content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);
+      width:3px;height:20px;border-radius:3px;
+      background:linear-gradient(180deg,#c4b5fd,#7c3aed);
+      box-shadow:0 0 14px rgba(167,139,250,0.80);
+    }
+    .nav a.active i{color:#e9defe;filter:drop-shadow(0 0 8px rgba(167,139,250,0.6))}
+
+    .badge{
+      font-size:10px;font-weight:700;line-height:1;
+      padding:3px 7px;border-radius:999px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.03));
+      color:#cfd5e3;border:1px solid rgba(255,255,255,0.08);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .badge.red{background:linear-gradient(180deg,rgba(239,68,68,0.20),rgba(239,68,68,0.06));color:#fecaca;border-color:rgba(239,68,68,0.40);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 0 10px rgba(239,68,68,0.22)}
+    .badge.amber{background:linear-gradient(180deg,rgba(251,191,36,0.18),rgba(251,191,36,0.05));color:#fde68a;border-color:rgba(251,191,36,0.40);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 0 10px rgba(251,191,36,0.18)}
+    .badge.green{background:linear-gradient(180deg,rgba(74,222,128,0.18),rgba(74,222,128,0.05));color:#bbf7d0;border-color:rgba(74,222,128,0.40);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 0 10px rgba(74,222,128,0.18)}
+    .badge.blue{background:linear-gradient(180deg,rgba(56,189,248,0.18),rgba(56,189,248,0.05));color:#bfdbfe;border-color:rgba(56,189,248,0.40);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 0 10px rgba(56,189,248,0.18)}
+
+    .companion{
+      margin-top:auto;padding:14px;border-radius:16px;
+      background:
+        radial-gradient(200px 120px at 100% 0%, rgba(192,132,252,0.24), transparent 70%),
+        radial-gradient(180px 120px at 0% 120%, rgba(56,189,248,0.14), transparent 70%),
+        linear-gradient(160deg, rgba(192,132,252,0.10), rgba(124,58,237,0.04) 60%, rgba(20,16,32,0.6)),
+        #0a0d17;
+      border:1px solid rgba(192,132,252,0.32);
+      box-shadow:
+        0 14px 40px rgba(124,58,237,0.30),
+        0 0 0 1px rgba(255,255,255,0.04) inset,
+        0 1px 0 rgba(255,255,255,0.07) inset;
+      display:flex;flex-direction:column;gap:9px;position:relative;overflow:hidden;
+    }
+    .companion::after{
+      content:"";position:absolute;inset:auto -30% -60% auto;width:200px;height:200px;border-radius:50%;
+      background:radial-gradient(circle,rgba(192,132,252,0.42),transparent 65%);
+      pointer-events:none;filter:blur(2px);
+    }
+    .companion .head{display:flex;align-items:center;gap:10px;position:relative;z-index:1}
+    .companion .ico{
+      width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:#fff;
+      background:
+        radial-gradient(20px 14px at 30% 22%, rgba(255,255,255,0.40), transparent 65%),
+        linear-gradient(135deg,#a855f7,#7c3aed 55%,#6366f1);
+      box-shadow:0 10px 26px rgba(168,85,247,0.55), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 0 0 1px rgba(255,255,255,0.10);
+    }
+    .companion .ico i{font-size:18px;filter:drop-shadow(0 0 8px rgba(255,255,255,0.45))}
+    .companion .ttl{font-size:13px;font-weight:800;color:#f4f0ff;letter-spacing:0.01em}
+    .companion .sub{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#d6c8ff}
+    .companion .sub .pulse{
+      width:7px;height:7px;border-radius:50%;background:#f59e0b;
+      box-shadow:0 0 0 0 rgba(245,158,11,0.6), 0 0 10px rgba(245,158,11,0.75);
+      animation:pulse 1.8s infinite;
+    }
+    @keyframes pulse{
+      0%{box-shadow:0 0 0 0 rgba(245,158,11,0.55), 0 0 10px rgba(245,158,11,0.75)}
+      70%{box-shadow:0 0 0 8px rgba(245,158,11,0), 0 0 10px rgba(245,158,11,0.30)}
+      100%{box-shadow:0 0 0 0 rgba(245,158,11,0), 0 0 10px rgba(245,158,11,0.75)}
+    }
+
+    /* ===================== MAIN ===================== */
+    .main{
+      flex:1;min-width:0;padding:20px 28px 16px;
+      display:flex;flex-direction:column;gap:16px;overflow:hidden;position:relative;
+    }
+    .main::before{
+      content:"";position:absolute;inset:-1px;pointer-events:none;
+      background:
+        radial-gradient(900px 420px at 18% -10%, rgba(124,58,237,0.13), transparent 60%),
+        radial-gradient(800px 400px at 100% 110%, rgba(34,211,238,0.10), transparent 60%);
+    }
+
+    /* HEADER */
+    .header{display:flex;align-items:center;gap:16px;position:relative;z-index:1}
+    .search-wrap{position:relative;flex:0 0 420px;max-width:420px}
+    .search-wrap i{
+      position:absolute;left:14px;top:50%;transform:translateY(-50%);
+      font-size:15px;color:var(--text-dim);
+    }
+    .search-wrap input{
+      width:100%;padding:11px 16px 11px 40px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015));
+      border:1px solid rgba(255,255,255,0.07);border-radius:12px;
+      color:var(--text);font-family:inherit;font-size:13px;outline:none;
+      box-shadow:0 6px 18px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04);
+      transition:border-color .2s ease, box-shadow .2s ease;
+    }
+    .search-wrap input::placeholder{color:var(--text-dim)}
+    .search-wrap input:focus{border-color:rgba(167,139,250,0.40);box-shadow:0 6px 18px rgba(0,0,0,0.30), 0 0 0 3px rgba(124,58,237,0.10)}
+    .search-wrap .kbd{
+      position:absolute;right:10px;top:50%;transform:translateY(-50%);
+      font-size:9px;font-weight:700;letter-spacing:0.06em;color:var(--text-mute);
+      padding:3px 7px;border-radius:6px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03));
+      border:1px solid rgba(255,255,255,0.08);
+    }
+
+    .alerts{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 14px;border-radius:999px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015));
+      border:1px solid rgba(255,255,255,0.08);
+      font-size:11.5px;font-weight:600;color:#cfd5e3;
+      box-shadow:0 8px 24px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .pill i{font-size:13px;opacity:.85}
+    .pill b{font-weight:700;color:#fff}
+    .pill.red{color:#fecaca;border-color:rgba(239,68,68,0.40);background:linear-gradient(180deg,rgba(239,68,68,0.14),rgba(239,68,68,0.04));box-shadow:0 8px 24px rgba(239,68,68,0.18), inset 0 1px 0 rgba(255,255,255,0.05)}
+    .pill.amber{color:#fde68a;border-color:rgba(251,191,36,0.40);background:linear-gradient(180deg,rgba(251,191,36,0.14),rgba(251,191,36,0.04));box-shadow:0 8px 24px rgba(251,191,36,0.16), inset 0 1px 0 rgba(255,255,255,0.05)}
+    .pill.green{color:#bbf7d0;border-color:rgba(74,222,128,0.40);background:linear-gradient(180deg,rgba(74,222,128,0.14),rgba(74,222,128,0.04));box-shadow:0 8px 24px rgba(74,222,128,0.16), inset 0 1px 0 rgba(255,255,255,0.05)}
+    .pill.blue{color:#bfdbfe;border-color:rgba(56,189,248,0.40);background:linear-gradient(180deg,rgba(56,189,248,0.14),rgba(56,189,248,0.04));box-shadow:0 8px 24px rgba(56,189,248,0.16), inset 0 1px 0 rgba(255,255,255,0.05)}
+
+    /* GREETING */
+    .greet{display:flex;flex-direction:column;gap:3px;position:relative;z-index:1}
+    .greet h1{
+      margin:0;font-size:26px;font-weight:800;letter-spacing:-0.015em;
+      background:linear-gradient(120deg,#ffffff 0%,#e5e9f3 55%,#a8b1c6 100%);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+    }
+    .greet .meta{font-size:12.5px;color:var(--text-mute)}
+
+    /* SCROLLABLE BODY */
+    .body{
+      position:relative;z-index:1;display:flex;flex-direction:column;gap:18px;
+      overflow:auto;padding-right:4px;
+    }
+    .body::-webkit-scrollbar{width:8px}
+    .body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:8px}
+
+    /* TOP LAYOUT: POS hero | right column */
+    .top-layout{
+      display:grid;grid-template-columns:380px 1fr;gap:18px;
+    }
+
+    /* ===================== POS HERO (vertical) ===================== */
+    .hero{
+      position:relative;border-radius:22px;padding:28px 26px;
+      display:flex;flex-direction:column;gap:18px;justify-content:space-between;
+      min-height:440px;
+      background:
+        radial-gradient(420px 280px at 90% 90%, rgba(192,132,252,0.55), transparent 70%),
+        radial-gradient(360px 240px at 8% 0%, rgba(99,102,241,0.50), transparent 70%),
+        linear-gradient(160deg, #1c1758 0%, #3a1f8c 30%, #5b21b6 65%, #7c3aed 100%);
+      border:1px solid rgba(192,132,252,0.42);
+      box-shadow:
+        0 30px 80px rgba(91,33,182,0.60),
+        0 12px 40px rgba(124,58,237,0.45),
+        0 0 60px rgba(124,58,237,0.25),
+        0 0 0 1px rgba(255,255,255,0.08) inset,
+        0 1px 0 rgba(255,255,255,0.18) inset;
+      overflow:hidden;
+    }
+    .hero::before{
+      content:"";position:absolute;inset:0;pointer-events:none;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.22) 100%),
+        radial-gradient(240px 140px at 14% -10%, rgba(255,255,255,0.32), transparent 70%),
+        radial-gradient(420px 260px at 100% 120%, rgba(34,211,238,0.22), transparent 70%);
+    }
+    .hero::after{
+      content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:260px;height:160px;opacity:0.08;pointer-events:none;
+      background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.4) 0 1px, transparent 1px 20px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.25) 0 1px, transparent 1px 16px);
+      mask:radial-gradient(closest-side, #000, transparent 75%);
+      -webkit-mask:radial-gradient(closest-side, #000, transparent 75%);
+    }
+    .hero > *{position:relative;z-index:1}
+    .hero-eyebrow{
+      align-self:flex-start;display:inline-flex;align-items:center;gap:7px;
+      font-size:9.5px;font-weight:800;letter-spacing:0.34em;color:#e9d8ff;
+      padding:5px 12px;border-radius:999px;
+      background:rgba(255,255,255,0.12);
+      border:1px solid rgba(255,255,255,0.20);
+    }
+    .hero-eyebrow .dt{
+      width:6px;height:6px;border-radius:50%;background:#a3e635;
+      box-shadow:0 0 8px rgba(163,230,53,0.90);
+    }
+    .hero-ico{
+      width:108px;height:108px;border-radius:26px;display:grid;place-items:center;color:#fff;
+      align-self:center;margin:8px 0 4px;
+      background:
+        radial-gradient(52px 36px at 30% 22%, rgba(255,255,255,0.60), transparent 60%),
+        linear-gradient(160deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%);
+      border:1px solid rgba(255,255,255,0.36);
+      box-shadow:
+        0 22px 50px rgba(0,0,0,0.55),
+        0 0 50px rgba(167,139,250,0.45),
+        inset 0 1px 0 rgba(255,255,255,0.42),
+        inset 0 -1px 0 rgba(0,0,0,0.28),
+        inset 0 0 0 1px rgba(255,255,255,0.10);
+    }
+    .hero-ico i{
+      font-size:54px;
+      filter:drop-shadow(0 3px 14px rgba(255,255,255,0.55)) drop-shadow(0 0 22px rgba(167,139,250,0.60));
+    }
+    .hero-text{display:flex;flex-direction:column;gap:8px;text-align:center}
+    .hero-ttl{
+      font-size:28px;font-weight:800;letter-spacing:-0.015em;color:#fff;line-height:1.05;
+      text-shadow:0 2px 14px rgba(0,0,0,0.45), 0 0 30px rgba(192,132,252,0.50);
+    }
+    .hero-desc{font-size:13px;color:#e6d8ff;letter-spacing:0.02em;opacity:.95;line-height:1.45}
+    .hero-cta{
+      align-self:center;margin-top:4px;
+      display:inline-flex;align-items:center;gap:10px;
+      padding:13px 22px 13px 24px;border-radius:999px;border:0;cursor:pointer;
+      font-family:inherit;font-size:13px;font-weight:700;letter-spacing:0.06em;color:#3b1289;
+      background:linear-gradient(180deg,#ffffff,#ece5ff);
+      box-shadow:0 16px 36px rgba(0,0,0,0.45), 0 0 28px rgba(255,255,255,0.30), inset 0 -1px 0 rgba(0,0,0,0.10);
+      transition:transform .22s ease, box-shadow .22s ease;
+    }
+    .hero-cta:hover{transform:translateY(-1px) scale(1.02);box-shadow:0 22px 46px rgba(0,0,0,0.55), 0 0 36px rgba(255,255,255,0.45)}
+    .hero-cta i{font-size:16px}
+
+    /* RIGHT COLUMN: sections */
+    .right-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+    /* SECTION HEADERS */
+    .section .head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .section .lbl{
+      font-size:10px;font-weight:800;letter-spacing:0.34em;color:#8c95aa;
+      position:relative;padding-left:14px;
+    }
+    .section .lbl::before{
+      content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+      width:6px;height:6px;border-radius:50%;
+      background:var(--accent-line,#a78bfa);
+      box-shadow:0 0 10px var(--accent-line,#a78bfa), 0 0 0 3px color-mix(in srgb, var(--accent-line,#a78bfa) 18%, transparent);
+    }
+    .section .line{
+      flex:1;height:1px;
+      background:linear-gradient(90deg, var(--accent-line, rgba(255,255,255,0.18)) 0%, color-mix(in srgb, var(--accent-line,#fff) 25%, transparent) 30%, transparent 75%);
+    }
+
+    .grid{display:grid;gap:12px}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .grid.cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+    @media (max-width:1400px){
+      .grid.cols-5{grid-template-columns:repeat(4,minmax(0,1fr))}
+      .top-layout{grid-template-columns:340px 1fr}
+    }
+    @media (max-width:1200px){
+      .grid.cols-4,.grid.cols-5{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .top-layout{grid-template-columns:1fr}
+    }
+
+    /* ===================== MODULE CARDS ===================== */
+    .card{
+      --c:#a78bfa;
+      position:relative;min-height:118px;border-radius:18px;padding:14px 14px 12px;
+      background:
+        radial-gradient(260px 160px at 100% 0%, color-mix(in srgb, var(--c) 24%, transparent), transparent 70%),
+        radial-gradient(220px 140px at 0% 110%, color-mix(in srgb, var(--c) 13%, transparent), transparent 70%),
+        linear-gradient(160deg, #1b212d 0%, #11161f 55%, #0c111a 100%);
+      border:1px solid rgba(255,255,255,0.07);
+      box-shadow:
+        0 16px 38px rgba(0,0,0,0.42),
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        inset 0 0 0 1px rgba(255,255,255,0.015);
+      cursor:pointer;
+      display:flex;flex-direction:column;gap:10px;overflow:hidden;
+      transition:transform .22s cubic-bezier(.2,.7,.2,1), border-color .22s ease, box-shadow .22s ease;
+    }
+    .card::before{
+      content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+      background:linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.20) 100%);
+    }
+    .card::after{
+      content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+      background:linear-gradient(135deg, transparent 55%, color-mix(in srgb, var(--c) 16%, transparent) 100%);
+      mix-blend-mode:screen;opacity:.6;
+    }
+    .card:hover{
+      transform:translateY(-3px);
+      border-color:color-mix(in srgb, var(--c) 55%, rgba(255,255,255,0.07));
+      box-shadow:
+        0 26px 56px rgba(0,0,0,0.58),
+        0 0 0 1px color-mix(in srgb, var(--c) 42%, transparent),
+        0 0 44px color-mix(in srgb, var(--c) 32%, transparent),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .card .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:relative;z-index:1}
+    .card .arrow{
+      width:28px;height:28px;border-radius:9px;display:grid;place-items:center;
+      color:#525c70;border:1px solid rgba(255,255,255,0.05);
+      background:rgba(255,255,255,0.025);
+      transition:color .22s ease, border-color .22s ease, transform .22s ease, background .22s ease;
+    }
+    .card .arrow i{font-size:14px}
+    .card:hover .arrow{
+      color:color-mix(in srgb, var(--c) 80%, #fff);
+      border-color:color-mix(in srgb, var(--c) 45%, rgba(255,255,255,0.06));
+      background:color-mix(in srgb, var(--c) 10%, transparent);
+      transform:translateX(2px);
+    }
+
+    /* Icon-figure tile */
+    .card .ic{
+      width:56px;height:56px;border-radius:15px;display:grid;place-items:center;color:#fff;
+      position:relative;flex:0 0 56px;
+      background:
+        radial-gradient(26px 18px at 30% 22%, rgba(255,255,255,0.40), transparent 65%),
+        linear-gradient(160deg, color-mix(in srgb, var(--c) 75%, transparent) 0%, color-mix(in srgb, var(--c) 35%, transparent) 55%, color-mix(in srgb, var(--c) 12%, transparent) 100%);
+      border:1px solid color-mix(in srgb, var(--c) 55%, rgba(255,255,255,0.10));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        inset 0 -1px 0 rgba(0,0,0,0.25),
+        inset 0 0 0 1px rgba(255,255,255,0.06),
+        0 14px 28px color-mix(in srgb, var(--c) 36%, transparent),
+        0 0 26px color-mix(in srgb, var(--c) 28%, transparent);
+      transition:transform .22s cubic-bezier(.2,.7,.2,1), box-shadow .22s ease, border-color .22s ease;
+    }
+    .card .ic::after{
+      content:"";position:absolute;inset:auto -50% -70% auto;width:80px;height:80px;border-radius:50%;
+      background:radial-gradient(circle, color-mix(in srgb, var(--c) 45%, transparent), transparent 65%);
+      pointer-events:none;opacity:.65;filter:blur(2px);
+    }
+    .card .ic i{
+      font-size:28px;color:#fff;position:relative;z-index:1;
+      filter:drop-shadow(0 2px 2px rgba(0,0,0,0.45)) drop-shadow(0 0 12px color-mix(in srgb, var(--c) 70%, transparent));
+    }
+    .card:hover .ic{
+      transform:translateY(-2px) scale(1.03);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.36),
+        inset 0 -1px 0 rgba(0,0,0,0.22),
+        inset 0 0 0 1px rgba(255,255,255,0.10),
+        0 18px 36px color-mix(in srgb, var(--c) 48%, transparent),
+        0 0 36px color-mix(in srgb, var(--c) 40%, transparent);
+      border-color:color-mix(in srgb, var(--c) 65%, transparent);
+    }
+    .card:hover .ic i{filter:drop-shadow(0 2px 2px rgba(0,0,0,0.45)) drop-shadow(0 0 16px color-mix(in srgb, var(--c) 80%, transparent))}
+
+    .card .meta{display:flex;flex-direction:column;gap:2px;position:relative;z-index:1;margin-top:auto}
+    .card .nm{
+      font-size:13px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;
+      color:color-mix(in srgb, var(--c) 90%, #fff);
+      text-shadow:0 0 18px color-mix(in srgb, var(--c) 32%, transparent);
+    }
+    .card .desc{font-size:10.5px;color:var(--text-mute);line-height:1.4;opacity:.85}
+    .card .pill-badge{
+      align-self:flex-start;margin-top:8px;
+      font-size:10px;font-weight:700;line-height:1;letter-spacing:0.02em;
+      padding:5px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.07);
+      background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.012));
+      color:#cfd5e3;box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .pill-badge.red{background:linear-gradient(180deg,rgba(239,68,68,0.16),rgba(239,68,68,0.04));color:#fca5a5;border-color:rgba(239,68,68,0.38);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 0 12px rgba(239,68,68,0.18)}
+    .pill-badge.amber{background:linear-gradient(180deg,rgba(251,191,36,0.16),rgba(251,191,36,0.04));color:#fcd34d;border-color:rgba(251,191,36,0.38);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 0 12px rgba(251,191,36,0.16)}
+    .pill-badge.green{background:linear-gradient(180deg,rgba(74,222,128,0.16),rgba(74,222,128,0.04));color:#86efac;border-color:rgba(74,222,128,0.38);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 0 12px rgba(74,222,128,0.16)}
+    .pill-badge.blue{background:linear-gradient(180deg,rgba(56,189,248,0.16),rgba(56,189,248,0.04));color:#93c5fd;border-color:rgba(56,189,248,0.38);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 0 12px rgba(56,189,248,0.16)}
+    .pill-badge.slate{background:linear-gradient(180deg,rgba(148,163,184,0.14),rgba(148,163,184,0.04));color:#cbd5e1;border-color:rgba(148,163,184,0.32)}
+
+    /* STATUS BAR */
+    .status{
+      position:relative;z-index:1;display:flex;align-items:center;gap:14px;
+      padding:11px 18px;border-radius:14px;
+      background:
+        radial-gradient(220px 60px at 0% 50%, rgba(124,58,237,0.10), transparent 70%),
+        radial-gradient(220px 60px at 100% 50%, rgba(74,222,128,0.08), transparent 70%),
+        linear-gradient(180deg, rgba(17,22,31,0.85), rgba(11,15,23,0.85));
+      border:1px solid rgba(255,255,255,0.07);
+      box-shadow:0 14px 36px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.05);
+      font-size:11.5px;color:#b8bfcf;
+    }
+    .status .item{display:flex;align-items:center;gap:7px}
+    .status .item i{font-size:13px;color:#6b748a}
+    .status .item b{color:#e7eaf2;font-weight:600}
+    .status .sep{width:1px;height:14px;background:rgba(255,255,255,0.07)}
+    .status .ok{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:#bbf7d0;font-weight:600}
+    .status .ok .dt{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 12px rgba(34,197,94,0.70)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ============== SIDEBAR ============== -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="name">CellHub Pro</div>
+        <div class="sub">GO CELLULAR</div>
+      </div>
+
+      <div class="user-card">
+        <div class="avatar">JO<span class="dot"></span></div>
+        <div class="who">
+          <div class="nm">Jorge Ochoa</div>
+          <div class="rl">Owner</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a href="#" class="active"><i class="ti ti-home-2"></i><span class="txt">Home</span></a>
+        <a href="#"><i class="ti ti-layout-dashboard"></i><span class="txt">Dashboard</span></a>
+        <a href="#"><i class="ti ti-tools"></i><span class="txt">Repairs</span><span class="badge red">3</span></a>
+        <a href="#"><i class="ti ti-package"></i><span class="txt">Inventory</span><span class="badge amber">374</span></a>
+        <a href="#"><i class="ti ti-users"></i><span class="txt">Customers</span></a>
+        <a href="#"><i class="ti ti-lock-open"></i><span class="txt">Unlocks</span></a>
+        <a href="#"><i class="ti ti-clipboard-list"></i><span class="txt">Orders</span><span class="badge amber">2</span></a>
+        <a href="#"><i class="ti ti-calendar-event"></i><span class="txt">Appointments</span><span class="badge green">4</span></a>
+        <a href="#"><i class="ti ti-brain"></i><span class="txt">Intelligence</span><span class="badge blue">5</span></a>
+        <a href="#"><i class="ti ti-chart-bar"></i><span class="txt">Reports</span></a>
+        <a href="#"><i class="ti ti-settings"></i><span class="txt">Settings</span></a>
+      </nav>
+
+      <div class="companion">
+        <div class="head">
+          <div class="ico"><i class="ti ti-robot"></i></div>
+          <div>
+            <div class="ttl">Companion</div>
+            <div class="sub"><span class="pulse"></span>1 aprobación pendiente</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============== MAIN ============== -->
+    <main class="main">
+
+      <!-- HEADER: search + alert pills -->
+      <div class="header">
+        <div class="search-wrap">
+          <i class="ti ti-search"></i>
+          <input placeholder="Buscar clientes, teléfonos, accesorios, SKU…" />
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="alerts">
+          <span class="pill red"><i class="ti ti-tools"></i>Repairs <b>3</b></span>
+          <span class="pill amber"><i class="ti ti-package"></i>Low Stock <b>374</b></span>
+          <span class="pill green"><i class="ti ti-cash"></i><b>$208</b> today</span>
+          <span class="pill blue"><i class="ti ti-brain"></i>Alerts <b>5</b></span>
+        </div>
+      </div>
+
+      <!-- GREETING -->
+      <div class="greet">
+        <h1>Buenos días, Jorge!</h1>
+        <div class="meta">Vamos a operar la tienda · Lunes 11 de mayo, 2026</div>
+      </div>
+
+      <!-- BODY SCROLL -->
+      <div class="body">
+
+        <!-- TOP LAYOUT: POS hero | right column -->
+        <div class="top-layout">
+
+          <!-- POS HERO (vertical) -->
+          <section class="hero">
+            <span class="hero-eyebrow"><span class="dt"></span>ACCIÓN PRINCIPAL</span>
+            <div class="hero-ico"><i class="ti ti-cash-register"></i></div>
+            <div class="hero-text">
+              <div class="hero-ttl">Punto de Venta</div>
+              <div class="hero-desc">Nueva venta, recibir pagos, activaciones de línea y accesorios — todo desde aquí.</div>
+            </div>
+            <button class="hero-cta">ABRIR POS <i class="ti ti-arrow-right"></i></button>
+          </section>
+
+          <!-- RIGHT COLUMN: Sales + Service -->
+          <div class="right-col">
+
+            <!-- VENTAS -->
+            <section class="section" style="--accent-line:rgba(251,191,36,0.55)">
+              <div class="head"><div class="lbl">VENTAS</div><div class="line"></div></div>
+              <div class="grid cols-4">
+
+                <div class="card" style="--c:#fbbf24">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-device-mobile"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Celulares</div>
+                    <div class="desc">Smartphones · Prepaid · Postpaid</div>
+                    <span class="pill-badge blue">128 en stock</span>
+                  </div>
+                </div>
+
+                <div class="card" style="--c:#22d3ee">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-headphones"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Accesorios</div>
+                    <div class="desc">Cases · Cables · Audio</div>
+                    <span class="pill-badge blue">256 en stock</span>
+                  </div>
+                </div>
+
+                <div class="card" style="--c:#fbbf24">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-credit-card"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Pagos</div>
+                    <div class="desc">Carrier · Repair balances</div>
+                    <span class="pill-badge amber">$823 pendiente</span>
+                  </div>
+                </div>
+
+                <div class="card" style="--c:#4ade80">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-wallet"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Layaways</div>
+                    <div class="desc">Pagos parciales · Reservas</div>
+                    <span class="pill-badge green">14 activos</span>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+            <!-- SERVICIO -->
+            <section class="section" style="--accent-line:rgba(45,212,191,0.55)">
+              <div class="head"><div class="lbl">SERVICIO</div><div class="line"></div></div>
+              <div class="grid cols-3">
+
+                <div class="card" style="--c:#2dd4bf">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-tools"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Reparaciones</div>
+                    <div class="desc">Tickets · Pickups · Diagnóstico</div>
+                    <span class="pill-badge red">3 esperando</span>
+                  </div>
+                </div>
+
+                <div class="card" style="--c:#c084fc">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-lock-open"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Unlocks</div>
+                    <div class="desc">Carrier unlocks · FRP · IMEI</div>
+                    <span class="pill-badge slate">0 pendientes</span>
+                  </div>
+                </div>
+
+                <div class="card" style="--c:#a3e635">
+                  <div class="row">
+                    <div class="ic"><i class="ti ti-clipboard-text"></i></div>
+                    <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+                  </div>
+                  <div class="meta">
+                    <div class="nm">Estimados</div>
+                    <div class="desc">Cotizaciones · Conversión</div>
+                    <span class="pill-badge amber">8 borradores</span>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+        <!-- OPERACIONES -->
+        <section class="section" style="--accent-line:rgba(34,211,238,0.55)">
+          <div class="head"><div class="lbl">OPERACIONES</div><div class="line"></div></div>
+          <div class="grid cols-5">
+
+            <div class="card" style="--c:#fbbf24">
+              <div class="row">
+                <div class="ic"><i class="ti ti-package"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Inventario</div>
+                <div class="desc">SKUs · Stock · Recibos</div>
+                <span class="pill-badge red">3 sin stock</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#22d3ee">
+              <div class="row">
+                <div class="ic"><i class="ti ti-clipboard-list"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Órdenes</div>
+                <div class="desc">Special orders · POs · Tracking</div>
+                <span class="pill-badge amber">5 pendientes</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#f0abfc">
+              <div class="row">
+                <div class="ic"><i class="ti ti-arrow-back-up-double"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Devoluciones</div>
+                <div class="desc">Refunds · Cambios · RMAs</div>
+                <span class="pill-badge amber">4 a procesar</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#818cf8">
+              <div class="row">
+                <div class="ic"><i class="ti ti-users"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Clientes</div>
+                <div class="desc">Cuentas · Historial · Loyalty</div>
+                <span class="pill-badge blue">420 total</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#a3e635">
+              <div class="row">
+                <div class="ic"><i class="ti ti-calendar-event"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Citas</div>
+                <div class="desc">Reservas · Walk-ins</div>
+                <span class="pill-badge green">4 hoy</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- GESTIÓN -->
+        <section class="section" style="--accent-line:rgba(251,146,60,0.55)">
+          <div class="head"><div class="lbl">GESTIÓN</div><div class="line"></div></div>
+          <div class="grid cols-4">
+
+            <div class="card" style="--c:#fb923c">
+              <div class="row">
+                <div class="ic"><i class="ti ti-chart-bar"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Reportes</div>
+                <div class="desc">Ventas · Profit · Tax · EOD</div>
+                <span class="pill-badge slate">Hoy listo</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#38bdf8">
+              <div class="row">
+                <div class="ic"><i class="ti ti-brain"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Intelligence</div>
+                <div class="desc">Alertas · Insights · Anomalías</div>
+                <span class="pill-badge blue">5 nuevas</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#fb7185">
+              <div class="row">
+                <div class="ic"><i class="ti ti-user-shield"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Empleados</div>
+                <div class="desc">Turnos · Comisiones · Permisos</div>
+                <span class="pill-badge slate">4 activos</span>
+              </div>
+            </div>
+
+            <div class="card" style="--c:#f87171">
+              <div class="row">
+                <div class="ic"><i class="ti ti-settings"></i></div>
+                <div class="arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+              <div class="meta">
+                <div class="nm">Configuración</div>
+                <div class="desc">Tienda · Impresoras · Impuestos</div>
+                <span class="pill-badge slate">Sistema</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+      <!-- STATUS BAR -->
+      <div class="status">
+        <div class="item"><i class="ti ti-building-store"></i>Store: <b>Go Cellular</b></div>
+        <div class="sep"></div>
+        <div class="item"><i class="ti ti-cash-register"></i>Register: <b>Front Counter</b></div>
+        <div class="sep"></div>
+        <div class="item"><i class="ti ti-clock"></i>Session: <b>9:15 AM</b></div>
+        <div class="ok"><span class="dt"></span>All Systems Operational</div>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>

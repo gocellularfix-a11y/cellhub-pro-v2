@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CellHub Pro — Command Center</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{
+      --bg:#070B1A;
+      --panel:#0E1426;
+      --panel2:#141B30;
+      --border:rgba(255,255,255,0.06);
+      --text:#FFFFFF;
+      --muted:#8B92A8;
+      --dim:#5B6478;
+    }
+    html,body{margin:0;padding:0;height:100%;overflow:hidden}
+    body{
+      font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+      color:var(--text);background:var(--bg);
+      -webkit-font-smoothing:antialiased;
+    }
+    body::before{
+      content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+      background:
+        radial-gradient(900px 600px at 15% -5%, rgba(124,58,237,0.18), transparent 60%),
+        radial-gradient(800px 500px at 100% 105%, rgba(14,165,233,0.08), transparent 60%);
+    }
+    iconify-icon{display:inline-flex;line-height:0}
+    .shell{display:flex;width:100%;height:100vh;position:relative;z-index:1}
+
+    /* ===================== SIDEBAR ===================== */
+    .sidebar{
+      width:200px;flex:0 0 200px;height:100vh;
+      background:linear-gradient(180deg,#08091A 0%,#0A0F22 40%,#08091A 100%);
+      border-right:1px solid var(--border);
+      padding:14px 10px;display:flex;flex-direction:column;gap:10px;
+      position:relative;overflow:hidden;
+    }
+    .sidebar::before{
+      content:"";position:absolute;inset:-2px auto auto -2px;width:140%;height:240px;pointer-events:none;
+      background:radial-gradient(220px 160px at 30% 0%, rgba(124,58,237,0.20), transparent 70%);
+    }
+    .sidebar > *{position:relative;z-index:1}
+    .logo{padding:4px 6px;display:flex;flex-direction:column;gap:1px}
+    .logo .name{
+      font-weight:800;font-size:16px;letter-spacing:-0.02em;
+      background:linear-gradient(120deg,#C4B5FD,#A855F7 50%,#60A5FA);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+    }
+    .logo .sub{font-size:7.5px;font-weight:700;letter-spacing:0.32em;color:#525C70}
+
+    .user-card{
+      display:flex;align-items:center;gap:8px;
+      padding:8px 9px;border-radius:10px;margin-top:2px;
+      background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01));
+      border:1px solid var(--border);
+    }
+    .avatar{
+      width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+      font-weight:700;font-size:10px;color:#fff;flex-shrink:0;
+      background:linear-gradient(135deg,#A855F7,#3B82F6);
+      box-shadow:0 0 0 1px rgba(255,255,255,0.12) inset, 0 4px 14px rgba(168,85,247,0.30);
+    }
+    .user-card .who{min-width:0;line-height:1.2}
+    .user-card .nm{font-size:11px;font-weight:700;color:#EEF0F6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .user-card .rl{font-size:8.5px;font-weight:700;letter-spacing:0.18em;color:#525C70}
+
+    .nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;margin-top:4px}
+    .nav a{
+      position:relative;display:flex;align-items:center;gap:10px;
+      height:34px;padding:0 10px;border-radius:9px;
+      text-decoration:none;font-size:12.5px;font-weight:500;
+      color:#9097AD;border:1px solid transparent;
+      transition:all .18s ease;
+    }
+    .nav a iconify-icon{width:18px;height:18px;color:#6A7388;flex-shrink:0;transition:color .18s ease}
+    .nav a .txt{flex:1}
+    .nav a:hover{background:rgba(255,255,255,0.03);color:#fff}
+    .nav a:hover iconify-icon{color:#C4CADD}
+    .nav a.active{
+      color:#fff;font-weight:600;
+      background:linear-gradient(135deg, rgba(168,85,247,0.28) 0%, rgba(99,102,241,0.18) 100%);
+      border-color:rgba(168,85,247,0.40);
+      box-shadow:0 0 0 1px rgba(168,85,247,0.20) inset, 0 8px 20px rgba(168,85,247,0.20);
+    }
+    .nav a.active iconify-icon{color:#C4B5FD}
+    .nav a.active::before{
+      content:"";position:absolute;left:-10px;top:50%;transform:translateY(-50%);
+      width:3px;height:18px;border-radius:3px;
+      background:linear-gradient(180deg,#C4B5FD,#A855F7);
+      box-shadow:0 0 10px rgba(168,85,247,0.70);
+    }
+
+    .companion-card{
+      margin-top:auto;padding:10px;border-radius:12px;
+      display:flex;align-items:center;gap:9px;position:relative;overflow:hidden;
+      background:
+        radial-gradient(160px 100px at 100% 0%, rgba(192,132,252,0.22), transparent 70%),
+        linear-gradient(160deg, rgba(192,132,252,0.10), rgba(124,58,237,0.04) 60%, #0B0F1C);
+      border:1px solid rgba(192,132,252,0.28);
+      box-shadow:0 10px 28px rgba(124,58,237,0.22);
+    }
+    .companion-card .ico{
+      width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;
+      background:linear-gradient(135deg,#A855F7,#7C3AED 55%,#6366F1);
+      box-shadow:0 6px 16px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.22);
+    }
+    .companion-card .ico iconify-icon{width:16px;height:16px;color:#fff}
+    .companion-card .info{min-width:0;line-height:1.18}
+    .companion-card .ttl{font-size:11px;font-weight:800;color:#F4F0FF}
+    .companion-card .sub{font-size:9px;color:#A89FCE;display:flex;align-items:center;gap:5px}
+    .companion-card .pulse{
+      width:6px;height:6px;border-radius:50%;background:#10B981;
+      box-shadow:0 0 8px rgba(16,185,129,0.7);
+    }
+
+    /* ===================== MAIN ===================== */
+    .main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;z-index:1}
+
+    /* TOPBAR */
+    .topbar{
+      height:56px;flex:0 0 56px;padding:0 18px;
+      display:flex;align-items:center;gap:10px;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(14,20,38,0.85), rgba(7,11,26,0.55));
+      backdrop-filter:blur(10px);
+    }
+    .search{position:relative;width:340px}
+    .search iconify-icon.ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--dim)}
+    .search input{
+      width:100%;height:34px;padding:0 12px 0 34px;
+      background:rgba(255,255,255,0.04);
+      border:1px solid var(--border);border-radius:10px;
+      color:var(--text);font-family:inherit;font-size:12px;outline:none;
+    }
+    .search input::placeholder{color:var(--dim)}
+
+    .topbar .pills{display:flex;gap:6px;align-items:center;margin-left:auto}
+    .topbar .pill{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:6px 11px;border-radius:999px;
+      background:rgba(255,255,255,0.03);
+      border:1px solid var(--border);
+      font-size:11px;font-weight:600;color:#CFD5E3;
+    }
+    .topbar .pill iconify-icon{width:14px;height:14px}
+    .topbar .pill b{font-weight:700;color:#fff}
+    .topbar .pill.red iconify-icon{color:#FB7185}
+    .topbar .pill.red b{color:#FCA5A5}
+    .topbar .pill.amber iconify-icon{color:#FBBF24}
+    .topbar .pill.amber b{color:#FCD34D}
+    .topbar .pill.green iconify-icon{color:#34D399}
+    .topbar .pill.green b{color:#6EE7B7}
+    .topbar .pill.blue iconify-icon{color:#38BDF8}
+    .topbar .pill.blue b{color:#7DD3FC}
+
+    .customize-btn{
+      display:inline-flex;align-items:center;gap:6px;
+      height:34px;padding:0 14px;border-radius:10px;cursor:pointer;
+      font-family:inherit;font-size:11.5px;font-weight:600;letter-spacing:0.02em;color:#fff;
+      background:linear-gradient(135deg, rgba(168,85,247,0.22), rgba(99,102,241,0.14));
+      border:1px solid rgba(168,85,247,0.40);
+      box-shadow:0 8px 20px rgba(168,85,247,0.20), inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+    .customize-btn iconify-icon{width:13px;height:13px;color:#C4B5FD}
+
+    /* BODY — fills viewport, no scroll */
+    .body{
+      flex:1;min-height:0;padding:14px 18px;overflow:hidden;
+      display:flex;flex-direction:column;gap:12px;
+    }
+    .greet{flex-shrink:0;display:flex;flex-direction:column;gap:1px}
+    .greet h1{
+      margin:0;font-size:22px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;
+      background:linear-gradient(120deg,#FFFFFF 0%,#E5E9F3 60%,#A8B1C6 100%);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+    }
+    .greet .meta{font-size:11px;color:var(--muted)}
+
+    /* DASHBOARD GRID — hero | 2 rows (sales + service); below: ops; below: mgmt */
+    .dash{
+      flex:1;min-height:0;display:grid;
+      grid-template-columns:360px 1fr;
+      grid-template-rows:1fr 1fr 1fr 1fr;
+      gap:12px;
+    }
+    .hero{grid-column:1;grid-row:1 / span 2}
+    .sales-row{grid-column:2;grid-row:1}
+    .service-row{grid-column:2;grid-row:2}
+    .operations-row{grid-column:1 / span 2;grid-row:3}
+    .management-row{grid-column:1 / span 2;grid-row:4}
+
+    .row{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
+    .row-head{display:flex;align-items:center;gap:8px;flex-shrink:0;padding:0 2px}
+    .row-lbl{
+      font-size:10px;font-weight:800;letter-spacing:0.28em;color:#7B849A;text-transform:uppercase;
+      position:relative;padding-left:11px;
+    }
+    .row-lbl::before{
+      content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+      width:5px;height:5px;border-radius:50%;background:var(--accent,#A855F7);
+      box-shadow:0 0 7px var(--accent,#A855F7);
+    }
+    .row-tiles{flex:1;min-height:0;display:grid;gap:10px}
+    .sales-row .row-tiles{grid-template-columns:repeat(4, 1fr)}
+    .service-row .row-tiles{grid-template-columns:repeat(4, 1fr)}
+    .operations-row .row-tiles{grid-template-columns:repeat(5, 1fr)}
+    .management-row .row-tiles{grid-template-columns:repeat(6, 1fr)}
+
+    /* HERO POS */
+    .hero{
+      position:relative;border-radius:18px;padding:20px 22px;
+      display:flex;flex-direction:column;justify-content:space-between;gap:8px;overflow:hidden;
+      background:
+        radial-gradient(380px 240px at 90% 95%, rgba(192,132,252,0.55), transparent 70%),
+        radial-gradient(320px 220px at 10% 0%, rgba(99,102,241,0.45), transparent 70%),
+        linear-gradient(160deg, #2A1A6E 0%, #4023A8 35%, #6A2BD9 70%, #8B3FF5 100%);
+      border:1px solid rgba(192,132,252,0.40);
+      box-shadow:
+        0 24px 60px rgba(91,33,182,0.45),
+        0 0 50px rgba(124,58,237,0.22),
+        inset 0 1px 0 rgba(255,255,255,0.18);
+      cursor:pointer;transition:transform .22s ease, box-shadow .22s ease;
+    }
+    .hero:hover{transform:translateY(-2px);box-shadow:0 28px 72px rgba(91,33,182,0.55), 0 0 60px rgba(124,58,237,0.30)}
+    .hero::before{
+      content:"";position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(180deg, rgba(255,255,255,0.10) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.20) 100%);
+    }
+    .hero > *{position:relative;z-index:1}
+    .hero-eyebrow{
+      align-self:flex-start;display:inline-flex;align-items:center;gap:6px;
+      font-size:8.5px;font-weight:800;letter-spacing:0.32em;color:#E9D8FF;
+      padding:4px 10px;border-radius:999px;
+      background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);
+    }
+    .hero-eyebrow .dt{width:5px;height:5px;border-radius:50%;background:#A3E635;box-shadow:0 0 7px rgba(163,230,53,0.9)}
+    .hero-ico-wrap{display:grid;place-items:center;flex:1;min-height:0;margin:6px 0}
+    .hero-ico{
+      width:130px;height:130px;border-radius:26px;display:grid;place-items:center;
+      background:
+        radial-gradient(48px 32px at 30% 22%, rgba(255,255,255,0.55), transparent 60%),
+        linear-gradient(160deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.08) 60%, rgba(255,255,255,0.03) 100%);
+      border:1px solid rgba(255,255,255,0.30);
+      box-shadow:
+        0 18px 40px rgba(0,0,0,0.50),
+        0 0 40px rgba(167,139,250,0.40),
+        inset 0 1px 0 rgba(255,255,255,0.36),
+        inset 0 -1px 0 rgba(0,0,0,0.25);
+    }
+    .hero-ico iconify-icon{
+      width:74px;height:74px;color:#FFFFFF;
+      filter:drop-shadow(0 4px 12px rgba(0,0,0,0.45)) drop-shadow(0 0 20px rgba(255,255,255,0.30));
+    }
+    .hero-text{display:flex;flex-direction:column;gap:6px}
+    .hero-ttl{font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#fff;line-height:1.05;text-shadow:0 2px 12px rgba(0,0,0,0.45)}
+    .hero-desc{font-size:12px;color:#E0D2FF;line-height:1.4;opacity:.92}
+
+    /* TILES */
+    .tile{
+      --c:#A855F7;--c-r:168;--c-g:85;--c-b:247;
+      position:relative;display:flex;flex-direction:column;gap:6px;
+      padding:12px;border-radius:14px;overflow:hidden;cursor:pointer;
+      background:
+        radial-gradient(180px 120px at 100% 0%, rgba(var(--c-r),var(--c-g),var(--c-b),0.16), transparent 70%),
+        linear-gradient(160deg, var(--panel2) 0%, var(--panel) 65%, #0A0F1F 100%);
+      border:1px solid var(--border);
+      box-shadow:0 8px 22px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+      transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+      min-width:0;
+    }
+    .tile:hover{
+      transform:translateY(-2px);
+      border-color:rgba(var(--c-r),var(--c-g),var(--c-b),0.50);
+      box-shadow:0 14px 36px rgba(0,0,0,0.50), 0 0 0 1px rgba(var(--c-r),var(--c-g),var(--c-b),0.42), 0 0 28px rgba(var(--c-r),var(--c-g),var(--c-b),0.24);
+    }
+    .tile-ic{
+      width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;
+      background:
+        radial-gradient(20px 14px at 30% 22%, rgba(255,255,255,0.18), transparent 65%),
+        linear-gradient(160deg, rgba(var(--c-r),var(--c-g),var(--c-b),0.32) 0%, rgba(var(--c-r),var(--c-g),var(--c-b),0.12) 100%);
+      border:1px solid rgba(var(--c-r),var(--c-g),var(--c-b),0.45);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.16), 0 4px 10px rgba(var(--c-r),var(--c-g),var(--c-b),0.25);
+    }
+    .tile-ic iconify-icon{width:20px;height:20px;color:rgba(var(--c-r),var(--c-g),var(--c-b),1);filter:drop-shadow(0 0 6px rgba(var(--c-r),var(--c-g),var(--c-b),0.55))}
+    .tile-meta{display:flex;flex-direction:column;gap:1px;margin-top:auto;min-width:0}
+    .tile-ttl{font-size:13.5px;font-weight:700;color:#FFFFFF;line-height:1.15;letter-spacing:-0.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tile-sub{font-size:10px;color:var(--muted);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tile-badge{
+      position:absolute;top:10px;right:10px;
+      display:inline-flex;align-items:center;gap:3px;
+      padding:2px 7px;border-radius:999px;
+      font-size:9.5px;font-weight:700;
+      background:rgba(var(--c-r),var(--c-g),var(--c-b),0.18);
+      border:1px solid rgba(var(--c-r),var(--c-g),var(--c-b),0.45);
+      color:rgba(var(--c-r),var(--c-g),var(--c-b),1);
+      box-shadow:0 0 12px rgba(var(--c-r),var(--c-g),var(--c-b),0.30);
+    }
+    .tile-badge.red{background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.50);color:#FCA5A5;box-shadow:0 0 12px rgba(239,68,68,0.25)}
+    .tile-badge.amber{background:rgba(245,158,11,0.18);border-color:rgba(245,158,11,0.50);color:#FCD34D}
+    .tile-badge.green{background:rgba(16,185,129,0.18);border-color:rgba(16,185,129,0.50);color:#6EE7B7}
+
+    /* STATUS BAR */
+    .status{
+      flex-shrink:0;display:flex;align-items:center;gap:12px;
+      padding:8px 14px;border-radius:12px;
+      background:linear-gradient(180deg, rgba(14,20,38,0.85), rgba(7,11,26,0.85));
+      border:1px solid var(--border);
+      font-size:11px;color:#9CA3B6;
+    }
+    .status .item{display:flex;align-items:center;gap:6px}
+    .status .item iconify-icon{width:13px;height:13px;color:#5B6478}
+    .status .item b{color:#E7EAF2;font-weight:600}
+    .status .sep{width:1px;height:12px;background:var(--border)}
+    .status .ok{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:#6EE7B7;font-weight:600;font-size:10.5px;letter-spacing:0.04em}
+    .status .ok .dt{width:7px;height:7px;border-radius:50%;background:#10B981;box-shadow:0 0 10px rgba(16,185,129,0.7)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ============== SIDEBAR ============== -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="name">CellHub Pro</div>
+        <div class="sub">GO CELLULAR</div>
+      </div>
+
+      <div class="user-card">
+        <div class="avatar">JO</div>
+        <div class="who">
+          <div class="nm">Jorge Ochoa</div>
+          <div class="rl">OWNER</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a href="#" class="active"><iconify-icon icon="lucide:layout-dashboard"></iconify-icon><span class="txt">Dashboard</span></a>
+        <a href="#"><iconify-icon icon="lucide:users"></iconify-icon><span class="txt">Customers</span></a>
+        <a href="#"><iconify-icon icon="lucide:message-square"></iconify-icon><span class="txt">Messages</span></a>
+        <a href="#"><iconify-icon icon="lucide:check-circle-2"></iconify-icon><span class="txt">Approvals</span></a>
+        <a href="#"><iconify-icon icon="lucide:bell-ring"></iconify-icon><span class="txt">Follow Ups</span></a>
+        <a href="#"><iconify-icon icon="lucide:search"></iconify-icon><span class="txt">Search</span></a>
+        <a href="#"><iconify-icon icon="lucide:keyboard"></iconify-icon><span class="txt">Shortcuts</span></a>
+        <a href="#"><iconify-icon icon="lucide:settings"></iconify-icon><span class="txt">Settings</span></a>
+        <a href="#"><iconify-icon icon="lucide:log-out"></iconify-icon><span class="txt">Sign Out</span></a>
+      </nav>
+
+      <div class="companion-card">
+        <div class="ico"><iconify-icon icon="lucide:bot"></iconify-icon></div>
+        <div class="info">
+          <div class="ttl">Companion</div>
+          <div class="sub"><span class="pulse"></span>1 approval pending</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============== MAIN ============== -->
+    <main class="main">
+
+      <!-- TOPBAR -->
+      <div class="topbar">
+        <div class="search">
+          <iconify-icon class="ico" icon="lucide:search"></iconify-icon>
+          <input readonly placeholder="Search customers, phones, accessories, SKUs…" />
+        </div>
+        <div class="pills">
+          <span class="pill red"><iconify-icon icon="lucide:wrench"></iconify-icon>Repairs <b>12</b></span>
+          <span class="pill amber"><iconify-icon icon="lucide:package"></iconify-icon>Low Stock <b>67</b></span>
+          <span class="pill green"><iconify-icon icon="lucide:dollar-sign"></iconify-icon>Unpaid <b>$1,823</b></span>
+          <span class="pill blue"><iconify-icon icon="lucide:bell"></iconify-icon>Alerts <b>3</b></span>
+        </div>
+        <button class="customize-btn"><iconify-icon icon="lucide:sliders-horizontal"></iconify-icon>Customize</button>
+      </div>
+
+      <!-- BODY -->
+      <div class="body">
+
+        <div class="greet">
+          <h1>Good morning, Jorge!</h1>
+          <div class="meta">Let's run the shop · Monday, May 11, 2026</div>
+        </div>
+
+        <!-- DASHBOARD: hero | SALES + SERVICE | OPERATIONS | MANAGEMENT -->
+        <div class="dash">
+
+          <!-- HERO POS -->
+          <section class="hero">
+            <span class="hero-eyebrow"><span class="dt"></span>PRIMARY ACTION</span>
+            <div class="hero-ico-wrap">
+              <div class="hero-ico"><iconify-icon icon="lucide:scan-barcode"></iconify-icon></div>
+            </div>
+            <div class="hero-text">
+              <div class="hero-ttl">Point of Sale</div>
+              <div class="hero-desc">Start a new sale, accept payments, and manage transactions.</div>
+            </div>
+          </section>
+
+          <!-- SALES ROW -->
+          <div class="row sales-row">
+            <div class="row-head" style="--accent:#FBBF24"><div class="row-lbl">SALES</div></div>
+            <div class="row-tiles">
+
+              <div class="tile" style="--c:#FBBF24;--c-r:251;--c-g:191;--c-b:36">
+                <div class="tile-ic"><iconify-icon icon="lucide:smartphone"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Cellphones</div>
+                  <div class="tile-sub">Smartphones · prepaid</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#22D3EE;--c-r:34;--c-g:211;--c-b:238">
+                <div class="tile-ic"><iconify-icon icon="lucide:headphones"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Accessories</div>
+                  <div class="tile-sub">Cases · cables · audio</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#F59E0B;--c-r:245;--c-g:158;--c-b:11">
+                <div class="tile-ic"><iconify-icon icon="lucide:credit-card"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Payments</div>
+                  <div class="tile-sub">Carrier · balances</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#10B981;--c-r:16;--c-g:185;--c-b:129">
+                <div class="tile-ic"><iconify-icon icon="lucide:wallet"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Layaways</div>
+                  <div class="tile-sub">Partial payments</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- SERVICE ROW -->
+          <div class="row service-row">
+            <div class="row-head" style="--accent:#2DD4BF"><div class="row-lbl">SERVICE</div></div>
+            <div class="row-tiles">
+
+              <div class="tile" style="--c:#2DD4BF;--c-r:45;--c-g:212;--c-b:191">
+                <div class="tile-ic"><iconify-icon icon="lucide:wrench"></iconify-icon></div>
+                <span class="tile-badge red">3</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Repairs</div>
+                  <div class="tile-sub">Tickets · diagnostics</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#C084FC;--c-r:192;--c-g:132;--c-b:252">
+                <div class="tile-ic"><iconify-icon icon="lucide:lock-open"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Unlocks</div>
+                  <div class="tile-sub">Carrier · IMEI · FRP</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#FACC15;--c-r:250;--c-g:204;--c-b:21">
+                <div class="tile-ic"><iconify-icon icon="lucide:file-text"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Estimates</div>
+                  <div class="tile-sub">Quotes · conversion</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#A78BFA;--c-r:167;--c-g:139;--c-b:250">
+                <div class="tile-ic"><iconify-icon icon="lucide:calendar-clock"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Appointments</div>
+                  <div class="tile-sub">Reservations · walk-ins</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- OPERATIONS ROW -->
+          <div class="row operations-row">
+            <div class="row-head" style="--accent:#22D3EE"><div class="row-lbl">OPERATIONS</div></div>
+            <div class="row-tiles">
+
+              <div class="tile" style="--c:#F59E0B;--c-r:245;--c-g:158;--c-b:11">
+                <div class="tile-ic"><iconify-icon icon="lucide:boxes"></iconify-icon></div>
+                <span class="tile-badge red">3</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Inventory</div>
+                  <div class="tile-sub">SKUs · stock · receipts</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#22D3EE;--c-r:34;--c-g:211;--c-b:238">
+                <div class="tile-ic"><iconify-icon icon="lucide:clipboard-list"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Purchase Orders</div>
+                  <div class="tile-sub">POs · tracking</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#F0ABFC;--c-r:240;--c-g:171;--c-b:252">
+                <div class="tile-ic"><iconify-icon icon="lucide:rotate-ccw"></iconify-icon></div>
+                <span class="tile-badge amber">4</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">RMA / Returns</div>
+                  <div class="tile-sub">Refunds · exchanges</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#60A5FA;--c-r:96;--c-g:165;--c-b:250">
+                <div class="tile-ic"><iconify-icon icon="lucide:tag"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Labels</div>
+                  <div class="tile-sub">Print · barcode · price</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#A3E635;--c-r:163;--c-g:230;--c-b:53">
+                <div class="tile-ic"><iconify-icon icon="lucide:gift"></iconify-icon></div>
+                <span class="tile-badge amber">5</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Special Orders</div>
+                  <div class="tile-sub">Custom · backorder</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- MANAGEMENT ROW -->
+          <div class="row management-row">
+            <div class="row-head" style="--accent:#FB923C"><div class="row-lbl">MANAGEMENT</div></div>
+            <div class="row-tiles">
+
+              <div class="tile" style="--c:#FB923C;--c-r:251;--c-g:146;--c-b:60">
+                <div class="tile-ic"><iconify-icon icon="lucide:bar-chart-3"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Reports</div>
+                  <div class="tile-sub">Sales · profit · tax</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#38BDF8;--c-r:56;--c-g:189;--c-b:248">
+                <div class="tile-ic"><iconify-icon icon="lucide:brain"></iconify-icon></div>
+                <span class="tile-badge">5</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Intelligence</div>
+                  <div class="tile-sub">AI alerts · insights</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#A855F7;--c-r:168;--c-g:85;--c-b:247">
+                <div class="tile-ic"><iconify-icon icon="lucide:bot"></iconify-icon></div>
+                <span class="tile-badge amber">1</span>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Companion</div>
+                  <div class="tile-sub">AI assistant</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#818CF8;--c-r:129;--c-g:140;--c-b:248">
+                <div class="tile-ic"><iconify-icon icon="lucide:users"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Customers</div>
+                  <div class="tile-sub">Database · loyalty</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#A3E635;--c-r:163;--c-g:230;--c-b:53">
+                <div class="tile-ic"><iconify-icon icon="lucide:bell-ring"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Follow Ups</div>
+                  <div class="tile-sub">Pending tasks</div>
+                </div>
+              </div>
+
+              <div class="tile" style="--c:#FB7185;--c-r:251;--c-g:113;--c-b:133">
+                <div class="tile-ic"><iconify-icon icon="lucide:settings"></iconify-icon></div>
+                <div class="tile-meta">
+                  <div class="tile-ttl">Settings</div>
+                  <div class="tile-sub">System config</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- STATUS BAR -->
+        <div class="status">
+          <div class="item"><iconify-icon icon="lucide:store"></iconify-icon>Store: <b>Go Cellular</b></div>
+          <div class="sep"></div>
+          <div class="item"><iconify-icon icon="lucide:scan-barcode"></iconify-icon>Register: <b>Front Counter</b></div>
+          <div class="sep"></div>
+          <div class="item"><iconify-icon icon="lucide:clock"></iconify-icon>Session: <b>9:15 AM</b></div>
+          <div class="ok"><span class="dt"></span>All Systems Operational</div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CellHub — Command Center Proposal</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{
+      --bg:#08090F;
+      --panel:#0E1018;
+      --panel2:#13161F;
+      --panel3:#1A1D28;
+      --border:rgba(255,255,255,0.07);
+      --border-strong:rgba(255,255,255,0.12);
+      --text:#F4F5F8;
+      --text-dim:#9CA0AE;
+      --muted:#6B7080;
+      --dim:#4A4E5C;
+      --violet:#A78BFA;
+      --violet-glow:rgba(167,139,250,0.40);
+    }
+    html,body{margin:0;padding:0;height:100%;overflow:hidden}
+    body{
+      font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+      color:var(--text);background:var(--bg);
+      -webkit-font-smoothing:antialiased;letter-spacing:0.005em;
+    }
+    body::before{
+      content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+      background:
+        radial-gradient(900px 600px at 10% -10%, rgba(124,58,237,0.10), transparent 60%),
+        radial-gradient(800px 500px at 110% 110%, rgba(56,189,248,0.06), transparent 60%);
+    }
+    iconify-icon{display:inline-flex;line-height:0}
+    .shell{display:flex;width:100%;height:100vh;position:relative;z-index:1}
+    .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-feature-settings:"tnum" 1}
+
+    /* ============= SIDEBAR ============= */
+    .sb{
+      width:200px;flex:0 0 200px;height:100vh;
+      background:#0B0D14;
+      border-right:1px solid var(--border);
+      padding:18px 12px;display:flex;flex-direction:column;gap:18px;
+    }
+    .sb-logo{display:flex;align-items:center;gap:9px;padding:0 6px}
+    .sb-logo .mark{
+      width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff;
+      background:linear-gradient(135deg,#A855F7 0%,#6366F1 60%,#3B82F6);
+      box-shadow:0 6px 18px rgba(168,85,247,0.40), inset 0 1px 0 rgba(255,255,255,0.24);
+    }
+    .sb-logo .mark iconify-icon{width:16px;height:16px}
+    .sb-logo .nm{font-size:14px;font-weight:800;letter-spacing:-0.015em}
+    .sb-logo .sub{font-size:8.5px;font-weight:700;letter-spacing:0.30em;color:var(--muted);margin-top:1px}
+
+    .sb-section{display:flex;flex-direction:column;gap:1px}
+    .sb-section-lbl{
+      font-size:9.5px;font-weight:700;letter-spacing:0.28em;color:var(--dim);text-transform:uppercase;
+      padding:0 10px 6px;
+    }
+    .sb a{
+      position:relative;display:flex;align-items:center;gap:10px;
+      height:34px;padding:0 10px;border-radius:8px;
+      text-decoration:none;font-size:12.5px;font-weight:500;
+      color:var(--text-dim);
+      transition:background .18s ease, color .18s ease;
+    }
+    .sb a iconify-icon{width:16px;height:16px;color:var(--muted);flex-shrink:0;transition:color .18s ease}
+    .sb a .txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sb a .kbd{
+      font-family:'JetBrains Mono',monospace;font-size:9.5px;
+      color:var(--dim);padding:2px 5px;border-radius:4px;
+      background:rgba(255,255,255,0.04);border:1px solid var(--border);
+    }
+    .sb a .dot{
+      width:6px;height:6px;border-radius:50%;background:#F59E0B;
+      box-shadow:0 0 6px rgba(245,158,11,0.7);
+    }
+    .sb a:hover{background:rgba(255,255,255,0.03);color:#fff}
+    .sb a:hover iconify-icon{color:#fff}
+    .sb a.active{
+      color:#fff;font-weight:600;
+      background:linear-gradient(90deg, rgba(168,85,247,0.18), rgba(168,85,247,0.04));
+      box-shadow:inset 2px 0 0 #A855F7;
+    }
+    .sb a.active iconify-icon{color:#C4B5FD}
+
+    .sb-footer{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+    .sb-user{
+      display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;
+      background:rgba(255,255,255,0.02);border:1px solid var(--border);
+    }
+    .sb-user .av{
+      width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+      font-weight:700;font-size:9.5px;color:#fff;flex-shrink:0;
+      background:linear-gradient(135deg,#A855F7,#6366F1);
+    }
+    .sb-user .nm{font-size:11px;font-weight:700;color:#EEF0F6;line-height:1.2}
+    .sb-user .role{font-size:9.5px;color:var(--muted);line-height:1.2}
+    .sb-user iconify-icon{margin-left:auto;width:13px;height:13px;color:var(--muted)}
+
+    /* ============= MAIN ============= */
+    .main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;z-index:1}
+
+    /* TOPBAR */
+    .top{
+      height:54px;flex:0 0 54px;padding:0 22px;
+      display:flex;align-items:center;gap:14px;
+      border-bottom:1px solid var(--border);
+      background:rgba(11,13,20,0.65);backdrop-filter:blur(14px);
+    }
+    .top-crumb{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+    .top-crumb b{color:var(--text);font-weight:600}
+    .top-crumb iconify-icon{width:13px;height:13px;color:var(--dim)}
+
+    .search{position:relative;width:380px;margin-left:auto}
+    .search iconify-icon.ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--dim)}
+    .search input{
+      width:100%;height:34px;padding:0 56px 0 34px;
+      background:rgba(255,255,255,0.03);
+      border:1px solid var(--border);border-radius:8px;
+      color:var(--text);font-family:inherit;font-size:12px;outline:none;
+      transition:border-color .18s ease;
+    }
+    .search input::placeholder{color:var(--dim)}
+    .search input:focus{border-color:rgba(168,139,250,0.5)}
+    .search .kbd{
+      position:absolute;right:8px;top:50%;transform:translateY(-50%);
+      font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted);
+      padding:3px 6px;border-radius:5px;
+      background:rgba(255,255,255,0.04);border:1px solid var(--border);
+    }
+
+    .top-actions{display:flex;align-items:center;gap:8px}
+    .top-btn{
+      display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:8px;cursor:pointer;
+      font-family:inherit;font-size:11.5px;font-weight:600;color:var(--text);
+      background:rgba(255,255,255,0.04);border:1px solid var(--border);
+    }
+    .top-btn iconify-icon{width:13px;height:13px;color:var(--text-dim)}
+    .top-btn.primary{
+      background:linear-gradient(135deg,#7C3AED 0%,#6366F1 100%);border-color:rgba(168,139,250,0.55);
+      box-shadow:0 6px 18px rgba(124,58,237,0.34), inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .top-btn.primary iconify-icon{color:#fff}
+    .top-icbtn{
+      width:34px;height:34px;display:grid;place-items:center;border-radius:8px;cursor:pointer;
+      background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text-dim);
+      position:relative;
+    }
+    .top-icbtn iconify-icon{width:15px;height:15px}
+    .top-icbtn .dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#F87171;box-shadow:0 0 8px rgba(248,113,113,0.7), 0 0 0 2px #0E1018}
+
+    /* BODY */
+    .body{
+      flex:1;min-height:0;padding:18px 22px 18px;overflow:hidden;
+      display:flex;flex-direction:column;gap:14px;
+    }
+
+    /* GREETING */
+    .greet{display:flex;align-items:baseline;justify-content:space-between;flex-shrink:0;gap:14px}
+    .greet h1{
+      margin:0;font-size:22px;font-weight:800;letter-spacing:-0.025em;line-height:1.1;
+      background:linear-gradient(120deg,#FFFFFF 0%,#D7DCEB 60%,#A8B1C6 100%);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+    }
+    .greet .meta{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+    .greet .meta b{color:var(--text);font-weight:600}
+    .greet .meta .sep{color:var(--dim)}
+
+    /* KPI STRIP */
+    .kpis{
+      display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;flex-shrink:0;
+    }
+    .kpi{
+      position:relative;padding:14px 16px;border-radius:14px;overflow:hidden;
+      background:linear-gradient(160deg, var(--panel2), var(--panel) 70%);
+      border:1px solid var(--border);
+      box-shadow:0 4px 16px rgba(0,0,0,0.30);
+      display:flex;flex-direction:column;gap:8px;cursor:pointer;
+      transition:border-color .18s ease, transform .18s ease;
+    }
+    .kpi:hover{transform:translateY(-1px);border-color:var(--border-strong)}
+    .kpi::before{
+      content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+      background:radial-gradient(160px 90px at 100% 0%, var(--g, rgba(167,139,250,0.16)), transparent 70%);
+    }
+    .kpi > *{position:relative;z-index:1}
+    .kpi-head{display:flex;align-items:center;gap:8px}
+    .kpi-ic{
+      width:24px;height:24px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;
+      background:var(--ic-bg, rgba(167,139,250,0.16));
+      border:1px solid var(--ic-bd, rgba(167,139,250,0.35));
+    }
+    .kpi-ic iconify-icon{width:13px;height:13px;color:var(--ic-c,#C4B5FD)}
+    .kpi-lbl{font-size:10.5px;font-weight:700;letter-spacing:0.16em;color:var(--text-dim);text-transform:uppercase}
+    .kpi-val{font-size:24px;font-weight:800;letter-spacing:-0.025em;line-height:1;color:#fff}
+    .kpi-val .unit{font-size:13px;font-weight:600;color:var(--text-dim);margin-left:3px}
+    .kpi-sub{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+    .kpi-sub iconify-icon{width:11px;height:11px}
+    .kpi-sub .up{color:#34D399}
+    .kpi-sub .dn{color:#FB7185}
+    .kpi-sub .warn{color:#FBBF24}
+
+    /* DUAL PANE: SALES FLOOR + REPAIR BENCH */
+    .dual{
+      flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:14px;
+    }
+    .pane{
+      display:flex;flex-direction:column;border-radius:14px;overflow:hidden;
+      background:linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
+      border:1px solid var(--border);
+      box-shadow:0 6px 20px rgba(0,0,0,0.35);
+    }
+    .pane-head{
+      flex-shrink:0;display:flex;align-items:center;gap:10px;
+      padding:12px 16px;border-bottom:1px solid var(--border);
+      background:rgba(255,255,255,0.015);
+    }
+    .pane-ic{
+      width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+      background:var(--ic-bg);border:1px solid var(--ic-bd);
+    }
+    .pane-ic iconify-icon{width:14px;height:14px;color:var(--ic-c)}
+    .pane-ttl{font-size:13px;font-weight:700;letter-spacing:-0.01em;color:#fff}
+    .pane-meta{font-size:11px;color:var(--muted);margin-left:6px}
+    .pane-meta b{color:var(--text)}
+    .pane-cta{
+      margin-left:auto;display:inline-flex;align-items:center;gap:5px;
+      height:26px;padding:0 10px;border-radius:7px;cursor:pointer;
+      font-family:inherit;font-size:11px;font-weight:600;color:#fff;
+      background:rgba(255,255,255,0.05);border:1px solid var(--border);
+    }
+    .pane-cta iconify-icon{width:12px;height:12px}
+    .pane-cta.primary{background:linear-gradient(135deg,#7C3AED,#6366F1);border-color:rgba(168,139,250,0.45);box-shadow:0 4px 12px rgba(124,58,237,0.28)}
+
+    .pane-body{flex:1;min-height:0;overflow:auto;padding:8px 8px}
+    .pane-body::-webkit-scrollbar{width:6px}
+    .pane-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:6px}
+
+    .item{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;border-radius:9px;
+      cursor:pointer;transition:background .15s ease;
+      border:1px solid transparent;
+    }
+    .item + .item{margin-top:2px}
+    .item:hover{background:rgba(255,255,255,0.04);border-color:var(--border)}
+    .item-tag{
+      flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.02em;
+      padding:4px 8px;border-radius:6px;color:var(--ic-c,#C4B5FD);
+      background:var(--ic-bg,rgba(167,139,250,0.12));border:1px solid var(--ic-bd,rgba(167,139,250,0.30));
+    }
+    .item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+    .item-ttl{font-size:12.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .item-ttl span{color:var(--muted);font-weight:400}
+    .item-sub{font-size:10.5px;color:var(--text-dim);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .item-sub iconify-icon{width:11px;height:11px;color:var(--muted)}
+    .item-sub .sep{color:var(--dim)}
+    .item-val{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#fff;text-align:right}
+    .item-val small{display:block;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:400;color:var(--muted);margin-top:1px}
+    .item-status{
+      flex-shrink:0;display:inline-flex;align-items:center;gap:4px;
+      padding:3px 8px;border-radius:999px;
+      font-size:10px;font-weight:700;letter-spacing:0.01em;
+    }
+    .item-status.amber{background:rgba(245,158,11,0.14);color:#FBBF24;border:1px solid rgba(245,158,11,0.34)}
+    .item-status.red{background:rgba(239,68,68,0.14);color:#FCA5A5;border:1px solid rgba(239,68,68,0.34)}
+    .item-status.green{background:rgba(16,185,129,0.14);color:#6EE7B7;border:1px solid rgba(16,185,129,0.34)}
+    .item-status.blue{background:rgba(56,189,248,0.14);color:#7DD3FC;border:1px solid rgba(56,189,248,0.34)}
+    .item-status.violet{background:rgba(167,139,250,0.14);color:#C4B5FD;border:1px solid rgba(167,139,250,0.34)}
+
+    .pane-foot{
+      flex-shrink:0;display:flex;align-items:center;gap:12px;
+      padding:8px 14px;border-top:1px solid var(--border);
+      background:rgba(255,255,255,0.01);
+      font-size:10.5px;color:var(--muted);
+    }
+    .pane-foot .stat{display:flex;align-items:center;gap:5px}
+    .pane-foot .stat b{color:#fff;font-weight:600}
+    .pane-foot .sep{width:1px;height:10px;background:var(--border)}
+
+    /* BOTTOM ROW: COMPANION + ACTIVITY */
+    .bottom{
+      flex:0 0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:14px;
+    }
+    .card{
+      border-radius:14px;border:1px solid var(--border);overflow:hidden;
+      background:linear-gradient(180deg, var(--panel2), var(--panel) 100%);
+    }
+    .card-head{
+      display:flex;align-items:center;gap:10px;padding:11px 16px;
+      border-bottom:1px solid var(--border);
+    }
+    .card-head .ic{
+      width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+      background:var(--ic-bg);border:1px solid var(--ic-bd);
+    }
+    .card-head .ic iconify-icon{width:12px;height:12px;color:var(--ic-c)}
+    .card-head .ttl{font-size:12.5px;font-weight:700;color:#fff;letter-spacing:-0.005em}
+    .card-head .meta{font-size:11px;color:var(--muted);margin-left:6px}
+    .card-head .more{margin-left:auto;font-size:10.5px;color:var(--text-dim);cursor:pointer;display:flex;align-items:center;gap:3px}
+    .card-head .more iconify-icon{width:11px;height:11px}
+
+    /* COMPANION SUGGESTIONS */
+    .suggestions{padding:8px}
+    .sg{
+      display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;cursor:pointer;
+      border:1px solid transparent;transition:background .15s ease, border-color .15s ease;
+    }
+    .sg + .sg{margin-top:2px}
+    .sg:hover{background:rgba(167,139,250,0.06);border-color:rgba(167,139,250,0.25)}
+    .sg-ic{
+      width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex-shrink:0;
+      background:linear-gradient(135deg,rgba(167,139,250,0.18),rgba(99,102,241,0.10));
+      border:1px solid rgba(167,139,250,0.30);
+    }
+    .sg-ic iconify-icon{width:14px;height:14px;color:#C4B5FD}
+    .sg-main{flex:1;min-width:0}
+    .sg-ttl{font-size:12px;font-weight:600;color:#F4F5F8;line-height:1.35}
+    .sg-ttl b{color:#fff;font-weight:700}
+    .sg-sub{font-size:10px;color:var(--muted);margin-top:2px}
+    .sg-action{
+      flex-shrink:0;display:inline-flex;align-items:center;gap:4px;
+      height:26px;padding:0 10px;border-radius:7px;cursor:pointer;
+      font-family:inherit;font-size:11px;font-weight:600;color:#C4B5FD;
+      background:rgba(167,139,250,0.10);border:1px solid rgba(167,139,250,0.30);
+    }
+    .sg-action iconify-icon{width:11px;height:11px}
+    .sg-action:hover{background:rgba(167,139,250,0.18)}
+
+    /* ACTIVITY FEED */
+    .feed{padding:6px 8px;overflow:auto}
+    .feed::-webkit-scrollbar{width:6px}
+    .feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:6px}
+    .fd{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px}
+    .fd:hover{background:rgba(255,255,255,0.025)}
+    .fd-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);width:42px;flex-shrink:0;padding-top:1px}
+    .fd-dot{
+      width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px;
+      background:var(--c,#A78BFA);box-shadow:0 0 8px var(--c,rgba(167,139,250,0.5));
+    }
+    .fd-text{flex:1;font-size:11.5px;color:var(--text);line-height:1.4}
+    .fd-text b{font-weight:600;color:#fff}
+    .fd-text .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ====================== SIDEBAR ====================== -->
+    <aside class="sb">
+      <div class="sb-logo">
+        <div class="mark"><iconify-icon icon="lucide:zap"></iconify-icon></div>
+        <div>
+          <div class="nm">CellHub</div>
+          <div class="sub">GO CELLULAR</div>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Workspace</div>
+        <a href="#" class="active"><iconify-icon icon="lucide:layout-dashboard"></iconify-icon><span class="txt">Overview</span></a>
+        <a href="#"><iconify-icon icon="lucide:scan-line"></iconify-icon><span class="txt">POS</span><span class="kbd">⌘P</span></a>
+        <a href="#"><iconify-icon icon="lucide:wrench"></iconify-icon><span class="txt">Repairs</span><span class="dot"></span></a>
+        <a href="#"><iconify-icon icon="lucide:users"></iconify-icon><span class="txt">Customers</span></a>
+        <a href="#"><iconify-icon icon="lucide:boxes"></iconify-icon><span class="txt">Inventory</span></a>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Activity</div>
+        <a href="#"><iconify-icon icon="lucide:inbox"></iconify-icon><span class="txt">Messages</span><span class="kbd">2</span></a>
+        <a href="#"><iconify-icon icon="lucide:check-circle-2"></iconify-icon><span class="txt">Approvals</span><span class="kbd">1</span></a>
+        <a href="#"><iconify-icon icon="lucide:list-todo"></iconify-icon><span class="txt">Follow-ups</span></a>
+        <a href="#"><iconify-icon icon="lucide:calendar-clock"></iconify-icon><span class="txt">Appointments</span></a>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-section-lbl">Insights</div>
+        <a href="#"><iconify-icon icon="lucide:sparkles"></iconify-icon><span class="txt">Companion</span></a>
+        <a href="#"><iconify-icon icon="lucide:line-chart"></iconify-icon><span class="txt">Intelligence</span></a>
+        <a href="#"><iconify-icon icon="lucide:bar-chart-3"></iconify-icon><span class="txt">Reports</span></a>
+      </div>
+
+      <div class="sb-footer">
+        <a href="#" style="height:30px"><iconify-icon icon="lucide:settings"></iconify-icon><span class="txt">Settings</span></a>
+        <div class="sb-user">
+          <div class="av">JO</div>
+          <div>
+            <div class="nm">Jorge Ochoa</div>
+            <div class="role">Owner</div>
+          </div>
+          <iconify-icon icon="lucide:chevrons-up-down"></iconify-icon>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ====================== MAIN ====================== -->
+    <main class="main">
+
+      <!-- TOPBAR -->
+      <div class="top">
+        <div class="top-crumb">
+          <iconify-icon icon="lucide:store"></iconify-icon>
+          <b>Go Cellular</b>
+          <iconify-icon icon="lucide:chevron-right"></iconify-icon>
+          <span>Front Counter</span>
+        </div>
+        <div class="search">
+          <iconify-icon class="ico" icon="lucide:search"></iconify-icon>
+          <input readonly placeholder="Search customer, ticket, SKU, sale#…" />
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="top-actions">
+          <button class="top-btn primary"><iconify-icon icon="lucide:plus"></iconify-icon>Quick Add</button>
+          <button class="top-icbtn"><iconify-icon icon="lucide:bell"></iconify-icon><span class="dot"></span></button>
+          <button class="top-icbtn"><iconify-icon icon="lucide:command"></iconify-icon></button>
+        </div>
+      </div>
+
+      <!-- BODY -->
+      <div class="body">
+
+        <!-- Greeting -->
+        <div class="greet">
+          <h1>Good morning, Jorge</h1>
+          <div class="meta">
+            <span>Monday, May 12</span><span class="sep">·</span><span>9:15 AM</span>
+            <span class="sep">·</span><iconify-icon icon="lucide:sun" style="width:13px;height:13px;color:#FBBF24"></iconify-icon><b>72°F</b>
+          </div>
+        </div>
+
+        <!-- KPI STRIP -->
+        <div class="kpis">
+
+          <div class="kpi" style="--g:rgba(16,185,129,0.18); --ic-bg:rgba(16,185,129,0.12); --ic-bd:rgba(16,185,129,0.36); --ic-c:#34D399">
+            <div class="kpi-head">
+              <div class="kpi-ic"><iconify-icon icon="lucide:dollar-sign"></iconify-icon></div>
+              <div class="kpi-lbl">Revenue today</div>
+            </div>
+            <div class="kpi-val">$2,341<span class="unit">.50</span></div>
+            <div class="kpi-sub"><iconify-icon icon="lucide:trending-up" class="up"></iconify-icon><span class="up">+12.4%</span><span>vs. last Monday</span></div>
+          </div>
+
+          <div class="kpi" style="--g:rgba(245,158,11,0.18); --ic-bg:rgba(245,158,11,0.12); --ic-bd:rgba(245,158,11,0.36); --ic-c:#FBBF24">
+            <div class="kpi-head">
+              <div class="kpi-ic"><iconify-icon icon="lucide:wrench"></iconify-icon></div>
+              <div class="kpi-lbl">Repairs in queue</div>
+            </div>
+            <div class="kpi-val">8<span class="unit">tickets</span></div>
+            <div class="kpi-sub"><iconify-icon icon="lucide:alert-triangle" class="warn"></iconify-icon><span class="warn">3 stale</span><span>· 2 awaiting parts</span></div>
+          </div>
+
+          <div class="kpi" style="--g:rgba(56,189,248,0.18); --ic-bg:rgba(56,189,248,0.12); --ic-bd:rgba(56,189,248,0.36); --ic-c:#7DD3FC">
+            <div class="kpi-head">
+              <div class="kpi-ic"><iconify-icon icon="lucide:package"></iconify-icon></div>
+              <div class="kpi-lbl">Stock alerts</div>
+            </div>
+            <div class="kpi-val">67<span class="unit">low</span></div>
+            <div class="kpi-sub"><iconify-icon icon="lucide:alert-circle" class="dn"></iconify-icon><span class="dn">5 critical</span><span>· reorder ready</span></div>
+          </div>
+
+          <div class="kpi" style="--g:rgba(167,139,250,0.18); --ic-bg:rgba(167,139,250,0.12); --ic-bd:rgba(167,139,250,0.36); --ic-c:#C4B5FD">
+            <div class="kpi-head">
+              <div class="kpi-ic"><iconify-icon icon="lucide:check-circle-2"></iconify-icon></div>
+              <div class="kpi-lbl">Approvals</div>
+            </div>
+            <div class="kpi-val">1<span class="unit">pending</span></div>
+            <div class="kpi-sub"><iconify-icon icon="lucide:clock"></iconify-icon><span>Refund $230 · 8 min ago</span></div>
+          </div>
+
+        </div>
+
+        <!-- DUAL PANE: SALES FLOOR + REPAIR BENCH -->
+        <div class="dual">
+
+          <section class="pane">
+            <div class="pane-head">
+              <div class="pane-ic" style="--ic-bg:rgba(167,139,250,0.14); --ic-bd:rgba(167,139,250,0.36); --ic-c:#C4B5FD"><iconify-icon icon="lucide:shopping-cart"></iconify-icon></div>
+              <div class="pane-ttl">Sales Floor</div>
+              <div class="pane-meta">· <b>2</b> open carts · <b>14</b> sales today</div>
+              <button class="pane-cta primary"><iconify-icon icon="lucide:plus"></iconify-icon>New sale</button>
+            </div>
+
+            <div class="pane-body">
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(167,139,250,0.12); --ic-bd:rgba(167,139,250,0.30); --ic-c:#C4B5FD">CART · A</span>
+                <div class="item-main">
+                  <div class="item-ttl">Maria Hernandez <span>· 5 items</span></div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Returning · <iconify-icon icon="lucide:clock"></iconify-icon>opened 4 min ago</div>
+                </div>
+                <span class="item-status violet">ACTIVE</span>
+                <div class="item-val">$156.40<small>+ tax</small></div>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(167,139,250,0.12); --ic-bd:rgba(167,139,250,0.30); --ic-c:#C4B5FD">CART · B</span>
+                <div class="item-main">
+                  <div class="item-ttl">Walk-in <span>· 1 item</span></div>
+                  <div class="item-sub"><iconify-icon icon="lucide:smartphone"></iconify-icon>USB-C cable 6ft</div>
+                </div>
+                <span class="item-status violet">ACTIVE</span>
+                <div class="item-val">$24.99<small>+ tax</small></div>
+              </div>
+
+              <div style="padding:8px 12px 4px;font-size:9.5px;font-weight:700;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase">Recent sales</div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(52,211,153,0.10); --ic-bd:rgba(52,211,153,0.28); --ic-c:#6EE7B7">#2341</span>
+                <div class="item-main">
+                  <div class="item-ttl">Carlos Rivera <span>· iPhone 14 case + glass</span></div>
+                  <div class="item-sub"><iconify-icon icon="lucide:credit-card"></iconify-icon>Card · <iconify-icon icon="lucide:user-circle"></iconify-icon>Maria · 9:42 AM</div>
+                </div>
+                <div class="item-val">$87.50</div>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(52,211,153,0.10); --ic-bd:rgba(52,211,153,0.28); --ic-c:#6EE7B7">#2340</span>
+                <div class="item-main">
+                  <div class="item-ttl">Walk-in <span>· Lightning cable + adapter</span></div>
+                  <div class="item-sub"><iconify-icon icon="lucide:banknote"></iconify-icon>Cash · <iconify-icon icon="lucide:user-circle"></iconify-icon>Carlos · 9:28 AM</div>
+                </div>
+                <div class="item-val">$32.00</div>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(52,211,153,0.10); --ic-bd:rgba(52,211,153,0.28); --ic-c:#6EE7B7">#2339</span>
+                <div class="item-main">
+                  <div class="item-ttl">Ana Lopez <span>· Repair pickup R-887</span></div>
+                  <div class="item-sub"><iconify-icon icon="lucide:credit-card"></iconify-icon>Card · <iconify-icon icon="lucide:wrench"></iconify-icon>balance $145 · 9:11 AM</div>
+                </div>
+                <div class="item-val">$145.00</div>
+              </div>
+
+            </div>
+
+            <div class="pane-foot">
+              <div class="stat">Avg ticket: <b>$54.20</b></div>
+              <div class="sep"></div>
+              <div class="stat">Cash: <b>$412</b></div>
+              <div class="sep"></div>
+              <div class="stat">Card: <b>$1,929</b></div>
+              <div class="stat" style="margin-left:auto"><iconify-icon icon="lucide:eye" style="width:11px;height:11px"></iconify-icon>View all sales</div>
+            </div>
+          </section>
+
+          <section class="pane">
+            <div class="pane-head">
+              <div class="pane-ic" style="--ic-bg:rgba(245,158,11,0.14); --ic-bd:rgba(245,158,11,0.36); --ic-c:#FBBF24"><iconify-icon icon="lucide:wrench"></iconify-icon></div>
+              <div class="pane-ttl">Repair Bench</div>
+              <div class="pane-meta">· <b>8</b> open · <b>2</b> picked up today</div>
+              <button class="pane-cta"><iconify-icon icon="lucide:plus"></iconify-icon>New ticket</button>
+            </div>
+
+            <div class="pane-body">
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(239,68,68,0.10); --ic-bd:rgba(239,68,68,0.30); --ic-c:#FCA5A5">R-879</span>
+                <div class="item-main">
+                  <div class="item-ttl">iPhone 12 · Screen replacement</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Lupita H. · <iconify-icon icon="lucide:clock"></iconify-icon>9 days ago · stale</div>
+                </div>
+                <span class="item-status red">STALE</span>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(245,158,11,0.10); --ic-bd:rgba(245,158,11,0.30); --ic-c:#FBBF24">R-885</span>
+                <div class="item-main">
+                  <div class="item-ttl">Samsung S22 · Battery + back glass</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:package-search"></iconify-icon>awaiting parts · ETA Wed</div>
+                </div>
+                <span class="item-status amber">WAITING</span>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(56,189,248,0.10); --ic-bd:rgba(56,189,248,0.30); --ic-c:#7DD3FC">R-891</span>
+                <div class="item-main">
+                  <div class="item-ttl">iPhone 14 Pro · Charging port</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Diego R. · <iconify-icon icon="lucide:tool"></iconify-icon>Maria · 2h ago</div>
+                </div>
+                <span class="item-status blue">IN PROGRESS</span>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(56,189,248,0.10); --ic-bd:rgba(56,189,248,0.30); --ic-c:#7DD3FC">R-892</span>
+                <div class="item-main">
+                  <div class="item-ttl">Pixel 7 · Water damage diagnosis</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Sofia M. · <iconify-icon icon="lucide:tool"></iconify-icon>Carlos · 38m ago</div>
+                </div>
+                <span class="item-status blue">IN PROGRESS</span>
+              </div>
+
+              <div style="padding:8px 12px 4px;font-size:9.5px;font-weight:700;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase">Ready for pickup</div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(52,211,153,0.10); --ic-bd:rgba(52,211,153,0.28); --ic-c:#6EE7B7">R-883</span>
+                <div class="item-main">
+                  <div class="item-ttl">iPad Mini · Screen + digitizer</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Roberto C. · balance <b style="color:#fff">$210</b></div>
+                </div>
+                <span class="item-status green">READY</span>
+              </div>
+
+              <div class="item">
+                <span class="item-tag" style="--ic-bg:rgba(52,211,153,0.10); --ic-bd:rgba(52,211,153,0.28); --ic-c:#6EE7B7">R-886</span>
+                <div class="item-main">
+                  <div class="item-ttl">iPhone 13 · Speaker repair</div>
+                  <div class="item-sub"><iconify-icon icon="lucide:user"></iconify-icon>Marta V. · balance <b style="color:#fff">$95</b></div>
+                </div>
+                <span class="item-status green">READY</span>
+              </div>
+
+            </div>
+
+            <div class="pane-foot">
+              <div class="stat">Avg cycle: <b>2.4d</b></div>
+              <div class="sep"></div>
+              <div class="stat">SLA hit: <b>87%</b></div>
+              <div class="sep"></div>
+              <div class="stat">Owed: <b>$1,823</b></div>
+              <div class="stat" style="margin-left:auto"><iconify-icon icon="lucide:eye" style="width:11px;height:11px"></iconify-icon>View all tickets</div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- BOTTOM ROW: COMPANION + FEED -->
+        <div class="bottom">
+
+          <section class="card">
+            <div class="card-head" style="--ic-bg:rgba(167,139,250,0.18); --ic-bd:rgba(167,139,250,0.42); --ic-c:#C4B5FD">
+              <div class="ic"><iconify-icon icon="lucide:sparkles"></iconify-icon></div>
+              <div class="ttl">Companion suggests</div>
+              <div class="meta">3 next-best-actions</div>
+              <div class="more">View all <iconify-icon icon="lucide:arrow-right"></iconify-icon></div>
+            </div>
+            <div class="suggestions">
+
+              <div class="sg">
+                <div class="sg-ic"><iconify-icon icon="lucide:phone-call"></iconify-icon></div>
+                <div class="sg-main">
+                  <div class="sg-ttl"><b>R-879</b> is 9 days old — Lupita hasn't responded to texts.</div>
+                  <div class="sg-sub">Suggested: call her now or mark as abandoned</div>
+                </div>
+                <button class="sg-action"><iconify-icon icon="lucide:phone"></iconify-icon>Call</button>
+              </div>
+
+              <div class="sg">
+                <div class="sg-ic"><iconify-icon icon="lucide:package-search"></iconify-icon></div>
+                <div class="sg-main">
+                  <div class="sg-ttl"><b>USB-C 6ft cable</b> stock down to 4 — top-seller last 30 days.</div>
+                  <div class="sg-sub">Suggested: reorder 24 units (saves 18% with current supplier)</div>
+                </div>
+                <button class="sg-action"><iconify-icon icon="lucide:shopping-cart"></iconify-icon>Reorder</button>
+              </div>
+
+              <div class="sg">
+                <div class="sg-ic"><iconify-icon icon="lucide:file-clock"></iconify-icon></div>
+                <div class="sg-main">
+                  <div class="sg-ttl"><b>2 estimates</b> expire today (Diego R. · Sofia M.).</div>
+                  <div class="sg-sub">Suggested: text follow-up with one-tap conversion link</div>
+                </div>
+                <button class="sg-action"><iconify-icon icon="lucide:send"></iconify-icon>Text</button>
+              </div>
+
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head" style="--ic-bg:rgba(255,255,255,0.06); --ic-bd:var(--border); --ic-c:var(--text-dim)">
+              <div class="ic"><iconify-icon icon="lucide:activity"></iconify-icon></div>
+              <div class="ttl">Activity</div>
+              <div class="meta">last 30 min</div>
+              <div class="more">All events <iconify-icon icon="lucide:arrow-right"></iconify-icon></div>
+            </div>
+            <div class="feed">
+              <div class="fd">
+                <div class="fd-time">9:42</div>
+                <div class="fd-dot" style="--c:#10B981"></div>
+                <div class="fd-text">Sale <b>#2341</b> closed by <b>Maria</b> <span class="muted">— $87.50 card</span></div>
+              </div>
+              <div class="fd">
+                <div class="fd-time">9:38</div>
+                <div class="fd-dot" style="--c:#38BDF8"></div>
+                <div class="fd-text">Repair <b>R-892</b> moved to in-progress by <b>Carlos</b></div>
+              </div>
+              <div class="fd">
+                <div class="fd-time">9:15</div>
+                <div class="fd-dot" style="--c:#A78BFA"></div>
+                <div class="fd-text">Approval needed: refund <b>$230</b> <span class="muted">— Maria</span></div>
+              </div>
+              <div class="fd">
+                <div class="fd-time">9:08</div>
+                <div class="fd-dot" style="--c:#FBBF24"></div>
+                <div class="fd-text">Special order <b>SO-118</b> arrived <span class="muted">(iPhone 15 Pro back)</span></div>
+              </div>
+              <div class="fd">
+                <div class="fd-time">8:51</div>
+                <div class="fd-dot" style="--c:#10B981"></div>
+                <div class="fd-text">New customer: <b>Lupita Hernandez</b> <span class="muted">— added by Maria</span></div>
+              </div>
+              <div class="fd">
+                <div class="fd-time">8:33</div>
+                <div class="fd-dot" style="--c:#94A3B8"></div>
+                <div class="fd-text">Drawer opened — <b>Front Counter</b> <span class="muted">— $200 starting cash</span></div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>
