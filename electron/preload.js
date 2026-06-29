@@ -5,6 +5,11 @@
 // getVersion, printToPdf, showSaveDialog, writeFile, readFile,
 // openExternal, downloadUpdate) to minimize attack surface.
 // Re-add WITH validation when features need them.
+// R-TAX-ORGANIZER-PDF-EXPORT-V1: added ONE narrow, dialog-gated channel —
+// `exportPdf` → 'pdf:save'. It does NOT restore the generic
+// printToPdf/showSaveDialog/writeFile surface: the renderer only supplies
+// html + a page-size key + a suggested filename; the write path comes solely
+// from the native save dialog and main writes only its own printToPDF buffer.
 // ============================================================
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -21,6 +26,8 @@ try {
     getPrinters:      ()         => ipcRenderer.invoke('get-printers'),
     printPreview:     (payload)  => ipcRenderer.invoke('print:preview', payload),
     printRun:         (payload)  => ipcRenderer.invoke('print:run', payload),
+    // R-TAX-ORGANIZER-PDF-EXPORT-V1: narrow dialog-gated PDF export (see comment above).
+    exportPdf:        (payload)  => ipcRenderer.invoke('pdf:save', payload),
 
     // Auto-update
     checkForUpdates:  ()       => ipcRenderer.invoke('check-for-updates'),

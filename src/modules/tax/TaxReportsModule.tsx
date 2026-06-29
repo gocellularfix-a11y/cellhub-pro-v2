@@ -637,18 +637,32 @@ export default function TaxReportsModule() {
       const org = buildTaxOrganizer(buildOrganizerInput());
       downloadBlob(JSON.stringify(org, null, 2), `tax-organizer-${selectedYear}.json`, 'application/json');
       downloadBlob(organizerToCsv(org), `tax-organizer-${selectedYear}.csv`, 'text/csv;charset=utf-8');
-      const errs = org.warnings.filter((w) => w.level === 'error').length;
-      const warns = org.warnings.filter((w) => w.level === 'warning').length;
+      // R-TAX-EXPORT-UX-V1: this export ALWAYS succeeds here (both files saved
+      // above). org.warnings are NON-blocking validation notes for the accountant
+      // to review (e.g. total_mismatch, entity_mode_not_configured) — NOT failures.
+      // Showing "⚠️ N error(s)" with an error toast on a completed save was the
+      // scary/confusing UX. Surface a success toast with a neutral "needs review"
+      // count (error + warning levels; info-level notes are not counted).
+      const review = org.warnings.filter((w) => w.level === 'error' || w.level === 'warning').length;
+      const reviewTxt = review
+        ? (es
+            ? ` ${review} ${review === 1 ? 'punto por revisar' : 'puntos por revisar'}.`
+            : locale === 'pt'
+            ? ` ${review} ${review === 1 ? 'item para revisar' : 'itens para revisar'}.`
+            : ` ${review} ${review === 1 ? 'item needs' : 'items need'} review.`)
+        : '';
       const msg = es
-        ? `Organizador ${selectedYear} exportado (JSON + CSV).${errs ? ` ⚠️ ${errs} error(es)` : ''}${warns ? ` · ${warns} aviso(s)` : ''}`
-        : `Tax Organizer ${selectedYear} exported (JSON + CSV).${errs ? ` ⚠️ ${errs} error(s)` : ''}${warns ? ` · ${warns} warning(s)` : ''}`;
-      toast(msg, errs ? 'error' : 'success');
+        ? `Datos del Organizador ${selectedYear} exportados (JSON + CSV).${reviewTxt}`
+        : locale === 'pt'
+        ? `Dados do Organizador ${selectedYear} exportados (JSON + CSV).${reviewTxt}`
+        : `Tax Organizer ${selectedYear} data exported (JSON + CSV).${reviewTxt}`;
+      toast(msg, 'success');
     } catch (err) {
       toast(es ? 'No se pudo exportar el organizador.' : 'Could not export the tax organizer.', 'error');
       // eslint-disable-next-line no-console
       console.error('[tax-organizer] export failed', err);
     }
-  }, [buildOrganizerInput, downloadBlob, selectedYear, es, toast]);
+  }, [buildOrganizerInput, downloadBlob, selectedYear, es, locale, toast]);
 
   const handlePrintOrganizer = useCallback(() => {
     try {
@@ -664,6 +678,36 @@ export default function TaxReportsModule() {
       console.error('[tax-organizer] print failed', err);
     }
   }, [buildOrganizerInput, printHtml, settings.detectedPrinters, es, toast]);
+
+  // R-TAX-ORGANIZER-PDF-EXPORT-V1: generate a REAL .pdf of the FULL organizer
+  // package (organizerToPrintHtml — the same complete model the print path uses,
+  // now incl. income breakdown + COGS detail) via the narrow Electron pdf:save
+  // channel. The user picks the location in a native save dialog — no print
+  // dialog, no "Save as PDF" printer. In the browser, or if the channel is
+  // unavailable, fall back to the existing print-ready path.
+  const handleExportOrganizerPdf = useCallback(async () => {
+    try {
+      const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+      if (!api?.exportPdf) {
+        handlePrintOrganizer();
+        return;
+      }
+      const org = buildTaxOrganizer(buildOrganizerInput());
+      const html = organizerToPrintHtml(org);
+      const res = await api.exportPdf({ html, pageSize: 'letter', defaultFileName: `tax-organizer-${selectedYear}.pdf` });
+      if (res?.ok) {
+        toast(es ? `PDF del Organizador ${selectedYear} guardado.` : locale === 'pt' ? `PDF do Organizador ${selectedYear} salvo.` : `Tax Organizer ${selectedYear} PDF saved.`, 'success');
+      } else if (res?.canceled) {
+        toast(es ? 'Exportación cancelada.' : locale === 'pt' ? 'Exportação cancelada.' : 'Export canceled.', 'info');
+      } else {
+        toast(es ? 'No se pudo generar el PDF.' : locale === 'pt' ? 'Não foi possível gerar o PDF.' : 'Could not generate the PDF.', 'error');
+      }
+    } catch (err) {
+      toast(es ? 'No se pudo generar el PDF.' : locale === 'pt' ? 'Não foi possível gerar o PDF.' : 'Could not generate the PDF.', 'error');
+      // eslint-disable-next-line no-console
+      console.error('[tax-organizer] pdf export failed', err);
+    }
+  }, [buildOrganizerInput, selectedYear, es, locale, toast, handlePrintOrganizer]);
 
   // ── W-9 state ────────────────────────────────────────────
   const [w9, setW9] = useState({
@@ -1245,12 +1289,28 @@ body { font-family: Arial, sans-serif; font-size: 8.46pt; color: #000; backgroun
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={() => printSection('1065 / K-1 / 1040')} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>🖨️ {t('tax.printPackage')}</button>
-                {/* R-TAX-ORGANIZER-V1: year-end organizer export (JSON + CSV) + printable summary */}
-                <button onClick={handleExportOrganizer} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>
-                  📤 {es ? `Organizador ${selectedYear}` : locale === 'pt' ? `Organizador ${selectedYear}` : `Tax Organizer ${selectedYear}`}
+                {/* R-TAX-EXPORT-UX-V1: PRIMARY action = the print-ready PDF
+                    organizer (opens the existing multipage Letter print preview →
+                    print or Save as PDF). Raw JSON+CSV is demoted to a secondary
+                    "Export Data" button for the accountant/developer. A direct
+                    print-to-PDF-file is intentionally NOT wired: the hardened
+                    preload no longer exposes printToPdf/writeFile, so we reuse the
+                    existing print path rather than reopen that surface. */}
+                <button
+                  onClick={handleExportOrganizerPdf}
+                  title={es ? 'Genera un PDF del organizador completo y elige dónde guardarlo' : locale === 'pt' ? 'Gera um PDF do organizador completo e escolhe onde salvar' : 'Generate a PDF of the full organizer and choose where to save it'}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  📑 {es ? `Organizador PDF ${selectedYear}` : locale === 'pt' ? `Organizador PDF ${selectedYear}` : `PDF Organizer ${selectedYear}`}
                 </button>
-                <button onClick={handlePrintOrganizer} className="btn btn-secondary" style={{ fontSize: '0.78rem' }}>
-                  🖨️ {es ? 'Resumen Organizador' : locale === 'pt' ? 'Resumo Organizador' : 'Organizer Summary'}
+                <button
+                  onClick={handleExportOrganizer}
+                  title={es ? 'Exporta datos crudos JSON + CSV para tu contador' : locale === 'pt' ? 'Exporta dados brutos JSON + CSV para o seu contador' : 'Export raw JSON + CSV data for your accountant'}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  📤 {es ? 'Exportar Datos' : locale === 'pt' ? 'Exportar Dados' : 'Export Data'}
                 </button>
               </div>
             </div>

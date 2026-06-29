@@ -48,6 +48,11 @@ interface ElectronAPI {
     // honored on receipt media (driver can't select pages) — the full receipt
     // was printed instead; the renderer shows a friendly warning.
   }) => Promise<{ success: boolean; error?: string | null; rangeUnsupported?: boolean }>;
+  // R-TAX-ORGANIZER-PDF-EXPORT-V1: narrow, dialog-gated PDF export. Renderer
+  // supplies html + a page-size key + a suggested filename only; the save path
+  // comes from the native dialog and main writes only its own printToPDF buffer.
+  exportPdf: (payload: { html: string; pageSize?: 'letter' | 'legal' | 'a4'; defaultFileName?: string }) =>
+    Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
   checkForUpdates: () => Promise<void>;
   installUpdate: () => void;
   // r-pkg-a2: re-added — triggers download after update-available notification.

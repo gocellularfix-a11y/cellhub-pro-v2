@@ -390,6 +390,52 @@ function registerIpcHandlers() {
     }
   });
 
+  // ── PDF export (R-TAX-ORGANIZER-PDF-EXPORT-V1) ──────────────
+  // NARROW, dialog-gated PDF export. The renderer hands ONLY { html, pageSize
+  // key, suggested filename } — it can NOT choose the write path. The save path
+  // comes exclusively from the native showSaveDialog, and main writes ONLY the
+  // PDF Buffer it generated itself via printToPDF. This intentionally does NOT
+  // re-introduce a generic write-file / save-dialog / printToPdf renderer channel.
+  const PDF_PAGE_SIZES = {
+    letter: { width: 215900, height: 279400 },
+    legal:  { width: 215900, height: 355600 },
+    a4:     { width: 210000, height: 297000 },
+  };
+  ipcMain.handle('pdf:save', async (_, payload) => {
+    try {
+      const html = payload && payload.html;
+      // Validate: html must be a non-empty string with a reasonable size cap.
+      if (typeof html !== 'string' || html.length === 0 || html.length > 8000000) {
+        return { ok: false, error: 'invalid_html' };
+      }
+      // Whitelist the page size (default Letter); renderer can't pass raw dims.
+      const pageSize = PDF_PAGE_SIZES[payload && payload.pageSize] || PDF_PAGE_SIZES.letter;
+      // Sanitize the suggested filename to a bare basename ending in .pdf — the
+      // renderer NEVER controls a directory/path, only a display default.
+      let base = path.basename(String((payload && payload.defaultFileName) || 'export.pdf'))
+        .replace(/\s+/g, '-')
+        .replace(/[^A-Za-z0-9._-]/g, '')
+        .trim();
+      if (!base) base = 'export.pdf';
+      if (!/\.pdf$/i.test(base)) base += '.pdf';
+
+      const buffer = await renderHtmlToPdfBuffer(html, pageSize);
+
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save PDF',
+        defaultPath: path.join(app.getPath('documents'), base),
+        filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+      });
+      if (canceled || !filePath) return { ok: false, canceled: true };
+
+      fs.writeFileSync(filePath, buffer);
+      return { ok: true, path: filePath };
+    } catch (err) {
+      console.error('[pdf:save] FAILED:', err);
+      return { ok: false, error: (err && err.message) || String(err) };
+    }
+  });
+
   ipcMain.handle('print:run', async (_, payload) => {
     console.log('[print:run] called, printer:', payload.deviceName);
     const printWin = new BrowserWindow({
@@ -840,4 +886,44 @@ function buildPrintableHtml(content) {
     html, body { margin: 0; padding: 0; background: white; }
     @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style></head><body>${content}</body></html>`;
+}
+
+// R-TAX-ORGANIZER-PDF-EXPORT-V1: render print HTML to a real PDF Buffer using
+// the SAME offscreen-window + printToPDF pattern as print:preview / print:run
+// (the proven organizer-print path). Kept independent of those handlers so their
+// behavior is unchanged. Used ONLY by the narrow, dialog-gated 'pdf:save' IPC.
+async function renderHtmlToPdfBuffer(html, pageSize) {
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  try {
+    const full = buildPrintableHtml(html);
+    const ready = new Promise((resolve) => {
+      win.webContents.once('did-finish-load', async () => {
+        try {
+          await win.webContents.executeJavaScript(
+            'document.fonts && document.fonts.ready ? document.fonts.ready.then(()=>true) : Promise.resolve(true)'
+          );
+        } catch (_) {}
+        resolve();
+      });
+    });
+    const safety = new Promise((resolve) => setTimeout(resolve, 2000));
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(full)}`);
+    await Promise.race([ready, safety]);
+    // scale:1 preserves the disabled-scale contract; preferCSSPageSize lets the
+    // organizer's own @page{size:letter;margin:0.5in} drive the layout.
+    return await win.webContents.printToPDF({
+      landscape: false,
+      printBackground: true,
+      displayHeaderFooter: false,
+      preferCSSPageSize: true,
+      pageSize,
+      scale: 1,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    });
+  } finally {
+    if (!win.isDestroyed()) win.close();
+  }
 }
