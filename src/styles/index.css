@@ -282,6 +282,80 @@
   box-shadow: 0 20px 42px rgba(139,92,246,0.46);
 }
 
+/* ============================================================
+   DASHBOARD-BOLD-BLOCKS-SKIN-V1 — Appearance → "Bold Blocks".
+   Wired to the AppShell wrapper class `.theme-bold-blocks` (emitted by
+   readDashboardTheme), INDEPENDENT of the color theme. Tiles
+   (`.theme-tiles`) and Classic List (`.theme-list`) never match these
+   selectors, so they stay byte-identical. No layout properties are set
+   (only color/filter/shadow/transform) → zero layout shift.
+
+   WHY Bold Blocks had no visual effect before: the wrapper class was
+   emitted but nothing consumed it. The Sidebar module tiles render their
+   colors via INLINE styles (background / border / box-shadow), which
+   outrank plain class rules — so this skin (a) targets the stable
+   data-* hooks and (b) uses !important to beat the inline values. The
+   dashboard KPI cards reuse the exact saturated gradients already defined
+   for the bold-light color theme above.
+   ============================================================ */
+
+/* Sidebar module blocks — DASHBOARD-BOLD-BLOCKS-POLISH-V1.
+   Premium glass depth instead of a flat brightness wash. The V1 skin used a
+   full-coverage white inset veil (inset 0 0 0 999px) + brightness(1.28),
+   which lifted the dark gradients by DESATURATING them → washed-out. This
+   version drops the veil entirely: brightness/saturate (color-preserving)
+   do a gentler lift, and layered directional shadows build the depth —
+   top sheen + bottom inner shadow + dark edge ring + drop lift. filter
+   needs no !important (not set inline); border-width/box-shadow do.
+   No dimensional props → zero layout shift. */
+.theme-bold-blocks [data-cellhub-sidebar-module="true"] {
+  filter: saturate(1.7) brightness(1.18);
+  border-width: 1px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),     /* glass top sheen */
+    inset 0 -14px 22px rgba(0,0,0,0.32),       /* inner depth */
+    0 0 0 1px rgba(0,0,0,0.30),                /* dark edge separation */
+    0 6px 16px rgba(0,0,0,0.42) !important;    /* layered lift */
+}
+.theme-bold-blocks [data-cellhub-sidebar-module="true"]:hover {
+  filter: saturate(1.85) brightness(1.28);
+}
+.theme-bold-blocks [data-cellhub-sidebar-module="true"][data-active="true"] {
+  filter: saturate(1.9) brightness(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -14px 22px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(0,0,0,0.45),                /* crisp dark inner edge */
+    0 0 0 2px rgba(255,255,255,0.38),          /* clean focus ring (softer than V1's 0.55) */
+    0 9px 22px rgba(0,0,0,0.50) !important;    /* deeper lift = clearly selected */
+}
+.theme-bold-blocks [data-cellhub-sidebar-pos="true"] {
+  filter: saturate(1.45) brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 0 0 1px rgba(0,0,0,0.25),
+    0 8px 20px rgba(109,40,217,0.45) !important;
+}
+
+/* Dashboard KPI cards — reuse the bold-light saturated gradients so the
+   "blocks" skin is consistent regardless of the active color theme.
+   POLISH-V1: glass top sheen + softer/richer colored shadow + dark
+   ambient for depth; stronger text contrast (text-shadow) and a brighter,
+   ringed icon circle for readability on the gradients. */
+.theme-bold-blocks .stat-card[data-kpi] {
+  border: none !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.theme-bold-blocks .stat-card[data-kpi]:hover { transform: translateY(-3px); }
+.theme-bold-blocks .stat-card[data-kpi] div { color: rgba(255,255,255,0.95) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+.theme-bold-blocks .stat-card[data-kpi] .stat-icon-circle { background: rgba(255,255,255,0.26) !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28); }
+.theme-bold-blocks .stat-card[data-kpi="green"]  { background: linear-gradient(155deg, #10B981 0%, #059669 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(16,185,129,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+.theme-bold-blocks .stat-card[data-kpi="teal"]   { background: linear-gradient(155deg, #14B8A6 0%, #0D9488 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(20,184,166,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+.theme-bold-blocks .stat-card[data-kpi="orange"] { background: linear-gradient(155deg, #F97316 0%, #EA580C 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(249,115,22,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+.theme-bold-blocks .stat-card[data-kpi="red"]    { background: linear-gradient(155deg, #EF4444 0%, #DC2626 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(239,68,68,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+.theme-bold-blocks .stat-card[data-kpi="pink"]   { background: linear-gradient(155deg, #EC4899 0%, #DB2777 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(236,72,153,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+.theme-bold-blocks .stat-card[data-kpi="violet"] { background: linear-gradient(155deg, #8B5CF6 0%, #7C3AED 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 12px 30px rgba(139,92,246,0.38), 0 2px 6px rgba(0,0,0,0.20); }
+
 /* ==========================================
    CELLHUB PRO v2.1 — Custom Styles
    Ported from single-file HTML CSS block

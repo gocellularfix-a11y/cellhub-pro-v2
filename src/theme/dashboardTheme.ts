@@ -28,9 +28,31 @@ export const DASHBOARD_THEMES: DashboardTheme[] = ['tiles', 'list', 'bold-blocks
  * StoreSettings which does not declare `dashboardTheme`, so we read it
  * as an unknown record and narrow back to the union.
  */
+// FIX-APPEARANCE-MODE-SELECTION-V1: backward-compat alias map. Older builds
+// (or hand-edited settings) may have stored non-canonical values; normalize
+// them to the canonical union so a valid prior selection is preserved instead
+// of silently falling back to the default. Canonical stays 'tiles'|'list'|
+// 'bold-blocks' (renaming 'list'→'classic-list' would require touching every
+// consumer — out of scope).
+const DASHBOARD_THEME_ALIASES: Record<string, DashboardTheme> = {
+  tile: 'tiles',
+  tiles: 'tiles',
+  list: 'list',
+  'classic-list': 'list',
+  'classic_list': 'list',
+  classic: 'list',
+  blocks: 'bold-blocks',
+  'bold-blocks': 'bold-blocks',
+  'bold_blocks': 'bold-blocks',
+  boldblocks: 'bold-blocks',
+};
+
 export function readDashboardTheme(settings: unknown): DashboardTheme {
   const raw = (settings as Record<string, unknown> | undefined)?.dashboardTheme;
-  if (raw === 'tiles' || raw === 'list' || raw === 'bold-blocks') return raw;
+  if (typeof raw === 'string') {
+    const canonical = DASHBOARD_THEME_ALIASES[raw.trim().toLowerCase()];
+    if (canonical) return canonical;
+  }
   return DEFAULT_DASHBOARD_THEME;
 }
 
