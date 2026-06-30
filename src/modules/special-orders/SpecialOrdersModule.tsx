@@ -432,7 +432,7 @@ export default function SpecialOrdersModule() {
   <div class="sec-lbl">${escHtml(t('so.print.item'))}</div>
   <table style="margin-bottom:5px">
     <tr><td colspan="2" style="font-size:11px;font-weight:600">${escHtml(fmt(order.itemDescription))}</td></tr>
-    ${order.supplier ? `<tr><td style="font-size:11px;color:#444">${escHtml(t('so.print.supplier'))}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(fmt(order.supplier))}</td></tr>` : ''}
+    ${/* PRIVACY: supplier is internal-only business data — never shown on customer-facing documents. Stays in storage / Inventory / Purchasing. */ ''}
     ${order.estimatedArrival ? `<tr><td style="font-size:11px;color:#444">${escHtml(t('so.print.estArrival'))}:</td><td style="text-align:right;font-size:11px;font-weight:600">${escHtml(fmt(order.estimatedArrival))}</td></tr>` : ''}
   </table>
   <div class="sep"></div>

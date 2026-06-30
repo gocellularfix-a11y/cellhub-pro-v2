@@ -467,7 +467,7 @@ export default function UnlockModule() {
     ${unlock.carrier ? lvRow(t('unlocks.print.carrier'), fmt(unlock.carrier)) : ''}
     ${unlock.imei ? lvRow('IMEI', fmt(unlock.imei)) : ''}
     ${unlock.unlockType ? lvRow(t('unlocks.print.type'), typeLabel(unlock.unlockType as string)) : ''}
-    ${unlock.supplier ? lvRow(t('unlocks.print.supplier'), fmt(unlock.supplier)) : ''}
+    ${/* PRIVACY: supplier is internal-only business data — never shown on customer-facing receipts. Stays in storage / Inventory / Purchasing. */ ''}
     ${unlock.unlockCode ? lvRow(t('unlocks.print.code'), fmt(unlock.unlockCode)) : ''}
     ${unlock.orderDate ? lvRow(t('unlocks.print.ordered'), fmt(unlock.orderDate)) : ''}
     ${unlock.completionDate ? lvRow(t('unlocks.print.completed'), fmt(unlock.completionDate)) : ''}
@@ -1210,7 +1210,7 @@ export default function UnlockModule() {
     ${form.carrier ? lvRow(t('unlocks.print.carrier'), fmt(form.carrier)) : ''}
     ${form.imei ? lvRow('IMEI', fmt(form.imei)) : ''}
     ${form.unlockType ? lvRow(t('unlocks.print.type'), typeLabel(form.unlockType as string)) : ''}
-    ${form.supplier ? lvRow(t('unlocks.print.supplier'), fmt(form.supplier)) : ''}
+    ${/* PRIVACY: supplier is internal-only business data — never shown on customer-facing tickets. Stays in storage / Inventory / Purchasing. */ ''}
     ${form.unlockCode ? lvRow(t('unlocks.print.code'), fmt(form.unlockCode)) : ''}
     ${form.orderDate ? lvRow(t('unlocks.print.ordered'), fmt(form.orderDate)) : ''}
     ${form.completionDate ? lvRow(t('unlocks.print.completed'), fmt(form.completionDate)) : ''}
