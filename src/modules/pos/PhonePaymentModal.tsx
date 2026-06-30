@@ -1384,49 +1384,46 @@ export default function PhonePaymentModal({
   // Next → we add this line to cart (CartItem identical to handlePortalForLine
   // output) and flip the line's paid flag. Re-derivation in JSX surfaces the
   // next unpaid line as the new current. No portal automation.
-  const markPaidAndNext = useCallback(() => {
-    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: derive runner order from
-    // the knownLines memo (already normalized strings, sorted most-recent
-    // first inside the memo) rather than Object.keys(selectedKnownLines)
-    // — the latter's ordering depends on toggle/insertion sequence and
-    // can drift away from the panel rows the cashier actually sees.
-    const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
-    const current = selectedNorms.find((n) => !paidKnownLines[n]);
-    if (!current) return;
+  // PHONE-MULTILINE-PORTAL-AUTOCART-V1: commit a single SELECTED known line to
+  // the cart (idempotent). Extracted verbatim from the previous markPaidAndNext
+  // body so the per-line portal button and "Mark Paid & Next" share ONE
+  // cart-add path — zero money-math drift between the two entry points.
+  // Returns true when the line is in the cart afterwards (just committed OR
+  // already present); false on a validation failure (invalid phone/amount/carrier).
+  const commitKnownLineToCart = useCallback((norm: string): boolean => {
     // Safety: phone validation (defensive — known lines are normalized 10-digit).
-    if (!isValidPhone(current)) {
+    if (!isValidPhone(norm)) {
       toast(t('phonePay.errInvalidPhoneShort'), 'error');
-      return;
+      return false;
     }
     // Safety: amount required.
-    const amtStr = selectedKnownLines[current] || '';
+    const amtStr = selectedKnownLines[norm] || '';
     const amt = parseFloat(amtStr);
     if (!amt || amt <= 0) {
       toast(t('phonePay.errInvalidAmount'), 'error');
-      return;
+      return false;
     }
     // Carrier required (global state — known-lines flow uses the global pick).
     if (!carrier) {
       toast(t('phonePay.errPickCarrierLine'), 'error');
-      return;
+      return false;
     }
-    // Duplicate guard (idempotent against rapid double-clicks).
-    if (paidKnownLines[current]) return;
+    // Duplicate guard (idempotent against rapid double-clicks) — already paid.
+    if (paidKnownLines[norm]) return true;
 
     // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: cart-level duplicate
     // protection. paidKnownLines can reset on customer/modal state
     // changes while the item still lives in cartRef — cart is the
     // final source of truth for "this line was already added".
     const alreadyInCart = cartRef.current.some(
-      (item) => item.category === 'phone_payment' && item.phoneNumber === current,
+      (item) => item.category === 'phone_payment' && item.phoneNumber === norm,
     );
     if (alreadyInCart) {
-      setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
-      return;
+      setPaidKnownLines((prev) => ({ ...prev, [norm]: true }));
+      return true;
     }
 
     const normCarrier = normalizeCarrier(carrier);
-    const phone = current;
     const customerNote = `${firstName} ${lastName}`.trim();
     const priceCents = Math.round(amt * 100);
     const commRate = (settings.carrierCommissions?.[normCarrier]
@@ -1434,7 +1431,7 @@ export default function PhonePaymentModal({
       ?? 0.07);
     const newItem: CartItem = {
       id: generateId(),
-      name: `${normCarrier} - ${formatPhone(phone)}`,
+      name: `${normCarrier} - ${formatPhone(norm)}`,
       category: 'phone_payment',
       price: priceCents,
       // R-PHONEPAYMENT-COST-STAMP: parity with handlePortalForLine.
@@ -1443,7 +1440,7 @@ export default function PhonePaymentModal({
       taxable: false,
       cbeEligible: false,
       carrier: normCarrier,
-      phoneNumber: phone,
+      phoneNumber: norm,
       notes: customerNote,
       commissionRate: commRate,
     };
@@ -1453,8 +1450,23 @@ export default function PhonePaymentModal({
     if (selectedCustomer) propagateSelectedCustomer(selectedCustomer);
     setCart(nextCart);
 
-    setPaidKnownLines((prev) => ({ ...prev, [current]: true }));
-  }, [knownLines, selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
+    setPaidKnownLines((prev) => ({ ...prev, [norm]: true }));
+    return true;
+  }, [selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
+
+  const markPaidAndNext = useCallback(() => {
+    // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: derive runner order from
+    // the knownLines memo (already normalized strings, sorted most-recent
+    // first inside the memo) rather than Object.keys(selectedKnownLines)
+    // — the latter's ordering depends on toggle/insertion sequence and
+    // can drift away from the panel rows the cashier actually sees.
+    const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
+    const current = selectedNorms.find((n) => !paidKnownLines[n]);
+    if (!current) return;
+    // Behavior preserved: commit the first unpaid line (validations + cart-add
+    // + paid flag now live in the shared commitKnownLineToCart helper).
+    commitKnownLineToCart(current);
+  }, [knownLines, selectedKnownLines, paidKnownLines, commitKnownLineToCart]);
 
   // Anti-stale-closure ref so the event listener always calls the current
   // markPaidAndNext without re-attaching the listener on every dep change.
@@ -1515,6 +1527,29 @@ export default function PhonePaymentModal({
         ],
       },
     );
+
+    // PHONE-MULTILINE-PORTAL-AUTOCART-V1: multi-line / family-plan flow ONLY
+    // (2+ selected known lines). Beyond opening the portal, fuse the per-line
+    // steps the cashier used to do by hand: commit THIS line to the cart and
+    // flip its paid flag (via the shared, idempotent commitKnownLineToCart), so
+    // the runner auto-advances to the next pending line. When the LAST pending
+    // line is processed, surface the cart (onClose → POS shows it) with every
+    // payment line already added. SINGLE-LINE is unchanged: it only opens the
+    // portal here and the cashier adds to cart manually as before. The cart-add
+    // is fully idempotent, so re-clicking the same line never duplicates it.
+    if (selectedNorms.length >= 2) {
+      const committed = commitKnownLineToCart(normPhone);
+      if (committed) {
+        const stillPending = selectedNorms.filter(
+          (n) => n !== normPhone
+            && !paidKnownLines[n]
+            && !cartRef.current.some(
+              (it) => it.category === 'phone_payment' && it.phoneNumber === n,
+            ),
+        );
+        if (stillPending.length === 0) onClose();
+      }
+    }
   };
 
   // ── Manual line helpers ───────────────────────────────────
