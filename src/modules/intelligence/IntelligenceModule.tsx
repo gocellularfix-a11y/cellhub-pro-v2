@@ -115,6 +115,7 @@ import {
   type WeeklyReviewResult,
 } from '@/services/intelligence/review/weeklyOperatorReview';
 import WeeklyReviewSection from '@/components/WeeklyReviewSection';
+import PaymentDateFinderSection from '@/components/PaymentDateFinderSection';
 import {
   generateExecutionChain,
   dismissChain as dismissExecutionChain,
@@ -1593,6 +1594,17 @@ export default function IntelligenceModule() {
         specialOrdersActive={specialOrdersActive}
         hourlySales={hourlySales}
       />
+
+      {/* ── PAYMENT DATE FINDER — outreach before vacations/closures ── */}
+      <div className="mt-3">
+        <PaymentDateFinderSection
+          customers={customers}
+          sales={sales}
+          layaways={layaways}
+          storeName={(settings as { storeName?: string })?.storeName || 'Go Cellular'}
+          lang={engineLang}
+        />
+      </div>
 
       {showLegacySections && (<>
       {/* ── 3. MANAGER QUEUE ─────────────────────────────────────────────── */}
