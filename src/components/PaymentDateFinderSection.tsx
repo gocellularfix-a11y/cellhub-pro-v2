@@ -33,6 +33,15 @@ import { formatDate } from '@/utils/dates';
 import { formatPhone, phoneDigits } from '@/utils/normalize';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { generateId } from '@/utils/dates';
+import {
+  createCampaignFromFinder,
+  saveCampaign,
+  CAMPAIGN_TYPES,
+  CAMPAIGN_TYPE_LABELS,
+  type CampaignType,
+} from '@/services/intelligence/payment/paymentCampaignStore';
+import PaymentCampaignPanel from '@/components/PaymentCampaignPanel';
 
 type Lang = 'en' | 'es' | 'pt';
 
@@ -96,6 +105,14 @@ const T = {
   openWa: { en: 'Open WhatsApp', es: 'Abrir WhatsApp', pt: 'Abrir WhatsApp' },
   textCopied: { en: 'Message copied', es: 'Mensaje copiado', pt: 'Mensagem copiada' },
   estBadge: { en: 'est.', es: 'est.', pt: 'est.' },
+  saveCampaign: { en: 'Save as Campaign', es: 'Guardar como Campaña', pt: 'Salvar como Campanha' },
+  campaignName: { en: 'Campaign name', es: 'Nombre de la campaña', pt: 'Nome da campanha' },
+  campaignType: { en: 'Type', es: 'Tipo', pt: 'Tipo' },
+  campaignReason: { en: 'Reason (optional)', es: 'Motivo (opcional)', pt: 'Motivo (opcional)' },
+  save: { en: 'Save', es: 'Guardar', pt: 'Salvar' },
+  cancel: { en: 'Cancel', es: 'Cancelar', pt: 'Cancelar' },
+  campaignSaved: { en: 'Campaign saved', es: 'Campaña guardada', pt: 'Campanha salva' },
+  newCampaignTitle: { en: 'New campaign', es: 'Nueva campaña', pt: 'Nova campanha' },
 };
 
 // Presets — computed from today (local).
@@ -177,6 +194,13 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
   // Message modal state.
   const [msgRow, setMsgRow] = useState<PaymentFinderRow | null>(null);
   const [msgText, setMsgText] = useState('');
+
+  // Campaign save state (F4).
+  const [campaignRefresh, setCampaignRefresh] = useState(0);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [campName, setCampName] = useState('');
+  const [campType, setCampType] = useState<CampaignType>('vacation');
+  const [campReason, setCampReason] = useState('');
 
   const runSearch = useCallback(
     (sStr: string, eStr: string) => {
@@ -282,6 +306,27 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
       toast(T.copyFail[lang], 'error');
     }
   }, [msgText, lang, toast]);
+
+  // F4: snapshot the current finder result into a saved Draft campaign.
+  const onSaveCampaign = useCallback(() => {
+    if (!result || result.rows.length === 0) return;
+    const camp = createCampaignFromFinder({
+      id: generateId(),
+      now: Date.now(),
+      name: campName.trim() || T.newCampaignTitle[lang],
+      type: campType,
+      reason: campReason,
+      result,
+      lang,
+      tone,
+    });
+    saveCampaign(camp);
+    setSaveOpen(false);
+    setCampName('');
+    setCampReason('');
+    setCampaignRefresh((n) => n + 1);
+    toast(T.campaignSaved[lang], 'success');
+  }, [result, campName, campType, campReason, lang, tone, toast]);
 
   const loc = locale(lang);
 
@@ -395,6 +440,12 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
                 {result.counts.estimatedDue > 0 && <span style={{ color: STATUS_META.estimated_due.color }}>● {result.counts.estimatedDue}</span>}
                 {result.counts.historicalMatch > 0 && <span style={{ color: STATUS_META.historical_match.color }}>● {result.counts.historicalMatch}</span>}
                 {result.counts.alreadyPaid > 0 && <span style={{ color: STATUS_META.already_paid.color }}>● {result.counts.alreadyPaid}</span>}
+                <button
+                  onClick={() => setSaveOpen(true)}
+                  className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded border border-emerald-700 text-emerald-400 hover:bg-slate-800"
+                >
+                  💾 {T.saveCampaign[lang]}
+                </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px]">
@@ -460,8 +511,63 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
               </div>
             </>
           )}
+
+          {/* F4: saved campaigns dashboard + detail (persisted, localStorage) */}
+          <PaymentCampaignPanel storeName={storeName} lang={lang} refreshSignal={campaignRefresh} />
         </div>
       )}
+
+      {/* Save-as-campaign modal */}
+      <Modal
+        open={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        title={T.saveCampaign[lang]}
+        size="max-w-sm"
+        footer={
+          <>
+            <button onClick={() => setSaveOpen(false)} className="text-xs px-3 py-1.5 rounded border border-slate-600 text-slate-200 hover:bg-slate-800">
+              {T.cancel[lang]}
+            </button>
+            <button onClick={onSaveCampaign} className="text-xs font-semibold px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white">
+              {T.save[lang]}
+            </button>
+          </>
+        }
+      >
+        <label className="block text-[11px] text-slate-400 mb-2">
+          {T.campaignName[lang]}
+          <input
+            type="text"
+            value={campName}
+            onChange={(e) => setCampName(e.target.value)}
+            className="block w-full mt-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs px-2 py-1"
+          />
+        </label>
+        <label className="block text-[11px] text-slate-400 mb-2">
+          {T.campaignType[lang]}
+          <select
+            value={campType}
+            onChange={(e) => setCampType(e.target.value as CampaignType)}
+            className="block w-full mt-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs px-2 py-1"
+          >
+            {CAMPAIGN_TYPES.map((ct) => (
+              <option key={ct} value={ct}>{CAMPAIGN_TYPE_LABELS[ct][lang]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-[11px] text-slate-400">
+          {T.campaignReason[lang]}
+          <input
+            type="text"
+            value={campReason}
+            onChange={(e) => setCampReason(e.target.value)}
+            className="block w-full mt-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs px-2 py-1"
+          />
+        </label>
+        {result && (
+          <p className="text-[10px] text-slate-500 mt-2">{result.rows.length} {T.results[lang]}</p>
+        )}
+      </Modal>
 
       {/* Message modal */}
       <Modal
