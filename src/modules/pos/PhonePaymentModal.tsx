@@ -900,6 +900,24 @@ export default function PhonePaymentModal({
     return phoneNumber.trim().length > 0 && parseFloat(amount) > 0;
   }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount]);
 
+  // ── PHONE-MULTILINE-DEDUP-V1: processed-line tracking ────
+  // A known/multi line is "processed" once it lives in the cart as a
+  // phone_payment. Reactive on the live `cart` prop so per-line rows and the
+  // global buttons update the instant a per-line portal add lands.
+  const isPhoneInCart = useCallback(
+    (norm: string) => cart.some((it) => it.category === 'phone_payment' && it.phoneNumber === norm),
+    [cart],
+  );
+  // Count of still-pending (not-yet-in-cart) selected lines in the known/multi
+  // flow. null in single-line mode so single-line gating stays exactly as before.
+  const pendingMultiCount = useMemo<number | null>(() => {
+    if (!(isMultiLine || knownLines.length > 0)) return null;
+    return validLines.filter((l) => !isPhoneInCart(normalizePhone(l.number))).length;
+  }, [isMultiLine, knownLines, validLines, isPhoneInCart]);
+  // Global Add-to-Cart is allowed only when something is still pending. In
+  // single-line mode pendingMultiCount is null → falls back to canAddToCart.
+  const canAddToCartNow = canAddToCart && pendingMultiCount !== 0;
+
   // ── Payment breakdown preview (Bill Payment + UUT + Mobility + CC + Commission)
   // ── Breakdown (cents-as-int, single source of truth) ─────
   // NOTE: settings.mobileSurcharge is an ABSOLUTE dollar amount per line
@@ -1026,6 +1044,13 @@ export default function PhonePaymentModal({
         if (!lineCarrierRaw) return;
         const normalizedCarrier = normalizeCarrier(lineCarrierRaw);
         const phone = normalizePhone(line.number);
+        // PHONE-MULTILINE-DEDUP-V1: never rebuild a line already committed to
+        // the cart as a phone_payment (the per-line portal button may have
+        // added it). This is THE root-cause guard — it makes the global Portal
+        // and Add-to-Cart buttons idempotent so repeated clicks can't double
+        // the total. cartRef is the live source of truth; read fresh at call
+        // time (anti-stale). Single-line branch below is intentionally untouched.
+        if (cartRef.current.some((it) => it.category === 'phone_payment' && it.phoneNumber === phone)) return;
         const lineNote = line.customerName || customerNote;
         const priceCents = Math.round(parseFloat(line.amount) * 100);
         const commRate = (settings.carrierCommissions?.[normalizedCarrier]
@@ -1420,6 +1445,13 @@ export default function PhonePaymentModal({
     );
     if (alreadyInCart) {
       setPaidKnownLines((prev) => ({ ...prev, [norm]: true }));
+      // PHONE-MULTILINE-DEDUP-V1: tell the cashier why a repeat click did nothing.
+      toast(
+        lang === 'es' ? 'Esta línea ya está en el carrito.'
+          : lang === 'pt' ? 'Esta linha já está no carrinho.'
+          : 'This line is already in cart.',
+        'info',
+      );
       return true;
     }
 
@@ -1452,7 +1484,7 @@ export default function PhonePaymentModal({
 
     setPaidKnownLines((prev) => ({ ...prev, [norm]: true }));
     return true;
-  }, [selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, selectedCustomer, propagateSelectedCustomer]);
+  }, [selectedKnownLines, paidKnownLines, carrier, firstName, lastName, settings, setCart, t, toast, lang, selectedCustomer, propagateSelectedCustomer]);
 
   const markPaidAndNext = useCallback(() => {
     // R-PHONE-PAYMENTS-MULTILINE-RUNNER-V2-FIX: derive runner order from
@@ -1461,7 +1493,13 @@ export default function PhonePaymentModal({
     // — the latter's ordering depends on toggle/insertion sequence and
     // can drift away from the panel rows the cashier actually sees.
     const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
-    const current = selectedNorms.find((n) => !paidKnownLines[n]);
+    // PHONE-MULTILINE-DEDUP-V1: skip lines already committed to the cart (a
+    // global-button add sets the cart but not paidKnownLines) so the runner
+    // never re-targets an already-processed line.
+    const current = selectedNorms.find(
+      (n) => !paidKnownLines[n]
+        && !cartRef.current.some((it) => it.category === 'phone_payment' && it.phoneNumber === n),
+    );
     if (!current) return;
     // Behavior preserved: commit the first unpaid line (validations + cart-add
     // + paid flag now live in the shared commitKnownLineToCart helper).
@@ -2686,10 +2724,15 @@ export default function PhonePaymentModal({
               {knownLines.map((norm) => {
                 const isChecked = selectedKnownLines[norm] !== undefined;
                 const lineAmt = selectedKnownLines[norm] ?? '';
+                // PHONE-MULTILINE-DEDUP-V1: once this line is in the cart it is
+                // processed — dim the row and swap its active portal button for a
+                // non-interactive "Added" badge so it can never be re-added.
+                const processed = isPhoneInCart(norm);
                 return (
                   <div key={norm} style={{
                     display: 'flex', alignItems: 'center', gap: '0.5rem',
                     padding: '0.5rem 0.625rem',
+                    opacity: processed ? 0.6 : 1,
                     background: isChecked ? 'rgba(102,126,234,0.12)' : 'rgba(255,255,255,0.03)',
                     border: `1px solid ${isChecked ? 'rgba(102,126,234,0.35)' : 'rgba(255,255,255,0.08)'}`,
                     borderRadius: '0.5rem',
@@ -2778,27 +2821,49 @@ export default function PhonePaymentModal({
                     )}
                     {/* R-PHONE-PAYMENTS-PORTAL-ICON-RESTORE: per-line portal
                         opener. Disabled until cashier picks a carrier (URL is
-                        keyed by normalized carrier name). */}
-                    <button
-                      type="button"
-                      onClick={() => handlePortalForKnownLine(norm)}
-                      disabled={!carrier}
-                      title={t('phonePay.openPortal')}
-                      aria-label={t('phonePay.openPortal')}
-                      style={{
-                        marginLeft: '0.5rem',
-                        padding: '0.3rem 0.5rem',
-                        borderRadius: '0.4rem',
-                        border: '1px solid rgba(59,130,246,0.4)',
-                        background: carrier ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-                        color: carrier ? '#93c5fd' : '#64748b',
-                        cursor: carrier ? 'pointer' : 'not-allowed',
-                        fontSize: '0.75rem',
-                        flexShrink: 0,
-                      }}
-                    >
-                      🌐
-                    </button>
+                        keyed by normalized carrier name).
+                        PHONE-MULTILINE-DEDUP-V1: once processed (in cart) the
+                        active portal button is replaced by a static "Added"
+                        badge so the same line can never be added a second time. */}
+                    {processed ? (
+                      <span
+                        style={{
+                          marginLeft: '0.5rem',
+                          padding: '0.3rem 0.5rem',
+                          borderRadius: '0.4rem',
+                          border: '1px solid rgba(34,197,94,0.4)',
+                          background: 'rgba(34,197,94,0.15)',
+                          color: '#86efac',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        ✓ {lang === 'es' ? 'Agregada' : lang === 'pt' ? 'Adicionada' : 'Added'}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handlePortalForKnownLine(norm)}
+                        disabled={!carrier}
+                        title={t('phonePay.openPortal')}
+                        aria-label={t('phonePay.openPortal')}
+                        style={{
+                          marginLeft: '0.5rem',
+                          padding: '0.3rem 0.5rem',
+                          borderRadius: '0.4rem',
+                          border: '1px solid rgba(59,130,246,0.4)',
+                          background: carrier ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                          color: carrier ? '#93c5fd' : '#64748b',
+                          cursor: carrier ? 'pointer' : 'not-allowed',
+                          fontSize: '0.75rem',
+                          flexShrink: 0,
+                        }}
+                      >
+                        🌐
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -2834,8 +2899,12 @@ export default function PhonePaymentModal({
               // current/next display matches what the handler will actually
               // process on click.
               const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
-              const paidCount = selectedNorms.filter((n) => paidKnownLines[n]).length;
-              const unpaidNorms = selectedNorms.filter((n) => !paidKnownLines[n]);
+              // PHONE-MULTILINE-DEDUP-V1: a line is done when marked paid OR already
+              // in the cart (covers the global-button path, which sets the cart but
+              // not paidKnownLines) so "Added X of Y" / "all done" stay accurate.
+              const isProcessed = (n: string) => paidKnownLines[n] || isPhoneInCart(n);
+              const paidCount = selectedNorms.filter(isProcessed).length;
+              const unpaidNorms = selectedNorms.filter((n) => !isProcessed(n));
               const currentNorm = unpaidNorms[0];
               const nextNorm = unpaidNorms[1];
               const allDone = unpaidNorms.length === 0;
@@ -3489,25 +3558,30 @@ export default function PhonePaymentModal({
             🗑️
           </button>
 
-          <button onClick={handlePortal} disabled={!carrier} style={{
+          {/* PHONE-MULTILINE-DEDUP-V1: in the known/multi flow the global Portal
+              button must not re-add already-processed lines. Once every selected
+              line is in the cart (pendingMultiCount === 0) it is disabled; when
+              lines remain it adds ONLY the pending ones (buildCartItems skips
+              in-cart lines). Single-line is unchanged (pendingMultiCount null). */}
+          <button onClick={handlePortal} disabled={!carrier || pendingMultiCount === 0} style={{
             padding: '0.65rem 0.875rem', borderRadius: '0.625rem',
             border: '1px solid rgba(102,126,234,0.4)',
             background: 'rgba(102,126,234,0.1)',
-            color: carrier ? '#a5b4fc' : '#475569',
-            cursor: carrier ? 'pointer' : 'not-allowed',
+            color: (carrier && pendingMultiCount !== 0) ? '#a5b4fc' : '#475569',
+            cursor: (carrier && pendingMultiCount !== 0) ? 'pointer' : 'not-allowed',
             fontSize: '0.85rem', fontWeight: 600,
           }}>
             Portal
           </button>
 
-          <button onClick={handleAddToCart} disabled={!canAddToCart} style={{
+          <button onClick={handleAddToCart} disabled={!canAddToCartNow} style={{
             flex: 2, minWidth: '120px', padding: '0.65rem 1rem',
             borderRadius: '0.625rem', border: 'none',
-            background: canAddToCart
+            background: canAddToCartNow
               ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
               : 'rgba(255,255,255,0.1)',
-            color: canAddToCart ? 'white' : '#475569',
-            cursor: canAddToCart ? 'pointer' : 'not-allowed',
+            color: canAddToCartNow ? 'white' : '#475569',
+            cursor: canAddToCartNow ? 'pointer' : 'not-allowed',
             fontSize: '0.9rem', fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
           }}>
