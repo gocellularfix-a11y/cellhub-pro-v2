@@ -23,6 +23,7 @@ import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
 import { escHtml } from '@/utils/escHtml';
+import { parseTopUpNotes } from '@/utils/topUpHistory';
 import type { Sale, StoreSettings, Customer } from '@/store/types';
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 
@@ -774,7 +775,12 @@ export default function ReceiptModal({ open, sale, settings, onClose, customers,
 function sanitizeReceiptNotes(notes: string | undefined): string {
   if (!notes) return '';
   if (!notes.includes('|')) return notes;
-  const BLACKLIST = new Set(['rate', 'commission', 'spiff', 'payout']);
+  // R-POS-TOPUP-RECEIPT-RECIPIENT-HIGHLIGHT-V1: `recipient` is now dropped from
+  // the small grey notes line because it is surfaced BIG in its own dedicated
+  // "Top-Up Sent To" block below (topUpBlock). The small line keeps Provider +
+  // Sender (payer's own number) so the payer and the destination number are
+  // never mixed on the same line.
+  const BLACKLIST = new Set(['rate', 'commission', 'spiff', 'payout', 'recipient']);
   const kept: string[] = [];
   for (const raw of notes.split('|')) {
     const part = raw.trim();
@@ -959,6 +965,34 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       }</div>`
     : '';
 
+  // R-POS-TOPUP-RECEIPT-RECIPIENT-HIGHLIGHT-V1: surface the international
+  // recipient number(s) BIG so the customer can verify the destination at a
+  // glance. The recipient lives inside the top_up item notes ("... | Recipient:
+  // Z"); parse it with the shared helper. The SENDER (payer's own number) stays
+  // in the small notes line above — payer vs recipient never mixed. Recipients
+  // are digits-only (TopUpModal strips non-digits). Presentation only — no
+  // totals/tax touched. Mirrors the activation "New Phone Number" block.
+  const topUpSeen = new Set<string>();
+  const topUpEntries: Array<{ provider: string; recipient: string }> = [];
+  for (const item of sale.items) {
+    if (item.category !== 'top_up') continue;
+    const parsed = parseTopUpNotes(item.notes);
+    if (parsed && parsed.recipient && !topUpSeen.has(parsed.recipient)) {
+      topUpSeen.add(parsed.recipient);
+      topUpEntries.push(parsed);
+    }
+  }
+  const topUpSentToLabel = es ? 'Recarga enviada a' : pt ? 'Recarga enviada para' : 'Top-Up Sent To';
+  const topUpBlock = topUpEntries.length > 0
+    ? `<div style="text-align:center;margin:6px 0;padding:8px 4px;border-top:2px dashed #000;border-bottom:2px dashed #000">${
+        topUpEntries.map((e) =>
+          `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">${topUpSentToLabel}</div>` +
+          `<div style="font-size:22px;font-weight:900;letter-spacing:0.06em;line-height:1.15;font-family:'Courier New',monospace">${escHtml(e.recipient)}</div>` +
+          (e.provider ? `<div style="font-size:10px;color:#333;margin-top:2px">${escHtml(e.provider)}</div>` : '')
+        ).join(`<div style="border-top:1px dashed #ccc;margin:5px 0"></div>`)
+      }</div>`
+    : '';
+
   const is80mm  = paperSize === '80mm';
   const isLabel = paperSize === 'label';
   const isCr80  = paperSize === 'cr80';
@@ -1095,6 +1129,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   ${items80}
   <div class="t80sep"></div>
   ${activationBlock}
+  ${topUpBlock}
 
   <!-- Totals / payment -->
   ${r80('Subtotal:', fmt(sale.subtotalAfterDiscount ?? sale.subtotal))}
@@ -1234,6 +1269,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
   <table style="margin-bottom:5px">${itemRows}</table>
   <div class="sep"></div>
   ${activationBlock}
+  ${topUpBlock}
 
   <!-- Totals -->
   <table style="margin-bottom:5px">

@@ -1412,6 +1412,24 @@ export default function SettingsModule() {
               <div className="border-t border-white/10 pt-4">
                 <h3 className="text-sm font-semibold text-white mb-1">🌎 {t('settings.commissions.topup.title')}</h3>
                 <p className="text-xs text-slate-500 mb-3">{t('settings.commissions.topup.desc')}</p>
+                {/* R-TOPUP-PORTAL-URL: single global recharge portal opened by the
+                    Portal button in TopUpModal. Double-cast — kept out of the
+                    StoreSettings type (no src/store change). */}
+                <div className="mb-3">
+                  <label className="block text-xs text-slate-400 mb-1">🌐 {t('settings.commissions.topup.portalUrlLabel')}</label>
+                  <input
+                    type="url"
+                    value={((settings as any).topUpPortalUrl as string | undefined) || ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSettings({ topUpPortalUrl: v } as any);
+                      persistSettings({ topUpPortalUrl: v } as Record<string, unknown>);
+                    }}
+                    placeholder="https://…"
+                    className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">💡 {t('settings.commissions.topup.portalUrlHint')}</p>
+                </div>
                 <div className="space-y-2">
                   {(settings.topUpProviders || []).map((provider, idx) => {
                     // r-settings-2a5: per-provider commission rate. Same shape

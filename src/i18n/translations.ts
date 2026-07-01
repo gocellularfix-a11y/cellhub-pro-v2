@@ -1843,6 +1843,9 @@ export const translations: TranslationDictionary = {
   'topUpModal.recipientPlaceholder': { en: 'Recipient number', es: 'Número del destinatario', pt: 'Número do destinatário' },
   // R-TOPUP-AUTOCOPY-SENDER-RECIPIENT
   'topUpModal.recipientLabel': { en: 'Recipient', es: 'Destinatario', pt: 'Destinatário' },
+  'topUpModal.openPortal': { en: 'Portal', es: 'Portal', pt: 'Portal' },
+  'topUpModal.portalNotConfigured': { en: 'No top-up portal configured. Add its URL in Settings → Commissions.', es: 'No hay portal de recarga configurado. Agrega su URL en Ajustes → Comisiones.', pt: 'Nenhum portal de recarga configurado. Adicione a URL em Configurações → Comissões.' },
+  'topUpModal.customerMatched': { en: 'Matched existing customer by sender number.', es: 'Cliente existente reconocido por el número que envía.', pt: 'Cliente existente reconhecido pelo número do remetente.' },
   'topUpModal.copy': { en: 'Copy', es: 'Copiar', pt: 'Copiar' },
   'topUpModal.copied': {
     en: (label: string) => `${label} copied`,
@@ -5178,6 +5181,8 @@ export const translations: TranslationDictionary = {
   'settings.commissions.topup.removed':    { en: 'Provider removed',            es: 'Proveedor eliminado',           pt: 'Provedor removido' },
   'settings.commissions.topup.defaultRateWarning': { en: 'Default rate. Configure the real one for tax accuracy.', es: 'Rate por defecto. Configurar el real para precisión fiscal.', pt: 'Taxa padrão. Configure a real para precisão fiscal.' },
   'settings.commissions.topup.addProvider': { en: 'Add Top-Up Provider',        es: 'Agregar Proveedor',             pt: 'Adicionar Provedor' },
+  'settings.commissions.topup.portalUrlLabel': { en: 'Top-Up Portal URL',        es: 'URL del Portal de Recarga',     pt: 'URL do Portal de Recarga' },
+  'settings.commissions.topup.portalUrlHint':  { en: 'Opened by the Portal button on the top-up screen. One portal for all providers.', es: 'Se abre con el botón Portal en la pantalla de recarga. Un portal para todos los proveedores.', pt: 'Aberto pelo botão Portal na tela de recarga. Um portal para todos os provedores.' },
 
   // Hardware section
   'settings.hardware.title':               { en: 'Hardware & Devices',          es: 'Hardware y Dispositivos',       pt: 'Hardware e Dispositivos' },

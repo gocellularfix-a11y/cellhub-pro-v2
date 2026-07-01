@@ -14,6 +14,8 @@ import { generateId } from '@/utils/dates';
 import { updateNickname } from '@/utils/topUpHistory';
 import CustomerPicker from '@/components/shared/CustomerPicker';
 import { persist } from '@/services/persist';
+import { openExternalIfOnline } from '@/hooks/useOnlineStatus';
+import { normalizePhone } from '@/utils/normalize';
 import type { CartItem, Sale, Customer } from '@/store/types';
 
 type TFn = (key: string, ...args: any[]) => string;
@@ -269,6 +271,18 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
     setLines(newLines);
   };
 
+  // R-TOPUP-PORTAL-V1: open the configured recharge portal. Single global URL
+  // read via double-cast (not in StoreSettings type). Mirrors PhonePaymentModal's
+  // portal pattern — openExternalIfOnline guards connectivity. No money/tax math.
+  const handleOpenPortal = useCallback(() => {
+    const url = (((settings as any).topUpPortalUrl as string | undefined) || '').trim();
+    if (!url) {
+      toast(t('topUpModal.portalNotConfigured'), 'info');
+      return;
+    }
+    openExternalIfOnline(url, 'topUpPortalWindow', 'noopener,noreferrer');
+  }, [settings, t, toast]);
+
   const handleSubmit = () => {
     setError('');
     if (!provider) {
@@ -306,7 +320,28 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
       };
     });
 
-    onAddToCart(items, selectedCustomer);
+    // R-TOPUP-CUSTOMER-MATCH-V1: when no customer was explicitly picked, try to
+    // recognize the SENDER (payer) number against existing customers by
+    // normalized phone. On a match, associate that existing customer via the
+    // safe existing linking path so the receipt shows their name. NEVER creates
+    // or overwrites a customer. The RECIPIENT (international) number is never
+    // used for matching — payer and recipient stay clearly separate.
+    let saleCustomer = selectedCustomer;
+    if (!saleCustomer) {
+      const senderNorm = normalizePhone(sender);
+      if (senderNorm) {
+        const matched = customers.find((c) => {
+          const phones = [c.phone, ...((c.phones as string[] | undefined) || [])];
+          return phones.some((p) => normalizePhone(p || '') === senderNorm);
+        });
+        if (matched) {
+          saleCustomer = matched;
+          toast(t('topUpModal.customerMatched'), 'info');
+        }
+      }
+    }
+
+    onAddToCart(items, saleCustomer);
     handleClose();
   };
 
@@ -720,6 +755,10 @@ export default function TopUpModal({ open, onClose, onAddToCart }: TopUpModalPro
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+        {/* R-TOPUP-PORTAL-V1: portal opener, left-anchored (mirrors Phone Services). */}
+        <button type="button" onClick={handleOpenPortal} className="btn btn-secondary" style={{ marginRight: 'auto' }}>
+          🌐 {t('topUpModal.openPortal')}
+        </button>
         <button onClick={handleClose} className="btn btn-secondary">
           {t('cancel')}
         </button>
