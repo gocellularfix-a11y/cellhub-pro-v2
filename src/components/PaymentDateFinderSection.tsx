@@ -222,6 +222,7 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
           storeName,
           dueDate: row.effectiveDueDate ? formatDate(row.effectiveDueDate, locale(lang)) : undefined,
           isEstimated: row.isEstimated,
+          lineCount: row.lineCount,
           closureStart: rangeStart,
           closureEnd: rangeEnd,
         },
