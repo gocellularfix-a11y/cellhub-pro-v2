@@ -131,6 +131,45 @@ describe('buildPaymentMessage — tone differentiation & fallbacks', () => {
   });
 });
 
+describe('buildPaymentMessage — multi-line grouping', () => {
+  it('EN: 2 lines → single grouped note "covers all 2 of your lines"', () => {
+    const msg = buildPaymentMessage({ ...base, lineCount: 2 }, 'en', 'friendly');
+    expect(msg).toContain('covers all 2 of your lines');
+  });
+
+  it('ES: multi-line note is present and in Spanish (tuteo)', () => {
+    const msg = buildPaymentMessage({ ...base, lineCount: 3 }, 'es', 'professional');
+    expect(msg).toContain('Esto cubre tus 3 líneas');
+    expect(msg).not.toMatch(/tenés|querés|podés/); // no voseo
+  });
+
+  it('PT: multi-line note is present and in Portuguese', () => {
+    const msg = buildPaymentMessage({ ...base, lineCount: 2 }, 'pt', 'direct');
+    expect(msg).toContain('Isto cobre todas as suas 2 linhas');
+  });
+
+  it('single line (lineCount 1 or undefined) stays silent — no grouping note', () => {
+    const one = buildPaymentMessage({ ...base, lineCount: 1 }, 'en', 'friendly');
+    const none = buildPaymentMessage(base, 'en', 'friendly');
+    expect(one).not.toContain('covers all');
+    expect(none).not.toContain('covers all');
+  });
+
+  it('multi-line works across all tones without leaks', () => {
+    for (const tone of MESSAGE_TONES) {
+      const msg = buildPaymentMessage({ ...base, lineCount: 2 }, 'en', tone);
+      expect(msg).toContain('covers all 2 of your lines');
+      expect(msg).not.toContain('undefined');
+    }
+  });
+
+  it('multi-line + estimated due date both render together', () => {
+    const msg = buildPaymentMessage({ ...base, lineCount: 2, isEstimated: true }, 'en', 'friendly');
+    expect(msg).toContain('due around 07/07/2026');
+    expect(msg).toContain('covers all 2 of your lines');
+  });
+});
+
 describe('buildPaymentMessage — BMP sanitizing', () => {
   it('strips non-BMP emoji from interpolated store/name', () => {
     const msg = buildPaymentMessage(

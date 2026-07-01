@@ -39,6 +39,13 @@ export interface PaymentMessageParams {
   closureStart?: string;
   /** Display-formatted closure/vacation window end. Optional. */
   closureEnd?: string;
+  /**
+   * Number of phone lines this customer has. When >= 2 the message adds a
+   * single "covers all N lines" note so a multi-line customer receives ONE
+   * grouped outreach message instead of one per line. Tone-agnostic by design
+   * (the 4 tones still shape greeting/intro/due/ask/signoff). Optional.
+   */
+  lineCount?: number;
 }
 
 // Per-language / per-tone sentence fragments. Each returns '' when its input
@@ -158,6 +165,14 @@ const FRAGMENTS: Record<MsgLang, Record<MessageTone, Fragments>> = {
   },
 };
 
+// Multi-line grouping note. Tone-agnostic (one grouped message covering every
+// line for the customer) — added only when lineCount >= 2. EN/ES/PT.
+const LINES_NOTE: Record<MsgLang, (count: number) => string> = {
+  en: (n) => `This covers all ${n} of your lines.`,
+  es: (n) => `Esto cubre tus ${n} líneas.`,
+  pt: (n) => `Isto cobre todas as suas ${n} linhas.`,
+};
+
 /**
  * Build a ready-to-edit WhatsApp payment-collection message.
  *
@@ -183,8 +198,13 @@ export function buildPaymentMessage(
     params.closureStart && params.closureEnd
       ? f.closure(params.closureStart.trim(), params.closureEnd.trim())
       : '';
+  // Multi-line grouping note — only for 2+ lines (single-line stays silent).
+  const linesClause =
+    params.lineCount && params.lineCount >= 2
+      ? (LINES_NOTE[lang] ?? LINES_NOTE.en)(params.lineCount)
+      : '';
 
-  const body = [f.intro(store), dueClause, closureClause, f.ask()]
+  const body = [f.intro(store), dueClause, linesClause, closureClause, f.ask()]
     .map((s) => s.trim())
     .filter(Boolean)
     .join(' ');
