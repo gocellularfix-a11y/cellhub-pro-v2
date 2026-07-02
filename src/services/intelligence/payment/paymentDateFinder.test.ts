@@ -446,4 +446,17 @@ describe('pure helpers', () => {
     const dates = [d(2026, 5, 20)]; // Jun 20 not in Jun 5–10
     expect(findHistoricalMatch(dates, start, end, 2)).toBeNull();
   });
+
+  it('shifts the SELECTED range back whole months — no drift (Jul 10–15 → Jun 10–15, May 10–15)', () => {
+    const start = d(2026, 6, 10); // Jul 10
+    const end = d(2026, 6, 15);   // Jul 15
+    // A payment on Jun 12 IS inside the 1-month-back window (Jun 10–15).
+    expect(findHistoricalMatch([d(2026, 5, 12)], start, end, 1)?.offsetMonths).toBe(1);
+    // A payment on Jun 7 is NOT — proving the window is Jun 10–15, never a
+    // drifted Jun 5–10. This is the exact regression the round guards against.
+    expect(findHistoricalMatch([d(2026, 5, 7)], start, end, 1)).toBeNull();
+    // 2-months-back window is May 10–15 (not May 5–10).
+    expect(findHistoricalMatch([d(2026, 4, 12)], start, end, 2)?.offsetMonths).toBe(2);
+    expect(findHistoricalMatch([d(2026, 4, 7)], start, end, 2)).toBeNull();
+  });
 });

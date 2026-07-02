@@ -64,7 +64,17 @@ const T = {
   from: { en: 'From', es: 'Desde', pt: 'De' },
   to: { en: 'To', es: 'Hasta', pt: 'Até' },
   search: { en: 'Search', es: 'Buscar', pt: 'Buscar' },
-  compare: { en: 'Compare prior months', es: 'Comparar meses anteriores', pt: 'Comparar meses anteriores' },
+  compare: {
+    en: 'Also find customers who paid in that same range last month',
+    es: 'También buscar clientes que pagaron en ese mismo rango el mes anterior',
+    pt: 'Também buscar clientes que pagaram nesse mesmo intervalo no mês anterior',
+  },
+  previewHeader: { en: 'Searching', es: 'Buscando', pt: 'Buscando' },
+  previewTarget: { en: 'Target range', es: 'Rango objetivo', pt: 'Intervalo alvo' },
+  previewPrevMonth: { en: 'Previous month comparison', es: 'Comparación mes anterior', pt: 'Comparação mês anterior' },
+  previewPrev2: { en: 'Previous 2 months comparison', es: 'Comparación 2 meses anteriores', pt: 'Comparação 2 meses anteriores' },
+  previewEnableHint: { en: 'enable to include', es: 'activa para incluir', pt: 'ative para incluir' },
+  previewInvalid: { en: 'Pick a valid start and end date.', es: 'Elige una fecha de inicio y fin válidas.', pt: 'Escolha uma data inicial e final válidas.' },
   none: { en: 'None', es: 'Ninguno', pt: 'Nenhum' },
   estimated: { en: 'Include estimated', es: 'Incluir estimados', pt: 'Incluir estimados' },
   alreadyPaid: { en: 'Include already-paid', es: 'Incluir ya pagados', pt: 'Incluir já pagos' },
@@ -149,6 +159,11 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d.getTime());
   r.setDate(r.getDate() + n);
   return r;
+}
+// Calendar-month shift — MUST mirror the engine's addMonths (paymentDateFinder)
+// so the preview shows exactly the windows the search will scan. Negative = back.
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
 }
 function presetRange(key: PresetKey): { start: Date; end: Date } {
   const today = new Date();
@@ -386,6 +401,36 @@ export default function PaymentDateFinderSection({ customers, sales, layaways, s
               {T.search[lang]}
             </button>
           </div>
+
+          {/* R-PAYMENT-DATE-RANGE-PREVIEW: show EXACTLY the windows the search
+              scans, so the operator sees the selected range is the FUTURE target
+              (no drift). Mirrors the engine: target = [start,end]; previous month
+              = shifted −1 calendar month; previous 2 = −2. */}
+          {(() => {
+            const s = parseYmd(startStr);
+            const e = parseYmd(endStr);
+            if (!s || !e || s.getTime() > e.getTime()) {
+              return <p className="text-[11px] text-amber-500 mb-2">{T.previewInvalid[lang]}</p>;
+            }
+            const fmtRange = (a: Date, b: Date) => `${formatDate(a, loc)} – ${formatDate(b, loc)}`;
+            return (
+              <div className="mb-2 rounded border border-slate-800 bg-slate-900/40 px-2.5 py-2 text-[11px]">
+                <div className="text-slate-500 uppercase tracking-wider text-[9px] font-semibold mb-1">{T.previewHeader[lang]}</div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-400">🎯 {T.previewTarget[lang]}</span>
+                  <span className="text-slate-200 font-semibold font-mono">{fmtRange(s, e)}</span>
+                </div>
+                <div className="flex justify-between gap-2" style={{ opacity: compareMonths >= 1 ? 1 : 0.45 }}>
+                  <span className="text-slate-400">↩ {T.previewPrevMonth[lang]}{compareMonths >= 1 ? '' : ` (${T.previewEnableHint[lang]})`}</span>
+                  <span className="text-slate-300 font-mono">{fmtRange(addMonths(s, -1), addMonths(e, -1))}</span>
+                </div>
+                <div className="flex justify-between gap-2" style={{ opacity: compareMonths >= 2 ? 1 : 0.45 }}>
+                  <span className="text-slate-400">↩↩ {T.previewPrev2[lang]}{compareMonths >= 2 ? '' : ` (${T.previewEnableHint[lang]})`}</span>
+                  <span className="text-slate-300 font-mono">{fmtRange(addMonths(s, -2), addMonths(e, -2))}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Options */}
           <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-slate-400">
