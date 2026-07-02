@@ -57,7 +57,7 @@ export interface TextElement {
   // box. All optional: absent = legacy behavior (left/top/wrap), so saved
   // history jobs render exactly as before.
   /** Horizontal alignment inside the box. Default 'left'. */
-  align?: 'left' | 'center' | 'right';
+  align?: 'left' | 'center' | 'right' | 'justify';
   /** Vertical alignment inside the box (needs width+height). Default 'top'. */
   valign?: 'top' | 'middle' | 'bottom';
   /** Overflow mode when the box is set: 'clip' cuts at bounds, 'wrap' wraps

@@ -75,6 +75,48 @@ export function EditorCanvas({
   const pendingPointRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef(0);
 
+  // LABEL-STUDIO-INLINE-TEXT-EDIT-V1: on-canvas text editing (Canva/Figma-like).
+  // Double-click a text element → a <textarea> overlay opens in place; Enter
+  // inserts a newline, Escape exits, blur/click-outside commits. Kept ENTIRELY
+  // in the editor (never in TextRenderer) so nothing leaks into printed output.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const editingIdRef = useRef<string | null>(null);
+  const editValueRef = useRef('');
+  editValueRef.current = editValue;
+  const editAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Focus the textarea + place the caret at the end when editing begins.
+  useEffect(() => {
+    if (!editingId) return;
+    const node = editAreaRef.current;
+    if (!node) return;
+    node.focus();
+    const len = node.value.length;
+    node.setSelectionRange(len, len);
+  }, [editingId]);
+
+  function beginEdit(el: TextElement) {
+    // Cancel any pending drag so the click that opened the editor never moves it.
+    dragRef.current = null;
+    editingIdRef.current = el.id;
+    setEditValue(el.value);
+    setEditingId(el.id);
+    onSelect(el.id);
+  }
+
+  // Commit the edited value once (idempotent — blur can fire again on unmount).
+  function commitEdit() {
+    const id = editingIdRef.current;
+    if (!id) return;
+    editingIdRef.current = null;
+    const el = configRef.current.elements.find(x => x.id === id);
+    if (el && el.type === 'text') {
+      onUpdate({ ...(el as TextElement), value: editValueRef.current });
+    }
+    setEditingId(null);
+  }
+
   const labelW = mmToPx(config.widthMm);
   const labelH = mmToPx(config.heightMm);
   const scaleX = CANVAS_MAX_W / labelW;
@@ -272,6 +314,8 @@ export function EditorCanvas({
 
   function renderResizeHandles() {
     if (!selectedEl || !selectedSize) return null;
+    // Hide handles while inline-editing so they don't overlap the textarea.
+    if (editingId) return null;
     const { w, h } = selectedSize;
     const isQR = selectedEl.type === 'qr';
     const ex = selectedEl.x;
@@ -318,6 +362,53 @@ export function EditorCanvas({
     ));
   }
 
+  // LABEL-STUDIO-INLINE-TEXT-EDIT-V1: the on-canvas textarea overlay. Styled to
+  // match TextRenderer (font/size/weight/align) so text doesn't jump when the
+  // editor opens/closes. Lives in the same scaled label-space as the element, so
+  // it inherits the canvas scale and sits exactly over the text box.
+  function renderInlineEditor(el: TextElement) {
+    const fontSize = resolveTextFontSize(el);
+    const boxW = el.width ?? selectedSize?.w ?? 140;
+    const boxH = el.height ?? selectedSize?.h ?? Math.round(fontSize * 1.4);
+    return (
+      <textarea
+        ref={editAreaRef}
+        value={editValue}
+        onChange={e => setEditValue(e.target.value)}
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          // Escape exits editing (commits). Enter falls through to the native
+          // textarea handler → inserts a newline (never commits/submits).
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); commitEdit(); return; }
+          e.stopPropagation();
+        }}
+        onBlur={commitEdit}
+        spellCheck={false}
+        style={{
+          width: boxW,
+          height: boxH,
+          boxSizing: 'border-box',
+          margin: 0,
+          padding: 0,
+          border: 'none',
+          outline: 'none',
+          resize: 'none',
+          overflow: 'hidden',
+          background: 'rgba(255,255,255,0.96)',
+          color: '#000',
+          fontFamily: el.fontFamily ?? 'Arial',
+          fontSize,
+          fontWeight: el.bold ? 700 : 400,
+          textAlign: el.align ?? 'left',
+          lineHeight: 1.2,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
       {/* Outer dark workspace with dot-grid pattern */}
@@ -359,6 +450,7 @@ export function EditorCanvas({
           >
             {config.elements.map(el => {
               const isSelected = el.id === selectedId;
+              const isEditing = el.id === editingId;
               return (
                 <div
                   key={el.id}
@@ -370,17 +462,24 @@ export function EditorCanvas({
                     position: 'absolute',
                     left: el.x,
                     top: el.y,
-                    cursor: 'move',
-                    outline: isSelected
+                    cursor: isEditing ? 'text' : 'move',
+                    outline: (isSelected || isEditing)
                       ? `${2 / scale}px solid #3b82f6`
                       : `${1 / scale}px dashed transparent`,
                     outlineOffset: `${4 / scale}px`,
-                    userSelect: 'none',
+                    userSelect: isEditing ? 'text' : 'none',
                   }}
-                  onMouseDown={e => startDrag(e, el)}
-                  onClick={e => { e.stopPropagation(); onSelect(el.id); }}
+                  onMouseDown={isEditing ? undefined : e => startDrag(e, el)}
+                  onClick={e => { e.stopPropagation(); if (!isEditing) onSelect(el.id); }}
+                  onDoubleClick={
+                    el.type === 'text'
+                      ? e => { e.stopPropagation(); beginEdit(el as TextElement); }
+                      : undefined
+                  }
                 >
-                  <ElementVisual el={el} />
+                  {isEditing && el.type === 'text'
+                    ? renderInlineEditor(el as TextElement)
+                    : <ElementVisual el={el} />}
                 </div>
               );
             })}
@@ -411,7 +510,7 @@ export function EditorCanvas({
       <p style={{ fontSize: '0.72rem', color: '#475569' }}>
         {config.widthMm % 1 === 0 ? config.widthMm : config.widthMm.toFixed(1)} ×{' '}
         {config.heightMm % 1 === 0 ? config.heightMm : config.heightMm.toFixed(1)} mm
-        &nbsp;·&nbsp; drag to move · handles to resize
+        &nbsp;·&nbsp; drag to move · handles to resize · double-click text to edit
       </p>
     </div>
   );

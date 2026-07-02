@@ -298,6 +298,7 @@ function TextPanel({
             { label: '⬅', value: 'left', title: 'Left' },
             { label: '↔', value: 'center', title: 'Center' },
             { label: '➡', value: 'right', title: 'Right' },
+            { label: '☰', value: 'justify', title: 'Justify' },
           ]}
           value={element.align ?? 'left'}
           onChange={v => onUpdate({ ...element, align: v as TextElement['align'] })}
