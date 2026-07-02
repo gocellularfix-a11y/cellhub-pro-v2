@@ -17,6 +17,7 @@
 import type {
   Sale, InventoryItem, Customer, Repair, SpecialOrder, Unlock, Layaway,
   StoreCreditLedger, CustomerReturn, Employee, StoreSettings, PendingExchangeReturn,
+  RepairDepositMeta, RepairDepositTrace,
 } from '@/store/types';
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { addLayawayPayment } from '@/services/layaway/payments';
@@ -293,9 +294,26 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
         `Diff: ${paidCents - expectedBalance} cents (possible stale cart).`,
       );
     }
-    const newDeposit = (repair.depositAmount || 0) + paidCents;
+    // R-REPAIR-DEPOSIT-TRACE-V1: capture pre-payment state BEFORE mutating.
+    const previouslyPaidCents = repair.depositAmount || 0;
+    const newDeposit = previouslyPaidCents + paidCents;
     const newBalance = Math.max(0, (repair.balance || 0) - paidCents);
     const nowIso = new Date().toISOString();
+
+    // R-REPAIR-DEPOSIT-TRACE-V1: record the ORIGINAL deposit metadata exactly
+    // once — on the first payment (when no prior money existed). Idempotent:
+    // never overwrite an existing depositMeta; historical repairs that already
+    // carry cumulative depositAmount stay untouched. Metadata only — the money
+    // reconcile (newDeposit/newBalance/status) above is unchanged.
+    const captureDepositMeta = !repair.depositMeta && previouslyPaidCents === 0 && paidCents > 0;
+    const depositMeta: RepairDepositMeta | undefined = repair.depositMeta ?? (captureDepositMeta ? {
+      amountCents: paidCents,
+      dateIso: nowIso,
+      saleId: sale.id,
+      invoiceNumber: sale.invoiceNumber,
+      paymentMethod: sale.paymentMethod,
+    } : undefined);
+
     updatedRepairs[ri] = {
       ...repair,
       depositAmount: newDeposit,
@@ -303,8 +321,34 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
       status: newBalance === 0 ? 'picked_up' as const : repair.status,
       updatedAt: nowIso,
       completedAt: newBalance === 0 ? (repair.completedAt ?? nowIso) : repair.completedAt,
+      ...(depositMeta ? { depositMeta } : {}),
     };
     repairOps.push({ collection: 'repairTickets', id: updatedRepairs[ri].id, data: updatedRepairs[ri] as unknown as Record<string, unknown> });
+
+    // R-REPAIR-DEPOSIT-TRACE-V1: when this payment FOLLOWS a prior deposit
+    // (previouslyPaid > 0), stamp a display-only trace onto the matching sale
+    // line(s). The receipt (live + Reports reprint) reads it to render Deposit
+    // History + Payment Summary. Skipped for one-shot full payments (nothing to
+    // trace). depositMeta fields may be absent on historical repairs → the
+    // receipt shows "Not available". This adds a display field to the sale item;
+    // it does NOT touch totals, tax, or any money figure.
+    if (previouslyPaidCents > 0) {
+      const trace: RepairDepositTrace = {
+        ticketNumber: (repair as { ticketNumber?: string }).ticketNumber,
+        originalDepositCents: depositMeta?.amountCents,
+        depositDateIso: depositMeta?.dateIso,
+        depositSaleId: depositMeta?.saleId,
+        depositInvoice: depositMeta?.invoiceNumber,
+        depositMethod: depositMeta?.paymentMethod,
+        totalRepairCents: repair.total || repair.estimatedCost || 0,
+        previouslyPaidCents,
+        paidTodayCents: paidCents,
+        balanceRemainingCents: newBalance,
+      };
+      for (const saleItem of sale.items) {
+        if (saleItem.repairId === repairId) saleItem.repairDepositTrace = trace;
+      }
+    }
   }
 
   // ── §4b. Special Orders ──

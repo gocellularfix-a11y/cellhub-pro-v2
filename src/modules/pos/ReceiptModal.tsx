@@ -24,7 +24,7 @@ import { persist } from '@/services/persist';
 import { generateId } from '@/utils/dates';
 import { escHtml } from '@/utils/escHtml';
 import { parseTopUpNotes } from '@/utils/topUpHistory';
-import type { Sale, StoreSettings, Customer } from '@/store/types';
+import type { Sale, StoreSettings, Customer, RepairDepositTrace } from '@/store/types';
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
 
 // r-batch-a (3a): JsBarcode and qrcode are now bundled via npm instead of
@@ -822,6 +822,56 @@ function renderReceiptNotesHtml(safeNotes: string): string {
  *  Optional `qrSvg` is an inline SVG string from the qrcode lib; when provided
  *  it is used instead of the external api.qrserver.com URL (which would fail
  *  offline). Fall back to the external URL if qrSvg is empty. */
+// R-REPAIR-DEPOSIT-TRACE-V1: render the Deposit History + Payment Summary block
+// for a repair balance-payment receipt line. Self-contained inline-styled HTML
+// so it drops unchanged into BOTH the dedicated 80mm template and the shared
+// 4x6/letter/legal/a4 template. Every value is pre-computed by finalizeSaleCore
+// — this ONLY formats it, never recomputes money. Missing deposit metadata
+// renders "Not available" (bilingual) — values are never guessed.
+function renderRepairDepositTraceHtml(trace: RepairDepositTrace, es: boolean, pt: boolean): string {
+  const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  const na = es ? 'No disponible' : pt ? 'Não disponível' : 'Not available';
+  const optCents = (v?: number) => (typeof v === 'number' ? money(v) : na);
+  const optText  = (v?: string) => (v && v.trim() ? escHtml(v) : na);
+  const optDate  = (iso?: string) => {
+    if (!iso) return na;
+    try { const s = formatDate(iso); return s ? escHtml(s) : na; } catch { return na; }
+  };
+
+  const L = {
+    depositHistory:   es ? 'Historial del Depósito' : pt ? 'Histórico do Depósito' : 'Deposit History',
+    paymentSummary:   es ? 'Resumen de Pago'        : pt ? 'Resumo do Pagamento'   : 'Payment Summary',
+    repairTicket:     es ? 'Ticket de Reparación'   : pt ? 'Ticket de Reparo'      : 'Repair Ticket',
+    originalDeposit:  es ? 'Depósito Original'       : pt ? 'Depósito Original'      : 'Original Deposit',
+    depositDate:      es ? 'Fecha del Depósito'      : pt ? 'Data do Depósito'       : 'Deposit Date',
+    depositReceipt:   es ? 'Recibo del Depósito'     : pt ? 'Recibo do Depósito'     : 'Deposit Receipt',
+    depositMethod:    es ? 'Método del Depósito'     : pt ? 'Método do Depósito'     : 'Deposit Method',
+    repairTotal:      es ? 'Total de Reparación'     : pt ? 'Total do Reparo'        : 'Repair Total',
+    previouslyPaid:   es ? 'Pagado Anteriormente'    : pt ? 'Pago Anteriormente'     : 'Previously Paid',
+    paidToday:        es ? 'Pagado Hoy'             : pt ? 'Pago Hoje'              : 'Paid Today',
+    balanceRemaining: es ? 'Saldo Restante'          : pt ? 'Saldo Restante'         : 'Balance Remaining',
+  };
+
+  const lbl = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;border-bottom:1px solid #ccc;padding-bottom:1px;margin:6px 0 3px';
+  const row = (k: string, v: string, strong = false) =>
+    `<div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:1px;font-size:11px${strong ? ';font-weight:800' : ''}">` +
+    `<span style="color:#444">${k}</span><span style="font-weight:600;text-align:right;word-break:break-word">${v}</span></div>`;
+
+  return `<div style="margin:5px 0">` +
+    `<div style="${lbl}">${escHtml(L.depositHistory)}</div>` +
+    (trace.ticketNumber && trace.ticketNumber.trim() ? row(escHtml(L.repairTicket), escHtml(trace.ticketNumber)) : '') +
+    row(escHtml(L.originalDeposit), optCents(trace.originalDepositCents)) +
+    row(escHtml(L.depositDate),     optDate(trace.depositDateIso)) +
+    row(escHtml(L.depositReceipt),  optText(trace.depositInvoice || trace.depositSaleId)) +
+    row(escHtml(L.depositMethod),   optText(trace.depositMethod)) +
+    `<div style="${lbl}">${escHtml(L.paymentSummary)}</div>` +
+    row(escHtml(L.repairTotal),      money(trace.totalRepairCents)) +
+    row(escHtml(L.previouslyPaid),   money(trace.previouslyPaidCents)) +
+    row(escHtml(L.paidToday),        money(trace.paidTodayCents)) +
+    row(escHtml(L.balanceRemaining), money(trace.balanceRemainingCents), true) +
+    `</div>`;
+}
+
 export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: string, qrSvg?: string, barcodeSvg?: string, paperSize?: string): string {
   const es = lang === 'es';
   const pt = lang === 'pt';
@@ -993,6 +1043,16 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
       }</div>`
     : '';
 
+  // R-REPAIR-DEPOSIT-TRACE-V1: Deposit History + Payment Summary for repair
+  // balance payments. finalizeSaleCore stamps repairDepositTrace onto the line
+  // ONLY when a prior deposit existed (previouslyPaid > 0), so this renders
+  // nothing for one-shot full payments. Computed once, injected into whichever
+  // template branch runs below (80mm dedicated + shared 4x6/letter/legal/a4).
+  const repairDepositTracesHtml = sale.items
+    .filter((it) => it.repairDepositTrace)
+    .map((it) => renderRepairDepositTraceHtml(it.repairDepositTrace!, es, pt))
+    .join('');
+
   const is80mm  = paperSize === '80mm';
   const isLabel = paperSize === 'label';
   const isCr80  = paperSize === 'cr80';
@@ -1142,6 +1202,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ? r80(`${es ? 'Efectivo' : pt ? 'Dinheiro' : 'Cash'}:`, fmt(sale.cashReceived)) +
       r80(`${es ? 'Cambio' : pt ? 'Troco' : 'Change'}:`, fmt(sale.changeDue || 0), { lab: 'font-weight:900', amt: 'font-weight:900' })
     : ''}
+  ${repairDepositTracesHtml ? `<div class="t80sep"></div>${repairDepositTracesHtml}` : ''}
 
   <div class="t80sep"></div>
   <!-- Footer / review (compact) -->
@@ -1314,6 +1375,7 @@ export function generateReceiptHtml(sale: Sale, settings: StoreSettings, lang: s
     ` : ''}
   </table>
   <div class="sep"></div>
+  ${repairDepositTracesHtml ? `${repairDepositTracesHtml}<div class="sep"></div>` : ''}
 
   <!-- Footer / review block.
        R-RECEIPT-4X6-CONTINUOUS-RECEIPT-NOT-QR-PAGE: the prior forced page break

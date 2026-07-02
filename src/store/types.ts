@@ -770,6 +770,11 @@ export interface SaleItem {
   storeCreditCertNumber?: string;
   // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX
   isActivation?: boolean;
+  // R-REPAIR-DEPOSIT-TRACE-V1: display-only deposit traceability snapshot,
+  // stamped by finalizeSaleCore onto a repair balance-payment line. Read by
+  // generateReceiptHtml to render the Deposit History / Payment Summary block.
+  // Pure denormalized display values — NO money is recomputed from it.
+  repairDepositTrace?: RepairDepositTrace;
 }
 
 export interface Sale {
@@ -986,6 +991,43 @@ export interface RepairPart {
   inventoryId?: string;
 }
 
+// ── Repair deposit traceability (R-REPAIR-DEPOSIT-TRACE-V1) ──
+/**
+ * Original-deposit metadata captured EXACTLY ONCE, at the first (deposit)
+ * payment, by finalizeSaleCore. Preserves where the earlier money came from so
+ * the final-payment receipt can trace it. All fields optional so historical
+ * repairs (no metadata) never break — readers show "Not available" for any gap.
+ */
+export interface RepairDepositMeta {
+  amountCents?: number;      // original deposit amount (NOT the cumulative depositAmount)
+  dateIso?: string;          // ISO timestamp of the deposit payment
+  saleId?: string;           // id of the deposit Sale
+  invoiceNumber?: string;    // human invoice # of the deposit Sale
+  paymentMethod?: string;    // method used for the deposit
+}
+
+/**
+ * Display-only snapshot stamped onto a repair balance-payment SaleItem so the
+ * receipt (live + reprint) can render Deposit History + Payment Summary without
+ * needing the Repair entity. Money values are copied from finalizeSaleCore's
+ * already-computed reconcile numbers — nothing is recomputed downstream.
+ * The deposit-origin fields (originalDepositCents, depositDateIso, depositSaleId,
+ * depositInvoice, depositMethod) come from depositMeta and may be undefined on
+ * historical repairs, where the receipt renders "Not available".
+ */
+export interface RepairDepositTrace {
+  ticketNumber?: string;
+  originalDepositCents?: number;
+  depositDateIso?: string;
+  depositSaleId?: string;
+  depositInvoice?: string;
+  depositMethod?: string;
+  totalRepairCents: number;
+  previouslyPaidCents: number;
+  paidTodayCents: number;
+  balanceRemainingCents: number;
+}
+
 export interface Repair {
   id: string;
   storeId?: string;  // Multi-store: which store this belongs to
@@ -1023,6 +1065,10 @@ export interface Repair {
   originalSnapshot?: EditAuditSnapshot;
   editHistory?: EditAuditEntry[];
   refundOwedAmount?: number;  // cents; set when reason='refund', cleared on Mark Refunded
+  // R-REPAIR-DEPOSIT-TRACE-V1: original-deposit metadata, captured ONCE by
+  // finalizeSaleCore on the first payment. Never overwritten. Undefined on
+  // repairs created before this feature (receipt shows "Not available").
+  depositMeta?: RepairDepositMeta;
 }
 
 // ── Unlock ────────────────────────────────────────────────

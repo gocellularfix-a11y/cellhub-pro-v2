@@ -186,3 +186,92 @@ describe('finalizeSaleCore (R-FINALIZE-SALE-CORE-EXTRACT-SCOPED)', () => {
     expect(inventory[0].qty).toBe(5); // original untouched
   });
 });
+
+describe('finalizeSaleCore — repair deposit traceability (R-REPAIR-DEPOSIT-TRACE-V1)', () => {
+  it('captures depositMeta once on the first (deposit) payment; no trace on that line', () => {
+    const rep = { id: 'r1', status: 'received', depositAmount: 0, balance: 12000, total: 12000, ticketNumber: 'R-1042' } as unknown as Repair;
+    const s = sale({
+      id: 'sale-dep', invoiceNumber: 'INV-8841', paymentMethod: 'Cash',
+      items: [item({ repairId: 'r1', category: 'service', price: 4000, taxable: false })],
+      subtotal: 4000, subtotalAfterDiscount: 4000,
+    });
+    const r = finalizeSaleCore(input({ sale: s, repairs: [rep] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const ur = r.repairs.find((x) => x.id === 'r1')! as Repair;
+    expect(ur.depositAmount).toBe(4000);
+    expect(ur.depositMeta).toBeDefined();
+    expect(ur.depositMeta!.amountCents).toBe(4000);
+    expect(ur.depositMeta!.saleId).toBe('sale-dep');
+    expect(ur.depositMeta!.invoiceNumber).toBe('INV-8841');
+    expect(ur.depositMeta!.paymentMethod).toBe('Cash');
+    // previouslyPaid === 0 → nothing to trace on the deposit line itself.
+    expect(s.items[0].repairDepositTrace).toBeUndefined();
+  });
+
+  it('stamps repairDepositTrace on the balance payment and preserves depositMeta (idempotent)', () => {
+    const rep = {
+      id: 'r1', status: 'received', depositAmount: 4000, balance: 8000, total: 12000, ticketNumber: 'R-1042',
+      depositMeta: { amountCents: 4000, dateIso: '2026-06-28T00:00:00.000Z', saleId: 'sale-dep', invoiceNumber: 'INV-8841', paymentMethod: 'Cash' },
+    } as unknown as Repair;
+    const s = sale({
+      id: 'sale-bal', invoiceNumber: 'INV-8899', paymentMethod: 'Card',
+      items: [item({ repairId: 'r1', category: 'service', price: 8000, taxable: false })],
+      subtotal: 8000, subtotalAfterDiscount: 8000,
+    });
+    const r = finalizeSaleCore(input({ sale: s, repairs: [rep] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const ur = r.repairs.find((x) => x.id === 'r1')! as Repair;
+    expect(ur.depositAmount).toBe(12000);
+    expect(ur.balance).toBe(0);
+    expect(ur.status).toBe('picked_up');
+    // depositMeta must NOT be overwritten by the balance payment.
+    expect(ur.depositMeta!.amountCents).toBe(4000);
+    expect(ur.depositMeta!.invoiceNumber).toBe('INV-8841');
+    const trace = s.items[0].repairDepositTrace!;
+    expect(trace).toBeDefined();
+    expect(trace.ticketNumber).toBe('R-1042');
+    expect(trace.originalDepositCents).toBe(4000);
+    expect(trace.depositInvoice).toBe('INV-8841');
+    expect(trace.depositMethod).toBe('Cash');
+    expect(trace.totalRepairCents).toBe(12000);
+    expect(trace.previouslyPaidCents).toBe(4000);
+    expect(trace.paidTodayCents).toBe(8000);
+    expect(trace.balanceRemainingCents).toBe(0);
+  });
+
+  it('one-shot full payment stamps no trace (nothing to trace)', () => {
+    const rep = { id: 'r1', status: 'received', depositAmount: 0, balance: 12000, total: 12000 } as unknown as Repair;
+    const s = sale({
+      items: [item({ repairId: 'r1', category: 'service', price: 12000, taxable: false })],
+      subtotal: 12000, subtotalAfterDiscount: 12000,
+    });
+    const r = finalizeSaleCore(input({ sale: s, repairs: [rep] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(s.items[0].repairDepositTrace).toBeUndefined();
+  });
+
+  it('historical repair (no depositMeta) → trace omits source fields but keeps real summary numbers', () => {
+    const rep = { id: 'r1', status: 'received', depositAmount: 4000, balance: 8000, total: 12000, ticketNumber: 'R-1000' } as unknown as Repair;
+    const s = sale({
+      items: [item({ repairId: 'r1', category: 'service', price: 8000, taxable: false })],
+      subtotal: 8000, subtotalAfterDiscount: 8000,
+    });
+    const r = finalizeSaleCore(input({ sale: s, repairs: [rep] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const trace = s.items[0].repairDepositTrace!;
+    expect(trace).toBeDefined();
+    expect(trace.originalDepositCents).toBeUndefined();
+    expect(trace.depositInvoice).toBeUndefined();
+    expect(trace.depositSaleId).toBeUndefined();
+    expect(trace.depositMethod).toBeUndefined();
+    expect(trace.previouslyPaidCents).toBe(4000);
+    expect(trace.paidTodayCents).toBe(8000);
+    expect(trace.balanceRemainingCents).toBe(0);
+    // No depositMeta is fabricated for a historical repair (depositAmount != 0).
+    expect((r.repairs.find((x) => x.id === 'r1')! as Repair).depositMeta).toBeUndefined();
+  });
+});
