@@ -1040,6 +1040,9 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
       }
 
+      // R-GLOBAL-CART-TRAY-V1-FIX-1: surface the global cart drawer so the
+      // operator sees the added balance immediately (no "go to POS" hunt).
+      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
       toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'info');
     },
     [consolidateCartForRepair, dispatch, toast, lang],
@@ -1101,6 +1104,10 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
       if ((repair as any).customerId) {
         dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
       }
+
+      // R-GLOBAL-CART-TRAY-V1-FIX-1: open the global cart drawer — replaces
+      // the old "Go to POS" instruction in the toast below.
+      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
     }
 
     // Round R-POS-PARITY F1: delegate status transition to POS reconcile.
@@ -1402,6 +1409,8 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
               }
 
               setDepositModalRepair(null);
+              // R-GLOBAL-CART-TRAY-V1-FIX-1: show the drawer with the fresh line.
+              window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
               toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'success');
             } finally {
               // Reset guard on next tick so future confirmations work.

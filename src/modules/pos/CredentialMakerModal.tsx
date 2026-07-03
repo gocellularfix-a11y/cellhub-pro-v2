@@ -235,8 +235,12 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
     ctx.drawImage(video, 0, 0);
     const photoData = canvas.toDataURL('image/jpeg', 0.8);
 
-    // Update customer with photo (using ref to avoid clobbering concurrent writes)
-    const updated = { ...selectedCustomer, credentialPhoto: photoData };
+    // R-CUSTOMER-ADDRESS-PRIVACY-V1-FIX: build the write from the FRESH record
+    // in the ref, not the selection-time snapshot. persist.customer OVERWRITES
+    // the whole record, so spreading a stale snapshot here silently wiped any
+    // field saved after selection (address / showAddressOnCredential included).
+    const base = customersRef.current.find((c) => c.id === selectedCustomer.id) ?? selectedCustomer;
+    const updated = { ...base, credentialPhoto: photoData };
     setSelectedCustomer(updated);
     const nextCustomers = customersRef.current.map((c) =>
       c.id === selectedCustomer.id ? updated : c,
@@ -437,11 +441,22 @@ export default function CredentialMakerModal({ open, onClose }: Props) {
 
   // ── Phase 3: Show Credential Card ───────────────────────
   if (selectedCustomer && !showCamera) {
+    // R-CUSTOMER-ADDRESS-PRIVACY-V1-FIX: render the LIVE record so edits saved
+    // after selection (address, showAddressOnCredential) appear on the card —
+    // the selection-time snapshot went stale the moment the customer was edited.
+    const liveCustomer = customers.find((c) => c.id === selectedCustomer.id) ?? selectedCustomer;
+    // Debug-safe trace: makes "why is the address (not) on the card" diagnosable
+    // in DevTools without re-instrumenting.
+    console.log('[cellhub] credential address gate:', {
+      customerId: liveCustomer.id,
+      showAddressOnCredential: !!liveCustomer.showAddressOnCredential,
+      hasAddress: !!(liveCustomer.address && String(liveCustomer.address).trim()),
+    });
     return (
       <Modal open={true} onClose={handleClose} title={`📇 ${t('customerCredential')}`} size="max-w-xl">
         <>
           <div ref={printAreaRef}>
-            <CredentialCard customer={selectedCustomer} settings={settings} t={t} />
+            <CredentialCard customer={liveCustomer} settings={settings} t={t} />
           </div>
 
           {/* DataCard printer instructions */}

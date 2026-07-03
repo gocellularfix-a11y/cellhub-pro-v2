@@ -56,6 +56,16 @@ export default function GlobalCartTray() {
     return () => document.removeEventListener('keydown', onKey);
   }, [drawerOpen]);
 
+  // R-GLOBAL-CART-TRAY-V1-FIX-1: modules pop the drawer open right after they
+  // add to the global cart (Repairs balance/deposit add) so the operator gets
+  // immediate feedback instead of a "Go to POS" instruction. The component
+  // stays mounted even when it renders null, so this listener is always live.
+  useEffect(() => {
+    const onOpen = () => setDrawerOpen(true);
+    window.addEventListener('cellhub:open-cart-tray', onOpen);
+    return () => window.removeEventListener('cellhub:open-cart-tray', onOpen);
+  }, []);
+
   // POS owns its own cart panel; don't double up there.
   if (activeTab === 'pos') return null;
   // Nothing to surface when the cart is empty and the drawer is closed.
