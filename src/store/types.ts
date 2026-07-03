@@ -508,6 +508,11 @@ export interface Customer {
   city?: string;
   state?: string;          // e.g. "CA"
   zip?: string;
+  // R-CUSTOMER-ADDRESS-PRIVACY-V1: opt-in — when true, the customer's address is
+  // printed on their CREDENTIAL card. Default (undefined/false) = hidden
+  // (privacy-first). Receipts never show customer address; this flag is
+  // credential-only. Never mutates the stored address itself.
+  showAddressOnCredential?: boolean;
 
   // ── Wireless service (Go Cellular core business) ──
   carrier?: string;        // primary carrier (mirrors carriers[0])

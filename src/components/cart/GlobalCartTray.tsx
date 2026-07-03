@@ -26,8 +26,8 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function GlobalCartTray() {
-  const { state, setCart, setActiveTab } = useApp();
-  const { cart, settings, lang, activeTab } = state;
+  const { state, setCart, setActiveTab, dispatch } = useApp();
+  const { cart, settings, lang, activeTab, customers, pendingPosCustomer } = state;
   const es = lang === 'es';
   const pt = lang === 'pt';
 
@@ -42,6 +42,11 @@ export default function GlobalCartTray() {
     [cart, settings],
   );
   const count = useMemo(() => cart.reduce((n, i) => n + (i.qty || 1), 0), [cart]);
+
+  // R-GLOBAL-CART-CUSTOMER-VISIBILITY-V1: the customer a module attached to the
+  // cart lives in the global `pendingPosCustomer` id (set by Repairs/Unlocks/…;
+  // POS consumes+clears it on mount). Surface WHO owns the cart before checkout.
+  const cartCustomer = pendingPosCustomer ? customers.find((c) => c.id === pendingPosCustomer) : null;
 
   // Escape closes the drawer.
   useEffect(() => {
@@ -61,6 +66,13 @@ export default function GlobalCartTray() {
     setCart(cart.map((i) => (i.id === id ? { ...i, qty: Math.max(1, (i.qty || 1) + delta) } : i)));
   const goCheckout = () => { setDrawerOpen(false); setActiveTab('pos'); };
   const doClear = () => { setCart([]); setConfirmClear(false); setDrawerOpen(false); };
+  const openProfile = () => {
+    if (!cartCustomer) return;
+    setDrawerOpen(false);
+    dispatch({ type: 'SET_PENDING_CUSTOMER_HISTORY', payload: cartCustomer.id });
+    setActiveTab('customers');
+  };
+  const clearCustomer = () => dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: '' });
 
   const taxTotal = totals.salesTax + totals.utilityTax + totals.mobileSurcharge;
   const feeTotal = totals.cbeFee + totals.screenFee;
@@ -81,6 +93,8 @@ export default function GlobalCartTray() {
     clearMsg: es ? '¿Quitar todos los artículos del carrito?' : pt ? 'Remover todos os itens do carrinho?' : 'Remove all items from the cart?',
     cancel: es ? 'Cancelar' : 'Cancel',
     checkoutHint: es ? 'Abre POS con este carrito' : pt ? 'Abre o POS com este carrinho' : 'Opens POS with this cart',
+    openProfile: es ? 'Ver perfil del cliente' : pt ? 'Ver perfil do cliente' : 'Open customer profile',
+    clearCustomer: es ? 'Quitar cliente del carrito' : pt ? 'Remover cliente do carrinho' : 'Clear customer',
   };
 
   return (
@@ -150,6 +164,34 @@ export default function GlobalCartTray() {
                 ✕
               </button>
             </div>
+
+            {/* Attached customer — who owns this cart (R-GLOBAL-CART-CUSTOMER-VISIBILITY-V1) */}
+            {cartCustomer && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                padding: '0.6rem 1.1rem', background: 'rgba(99,102,241,0.09)',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div style={{
+                  width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
+                  background: 'linear-gradient(135deg, #818cf8, #6366f1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: '0.85rem',
+                }}>
+                  {(cartCustomer.firstName || cartCustomer.name || '?').charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {cartCustomer.name || `${cartCustomer.firstName || ''} ${cartCustomer.lastName || ''}`.trim()}
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>
+                    {cartCustomer.phone || (cartCustomer.phones && cartCustomer.phones[0]) || ''}
+                  </div>
+                </div>
+                <button onClick={openProfile} title={L.openProfile} style={chipBtnStyle(false)}>👤</button>
+                <button onClick={clearCustomer} title={L.clearCustomer} style={chipBtnStyle(true)}>✕</button>
+              </div>
+            )}
 
             {/* Items */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1.1rem' }}>
@@ -277,5 +319,14 @@ function qtyBtnStyle(disabled: boolean): React.CSSProperties {
     background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
     color: disabled ? '#475569' : '#cbd5e1', cursor: disabled ? 'default' : 'pointer',
     fontSize: '0.9rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+}
+
+function chipBtnStyle(danger: boolean): React.CSSProperties {
+  return {
+    background: danger ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.06)',
+    border: `1px solid ${danger ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.12)'}`,
+    borderRadius: '0.35rem', color: danger ? '#fca5a5' : '#cbd5e1',
+    padding: '0.25rem 0.45rem', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1,
   };
 }

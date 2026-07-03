@@ -1011,6 +1011,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       phones: [prefillPhone] as string[],
       carrier: '', carriers: [''] as string[],
       email: '', address: '', city: '', state: '', zip: '',
+      showAddressOnCredential: false,
       plan: '', monthlyPayment: '',
       notes: '', communicationConsent: false, photo: '',
       referredBy: '',
@@ -1045,6 +1046,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
         notes: customer.notes || '',
         communicationConsent: customer.communicationConsent ?? false,
         photo: cAny.photo || '',
+        showAddressOnCredential: cAny.showAddressOnCredential ?? false,
       };
     }
 
@@ -1169,6 +1171,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       city: form.city,
       state: form.state,
       zip: form.zip,
+      showAddressOnCredential: form.showAddressOnCredential,
       plan: form.plan,
       monthlyPayment: form.monthlyPayment || undefined,
       photo: form.photo,
@@ -1193,6 +1196,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
           firstName: '', lastName: '', phone: '', phones: [''],
           carrier: '', carriers: [''],
           email: '', address: '', city: '', state: '', zip: '',
+          showAddressOnCredential: false,
           plan: '', monthlyPayment: '', notes: '', communicationConsent: false, photo: '',
           referredBy: '',
         });
@@ -1316,6 +1320,20 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
             <input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })} className="input" placeholder={t('customers.form.zipPlaceholder')} />
           </div>
         </div>
+
+        {/* R-CUSTOMER-ADDRESS-PRIVACY-V1: opt-in to print the customer's address
+            on their credential card. Only shown when an address is present;
+            default off (privacy-first). Receipts are never affected. */}
+        {form.address.trim() !== '' && (
+          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.showAddressOnCredential}
+              onChange={(e) => setForm({ ...form, showAddressOnCredential: e.target.checked })}
+            />
+            {t('customers.form.showAddressOnCredential')}
+          </label>
+        )}
 
         {/* Plan / Monthly Payment */}
         <div className="grid grid-cols-2 gap-3">

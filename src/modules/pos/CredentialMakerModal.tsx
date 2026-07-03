@@ -133,6 +133,17 @@ function CredentialCard({
                 Tel: {formatPhone(customer.phone)}
               </div>
             )}
+            {/* R-CUSTOMER-ADDRESS-PRIVACY-V1: address printed ONLY when the
+                customer opted in (showAddressOnCredential) and an address exists.
+                Default off — privacy-first. Never mutates the stored address. */}
+            {customer.showAddressOnCredential && customer.address && (
+              <div style={{ fontSize: '10px', fontWeight: 500, color: '#000', marginBottom: '3px' }}>
+                {customer.address}
+                {(customer.city || customer.state || customer.zip)
+                  ? `, ${[customer.city, customer.state].filter(Boolean).join(', ')}${customer.zip ? ` ${customer.zip}` : ''}`
+                  : ''}
+              </div>
+            )}
             {settings.storeWebsite && (
               <div style={{ fontSize: '11px', fontWeight: 700, color: footerColor, marginBottom: '2px' }}>
                 Web: {settings.storeWebsite}

@@ -4732,6 +4732,7 @@ export const translations: TranslationDictionary = {
   'customers.form.address':           { en: 'Address',                es: 'Dirección',                  pt: 'Endereço' },
   'customers.form.city':              { en: 'City',                   es: 'Ciudad',                     pt: 'Cidade' },
   'customers.form.state':             { en: 'State',                  es: 'Estado',                     pt: 'Estado' },
+  'customers.form.showAddressOnCredential': { en: 'Show address on credential', es: 'Mostrar dirección en la credencial', pt: 'Mostrar endereço na credencial' },
   'customers.form.monthlyPayment':    { en: 'Monthly Payment',        es: 'Pago Mensual',               pt: 'Pagamento Mensal' },
   'customers.form.referralCode':      { en: 'Referral code? (optional)', es: '¿Código de referido? (opcional)', pt: 'Código de indicação? (opcional)' },
   'customers.form.referralPlaceholder': { en: 'e.g. GC1234',          es: 'Ej: GC1234',                 pt: 'ex: GC1234' },
