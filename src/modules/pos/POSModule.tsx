@@ -50,6 +50,10 @@ import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { classifyCheckoutAck } from '@/services/lan/posCheckoutForwarding';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
+// R-GLOBAL-SCAN-ANYWHERE-V1: stock rule + default CartItem construction now
+// live in the shared resolver so the global AppShell scanner builds cart
+// lines EXACTLY like POS does. Custom-category taxMode overrides stay here.
+import { getInventoryStock, buildCartItemFromInventory } from '@/services/scanner/globalScanResolver';
 
 // Case-insensitive category predicates — single source of truth so bundle
 // suggestion, search icon, and category filter all agree on what counts as
@@ -278,11 +282,9 @@ export default function POSModule() {
   // ── Helpers ─────────────────────────────────────────────
 
   const getStock = useCallback(
-    (item: InventoryItem): number => {
-      // For services, stock is unlimited
-      if (item.category === 'service') return 999;
-      return item.qty || (item as any).quantity || 0;
-    },
+    // R-GLOBAL-SCAN-ANYWHERE-V1: delegates to the shared resolver (single
+    // definition of the stock rule for POS + global scanner).
+    (item: InventoryItem): number => getInventoryStock(item),
     [],
   );
 
@@ -310,45 +312,25 @@ export default function POSModule() {
         cartRef.current = next;
         setCart(next);
       } else {
-        // Use the inventory item's taxable flag as the authoritative source.
-        // phone_payment / top_up / quick_charge always bypass sales tax —
-        // they generate utility tax or follow a separate fee structure.
-        // 'service' is intentionally excluded from the override so taxable
-        // repair/installation items are charged correctly.
-        let taxable = item.taxable &&
-          !['phone_payment', 'top_up', 'quick_charge'].includes(item.category);
-        let category = item.category;
+        // R-GLOBAL-SCAN-ANYWHERE-V1: default construction (incl. the
+        // taxable-flag rule for phone_payment/top_up/quick_charge) lives in
+        // the shared resolver — same builder the global scanner uses.
+        // Custom-category taxMode overrides are POS-only and applied on top.
+        const newItem: CartItem = buildCartItemFromInventory(item);
 
         if (activeCategory?.startsWith('custom:')) {
           const catId = activeCategory.slice('custom:'.length);
           const cat = customCategories.find((c) => c.id === catId);
           if (cat?.taxMode === 'none') {
-            taxable = false;
-            category = 'service';
+            newItem.taxable = false;
+            newItem.category = 'service';
           } else if (cat?.taxMode === 'phone_payment') {
-            taxable = false;
-            category = 'phone_payment';
+            newItem.taxable = false;
+            newItem.category = 'phone_payment';
           } else if (cat?.taxMode === 'sales') {
-            taxable = true;
+            newItem.taxable = true;
           }
         }
-
-        const newItem: CartItem = {
-          id: generateId(),
-          inventoryId: item.id,
-          name: item.name,
-          sku: item.sku,
-          imei: item.imei,
-          category,
-          price: item.price,
-          originalPrice: item.price,
-          cost: item.cost,
-          qty: 1,
-          taxable,
-          cbeEligible: item.cbeEligible,
-          screenFeeEligible: item.screenFeeEligible,
-          notes: '',
-        };
 
         const next = [...currentCart, newItem];
         cartRef.current = next;

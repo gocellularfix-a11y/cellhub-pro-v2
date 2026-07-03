@@ -1040,6 +1040,8 @@ export const translations: TranslationDictionary = {
   'none': { en: 'None', es: 'Ninguno', pt: 'Nenhum' },
   'normal': { en: 'Normal', es: 'Normal', pt: 'Normal' },
   'notEnoughStock': { en: 'Not enough stock!', es: '¡No hay suficiente stock!', pt: 'Estoque insuficiente!' },
+  // R-GLOBAL-SCAN-ANYWHERE-V1: safe no-match feedback for the global scanner.
+  'scanner.noMatch': { en: 'No match found for scanned code', es: 'Sin coincidencia para el código escaneado', pt: 'Nenhuma correspondência para o código escaneado' },
   'noteLabel': { en: 'Nota:', es: 'Nota:', pt: 'Nota:' }, // TODO: verify — ES-only key
   'notes': { en: 'Notes', es: 'Notas', pt: 'Observações' },
   'notesLabel': { en: 'Notes', es: 'Notas', pt: 'Observações' },

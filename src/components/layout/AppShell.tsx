@@ -6,7 +6,15 @@ import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/u
 import GlobalCartTray from '@/components/cart/GlobalCartTray';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
+import { useToast } from '@/components/ui/Toast';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+// R-GLOBAL-SCAN-ANYWHERE-V1: shared resolver — ticket-doc lookup + exact
+// inventory match + POS-identical cart-line construction for global scans.
+import {
+  resolveDocumentByTicket,
+  resolveInventoryByExactCode,
+  addInventoryItemToCart,
+} from '@/services/scanner/globalScanResolver';
 // R-OFFLINE-MODE-GUARD-V1: turns offline-blocked action signals into a toast.
 import OfflineGuardListener from '@/components/OfflineGuardListener';
 // LOCAL-LAN-PAIRING-PHASE-2-V1
@@ -100,9 +108,11 @@ function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: strin
 
 // ── Main Shell ────────────────────────────────────────────
 export default function AppShell() {
-  const { state, dispatch } = useApp();
-  const { activeTab, isAdminMode, lang, settings, customers } = state;
+  const { state, dispatch, setCart } = useApp();
+  const { activeTab, isAdminMode, lang, settings, customers, cart, inventory, repairs, unlocks, layaways, specialOrders } = state;
   const { features } = useLicense();
+  const { toast } = useToast();
+  const { t } = useTranslation();
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {
@@ -118,6 +128,56 @@ export default function AppShell() {
     // Show the action modal — user chooses what to do with this invoice
     dispatch({ type: 'SET_PENDING_BARCODE_INVOICE', payload: invoice });
   }, [dispatch]);
+
+  // R-GLOBAL-SCAN-ANYWHERE-V1: global scan handler for non-document codes.
+  // On the POS tab the historical behavior is preserved (pre-fill POS search —
+  // POS owns its own flow). Everywhere else, priority order:
+  //   1) ticket barcode (repair/unlock/layaway/special order, printed as
+  //      ticketNumber or id.slice(-8)) → open the entity via the existing
+  //      open-event coordinators below — NEVER added to the cart
+  //   2) exact inventory identifier (barcode / SKU / IMEI) → add to the
+  //      GLOBAL cart (the same state.cart POS checks out) + pop the tray
+  //   3) no match → safe toast, nothing created, no navigation
+  const handleInventoryScan = useCallback((code: string) => {
+    if (activeTab === 'pos') {
+      dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
+      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+      return;
+    }
+
+    const doc = resolveDocumentByTicket(code, { repairs, unlocks, layaways, specialOrders });
+    if (doc) {
+      // eslint-disable-next-line no-console
+      console.info('[cellhub] global scan: ticket route ←', code, doc.kind);
+      if (doc.kind === 'repair') {
+        window.dispatchEvent(new CustomEvent('cellhub:open-repair', { detail: { repairId: doc.id } }));
+      } else if (doc.kind === 'unlock') {
+        window.dispatchEvent(new CustomEvent('cellhub:open-unlock', { detail: { unlockId: doc.id } }));
+      } else if (doc.kind === 'layaway') {
+        window.dispatchEvent(new CustomEvent('cellhub:open-layaway', { detail: { layawayId: doc.id } }));
+      } else {
+        window.dispatchEvent(new CustomEvent('cellhub:open-special-order', { detail: { orderId: doc.id } }));
+      }
+      return;
+    }
+
+    const item = resolveInventoryByExactCode(code, inventory);
+    if (item) {
+      const res = addInventoryItemToCart(cart, item);
+      if (!res.ok) {
+        toast(t(res.reason === 'out_of_stock' ? 'outOfStock' : 'notEnoughStock'), 'warning');
+        return;
+      }
+      setCart(res.cart);
+      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
+      toast(t('pos.itemAdded', item.name), 'success');
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.info('[cellhub] global scan: no document/inventory match for', code);
+    toast(t('scanner.noMatch'), 'info');
+  }, [activeTab, dispatch, repairs, unlocks, layaways, specialOrders, inventory, cart, setCart, toast, t]);
 
   const handleCustomerScan = useCallback((code: string) => {
     // R-CREDENTIAL-BARCODE-SCAN-V3: aggressive lookup. Customer credential
@@ -173,9 +233,11 @@ export default function AppShell() {
         customers.length,
         'customers'
       );
-      // Customer code not found — fall through to inventory search
-      dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
-      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+      // Customer code not found — fall through to the global scan priority
+      // flow (ticket doc → exact inventory → safe no-match toast). Repair
+      // ticket barcodes (RPR-xxxxxx-xxxx) classify as credential-shaped, so
+      // this fallback is exactly where they resolve. [R-GLOBAL-SCAN-ANYWHERE-V1]
+      handleInventoryScan(code);
       return;
     }
     // R-CREDENTIAL-BARCODE-SCAN-V1: route through BarcodeActionModal's
@@ -183,12 +245,7 @@ export default function AppShell() {
     // action sheet (open, start sale, history, repairs, layaways, WA)
     // instead of auto-opening PhonePaymentModal.
     dispatch({ type: 'SET_PENDING_BARCODE_INVOICE', payload: `${CH_CUST_PREFIX}${match.id}` });
-  }, [customers, dispatch]);
-
-  const handleInventoryScan = useCallback((code: string) => {
-    dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
-    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
-  }, [dispatch]);
+  }, [customers, dispatch, handleInventoryScan]);
 
   useBarcodeScanner({
     invoicePrefix: settings.invoicePrefix || 'INV',
