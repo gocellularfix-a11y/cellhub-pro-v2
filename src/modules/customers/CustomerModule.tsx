@@ -723,12 +723,21 @@ export default function CustomerModule() {
             {/* r-global-search: SYNCED mode — local `search` state still
                 drives the filtered list (preserving secondary phones[] match
                 logic in the memo below) AND the dropdown opens for the other
-                7 collections. excludeCollection='customers' avoids redundancy. */}
+                7 collections. excludeCollection='customers' avoids redundancy.
+                R-CUSTOMER-SEARCH-IDENTITY-FIRST-V1: disableResultsDropdown so the
+                absolutely-positioned cross-module popover (incl. its "Recent Sales"
+                section) never floats OVER the customer identity rows below. The
+                input + SYNCED local filter still work, so the customer table
+                itself filters by name/phone and identity stays fully visible.
+                Recent sales stay in the per-customer View History modal (stacked,
+                never above the row). Same pattern as InventoryModule
+                (R-INVENTORY-OVERLAY-FIX-V1). */}
             <GlobalSearchBar
               localValue={search}
               onLocalChange={setSearch}
               excludeCollection="customers"
               placeholder={t('customers.searchPlaceholder')}
+              disableResultsDropdown
             />
           </div>
           {lapsedCustomers.length > 0 && (
