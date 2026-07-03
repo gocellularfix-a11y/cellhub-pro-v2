@@ -3,6 +3,7 @@ import { setIntelligenceContext, clearEntityContext } from '@/services/intellige
 import Sidebar from './Sidebar';
 import SidebarList from './SidebarList';
 import { LoadingSpinner, GlobalSearch, BarcodeActionModal } from '@/components/ui';
+import GlobalCartTray from '@/components/cart/GlobalCartTray';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
@@ -421,6 +422,11 @@ export default function AppShell() {
 
       {/* Barcode Action Modal — shown when receipt barcode is scanned */}
       <BarcodeActionModal />
+
+      {/* R-GLOBAL-CART-TRAY-V1: persistent cart button + drawer, available from
+          every non-POS module. Reads the already-global cart; "Continue to
+          Checkout" routes to POS (no second cart, no finalize here). */}
+      <GlobalCartTray />
 
       {/* R-OPERATOR-FLOATING-BUBBLE-V1: draggable shortcut to Intelligence.
           Click navigates to/from the Intelligence tab; engine spins up via
