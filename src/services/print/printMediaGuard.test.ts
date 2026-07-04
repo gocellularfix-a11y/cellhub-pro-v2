@@ -111,11 +111,39 @@ describe('checkPrintMediaJob — validation matrix', () => {
     expect(checkPrintMediaJob(MICRONS.fourBySix, 'Rollo 4x6', MAP)).toEqual({ action: 'ok' });
   });
 
-  it('FAIL-OPEN: unconfigured printer or unknown job media → ok (zero regression)', () => {
-    expect(checkPrintMediaJob(MICRONS.dymoLabel, 'Unknown Printer', MAP)).toEqual({ action: 'ok' });
-    expect(checkPrintMediaJob(MICRONS.dymoLabel, 'Some Printer', {})).toEqual({ action: 'ok' });
+  it('FAIL-OPEN only for NON-label jobs: unconfigured printer or unknown job media → ok', () => {
+    expect(checkPrintMediaJob(MICRONS.receipt80mm, 'Unknown Printer', MAP)).toEqual({ action: 'ok' });
+    expect(checkPrintMediaJob(MICRONS.fourBySix, 'Some Printer', {})).toEqual({ action: 'ok' });
     expect(checkPrintMediaJob(null, 'DYMO LabelWriter', MAP)).toEqual({ action: 'ok' });
     expect(checkPrintMediaJob(MICRONS.dymoLabel, '', MAP)).toEqual({ action: 'ok' });
+  });
+
+  // R-PRINT-MEDIA-GUARD-V1-FIX-1: runtime-confirmed jam — a 2.25×1.25 label
+  // silently sent to an UNCONFIGURED 4×6 printer fed media halfway. Label
+  // jobs never fail open: unconfigured target → warn (or reroute when a
+  // label-typed printer exists).
+  it('LABEL NEVER FAILS OPEN: label → unconfigured printer with no label printer typed → warn', () => {
+    const v = checkPrintMediaJob(MICRONS.dymoLabel, 'Rollo 4x6', {});
+    expect(v.action).toBe('warn');
+    if (v.action === 'warn') {
+      expect(v.docMedia).toBe('label');
+      expect(v.printerMedia).toBe('unknown');
+    }
+  });
+
+  it('LABEL NEVER FAILS OPEN: label → unconfigured printer with a label printer typed → reroute', () => {
+    const v = checkPrintMediaJob(MICRONS.dymoLabel, 'Rollo 4x6', { 'DYMO LabelWriter': 'label' });
+    expect(v.action).toBe('reroute');
+    if (v.action === 'reroute') expect(v.to).toBe('DYMO LabelWriter');
+  });
+
+  it('LABEL NEVER FAILS OPEN: Label Studio custom size (89×36mm) → unconfigured printer → warn', () => {
+    const v = checkPrintMediaJob(MICRONS.studioLabel89x36, 'Rollo 4x6', {});
+    expect(v.action).toBe('warn');
+  });
+
+  it('label → printer explicitly typed label still prints silently even if others unconfigured', () => {
+    expect(checkPrintMediaJob(MICRONS.dymoLabel, 'DYMO LabelWriter', { 'DYMO LabelWriter': 'label' })).toEqual({ action: 'ok' });
   });
 
   it('reroute never targets the same (mismatched) printer', () => {

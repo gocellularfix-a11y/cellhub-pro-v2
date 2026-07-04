@@ -5144,6 +5144,11 @@ export const translations: TranslationDictionary = {
     es: (doc: string, printer: string, media: string) => `Estás por imprimir un trabajo de ${doc.toUpperCase()} en "${printer}", que está configurada como impresora de ${media}. Esto puede causar atascos de papel o errores de calibración. ¿Continuar de todos modos?`,
     pt: (doc: string, printer: string, media: string) => `Você está prestes a imprimir um trabalho de ${doc.toUpperCase()} em "${printer}", que está configurada como impressora de ${media}. Isso pode causar atolamento de papel ou erros de calibração. Continuar mesmo assim?`,
   },
+  'print.mediaGuard.messageUnknown': {
+    en: (doc: string, printer: string) => `You're about to print a ${doc.toUpperCase()} job on "${printer}", which has NO media type configured (Settings → Hardware → Printer media types). Wrong media can jam the printer. Continue anyway?`,
+    es: (doc: string, printer: string) => `Estás por imprimir un trabajo de ${doc.toUpperCase()} en "${printer}", que NO tiene tipo de papel configurado (Configuración → Hardware → Tipo de papel por impresora). Un papel equivocado puede atascar la impresora. ¿Continuar de todos modos?`,
+    pt: (doc: string, printer: string) => `Você está prestes a imprimir um trabalho de ${doc.toUpperCase()} em "${printer}", que NÃO tem tipo de mídia configurado (Configurações → Hardware). Mídia errada pode travar a impressora. Continuar mesmo assim?`,
+  },
   'print.mediaGuard.cancel':      { en: 'Cancel', es: 'Cancelar', pt: 'Cancelar' },
   'print.mediaGuard.printAnyway': { en: 'Print Anyway', es: 'Imprimir de todos modos', pt: 'Imprimir mesmo assim' },
   'print.mediaGuard.rerouted': {

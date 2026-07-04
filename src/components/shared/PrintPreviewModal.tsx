@@ -304,6 +304,11 @@ export default function PrintPreviewModal({
     {
       const psCheck = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
       const verdict = checkPrintMediaJob({ width: psCheck.width, height: psCheck.height }, selectedPrinter);
+      // R-PRINT-MEDIA-GUARD-V1-FIX-1: instrumentation for diagnosis.
+      // eslint-disable-next-line no-console
+      console.info('[print] media guard (modal):', JSON.stringify({
+        printer: selectedPrinter, pageSizeKey: lockPageSize ? bakedPageSizeKey : pageSize, verdict,
+      }));
       if (verdict.action !== 'ok') {
         const proceed = await requestPrintMediaConfirmation({
           docMedia: verdict.docMedia,

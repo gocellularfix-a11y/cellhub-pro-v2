@@ -15,8 +15,14 @@
 //   • checkPrintMediaJob — compares job media vs the printer's CONFIGURED
 //     media type (Settings → Hardware → per-printer media type, stored as
 //     settings.printerMediaTypes via the double-cast pattern).
-//       - unconfigured printer or unclassifiable job → 'ok' (FAIL-OPEN:
-//         zero behavior change until the owner configures printer types)
+//       - LABEL jobs NEVER fail open (R-PRINT-MEDIA-GUARD-V1-FIX-1: a
+//         2.25×1.25 label silently sent to an unconfigured 4×6 printer fed
+//         media halfway and jammed — runtime confirmed). A label job only
+//         prints silently when the target printer is EXPLICITLY typed
+//         'label'; otherwise it reroutes to a label-typed printer or warns.
+//       - other jobs on an unconfigured printer or unclassifiable jobs →
+//         'ok' (fail-open keeps receipts/credentials flowing unchanged
+//         until the owner configures printer types)
 //       - label job + a configured dedicated label printer → 'reroute'
 //         (smart mapping — labels auto-route to the label printer)
 //       - any other mismatch → 'warn' (Cancel / Print Anyway dialog)
@@ -74,8 +80,8 @@ export function classifyMediaFromMicrons(ps: PageSizeMicrons | undefined | null)
 
 export type MediaGuardVerdict =
   | { action: 'ok' }
-  | { action: 'warn'; docMedia: PrinterMediaType; printerMedia: PrinterMediaType; printerName: string }
-  | { action: 'reroute'; to: string; docMedia: PrinterMediaType; printerMedia: PrinterMediaType; printerName: string };
+  | { action: 'warn'; docMedia: PrinterMediaType; printerMedia: PrinterMediaType | 'unknown'; printerName: string }
+  | { action: 'reroute'; to: string; docMedia: PrinterMediaType; printerMedia: PrinterMediaType | 'unknown'; printerName: string };
 
 export function checkPrintMediaJob(
   psMicrons: PageSizeMicrons | undefined | null,
@@ -83,20 +89,28 @@ export function checkPrintMediaJob(
   mediaMap: PrinterMediaMap = _mediaMap,
 ): MediaGuardVerdict {
   if (!printerName) return { action: 'ok' };
-  const printerMedia = mediaMap[printerName];
-  if (!printerMedia) return { action: 'ok' };              // fail-open: unconfigured printer
   const docMedia = classifyMediaFromMicrons(psMicrons);
   if (docMedia === 'unknown') return { action: 'ok' };     // fail-open: unclassifiable job
+  // Honest lookup type: Record indexing hides the undefined for missing keys.
+  const configuredType = (mediaMap as Record<string, PrinterMediaType | undefined>)[printerName];
+  const printerMedia: PrinterMediaType | 'unknown' = configuredType ?? 'unknown';
   if (docMedia === printerMedia) return { action: 'ok' };
 
-  // Smart mapping: a label job headed to a non-label printer auto-routes to
-  // the dedicated label printer when one is configured.
+  // R-PRINT-MEDIA-GUARD-V1-FIX-1: LABEL jobs never fail open. A label sent
+  // to a printer that is not explicitly typed 'label' (misconfigured OR
+  // unconfigured) reroutes to a label-typed printer when one exists,
+  // otherwise warns. Runtime-confirmed jam: 2.25×1.25 label → 4×6 thermal.
   if (docMedia === 'label') {
     const dedicated = Object.keys(mediaMap).find(
       (name) => name !== printerName && mediaMap[name] === 'label',
     );
     if (dedicated) return { action: 'reroute', to: dedicated, docMedia, printerMedia, printerName };
+    return { action: 'warn', docMedia, printerMedia, printerName };
   }
+
+  // Non-label jobs keep fail-open on unconfigured printers so receipts /
+  // credentials keep flowing unchanged until printer types are configured.
+  if (printerMedia === 'unknown') return { action: 'ok' };
 
   return { action: 'warn', docMedia, printerMedia, printerName };
 }
@@ -109,7 +123,7 @@ export function checkPrintMediaJob(
 export interface MediaGuardMismatchRequest {
   kind: 'mismatch';
   docMedia: PrinterMediaType;
-  printerMedia: PrinterMediaType;
+  printerMedia: PrinterMediaType | 'unknown';
   printerName: string;
   resolve: (proceed: boolean) => void;
 }
@@ -138,7 +152,7 @@ export function registerPrintMediaGuardHost(host: ((req: MediaGuardHostRequest) 
 /** Ask the host to show the Cancel / Print Anyway dialog. Resolves true to
  *  proceed. No host registered → true (fail-open). */
 export function requestPrintMediaConfirmation(
-  info: { docMedia: PrinterMediaType; printerMedia: PrinterMediaType; printerName: string },
+  info: { docMedia: PrinterMediaType; printerMedia: PrinterMediaType | 'unknown'; printerName: string },
 ): Promise<boolean> {
   if (!_host) return Promise.resolve(true);
   const host = _host;

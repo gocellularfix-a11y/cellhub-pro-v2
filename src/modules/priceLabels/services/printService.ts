@@ -102,6 +102,11 @@ export async function printLabelDirect(
       width: Math.round(widthMm * 1000),
       height: Math.round(heightMm * 1000),
     },
+    // R-PRINT-MEDIA-GUARD-V1-FIX-1: seed the PrintPreviewModal (no-printer
+    // path) with the label page size instead of its 4×6 default, so the
+    // preview AND the media guard see a label job. The silent path is
+    // unaffected — pageSizeMicrons above takes precedence there (exact mm).
+    pageSize: 'label',
     copies: 1,
   });
   return mode;

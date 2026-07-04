@@ -100,7 +100,9 @@ export default function PrintMediaGuardHost() {
             🖨️ {t('print.mediaGuard.title')}
           </div>
           <p style={{ color: '#cbd5e1', fontSize: '0.88rem', lineHeight: 1.5, marginBottom: '1rem' }}>
-            {t('print.mediaGuard.message', mediaLabel(mismatch.docMedia), mismatch.printerName, mediaLabel(mismatch.printerMedia))}
+            {mismatch.printerMedia === 'unknown'
+              ? t('print.mediaGuard.messageUnknown', mediaLabel(mismatch.docMedia), mismatch.printerName)
+              : t('print.mediaGuard.message', mediaLabel(mismatch.docMedia), mismatch.printerName, mediaLabel(mismatch.printerMedia))}
           </p>
           <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
             {/* Cancel is the DEFAULT-FOCUSED action — Enter aborts, never prints. */}

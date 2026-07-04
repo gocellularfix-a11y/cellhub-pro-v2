@@ -1727,7 +1727,12 @@ function InventoryFormModal({
       <div class="code">${code}</div>
     </body></html>`;
 
-    printHtml(html, { silent: overrides?.silent ?? false, printer: settings.detectedPrinters?.[0] });
+    // R-PRINT-MEDIA-GUARD-V1-FIX-1: declare the TRUE page size. This is a
+    // 2.25×1.25 label (@page above) but the options carried no pageSize, so
+    // the print pipeline (and the media guard) treated it as the 4×6 default
+    // — the guard classified a lie and wrong-media jobs sailed through.
+    // 'label' = 57150×31750 microns, exactly 2.25×1.25in.
+    printHtml(html, { silent: overrides?.silent ?? false, printer: settings.detectedPrinters?.[0], pageSize: 'label' });
   };
 
   const isServiceLikeCategory = (cat: string) => {

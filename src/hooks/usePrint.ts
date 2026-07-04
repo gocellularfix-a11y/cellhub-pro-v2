@@ -151,6 +151,13 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
     // human sees a preview) — a label sent to the 4×6 thermal jams mid-feed.
     let targetPrinter = opts.printer;
     const verdict = checkPrintMediaJob(ps, targetPrinter);
+    // R-PRINT-MEDIA-GUARD-V1-FIX-1: instrumentation — always log what the
+    // guard saw and decided so wrong-media incidents are diagnosable from
+    // DevTools without re-instrumenting.
+    // eslint-disable-next-line no-console
+    console.info('[print] media guard (silent):', JSON.stringify({
+      printer: targetPrinter, pageSize: ps, verdict,
+    }));
     if (verdict.action === 'reroute') {
       // Smart mapping: labels auto-route to the dedicated label printer.
       console.info('[print] media guard: label job rerouted', verdict.printerName, '→', verdict.to);
