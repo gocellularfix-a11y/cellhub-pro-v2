@@ -37,6 +37,7 @@ import {
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import { escHtml } from '@/utils/escHtml';
 // R-PAYMENT-TRACE-RECEIPTS-LAYAWAY-SPECIAL-ORDER-V1: partial-payment audit trail.
 import { buildPaymentTrace, renderPaymentTraceHtml, classifyHistoryRows, paymentTraceI18n } from '@/services/receipts/paymentTrace';
@@ -66,6 +67,8 @@ export default function SpecialOrdersModule() {
     state: { specialOrders, customers, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm },
     setSpecialOrders, setCustomers, setCart, setSales, dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: unified cart writes (stay in module + auto-open drawer).
+  const { commitCart, attachCustomer } = useGlobalCart();
 
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -219,10 +222,12 @@ export default function SpecialOrdersModule() {
       consolidatedItem,
     ];
     cartRef.current = nextCart;
-    setCart(nextCart);
+    // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook
+    // (tax math above unchanged). Customer attach stays at each call site.
+    commitCart(nextCart, { openDrawer: true });
 
     return { combinedCents };
-  }, [settings.taxRate, t, setCart]);
+  }, [settings.taxRate, t, commitCart]);
 
   const translateStatus = useCallback(
     (s: string) => {
@@ -704,7 +709,7 @@ export default function SpecialOrdersModule() {
           }
         }
         if (custId) {
-          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+          attachCustomer(custId);
         }
 
         toast(t('so.createdWithDeposit', formatCurrency(deposit)), 'info');
@@ -927,7 +932,7 @@ export default function SpecialOrdersModule() {
         }
       }
       if (custId) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+        attachCustomer(custId);
       }
     }
 
@@ -1193,7 +1198,7 @@ export default function SpecialOrdersModule() {
                 }
               }
               if (custId) {
-                dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: custId });
+                attachCustomer(custId);
               }
 
               setDepositModalOrder(null);

@@ -41,6 +41,7 @@ import {
   type FieldChange, type EditReason,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import { emitUnlockAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
 import { escHtml } from '@/utils/escHtml';
@@ -85,6 +86,8 @@ export default function UnlockModule() {
     state: { unlocks, customers, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setUnlocks, setCustomers, setCart, setSales, dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: unified cart writes (stay in module + auto-open drawer).
+  const { commitCart, attachCustomer } = useGlobalCart();
 
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -360,10 +363,12 @@ export default function UnlockModule() {
       consolidatedItem,
     ];
     cartRef.current = nextCart;
-    setCart(nextCart);
+    // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook
+    // (tax math above unchanged). Customer attach stays at each call site.
+    commitCart(nextCart, { openDrawer: true });
 
     return { combinedCents };
-  }, [settings.taxRate, lang, setCart]);
+  }, [settings.taxRate, lang, commitCart]);
 
   // R-EDIT-AUDIT F4.5: entity-based unlock print (entity already in cents).
   // Parallel to the existing `printTicket` which reads from form state — this
@@ -855,7 +860,7 @@ export default function UnlockModule() {
 
         const customerId = newUnlock.customerId;
         if (customerId) {
-          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+          attachCustomer(customerId);
         } else if (newUnlock.customerPhone) {
           const phoneTail = newUnlock.customerPhone.replace(/\D/g, '').slice(-10);
           const matched = customersRef.current.find((c) => {
@@ -863,7 +868,7 @@ export default function UnlockModule() {
             return cPhone && cPhone === phoneTail;
           });
           if (matched) {
-            dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matched.id });
+            attachCustomer(matched.id);
           }
         }
 
@@ -877,7 +882,7 @@ export default function UnlockModule() {
     setEditUnlock(null);
     setIsSaving(false);
   }, [form, editUnlock, customers, settings, currentEmployee, lang, L, t,
-      setUnlocks, setCustomers, setCart, toast, consolidateCartForUnlock, dispatch,
+      setUnlocks, setCustomers, setCart, toast, consolidateCartForUnlock, dispatch, attachCustomer,
       // R-EDIT-AUDIT F4.3: audit deps — isLocked + isSaving guard reads, applyAuditSave closure.
       isLocked, isSaving]);
 
@@ -893,7 +898,7 @@ export default function UnlockModule() {
 
     const customerId = u.customerId;
     if (customerId) {
-      dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+      attachCustomer(customerId);
     } else if (u.customerPhone) {
       const phoneTail = u.customerPhone.replace(/\D/g, '').slice(-10);
       const matched = customersRef.current.find((c) => {
@@ -901,12 +906,12 @@ export default function UnlockModule() {
         return cPhone && cPhone === phoneTail;
       });
       if (matched) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matched.id });
+        attachCustomer(matched.id);
       }
     }
 
     toast(t('unlocks.inCartForUnlock', `$${(combinedCents / 100).toFixed(2)}`), 'info');
-  }, [consolidateCartForUnlock, dispatch, lang, t, toast]);
+  }, [consolidateCartForUnlock, attachCustomer, lang, t, toast]);
 
   // r-new-4 port: cancel with deposit disposition (store_credit / cash / forfeit).
   // R9-1: cash refund marks original sale(s) as refunded so Reports excludes them
@@ -1080,7 +1085,7 @@ export default function UnlockModule() {
       });
       const customerId = unlock.customerId;
       if (customerId) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+        attachCustomer(customerId);
       } else if (unlock.customerPhone) {
         const phoneTail = unlock.customerPhone.replace(/\D/g, '').slice(-10);
         const matched = customersRef.current.find((c) => {
@@ -1088,7 +1093,7 @@ export default function UnlockModule() {
           return cPhone && cPhone === phoneTail;
         });
         if (matched) {
-          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matched.id });
+          attachCustomer(matched.id);
         }
       }
     }
@@ -1108,7 +1113,7 @@ export default function UnlockModule() {
         : t('unlocks.unlockCompleted'),
       'success',
     );
-  }, [completeConfirm, consolidateCartForUnlock, setUnlocks, dispatch, settings, t, toast, lang]);
+  }, [completeConfirm, consolidateCartForUnlock, setUnlocks, dispatch, attachCustomer, settings, t, toast, lang]);
 
   // R-COMMS-SMS-HARD-DISABLE: handleSMSButton callback removed.
   // TicketCard onWhatsApp prop is the live manual comm path.
@@ -1834,7 +1839,7 @@ export default function UnlockModule() {
 
               const customerId = u.customerId;
               if (customerId) {
-                dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+                attachCustomer(customerId);
               } else if (u.customerPhone) {
                 const phoneTail = u.customerPhone.replace(/\D/g, '').slice(-10);
                 const matched = customersRef.current.find((c) => {
@@ -1842,7 +1847,7 @@ export default function UnlockModule() {
                   return cPhone && cPhone === phoneTail;
                 });
                 if (matched) {
-                  dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matched.id });
+                  attachCustomer(matched.id);
                 }
               }
 

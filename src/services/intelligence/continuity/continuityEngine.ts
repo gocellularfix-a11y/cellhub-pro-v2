@@ -318,7 +318,9 @@ function buildInterruptedWorkflows(
       status: 'pending' as ContinuityStatus,
       title: w.title,
       summary: w.summary,
-      suggestedAction: 'Go to POS',
+      // R-GLOBAL-CART-UNIFY-V1: "Go to POS" wording retired app-wide. This is a
+      // resume-interrupted-sale action; navigateTo still routes to POS.
+      suggestedAction: 'Resume',
       navigateTo: w.navigateTo,
     }));
 }

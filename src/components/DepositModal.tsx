@@ -287,7 +287,7 @@ export default function DepositModal({
                 fontWeight: 700, fontSize: '0.9rem',
               }}
             >
-              💳 {es ? `Cobrar ${fc(registerTotal)} → Ir a POS` : `Charge ${fc(registerTotal)} → Go to POS`}
+              💳 {es ? `Cobrar ${fc(registerTotal)}` : `Charge ${fc(registerTotal)}`}
             </button>
           </div>
         </div>

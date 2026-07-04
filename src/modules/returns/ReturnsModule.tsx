@@ -24,6 +24,7 @@ import { usePrint } from '@/hooks/usePrint';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { persist, batchSave } from '@/services/persist';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import { COLLECTIONS } from '@/config/constants';
 import { renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { issueLedgerEntry } from '@/services/storeCredit/ledger';
@@ -57,10 +58,12 @@ export default function ReturnsModule() {
   const {
     state: { sales, inventory, customers, settings, employees, currentEmployee, cart, lang, pendingBarcodeInvoice, globalSearchTerm,
              repairs, unlocks, specialOrders, layaways, customerReturns, vendorReturns, storeCreditLedger },
-    setSales, setInventory, setCustomers, setCart, setActiveTab, dispatch,
+    setSales, setInventory, setCustomers, dispatch,
     setRepairs, setUnlocks, setSpecialOrders, setLayaways,
     setCustomerReturns, setVendorReturns, setStoreCreditLedger,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: exchange credit → stay in Returns → auto-open drawer.
+  const { commitCart } = useGlobalCart();
 
   const { toast } = useToast();
   const { printHtml } = usePrint();
@@ -527,7 +530,7 @@ export default function ReturnsModule() {
   }, [selectedCount, selectedItems, foundSale, returnableItems, resolution, reason, notes,
       currentEmployee, taxRate, t,
       recipientCustomerId, recipientName, recipientPhone,
-      setSales, setInventory, setCustomers, setCart, setActiveTab, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
+      setSales, setInventory, setCustomers, commitCart, setRepairs, setUnlocks, setSpecialOrders, setLayaways,
       setReturnHistory, toast, approvalGate.requestApproval]);
 
   // ── Finalization (R-RETURNS-PHASE-2A: extracted verbatim) ──────────────────
@@ -686,8 +689,11 @@ export default function ReturnsModule() {
       };
       const nextCart = [...cartRef.current, exchangeItem];
       cartRef.current = nextCart;
-      setCart(nextCart);
-      setActiveTab('pos');
+      // R-GLOBAL-CART-UNIFY-V1: stay in Returns, auto-open the drawer, attach
+      // the exchange recipient (fallback to the original sale's customer) so
+      // POS checkout links the replacement sale. No more forced navigate to POS.
+      const exchangeCustomerId = recipientCustomerId || foundSale?.customerId || '';
+      commitCart(nextCart, { openDrawer: true, customerId: exchangeCustomerId || undefined });
     }
 
     // Phase 6: store credit (legacy customer.storeCredit fallback).

@@ -63,6 +63,7 @@ import { resolveOwnerFinancialAccess } from '@/utils/financialPrivacy';
 // R-INTELLIGENCE-DECISION-LAYER-F2C: approval enforcement for the one money-
 // changing Intelligence path (deal → discounted cart line). Narrow by design.
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import { approvalRequestFromPendingDeal } from '@/services/intelligence/decision/approval/IntelligenceApprovalAdapter';
 import { getConnection } from '@/services/lan/lanService';
 // R-INTEL-ROUTER-V1 (shadow mode): deterministic route classification computed
@@ -124,9 +125,10 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
   // used by RepairModule, UnlockModule, SpecialOrdersModule, ReturnsModule.
   const {
     state: { cart, inventory, settings, isAdminMode, currentEmployee, employees },
-    setCart,
     dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: deal → cart → stay in Intelligence → auto-open drawer.
+  const { commitCart } = useGlobalCart();
   // R-FINANCIAL-PRIVACY-V2 + R-FINANCIAL-PRIVACY-POLICY-C C3: intercept dispatch
   // of profit-intent queries so non-owner employees see a redacted reply instead
   // of profit/margin/cost. Policy C: role-aware via resolveOwnerFinancialAccess —
@@ -1065,10 +1067,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // preserved for stock decrement at checkout.
     // F2C: read the freshest cart via cartRef — the approval await above means
     // the closure `cart` may be stale (anti-stale-closure pattern).
-    setCart([...cartRef.current, cartItem]);
-
-    dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: deal.customerId });
-    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+    // R-GLOBAL-CART-UNIFY-V1: write via the hook + attach customer + auto-open
+    // drawer. Stay in Intelligence (no forced navigate to POS). Uses cartRef for
+    // the freshest cart (approval await above can stale the closure `cart`).
+    commitCart([...cartRef.current, cartItem], {
+      openDrawer: true,
+      customerId: deal.customerId,
+    });
 
     setAutomationQueue((prev) =>
       prev.map((i) => (i.id === id ? markAutomationExecuted(i, 'cart_added') : i)),

@@ -19,6 +19,7 @@ import JsBarcode from 'jsbarcode';
 import type { InventoryItem, Sale, PurchaseOrder, InventoryLoss, LossReason } from '@/store/types';
 import { persist, persistSettings, remove } from '@/services/persist';
 import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 // R-LOSSES-SHRINKAGE-V1: admin-PIN guard reused from the canonical
 // AdminPinGate component. Mark-as-Loss is owner/manager only.
 import AdminPinGate from '@/components/shared/AdminPinGate';
@@ -66,6 +67,9 @@ export default function InventoryModule() {
     state: { inventory, sales, settings, lang, cart, inventorySearchTerm, purchaseOrders, customers, repairs, specialOrders, unlocks, layaways, customerReturns, inventoryLosses, currentEmployee, isAdminMode },
     setInventory, setCart, setInventoryLosses, dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: add → stay in Inventory → auto-open the cart drawer
+  // (no more forced navigate to POS).
+  const { addItem } = useGlobalCart();
   // R-FINANCIAL-PRIVACY-V2: cost column, profit-potential stat card, and the
   // margin section inside InventoryFormModal are owner-only when the flag is on.
   // R-FINANCIAL-PRIVACY-POLICY-C C4B: role-aware visibility (manager via the
@@ -648,11 +652,12 @@ export default function InventoryModule() {
         imei: item.imei, barcode: item.barcode,
         notes: '',
       };
-      setCart([...cart, cartItem]);
-      toast(`${item.name} → cart`, 'success');
-      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+      // R-GLOBAL-CART-UNIFY-V1: append via the shared hook — stays in Inventory
+      // and auto-opens the cart drawer. Bilingual toast (was hardcoded English).
+      addItem(cartItem, { openDrawer: true });
+      toast(t('pos.itemAdded', item.name), 'success');
     },
-    [cart, setCart, toast, t, dispatch],
+    [addItem, toast, t],
   );
 
   return (

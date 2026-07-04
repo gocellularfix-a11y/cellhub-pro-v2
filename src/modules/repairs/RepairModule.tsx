@@ -42,6 +42,7 @@ import {
   appendEditEntry, captureSnapshot, checkEditHistoryStatus,
 } from '@/services/editAudit';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 
 // Round R1 F1: full HTML escape (defense-in-depth,
 // matches ReportsModule canonical pattern).
@@ -72,6 +73,9 @@ export default function RepairModule() {
     state: { repairs, customers, inventory, settings, employees, currentEmployee, cart, sales, lang, globalSearchTerm, currentStoreId },
     setRepairs, setCustomers, setCart, setSales, dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: all cart writes route through the shared hook so
+  // every add → stays in module → auto-opens the drawer (no navigate-to-POS).
+  const { commitCart, attachCustomer, openDrawer } = useGlobalCart();
 
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -498,10 +502,12 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
       consolidatedItem,
     ];
     cartRef.current = nextCart;
-    setCart(nextCart);
+    // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook
+    // (tax math above is unchanged). Customer attach stays at each call site.
+    commitCart(nextCart, { openDrawer: true });
 
     return { combinedCents };
-  }, [settings.taxRate, lang, setCart]);
+  }, [settings.taxRate, lang, commitCart]);
 
   // ── Save handler ────────────────────────────────────────
 
@@ -821,7 +827,7 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
         // ones. Post-build unified round will formalize cart-customer
         // linking across all deposit flows.
         if (matchedCustomerId) {
-          dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: matchedCustomerId });
+          attachCustomer(matchedCustomerId);
         }
 
         // r-deposit-integrity-1: pending deposit was read from form data (rd)
@@ -867,7 +873,7 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
     },
     [editRepair, customers, settings, currentEmployee, cart, lang,
      setRepairs, setCustomers, setCart, toast, printRepairTicket, consolidateCartForRepair,
-     dispatch],  // Round R1 F5: missing dispatch dep (used for SET_PENDING_POS_CUSTOMER)
+     attachCustomer],  // R-GLOBAL-CART-UNIFY-V1: attachCustomer replaces raw dispatch
   );
 
   // ── Cancel repair with deposit disposal ────────────────────
@@ -1037,15 +1043,13 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
         isTaxable,
       });
       if ((repair as any).customerId) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
+        attachCustomer((repair as any).customerId);
       }
 
-      // R-GLOBAL-CART-TRAY-V1-FIX-1: surface the global cart drawer so the
-      // operator sees the added balance immediately (no "go to POS" hunt).
-      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
+      // R-GLOBAL-CART-UNIFY-V1: drawer auto-opens inside commitCart (helper).
       toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'info');
     },
-    [consolidateCartForRepair, dispatch, toast, lang],
+    [consolidateCartForRepair, attachCustomer, toast, lang],
   );
 
   const handleCompleteRequest = useCallback((repair: Repair) => {
@@ -1102,12 +1106,13 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
       }
 
       if ((repair as any).customerId) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (repair as any).customerId });
+        attachCustomer((repair as any).customerId);
       }
 
-      // R-GLOBAL-CART-TRAY-V1-FIX-1: open the global cart drawer — replaces
-      // the old "Go to POS" instruction in the toast below.
-      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
+      // R-GLOBAL-CART-UNIFY-V1: when deltaCents was 0 the consolidation helper
+      // (which auto-opens the drawer) didn't run, but a deposit line is already
+      // in the cart — open the drawer so the operator still sees it.
+      openDrawer();
     }
 
     // Round R-POS-PARITY F1: delegate status transition to POS reconcile.
@@ -1405,12 +1410,11 @@ ${repair.warranty ? `<div class="wbox">${escHtml(t('repairs.print.warranty'))}: 
                 isTaxable,
               });
               if ((r as any).customerId) {
-                dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: (r as any).customerId });
+                attachCustomer((r as any).customerId);
               }
 
               setDepositModalRepair(null);
-              // R-GLOBAL-CART-TRAY-V1-FIX-1: show the drawer with the fresh line.
-              window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
+              // R-GLOBAL-CART-UNIFY-V1: drawer auto-opens inside commitCart (helper).
               toast(t('repairs.cartAdded', formatCurrency(combinedCents)), 'success');
             } finally {
               // Reset guard on next tick so future confirmations work.

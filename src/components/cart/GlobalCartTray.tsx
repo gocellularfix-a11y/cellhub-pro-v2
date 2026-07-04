@@ -20,14 +20,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import { calculateCartTotals } from '@/modules/pos/types';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function GlobalCartTray() {
-  const { state, setCart, setActiveTab, dispatch } = useApp();
+  const { state, setActiveTab, dispatch } = useApp();
   const { cart, settings, lang, activeTab, customers, pendingPosCustomer } = state;
+  // R-GLOBAL-CART-UNIFY-V1: the drawer's own edits go through the shared hook
+  // too (no direct setCart). commitCart(openDrawer:false) = write without popping
+  // the drawer (it's already open).
+  const { commitCart, remove, clear, detachCustomer } = useGlobalCart();
   const es = lang === 'es';
   const pt = lang === 'pt';
 
@@ -71,18 +76,18 @@ export default function GlobalCartTray() {
   // Nothing to surface when the cart is empty and the drawer is closed.
   if (count === 0 && !drawerOpen) return null;
 
-  const removeItem = (id: string) => setCart(cart.filter((i) => i.id !== id));
+  const removeItem = (id: string) => remove(id);
   const changeQty = (id: string, delta: number) =>
-    setCart(cart.map((i) => (i.id === id ? { ...i, qty: Math.max(1, (i.qty || 1) + delta) } : i)));
+    commitCart(cart.map((i) => (i.id === id ? { ...i, qty: Math.max(1, (i.qty || 1) + delta) } : i)), { openDrawer: false });
   const goCheckout = () => { setDrawerOpen(false); setActiveTab('pos'); };
-  const doClear = () => { setCart([]); setConfirmClear(false); setDrawerOpen(false); };
+  const doClear = () => { clear(); setConfirmClear(false); setDrawerOpen(false); };
   const openProfile = () => {
     if (!cartCustomer) return;
     setDrawerOpen(false);
     dispatch({ type: 'SET_PENDING_CUSTOMER_HISTORY', payload: cartCustomer.id });
     setActiveTab('customers');
   };
-  const clearCustomer = () => dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: '' });
+  const clearCustomer = () => detachCustomer();
 
   const taxTotal = totals.salesTax + totals.utilityTax + totals.mobileSurcharge;
   const feeTotal = totals.cbeFee + totals.screenFee;

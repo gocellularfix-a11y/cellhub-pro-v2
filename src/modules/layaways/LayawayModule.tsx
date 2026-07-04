@@ -50,6 +50,7 @@ import type { AutocompleteOption } from '@/hooks/useAutocomplete';
 import type { Layaway, CartItem, Customer, InventoryItem, Sale } from '@/store/types';
 import CancelLayawayModal from './CancelLayawayModal';
 import { useApprovalGate } from '@/hooks/useApprovalGate';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 import {
   calculateLayawayTotals,
   normalizeLayawayPayments,
@@ -80,6 +81,8 @@ export default function LayawayModule() {
     state: { layaways, customers, inventory, settings, currentEmployee, employees, cart, sales, lang, globalSearchTerm, currentStoreId },
     setLayaways, setCustomers, setInventory, setCart, setSales, dispatch,
   } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: unified cart writes (stay in module + auto-open drawer).
+  const { commitCart, attachCustomer } = useGlobalCart();
 
   // R-APPROVAL-PIN-V1 F3A: gate cancellations behind manager approval
   // when settings.approvalsEnabled and the current employee's role / per-
@@ -452,10 +455,12 @@ export default function LayawayModule() {
       consolidatedItem,
     ];
     cartRef.current = nextCart;
-    setCart(nextCart);
+    // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook
+    // (tax math above unchanged). Customer attach stays at each call site.
+    commitCart(nextCart, { openDrawer: true });
 
     return { combinedCents };
-  }, [settings.taxRate, t, setCart]);
+  }, [settings.taxRate, t, commitCart]);
 
   const handleSave = useCallback(() => {
     // Round 14: busy-state guard — short-circuit double-click; setIsSaving toggled
@@ -655,7 +660,7 @@ export default function LayawayModule() {
         },
       });
       if (finalCustomerId) {
-        dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: finalCustomerId });
+        attachCustomer(finalCustomerId);
       }
       toast(t('layaway.depositAddedToCart'), 'info');
     }
@@ -707,7 +712,7 @@ export default function LayawayModule() {
       }
     }
     if (customerId) {
-      dispatch({ type: 'SET_PENDING_POS_CUSTOMER', payload: customerId });
+      attachCustomer(customerId);
     }
 
     // r-pkg-b1: DO NOT update layaway paidAmount/balance/status here.
@@ -964,7 +969,8 @@ export default function LayawayModule() {
     const cleanedCart = cartRef.current.filter((c) => c.layawayId !== l.id);
     if (cleanedCart.length !== cartRef.current.length) {
       cartRef.current = cleanedCart;
-      setCart(cleanedCart);
+      // R-GLOBAL-CART-UNIFY-V1: cleanup write through the hook, no drawer pop.
+      commitCart(cleanedCart, { openDrawer: false });
     }
 
     const amtStr = (depositCents / 100).toFixed(2);
@@ -1036,7 +1042,8 @@ export default function LayawayModule() {
       const cleanedCart = cartRef.current.filter((c) => c.layawayId !== deleteConfirm.id);
       if (cleanedCart.length !== cartRef.current.length) {
         cartRef.current = cleanedCart;
-        setCart(cleanedCart);
+        // R-GLOBAL-CART-UNIFY-V1: cleanup write through the hook, no drawer pop.
+        commitCart(cleanedCart, { openDrawer: false });
       }
 
       const next = layawaysRef.current.filter((x) => x.id !== deleteConfirm.id);

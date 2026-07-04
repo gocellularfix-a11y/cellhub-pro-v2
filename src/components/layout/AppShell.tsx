@@ -15,6 +15,7 @@ import {
   resolveInventoryByExactCode,
   addInventoryItemToCart,
 } from '@/services/scanner/globalScanResolver';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
 // R-OFFLINE-MODE-GUARD-V1: turns offline-blocked action signals into a toast.
 import OfflineGuardListener from '@/components/OfflineGuardListener';
 // LOCAL-LAN-PAIRING-PHASE-2-V1
@@ -108,11 +109,13 @@ function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: strin
 
 // ── Main Shell ────────────────────────────────────────────
 export default function AppShell() {
-  const { state, dispatch, setCart } = useApp();
+  const { state, dispatch } = useApp();
   const { activeTab, isAdminMode, lang, settings, customers, cart, inventory, repairs, unlocks, layaways, specialOrders } = state;
   const { features } = useLicense();
   const { toast } = useToast();
   const { t } = useTranslation();
+  // R-GLOBAL-CART-UNIFY-V1: unified cart write for the global scanner.
+  const { commitCart } = useGlobalCart();
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {
@@ -168,8 +171,8 @@ export default function AppShell() {
         toast(t(res.reason === 'out_of_stock' ? 'outOfStock' : 'notEnoughStock'), 'warning');
         return;
       }
-      setCart(res.cart);
-      window.dispatchEvent(new CustomEvent('cellhub:open-cart-tray'));
+      // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook.
+      commitCart(res.cart, { openDrawer: true });
       toast(t('pos.itemAdded', item.name), 'success');
       return;
     }
@@ -177,7 +180,7 @@ export default function AppShell() {
     // eslint-disable-next-line no-console
     console.info('[cellhub] global scan: no document/inventory match for', code);
     toast(t('scanner.noMatch'), 'info');
-  }, [activeTab, dispatch, repairs, unlocks, layaways, specialOrders, inventory, cart, setCart, toast, t]);
+  }, [activeTab, dispatch, repairs, unlocks, layaways, specialOrders, inventory, cart, commitCart, toast, t]);
 
   const handleCustomerScan = useCallback((code: string) => {
     // R-CREDENTIAL-BARCODE-SCAN-V3: aggressive lookup. Customer credential

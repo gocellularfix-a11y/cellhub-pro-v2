@@ -89,12 +89,12 @@ function ContinuityCard({
       ? (item.type === 'repair_followup_pending' ? 'Ver reparación' :
          item.type === 'approval_pending'        ? 'Revisar' :
          item.type === 'outreach_pending'        ? (item.phone ? 'Mensaje' : 'Ver') :
-         'Ir a POS')
+         'Reanudar')
       : lang === 'pt'
       ? (item.type === 'repair_followup_pending' ? 'Ver reparo' :
          item.type === 'approval_pending'        ? 'Revisar' :
          item.type === 'outreach_pending'        ? (item.phone ? 'Mensagem' : 'Ver') :
-         'Ir ao POS')
+         'Retomar')
       : (item.suggestedAction || 'Resume');
 
   const dismissLabel = lang === 'es' ? 'Ignorar' : lang === 'pt' ? 'Ignorar' : 'Dismiss';

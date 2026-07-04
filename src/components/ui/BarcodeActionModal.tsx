@@ -16,6 +16,8 @@ import { Modal } from '@/components/ui';
 import { useApp } from '@/store/AppProvider';
 import { formatCurrency } from '@/utils/currency';
 import { usePrint, type PrintPageSizeKey } from '@/hooks/usePrint';
+import { useGlobalCart } from '@/hooks/useGlobalCart';
+import { generateId } from '@/utils/dates';
 import { generateReceiptHtml, renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { useTranslation } from '@/i18n';
 import { openWhatsApp, buildWaMessage } from '@/services/whatsapp';
@@ -24,6 +26,8 @@ import { normalizePhone } from '@/utils/normalize';
 
 export default function BarcodeActionModal() {
   const { state, dispatch } = useApp();
+  // R-GLOBAL-CART-UNIFY-V1: balance-to-cart → stay put → auto-open drawer.
+  const { commitCart } = useGlobalCart();
   const {
     pendingBarcodeInvoice,
     sales,
@@ -140,7 +144,7 @@ export default function BarcodeActionModal() {
     const balance = (sale as any).balance || 0;
     if (balance <= 0) return;
     const balanceItem = {
-      id: Math.random().toString(36).slice(2),
+      id: generateId(),
       name: `${t('barcode.balance')} — ${sale.invoiceNumber}`,
       category: 'service' as const,
       price: balance,
@@ -149,8 +153,13 @@ export default function BarcodeActionModal() {
       cbeEligible: false,
       notes: sale.customerName || '',
     };
-    dispatch({ type: 'SET_CART', payload: [...(cart || []), balanceItem] });
-    navigate('pos');
+    // R-GLOBAL-CART-UNIFY-V1: write via the hook + auto-open drawer + attach the
+    // sale's customer. Close the action modal instead of navigating to POS.
+    commitCart([...(cart || []), balanceItem], {
+      openDrawer: true,
+      customerId: (sale as any).customerId || undefined,
+    });
+    close();
   };
 
   const reprint = () => {
