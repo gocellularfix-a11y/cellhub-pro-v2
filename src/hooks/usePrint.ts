@@ -3,6 +3,15 @@ import { useCallback, useState } from 'react';
 // prints are forwarded to the Primary (which owns the printer).
 import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
+// R-PRINT-MEDIA-GUARD-V1: media validation for the SILENT path — the job's
+// exact microns are compared to the target printer's configured media type
+// (warn / auto-route labels). Fail-open when nothing is configured.
+import {
+  checkPrintMediaJob,
+  requestPrintMediaConfirmation,
+  announcePrintReroute,
+  announcePrintRecovery,
+} from '@/services/print/printMediaGuard';
 
 /**
  * Print abstraction — routes to the best print path per environment.
@@ -135,11 +144,27 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
     typeof window !== 'undefined' &&
     window.electronAPI?.printRun
   ) {
+    const ps = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
+
+    // R-PRINT-MEDIA-GUARD-V1: validate job media vs the configured printer
+    // type BEFORE the job leaves. Silent prints are the dangerous path (no
+    // human sees a preview) — a label sent to the 4×6 thermal jams mid-feed.
+    let targetPrinter = opts.printer;
+    const verdict = checkPrintMediaJob(ps, targetPrinter);
+    if (verdict.action === 'reroute') {
+      // Smart mapping: labels auto-route to the dedicated label printer.
+      console.info('[print] media guard: label job rerouted', verdict.printerName, '→', verdict.to);
+      announcePrintReroute(verdict.printerName, verdict.to);
+      targetPrinter = verdict.to;
+    } else if (verdict.action === 'warn') {
+      const proceed = await requestPrintMediaConfirmation(verdict);
+      if (!proceed) return; // Cancel (default) — job never sent
+    }
+
     try {
-      const ps = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
       await window.electronAPI.printRun({
         html,
-        deviceName: opts.printer,
+        deviceName: targetPrinter,
         pageSize: ps,
         landscape: opts.landscape || false,
         scaleFactor: 100,
@@ -149,7 +174,9 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
     } catch (err) {
       // Silent path failed — fall through to modal as a recovery surface
       // so the cashier still sees something instead of an invisible failure.
+      // R-PRINT-MEDIA-GUARD-V1: also surface the jam-recovery guide.
       console.error('[print] silent printRun failed, falling back to modal:', err);
+      announcePrintRecovery();
     }
   }
 

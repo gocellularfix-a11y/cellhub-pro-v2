@@ -12,6 +12,7 @@ import SetupWizard from '@/components/shared/SetupWizard';
 import PWAInstallPrompt from '@/components/shared/PWAInstallPrompt';
 import { useStorageQuotaWarning } from '@/hooks/useStorageQuotaWarning';
 import PrintPreviewModal from '@/components/shared/PrintPreviewModal';
+import PrintMediaGuardHost from '@/components/print/PrintMediaGuardHost';
 import { usePrintModal } from '@/hooks/usePrint';
 import { LoadingSpinner } from '@/components/ui';
 import type { Firestore } from 'firebase/firestore';
@@ -303,6 +304,11 @@ export default function App() {
         multiPage={printModal.options?.multiPage}
         rebakeForPageSize={printModal.options?.rebakeForPageSize}
       />
+
+      {/* R-PRINT-MEDIA-GUARD-V1: media-mismatch confirm dialog + label
+          auto-route toast + jam-recovery guide. Renders nothing until the
+          print media guard service requests UI. */}
+      <PrintMediaGuardHost />
     </>
   );
 }

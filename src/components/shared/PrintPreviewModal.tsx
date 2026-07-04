@@ -12,6 +12,10 @@ import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
 import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
 // R-POS-PAGESIZE-REBAKE-V1: type for the optional receipt re-bake callback.
 import type { PrintPageSizeKey } from '@/hooks/usePrint';
+// R-PRINT-MEDIA-GUARD-V1: media validation against the printer the user
+// picked here. The confirm dialog is rendered by PrintMediaGuardHost at
+// zIndex 10000 (this modal is 9999), so awaiting it works from inside.
+import { checkPrintMediaJob, requestPrintMediaConfirmation, announcePrintRecovery } from '@/services/print/printMediaGuard';
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -294,6 +298,21 @@ export default function PrintPreviewModal({
       }
       setPageRangeError(null);
     }
+    // R-PRINT-MEDIA-GUARD-V1: the user explicitly picked this printer, so a
+    // mismatch never auto-reroutes here — it asks (Cancel focused / Print
+    // Anyway). Fail-open when printer types aren't configured in Settings.
+    {
+      const psCheck = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
+      const verdict = checkPrintMediaJob({ width: psCheck.width, height: psCheck.height }, selectedPrinter);
+      if (verdict.action !== 'ok') {
+        const proceed = await requestPrintMediaConfirmation({
+          docMedia: verdict.docMedia,
+          printerMedia: verdict.printerMedia,
+          printerName: selectedPrinter,
+        });
+        if (!proceed) return;
+      }
+    }
     try { localStorage.setItem('cellhub_lastPrinter', selectedPrinter); } catch {}
     setPrinting(true);
     setPrintResult(null);
@@ -339,9 +358,13 @@ export default function PrintPreviewModal({
         }
       } else {
         setPrintResult(`❌ ${result.error || 'Print failed'}`);
+        // R-PRINT-MEDIA-GUARD-V1: a failed job often means jammed/stuck media —
+        // surface the recovery guide (open cover, remove media, recalibrate).
+        announcePrintRecovery();
       }
     } catch (err: any) {
       setPrintResult(`❌ ${err.message || 'Print failed'}`);
+      announcePrintRecovery();
     } finally {
       setPrinting(false);
     }

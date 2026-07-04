@@ -453,6 +453,17 @@ export default function SettingsModule() {
     );
   }, [settings.detectedPrinters, setSettings, toast, t]);
 
+  // R-PRINT-MEDIA-GUARD-V1: per-printer media type ('80mm'|'label'|'4x6'|
+  // 'cr80'|'letter'). Read/write via double-cast (settings.printerMediaTypes);
+  // the print media guard warns on wrong-media jobs and auto-routes labels.
+  const setPrinterMediaType = useCallback((name: string, value: string) => {
+    const current = { ...((((settings as any).printerMediaTypes) as Record<string, string> | undefined) || {}) };
+    if (value) current[name] = value; else delete current[name];
+    // r26 C4: delta only
+    setSettings({ printerMediaTypes: current } as any);
+    persistSettings({ printerMediaTypes: current } as Record<string, unknown>);
+  }, [settings, setSettings]);
+
   const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('store');
 
@@ -1638,6 +1649,41 @@ export default function SettingsModule() {
                         <p className="text-xs text-emerald-400 mt-1">
                           ✓ {t('settings.hardware.usingPrinter', (settings.detectedPrinters || [])[0])}
                         </p>
+
+                        {/* R-PRINT-MEDIA-GUARD-V1: per-printer media type so the
+                            print guard can warn before wrong-media jobs and
+                            auto-route labels to the label printer. */}
+                        <div className="mt-4">
+                          <label className="text-xs text-slate-400 block mb-1">
+                            {t('settings.hardware.printerMediaTitle')}
+                          </label>
+                          <div className="space-y-2">
+                            {(settings.detectedPrinters || []).map((name) => {
+                              const mediaMap = (((settings as any).printerMediaTypes) as Record<string, string> | undefined) || {};
+                              return (
+                                <div key={name} className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-300 flex-1 truncate" title={name}>{name}</span>
+                                  <select
+                                    value={mediaMap[name] || ''}
+                                    onChange={(e) => setPrinterMediaType(name, e.target.value)}
+                                    className="select"
+                                    style={{ width: '220px' }}
+                                  >
+                                    <option value="">{t('settings.hardware.mediaNotSet')}</option>
+                                    <option value="80mm">{t('settings.hardware.media80mm')}</option>
+                                    <option value="label">{t('settings.hardware.mediaLabel')}</option>
+                                    <option value="4x6">{t('settings.hardware.media4x6')}</option>
+                                    <option value="cr80">{t('settings.hardware.mediaCr80')}</option>
+                                    <option value="letter">{t('settings.hardware.mediaLetter')}</option>
+                                  </select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-2">
+                            {t('settings.hardware.printerMediaHint')}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </>
