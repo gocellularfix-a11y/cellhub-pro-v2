@@ -20,6 +20,10 @@
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Repair, Layaway, SpecialOrder, Unlock } from '@/store/types';
 import { tChat, COP, type Lang3, type ChatResponse, type ChatActionUI } from './handlers';
+// R-INTEL-V2-PHASE1: reuse the canonical BMP sanitizer so the reminder text
+// survives Electron's shell.openExternal on Windows (same as Payment Date
+// Finder's outreach builder).
+import { sanitizeToBMP } from '@/services/whatsapp';
 
 // ── Config ────────────────────────────────────────────────
 
@@ -146,11 +150,64 @@ function collect(engine: IntelligenceEngine): UnpaidRecord[] {
   return out;
 }
 
+// ── Reminder message builder ──────────────────────────────
+// R-INTEL-V2-PHASE1. Mirrors the Payment Date Finder outreach pattern
+// (per-language fragments, first-name greeting, sanitizeToBMP) but is the
+// accounts-receivable variant: it states the amount OWED + source and asks
+// the customer to come pay. Deterministic (same inputs → same text), NO LLM.
+// Money is integer cents in → formatted once via COP; the stored balance is
+// read as-is and NEVER recalculated. Store name is not available on this
+// chat path, so the message is store-agnostic (see round report).
+
+const REMINDER_SOURCE_NOUN: Record<UnpaidEntityType, Record<Lang3, string>> = {
+  repair:        { en: 'repair',        es: 'reparación',      pt: 'reparo' },
+  layaway:       { en: 'layaway',       es: 'apartado',        pt: 'layaway' },
+  special_order: { en: 'special order', es: 'pedido especial', pt: 'pedido especial' },
+  unlock:        { en: 'unlock',        es: 'desbloqueo',      pt: 'desbloqueio' },
+};
+
+// Single friendly tone (Phase 1). Spanish uses tuteo (no voseo).
+const REMINDER_TEMPLATE: Record<Lang3, (name: string, amount: string, source: string) => string> = {
+  en: (name, amount, source) =>
+    `${name ? `Hi ${name}!` : 'Hi!'}\n\n` +
+    `This is a friendly reminder that you have a balance of ${amount} on your ${source}. ` +
+    `Whenever you're ready, stop by and we'll be happy to help you take care of it.\n\n` +
+    `Thank you!`,
+  es: (name, amount, source) =>
+    `${name ? `¡Hola ${name}!` : '¡Hola!'}\n\n` +
+    `Este es un recordatorio amable de que tienes un saldo de ${amount} en tu ${source}. ` +
+    `Cuando gustes, pásate y con gusto te ayudamos a liquidarlo.\n\n` +
+    `¡Gracias!`,
+  pt: (name, amount, source) =>
+    `${name ? `Oi ${name}!` : 'Oi!'}\n\n` +
+    `Este é um lembrete amigável de que você tem um saldo de ${amount} no seu ${source}. ` +
+    `Quando puder, passe aqui e teremos prazer em ajudá-lo a quitar.\n\n` +
+    `Obrigado!`,
+};
+
+/**
+ * Build a ready-to-edit reminder message for one unpaid record. Pure and
+ * deterministic. The greeting uses the first name token; a device/id fallback
+ * "name" (no real name on the record) degrades to a generic greeting rather
+ * than addressing the customer by an id fragment.
+ */
+export function buildReminderMessage(rec: UnpaidRecord, lang: Lang3): string {
+  const l: Lang3 = lang === 'es' || lang === 'pt' ? lang : 'en';
+  const firstToken = String(rec.customerName || '').trim().split(/\s+/)[0] || '';
+  // Suppress an id-fragment fallback (e.g. the last-6 of an entity id) so the
+  // greeting never reads "Hi a1b2c3!". Real names pass through untouched.
+  const name = firstToken && !/^[0-9a-f]{6}$/i.test(firstToken) ? firstToken : '';
+  const amount = COP(rec.balanceCents);                    // integer cents → "$45.00"
+  const source = REMINDER_SOURCE_NOUN[rec.entityType][l];
+  return sanitizeToBMP(REMINDER_TEMPLATE[l](name, amount, source)).trim();
+}
+
 // ── Action builder ────────────────────────────────────────
 
-function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>): ChatActionUI[] {
+function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3): ChatActionUI[] {
   const acts: ChatActionUI[] = [];
   const base = `unpaid-${rec.entityType}-${rec.id}`;
+  const reminder = buildReminderMessage(rec, lang);
   // Open the real entity by id (never a blank/new modal — guarded downstream
   // by executeActionPayload, which no-ops on a missing entityId).
   acts.push({
@@ -159,13 +216,24 @@ function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>): ChatActionU
     payload: { type: 'review', entityId: rec.id, executable: true, executionTarget: rec.openTarget },
   });
   if (rec.phone) {
+    // WhatsApp reminder: opens WhatsApp with the deterministic AR reminder as
+    // the prefilled text (customMessage). Reuses the existing whatsapp_url
+    // modal + Phase 0 popup-block guard — a blocked open records nothing.
     acts.push({
       id: `${base}-wa`,
       label: t('chat.unpaidBalances.action.whatsapp'),
       actionType: 'whatsapp',
-      payload: { type: 'whatsapp', customerPhone: rec.phone, executable: true, executionTarget: 'whatsapp_url' },
+      payload: { type: 'whatsapp', customerPhone: rec.phone, customMessage: reminder, executable: true, executionTarget: 'whatsapp_url' },
     });
   }
+  // Copy reminder: clipboard only — no phone required, no side effects, no
+  // outreach recorded. Always offered so rows without a phone still get a
+  // usable reminder.
+  acts.push({
+    id: `${base}-copy`,
+    label: t('chat.unpaidBalances.action.copyReminder'),
+    payload: { type: 'reminder', customMessage: reminder, executable: true, executionTarget: 'copy_to_clipboard' },
+  });
   return acts;
 }
 
@@ -230,7 +298,7 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
 
   const rawActions: ChatActionUI[] = [];
   for (const r of shown) {
-    for (const a of actionsFor(r, t)) rawActions.push(a);
+    for (const a of actionsFor(r, t, lang)) rawActions.push(a);
   }
 
   // Continuity: anchor on the top (highest-balance) record's customer so

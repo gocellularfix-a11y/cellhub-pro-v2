@@ -3738,7 +3738,8 @@ export const translations: TranslationDictionary = {
   'chat.unpaidBalances.action.open.layaway':       { en: 'Open layaway',       es: 'Abrir apartado',   pt: 'Abrir layaway' },
   'chat.unpaidBalances.action.open.special_order': { en: 'Open order',         es: 'Abrir pedido',     pt: 'Abrir pedido' },
   'chat.unpaidBalances.action.open.unlock':        { en: 'Open unlock',        es: 'Abrir desbloqueo', pt: 'Abrir desbloqueio' },
-  'chat.unpaidBalances.action.whatsapp':           { en: 'WhatsApp',           es: 'WhatsApp',         pt: 'WhatsApp' },
+  'chat.unpaidBalances.action.whatsapp':           { en: 'WhatsApp reminder',  es: 'Recordatorio WhatsApp', pt: 'Lembrete WhatsApp' },
+  'chat.unpaidBalances.action.copyReminder':       { en: 'Copy reminder',      es: 'Copiar recordatorio', pt: 'Copiar lembrete' },
   // R-PHONE-PAYMENT-REMINDER-TODAY-LAST-PAYMENT-BUBBLE-ANCHOR
   'phonePay.lastPayment': {
     en: (date: string, amount: string) => `Last payment: ${date} — ${amount}`,
