@@ -104,6 +104,22 @@ plus edit-audit types (`EditAuditEntry`, `EditAuditSnapshot`).
 
 ---
 
+## Current Major System Status
+
+### Intelligence — Accounts Receivable
+
+The `unpaid_balances` / AR capability (once listed as the outstanding
+Intelligence gap) shipped in commit `aa896ad`. Router intent `unpaid_balances` →
+`handleUnpaidBalances` in `src/services/intelligence/chat/unpaidBalances.ts`.
+It aggregates the stored `balance` across repairs, layaways, special orders,
+and unlocks — deterministic and read-only (no LLM), money stays integer cents,
+balances read as-is (no tax/persistence changes). Tests:
+`src/services/intelligence/chat/unpaidBalances.test.ts`. The Intelligence
+handoff (`docs/INTELLIGENCE-HANDOFF.md`) was updated to match in commit
+`4da70ab`.
+
+---
+
 ## 5. HARD RULES — do not violate (from CLAUDE.md)
 
 These are non-negotiable. Breaking one is a regression, not a style nit.
