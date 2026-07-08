@@ -128,6 +128,8 @@ export interface InventoryMetrics {
 
 export interface RepairMetrics {
   totalCompleted: number;
+  // Open/pending repairs: everything not yet picked_up or cancelled.
+  totalActive: number;
   avgTurnaroundHours: number;
   byType: Record<string, number>;
   overdueCount: number;

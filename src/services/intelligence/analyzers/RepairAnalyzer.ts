@@ -62,8 +62,15 @@ export class RepairAnalyzer {
       return created < cutoff;
     });
 
+    // Open/pending repairs = everything not yet picked_up or cancelled
+    // (mirrors the terminal-status exclusion used for overdue above).
+    const totalActive = filtered.filter(
+      r => r.status !== 'picked_up' && r.status !== 'cancelled'
+    ).length;
+
     return {
       totalCompleted,
+      totalActive,
       avgTurnaroundHours,
       byType,
       overdueCount: overdue.length,

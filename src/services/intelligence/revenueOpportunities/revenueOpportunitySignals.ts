@@ -205,7 +205,9 @@ export function detectInactiveCustomers(
   for (const sale of sales) {
     if (!sale.customerId) continue;
     const s = String(sale.status || '').toLowerCase();
-    if (s === 'void' || s === 'refunded') continue;
+    // Canonical SaleStatus is 'voided' (store/types.ts). Keep legacy 'void'
+    // for backward compatibility with any old records.
+    if (s === 'void' || s === 'voided' || s === 'refunded') continue;
     const arr = saleMap.get(sale.customerId) ?? [];
     arr.push(sale);
     saleMap.set(sale.customerId, arr);
@@ -270,7 +272,9 @@ export function detectVipRetention(
   for (const sale of sales) {
     if (!sale.customerId) continue;
     const s = String(sale.status || '').toLowerCase();
-    if (s === 'void' || s === 'refunded') continue;
+    // Canonical SaleStatus is 'voided' (store/types.ts). Keep legacy 'void'
+    // for backward compatibility with any old records.
+    if (s === 'void' || s === 'voided' || s === 'refunded') continue;
     const arr = saleMap.get(sale.customerId) ?? [];
     arr.push(sale);
     saleMap.set(sale.customerId, arr);

@@ -472,7 +472,7 @@ export class IntelligenceEngine {
         deadStockCount: inventoryMetrics.deadStockCount,
       },
       repairs: {
-        pending: repairMetrics.totalCompleted,
+        pending: repairMetrics.totalActive,
         overdue: repairMetrics.overdueCount,
       },
       customers: {

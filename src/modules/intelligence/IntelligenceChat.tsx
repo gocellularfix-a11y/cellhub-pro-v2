@@ -1448,7 +1448,16 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
             <button
               onClick={() => {
                 if (pendingWaAction) {
-                  window.open(pendingWaAction.url, '_blank');
+                  const waWindow = window.open(pendingWaAction.url, '_blank');
+                  if (!waWindow) {
+                    // Popup blocked or open failed: do NOT record the
+                    // outreach as sent (no follow-up, no pipeline item, no
+                    // continuity) so a blocked send never leaves a phantom
+                    // 'proposal_sent' record the owner would chase.
+                    setFeedbackForAction(pendingWaAction.action.id, t('chat.whatsapp.blocked'));
+                    setPendingWaAction(null);
+                    return;
+                  }
                   setFeedbackForAction(pendingWaAction.action.id, t('chat.whatsapp.opened'));
                   // R-INTELLIGENCE-PROPOSAL-FOLLOWUP-INBOX-V1: record the
                   // manual outreach as a 'sent' follow-up. No WhatsApp API,

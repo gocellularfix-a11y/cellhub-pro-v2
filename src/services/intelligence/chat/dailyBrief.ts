@@ -164,11 +164,17 @@ function buildPriorities(
  * loss whose domain is already in the priorities section — no duplicate
  * rows. Limit to RISKS_CAP. Pre-rendered evidence reused verbatim.
  */
+// Buckets whose evidence embeds profit-sensitive figures (margin %, locked
+// capital / cost). Hidden from non-owner roles — mirrors the profit gate the
+// what_is_losing_money / product_opportunities intents already enforce.
+const PROFIT_SENSITIVE_RISK_BUCKETS = new Set(['low_margin_items', 'dead_stock']);
+
 function buildRisks(
   engine: IntelligenceEngine,
   lang: Lang3,
   priorityDomains: Set<string>,
   t: ReturnType<typeof tChat>,
+  canSeeOwnerFinancials: boolean,
 ): Section {
   const out = emptySection();
   const losses = computeLossSignals(engine, lang);
@@ -185,6 +191,8 @@ function buildRisks(
     if (out.lines.length >= RISKS_CAP) break;
     const bucket = RISK_TO_BUCKET[l.category];
     if (!bucket || priorityDomains.has(bucket) || out.domainsSurfaced.has(bucket)) continue;
+    // Profit-sensitive evidence (margin %, locked capital) is owner-only.
+    if (!canSeeOwnerFinancials && PROFIT_SENSITIVE_RISK_BUCKETS.has(bucket)) continue;
     out.lines.push(`• ${l.evidence}`);
     out.domainsSurfaced.add(bucket);
   }
@@ -267,7 +275,13 @@ const URGENCY_RANK: Record<AttentionItem['urgency'], number> = {
   critical: 0, high: 1, medium: 2, low: 3,
 };
 
-export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lang3): ChatResponse {
+export function handleOperatorDailyBriefV3(
+  engine: IntelligenceEngine,
+  lang: Lang3,
+  // Default true preserves existing owner/solo-operator behavior. Non-owner
+  // callers pass false so profit-sensitive risk evidence is withheld.
+  canSeeOwnerFinancials: boolean = true,
+): ChatResponse {
   const t = tChat(lang);
   const nowMs = Date.now();
   const tod = timeOfDay(nowMs);
@@ -277,7 +291,7 @@ export function handleOperatorDailyBriefV3(engine: IntelligenceEngine, lang: Lan
 
   const status      = buildStatusLines(engine, lang, attnItems, t);
   const priorities  = buildPriorities(attnItems, t);
-  const risks       = buildRisks(engine, lang, priorities.domainsSurfaced, t);
+  const risks       = buildRisks(engine, lang, priorities.domainsSurfaced, t, canSeeOwnerFinancials);
   const opportunities = buildOpportunities(engine, lang, attnItems, priorities.domainsSurfaced, risks.domainsSurfaced, t);
 
   // R-INTELLIGENCE-PROACTIVE-OPERATOR-ALERTS: top urgent alerts strip

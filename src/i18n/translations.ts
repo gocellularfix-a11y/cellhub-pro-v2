@@ -595,6 +595,7 @@ export const translations: TranslationDictionary = {
   'chat.whatsapp.cancel':        { en: 'Cancel',                       es: 'Cancelar',                      pt: 'Cancelar' },
   'chat.whatsapp.confirm':       { en: 'Open WhatsApp',                es: 'Abrir WhatsApp',                pt: 'Abrir WhatsApp' },
   'chat.whatsapp.opened':        { en: 'WhatsApp opened.',             es: 'WhatsApp abierto.',             pt: 'WhatsApp aberto.' },
+  'chat.whatsapp.blocked':       { en: 'Couldn\'t open WhatsApp (popup blocked). Nothing was recorded — please allow popups and try again.', es: 'No se pudo abrir WhatsApp (ventana emergente bloqueada). No se registró nada — permite las ventanas emergentes e intenta de nuevo.', pt: 'Não foi possível abrir o WhatsApp (pop-up bloqueado). Nada foi registrado — permita pop-ups e tente novamente.' },
   'chat.whatsapp.body':          { en: 'This will open WhatsApp with a prepared message.', es: 'Esto abrirá WhatsApp con un mensaje preparado.', pt: 'Isso abrirá o WhatsApp com uma mensagem preparada.' },
   'chat.whatsapp.customer':      { en: 'Customer',                     es: 'Cliente',                       pt: 'Cliente' },
 

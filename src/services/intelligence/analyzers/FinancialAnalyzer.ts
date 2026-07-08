@@ -84,7 +84,10 @@ export class FinancialAnalyzer {
 
     const cbeCollected = repairsFiltered.reduce((sum, r) => sum + (r.depositAmount || 0), 0);
 
-    const cardFees = revenue * 0.029 + salesFiltered.length * 0.30;
+    // Money is integer cents: 2.9% of revenue-cents + a flat 30-cent
+    // ($0.30) per-transaction fee. (Previously used 0.30, which added a
+    // third of a cent per sale instead of 30 cents.)
+    const cardFees = revenue * 0.029 + salesFiltered.length * 30;
     const creditCardFees = Math.round(cardFees);
 
     const cashFlowByDay: Record<string, number> = {};

@@ -569,7 +569,7 @@ export function handleIntent(
 
     // R-INTELLIGENCE-OPERATOR-DAILY-BRIEF: compressed store-state briefing.
     case 'daily_operator_brief_v3':
-      return handleOperatorDailyBriefV3(engine, lang);
+      return handleOperatorDailyBriefV3(engine, lang, canSeeOwnerFinancials);
 
     // R-EOD-BRIEF F2: end-of-day operator digest.
     case 'end_of_day_brief':
