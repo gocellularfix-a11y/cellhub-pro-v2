@@ -221,12 +221,23 @@ via `setMessages` directly and are NOT auto-queued.
 
 ## 10. Known gaps / TODOs / risks
 
-- **`unpaid_balances` intent is MISSING.** Phrases "show unpaid", "who owes me money",
-  "payments due", "quién me debe dinero" have **no accounts-receivable handler**. Today they
-  fall to fallback OR (via bare `money`/`dinero`/`pending` tokens) mis-route to
-  what_hurting_profit / repairs_overdue. **This is the one real capability gap.** A proper
-  fix = a new `unpaid_balances` intent + AR list handler (the one place a small new engine
-  is justified) and narrowing the bare tokens.
+- **`unpaid_balances` intent — IMPLEMENTED (`aa896ad`, R-INTELLIGENCE-UNPAID-BALANCES-V1).**
+  Phrases "show unpaid", "who owes me money", "payments due", "quién me debe dinero",
+  "saldos pendientes", "contas em aberto" now route to a dedicated accounts-receivable
+  handler instead of falling to fallback or mis-routing (via bare `money`/`dinero`/`pending`
+  tokens) to what_hurting_profit / repairs_overdue.
+  - **Source module:** `src/services/intelligence/chat/unpaidBalances.ts` (`handleUnpaidBalances`).
+    handlers.ts only dispatches the new `unpaid_balances` intent — no inline handler block added.
+  - **Data sources:** aggregates the stored `balance` across repairs, layaways, special orders,
+    and unlocks (engine getters `getRepairs/getLayaways/getSpecialOrders/getUnlocks`). Excludes
+    zero/negative balances and terminal statuses; sorts highest-balance first.
+  - **Deterministic + read-only, no LLM.** Balances are read as-is (never recalculated); money
+    stays integer cents; no tax/persistence logic touched.
+  - **Router:** `UNPAID_BALANCES_KEYWORDS` bank + `unpaid_balances` listed HIGH in INTENTS
+    (above what_hurting_profit / repairs_overdue) so anchored AR tokens win over the bare
+    substrings; the bare tokens were left as-is (narrowing them regresses legit phrases).
+  - **Tests:** `src/services/intelligence/chat/unpaidBalances.test.ts` (4 handler tests) plus
+    router coverage — all passing.
 - **Runtime verification pending.** All this session's work passes tsc + build + 43 tests,
   but the live flows (executable buttons → continuity → sessions) were **not run in a real
   browser**; needs manual QA (see §11).
