@@ -222,11 +222,21 @@ function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3)
     phone: rec.phone,
     language: lang,
   } as const;
-  // Open the real entity by id (never a blank/new modal — guarded downstream
-  // by executeActionPayload, which no-ops on a missing entityId).
+  // R-INTEL-V2-PHASE2: "Collect payment" — an owner-approved HANDOFF only. It
+  // reuses the existing open_<entity> navigation to land the owner on the real
+  // entity, where each module already owns its collect-balance flow (RepairModal
+  // 💰 Collect, LayawayModule add-payment, Unlock/SpecialOrder collect modals).
+  // Intelligence NEVER takes the payment, creates a transaction, or touches the
+  // balance — it only navigates. All four AR types have a real collect flow, so
+  // none are deferred.
+  //
+  // This REPLACES the former neutral "Open <entity>" action: from a collections
+  // list the reason to open the entity is to collect, both navigated to the same
+  // place, and keeping two identical-navigation buttons both cluttered the row
+  // and pushed later rows past the action cap. Same open_<entity> target + id.
   acts.push({
-    id: `${base}-open`,
-    label: t(`chat.unpaidBalances.action.open.${rec.entityType}`),
+    id: `${base}-collect`,
+    label: t('chat.unpaidBalances.action.collect'),
     payload: { type: 'review', entityId: rec.id, executable: true, executionTarget: rec.openTarget },
   });
   if (rec.phone) {

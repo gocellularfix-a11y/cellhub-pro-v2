@@ -112,6 +112,46 @@ describe('handleUnpaidBalances — reminder actions', () => {
   });
 });
 
+describe('handleUnpaidBalances — collect payment handoff (Phase 2)', () => {
+  // openTarget per entity type — the safe existing handoff Collect reuses.
+  const cases: Array<[string, any, string]> = [
+    ['repair',        { repairs:       [{ id: 'r1', customerName: 'Ana',  customerPhone: '8050001111', balance: 4500, status: 'ready',    createdAt: '2026-01-01' }] }, 'open_repair'],
+    ['layaway',       { layaways:      [{ id: 'l1', customerName: 'Beto', customerPhone: '8050002222', balance: 9000, status: 'active',   createdAt: '2026-01-01' }] }, 'open_layaway'],
+    ['unlock',        { unlocks:       [{ id: 'u1', customerName: 'Dani', customerPhone: '8050004444', balance: 1500, status: 'pending',  createdAt: '2026-01-01' }] }, 'open_unlock'],
+    ['special_order', { specialOrders: [{ id: 'o1', customerName: 'Caro', balance: 5000, status: 'received', createdAt: '2026-01-01' }] }, 'open_special_order'],
+  ];
+
+  it.each(cases)('adds a Collect payment action for %s that reuses the open handoff', (_type, data, expectedTarget) => {
+    const res = handleUnpaidBalances(makeEngine(data), 'en');
+    const collect = (res.actions ?? []).find((a) => a.id.endsWith('-collect'));
+    expect(collect).toBeTruthy();
+    // Handoff only: navigates via the existing open_<entity> target, carrying id.
+    expect((collect!.payload as any).executionTarget).toBe(expectedTarget);
+    expect((collect!.payload as any).entityId).toBeTruthy();
+    // It must NOT be a payment/transaction target — Intelligence never collects.
+    expect((collect!.payload as any).executionTarget).not.toMatch(/pos|payment|charge|pay/i);
+  });
+
+  it('keeps the existing reminder actions alongside Collect payment', () => {
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    const ids = (res.actions ?? []).map((a) => a.id);
+    // Collect payment (replaces the former neutral Open) + both reminders.
+    expect(ids.some((i) => i.endsWith('-collect'))).toBe(true);
+    expect(ids.some((i) => i.endsWith('-wa'))).toBe(true);
+    expect(ids.some((i) => i.endsWith('-copy'))).toBe(true);
+    // The former standalone "-open" action is now folded into Collect.
+    expect(ids.some((i) => i.endsWith('-open'))).toBe(false);
+  });
+
+  it('adds no Collect action when there is nothing to collect (zero/terminal excluded)', () => {
+    const engine = makeEngine({
+      repairs: [{ id: 'r1', customerName: 'Paid', balance: 0, status: 'completed', createdAt: '2026-01-01' }],
+    });
+    const res = handleUnpaidBalances(engine, 'en');
+    expect(res.actions).toBeUndefined();
+  });
+});
+
 describe('unpaid_balances routing still resolves', () => {
   it('routes AR phrases to unpaid_balances (EN/ES/PT)', () => {
     expect(classifyIntent('who owes me money', NO_CUSTOMERS, 'en').id).toBe('unpaid_balances');
