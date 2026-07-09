@@ -247,6 +247,39 @@ via `setMessages` directly and are NOT auto-queued.
 
 ---
 
+## 10.1 AR Collections Action Loop — COMPLETE (Phases 0–2)
+
+The `unpaid_balances` answer (see §10) is now a full owner-approved collections
+workflow. **Boundary: Intelligence only proposes and navigates — the deterministic
+modules own every payment, balance, and tax calculation** (PRODUCT-BIBLE §5). No AR
+code marks a balance paid, mutates a balance, creates a transaction, or touches tax.
+
+1. **Find who owes money** — `unpaid_balances` → `handleUnpaidBalances`
+   (`chat/unpaidBalances.ts`) aggregates the stored `balance` across repairs /
+   layaways / unlocks / special orders, excludes zero/terminal, sorts highest-first.
+   Trust fixes (`1fa805d`, Phase 0): voided-sale exclusion, `repairs.pending` KPI,
+   card-fee flat amount (cents), phantom-WhatsApp-sent guard, daily-brief profit gate.
+2. **Send reminder** — `bbc7379` Phase 1: WhatsApp + Copy reminder actions with
+   deterministic EN/ES/PT text (mirrors the Payment Date Finder builder —
+   `sanitizeToBMP`, integer-cents amount via `COP`). Reuses the existing
+   `whatsapp_url` / `copy_to_clipboard` targets + the Phase 0 popup-block guard.
+3. **Track reminder** — `7a548d5` Phase 1B: dedicated append-only store
+   `src/services/intelligence/ar/arReminderStore.ts` (key
+   `cellhub:intelligence:arReminders:v1`; parse-guarded, capped, 90-day TTL). Events
+   `ar_reminder_whatsapp_opened` (only after `window.open` returns a handle) and
+   `ar_reminder_copied` (only after a successful copy). A light "last reminder: N days
+   ago" note renders per row. No existing store schema was reused/abused.
+4. **Collect payment** — `1f278ea` Phase 2: a **Collect payment** action that hands
+   off via the existing `open_repair` / `open_layaway` / `open_unlock` /
+   `open_special_order` navigation to the entity, where each module owns its
+   collect-balance flow (RepairModal 💰 Collect, LayawayModule add-payment,
+   Unlock/SpecialOrder collect modals). Handoff only — no new modal, no transaction.
+
+Tests: `chat/unpaidBalances.reminder.test.ts`, `ar/arReminderStore.test.ts` (store
+roundtrip / retention / parse-guard), plus the original `unpaidBalances.test.ts`.
+
+---
+
 ## 11. Manual QA checklist (run in the app)
 
 1. "qué hago ahora" / "what should I do right now" → ≤5 ranked recs with executable buttons,
