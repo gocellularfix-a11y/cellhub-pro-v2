@@ -3730,6 +3730,16 @@ export const translations: TranslationDictionary = {
     es: 'Contacta primero los saldos más altos para cobrar.',
     pt: 'Contate primeiro os saldos mais altos para cobrar.',
   },
+  'chat.unpaidBalances.lastReminder.today': {
+    en: '🔔 Last reminder: today',
+    es: '🔔 Último recordatorio: hoy',
+    pt: '🔔 Último lembrete: hoje',
+  },
+  'chat.unpaidBalances.lastReminder.days': {
+    en: (n: number) => `🔔 Last reminder: ${n} ${n === 1 ? 'day' : 'days'} ago`,
+    es: (n: number) => `🔔 Último recordatorio: hace ${n} ${n === 1 ? 'día' : 'días'}`,
+    pt: (n: number) => `🔔 Último lembrete: há ${n} ${n === 1 ? 'dia' : 'dias'}`,
+  },
   'chat.unpaidBalances.source.repair':       { en: 'Repair',        es: 'Reparación',   pt: 'Reparo' },
   'chat.unpaidBalances.source.layaway':      { en: 'Layaway',       es: 'Apartado',     pt: 'Layaway' },
   'chat.unpaidBalances.source.specialOrder': { en: 'Special order', es: 'Pedido especial', pt: 'Pedido especial' },

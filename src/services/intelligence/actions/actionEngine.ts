@@ -42,6 +42,20 @@ export interface ActionPayload {
     urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
     impactReason: string;
   };
+  // R-INTEL-V2-PHASE1B: AR reminder tracking metadata. Present ONLY on
+  // unpaid_balances reminder actions (WhatsApp / Copy) so the click handlers can
+  // record a tracking event without inventing data. Never affects execution or
+  // routing — it is read solely to persist an ArReminderEvent. balanceCents is
+  // the amount owed at reminder time (integer cents), read as-is.
+  arReminder?: {
+    entityType: 'repair' | 'layaway' | 'unlock' | 'special_order';
+    entityId: string;
+    balanceCents: number;
+    customerId?: string;
+    customerName: string;
+    phone?: string;
+    language: string;
+  };
   // R-INTELLIGENCE-EXECUTABLE-ACTIONS-V1: entity reference for navigation targets
   entityId?: string;
   executable: boolean;

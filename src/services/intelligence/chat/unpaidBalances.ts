@@ -24,6 +24,8 @@ import { tChat, COP, type Lang3, type ChatResponse, type ChatActionUI } from './
 // survives Electron's shell.openExternal on Windows (same as Payment Date
 // Finder's outreach builder).
 import { sanitizeToBMP } from '@/services/whatsapp';
+// R-INTEL-V2-PHASE1B: read-only lookup for the light "last reminder" note.
+import { getLastArReminder } from '../ar/arReminderStore';
 
 // ── Config ────────────────────────────────────────────────
 
@@ -208,6 +210,18 @@ function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3)
   const acts: ChatActionUI[] = [];
   const base = `unpaid-${rec.entityType}-${rec.id}`;
   const reminder = buildReminderMessage(rec, lang);
+  // R-INTEL-V2-PHASE1B: tracking metadata carried on the reminder actions so
+  // the click handlers can record an ArReminderEvent. balanceCents is the amount
+  // owed at reminder time (integer cents), read as-is. No invented fields.
+  const arReminder = {
+    entityType: rec.entityType,
+    entityId: rec.id,
+    balanceCents: rec.balanceCents,
+    customerId: rec.customerId,
+    customerName: rec.customerName,
+    phone: rec.phone,
+    language: lang,
+  } as const;
   // Open the real entity by id (never a blank/new modal — guarded downstream
   // by executeActionPayload, which no-ops on a missing entityId).
   acts.push({
@@ -223,16 +237,16 @@ function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3)
       id: `${base}-wa`,
       label: t('chat.unpaidBalances.action.whatsapp'),
       actionType: 'whatsapp',
-      payload: { type: 'whatsapp', customerPhone: rec.phone, customMessage: reminder, executable: true, executionTarget: 'whatsapp_url' },
+      payload: { type: 'whatsapp', customerPhone: rec.phone, customMessage: reminder, arReminder, executable: true, executionTarget: 'whatsapp_url' },
     });
   }
-  // Copy reminder: clipboard only — no phone required, no side effects, no
-  // outreach recorded. Always offered so rows without a phone still get a
-  // usable reminder.
+  // Copy reminder: clipboard only — no phone required, no side effects beyond
+  // the tracking event recorded on a successful copy. Always offered so rows
+  // without a phone still get a usable reminder.
   acts.push({
     id: `${base}-copy`,
     label: t('chat.unpaidBalances.action.copyReminder'),
-    payload: { type: 'reminder', customMessage: reminder, executable: true, executionTarget: 'copy_to_clipboard' },
+    payload: { type: 'reminder', customMessage: reminder, arReminder, executable: true, executionTarget: 'copy_to_clipboard' },
   });
   return acts;
 }
@@ -292,6 +306,16 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
     lines.push(
       `${i + 1}. ${r.customerName} — ${t(r.sourceLabelKey)}: ${COP(r.balanceCents)}`,
     );
+    // R-INTEL-V2-PHASE1B: light "last reminder" note when one was already sent
+    // for this entity. Read-only lookup (safe no-op when storage is empty);
+    // never changes sorting or the row's balance.
+    const last = getLastArReminder(r.id);
+    if (last) {
+      const days = Math.floor((Date.now() - last.timestamp) / 86_400_000);
+      lines.push(
+        `   ${days <= 0 ? t('chat.unpaidBalances.lastReminder.today') : t('chat.unpaidBalances.lastReminder.days', days)}`,
+      );
+    }
   }
   lines.push('');
   lines.push(`💡 ${t('chat.unpaidBalances.nextAction')}`);

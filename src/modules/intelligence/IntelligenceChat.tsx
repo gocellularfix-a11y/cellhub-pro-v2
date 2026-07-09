@@ -13,6 +13,8 @@ import type { Customer, CartItem } from '@/store/types';
 import { classifyIntent, isFollowUpQuery, enrichFollowUpQuery } from '@/services/intelligence/chat/intentRouter';
 import type { OperationalContext } from '@/services/intelligence/chat/intentRouter';
 import { handleIntent, handleFollowUp, tChat } from '@/services/intelligence/chat/handlers';
+// R-INTEL-V2-PHASE1B: AR reminder outreach tracking (append-only, read-only of source).
+import { recordArReminder, buildMessagePreview } from '@/services/intelligence/ar/arReminderStore';
 import type { ChatActionUI, PanelCampaignDraft, WorkflowSection, Lang3 } from '@/services/intelligence/chat/handlers';
 // R-INTELLIGENCE-F3D: canonical Top 3 Actions Today (F3B) — the Daily Brief's
 // single priority source. Prop-drilled in (computed once in IntelligenceModule,
@@ -782,13 +784,28 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // browser API stays out of the pure executor.
     if (action.payload?.executionTarget === 'copy_to_clipboard') {
       const text = action.payload.customMessage || '';
+      // R-INTEL-V2-PHASE1B: record an AR reminder 'copied' event only on a
+      // successful copy, and only when the action carries arReminder metadata
+      // (i.e. it came from unpaid_balances). Records outreach, never payment.
+      const ar = action.payload.arReminder;
+      const recordCopied = () => {
+        if (!ar) return;
+        recordArReminder({
+          type: 'ar_reminder_copied', channel: 'copy',
+          customerId: ar.customerId, customerName: ar.customerName, phone: ar.phone,
+          entityType: ar.entityType, entityId: ar.entityId, balanceCents: ar.balanceCents,
+          language: ar.language, messagePreview: buildMessagePreview(text),
+          timestamp: Date.now(), source: 'unpaid_balances',
+        });
+      };
       if (text && typeof navigator !== 'undefined' && navigator.clipboard) {
         navigator.clipboard.writeText(text).then(
-          () => setFeedbackForAction(action.id, t('chat.action.copied')),
+          () => { setFeedbackForAction(action.id, t('chat.action.copied')); recordCopied(); },
           () => setFeedbackForAction(action.id, t('chat.action.copyFailed')),
         );
       } else {
         setFeedbackForAction(action.id, t('chat.action.copied'));
+        recordCopied();
       }
       return;
     }
@@ -1465,6 +1482,20 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
                   // Open WhatsApp so the chat can later list pending
                   // follow-ups and link pasted replies to a record.
                   const a = pendingWaAction.action;
+                  // R-INTEL-V2-PHASE1B: record an AR reminder 'whatsapp_opened'
+                  // event — only reached AFTER the popup-block guard above, so a
+                  // blocked open records nothing. Only for unpaid_balances
+                  // reminders (arReminder present). Records outreach, never payment.
+                  const arWa = a.payload.arReminder;
+                  if (arWa) {
+                    recordArReminder({
+                      type: 'ar_reminder_whatsapp_opened', channel: 'whatsapp',
+                      customerId: arWa.customerId, customerName: arWa.customerName, phone: arWa.phone,
+                      entityType: arWa.entityType, entityId: arWa.entityId, balanceCents: arWa.balanceCents,
+                      language: arWa.language, messagePreview: buildMessagePreview(a.payload.customMessage || ''),
+                      timestamp: Date.now(), source: 'unpaid_balances',
+                    });
+                  }
                   recordOperatorAction({
                     actionType: 'whatsapp',
                     entityType: 'customer',

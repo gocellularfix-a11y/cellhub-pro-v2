@@ -51,6 +51,20 @@ describe('handleUnpaidBalances — reminder actions', () => {
     expect(msg).toContain('repair');        // source type
   });
 
+  it('reminder actions carry AR tracking metadata with integer-cents balance', () => {
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    for (const target of ['whatsapp_url', 'copy_to_clipboard']) {
+      const act = (res.actions ?? []).find((a) => (a.payload as any).executionTarget === target);
+      const ar = (act!.payload as any).arReminder;
+      expect(ar).toBeTruthy();
+      expect(ar.entityType).toBe('repair');
+      expect(ar.entityId).toBe('r1');
+      expect(ar.balanceCents).toBe(4500);              // amount owed, as-is
+      expect(Number.isInteger(ar.balanceCents)).toBe(true);
+      expect(ar.language).toBe('en');
+    }
+  });
+
   it('Copy reminder carries the same message and needs no phone', () => {
     // Row with NO phone still gets a copy action (but no whatsapp action).
     const engine = makeEngine({
