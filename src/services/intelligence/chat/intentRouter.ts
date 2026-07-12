@@ -673,14 +673,37 @@ const REPAIRS_READY_KEYWORDS = [
   // EN
   'repairs ready', 'ready repairs',
   'repairs for pickup', 'ready for pickup',
+  // R-INTEL-V2-PHASE4-REPAIRS-READY-ROUTER-CORRECTION: 'repairs completed' /
+  // 'completed repairs' were considered and REJECTED — "completed" is not
+  // always pickup-ready (completed awaiting QC / awaiting payment / customer
+  // not yet notified). This round locks explicit pickup-ready language only.
   // ES
   'reparaciones listas',
   'reparaciones para recoger',
   'listas para recoger',
+  // R-INTEL-V2-PHASE4: singular forms. Bare 'listas' is deliberately NOT
+  // included — it does not clearly indicate pickup-ready on its own and
+  // would over-trigger ("lista de prioridades" family).
+  'reparación lista', 'reparacion lista',
+  // R-INTEL-V2-PHASE4: "repairs ARE ready" phrasing. Also lives in
+  // DATA_QUERY_KEYWORDS, but it actually routed to repairs_overdue
+  // (bare 'reparaciones'+'reparacion' score 2 beat data_query's 1) —
+  // the same ready→overdue theft this round corrects.
+  'reparaciones están listas', 'reparaciones estan listas',
   // PT
   'reparos prontos',
   'reparos para retirada',
+  // R-INTEL-V2-PHASE4: singular + retrieval forms.
+  'reparo pronto', 'pronto para retirada',
 ];
+
+// R-INTEL-V2-PHASE4-REPAIRS-READY-ROUTER-CORRECTION: the two intents that
+// Phase 3 shadow diagnostics proved steal exact ready-for-pickup phrases —
+// data_query via scores-array position on 1-1 ties, repairs_overdue via raw
+// score from its bare 'reparaciones'/'reparacion' substrings. Used by the
+// ready-phrase override in classifyIntent; add here ONLY with shadow-report
+// evidence of a new theft path.
+const REPAIRS_READY_THIEF_INTENTS: ReadonlyArray<IntentId> = ['repairs_overdue', 'data_query'];
 
 const HEALTH_KEYWORDS = [
   'cómo está', 'como esta', 'how is', 'estado de la tienda',
@@ -2414,6 +2437,25 @@ export function classifyIntent(
     (scores.find(s => s.id === 'proactive_operations')?.score ?? 0) > 0
   ) {
     winner.id = 'proactive_operations';
+  }
+
+  // R-INTEL-V2-PHASE4-REPAIRS-READY-ROUTER-CORRECTION: exact ready-for-pickup
+  // phrases must always win. Phase 3 shadow diagnostics proved two theft paths:
+  //   - 'repairs ready' / 'reparos prontos' lose a 1-1 tie to data_query (the
+  //     same phrases live in DATA_QUERY_KEYWORDS, which sits earlier in the
+  //     scores array), and
+  //   - 'reparaciones listas' loses 1-2 on raw score to repairs_overdue (bare
+  //     'reparaciones' + 'reparacion' substrings both hit in REPAIRS_KEYWORDS).
+  // Deterministic correction, same pattern as the proactive tie-break above:
+  // when one of those two documented thieves won AND the query contains an
+  // exact REPAIRS_READY phrase (single source of truth — no second list to
+  // drift), route to the dedicated ready-for-pickup handler. Overdue/analytics
+  // queries never contain a ready phrase, so their routing is untouched.
+  if (
+    REPAIRS_READY_THIEF_INTENTS.includes(winner.id) &&
+    REPAIRS_READY_KEYWORDS.some(p => query.includes(p))
+  ) {
+    winner.id = 'repairs_ready';
   }
 
   const confidence = Math.min(1, winner.score / 2);
