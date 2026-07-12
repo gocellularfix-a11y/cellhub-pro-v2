@@ -1668,25 +1668,15 @@ const OPERATIONAL_ALIASES: ReadonlyArray<{ phrase: string; intent: IntentId }> =
   { phrase: 'abrir reparación',    intent: 'entity_operational_command' },
 ];
 
-// R-INTELLIGENCE-OPERATIONAL-PHRASES-1 — UNRESOLVED owner phrases:
-// There is NO existing intent or handler that lists unpaid balances /
-// accounts-receivable across repairs / layaways / orders. These phrases were
-// therefore NOT aliased to any existing intent (aliasing them to data_query or
-// who_to_contact would invent an output the engine does not produce):
-//   "show unpaid" / "unpaid" / "payments due"
-//     → correctly fall through to `fallback_question` (no keyword match).
-//   "who owes me money" / "quién me debe dinero"
-//     → PRE-EXISTING: route to `what_hurting_profit` via the bare 'money' /
-//       'dinero' tokens in WHAT_HURTING_PROFIT_KEYWORDS.
-//   "pending payments"
-//     → PRE-EXISTING: routes to `repairs_overdue` via the bare 'pending' token
-//       in REPAIRS_KEYWORDS.
-//   This round does NOT change the two pre-existing cases (narrowing those bare
-//   tokens would regress legitimate profit-leak / overdue-repair routing — out
-//   of scope for an additive keyword round).
-// TODO(intent): introduce a dedicated `unpaid_balances` intent + handler once an
-// accounts-receivable / outstanding-balance view exists; at that point also
-// narrow the bare 'money'/'dinero' tokens so the two phrases above route to it.
+// R-INTELLIGENCE-OPERATIONAL-PHRASES-1 — owner phrases, RESOLVED by
+// R-INTELLIGENCE-UNPAID-BALANCES-V1: the dedicated `unpaid_balances` intent +
+// handler now exist (see UNPAID_BALANCES_KEYWORDS below and
+// chat/unpaidBalances.ts). "show unpaid", "who owes me money",
+// "quién me debe dinero", and "pending payments" all route there — the
+// anchored AR bank outscores the bare 'money'/'dinero'/'pending' tokens on raw
+// score, so those pre-existing bare tokens in WHAT_HURTING_PROFIT / REPAIRS
+// banks were deliberately left unchanged (narrowing them would regress
+// legitimate profit-leak / overdue-repair routing).
 
 // R-INTELLIGENCE-CONTEXT-MEMORY-V1 ──────────────────────────────
 // Lightweight session-only operational context. Pure type + a
