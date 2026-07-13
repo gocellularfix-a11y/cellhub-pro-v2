@@ -2580,6 +2580,26 @@ export function classifyIntent(
     else if (hasAnchoredPhrase(TREND_DIRECTION_KEYWORDS)) winner.id = 'trend_direction';
   }
 
+  // R-INTEL-V2-PHASE11-PT-AR-ROUTING: an explicit accounts-receivable ask
+  // must never degrade to the generic attention feed. Root cause (shadow
+  // corpus 'pagamentos pendentes' → expected unpaid_balances): the phrase IS
+  // in UNPAID_BALANCES_KEYWORDS (1 hit), but ATTENTION_FEED_KEYWORDS carries
+  // BOTH bare 'pendente' and 'pendentes' — a query containing "pendentes"
+  // hits both (singular is a substring of the plural) and attention_feed
+  // wins 2-1 on raw score, not position (unpaid_balances is already earlier
+  // and wins plain ties like ES 'pagos pendientes'). Correction, same shape
+  // as the overrides above: when attention_feed won BUT the query carries an
+  // ANCHORED (multi-word) unpaid-balances phrase, the AR intent wins.
+  // Single-word bank tokens ('unpaid') are deliberately not triggers, and
+  // bare 'pendentes'/'pagamentos' queries carry no anchored AR phrase, so
+  // generic pending-work asks stay on the attention feed.
+  if (
+    winner.id === 'attention_feed' &&
+    UNPAID_BALANCES_KEYWORDS.some(p => p.includes(' ') && query.includes(p))
+  ) {
+    winner.id = 'unpaid_balances';
+  }
+
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
 

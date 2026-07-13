@@ -110,6 +110,11 @@ describe('shadow corpus report', () => {
     }
   });
 
+  it('the Phase 11 PT AR theft is now an exact match', () => {
+    const row = report.rows.find((r) => r.entry.query === 'pagamentos pendentes');
+    expect(row?.group).toBe('exact_match');
+  });
+
   it('the Phase 10 data_query thefts are now exact matches', () => {
     // data_query stole these via position ties, PT bank gaps, or wrapper
     // tokens. The Phase 10 anchored-domain-phrase override closed the class.

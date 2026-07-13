@@ -67,9 +67,9 @@ describe('PT corrections — collision protection', () => {
 
   it('late payments are NOT stolen by the overdue-repairs bank', () => {
     // Bare 'atrasados' was deliberately not added — the anchored phrase
-    // cannot match a payments ask. (Where these DO route is pre-existing
-    // behavior outside this round: 'pagamentos pendentes' goes to
-    // attention_feed via its bare 'pendentes' token — documented, untouched.)
+    // cannot match a payments ask. ('pagamentos pendentes' routed to
+    // attention_feed when this was written; R-INTEL-V2-PHASE11 corrected it
+    // to unpaid_balances — either way, never repairs_overdue.)
     expect(id('pagamentos atrasados')).not.toBe('repairs_overdue');
     expect(id('pagamentos pendentes')).not.toBe('repairs_overdue');
     expect(id('contas a receber')).toBe('unpaid_balances'); // AR intact

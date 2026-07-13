@@ -98,6 +98,9 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'quem me deve', lang: 'pt', expected: 'unpaid_balances' },
   { query: 'contas a receber', lang: 'pt', expected: 'unpaid_balances' },
   { query: 'contas em aberto', lang: 'pt', expected: 'unpaid_balances' },
+  // R-INTEL-V2-PHASE11: PT AR theft lock + an attention-feed collision guard.
+  { query: 'pagamentos pendentes', lang: 'pt', expected: 'unpaid_balances', note: "former attention_feed score theft (bare 'pendente'+'pendentes' double-hit) — closed by R-INTEL-V2-PHASE11" },
+  { query: 'pendentes', lang: 'pt', expected: 'attention_feed', note: 'collision guard: bare pending-work token must stay on the attention feed (Phase 11)' },
 
   // ── Customers ──
   { query: 'best customer', lang: 'en', expected: 'best_customer' },
