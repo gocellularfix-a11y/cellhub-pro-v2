@@ -112,13 +112,16 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'recover customer', lang: 'en', expected: 'recover_customer' },
   { query: 'recuperar cliente', lang: 'es', expected: 'recover_customer' },
   { query: 'trazer de volta', lang: 'pt', expected: 'recover_customer' },
-  { query: 'lost customers', lang: 'en', expected: 'customer_churn_root_cause' },
-  { query: 'why customers stopped coming', lang: 'en', expected: 'customer_churn_root_cause' },
+  { query: 'lost customers', lang: 'en', expected: 'customer_churn_root_cause', note: 'former recover_customer theft (singular-substring tie) — closed by R-INTEL-V2-PHASE12' },
+  { query: 'why customers stopped coming', lang: 'en', expected: 'customer_churn_root_cause', note: "former customer_history theft (bare 'customer' tie) — closed by R-INTEL-V2-PHASE12" },
   { query: 'dejaron de venir', lang: 'es', expected: 'customer_churn_root_cause' },
   { query: 'pararam de vir', lang: 'pt', expected: 'customer_churn_root_cause' },
   { query: 'customers to call', lang: 'en', expected: 'who_to_contact' },
   { query: 'clientes para llamar', lang: 'es', expected: 'who_to_contact' },
-  { query: 'contatar cliente', lang: 'pt', expected: 'who_to_contact' },
+  { query: 'contatar cliente', lang: 'pt', expected: 'who_to_contact', note: "former customer_history theft (bare 'cliente' tie) — closed by R-INTEL-V2-PHASE12" },
+  // R-INTEL-V2-PHASE12: churn/recovery distinction locks.
+  { query: 'clientes perdidos', lang: 'es', expected: 'customer_churn_root_cause', note: 'Phase 12 lock: plural diagnostic form (singular + action verbs stay on recover_customer)' },
+  { query: 'recuperar clientes perdidos', lang: 'es', expected: 'recover_customer', note: 'Phase 12 collision guard: explicit action verb keeps the recovery workflow' },
 
   // ── Repairs ──
   { query: 'repairs ready', lang: 'en', note: 'repairs_ready vs data_query — both banks carry the phrase; no locked routing test exists' },

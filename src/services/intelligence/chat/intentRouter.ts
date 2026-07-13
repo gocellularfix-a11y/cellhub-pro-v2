@@ -1294,6 +1294,15 @@ const CUSTOMER_CHURN_KEYWORDS = [
   'não voltam', 'pararam de vir',
 ];
 
+// R-INTEL-V2-PHASE12-CUSTOMER-RECOVERY-ROUTING: thieves + action signals for
+// the churn override in classifyIntent (see there for the evidence). Action
+// signals mirror the vocabulary registry's churn exclusions — an explicit
+// recovery verb keeps the query on the recovery workflow.
+const CUSTOMER_CHURN_THIEF_INTENTS: ReadonlyArray<IntentId> = ['recover_customer', 'customer_history'];
+const CUSTOMER_RECOVERY_ACTION_SIGNALS = [
+  'recover', 'recuperar', 'win back', 'bring back', 'trazer de volta', 're-engage', 'reconectar',
+];
+
 // R-INTEL-CELLHUB-DATA-ACCESS-LAYER: universal "show me data" intent.
 // Catches operational metrics queries that don't fit the other intents:
 // "how many", "show me", "qué reparaciones están listas", "phone payments
@@ -1732,6 +1741,16 @@ const OPERATIONAL_ALIASES: ReadonlyArray<{ phrase: string; intent: IntentId }> =
   { phrase: 'contact customer',    intent: 'who_to_contact' },
   { phrase: 'clientes para llamar', intent: 'who_to_contact' },
   { phrase: 'contactar cliente',   intent: 'who_to_contact' },
+  // R-INTEL-V2-PHASE12: the remaining explicit contact COMMANDS that already
+  // live in WHO_TO_CONTACT_KEYWORDS. Besides the debug log, the alias table
+  // now powers the customer_history→who_to_contact override in
+  // classifyIntent — deliberately ONLY explicit commands (never the bank's
+  // short fragments like 'a quien'/'clientes que').
+  { phrase: 'who to contact',      intent: 'who_to_contact' },
+  { phrase: 'who to call',         intent: 'who_to_contact' },
+  { phrase: 'clientes para contactar', intent: 'who_to_contact' },
+  { phrase: 'contatar cliente',    intent: 'who_to_contact' },
+  { phrase: 'clientes para chamar', intent: 'who_to_contact' },
   // appointments (data_query)
   { phrase: 'show appointments',   intent: 'data_query' },
   { phrase: "today's appointments", intent: 'data_query' },
@@ -2598,6 +2617,38 @@ export function classifyIntent(
     UNPAID_BALANCES_KEYWORDS.some(p => p.includes(' ') && query.includes(p))
   ) {
     winner.id = 'unpaid_balances';
+  }
+
+  // R-INTEL-V2-PHASE12-CUSTOMER-RECOVERY-ROUTING: the churn/outreach cluster.
+  // Two documented thieves (shadow corpus):
+  //   - 'lost customers' ties 1-1: RECOVER_CUSTOMER_KEYWORDS' singular 'lost
+  //     customer' is a substring of the plural, and recover_customer sits
+  //     earlier than customer_churn_root_cause.
+  //   - 'why customers stopped coming' / 'contatar cliente' tie 1-1 with
+  //     CUSTOMER_KEYWORDS' bare 'customer'/'cliente', and customer_history
+  //     sits earlier than churn/who_to_contact.
+  // Correction A — diagnostic churn asks win over the name-lookup and the
+  // recovery workflow, UNLESS an explicit recovery-action verb is present
+  // (mirrors the vocabulary registry's exclusions: "recuperar clientes
+  // perdidos" stays an action, not a diagnosis). CHURN bank is all anchored
+  // multi-word phrases.
+  if (
+    CUSTOMER_CHURN_THIEF_INTENTS.includes(winner.id) &&
+    CUSTOMER_CHURN_KEYWORDS.some(p => p.includes(' ') && query.includes(p)) &&
+    !CUSTOMER_RECOVERY_ACTION_SIGNALS.some(s => query.includes(s))
+  ) {
+    winner.id = 'customer_churn_root_cause';
+  }
+
+  // Correction B — explicit contact COMMANDS win over the generic customer
+  // name-lookup. Trigger = the who_to_contact entries of the existing
+  // OPERATIONAL_ALIASES registry (explicit commands only — never the
+  // WHO_TO_CONTACT bank's short fragments like 'a quien'/'clientes que').
+  if (
+    winner.id === 'customer_history' &&
+    OPERATIONAL_ALIASES.some(a => a.intent === 'who_to_contact' && query.includes(a.phrase))
+  ) {
+    winner.id = 'who_to_contact';
   }
 
   const confidence = Math.min(1, winner.score / 2);
