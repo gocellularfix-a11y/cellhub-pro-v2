@@ -3,7 +3,8 @@
 > Handoff doc for a new auditor. Goal: understand the Intelligence subsystem well
 > enough to design safe, surgical change prompts. Everything here is grounded in
 > the actual code under `src/services/intelligence/` and `src/modules/intelligence/`.
-> Last updated: 2026-06-02 (after R-INTELLIGENCE-OPERATOR-SESSIONS-V1).
+> Last updated: 2026-07-13 (after R-INTEL-V2 Phases 5–15 — see §14 for the
+> final V2 status, metrics, and the router-override architecture).
 
 ---
 
@@ -324,3 +325,75 @@ Auditor (ChatGPT) designs prompts; the reparador (Claude Code) executes one roun
 and PAUSES for explicit auditor approval between phases unless Jorge pre-approves a batch.
 Owner: Jorge Ochoa (Go Cellular, Santa Barbara CA). Communication: Mexican Spanish/Spanglish,
 no voseo.
+
+---
+
+## 14. R-INTEL-V2 FINAL STATUS (2026-07-13, Phases 5–15)
+
+### 14.1 What shipped (each phase = one commit on `main`)
+
+| Phase | Commit | What |
+|---|---|---|
+| 5 | `48fcefb` | AR follow-up cadence: `ar/arFollowUps.ts` (7-day stale-reminder detector, cap 5, attempt = count+1), "🔁 Follow up again" section, firmer 2nd+ reminder EN/ES/PT |
+| 6 | `067e530` | PT router coverage: `mais vendido`, `reparos atrasados` (plural only), `previsão (de vendas)`, bare `ajuda` (safe: help is LAST in the scores array) |
+| 7 | `d246396` | Forecast tie fixes: `FORECAST_THIEF_INTENTS` override (expected sales / pronóstico-proyección de ventas / ventas futuras) |
+| 8 | `73b9a33` | AR outcome visibility: `ar/arCollectionOutcomes.ts` (reminder snapshot vs current balance; decreased/unchanged/increased/resolved/missing/not_comparable), "📊 Collections progress" section. **Never causal wording — FORBIDDEN-regex locked in EN/ES/PT tests** |
+| 9 | `6048de1` | Trend tie fixes: `TREND_THIEF_INTENTS` override (sales/revenue trend, tendencia de ventas/ingresos) |
+| 10 | `8ece69d` | data_query theft fixes: anchored-multi-word-only chain override (inventory_low/dead → top_items → forecast → trend) + PT inventory bank gaps closed |
+| 11 | `213ff68` | PT AR routing: `pagamentos pendentes` → unpaid_balances (attention_feed's bare `pendente`+`pendentes` double-hit was a SCORE theft) |
+| 12 | `9cd5a71` | Churn/outreach consolidation: churn override with recovery-action exclusions (mirrors vocabulary design) + contact-command override via OPERATIONAL_ALIASES |
+| 13 | `a3148a1` | Today-sales consolidation: today_summary/sales_summary bare-token score thefts → today_sales for anchored sales-of-today asks |
+| 14 | `eefd8d3` | Natural-language coverage: 14 anchored trend variants + `sales forecast` + `inventario bajo`; vocabulary models today_summary/sales_summary |
+| 15 | `d44f221` | Bounded outcome learning: `outreach/outreachLearningInfluence.ts` → contact-today ranking (±15% hard cap, min 2 signal events, neutral fallback, explainable reason codes) |
+
+### 14.2 Router override architecture (the V2 pattern)
+
+`classifyIntent` still scores keyword banks and stable-sorts; V2 added a
+small set of **evidence-driven post-sort overrides**, each conditioned on an
+existing bank (single source of truth) and each locked by a dedicated test
+file: repairs-ready (P4), forecast (P7), trend (P9), data_query
+anchored-domain chain (P10), AR vs attention_feed (P11), churn + contact
+commands (P12), today-sales (P13). **Rules that made this safe:** triggers
+are anchored multi-word phrases only (bare tokens never trigger); each
+override names its thief intent(s) explicitly; every correction traces to a
+shadow-corpus row; zero regressions enforced by test.
+
+### 14.3 Measured status (methodology: shadow corpus, 115 curated queries)
+
+| Metric | Value | How measured |
+|---|---|---|
+| Language routing coverage (exact) | **107/115 = 93.0%** | shadow `exact_match` / corpus |
+| Safe routing (exact + safe abstention) | **110/115 = 95.7%** | + `router_safer` (router right, vocabulary abstains by design) |
+| Regressions | **0** | shadow `regression` group, test-enforced |
+| Genuinely ambiguous (by design) | 5 | lone weak tokens (`profit`, `margin`, `money`, `pendientes`) + `best customer to contact` |
+| Test suite | 81 files / 927 tests | `npx vitest run` |
+| Learning activation | 2 active loops | top-actions feedback modifiers (pre-V2) + outreach outcome learning (P15). Still dormant: shadow policy engine, approval learning |
+| Functional workflow completion | ~85% (estimate) | AR collections loop COMPLETE end-to-end; routing consolidated; open: Tier-3 proactive revalidation, roles enforcement (V2 F2–F4), PT sales_summary bank |
+| Production validation | Partial | tsc/build/tests green + EXE smoke-launch; live chat flows still need in-store manual QA (§11 checklist) |
+| **Overall maturity (honest)** | **~85%** | weighted: routing 93% · workflows 85% · learning ~40% · validation partial |
+
+### 14.4 Remaining known items (do NOT fix casually — each needs its own round)
+
+- PT `sales_summary`: the SALES bank has no PT tokens (`como estão as vendas`
+  → fallback). Vocabulary models it; production bank does not.
+- `'muéstrame inventario bajo'`-style dq phrases without domain-bank
+  counterparts: `'bajo inventario'`, `'productos bajos'` stay on data_query.
+- attention_feed's bare `pendente`+`pendentes` double-hit still inflates its
+  score for non-AR domains (P11 neutralized AR only).
+- Lone weak tokens intentionally route on score 1 (router) while the
+  vocabulary abstains — permanent, by design.
+- AR store API matches by `entityId` only (`getLastArReminder`); Phase 8+
+  code keys by `entityType:entityId`. Theoretical cross-domain id collision.
+- `arReminderStore` imports `generateId` from `@/utils/dates` (works;
+  unconventional path).
+
+### 14.5 The AR collections loop (flagship workflow — COMPLETE)
+
+```
+find (unpaid_balances) → remind (WhatsApp/Copy, EN/ES/PT) → track
+(arReminderStore) → detect stale (arFollowUps, 7d) → follow up (firmer
+2nd+ template) → collect (open_<entity> handoff — modules own the money)
+→ outcomes (arCollectionOutcomes — observed differences, NEVER causal)
+```
+Boundary unchanged: Intelligence proposes and navigates; deterministic
+modules own every payment, balance, and tax calculation.
