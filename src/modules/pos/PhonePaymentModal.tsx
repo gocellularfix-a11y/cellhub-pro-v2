@@ -43,6 +43,8 @@ import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/conf
 import { buildCustomerTimeline } from '@/services/intelligence/customerTimeline/customerTimelineEngine';
 import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
+// R-CUSTOMER-LINE-PAYMENTS-V1: per-line monthly amount resolution.
+import { getPaymentDollarsForPhone } from '@/services/customers/linePayments';
 
 // Shared sanitization for phoneNumber — used in onChange, validation,
 // and CartItem construction. Defense in depth: trust nothing that
@@ -347,9 +349,12 @@ export default function PhonePaymentModal({
       ? carriers[0]
       : (match as any).carrier || '';
     if (primaryCarrier) setCarrier(primaryCarrier);
-    // Typical monthly payment
-    const monthly = (match as any).monthlyPayment;
-    if (monthly) setAmount(String(monthly));
+    // Typical monthly payment — R-CUSTOMER-LINE-PAYMENTS-V1: per-LINE amount
+    // for the primary phone (legacy single-line records resolve via the
+    // helper's one-time fallback; an unassigned multi-line legacy amount is
+    // deliberately NOT prefer-filled — that inheritance was the reported bug).
+    const monthly = getPaymentDollarsForPhone(match, primaryPhone);
+    if (monthly) setAmount(monthly);
     // Ensure payment tab is active (not activation)
     setModalTab('payment');
     // Clear the pending so it doesn't re-trigger
@@ -521,8 +526,9 @@ export default function PhonePaymentModal({
     setPhoneNumber(cleanPhone);
     const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
     if (primaryCarrier) setCarrier(primaryCarrier);
-    const mp = (c as any).monthlyPayment;
-    if (mp) setAmount(String(mp));
+    // R-CUSTOMER-LINE-PAYMENTS-V1: the amount of the SPECIFIC chosen line.
+    const mp = getPaymentDollarsForPhone(c, cleanPhone);
+    if (mp) setAmount(mp);
     setSelectedKnownLines({});
     setPaidKnownLines({});
     // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the Operator bubble.
@@ -613,8 +619,9 @@ export default function PhonePaymentModal({
         freshCarrier = (c.carriers?.[0] || c.carrier || '').trim();
       }
       if (!freshAmount) {
-        const mp = (customer as any).monthlyPayment;
-        if (mp) freshAmount = String(mp);
+        // R-CUSTOMER-LINE-PAYMENTS-V1: the typed number's OWN line amount.
+        const mp = getPaymentDollarsForPhone(customer, norm);
+        if (mp) freshAmount = mp;
       }
 
       // R-PHONE-PAYMENTS-KNOWN-LINES-AUTOFILL-FIX: load full customer
@@ -706,8 +713,8 @@ export default function PhonePaymentModal({
   const addCustomerLineToMulti = (c: Customer, chosenPhone: string) => {
     const cleanPhone = sanitizePhone(chosenPhone || c.phone || '');
     const primaryCarrier = (c as any).carriers?.[0] || (c as any).carrier || '';
-    const monthly = (c as any).monthlyPayment;
-    const amt = monthly ? String(monthly) : '';
+    // R-CUSTOMER-LINE-PAYMENTS-V1: the chosen line's own amount.
+    const amt = getPaymentDollarsForPhone(c, cleanPhone);
 
     if (!selectedCustomer) {
       setSelectedCustomer(c);

@@ -17,6 +17,8 @@
 
 import type { Customer, Sale, Repair, Layaway, Unlock } from '@/store/types';
 import type { CustomerBusinessProfile } from '../intelligence/customerScoring/customerScoringTypes';
+// R-CUSTOMER-LINE-PAYMENTS-V1: per-line-aware monthly total (legacy fallback once).
+import { getMonthlyTotalCents } from '../customers/linePayments';
 
 export type SnapshotTone = 'neutral' | 'good' | 'warn' | 'bad';
 
@@ -200,9 +202,11 @@ export function composeCustomerSnapshot(args: ComposeSnapshotArgs): CustomerSnap
     rows.set('carrier', { id: 'carrier', labelKey: 'operator.snapshot.carrier', value: carrier, tone: 'neutral' });
   }
 
-  const bill = parseFloat(customer.monthlyPayment || '');
-  if (Number.isFinite(bill) && bill > 0) {
-    rows.set('bill', { id: 'bill', labelKey: 'operator.snapshot.bill', value: `$${Math.round(bill)}`, tone: 'neutral' });
+  // R-CUSTOMER-LINE-PAYMENTS-V1: exact sum of per-line amounts; legacy
+  // customer-level value counted once as fallback — never both.
+  const billCents = getMonthlyTotalCents(customer);
+  if (billCents != null && billCents > 0) {
+    rows.set('bill', { id: 'bill', labelKey: 'operator.snapshot.bill', value: `$${Math.round(billCents / 100)}`, tone: 'neutral' });
   }
 
   if (lifetimeCents > 0) {

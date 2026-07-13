@@ -518,7 +518,16 @@ export interface Customer {
   carrier?: string;        // primary carrier (mirrors carriers[0])
   carrier2?: string;       // legacy secondary carrier (mirrors carriers[1])
   plan?: string;           // plan name (e.g. "Unlimited Elite")
-  monthlyPayment?: string; // stored as string for form editing; parseFloat on use
+  monthlyPayment?: string; // LEGACY customer-level amount (string dollars).
+                           // R-CUSTOMER-LINE-PAYMENTS-V1: kept as a one-time
+                           // compatibility fallback (see services/customers/
+                           // linePayments.ts) until the record is edited.
+                           // New/edited records store per-line amounts below.
+  // R-CUSTOMER-LINE-PAYMENTS-V1: per-phone monthly payment, parallel array to
+  // phones[] (same convention as carriers[]). INTEGER CENTS; null/undefined =
+  // no amount for that line. Never derived by copying the legacy value across
+  // lines — a legacy amount belongs to at most ONE line (single-line records).
+  monthlyPaymentsCents?: (number | null)[];
 
   // ── Visual / credential ──
   photo?: string;          // base64 data URL, used for printed credential
