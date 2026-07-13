@@ -6,9 +6,10 @@
 // are still excluded. Also confirms unpaid_balances still routes correctly.
 // ============================================================
 
-import { describe, it, expect } from 'vitest';
-import { handleUnpaidBalances } from './unpaidBalances';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { handleUnpaidBalances, buildReminderMessage } from './unpaidBalances';
 import { classifyIntent } from './intentRouter';
+import { recordArReminder } from '../ar/arReminderStore';
 import type { IntelligenceEngine } from '../IntelligenceEngine';
 import type { Customer } from '@/store/types';
 
@@ -157,5 +158,146 @@ describe('unpaid_balances routing still resolves', () => {
     expect(classifyIntent('who owes me money', NO_CUSTOMERS, 'en').id).toBe('unpaid_balances');
     expect(classifyIntent('saldos pendientes', NO_CUSTOMERS, 'es').id).toBe('unpaid_balances');
     expect(classifyIntent('contas a receber', NO_CUSTOMERS, 'pt').id).toBe('unpaid_balances');
+  });
+});
+
+// ============================================================
+// R-INTEL-V2-PHASE5 — attempt-aware reminder tone + follow-up section.
+// ============================================================
+
+// Structural stub matching the internal UnpaidRecord shape.
+const recStub = () => ({
+  id: 'r1',
+  entityType: 'repair' as const,
+  customerName: 'Ana Lopez',
+  sourceLabelKey: 'chat.unpaidBalances.source.repair',
+  balanceCents: 18000,
+  lastActivityAt: null,
+  openTarget: 'open_repair' as const,
+});
+
+describe('buildReminderMessage — attempt tones (Phase 5)', () => {
+  it('attempt 1 (default) keeps the Phase 1 friendly text byte-identical', () => {
+    const implicit = buildReminderMessage(recStub() as any, 'en');
+    const explicit = buildReminderMessage(recStub() as any, 'en', 1);
+    expect(implicit).toBe(explicit);
+    expect(implicit).toContain('friendly reminder');
+    expect(implicit).toContain('$180.00');
+  });
+
+  it('attempt 2 uses the firmer follow-up template (EN/ES/PT) with cents formatting', () => {
+    const en = buildReminderMessage(recStub() as any, 'en', 2);
+    expect(en).toContain('follow-up regarding');
+    expect(en).toContain('$180.00');
+    expect(en).toContain('repair');
+    expect(en).not.toContain('friendly reminder');
+    // Professional, not aggressive: no invented deadlines/fees/threats.
+    expect(en).not.toMatch(/deadline|late fee|legal|collection agency/i);
+
+    const es = buildReminderMessage(recStub() as any, 'es', 2);
+    expect(es).toContain('seguimiento sobre el saldo pendiente');
+    expect(es).toContain('$180.00');
+    expect(es).toContain('reparación');
+
+    const pt = buildReminderMessage(recStub() as any, 'pt', 2);
+    expect(pt).toContain('acompanhamento sobre o saldo pendente');
+    expect(pt).toContain('$180.00');
+    expect(pt).toContain('reparo');
+  });
+
+  it('attempts beyond 2 keep using the firmer template deterministically', () => {
+    expect(buildReminderMessage(recStub() as any, 'en', 3)).toBe(buildReminderMessage(recStub() as any, 'en', 2));
+  });
+
+  it('firmer template output stays BMP-safe (survives shell.openExternal)', () => {
+    for (const lang of ['en', 'es', 'pt'] as const) {
+      const msg = buildReminderMessage(recStub() as any, lang, 2);
+      expect([...msg].every((c) => (c.codePointAt(0) ?? 0) <= 0xffff), lang).toBe(true);
+    }
+  });
+});
+
+describe('handleUnpaidBalances — follow-up section (Phase 5)', () => {
+  const DAY_MS = 86_400_000;
+
+  class MockLocalStorage {
+    private store = new Map<string, string>();
+    getItem(k: string): string | null { return this.store.has(k) ? (this.store.get(k) as string) : null; }
+    setItem(k: string, v: string): void { this.store.set(k, String(v)); }
+    removeItem(k: string): void { this.store.delete(k); }
+    clear(): void { this.store.clear(); }
+    key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
+    get length(): number { return this.store.size; }
+  }
+
+  beforeEach(() => {
+    (globalThis as any).localStorage = new MockLocalStorage();
+  });
+  afterAll(() => {
+    delete (globalThis as any).localStorage;
+  });
+
+  const seedReminder = (ageDays: number, balanceCents: number) =>
+    recordArReminder({
+      type: 'ar_reminder_whatsapp_opened', channel: 'whatsapp',
+      customerName: 'Ana Lopez', phone: '8050001111',
+      entityType: 'repair', entityId: 'r1', balanceCents,
+      language: 'en', messagePreview: 'preview',
+      timestamp: Date.now() - ageDays * DAY_MS,
+      source: 'unpaid_balances',
+    });
+
+  it('renders the follow-up section when a stale (8-day) reminder exists', () => {
+    seedReminder(8, 4500);
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).toContain('🔁 Follow up again');
+    expect(res.text).toContain('reminded 8 days ago');
+    expect(res.text).toContain('Ana Lopez — Repair: $45.00');
+    // The stale row's reminder actions switch to the firmer attempt-2 tone.
+    const wa = (res.actions ?? []).find((a) => (a.payload as any).executionTarget === 'whatsapp_url');
+    expect((wa!.payload as any).customMessage).toContain('follow-up regarding');
+    // Same execution targets and ids as before — no new write path, no new targets.
+    const targets = (res.actions ?? []).map((a) => (a.payload as any).executionTarget);
+    expect(new Set(targets)).toEqual(new Set(['open_repair', 'whatsapp_url', 'copy_to_clipboard']));
+    expect((res.actions ?? []).map((a) => a.id)).toEqual([
+      'unpaid-repair-r1-collect', 'unpaid-repair-r1-wa', 'unpaid-repair-r1-copy',
+    ]);
+  });
+
+  it('adds the partial note when the reminder snapshot is higher than the current balance', () => {
+    seedReminder(9, 9000); // snapshot $90.00 > current $45.00
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).toContain('balance decreased since last reminder');
+  });
+
+  it('does NOT render the section for a fresh (2-day) reminder', () => {
+    seedReminder(2, 4500);
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).not.toContain('Follow up again');
+    // The light last-reminder note still shows, and the tone stays friendly.
+    expect(res.text).toContain('Last reminder: 2 days ago');
+    const wa = (res.actions ?? []).find((a) => (a.payload as any).executionTarget === 'whatsapp_url');
+    expect((wa!.payload as any).customMessage).toContain('friendly reminder');
+  });
+
+  it('output is unchanged when the reminder store is empty', () => {
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).not.toContain('Follow up again');
+    expect(res.text).not.toContain('reminded');
+    const wa = (res.actions ?? []).find((a) => (a.payload as any).executionTarget === 'whatsapp_url');
+    expect((wa!.payload as any).customMessage).toContain('friendly reminder');
+    expect((res.actions ?? []).map((a) => a.id)).toEqual([
+      'unpaid-repair-r1-collect', 'unpaid-repair-r1-wa', 'unpaid-repair-r1-copy',
+    ]);
+  });
+
+  it('renders in Spanish and Portuguese', () => {
+    seedReminder(10, 4500);
+    const es = handleUnpaidBalances(oneRepair(), 'es');
+    expect(es.text).toContain('🔁 Vuelve a dar seguimiento');
+    expect(es.text).toContain('recordado hace 10 días');
+    const pt = handleUnpaidBalances(oneRepair(), 'pt');
+    expect(pt.text).toContain('🔁 Acompanhe novamente');
+    expect(pt.text).toContain('lembrete há 10 dias');
   });
 });

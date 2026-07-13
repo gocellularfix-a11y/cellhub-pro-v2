@@ -3740,6 +3740,22 @@ export const translations: TranslationDictionary = {
     es: (n: number) => `🔔 Último recordatorio: hace ${n} ${n === 1 ? 'día' : 'días'}`,
     pt: (n: number) => `🔔 Último lembrete: há ${n} ${n === 1 ? 'dia' : 'dias'}`,
   },
+  // R-INTEL-V2-PHASE5: stale-reminder follow-up section.
+  'chat.unpaidBalances.followUp.header': {
+    en: '🔁 Follow up again',
+    es: '🔁 Vuelve a dar seguimiento',
+    pt: '🔁 Acompanhe novamente',
+  },
+  'chat.unpaidBalances.followUp.reminded': {
+    en: (n: number) => `reminded ${n} ${n === 1 ? 'day' : 'days'} ago`,
+    es: (n: number) => `recordado hace ${n} ${n === 1 ? 'día' : 'días'}`,
+    pt: (n: number) => `lembrete há ${n} ${n === 1 ? 'dia' : 'dias'}`,
+  },
+  'chat.unpaidBalances.followUp.partialNote': {
+    en: 'balance decreased since last reminder',
+    es: 'el saldo bajó desde el último recordatorio',
+    pt: 'o saldo diminuiu desde o último lembrete',
+  },
   'chat.unpaidBalances.source.repair':       { en: 'Repair',        es: 'Reparación',   pt: 'Reparo' },
   'chat.unpaidBalances.source.layaway':      { en: 'Layaway',       es: 'Apartado',     pt: 'Layaway' },
   'chat.unpaidBalances.source.specialOrder': { en: 'Special order', es: 'Pedido especial', pt: 'Pedido especial' },

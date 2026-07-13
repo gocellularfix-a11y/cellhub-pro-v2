@@ -25,17 +25,17 @@ import { tChat, COP, type Lang3, type ChatResponse, type ChatActionUI } from './
 // Finder's outreach builder).
 import { sanitizeToBMP } from '@/services/whatsapp';
 // R-INTEL-V2-PHASE1B: read-only lookup for the light "last reminder" note.
-import { getLastArReminder } from '../ar/arReminderStore';
+import { getArReminders, getLastArReminder } from '../ar/arReminderStore';
+// R-INTEL-V2-PHASE5: stale-reminder follow-up detection + the shared AR
+// collectibility rule (moved to ar/arFollowUps.ts — single source of truth;
+// behavior unchanged).
+import { computeArFollowUps, isCollectible } from '../ar/arFollowUps';
+import type { ArFollowUpCandidate } from '../ar/arFollowUps';
 
 // ── Config ────────────────────────────────────────────────
 
 const MAX_RESULTS = 8;       // operational list stays scannable (spec: 5–10)
 const MAX_ACTIONS = 10;      // mirror the who-needs-attention action cap
-
-// Statuses that mean the balance is no longer collectible (do not show).
-const TERMINAL_STATUSES = new Set([
-  'cancelled', 'canceled', 'refunded', 'forfeited', 'voided',
-]);
 
 type UnpaidEntityType = 'repair' | 'layaway' | 'special_order' | 'unlock';
 
@@ -55,6 +55,8 @@ interface UnpaidRecord {
 
 // ── Helpers (mirror whoNeedsAttentionToday for consistency) ──
 
+// statusKey / isCollectible now live in ../ar/arFollowUps (R-INTEL-V2-PHASE5).
+
 function tsOf(d: unknown): number | null {
   if (!d) return null;
   if (typeof d === 'string') { const n = new Date(d).getTime(); return Number.isFinite(n) ? n : null; }
@@ -65,15 +67,6 @@ function tsOf(d: unknown): number | null {
     if (typeof obj.seconds === 'number') return obj.seconds * 1000;
   }
   return null;
-}
-
-function statusKey(s: unknown): string {
-  return String(s || '').toLowerCase().replace(/\s+/g, '_');
-}
-
-function isCollectible(status: unknown, balanceCents: number): boolean {
-  if (!Number.isFinite(balanceCents) || balanceCents <= 0) return false;
-  return !TERMINAL_STATUSES.has(statusKey(status));
 }
 
 // ── Collectors ────────────────────────────────────────────
@@ -168,7 +161,7 @@ const REMINDER_SOURCE_NOUN: Record<UnpaidEntityType, Record<Lang3, string>> = {
   unlock:        { en: 'unlock',        es: 'desbloqueo',      pt: 'desbloqueio' },
 };
 
-// Single friendly tone (Phase 1). Spanish uses tuteo (no voseo).
+// First-reminder friendly tone (Phase 1). Spanish uses tuteo (no voseo).
 const REMINDER_TEMPLATE: Record<Lang3, (name: string, amount: string, source: string) => string> = {
   en: (name, amount, source) =>
     `${name ? `Hi ${name}!` : 'Hi!'}\n\n` +
@@ -187,13 +180,38 @@ const REMINDER_TEMPLATE: Record<Lang3, (name: string, amount: string, source: st
     `Obrigado!`,
 };
 
+// R-INTEL-V2-PHASE5: firmer (but professional) follow-up tone for the 2nd+
+// reminder. No threats, no invented deadlines/fees, no legal language — it
+// states the balance and asks the customer to pay or contact the store.
+// Spanish uses tuteo (no voseo). Deterministic, same shape as Phase 1.
+const FOLLOWUP_REMINDER_TEMPLATE: Record<Lang3, (name: string, amount: string, source: string) => string> = {
+  en: (name, amount, source) =>
+    `${name ? `Hi ${name},` : 'Hello,'}\n\n` +
+    `This is a follow-up regarding the remaining balance of ${amount} on your ${source}. ` +
+    `Please stop by to make the payment, or contact the store so we can help you complete it.\n\n` +
+    `Thank you!`,
+  es: (name, amount, source) =>
+    `${name ? `Hola ${name},` : 'Hola,'}\n\n` +
+    `Este es un seguimiento sobre el saldo pendiente de ${amount} en tu ${source}. ` +
+    `Por favor pasa a realizar el pago, o comunícate con la tienda para ayudarte a completarlo.\n\n` +
+    `¡Gracias!`,
+  pt: (name, amount, source) =>
+    `${name ? `Olá ${name},` : 'Olá,'}\n\n` +
+    `Este é um acompanhamento sobre o saldo pendente de ${amount} no seu ${source}. ` +
+    `Por favor, passe aqui para efetuar o pagamento, ou entre em contato com a loja para ajudá-lo a concluir.\n\n` +
+    `Obrigado!`,
+};
+
 /**
  * Build a ready-to-edit reminder message for one unpaid record. Pure and
  * deterministic. The greeting uses the first name token; a device/id fallback
  * "name" (no real name on the record) degrades to a generic greeting rather
  * than addressing the customer by an id fragment.
+ *
+ * R-INTEL-V2-PHASE5: `attempt` selects the tone — 1 (default) keeps the Phase 1
+ * friendly text byte-identical; >= 2 uses the firmer follow-up template.
  */
-export function buildReminderMessage(rec: UnpaidRecord, lang: Lang3): string {
+export function buildReminderMessage(rec: UnpaidRecord, lang: Lang3, attempt: number = 1): string {
   const l: Lang3 = lang === 'es' || lang === 'pt' ? lang : 'en';
   const firstToken = String(rec.customerName || '').trim().split(/\s+/)[0] || '';
   // Suppress an id-fragment fallback (e.g. the last-6 of an entity id) so the
@@ -201,15 +219,19 @@ export function buildReminderMessage(rec: UnpaidRecord, lang: Lang3): string {
   const name = firstToken && !/^[0-9a-f]{6}$/i.test(firstToken) ? firstToken : '';
   const amount = COP(rec.balanceCents);                    // integer cents → "$45.00"
   const source = REMINDER_SOURCE_NOUN[rec.entityType][l];
-  return sanitizeToBMP(REMINDER_TEMPLATE[l](name, amount, source)).trim();
+  const template = attempt >= 2 ? FOLLOWUP_REMINDER_TEMPLATE[l] : REMINDER_TEMPLATE[l];
+  return sanitizeToBMP(template(name, amount, source)).trim();
 }
 
 // ── Action builder ────────────────────────────────────────
 
-function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3): ChatActionUI[] {
+// R-INTEL-V2-PHASE5: `attempt` (default 1 — existing behavior byte-identical)
+// selects the reminder tone for the wa/copy actions. Ids, labels, execution
+// targets, and tracking metadata are unchanged regardless of attempt.
+function actionsFor(rec: UnpaidRecord, t: ReturnType<typeof tChat>, lang: Lang3, attempt: number = 1): ChatActionUI[] {
   const acts: ChatActionUI[] = [];
   const base = `unpaid-${rec.entityType}-${rec.id}`;
-  const reminder = buildReminderMessage(rec, lang);
+  const reminder = buildReminderMessage(rec, lang, attempt);
   // R-INTEL-V2-PHASE1B: tracking metadata carried on the reminder actions so
   // the click handlers can record an ArReminderEvent. balanceCents is the amount
   // owed at reminder time (integer cents), read as-is. No invented fields.
@@ -305,6 +327,19 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
   const totalCents = records.reduce((s, r) => s + r.balanceCents, 0);
   const shown = records.slice(0, MAX_RESULTS);
 
+  // R-INTEL-V2-PHASE5: stale-reminder follow-up candidates — reminded
+  // >= FOLLOW_UP_DAYS ago and still collectible. Read-only over the same
+  // filtered records + the existing reminder events (one store read).
+  // attemptFor keys by record reference so the wa/copy actions for a
+  // candidate use the firmer follow-up tone; every other record keeps the
+  // Phase 1 friendly text (attempt 1) byte-identical.
+  const nowMs = Date.now();
+  const followUps: ArFollowUpCandidate<UnpaidRecord>[] =
+    computeArFollowUps(records, getArReminders(undefined, nowMs), nowMs);
+  const attemptFor = new Map<UnpaidRecord, number>(
+    followUps.map((f) => [f.record, f.attemptNumber]),
+  );
+
   const lines: string[] = [
     t('chat.unpaidBalances.header'),
     '',
@@ -319,20 +354,48 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
     // R-INTEL-V2-PHASE1B: light "last reminder" note when one was already sent
     // for this entity. Read-only lookup (safe no-op when storage is empty);
     // never changes sorting or the row's balance.
-    const last = getLastArReminder(r.id);
+    const last = getLastArReminder(r.id, nowMs);
     if (last) {
-      const days = Math.floor((Date.now() - last.timestamp) / 86_400_000);
+      const days = Math.floor((nowMs - last.timestamp) / 86_400_000);
       lines.push(
         `   ${days <= 0 ? t('chat.unpaidBalances.lastReminder.today') : t('chat.unpaidBalances.lastReminder.days', days)}`,
       );
     }
   }
+
+  // R-INTEL-V2-PHASE5: "Follow up again" section — rendered only when stale
+  // reminders exist, so the default output stays byte-identical. Each row is
+  // one of the same real, collectible records shown/aggregated above.
+  if (followUps.length > 0) {
+    lines.push('');
+    lines.push(t('chat.unpaidBalances.followUp.header'));
+    for (let i = 0; i < followUps.length; i++) {
+      const f = followUps[i];
+      const r = f.record;
+      const partial = f.balanceDecreased ? ` · ${t('chat.unpaidBalances.followUp.partialNote')}` : '';
+      lines.push(
+        `${i + 1}. ${r.customerName} — ${t(r.sourceLabelKey)}: ${COP(r.balanceCents)} · ${t('chat.unpaidBalances.followUp.reminded', f.daysSinceReminder)}${partial}`,
+      );
+    }
+  }
+
   lines.push('');
   lines.push(`💡 ${t('chat.unpaidBalances.nextAction')}`);
 
   const rawActions: ChatActionUI[] = [];
   for (const r of shown) {
-    for (const a of actionsFor(r, t, lang)) rawActions.push(a);
+    for (const a of actionsFor(r, t, lang, attemptFor.get(r) ?? 1)) rawActions.push(a);
+  }
+
+  // R-INTEL-V2-PHASE5: follow-up candidates outside the shown top-N still
+  // need their Collect / WhatsApp / Copy buttons (same existing targets, no
+  // new write path). Candidates already shown keep their single (attempt-
+  // aware) button set above — no duplicates.
+  const shownSet = new Set<UnpaidRecord>(shown);
+  const followUpExtraActions: ChatActionUI[] = [];
+  for (const f of followUps) {
+    if (shownSet.has(f.record)) continue;
+    for (const a of actionsFor(f.record, t, lang, f.attemptNumber)) followUpExtraActions.push(a);
   }
 
   // Continuity: anchor on the top (highest-balance) record's customer so
@@ -343,10 +406,15 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
   const ctxType: 'customer' | 'repair' = top.entityType === 'repair' ? 'repair' : 'customer';
   const ctxValue = top.entityType === 'repair' ? top.id : (top.customerId || '');
 
+  // Main-list actions keep the existing MAX_ACTIONS cap; follow-up extras
+  // (at most FOLLOW_UP_MAX rows × 3) are appended after it so stale rows
+  // beyond the top-N are never starved out of their buttons.
+  const allActions = [...rawActions.slice(0, MAX_ACTIONS), ...followUpExtraActions];
+
   return {
     kind: 'answer',
     text: lines.join('\n'),
-    ...(rawActions.length > 0 ? { actions: rawActions.slice(0, MAX_ACTIONS) } : {}),
+    ...(allActions.length > 0 ? { actions: allActions } : {}),
     ...(ctxValue ? { establishesContext: { type: ctxType, value: ctxValue } } : {}),
   };
 }
