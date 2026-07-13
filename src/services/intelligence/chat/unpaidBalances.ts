@@ -31,6 +31,14 @@ import { getArReminders, getLastArReminder } from '../ar/arReminderStore';
 // behavior unchanged).
 import { computeArFollowUps, isCollectible } from '../ar/arFollowUps';
 import type { ArFollowUpCandidate } from '../ar/arFollowUps';
+// R-INTEL-V2-PHASE8: deterministic reminder-snapshot vs current-balance
+// comparison. Display-only observed differences — never payment attribution.
+import {
+  computeArCollectionOutcomes,
+  selectArOutcomeDetailRows,
+} from '../ar/arCollectionOutcomes';
+import type { ArOutcomeEntitySnapshot } from '../ar/arCollectionOutcomes';
+import type { ArReminderEntityType } from '../ar/arReminderStore';
 
 // ── Config ────────────────────────────────────────────────
 
@@ -143,6 +151,82 @@ function collect(engine: IntelligenceEngine): UnpaidRecord[] {
   }
 
   return out;
+}
+
+// R-INTEL-V2-PHASE8: raw current-truth snapshots for the outcome comparison.
+// Unlike collect(), this includes NON-collectible entities too (zero-balance,
+// terminal) because the outcome classifier needs them to tell "resolved"
+// apart from "cancelled/voided" — it excludes terminal states itself and
+// never counts them as collected. Balances read as-is, integer cents.
+function collectOutcomeSnapshots(engine: IntelligenceEngine): ArOutcomeEntitySnapshot[] {
+  const out: ArOutcomeEntitySnapshot[] = [];
+  for (const r of engine.getRepairs() || []) {
+    out.push({ entityType: 'repair', id: r.id, balanceCents: r.balance || 0, status: r.status, customerName: r.customerName });
+  }
+  for (const l of engine.getLayaways() || []) {
+    out.push({ entityType: 'layaway', id: l.id, balanceCents: l.balance || 0, status: l.status, customerName: l.customerName });
+  }
+  for (const o of engine.getSpecialOrders() || []) {
+    out.push({ entityType: 'special_order', id: o.id, balanceCents: o.balance || 0, status: o.status, customerName: o.customerName });
+  }
+  for (const u of engine.getUnlocks() || []) {
+    out.push({ entityType: 'unlock', id: u.id, balanceCents: u.balance || 0, status: u.status, customerName: u.customerName });
+  }
+  return out;
+}
+
+// entityType → the existing source-label i18n key (reused by outcome rows).
+const OUTCOME_SOURCE_KEY: Record<ArReminderEntityType, string> = {
+  repair: 'chat.unpaidBalances.source.repair',
+  layaway: 'chat.unpaidBalances.source.layaway',
+  special_order: 'chat.unpaidBalances.source.specialOrder',
+  unlock: 'chat.unpaidBalances.source.unlock',
+};
+
+// R-INTEL-V2-PHASE8: render the "Collections progress" section. Returns []
+// when there is no COMPARABLE outcome (missing/terminal-only history shows
+// nothing — no misleading zeros). Wording contract: observed differences
+// only — never "recovered", never "collected because", never a rate.
+// Shared by the normal list and the all-paid empty state.
+function buildOutcomeLines(
+  summary: ReturnType<typeof computeArCollectionOutcomes>,
+  followUpCount: number,
+  t: ReturnType<typeof tChat>,
+): string[] {
+  if (summary.comparableCount === 0) return [];
+  const lines: string[] = ['', t('chat.unpaidBalances.outcomes.header')];
+  if (summary.decreasedCount > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.decreased', summary.decreasedCount)}`);
+  }
+  if (summary.resolvedCount > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.resolved', summary.resolvedCount)}`);
+  }
+  if (summary.totalObservedDecreaseCents > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.reduction', COP(summary.totalObservedDecreaseCents))}`);
+  }
+  if (summary.unchangedCount > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.unchanged', summary.unchangedCount)}`);
+  }
+  if (summary.increasedCount > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.increased', summary.increasedCount)}`);
+  }
+  if (followUpCount > 0) {
+    lines.push(`• ${t('chat.unpaidBalances.outcomes.needFollowUp', followUpCount)}`);
+  }
+  // Movement detail rows (decreased/resolved only), module-capped. Reuses
+  // the existing source labels; balances shown are the stored snapshot →
+  // stored current, formatted from integer cents.
+  for (const d of selectArOutcomeDetailRows(summary)) {
+    const name = d.customerName || '—';
+    const src = t(OUTCOME_SOURCE_KEY[d.entityType]);
+    const before = COP(d.snapshotCents);
+    if (d.status === 'resolved') {
+      lines.push(`   • ${name} — ${src} — ${before} → ${COP(0)} · ${t('chat.unpaidBalances.outcomes.rowResolved')}`);
+    } else {
+      lines.push(`   • ${name} — ${src} — ${before} → ${COP(d.currentBalanceCents ?? 0)} · ${t('chat.unpaidBalances.outcomes.rowDecreased', COP(d.observedDecreaseCents))}`);
+    }
+  }
+  return lines;
 }
 
 // ── Reminder message builder ──────────────────────────────
@@ -309,9 +393,20 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
   });
 
   if (records.length === 0) {
+    // R-INTEL-V2-PHASE8: even with nothing left to collect, reminder history
+    // may show observed movement (e.g. a reminded balance is now zero) —
+    // the best-news case. Same pure comparison; text-only, no actions.
+    const emptyNow = Date.now();
+    const emptyOutcomes = computeArCollectionOutcomes(
+      collectOutcomeSnapshots(engine), getArReminders(undefined, emptyNow), emptyNow,
+    );
+    const outcomeLines = buildOutcomeLines(emptyOutcomes, 0, t);
+    // outcomeLines starts with a '' spacer — prefix one more newline so the
+    // section sits after a blank line, matching the main list's spacing.
+    const outcomeText = outcomeLines.length > 0 ? `\n${outcomeLines.join('\n')}` : '';
     return {
       kind: 'answer',
-      text: `${t('chat.unpaidBalances.header')}\n\n${t('chat.unpaidBalances.empty')}`,
+      text: `${t('chat.unpaidBalances.header')}\n\n${t('chat.unpaidBalances.empty')}${outcomeText}`,
     };
   }
 
@@ -334,10 +429,20 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
   // candidate use the firmer follow-up tone; every other record keeps the
   // Phase 1 friendly text (attempt 1) byte-identical.
   const nowMs = Date.now();
+  // One store read shared by the Phase 5 cadence and the Phase 8 outcome
+  // comparison (getArReminders already applies the retention window).
+  const arEvents = getArReminders(undefined, nowMs);
   const followUps: ArFollowUpCandidate<UnpaidRecord>[] =
-    computeArFollowUps(records, getArReminders(undefined, nowMs), nowMs);
+    computeArFollowUps(records, arEvents, nowMs);
   const attemptFor = new Map<UnpaidRecord, number>(
     followUps.map((f) => [f.record, f.attemptNumber]),
+  );
+  // R-INTEL-V2-PHASE8: reminder-snapshot vs current-balance outcomes.
+  // Pure comparison over raw current truth (incl. zero-balance/terminal
+  // entities). Never touches the debt totals above — those stay sourced
+  // from the collectible records only.
+  const outcomeSummary = computeArCollectionOutcomes(
+    collectOutcomeSnapshots(engine), arEvents, nowMs,
   );
 
   const lines: string[] = [
@@ -362,6 +467,10 @@ export function handleUnpaidBalances(engine: IntelligenceEngine, lang: Lang3): C
       );
     }
   }
+
+  // R-INTEL-V2-PHASE8: "Collections progress" section (see buildOutcomeLines
+  // for the wording/visibility contract).
+  for (const l of buildOutcomeLines(outcomeSummary, followUps.length, t)) lines.push(l);
 
   // R-INTEL-V2-PHASE5: "Follow up again" section — rendered only when stale
   // reminders exist, so the default output stays byte-identical. Each row is

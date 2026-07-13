@@ -3756,6 +3756,54 @@ export const translations: TranslationDictionary = {
     es: 'el saldo bajó desde el último recordatorio',
     pt: 'o saldo diminuiu desde o último lembrete',
   },
+  // R-INTEL-V2-PHASE8: collections outcome visibility. Wording contract:
+  // observed balance differences only — never causal/attribution language
+  // (no "recovered", "recuperado", "cobramos gracias", conversion rates).
+  'chat.unpaidBalances.outcomes.header': {
+    en: '📊 Collections progress since reminders',
+    es: '📊 Avance de cobranza desde los recordatorios',
+    pt: '📊 Progresso de cobrança desde os lembretes',
+  },
+  'chat.unpaidBalances.outcomes.decreased': {
+    en: (n: number) => `${n} ${n === 1 ? 'balance' : 'balances'} decreased`,
+    es: (n: number) => `${n} ${n === 1 ? 'saldo bajó' : 'saldos bajaron'}`,
+    pt: (n: number) => `${n} ${n === 1 ? 'saldo diminuiu' : 'saldos diminuíram'}`,
+  },
+  'chat.unpaidBalances.outcomes.resolved': {
+    en: (n: number) => `${n} ${n === 1 ? 'balance is' : 'balances are'} now zero`,
+    es: (n: number) => `${n} ${n === 1 ? 'saldo quedó' : 'saldos quedaron'} en cero`,
+    pt: (n: number) => `${n} ${n === 1 ? 'saldo está' : 'saldos estão'} agora em zero`,
+  },
+  'chat.unpaidBalances.outcomes.reduction': {
+    en: (amount: string) => `Observed balance reduction: ${amount}`,
+    es: (amount: string) => `Reducción observada de saldo: ${amount}`,
+    pt: (amount: string) => `Redução observada do saldo: ${amount}`,
+  },
+  'chat.unpaidBalances.outcomes.unchanged': {
+    en: (n: number) => `${n} ${n === 1 ? 'balance is' : 'balances are'} unchanged`,
+    es: (n: number) => `${n} ${n === 1 ? 'saldo sigue igual' : 'saldos siguen igual'}`,
+    pt: (n: number) => `${n} ${n === 1 ? 'saldo continua igual' : 'saldos continuam iguais'}`,
+  },
+  'chat.unpaidBalances.outcomes.increased': {
+    en: (n: number) => `${n} ${n === 1 ? 'balance' : 'balances'} increased`,
+    es: (n: number) => `${n} ${n === 1 ? 'saldo aumentó' : 'saldos aumentaron'}`,
+    pt: (n: number) => `${n} ${n === 1 ? 'saldo aumentou' : 'saldos aumentaram'}`,
+  },
+  'chat.unpaidBalances.outcomes.needFollowUp': {
+    en: (n: number) => `${n} ${n === 1 ? 'needs' : 'need'} another follow-up`,
+    es: (n: number) => `${n} ${n === 1 ? 'necesita' : 'necesitan'} otro seguimiento`,
+    pt: (n: number) => `${n} ${n === 1 ? 'precisa' : 'precisam'} de novo acompanhamento`,
+  },
+  'chat.unpaidBalances.outcomes.rowDecreased': {
+    en: (amount: string) => `balance decreased by ${amount}`,
+    es: (amount: string) => `el saldo bajó ${amount}`,
+    pt: (amount: string) => `o saldo diminuiu ${amount}`,
+  },
+  'chat.unpaidBalances.outcomes.rowResolved': {
+    en: 'balance is now zero',
+    es: 'el saldo ahora es cero',
+    pt: 'o saldo agora está em zero',
+  },
   'chat.unpaidBalances.source.repair':       { en: 'Repair',        es: 'Reparación',   pt: 'Reparo' },
   'chat.unpaidBalances.source.layaway':      { en: 'Layaway',       es: 'Apartado',     pt: 'Layaway' },
   'chat.unpaidBalances.source.specialOrder': { en: 'Special order', es: 'Pedido especial', pt: 'Pedido especial' },

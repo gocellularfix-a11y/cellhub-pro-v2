@@ -217,19 +217,21 @@ describe('buildReminderMessage — attempt tones (Phase 5)', () => {
   });
 });
 
+// Shared by the Phase 5 and Phase 8 integration describes (node test env
+// has no real localStorage — established MockLocalStorage pattern).
+const DAY_MS = 86_400_000;
+
+class MockLocalStorage {
+  private store = new Map<string, string>();
+  getItem(k: string): string | null { return this.store.has(k) ? (this.store.get(k) as string) : null; }
+  setItem(k: string, v: string): void { this.store.set(k, String(v)); }
+  removeItem(k: string): void { this.store.delete(k); }
+  clear(): void { this.store.clear(); }
+  key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
+  get length(): number { return this.store.size; }
+}
+
 describe('handleUnpaidBalances — follow-up section (Phase 5)', () => {
-  const DAY_MS = 86_400_000;
-
-  class MockLocalStorage {
-    private store = new Map<string, string>();
-    getItem(k: string): string | null { return this.store.has(k) ? (this.store.get(k) as string) : null; }
-    setItem(k: string, v: string): void { this.store.set(k, String(v)); }
-    removeItem(k: string): void { this.store.delete(k); }
-    clear(): void { this.store.clear(); }
-    key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
-    get length(): number { return this.store.size; }
-  }
-
   beforeEach(() => {
     (globalThis as any).localStorage = new MockLocalStorage();
   });
@@ -299,5 +301,117 @@ describe('handleUnpaidBalances — follow-up section (Phase 5)', () => {
     const pt = handleUnpaidBalances(oneRepair(), 'pt');
     expect(pt.text).toContain('🔁 Acompanhe novamente');
     expect(pt.text).toContain('lembrete há 10 dias');
+  });
+});
+
+// ============================================================
+// R-INTEL-V2-PHASE8 — collections outcome visibility.
+// ============================================================
+
+describe('handleUnpaidBalances — collections outcomes (Phase 8)', () => {
+  beforeEach(() => {
+    (globalThis as any).localStorage = new MockLocalStorage();
+  });
+  afterAll(() => {
+    delete (globalThis as any).localStorage;
+  });
+
+  const seed = (entityId: string, ageDays: number, balanceCents: number) =>
+    recordArReminder({
+      type: 'ar_reminder_whatsapp_opened', channel: 'whatsapp',
+      customerName: 'Ana Lopez', phone: '8050001111',
+      entityType: 'repair', entityId, balanceCents,
+      language: 'en', messagePreview: 'preview',
+      timestamp: Date.now() - ageDays * DAY_MS,
+      source: 'unpaid_balances',
+    });
+
+  // Case-insensitive causal/attribution language that must NEVER render.
+  const FORBIDDEN = /recovered|we collected|cellhub collected|because of the reminder|conversion rate|recuperad|recuperamos|cobramos gracias|graças ao lembrete/i;
+
+  it('no reminder store → no outcomes section, output unchanged', () => {
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).not.toContain('Collections progress');
+    expect(res.text).not.toContain('Observed balance reduction');
+  });
+
+  it('fresh reminder with unchanged balance → unchanged line, no misleading zeros', () => {
+    seed('r1', 2, 4500); // snapshot equals current balance
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).toContain('📊 Collections progress since reminders');
+    expect(res.text).toContain('1 balance is unchanged');
+    expect(res.text).not.toContain('decreased');
+    expect(res.text).not.toContain('Observed balance reduction');
+    expect(res.text).not.toContain('0 balance');
+  });
+
+  it('balance decreased → neutral observed-reduction wording + detail row', () => {
+    seed('r1', 8, 9000); // snapshot $90.00, current $45.00 — also stale (Phase 5)
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    expect(res.text).toContain('1 balance decreased');
+    expect(res.text).toContain('Observed balance reduction: $45.00');
+    expect(res.text).toContain('$90.00 → $45.00');
+    expect(res.text).toContain('balance decreased by $45.00');
+    expect(res.text).not.toMatch(FORBIDDEN);
+    // Phase 5 follow-up section still renders alongside (stale reminder).
+    expect(res.text).toContain('🔁 Follow up again');
+    // Current unpaid total still comes from the stored current balance.
+    expect(res.text).toContain('$45.00 total');
+    // Existing actions and payloads unchanged.
+    expect((res.actions ?? []).map((a) => a.id)).toEqual([
+      'unpaid-repair-r1-collect', 'unpaid-repair-r1-wa', 'unpaid-repair-r1-copy',
+    ]);
+    const targets = (res.actions ?? []).map((a) => (a.payload as any).executionTarget);
+    expect(new Set(targets)).toEqual(new Set(['open_repair', 'whatsapp_url', 'copy_to_clipboard']));
+  });
+
+  it('fully resolved valid balance → classified on the all-paid empty state, no causal claim', () => {
+    seed('r1', 5, 9000);
+    const engine = makeEngine({
+      repairs: [{ id: 'r1', customerName: 'Ana Lopez', balance: 0, status: 'picked_up', createdAt: '2026-01-01' }],
+    });
+    const res = handleUnpaidBalances(engine, 'en');
+    expect(res.text).toContain('No outstanding balances');
+    expect(res.text).toContain('📊 Collections progress since reminders');
+    expect(res.text).toContain('1 balance is now zero');
+    expect(res.text).toContain('Observed balance reduction: $90.00');
+    expect(res.text).not.toMatch(FORBIDDEN);
+    expect(res.actions).toBeUndefined(); // text-only on the empty state
+  });
+
+  it('cancelled/voided/refunded records are never described as collected', () => {
+    for (const status of ['cancelled', 'voided', 'refunded', 'forfeited']) {
+      (globalThis as any).localStorage = new MockLocalStorage();
+      seed('r1', 5, 9000);
+      const engine = makeEngine({
+        repairs: [{ id: 'r1', customerName: 'Ana Lopez', balance: 0, status, createdAt: '2026-01-01' }],
+      });
+      const res = handleUnpaidBalances(engine, 'en');
+      expect(res.text, status).not.toContain('Collections progress');
+      expect(res.text, status).not.toContain('now zero');
+      expect(res.text, status).not.toContain('Observed balance reduction');
+    }
+  });
+
+  it('missing entity fails safe — no comparable outcome, no section', () => {
+    seed('ghost-repair', 5, 9000);
+    const res = handleUnpaidBalances(oneRepair(), 'en');
+    // ghost's reminder is entity_missing; r1 has no reminder → no comparable rows.
+    expect(res.text).not.toContain('Collections progress');
+  });
+
+  it('renders neutral wording in Spanish and Portuguese', () => {
+    seed('r1', 5, 9000);
+    const es = handleUnpaidBalances(oneRepair(), 'es');
+    expect(es.text).toContain('📊 Avance de cobranza desde los recordatorios');
+    expect(es.text).toContain('1 saldo bajó');
+    expect(es.text).toContain('Reducción observada de saldo: $45.00');
+    expect(es.text).not.toMatch(FORBIDDEN);
+
+    const pt = handleUnpaidBalances(oneRepair(), 'pt');
+    expect(pt.text).toContain('📊 Progresso de cobrança desde os lembretes');
+    expect(pt.text).toContain('1 saldo diminuiu');
+    expect(pt.text).toContain('Redução observada do saldo: $45.00');
+    expect(pt.text).not.toMatch(FORBIDDEN);
   });
 });
