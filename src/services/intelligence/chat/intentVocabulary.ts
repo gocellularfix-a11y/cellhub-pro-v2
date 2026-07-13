@@ -203,6 +203,8 @@ export const INTENT_VOCABULARY: readonly IntentVocabularyEntry[] = [
   {
     intent: 'inventory_low',
     strong: {
+      // 'inventario bajo' was already modeled here — R-INTEL-V2-PHASE14
+      // brought the production bank into lockstep.
       en: ['low stock', 'running out'],
       es: ['stock bajo', 'inventario bajo', 'por acabar'],
       pt: ['estoque baixo'],
@@ -259,15 +261,18 @@ export const INTENT_VOCABULARY: readonly IntentVocabularyEntry[] = [
   {
     intent: 'trend_direction',
     strong: {
-      en: ['sales trend', 'trend report', 'is business improving', 'is business slowing', 'trending up', 'trending down', 'are we growing', 'are we declining', 'revenue trend'],
-      es: ['tendencia de ventas', 'reporte de tendencia', 'el negocio está mejorando', 'el negocio esta mejorando', 'estamos mejorando', 'estamos creciendo', 'estamos decayendo', 'tendencia del negocio'],
-      pt: ['tendência de vendas', 'tendencia de vendas', 'o negócio está melhorando', 'o negocio esta melhorando', 'estamos crescendo', 'estamos declinando', 'tendência do negócio', 'tendencia do negocio'],
+      // R-INTEL-V2-PHASE14: natural trajectory variants added in lockstep
+      // with the production TREND_DIRECTION_KEYWORDS bank.
+      en: ['sales trend', 'trend report', 'is business improving', 'is business slowing', 'trending up', 'trending down', 'are we growing', 'are we declining', 'revenue trend', 'trend in sales', 'are sales growing', 'are sales declining', 'sales going up', 'sales going down'],
+      es: ['tendencia de ventas', 'reporte de tendencia', 'el negocio está mejorando', 'el negocio esta mejorando', 'estamos mejorando', 'estamos creciendo', 'estamos decayendo', 'tendencia del negocio', 'tendencias de ventas', 'ventas están creciendo', 'ventas estan creciendo', 'ventas están bajando', 'ventas estan bajando'],
+      pt: ['tendência de vendas', 'tendencia de vendas', 'o negócio está melhorando', 'o negocio esta melhorando', 'estamos crescendo', 'estamos declinando', 'tendência do negócio', 'tendencia do negocio', 'vendas estão crescendo', 'vendas estao crescendo', 'vendas estão caindo', 'vendas estao caindo'],
     },
   },
   {
     intent: 'forecast_items',
     strong: {
-      en: ['forecast', 'expected sales'],
+      // R-INTEL-V2-PHASE14: 'sales forecast' added in lockstep with the bank.
+      en: ['forecast', 'expected sales', 'sales forecast'],
       es: ['ventas futuras', 'venta futura', 'proyeccion', 'proyección', 'pronostico', 'pronóstico', 'prediccion', 'predicción'],
       pt: ['previsão de vendas', 'previsao de vendas', 'previsão', 'previsao'],
     },
@@ -318,6 +323,39 @@ export const INTENT_VOCABULARY: readonly IntentVocabularyEntry[] = [
     },
     weak: { en: ['unusual'], es: ['inusual'], pt: [] },
     notes: 'PT "dia estranho" added (bank has no PT phrase; "anomalia" is shared ES/PT spelling).',
+  },
+
+  // ── Day-state / general sales reports (R-INTEL-V2-PHASE14) ──
+  // Simple report intents in the same class as today_sales (already modeled
+  // in V1); they were not on V1's exclusion list — just not yet written.
+  // Listed late: generic phrasing must never outrank the specific intents.
+  {
+    intent: 'today_summary',
+    strong: {
+      en: ['how are we doing today', 'how are we today', 'how is today going', 'how is today'],
+      es: ['como estamos hoy', 'cómo estamos hoy', 'que tal hoy', 'qué tal hoy', 'como va hoy', 'cómo va hoy'],
+      pt: ['como estamos hoje', 'como vai hoje', 'como está hoje', 'como esta hoje'],
+    },
+    exclusions: ['vendi', 'sold', 'sell', 'fim do dia', 'end of day', 'cierre'],
+    notes:
+      'Day-state ask ("how is the day going"), distinct from today_sales (the ' +
+      'sales-of-record figure) and end_of_day_brief (the closing recap). The ' +
+      'exclusions keep sell/closing language on those intents.',
+  },
+  {
+    intent: 'sales_summary',
+    strong: {
+      en: ['how are sales', 'how are sales doing'],
+      es: ['resumen de ventas', 'van las ventas', 'como van las ventas', 'cómo van las ventas'],
+      pt: ['como estão as vendas', 'como estao as vendas'],
+    },
+    exclusions: ['trend', 'tendencia', 'tendência', 'forecast', 'previsão', 'previsao', 'pronostico', 'pronóstico', 'proyeccion', 'proyección', 'hoy', 'today', 'hoje'],
+    notes:
+      'General sales state. Exclusions formalize the Phase 7/9/13 boundaries: ' +
+      'trend/forecast/today wording always belongs to those specific intents. ' +
+      'NOTE: the production SALES bank has no PT tokens yet, so the PT phrases ' +
+      'here are vocabulary-only (documented gap — no corpus expectation until ' +
+      'the router gains PT sales coverage).',
   },
 
   // ── Help — last (generic) ────────────────────────────────

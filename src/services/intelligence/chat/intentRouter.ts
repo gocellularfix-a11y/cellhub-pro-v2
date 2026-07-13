@@ -646,6 +646,11 @@ const INVENTORY_LOW_KEYWORDS = [
   // corpus): 'estoque baixo' expects inventory_low but only DATA_QUERY_KEYWORDS
   // carried the phrase, so data_query won outright. Anchored two-word phrase.
   'estoque baixo',
+  // R-INTEL-V2-PHASE14-NL-COVERAGE: Spanish 'inventario bajo' — same class as
+  // 'estoque baixo': it lived only in DATA_QUERY_KEYWORDS, so plain and
+  // wrapper asks ('muéstrame inventario bajo') stayed on the generic data
+  // answer. The Phase 10 override routes the tie to this bank's intent.
+  'inventario bajo',
 ];
 
 const INVENTORY_DEAD_KEYWORDS = [
@@ -757,6 +762,11 @@ const FORECAST_KEYWORDS = [
   // SALES_KEYWORDS carries ES 'ventas', not PT 'vendas', so there is no
   // sales_summary fight, and the anchored phrase adds a second hit anyway.
   'previsão de vendas', 'previsao de vendas', 'previsão', 'previsao',
+  // R-INTEL-V2-PHASE14-NL-COVERAGE: anchored 'sales forecast' — makes the
+  // ask win outright (2 hits) and lets the Phase 10 data_query override
+  // catch wrapper variants ('show me the sales forecast'), which the bare
+  // single-word 'forecast' token deliberately cannot trigger.
+  'sales forecast',
 ];
 
 // R-INTEL-V2-PHASE7-SALES-FORECAST-TIES: the one intent that steals explicit
@@ -1495,6 +1505,18 @@ const TREND_DIRECTION_KEYWORDS = [
   'o negócio está melhorando', 'o negocio esta melhorando',
   'estamos crescendo', 'estamos declinando',
   'como estamos tendendo', 'tendência do negócio', 'tendencia do negocio',
+  // R-INTEL-V2-PHASE14-NL-COVERAGE: natural trajectory variants documented
+  // in the Phase 7/9 reports as unsupported. All anchored multi-word (the
+  // Phase 9 sales_summary override handles the bare-'sales'/'ventas' tie).
+  // EN
+  'trend in sales', 'are sales growing', 'are sales declining',
+  'sales going up', 'sales going down',
+  // ES
+  'tendencias de ventas', 'ventas están creciendo', 'ventas estan creciendo',
+  'ventas están bajando', 'ventas estan bajando',
+  // PT
+  'vendas estão crescendo', 'vendas estao crescendo',
+  'vendas estão caindo', 'vendas estao caindo',
 ];
 
 // R-INTEL-V2-PHASE9-SALES-TREND-TIES: the one intent that steals explicit

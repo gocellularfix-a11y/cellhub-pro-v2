@@ -144,6 +144,10 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'show me the sales trend', lang: 'en', expected: 'trend_direction', note: 'former data_query wrapper theft — closed by R-INTEL-V2-PHASE10' },
   { query: 'show me best sellers', lang: 'en', expected: 'top_items', note: 'former data_query wrapper theft — closed by R-INTEL-V2-PHASE10' },
   { query: 'show me the data', lang: 'en', expected: 'data_query', note: 'collision guard: wrapper with no domain phrase must stay data_query (Phase 10)' },
+  // R-INTEL-V2-PHASE14: wrapper + inventory/forecast natural variants.
+  { query: 'show me the sales forecast', lang: 'en', expected: 'forecast_items', note: "Phase 14: anchored 'sales forecast' lets the Phase 10 override catch the wrapper form" },
+  { query: 'inventario bajo', lang: 'es', expected: 'inventory_low', note: 'Phase 14: same bank-gap class as estoque baixo (lived only in DATA_QUERY)' },
+  { query: 'muéstrame inventario bajo', lang: 'es', expected: 'inventory_low', note: 'Phase 14 wrapper variant' },
   { query: 'why is inventory dead', lang: 'en', expected: 'dead_stock_root_cause', note: 'root-cause intent not modeled in vocabulary V1 — expect abstention' },
   { query: 'what should i restock', lang: 'en', expected: 'restock_opportunity' },
   { query: 'que debo reponer', lang: 'es', expected: 'restock_opportunity' },
@@ -167,6 +171,14 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'como me fue hoy', lang: 'es', expected: 'end_of_day_brief' },
   { query: 'cuánto vendí hoy', lang: 'es', note: 'documented dual-membership: TODAY_SALES vs END_OF_DAY banks both carry it' },
   { query: 'sales trend', lang: 'en', expected: 'trend_direction', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE9' },
+  // R-INTEL-V2-PHASE14: natural trajectory variants (documented as
+  // unsupported in the Phase 7/9 reports; now anchored in the bank).
+  { query: 'trend in sales', lang: 'en', expected: 'trend_direction', note: 'Phase 14 natural variant' },
+  { query: 'are sales growing', lang: 'en', expected: 'trend_direction', note: 'Phase 14 natural variant' },
+  { query: 'sales going up or down', lang: 'en', expected: 'trend_direction', note: 'Phase 14 natural variant' },
+  { query: 'tendencias de ventas', lang: 'es', expected: 'trend_direction', note: 'Phase 14 natural variant (plural form)' },
+  { query: 'las ventas están creciendo', lang: 'es', expected: 'trend_direction', note: 'Phase 14 natural variant' },
+  { query: 'as vendas estão crescendo', lang: 'pt', expected: 'trend_direction', note: 'Phase 14 natural variant' },
   { query: 'tendencia de ventas', lang: 'es', expected: 'trend_direction', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE9' },
   { query: 'estamos crescendo', lang: 'pt', expected: 'trend_direction' },
   // R-INTEL-V2-PHASE9: trend tie-loss locks (revenue variant + PT form that
