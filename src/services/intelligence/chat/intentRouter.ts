@@ -642,11 +642,18 @@ const RESTOCK_OPPORTUNITY_KEYWORDS = [
 const INVENTORY_LOW_KEYWORDS = [
   'falta', 'faltan', 'low stock', 'stock bajo',
   'reorden', 'reorder', 'running out', 'por acabar',
+  // R-INTEL-V2-PHASE10-DATA-QUERY-THEFT: Portuguese. Shadow evidence (Phase 3
+  // corpus): 'estoque baixo' expects inventory_low but only DATA_QUERY_KEYWORDS
+  // carried the phrase, so data_query won outright. Anchored two-word phrase.
+  'estoque baixo',
 ];
 
 const INVENTORY_DEAD_KEYWORDS = [
   'no se vende', 'no vende', 'dead stock', 'stock muerto',
   'muerto', 'sin vender',
+  // R-INTEL-V2-PHASE10-DATA-QUERY-THEFT: Portuguese (same evidence class as
+  // 'estoque baixo' above — corpus expects inventory_dead).
+  'estoque parado',
 ];
 
 const INVENTORY_DYING_KEYWORDS = [
@@ -2544,6 +2551,33 @@ export function classifyIntent(
     TREND_DIRECTION_KEYWORDS.some(p => query.includes(p))
   ) {
     winner.id = 'trend_direction';
+  }
+
+  // R-INTEL-V2-PHASE10-DATA-QUERY-THEFT: the generic presentation wrapper
+  // must never decide the domain. DATA_QUERY_KEYWORDS carries wrapper tokens
+  // ('show me', 'cuánto', 'quanto') AND copies of domain phrases ('low
+  // stock', 'dead stock', 'estoque baixo', 'estoque parado'), so it steals
+  // explicit domain asks two ways: a 1-1 tie it wins on its earlier
+  // scores-array position ('low stock', 'show me expected sales', 'show me
+  // the sales trend', 'show me best sellers'), or an outright win when the
+  // domain bank lacked the phrase (PT inventory, closed above). Correction:
+  // when data_query won BUT the query contains an ANCHORED (multi-word)
+  // phrase from an established domain bank, route to that domain intent —
+  // checked in the domain intents' own scores-array order. Single-word bank
+  // tokens ('falta', 'reorder', 'muerto', 'forecast') are deliberately NOT
+  // triggers: too weak to overrule the generic wrapper ("cuánto falta para
+  // cerrar" must stay a data question). Generic asks with no domain phrase
+  // ('show me the data', 'pending layaways', 'phone payments') are
+  // untouched. Runs AFTER the repairs-ready override (which already handles
+  // data_query's ready-phrase theft) — winner is no longer data_query there.
+  if (winner.id === 'data_query') {
+    const hasAnchoredPhrase = (bank: string[]): boolean =>
+      bank.some(p => p.includes(' ') && query.includes(p));
+    if (hasAnchoredPhrase(INVENTORY_LOW_KEYWORDS)) winner.id = 'inventory_low';
+    else if (hasAnchoredPhrase(INVENTORY_DEAD_KEYWORDS)) winner.id = 'inventory_dead';
+    else if (hasAnchoredPhrase(TOP_ITEMS_KEYWORDS)) winner.id = 'top_items';
+    else if (hasAnchoredPhrase(FORECAST_KEYWORDS)) winner.id = 'forecast_items';
+    else if (hasAnchoredPhrase(TREND_DIRECTION_KEYWORDS)) winner.id = 'trend_direction';
   }
 
   const confidence = Math.min(1, winner.score / 2);

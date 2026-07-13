@@ -127,12 +127,17 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'reparos atrasados', lang: 'pt', expected: 'repairs_overdue', note: 'former router PT gap (plural form) — closed by R-INTEL-V2-PHASE6' },
 
   // ── Inventory ──
-  { query: 'low stock', lang: 'en', expected: 'inventory_low' },
+  { query: 'low stock', lang: 'en', expected: 'inventory_low', note: 'former data_query theft (position tie) — closed by R-INTEL-V2-PHASE10' },
   { query: 'stock bajo', lang: 'es', expected: 'inventory_low' },
-  { query: 'estoque baixo', lang: 'pt', expected: 'inventory_low' },
-  { query: 'dead stock', lang: 'en', expected: 'inventory_dead' },
+  { query: 'estoque baixo', lang: 'pt', expected: 'inventory_low', note: 'former data_query theft (bank gap) — closed by R-INTEL-V2-PHASE10' },
+  { query: 'dead stock', lang: 'en', expected: 'inventory_dead', note: 'former data_query theft (position tie) — closed by R-INTEL-V2-PHASE10' },
   { query: 'stock muerto', lang: 'es', expected: 'inventory_dead' },
-  { query: 'estoque parado', lang: 'pt', expected: 'inventory_dead' },
+  { query: 'estoque parado', lang: 'pt', expected: 'inventory_dead', note: 'former data_query theft (bank gap) — closed by R-INTEL-V2-PHASE10' },
+  // R-INTEL-V2-PHASE10: wrapper-theft locks + a generic-data collision guard.
+  { query: 'show me expected sales', lang: 'en', expected: 'forecast_items', note: 'former data_query wrapper theft — closed by R-INTEL-V2-PHASE10' },
+  { query: 'show me the sales trend', lang: 'en', expected: 'trend_direction', note: 'former data_query wrapper theft — closed by R-INTEL-V2-PHASE10' },
+  { query: 'show me best sellers', lang: 'en', expected: 'top_items', note: 'former data_query wrapper theft — closed by R-INTEL-V2-PHASE10' },
+  { query: 'show me the data', lang: 'en', expected: 'data_query', note: 'collision guard: wrapper with no domain phrase must stay data_query (Phase 10)' },
   { query: 'why is inventory dead', lang: 'en', expected: 'dead_stock_root_cause', note: 'root-cause intent not modeled in vocabulary V1 — expect abstention' },
   { query: 'what should i restock', lang: 'en', expected: 'restock_opportunity' },
   { query: 'que debo reponer', lang: 'es', expected: 'restock_opportunity' },

@@ -40,10 +40,11 @@ describe('compareWithProductionRouter', () => {
   });
 
   it('explains disagreements in the reasons', () => {
-    // 'mais vendido' no longer disagrees (Phase 6 closed that PT gap).
-    // 'estoque baixo' remains a stable documented disagreement: the router
-    // routes it to data_query, the vocabulary to inventory_low.
-    const c = compareWithProductionRouter('estoque baixo', 'pt');
+    // 'mais vendido' (Phase 6) and 'estoque baixo' (Phase 10) no longer
+    // disagree. 'vendas de hoje' remains a stable documented disagreement:
+    // the router routes it to today_summary, the vocabulary to today_sales
+    // — the known cross-language dispute, deliberately out of scope.
+    const c = compareWithProductionRouter('vendas de hoje', 'pt');
     expect(c.match).toBe(false);
     expect(c.reasons.join(' ')).toContain('router chose');
   });
@@ -104,6 +105,15 @@ describe('shadow corpus report', () => {
     // 1-1 position tie. The forecast (Phase 7) and trend (Phase 9)
     // overrides closed the class — both engines now agree. Strictly safer.
     for (const q of ['expected sales', 'sales forecast', 'pronostico de ventas', 'proyección de ventas', 'sales trend', 'tendencia de ventas', 'revenue trend', 'tendência de vendas']) {
+      const row = report.rows.find((r) => r.entry.query === q);
+      expect(row?.group, q).toBe('exact_match');
+    }
+  });
+
+  it('the Phase 10 data_query thefts are now exact matches', () => {
+    // data_query stole these via position ties, PT bank gaps, or wrapper
+    // tokens. The Phase 10 anchored-domain-phrase override closed the class.
+    for (const q of ['low stock', 'dead stock', 'estoque baixo', 'estoque parado', 'show me expected sales', 'show me the sales trend', 'show me best sellers']) {
       const row = report.rows.find((r) => r.entry.query === q);
       expect(row?.group, q).toBe('exact_match');
     }

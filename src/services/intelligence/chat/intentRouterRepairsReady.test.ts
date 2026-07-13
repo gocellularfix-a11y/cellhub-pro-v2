@@ -75,10 +75,14 @@ describe('regression locks — unrelated routing byte-for-byte unchanged', () =>
     expect(id('customer history')).toBe('customer_history');
   });
 
-  it('inventory (current behavior locked, incl. the documented data_query overlap)', () => {
-    expect(id('low stock')).toBe('data_query');       // Phase 3 finding: data_query wins today — unchanged
+  it('inventory (Phase 10 closed the documented data_query overlap)', () => {
+    // Phase 4 locked the then-current data_query wins because closing the
+    // overlap was out of that round's scope. R-INTEL-V2-PHASE10 routes the
+    // explicit domain phrases to their inventory intents — the shadow-
+    // documented expectation is now production behavior.
+    expect(id('low stock')).toBe('inventory_low');    // was data_query (position tie)
     expect(id('stock bajo', 'es')).toBe('inventory_low');
-    expect(id('dead stock')).toBe('data_query');      // same documented overlap — unchanged
+    expect(id('dead stock')).toBe('inventory_dead');  // was data_query (position tie)
     expect(id('stock muerto', 'es')).toBe('inventory_dead');
   });
 
