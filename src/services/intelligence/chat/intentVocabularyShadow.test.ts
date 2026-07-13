@@ -40,11 +40,11 @@ describe('compareWithProductionRouter', () => {
   });
 
   it('explains disagreements in the reasons', () => {
-    // 'mais vendido' (Phase 6) and 'estoque baixo' (Phase 10) no longer
-    // disagree. 'vendas de hoje' remains a stable documented disagreement:
-    // the router routes it to today_summary, the vocabulary to today_sales
-    // — the known cross-language dispute, deliberately out of scope.
-    const c = compareWithProductionRouter('vendas de hoje', 'pt');
+    // Every documented phrase-level gap is now closed (Phases 6–13), so the
+    // stable disagreement example is a lone weak token: the router routes
+    // 'profit' on a single weak hit, the vocabulary abstains BY DESIGN
+    // (lone weak tokens never route) — this divergence is permanent.
+    const c = compareWithProductionRouter('profit', 'en');
     expect(c.match).toBe(false);
     expect(c.reasons.join(' ')).toContain('router chose');
   });
@@ -105,6 +105,13 @@ describe('shadow corpus report', () => {
     // 1-1 position tie. The forecast (Phase 7) and trend (Phase 9)
     // overrides closed the class — both engines now agree. Strictly safer.
     for (const q of ['expected sales', 'sales forecast', 'pronostico de ventas', 'proyección de ventas', 'sales trend', 'tendencia de ventas', 'revenue trend', 'tendência de vendas']) {
+      const row = report.rows.find((r) => r.entry.query === q);
+      expect(row?.group, q).toBe('exact_match');
+    }
+  });
+
+  it('the Phase 13 today-sales thefts are now exact matches', () => {
+    for (const q of ['sales today', 'ventas de hoy', 'vendas de hoje']) {
       const row = report.rows.find((r) => r.entry.query === q);
       expect(row?.group, q).toBe('exact_match');
     }

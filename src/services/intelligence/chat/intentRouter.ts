@@ -2651,6 +2651,33 @@ export function classifyIntent(
     winner.id = 'who_to_contact';
   }
 
+  // R-INTEL-V2-PHASE13-TODAY-SALES-ROUTING: an explicit sales-of-today ask
+  // must reach the dedicated sales-of-record handler. Root cause (shadow
+  // corpus 'sales today'/'ventas de hoy'/'vendas de hoje' → expected
+  // today_sales): the shared phrases live in BOTH banks, but
+  // TODAY_SUMMARY_KEYWORDS also carries bare 'today'/'hoy'/'hoje', so the
+  // day-state intent scores 2-1 on every "<sales> today" phrase — a score
+  // theft, not position (today_sales is already earlier and wins plain
+  // ties like 'how much did i sell today'). Correction, same shape as the
+  // overrides above: when today_summary won BUT the query carries an
+  // ANCHORED (multi-word) TODAY_SALES phrase, the sales-of-record intent
+  // wins. Pure day-state asks ('how are we doing today', 'como estamos
+  // hoy/hoje', bare 'today') carry no such phrase and stay on the summary;
+  // EOD asks never route through today_summary, so the brief is untouched.
+  // sales_summary is the second thief in this class: its bare
+  // 'sales'+'today' / 'ventas'+'hoy' pair outscores 2-1 on variants like
+  // "today's sales" / 'ventas hoy'. The TODAY_SALES bank's own design
+  // (Report Consistency Guard) claims report-shaped asks for the
+  // sales-of-record handler, so the same anchored-phrase rule applies.
+  // Runs AFTER the forecast/trend overrides above — a mixed
+  // forecast/trend + today ask keeps its prediction/trajectory intent.
+  if (
+    (winner.id === 'today_summary' || winner.id === 'sales_summary') &&
+    TODAY_SALES_KEYWORDS.some(p => p.includes(' ') && query.includes(p))
+  ) {
+    winner.id = 'today_sales';
+  }
+
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
 

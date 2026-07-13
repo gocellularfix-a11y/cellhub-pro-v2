@@ -153,9 +153,13 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'mais vendido', lang: 'pt', expected: 'top_items', note: 'former router PT gap (TOP_ITEMS) — closed by R-INTEL-V2-PHASE6' },
 
   // ── Sales / day state ──
-  { query: 'sales today', lang: 'en', expected: 'today_sales', note: 'router design comment says today_sales must win; raw score may disagree' },
-  { query: 'ventas de hoy', lang: 'es', expected: 'today_sales' },
-  { query: 'vendas de hoje', lang: 'pt', expected: 'today_sales' },
+  { query: 'sales today', lang: 'en', expected: 'today_sales', note: "former today_summary score theft (bare 'today') — closed by R-INTEL-V2-PHASE13" },
+  { query: 'ventas de hoy', lang: 'es', expected: 'today_sales', note: 'former today_summary score theft — closed by R-INTEL-V2-PHASE13' },
+  { query: 'vendas de hoje', lang: 'pt', expected: 'today_sales', note: 'former today_summary score theft — closed by R-INTEL-V2-PHASE13' },
+  // R-INTEL-V2-PHASE13: day-state collision guards — pure "how is the day
+  // going" asks must never be pulled into the sales-of-record handler.
+  { query: 'how are we doing today', lang: 'en', expected: 'today_summary', note: 'collision guard: day-state ask stays on the summary (Phase 13)' },
+  { query: 'como estamos hoje', lang: 'pt', expected: 'today_summary', note: 'collision guard: day-state ask stays on the summary (Phase 13)' },
   { query: 'how much did i sell today', lang: 'en', expected: 'today_sales' },
   { query: 'end of day', lang: 'en', expected: 'end_of_day_brief' },
   { query: 'fin del dia', lang: 'es', expected: 'end_of_day_brief' },

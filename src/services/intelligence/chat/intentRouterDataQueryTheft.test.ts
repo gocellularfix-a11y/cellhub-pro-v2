@@ -91,9 +91,11 @@ describe('cross-intent regression — neighbors unchanged', () => {
   it('sales summary / today', () => {
     expect(id('how are sales')).toBe('sales_summary');
     expect(id('resumen de ventas', 'es')).toBe('sales_summary');
-    expect(id('sales today')).toBe('today_summary');       // data_query family unchanged
+    // R-INTEL-V2-PHASE13 superseded the today_summary lock: explicit
+    // sales-of-today asks now reach the sales-of-record handler.
+    expect(id('sales today')).toBe('today_sales');
     expect(id('show me sales today')).not.toBe('forecast_items');
-    expect(id('ventas de hoy', 'es')).toBe('today_summary');
+    expect(id('ventas de hoy', 'es')).toBe('today_sales');
   });
 
   it('trend / forecast / top items (plain forms)', () => {

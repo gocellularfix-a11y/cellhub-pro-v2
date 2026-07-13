@@ -93,10 +93,13 @@ describe('regression locks — unrelated routing byte-for-byte unchanged', () =>
     expect(id('pending payments')).toBe('unpaid_balances');
   });
 
-  it('sales today (current behavior locked, incl. the documented today_summary precedence)', () => {
-    expect(id('sales today')).toBe('today_summary');  // Phase 3 finding: today_summary wins today — unchanged
+  it('sales today (Phase 13 closed the documented today_summary score theft)', () => {
+    // Phase 4 locked the then-current today_summary wins because the today
+    // cluster was out of that round's scope. R-INTEL-V2-PHASE13 routes
+    // explicit sales-of-today asks to the sales-of-record handler.
+    expect(id('sales today')).toBe('today_sales');    // was today_summary (bare 'today' score theft)
     expect(id('how much did i sell today')).toBe('today_sales');
-    expect(id('ventas de hoy', 'es')).toBe('today_summary');
+    expect(id('ventas de hoy', 'es')).toBe('today_sales'); // was today_summary
   });
 
   it('generic data_query analytics untouched by the override', () => {
