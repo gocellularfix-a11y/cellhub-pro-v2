@@ -99,6 +99,16 @@ describe('shadow corpus report', () => {
     }
   });
 
+  it('the Phase 7/9 tie-loss rows are now exact matches (thief-intent overrides)', () => {
+    // These surfaced as vocabulary_improved while sales_summary stole the
+    // 1-1 position tie. The forecast (Phase 7) and trend (Phase 9)
+    // overrides closed the class — both engines now agree. Strictly safer.
+    for (const q of ['expected sales', 'sales forecast', 'pronostico de ventas', 'proyección de ventas', 'sales trend', 'tendencia de ventas', 'revenue trend', 'tendência de vendas']) {
+      const row = report.rows.find((r) => r.entry.query === q);
+      expect(row?.group, q).toBe('exact_match');
+    }
+  });
+
   it('lone weak tokens land in router_safer or ambiguous — never a silent vocabulary guess', () => {
     for (const q of ['profit', 'margin', 'money']) {
       const row = report.rows.find((r) => r.entry.query === q);

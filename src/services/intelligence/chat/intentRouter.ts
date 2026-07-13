@@ -1481,6 +1481,15 @@ const TREND_DIRECTION_KEYWORDS = [
   'como estamos tendendo', 'tendência do negócio', 'tendencia do negocio',
 ];
 
+// R-INTEL-V2-PHASE9-SALES-TREND-TIES: the one intent that steals explicit
+// trend phrases. SALES_KEYWORDS carries bare 'sales'/'ventas'/'revenue'/
+// 'ingresos'/'semana', so trend asks that mention them ('sales trend',
+// 'revenue trend', 'tendencia de ventas', 'tendencia de ingresos', 'cómo
+// vamos esta semana') tie 1-1 and lose to sales_summary's earlier
+// scores-array position. Used by the trend override in classifyIntent; add
+// here ONLY with shadow-report evidence of a new theft path.
+const TREND_THIEF_INTENTS: ReadonlyArray<IntentId> = ['sales_summary'];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -2516,6 +2525,25 @@ export function classifyIntent(
     FORECAST_KEYWORDS.some(p => query.includes(p))
   ) {
     winner.id = 'forecast_items';
+  }
+
+  // R-INTEL-V2-PHASE9-SALES-TREND-TIES: explicit trajectory wording must
+  // always win over the generic sales summary. Same root cause and same
+  // correction shape as Phase 7 directly above: SALES_KEYWORDS' bare
+  // 'sales'/'ventas'/'revenue'/'ingresos'/'semana' ties 1-1 with the single
+  // anchored trend phrase and sales_summary's earlier position wins the
+  // stable sort ('sales trend', 'revenue trend', 'tendencia de ventas',
+  // 'tendencia de ingresos', 'cómo vamos esta semana' all stolen). The
+  // TREND_DIRECTION_KEYWORDS bank is all anchored multi-word phrases, so it
+  // is safe as the single source of truth — plain summary asks ('how are
+  // sales', 'total sales', 'resumen de ventas') never contain one. Runs
+  // AFTER the forecast override: a mixed forecast+trend ask stays a
+  // forecast ask (winner already rerouted → this guard no longer matches).
+  if (
+    TREND_THIEF_INTENTS.includes(winner.id) &&
+    TREND_DIRECTION_KEYWORDS.some(p => query.includes(p))
+  ) {
+    winner.id = 'trend_direction';
   }
 
   const confidence = Math.min(1, winner.score / 2);

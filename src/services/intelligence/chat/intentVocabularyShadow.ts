@@ -151,9 +151,13 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'fim do dia', lang: 'pt', expected: 'end_of_day_brief' },
   { query: 'como me fue hoy', lang: 'es', expected: 'end_of_day_brief' },
   { query: 'cuánto vendí hoy', lang: 'es', note: 'documented dual-membership: TODAY_SALES vs END_OF_DAY banks both carry it' },
-  { query: 'sales trend', lang: 'en', expected: 'trend_direction' },
-  { query: 'tendencia de ventas', lang: 'es', expected: 'trend_direction' },
+  { query: 'sales trend', lang: 'en', expected: 'trend_direction', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE9' },
+  { query: 'tendencia de ventas', lang: 'es', expected: 'trend_direction', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE9' },
   { query: 'estamos crescendo', lang: 'pt', expected: 'trend_direction' },
+  // R-INTEL-V2-PHASE9: trend tie-loss locks (revenue variant + PT form that
+  // never overlapped SALES tokens — locked so it can never regress).
+  { query: 'revenue trend', lang: 'en', expected: 'trend_direction', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE9' },
+  { query: 'tendência de vendas', lang: 'pt', expected: 'trend_direction', note: 'Phase 9 regression lock (no SALES-token overlap in PT)' },
   { query: 'forecast', lang: 'en', expected: 'forecast_items' },
   { query: 'pronostico de ventas', lang: 'es', expected: 'forecast_items', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE7' },
   { query: 'previsão de vendas', lang: 'pt', expected: 'forecast_items', note: 'former router PT gap (FORECAST) — closed by R-INTEL-V2-PHASE6' },
