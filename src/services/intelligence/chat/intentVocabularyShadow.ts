@@ -155,8 +155,14 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'tendencia de ventas', lang: 'es', expected: 'trend_direction' },
   { query: 'estamos crescendo', lang: 'pt', expected: 'trend_direction' },
   { query: 'forecast', lang: 'en', expected: 'forecast_items' },
-  { query: 'pronostico de ventas', lang: 'es', expected: 'forecast_items' },
+  { query: 'pronostico de ventas', lang: 'es', expected: 'forecast_items', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE7' },
   { query: 'previsão de vendas', lang: 'pt', expected: 'forecast_items', note: 'former router PT gap (FORECAST) — closed by R-INTEL-V2-PHASE6' },
+  // R-INTEL-V2-PHASE7: forecast tie-loss locks + sales-summary collision guards.
+  { query: 'expected sales', lang: 'en', expected: 'forecast_items', note: 'former tie-loss to sales_summary — closed by R-INTEL-V2-PHASE7' },
+  { query: 'sales forecast', lang: 'en', expected: 'forecast_items', note: 'Phase 7 regression lock' },
+  { query: 'proyección de ventas', lang: 'es', expected: 'forecast_items', note: 'Phase 7 regression lock (accented form)' },
+  { query: 'how are sales', lang: 'en', expected: 'sales_summary', note: 'collision guard: plain summary ask must never reroute to forecast (Phase 7)' },
+  { query: 'resumen de ventas', lang: 'es', expected: 'sales_summary', note: 'collision guard: plain summary ask must never reroute to forecast (Phase 7)' },
 
   // ── Marketing / help / diagnostics ──
   { query: 'marketing campaign', lang: 'en', expected: 'marketing_campaign' },

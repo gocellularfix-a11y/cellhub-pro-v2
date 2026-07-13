@@ -104,13 +104,12 @@ describe('EN/ES regression — touched intents byte-for-byte unchanged', () => {
   });
 
   it('forecast_items', () => {
-    // NOTE: 'expected sales' EN and 'proyeccion/pronostico de ventas' ES
-    // pre-existing lose a 1-1 tie to sales_summary (bare 'sales'/'ventas' +
-    // earlier array position) — the documented shadow miss class. Out of
-    // scope for this PT round; the forms below are the current working
-    // EN/ES routing, locked unchanged.
+    // Phase 6 locked 'expected sales' on its then-current tie loss to
+    // sales_summary (out of that round's scope). R-INTEL-V2-PHASE7 closed
+    // the documented tie-loss class with the forecast override — full lock
+    // lives in intentRouterSalesForecast.test.ts.
     expect(id('forecast', 'en')).toBe('forecast_items');
-    expect(id('expected sales', 'en')).not.toBe('forecast_items'); // pre-existing tie loss — unchanged
+    expect(id('expected sales', 'en')).toBe('forecast_items'); // Phase 7 correction
     expect(id('proyeccion', 'es')).toBe('forecast_items');
     expect(id('pronostico', 'es')).toBe('forecast_items');
   });

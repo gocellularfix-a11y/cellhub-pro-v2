@@ -752,6 +752,15 @@ const FORECAST_KEYWORDS = [
   'previsão de vendas', 'previsao de vendas', 'previsão', 'previsao',
 ];
 
+// R-INTEL-V2-PHASE7-SALES-FORECAST-TIES: the one intent that steals explicit
+// forecast phrases. SALES_KEYWORDS carries bare 'sales'/'ventas', so every
+// "<forecast word> + sales/ventas" ask ('expected sales', 'sales forecast',
+// 'pronostico de ventas', 'proyección de ventas', 'ventas futuras') ties 1-1
+// and loses to sales_summary's earlier scores-array position. Used by the
+// forecast override in classifyIntent; add here ONLY with shadow-report
+// evidence of a new theft path.
+const FORECAST_THIEF_INTENTS: ReadonlyArray<IntentId> = ['sales_summary'];
+
 const ANOMALY_KEYWORDS = [
   'anomalia', 'anomalía', 'anomaly', 'dia raro', 'día raro',
   'unusual', 'inusual',
@@ -2485,6 +2494,28 @@ export function classifyIntent(
     REPAIRS_READY_KEYWORDS.some(p => query.includes(p))
   ) {
     winner.id = 'repairs_ready';
+  }
+
+  // R-INTEL-V2-PHASE7-SALES-FORECAST-TIES: explicit forecast wording must
+  // always win over the generic sales summary. Root cause (Phase 6 report +
+  // shadow corpus): SALES_KEYWORDS' bare 'sales'/'ventas' gives sales_summary
+  // one hit on every "<forecast word> de ventas / <forecast word> sales"
+  // phrase, tying 1-1 with the single forecast token — and sales_summary sits
+  // earlier in the scores array, so the stable sort hands it the win
+  // ('expected sales', 'sales forecast', 'pronostico de ventas',
+  // 'proyección de ventas', 'ventas futuras' all stolen). Deterministic
+  // correction, same pattern as the repairs-ready override above: when the
+  // documented thief won AND the query contains a FORECAST_KEYWORDS phrase
+  // (single source of truth — no second list to drift), route to the
+  // forecast handler. Plain summary asks ('how are sales', 'resumen de
+  // ventas', 'sales today') never contain a forecast token, so their routing
+  // is untouched; a mixed summary+forecast ask is a prediction ask and the
+  // forecast wording wins by design.
+  if (
+    FORECAST_THIEF_INTENTS.includes(winner.id) &&
+    FORECAST_KEYWORDS.some(p => query.includes(p))
+  ) {
+    winner.id = 'forecast_items';
   }
 
   const confidence = Math.min(1, winner.score / 2);
