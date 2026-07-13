@@ -4740,6 +4740,17 @@ export const translations: TranslationDictionary = {
   'customers.confirmDelete':          { en: 'Delete',                 es: 'Eliminar',                   pt: 'Excluir' },
   'customers.cancelBtn':              { en: 'Cancel',                 es: 'Cancelar',                   pt: 'Cancelar' },
   'customers.deleted':                { en: 'Deleted',                es: 'Eliminado',                  pt: 'Excluído' },
+  // R-CUSTOMER-DELETE-FIX-V1: fail-safe delete feedback (never a silent no-op).
+  'customers.deleteNotFound': {
+    en: 'Customer not found — it may have already been deleted.',
+    es: 'Cliente no encontrado — puede que ya haya sido eliminado.',
+    pt: 'Cliente não encontrado — pode já ter sido excluído.',
+  },
+  'customers.deleteFailed': {
+    en: 'Could not delete the customer. Please try again (see console for details).',
+    es: 'No se pudo eliminar el cliente. Intenta de nuevo (revisa la consola para más detalles).',
+    pt: 'Não foi possível excluir o cliente. Tente novamente (veja o console para detalhes).',
+  },
   'customers.saved':                  { en: 'Saved!',                 es: 'Guardado',                   pt: 'Salvo!' },
   'customers.added':                  { en: 'Customer added!',        es: 'Cliente agregado',           pt: 'Cliente adicionado!' },
   'customers.updated':                { en: 'Customer updated',       es: 'Cliente actualizado',        pt: 'Cliente atualizado' },
@@ -4813,6 +4824,27 @@ export const translations: TranslationDictionary = {
   'customers.form.state':             { en: 'State',                  es: 'Estado',                     pt: 'Estado' },
   'customers.form.showAddressOnCredential': { en: 'Show address on credential', es: 'Mostrar dirección en la credencial', pt: 'Mostrar endereço na credencial' },
   'customers.form.monthlyPayment':    { en: 'Monthly Payment',        es: 'Pago Mensual',               pt: 'Pagamento Mensal' },
+  // R-CUSTOMER-LINE-PAYMENTS-V1: per-phone-line payment UI.
+  'customers.form.linePayment': {
+    en: 'Monthly payment for this line',
+    es: 'Pago mensual de esta línea',
+    pt: 'Pagamento mensal desta linha',
+  },
+  'customers.form.linePaymentPlaceholder': {
+    en: 'Monthly $ (this line)',
+    es: 'Pago mensual $ (esta línea)',
+    pt: 'Mensal $ (esta linha)',
+  },
+  'customers.form.linePaymentHint': {
+    en: 'Each line keeps its own monthly payment.',
+    es: 'Cada línea guarda su propio pago mensual.',
+    pt: 'Cada linha mantém seu próprio pagamento mensal.',
+  },
+  'customers.form.legacyPaymentWarning': {
+    en: (amount: string) => `This customer has a legacy monthly payment (${amount}). Assign the correct amount to each phone line.`,
+    es: (amount: string) => `Este cliente tiene un pago mensual anterior (${amount}). Asigna el monto correcto a cada línea.`,
+    pt: (amount: string) => `Este cliente tem um pagamento mensal antigo (${amount}). Atribua o valor correto a cada linha.`,
+  },
   'customers.form.referralCode':      { en: 'Referral code? (optional)', es: '¿Código de referido? (opcional)', pt: 'Código de indicação? (opcional)' },
   'customers.form.referralPlaceholder': { en: 'e.g. GC1234',          es: 'Ej: GC1234',                 pt: 'ex: GC1234' },
   'customers.form.referralHint':      { en: '+50 pts for both customer and referrer', es: '+50 pts para el cliente y quien lo refirió', pt: '+50 pts para o cliente e quem indicou' },

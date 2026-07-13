@@ -21,6 +21,15 @@ import { normalizePhone, formatPhone } from '@/utils/normalize';
 import { generateId, formatDate } from '@/utils/dates';
 import type { Customer, Sale } from '@/store/types';
 import { persist, remove } from '@/services/persist';
+// R-CUSTOMER-LINE-PAYMENTS-V1 + R-CUSTOMER-DELETE-FIX-V1
+import {
+  parseDollarsToCents,
+  centsToDollarsString,
+  hasPerLinePayments,
+  hasUnassignedLegacyPayment,
+  getMonthlyTotalCents,
+} from '@/services/customers/linePayments';
+import { evaluateCustomerDelete, type CustomerDeleteWarning } from '@/services/customers/customerDeleteGuard';
 import { openWhatsApp } from '@/services/whatsapp';
 import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction, setPendingExplicitCustomer } from '@/services/intelligence/context/intelligenceContext';
 import { emitCustomerAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
@@ -555,50 +564,43 @@ export default function CustomerModule() {
     [editCustomer, customers, settings, t, setCustomers, toast, forwardCreateCustomer],
   );
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      const cust = customers.find((c) => c.id === id);
-      if (!cust) return;
-
-      // Check for active ties before allowing delete
-      const phone = normalizePhone(cust.phone || '');
-      const hasStoreCredit = (cust.storeCredit || 0) > 0;
-      const hasLoyalty     = (cust.loyaltyPoints || 0) > 0;
-      const activeRepairs  = repairs.filter((r) =>
-        ((r as any).customerId === id || normalizePhone(r.customerPhone) === phone) &&
-        !['Complete', 'completed', 'Cancelled', 'cancelled'].includes(r.status || '')
-      ).length;
-      const activeLayaways = layaways.filter((l) =>
-        ((l as any).customerId === id || normalizePhone(l.customerPhone) === phone) &&
-        l.status === 'active'
-      ).length;
-      const activeUnlocks = unlocks.filter((u) =>
-        ((u as any).customerId === id || normalizePhone(u.customerPhone) === phone) &&
-        !['completed', 'Complete', 'failed', 'cancelled', 'Cancelled'].includes(u.status || '')
-      ).length;
-
-      const warnings: string[] = [];
-      if (hasStoreCredit) warnings.push(t('customers.warnStoreCredit', formatCurrency(cust.storeCredit || 0)));
-      if (hasLoyalty)     warnings.push(t('customers.warnLoyalty', cust.loyaltyPoints));
-      if (activeRepairs)  warnings.push(t('customers.warnRepairs', activeRepairs));
-      if (activeLayaways) warnings.push(t('customers.warnLayaways', activeLayaways));
-      if (activeUnlocks)  warnings.push(t('customers.warnUnlocks', activeUnlocks));
-
-      if (warnings.length > 0) {
-        setDeleteWarningMsg(t('customers.deleteWarning', warnings.join('\n')));
-        return; // Wait for ConfirmDialog
-      }
-
-      // No warnings — delete directly
+  // R-CUSTOMER-DELETE-FIX-V1: single delete executor. Persistence runs FIRST
+  // so a storage failure leaves the in-memory list intact (modal stays open,
+  // error is visible). deletingRef guards double-submit. Returns success.
+  const deletingRef = useRef(false);
+  const performDelete = useCallback((id: string): boolean => {
+    if (deletingRef.current) return false;
+    deletingRef.current = true;
+    try {
+      remove.customer(id);
       const nextCustomers = customersRef.current.filter((c) => c.id !== id);
       customersRef.current = nextCustomers;
       setCustomers(nextCustomers);
-      remove.customer(id);
-      setDeleteConfirm(null);
       toast(t('customers.deleted'), 'info');
-    },
-    [customers, repairs, layaways, unlocks, setCustomers, toast, t],
-  );
+      return true;
+    } catch (err) {
+      console.error('[customers] delete failed', err);
+      toast(t('customers.deleteFailed'), 'error');
+      return false;
+    } finally {
+      deletingRef.current = false;
+    }
+  }, [setCustomers, toast, t]);
+
+  // R-CUSTOMER-DELETE-FIX-V1: render the pure guard's structured warnings
+  // through the existing i18n keys (behavior/text unchanged).
+  const renderDeleteWarnings = useCallback((warnings: CustomerDeleteWarning[]): string => {
+    const lines = warnings.map((w) => {
+      switch (w.type) {
+        case 'store_credit':    return t('customers.warnStoreCredit', formatCurrency(w.amountCents));
+        case 'loyalty':         return t('customers.warnLoyalty', w.points);
+        case 'active_repairs':  return t('customers.warnRepairs', w.count);
+        case 'active_layaways': return t('customers.warnLayaways', w.count);
+        case 'active_unlocks':  return t('customers.warnUnlocks', w.count);
+      }
+    });
+    return t('customers.deleteWarning', lines.join('\n'));
+  }, [t]);
 
   // CUSTOMER-RECOVER-BUTTON-INTEL-CONTEXT-FIX-V1: pass the EXACT customer id
   // through the one-shot context (consumed by IntelligenceChat at classify
@@ -929,18 +931,43 @@ export default function CustomerModule() {
         confirmLabel={t('customers.confirmDelete')}
         cancelLabel={t('customers.cancelBtn')}
         onConfirm={() => {
-          if (deleteWarningMsg && deleteConfirm) {
-            // User confirmed after seeing warnings — proceed with delete
-            const nextCustomers = customersRef.current.filter((c) => c.id !== deleteConfirm);
-            customersRef.current = nextCustomers;
-            setCustomers(nextCustomers);
-            remove.customer(deleteConfirm);
-            toast(t('customers.deleted'), 'info');
-          } else if (deleteConfirm) {
-            handleDelete(deleteConfirm);
+          // R-CUSTOMER-DELETE-FIX-V1. Root cause of the reported no-op: the
+          // old handler raised the linked-record warning AND then cleared
+          // deleteConfirm in the same confirm — so when the warning dialog
+          // re-opened and the owner pressed Delete again, no id was left and
+          // the dialog closed silently without deleting. deleteConfirm is now
+          // kept alive across the warning step and only cleared on completion.
+          const id = deleteConfirm;
+          if (!id) {
+            setDeleteConfirm(null);
+            setDeleteWarningMsg(null);
+            return;
           }
-          setDeleteConfirm(null);
-          setDeleteWarningMsg(null);
+          if (deleteWarningMsg) {
+            // Second dialog — owner confirmed despite the warnings.
+            if (performDelete(id)) {
+              setDeleteConfirm(null);
+              setDeleteWarningMsg(null);
+            }
+            // On failure the dialog stays open with the visible error toast.
+            return;
+          }
+          const evaluation = evaluateCustomerDelete(id, customersRef.current, { repairs, layaways, unlocks });
+          if (evaluation.kind === 'missing') {
+            // Fail safe, never silently: explain instead of no-op.
+            toast(t('customers.deleteNotFound'), 'error');
+            setDeleteConfirm(null);
+            setDeleteWarningMsg(null);
+            return;
+          }
+          if (evaluation.kind === 'warn') {
+            setDeleteWarningMsg(renderDeleteWarnings(evaluation.warnings));
+            return; // keep deleteConfirm — the warning dialog completes it
+          }
+          if (performDelete(id)) {
+            setDeleteConfirm(null);
+            setDeleteWarningMsg(null);
+          }
         }}
         onCancel={() => { setDeleteConfirm(null); setDeleteWarningMsg(null); }}
       />
@@ -1010,9 +1037,12 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       phone: prefillPhone,
       phones: [prefillPhone] as string[],
       carrier: '', carriers: [''] as string[],
+      // R-CUSTOMER-LINE-PAYMENTS-V1: per-line dollars strings, parallel to
+      // phones[]. A new line always starts blank — never inherited.
+      monthlyPayments: [''] as string[],
       email: '', address: '', city: '', state: '', zip: '',
       showAddressOnCredential: false,
-      plan: '', monthlyPayment: '',
+      plan: '',
       notes: '', communicationConsent: false, photo: '',
       referredBy: '',
     };
@@ -1028,6 +1058,19 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       for (let i = 0; i < phones.length; i++) {
         carriers[i] = baseCarriers[i] || (i === 0 ? (cAny.carrier || '') : '');
       }
+      // R-CUSTOMER-LINE-PAYMENTS-V1: hydrate per-line amounts. Legacy
+      // customer-level amount maps ONLY onto the single line of a
+      // single-line record; a multi-line legacy amount is never distributed
+      // (the warning banner asks the owner to assign it explicitly).
+      const centsArr: (number | null | undefined)[] = Array.isArray(cAny.monthlyPaymentsCents) ? cAny.monthlyPaymentsCents : [];
+      const monthlyPayments: string[] = [];
+      for (let i = 0; i < phones.length; i++) {
+        monthlyPayments[i] = centsToDollarsString(centsArr[i] ?? null);
+      }
+      if (!hasPerLinePayments(customer) && phones.length <= 1) {
+        const legacy = parseDollarsToCents(cAny.monthlyPayment);
+        if (legacy != null) monthlyPayments[0] = centsToDollarsString(legacy);
+      }
       return {
         ...defaults,
         firstName: customer.firstName || customer.name.split(' ')[0] || '',
@@ -1036,13 +1079,13 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
         phones,
         carrier: carriers[0] || '',
         carriers,
+        monthlyPayments,
         email: customer.email || '',
         address: cAny.address || '',
         city:    cAny.city || '',
         state:   cAny.state || '',
         zip:     cAny.zip || '',
         plan:    cAny.plan || '',
-        monthlyPayment: cAny.monthlyPayment != null ? String(cAny.monthlyPayment) : '',
         notes: customer.notes || '',
         communicationConsent: customer.communicationConsent ?? false,
         photo: cAny.photo || '',
@@ -1053,6 +1096,12 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
     // New customer — check for draft in useEffect
     return defaults;
   });
+
+  // R-CUSTOMER-LINE-PAYMENTS-V1: legacy amount on a multi-line record that
+  // was never assigned to a specific line — surfaced, never auto-allocated.
+  const legacyUnassignedDollars = customer && hasUnassignedLegacyPayment(customer)
+    ? centsToDollarsString(parseDollarsToCents((customer as any).monthlyPayment))
+    : '';
 
   // Check for saved draft on mount
   useEffect(() => {
@@ -1075,30 +1124,46 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
     }
   }, [form, customer]);
 
-  // ── Phones / Carriers array helpers ───────────────────────
+  // ── Phones / Carriers / Line-payments array helpers ────────
+  // R-CUSTOMER-LINE-PAYMENTS-V1: monthlyPayments is a third parallel array;
+  // every mutation keeps the three arrays index-aligned so removing or
+  // reordering one line can never shift another line's amount.
+  const padPayments = (payments: string[], len: number): string[] => {
+    const next = [...payments];
+    while (next.length < len) next.push('');
+    return next.slice(0, Math.max(len, 1));
+  };
   const updatePhone = (idx: number, value: string) => {
     const nextPhones = [...form.phones];
     nextPhones[idx] = value.replace(/\D/g, '');
     const primary = nextPhones.find((p) => (p || '').trim()) || '';
     const nextCarriers = [...form.carriers];
     while (nextCarriers.length < nextPhones.length) nextCarriers.push('');
-    setForm({ ...form, phones: nextPhones, phone: primary, carriers: nextCarriers, carrier: nextCarriers[0] || form.carrier });
+    setForm({ ...form, phones: nextPhones, phone: primary, carriers: nextCarriers, carrier: nextCarriers[0] || form.carrier, monthlyPayments: padPayments(form.monthlyPayments, nextPhones.length) });
   };
   const updateCarrier = (idx: number, value: string) => {
     const nextCarriers = [...form.carriers];
     nextCarriers[idx] = value;
     setForm({ ...form, carriers: nextCarriers, carrier: nextCarriers[0] || '' });
   };
+  const updateLinePayment = (idx: number, value: string) => {
+    const next = padPayments(form.monthlyPayments, form.phones.length);
+    next[idx] = value;
+    setForm({ ...form, monthlyPayments: next });
+  };
   const addPhoneField = () => {
-    setForm({ ...form, phones: [...form.phones, ''], carriers: [...form.carriers, ''] });
+    // New line starts BLANK — it never inherits another line's payment.
+    setForm({ ...form, phones: [...form.phones, ''], carriers: [...form.carriers, ''], monthlyPayments: [...padPayments(form.monthlyPayments, form.phones.length), ''] });
   };
   const removePhoneField = (idx: number) => {
     let nextPhones = form.phones.filter((_: string, i: number) => i !== idx);
     let nextCarriers = form.carriers.filter((_: string, i: number) => i !== idx);
-    if (nextPhones.length === 0) nextPhones = [''];
+    let nextPayments = padPayments(form.monthlyPayments, form.phones.length).filter((_: string, i: number) => i !== idx);
+    if (nextPhones.length === 0) { nextPhones = ['']; nextPayments = ['']; }
     while (nextCarriers.length < nextPhones.length) nextCarriers.push('');
+    while (nextPayments.length < nextPhones.length) nextPayments.push('');
     const primary = nextPhones.find((p: string) => (p || '').trim()) || '';
-    setForm({ ...form, phones: nextPhones, phone: primary, carriers: nextCarriers, carrier: nextCarriers[0] || '' });
+    setForm({ ...form, phones: nextPhones, phone: primary, carriers: nextCarriers, carrier: nextCarriers[0] || '', monthlyPayments: nextPayments });
   };
 
   // ── Webcam for customer photo ─────────────────────────────
@@ -1143,7 +1208,17 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       toast?.(t('customers.form.nameRequired'), 'error');
       return;
     }
-    const phones = form.phones.map((p: string) => (p || '').trim()).filter(Boolean);
+    // R-CUSTOMER-LINE-PAYMENTS-V1: build (phone, carrier, payment) entries
+    // BEFORE filtering blanks so a removed/blank middle line can never shift
+    // another line's carrier or amount (index alignment preserved).
+    const entries = form.phones
+      .map((p: string, i: number) => ({
+        phone: (p || '').trim(),
+        carrier: (form.carriers[i] || (i === 0 ? form.carrier : '') || '').trim(),
+        paymentCents: parseDollarsToCents(form.monthlyPayments[i]),
+      }))
+      .filter((e: { phone: string }) => e.phone);
+    const phones = entries.map((e: { phone: string }) => e.phone);
     if (phones.length === 0) {
       toast?.(t('customers.form.phoneRequired'), 'error');
       return;
@@ -1153,10 +1228,13 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       toast?.(t('customers.form.phoneMustBe10'), 'error');
       return;
     }
-    const carriers: string[] = [];
-    for (let i = 0; i < phones.length; i++) {
-      carriers[i] = (form.carriers[i] || (i === 0 ? form.carrier : '') || '').trim();
-    }
+    const carriers: string[] = entries.map((e: { carrier: string }) => e.carrier);
+    const monthlyPaymentsCents: (number | null)[] = entries.map((e: { paymentCents: number | null }) => e.paymentCents);
+    // Legacy field handling: a single-line record keeps the legacy mirror so
+    // pre-existing readers stay correct; an edited multi-line record clears
+    // it — per-line values are now authoritative (the legacy amount was only
+    // ever a one-time fallback "until the record is edited").
+    const legacyMirror = phones.length === 1 ? centsToDollarsString(monthlyPaymentsCents[0]) : '';
 
     const patch: Partial<Customer> = {
       firstName,
@@ -1173,7 +1251,8 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
       zip: form.zip,
       showAddressOnCredential: form.showAddressOnCredential,
       plan: form.plan,
-      monthlyPayment: form.monthlyPayment || undefined,
+      monthlyPaymentsCents,
+      monthlyPayment: legacyMirror || undefined,
       photo: form.photo,
       notes: form.notes,
       communicationConsent: form.communicationConsent,
@@ -1195,9 +1274,10 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
         setForm({
           firstName: '', lastName: '', phone: '', phones: [''],
           carrier: '', carriers: [''],
+          monthlyPayments: [''],
           email: '', address: '', city: '', state: '', zip: '',
           showAddressOnCredential: false,
-          plan: '', monthlyPayment: '', notes: '', communicationConsent: false, photo: '',
+          plan: '', notes: '', communicationConsent: false, photo: '',
           referredBy: '',
         });
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -1255,9 +1335,14 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
           )}
         </div>
 
-        {/* Phones[] + Carriers[] */}
+        {/* Phones[] + Carriers[] + per-line Monthly Payment (R-CUSTOMER-LINE-PAYMENTS-V1) */}
         <div>
           <label className="text-xs text-slate-400 block mb-1">{t('customers.form.phones')} *</label>
+          {legacyUnassignedDollars && (
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '0.4rem', padding: '0.5rem 0.6rem', fontSize: '0.75rem', color: '#fbbf24', marginBottom: '0.5rem' }}>
+              ⚠️ {t('customers.form.legacyPaymentWarning', `$${legacyUnassignedDollars}`)}
+            </div>
+          )}
           {form.phones.map((p: string, idx: number) => (
             <div key={idx} style={{ marginBottom: '0.6rem', padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.4rem' }}>
               <div className="flex gap-2 items-center mb-1">
@@ -1272,21 +1357,37 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
                   <button type="button" onClick={() => removePhoneField(idx)} className="btn btn-ghost btn-sm text-red-400" title={t('customers.form.removePhone')}>🗑️</button>
                 )}
               </div>
-              <select
-                className="input"
-                value={form.carriers[idx] || ''}
-                onChange={(e) => updateCarrier(idx, e.target.value)}
-                style={{ fontSize: '0.85rem' }}
-              >
-                <option value="">{t('customers.form.selectCarrier')}</option>
-                {CARRIER_OPTIONS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className="input"
+                  value={form.carriers[idx] || ''}
+                  onChange={(e) => updateCarrier(idx, e.target.value)}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  <option value="">{t('customers.form.selectCarrier')}</option>
+                  {CARRIER_OPTIONS_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {/* This line's own monthly payment — never inherited between lines. */}
+                <input
+                  type="number" step="0.01" min="0"
+                  value={form.monthlyPayments[idx] ?? ''}
+                  onChange={(e) => updateLinePayment(idx, e.target.value)}
+                  className="input"
+                  placeholder={t('customers.form.linePaymentPlaceholder')}
+                  title={t('customers.form.linePayment')}
+                  list="monthly-payment-presets"
+                  style={{ fontSize: '0.85rem' }}
+                />
+              </div>
             </div>
           ))}
+          <datalist id="monthly-payment-presets">
+            {MONTHLY_PAYMENT_PRESETS.map((v) => <option key={v} value={v} />)}
+          </datalist>
           <button type="button" onClick={addPhoneField} className="btn btn-secondary btn-sm" style={{ width: '100%' }}>
             + {t('customers.form.addPhone')}
           </button>
-          <p className="text-xs text-slate-600 mt-1">{t('customers.form.multiPhoneHint')}</p>
+          <p className="text-xs text-slate-600 mt-1">{t('customers.form.multiPhoneHint')} · {t('customers.form.linePaymentHint')}</p>
         </div>
 
         {/* Email */}
@@ -1335,24 +1436,12 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
           </label>
         )}
 
-        {/* Plan / Monthly Payment */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.plan')}</label>
-            <input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="input" placeholder={t('customers.form.planPlaceholder')} />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">{t('customers.form.monthlyPayment')}</label>
-            <input
-              type="number" step="0.01"
-              value={form.monthlyPayment}
-              onChange={(e) => setForm({ ...form, monthlyPayment: e.target.value })}
-              className="input" placeholder={t('customers.form.monthlyPaymentPlaceholder')} list="monthly-payment-presets"
-            />
-            <datalist id="monthly-payment-presets">
-              {MONTHLY_PAYMENT_PRESETS.map((v) => <option key={v} value={v} />)}
-            </datalist>
-          </div>
+        {/* Plan (R-CUSTOMER-LINE-PAYMENTS-V1: the ambiguous global Monthly
+            Payment field was removed — each phone line now carries its own
+            amount inside its card above) */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1">{t('customers.form.plan')}</label>
+          <input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="input" placeholder={t('customers.form.planPlaceholder')} />
         </div>
 
         {/* Referral code (new customer only) */}
@@ -1514,7 +1603,8 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             </div>
             <div className="text-center">
               <p className="text-xs text-slate-500">{t('monthlyPaymentLabel')}</p>
-              <p className="text-sm font-semibold text-white">{customer.monthlyPayment ? `$${customer.monthlyPayment}` : '—'}</p>
+              {/* R-CUSTOMER-LINE-PAYMENTS-V1: exact per-line sum; legacy counted once as fallback, never both. */}
+              <p className="text-sm font-semibold text-white">{(() => { const cents = getMonthlyTotalCents(customer); return cents != null ? `$${centsToDollarsString(cents)}` : '—'; })()}</p>
             </div>
             <div className="text-center">
               <p className="text-xs text-slate-500">{t('customers.history.lastVisit')}</p>
