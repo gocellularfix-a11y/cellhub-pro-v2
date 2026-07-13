@@ -658,11 +658,25 @@ const TOP_ITEMS_KEYWORDS = [
   'vendo mas', 'vendo más', 'top seller', 'best seller',
   'más vendido', 'mas vendido', 'qué vendo', 'que vendo',
   'top items',
+  // R-INTEL-V2-PHASE6-PT-COVERAGE: Portuguese. Shadow evidence (Phase 3
+  // corpus): 'mais vendido' fell to fallback_question — the bank had no PT
+  // phrase ('mas vendido' is not a substring of 'mais vendido'). Anchored
+  // two-word phrase; also covers 'mais vendidos' / 'produtos mais vendidos'
+  // via substring. No other bank carries 'vendido' — no collision.
+  'mais vendido',
 ];
 
 const REPAIRS_KEYWORDS = [
   'reparaciones', 'repairs', 'atrasadas', 'overdue',
   'pendientes', 'pending', 'reparacion', 'reparación',
+  // R-INTEL-V2-PHASE6-PT-COVERAGE: Portuguese — PLURAL anchored phrase only.
+  // Shadow evidence (Phase 3 corpus): 'reparos atrasados' fell to
+  // fallback_question ("no bank matches the plural form"). Deliberately NOT
+  // added: singular 'reparo atrasado' (already owned by
+  // REPAIR_FOLLOW_UP_KEYWORDS — adding it here would flip that routing) and
+  // bare 'reparos'/'atrasados' (the same bare-token hazard class as EN
+  // 'pending': bare 'atrasados' would steal 'pagamentos atrasados').
+  'reparos atrasados',
 ];
 
 // R-INTELLIGENCE-REFRESH-FREEZE-QUEUE-CLEANUP-REPAIR-INTENT-FIX:
@@ -729,6 +743,13 @@ const FORECAST_KEYWORDS = [
   'predice', 'predicción', 'prediccion',
   'forecast', 'predict', 'projection', 'projected',
   'expected sales',
+  // R-INTEL-V2-PHASE6-PT-COVERAGE: Portuguese. Shadow evidence (Phase 3
+  // corpus): 'previsão de vendas' fell to fallback_question — the bank had
+  // no PT phrase. 'previsão'/'previsao' are domain-unambiguous in a retail
+  // chat (mirrors the bank's existing bare 'forecast'/'proyeccion' style);
+  // SALES_KEYWORDS carries ES 'ventas', not PT 'vendas', so there is no
+  // sales_summary fight, and the anchored phrase adds a second hit anyway.
+  'previsão de vendas', 'previsao de vendas', 'previsão', 'previsao',
 ];
 
 const ANOMALY_KEYWORDS = [
@@ -1454,6 +1475,14 @@ const TREND_DIRECTION_KEYWORDS = [
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
+  // R-INTEL-V2-PHASE6-PT-COVERAGE: Portuguese. Documented gap (Phase 3
+  // vocabulary registry: "HELP_KEYWORDS has no PT token") — bare 'ajuda'
+  // previously fell to fallback_question. Safe as a bare token BECAUSE
+  // 'help' is the LAST entry in the scores array: any operational bank hit
+  // ties 1-1 and wins on position, so a help word embedded in a real
+  // operational ask ("me ajuda a ver os reparos atrasados") can never steal
+  // the operational intent. Mirrors the existing bare 'ayuda'/'help'.
+  'ajuda',
 ];
 
 // R-INTELLIGENCE-EXECUTION-OUTPUTS-V1: operator outreach + repair intents.

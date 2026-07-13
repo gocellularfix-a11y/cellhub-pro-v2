@@ -40,8 +40,10 @@ describe('compareWithProductionRouter', () => {
   });
 
   it('explains disagreements in the reasons', () => {
-    // Router PT gap: "mais vendido" has no bank phrase → fallback; vocabulary → top_items.
-    const c = compareWithProductionRouter('mais vendido', 'pt');
+    // 'mais vendido' no longer disagrees (Phase 6 closed that PT gap).
+    // 'estoque baixo' remains a stable documented disagreement: the router
+    // routes it to data_query, the vocabulary to inventory_low.
+    const c = compareWithProductionRouter('estoque baixo', 'pt');
     expect(c.match).toBe(false);
     expect(c.reasons.join(' ')).toContain('router chose');
   });
@@ -87,10 +89,13 @@ describe('shadow corpus report', () => {
     }
   });
 
-  it('documented router language gaps surface as vocabulary improvements', () => {
-    for (const q of ['mais vendido', 'previsão de vendas', 'reparos atrasados']) {
+  it('the Phase 3 PT gaps are now exact matches (closed by R-INTEL-V2-PHASE6)', () => {
+    // These three surfaced as vocabulary_improved while the router lacked PT
+    // coverage. Phase 6 added the phrases to the production banks, so both
+    // engines now agree with the documented expectation — strictly safer.
+    for (const q of ['mais vendido', 'previsão de vendas', 'reparos atrasados', 'ajuda', 'preciso de ajuda', 'produtos mais vendidos']) {
       const row = report.rows.find((r) => r.entry.query === q);
-      expect(row?.group, q).toBe('vocabulary_improved');
+      expect(row?.group, q).toBe('exact_match');
     }
   });
 

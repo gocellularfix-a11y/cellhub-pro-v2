@@ -60,10 +60,12 @@ describe('overdue routing preserved (negative cases)', () => {
     }
   });
 
-  it('PT "reparos atrasados" keeps its pre-existing behavior (known PT gap — fallback, not this round\'s scope)', () => {
-    // Phase 3 documented this: no bank matches the plural PT form, so it
-    // falls back. This round deliberately does NOT broaden overdue routing.
-    expect(id('reparos atrasados', 'pt')).toBe('fallback_question');
+  it('PT "reparos atrasados" now routes to repairs_overdue (Phase 6 closed the documented PT gap)', () => {
+    // Phase 4 locked the then-current fallback because closing the gap was
+    // out of that round's scope. R-INTEL-V2-PHASE6-PT-COVERAGE added the
+    // anchored plural phrase to REPAIRS_KEYWORDS — the shadow-documented
+    // expectation (repairs_overdue) is now production behavior.
+    expect(id('reparos atrasados', 'pt')).toBe('repairs_overdue');
   });
 });
 

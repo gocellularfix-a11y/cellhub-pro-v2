@@ -124,7 +124,7 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'ready for pickup', lang: 'en', expected: 'repairs_ready' },
   { query: 'overdue repairs', lang: 'en', expected: 'repairs_overdue' },
   { query: 'reparaciones atrasadas', lang: 'es', expected: 'repairs_overdue' },
-  { query: 'reparos atrasados', lang: 'pt', expected: 'repairs_overdue', note: 'router PT gap: no bank matches the plural form' },
+  { query: 'reparos atrasados', lang: 'pt', expected: 'repairs_overdue', note: 'former router PT gap (plural form) — closed by R-INTEL-V2-PHASE6' },
 
   // ── Inventory ──
   { query: 'low stock', lang: 'en', expected: 'inventory_low' },
@@ -139,7 +139,7 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'o que devo repor', lang: 'pt', expected: 'restock_opportunity' },
   { query: 'top seller', lang: 'en', expected: 'top_items' },
   { query: 'mas vendido', lang: 'es', expected: 'top_items' },
-  { query: 'mais vendido', lang: 'pt', expected: 'top_items', note: 'router PT gap: TOP_ITEMS_KEYWORDS has no Portuguese phrase' },
+  { query: 'mais vendido', lang: 'pt', expected: 'top_items', note: 'former router PT gap (TOP_ITEMS) — closed by R-INTEL-V2-PHASE6' },
 
   // ── Sales / day state ──
   { query: 'sales today', lang: 'en', expected: 'today_sales', note: 'router design comment says today_sales must win; raw score may disagree' },
@@ -156,7 +156,7 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'estamos crescendo', lang: 'pt', expected: 'trend_direction' },
   { query: 'forecast', lang: 'en', expected: 'forecast_items' },
   { query: 'pronostico de ventas', lang: 'es', expected: 'forecast_items' },
-  { query: 'previsão de vendas', lang: 'pt', expected: 'forecast_items', note: 'router PT gap: FORECAST_KEYWORDS has no Portuguese phrase' },
+  { query: 'previsão de vendas', lang: 'pt', expected: 'forecast_items', note: 'former router PT gap (FORECAST) — closed by R-INTEL-V2-PHASE6' },
 
   // ── Marketing / help / diagnostics ──
   { query: 'marketing campaign', lang: 'en', expected: 'marketing_campaign' },
@@ -165,6 +165,13 @@ export const SHADOW_CORPUS: readonly ShadowCorpusEntry[] = [
   { query: 'help', lang: 'en', expected: 'help' },
   { query: 'ayuda', lang: 'es', expected: 'help' },
   { query: 'what can you do', lang: 'en', expected: 'help' },
+  // R-INTEL-V2-PHASE6: PT help coverage + the embedded-help collision guard.
+  // 'ajuda' routes to help ONLY standalone — inside an operational ask the
+  // operational bank ties 1-1 and wins on scores-array position.
+  { query: 'ajuda', lang: 'pt', expected: 'help', note: 'former router PT gap (HELP had no PT token) — closed by R-INTEL-V2-PHASE6' },
+  { query: 'preciso de ajuda', lang: 'pt', expected: 'help' },
+  { query: 'me ajuda a ver os reparos atrasados', lang: 'pt', expected: 'repairs_overdue', note: 'embedded help word must never steal an operational ask (Phase 6 lock)' },
+  { query: 'produtos mais vendidos', lang: 'pt', expected: 'top_items', note: 'plural/natural variant of the Phase 6 top_items correction' },
   { query: 'what is wrong', lang: 'en', expected: 'what_hurting_profit' },
   { query: 'que esta mal', lang: 'es', expected: 'what_hurting_profit' },
 
