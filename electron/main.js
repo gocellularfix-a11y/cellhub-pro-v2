@@ -657,13 +657,35 @@ function registerIpcHandlers() {
           ...(effectiveRanges ? { pageRanges: effectiveRanges } : {}),
         };
         console.log('[print:run] options:', JSON.stringify(printOptions));
-        printWin.webContents.print(printOptions, (success, failureReason) => {
-          console.log('[print:run] result:', success, failureReason);
+        const runPrint = (options) => new Promise((res) => {
+          printWin.webContents.print(options, (success, failureReason) => res({ success, failureReason }));
+        });
+        (async () => {
+          let outcome = await runPrint(printOptions);
+          // R-2.1.4-PAGERANGES-WIN-FALLBACK-V1: on this Electron (31.x) under
+          // Windows, webContents.print fails the WHOLE job with a generic
+          // "Print job failed" whenever pageRanges is present — verified
+          // empirically against both a laser (Canon MF210) and a thermal
+          // (POS-80C) driver: identical jobs succeed without ranges and fail
+          // with ANY range. That made every "Custom range…" print fail
+          // globally. Fallback: retry once WITHOUT ranges (full document) and
+          // surface the existing rangeUnsupported warning so the renderer
+          // tells the operator the full document was printed instead of
+          // failing silently. Range validation/clamping above still applies
+          // (out-of-bounds ranges keep their clear validation errors).
+          if (!outcome.success && effectiveRanges) {
+            console.warn('[print:run] job with pageRanges failed (' + (outcome.failureReason || 'unknown') + ') — retrying full document without ranges');
+            const retryOptions = { ...printOptions };
+            delete retryOptions.pageRanges;
+            rangeUnsupportedWarning = true;
+            outcome = await runPrint(retryOptions);
+          }
+          console.log('[print:run] result:', outcome.success, outcome.failureReason);
           if (!printWin.isDestroyed()) printWin.close();
           // RECEIPT-PRINTER-RANGE-FALLBACK-V1: surface the "couldn't select
           // pages → printed full receipt" warning on a successful print.
-          resolve({ success, error: failureReason || null, rangeUnsupported: rangeUnsupportedWarning });
-        });
+          resolve({ success: outcome.success, error: outcome.failureReason || null, rangeUnsupported: rangeUnsupportedWarning });
+        })();
       });
     } catch (err) {
       console.error('[print:run] FAILED:', err);

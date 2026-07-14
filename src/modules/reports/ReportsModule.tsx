@@ -12,7 +12,7 @@
 //   - Standalone repairs use real parts/labor cost when available.
 // ============================================================
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Fragment, useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
@@ -29,12 +29,25 @@ import { usePrint, openPrintWindow } from '@/hooks/usePrint';
 import type { PrintPageSizeKey } from '@/hooks/usePrint';
 import { generateReceiptHtml, renderBarcodeSvg, getReceiptBarcodeHeight } from '@/modules/pos/ReceiptModal';
 import { buildReceiptBarcodePayload } from '@/services/barcode/receiptPayload';
-import { normalizeCarrier } from '@/utils/normalize';
+import { formatPhone } from '@/utils/normalize';
 import { matchesSearchPhones } from '@/utils/search';
+// R-2.1.4-REPORTS-ACTIVATION-CLASSIFICATION-V1: classification + phone-payment
+// economics + provider/carrier aggregation moved to a pure, tested service.
+// Single source of truth for BOTH the on-screen cards and the printed report.
+import {
+  classifyItem,
+  lineRevenueCents,
+  normalizeCarrierName,
+  computePhonePaymentEconomics,
+  aggregatePhoneActivity,
+} from '@/services/reports/phonePaymentReporting';
+// R-2.1.4-REPORT-RANGE-CONTRACT-V1: canonical local-day range (validated,
+// inclusive end-of-day, never UTC-shifted).
+import { normalizeLocalDayRange, isWithinLocalDayRange } from '@/utils/reportRange';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
 import { summarizeLedger, voidLedgerEntry } from '@/services/storeCredit/ledger';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
-import { getActivePortals, getDefaultPortalId } from '@/config/paymentPortals';
+import { getActivePortals } from '@/config/paymentPortals';
 // R-REPORTS-EDIT-SALE-ITEM-V1: shared totals helper + audit trail helpers.
 // calculateCartTotals re-derives subtotal/salesTax/total from the modified
 // items so we don't reimplement tax math here. captureSnapshot/appendEditEntry
@@ -219,61 +232,10 @@ function isUnlockCompleted(u: Unlock): boolean {
   return status === 'completed' || status === 'complete';
 }
 
-function normalizeCarrierName(raw: string): string {
-  const s = String(raw || '').trim();
-  if (!s) return '';
-  const lower = s.toLowerCase().replace(/\s+/g, '');
-  if (s === 'T' || lower === 'tmobile' || lower === 't-mobile') return 'T-Mobile';
-  if (s === 'V' || lower === 'verizon' || lower === 'vzw') return 'Verizon';
-  if (s === 'A' || lower === 'at&t' || lower === 'att') return 'AT&T';
-  if (lower.includes('h2o')) return 'H2O';
-  if (lower.includes('pageplus')) return 'Page Plus';
-  if (lower.includes('simplemobile')) return 'Simple Mobile';
-  if (lower.includes('cricket')) return 'Cricket';
-  if (lower.includes('ultra')) return 'Ultra Mobile';
-  if (lower.includes('tracfone')) return 'Tracfone';
-  if (lower.includes('telcel')) return 'Telcel';
-  return s;
-}
-
-/** Item line revenue in CENTS. Single source of truth. */
-function lineRevenueCents(item: SaleItem): number {
-  return (item.price || 0) * (item.qty || (item as any).quantity || 1);
-}
-
-/** Item type detection — handles legacy `type` and v2 `category` fields. */
-type ItemKind = 'phone_payment' | 'topup' | 'repair' | 'unlock' | 'special_order' | 'cc_fee' | 'service' | 'product' | 'exchange_credit';
-
-function classifyItem(item: SaleItem): ItemKind {
-  const cat = String(item.category || '').toLowerCase();
-  // legacy `type` field on sale items (not in TS type, but lives in real data)
-  const type = String((item as unknown as { type?: string }).type || '').toLowerCase();
-
-  if (type === 'phone_payment' || cat === 'phone_payment') return 'phone_payment';
-  if (type === 'topup' || cat === 'topup' || cat === 'top_up' || cat === 'top-up') return 'topup';
-  if (type === 'repair' || item.repairId) return 'repair';
-  if (type === 'unlock' || item.unlockId) return 'unlock';
-  if (type === 'special_order' || item.specialOrderId) return 'special_order';
-  if (cat === 'exchange_credit') return 'exchange_credit';
-  if (type === 'service' || cat === 'service' || cat === 'services') {
-    // legacy services that are actually repairs
-    const n = (item.name || '').toLowerCase();
-    if (n.includes('exchange credit') || n.includes('crédito cambio') || n.includes('crédito troca')) return 'exchange_credit';
-    if (n.includes('repair') || n.includes('reparación')) return 'repair';
-    // R-REPORTS-LAYAWAY-CATEGORY-FIX: "UNLOCKED" in a product name (e.g.
-    // "SAMSUNG GALAXY S24 ULTRA UNLOCKED — Layaway") is a product attribute,
-    // NOT a service-category signal. Skip name-based unlock detection when
-    // the item carries an explicit layawayId — those are layaway payments
-    // and must bucket under 'Layaway' (catName override below).
-    if (!item.layawayId && (n.includes('unlock') || n.includes('desbloqueo'))) {
-      // R-LAYAWAY-GUARD: prevent false unlock classification for layaway-related items
-      if (n.includes('layaway') || n.includes('apartado')) return 'service';
-      return 'unlock';
-    }
-    return 'service';
-  }
-  return 'product';
-}
+// R-2.1.4-REPORTS-ACTIVATION-CLASSIFICATION-V1: normalizeCarrierName,
+// lineRevenueCents, ItemKind and classifyItem moved verbatim to
+// @/services/reports/phonePaymentReporting (imported above) so the pure
+// aggregation service and this module share one classification source.
 
 // ── Returns: bridge legacy localStorage (DOLLARS) to cents ───
 
@@ -686,15 +648,14 @@ export default function ReportsModule() {
   }, []);
 
   // ── Period range ──────────────────────────────────────────
-  const periodRange = useMemo(() => ({
-    start: new Date(startDate + 'T00:00:00'),
-    end: new Date(endDate + 'T23:59:59.999'),
-  }), [startDate, endDate]);
+  // R-2.1.4-REPORT-RANGE-CONTRACT-V1: canonical normalized local-day range.
+  // Same date math as before (local T00:00:00 → T23:59:59.999 inclusive),
+  // now validated: missing/reversed dates mark the range invalid so print
+  // and export can refuse loudly instead of silently producing an empty doc.
+  const periodRange = useMemo(() => normalizeLocalDayRange(startDate, endDate), [startDate, endDate]);
 
   const inRange = useCallback((createdAt: unknown): boolean => {
-    const d = toDateSafe(createdAt);
-    if (!d) return false;
-    return d >= periodRange.start && d <= periodRange.end;
+    return isWithinLocalDayRange(toDateSafe(createdAt), periodRange);
   }, [periodRange]);
 
   // ── Filtered collections ──────────────────────────────────
@@ -1004,32 +965,25 @@ export default function ReportsModule() {
     }> = {};
     const employeeStats: Record<string, { transactions: number; revenueCents: number }> = {};
     const itemStats: Record<string, { quantity: number; revenueCents: number }> = {};
-    // R-REPORTS-PHONE-PROVIDER: group phone payments by PROVIDER (WebPOS,
-    // QPay, VidaPay, H2O) instead of by carrier brand. `numbers` uses Set
-    // internally so repeated payments to the same phone don't inflate
-    // the displayed list — we expose a unique count + sample.
-    // profitCents accumulates per-line profit (revenue × commRate), so a
-    // single provider bucket can span multiple carriers with different
-    // commission rates — each line contributes its own correct profit.
-    const phonePaymentsByProvider: Record<string, {
-      count: number;
-      totalCents: number;
-      profitCents: number;
-      numbers: Set<string>;
-    }> = {};
-    // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket grouped by carrier
-    // (AT&T, Verizon, T-Mobile, etc.) rather than by portal/provider. This
-    // is the "how many activations per phone company" metric independent
-    // of which top-up portal processed the payment. Pure additive — does
-    // not touch the by-provider math.
-    const activationsByCarrier: Record<string, {
-      count: number;
-      totalCents: number;
-      profitCents: number;
-      numbers: Set<string>;
-    }> = {};
+    // R-REPORTS-PHONE-PROVIDER / R-ACTIVATIONS-BY-CARRIER-V1 →
+    // R-2.1.4-REPORTS-ACTIVATION-CLASSIFICATION-V1: both buckets now come
+    // from the pure aggregation service (single source shared with tests).
+    // FIX: "Activations by Carrier" previously re-grouped the SAME
+    // phone_payment dataset by carrier, so every bill payment counted as an
+    // activation. The service classifies by the semantic activation markers
+    // (category 'activation'/'sim', isActivation flag) — bill payments land
+    // ONLY under Phone Payments by Provider, genuine activations ONLY under
+    // Activations by Carrier. Provider buckets also carry per-transaction
+    // `details` rows (Phase 3) used by screen, print and export.
     const activePortals = getActivePortals(settings);
     const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
+    const { phonePaymentsByProvider, activationsByCarrier } = aggregatePhoneActivity(
+      filteredSales,
+      settings,
+      activePortals,
+      carrierPortalUrls,
+      { noProvider: t('reports.noProvider'), noCarrier: t('reports.noCarrier') },
+    );
 
     const ensureCat = (name: string) => {
       const key = normalizeCategoryKey(name);
@@ -1154,72 +1108,15 @@ export default function ReportsModule() {
 
         if (kind === 'phone_payment') {
           catName = 'Phone Payments';
-          // R-COMMISSION-FIX-WRITE-AND-READ: align with TaxReportsModule.
-          // Trust stamped item.commissionRate first (transaction-time
-          // accounting standard). Recompute only if missing or invalid.
-          let commRate = (item as any).commissionRate;
-          if (commRate == null || commRate === 0) {
-            let rawCarrier = ((item as any).carrier || (item as any).carrierName || (item as any).provider || '').trim();
-            if (!rawCarrier && (item as any).name) {
-              const match = String((item as any).name).match(/^([A-Za-z0-9\s&]+?)(?:\s*[-–]\s*|\s+Bill Payment)/i);
-              if (match) rawCarrier = match[1].trim();
-            }
-            // BUG-3 (R-INV-BUGS): broader fallback for legacy phone_payment
-            // sales whose carrier field is blank AND whose name doesn't fit
-            // the "Carrier - phone" / "Carrier Bill Payment" prefix shape
-            // (e.g. "H2O Wireless 25", "Verizon Refill"). Searches for any
-            // known-carrier substring inside the item name; normalizeCarrier
-            // below canonicalizes the match (h2o → 'H2O', etc.) so the
-            // settings.carrierCommissions lookup hits.
-            if (!rawCarrier && (item as any).name) {
-              const knownMatch = String((item as any).name).match(
-                /\b(h2o|t-?mobile|verizon|at&?t|cricket|tracfone|page\s*plus|simple\s*mobile|ultra(?:\s+mobile)?|telcel|boost|metro(?:\s*pcs)?|mint\s*mobile|visible)\b/i,
-              );
-              if (knownMatch) rawCarrier = knownMatch[1].trim();
-            }
-            const normalized = normalizeCarrier(rawCarrier);
-            const carrierRate = normalized
-              ? settings.carrierCommissions?.[normalized]
-              : undefined;
-            commRate = carrierRate
-              ?? settings.defaultCommissionRate
-              ?? 0.07;
-          }
-          // Carrier name is still computed (kept for provider lookup downstream)
-          let carrierName = item.carrier || '';
-          if (!carrierName && item.name) carrierName = item.name.split('-')[0].trim();
-          const normalizedCarrier = normalizeCarrierName(carrierName);
-          costCents = Math.round(revenueCents * (1 - commRate));
-          profitCents = revenueCents - costCents;
-
-          // Resolve provider: prefer item.portal (set by PhonePaymentModal
-          // on new sales). For legacy sales without portal, derive it
-          // from the carrier via the same matching logic the modal uses.
-          let provider = (item.portal || '').trim();
-          if (!provider && normalizedCarrier) {
-            provider = getDefaultPortalId(normalizedCarrier, activePortals, carrierPortalUrls);
-          }
-          if (!provider) provider = t('reports.noProvider');
-
-          if (!phonePaymentsByProvider[provider]) {
-            phonePaymentsByProvider[provider] = { count: 0, totalCents: 0, profitCents: 0, numbers: new Set() };
-          }
-          phonePaymentsByProvider[provider].count += qty;
-          phonePaymentsByProvider[provider].totalCents += revenueCents;
-          phonePaymentsByProvider[provider].profitCents += profitCents;
-          if (item.phoneNumber) phonePaymentsByProvider[provider].numbers.add(item.phoneNumber);
-
-          // R-ACTIVATIONS-BY-CARRIER-V1: parallel bucket keyed by CARRIER
-          // (not provider). Each phone_payment item = one activation event
-          // (multi-line activations correctly count once per phone line).
-          const carrierKey = normalizedCarrier || t('reports.noCarrier');
-          if (!activationsByCarrier[carrierKey]) {
-            activationsByCarrier[carrierKey] = { count: 0, totalCents: 0, profitCents: 0, numbers: new Set() };
-          }
-          activationsByCarrier[carrierKey].count += qty;
-          activationsByCarrier[carrierKey].totalCents += revenueCents;
-          activationsByCarrier[carrierKey].profitCents += profitCents;
-          if (item.phoneNumber) activationsByCarrier[carrierKey].numbers.add(item.phoneNumber);
+          // R-2.1.4-REPORTS-ACTIVATION-CLASSIFICATION-V1: commission/cost/
+          // profit math moved verbatim to computePhonePaymentEconomics (the
+          // aggregation service uses the SAME function, so category totals
+          // and provider/carrier buckets can never drift apart). Provider and
+          // activation bucket accumulation now happens in
+          // aggregatePhoneActivity above — not in this loop.
+          const eco = computePhonePaymentEconomics(item, settings);
+          costCents = eco.costCents;
+          profitCents = eco.profitCents;
         } else if (kind === 'topup') {
           catName = 'Top-Ups';
           costCents = Math.round(revenueCents * TOPUP_COST_RATE);
@@ -1943,6 +1840,16 @@ export default function ReportsModule() {
 
   // ── Print report ──────────────────────────────────────────
   const printReport = useCallback(() => {
+    // R-2.1.4-REPORT-RANGE-CONTRACT-V1: refuse to print on an invalid custom
+    // range — visible toast, selected dates stay in the inputs for correction.
+    // Never a silent empty/zeroed document.
+    if (!periodRange.valid) {
+      toast(
+        t(periodRange.invalidReason === 'reversed' ? 'reports.invalidRangeReversed' : 'reports.invalidRangeMissing'),
+        'error',
+      );
+      return;
+    }
     const storeName = settings.storeName || 'CellHub Pro';
     const dateLabel = startDate === endDate
       ? new Date(startDate + 'T12:00:00').toLocaleDateString()
@@ -1986,6 +1893,7 @@ export default function ReportsModule() {
       trans:        'Trans.',
       item:         locale === 'es' ? 'Artículo'                  : locale === 'pt' ? 'Item'                           : 'Item',
       netTotal:     locale === 'es' ? 'TOTAL NETO'                : locale === 'pt' ? 'TOTAL LÍQUIDO'                  : 'NET TOTAL',
+      notRecorded:  locale === 'es' ? 'No registrado'             : locale === 'pt' ? 'Não registrado'                 : 'Not recorded',
     };
 
     // All user-controlled strings below MUST go through escHtml (round 17 XSS fix).
@@ -2000,7 +1908,24 @@ export default function ReportsModule() {
         const profitCells = canSeeOwnerFinancials
           ? `<td class="text-right text-green">${formatCurrency(d.profitCents)}</td><td class="text-right">${margin.toFixed(1)}%</td>`
           : '';
-        return `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td>${profitCells}</tr>`;
+        const providerRow = `<tr><td>${escHtml(c)}</td><td class="text-right">${d.count}</td><td class="text-right">${formatCurrency(d.totalCents)}</td>${profitCells}</tr>`;
+        // R-2.1.4 Phase 3: one indented detail row per phone-payment
+        // transaction directly below its provider summary. Missing phone or
+        // carrier on legitimate historical records renders "Not recorded";
+        // the transaction still counts in the provider totals above.
+        const detailRows = d.details.map((det) => {
+          const meta = [
+            det.phoneNumber ? escHtml(formatPhone(det.phoneNumber)) : escHtml(L.notRecorded),
+            det.carrier ? escHtml(det.carrier) : escHtml(L.notRecorded),
+            det.timeISO ? escHtml(new Date(det.timeISO).toLocaleString()) : '',
+            det.invoice ? `#${escHtml(det.invoice)}` : '',
+          ].filter(Boolean).join(' · ');
+          const detProfitCells = canSeeOwnerFinancials
+            ? `<td class="text-right">${formatCurrency(det.profitCents)}</td><td></td>`
+            : '';
+          return `<tr class="pp-detail"><td class="pp-detail-meta">↳ ${meta}</td><td></td><td class="text-right">${formatCurrency(det.amountCents)}</td>${detProfitCells}</tr>`;
+        }).join('');
+        return providerRow + detailRows;
       })
       .join('');
     const ppTotal = {
@@ -2092,6 +2017,12 @@ tr:last-child td { border-bottom: none; }
 .text-right { text-align: right; }
 .text-green { color: #16a34a; font-weight: 700; }
 .text-red { color: #dc2626; font-weight: 700; }
+
+/* R-2.1.4 Phase 3: per-transaction rows under each provider summary. */
+.pp-detail td { font-size: 7pt; color: #555; padding: 2px 8px; background: #fafbfc; }
+.pp-detail .pp-detail-meta { padding-left: 18px; }
+/* Keep each row intact across page breaks (provider blocks stay readable). */
+tbody tr { page-break-inside: avoid; }
 
 .net-banner { background: #1a1a2e; color: #fff; padding: 10px 16px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 12pt; font-weight: 900; }
 
@@ -2215,7 +2146,7 @@ tr:last-child td { border-bottom: none; }
 
 </body></html>`;
     openPrintWindow(html);
-  }, [stats, settings, startDate, endDate, locale, canSeeOwnerFinancials]);
+  }, [stats, settings, startDate, endDate, locale, canSeeOwnerFinancials, periodRange, toast, t]);
 
   // ── Export Report (JSON) ──────────────────────────────────
   // R-FINANCIAL-PRIVACY-V3: build the JSON payload with owner-only keys
@@ -2225,6 +2156,15 @@ tr:last-child td { border-bottom: none; }
   // order for admins. Sales totals, tax, fees, cash, repairs, unlocks,
   // transaction counts all remain.
   const exportReport = useCallback(() => {
+    // R-2.1.4-REPORT-RANGE-CONTRACT-V1: same guard as printReport — an
+    // invalid range must never export a silently-empty report.
+    if (!periodRange.valid) {
+      toast(
+        t(periodRange.invalidReason === 'reversed' ? 'reports.invalidRangeReversed' : 'reports.invalidRangeMissing'),
+        'error',
+      );
+      return;
+    }
     const report = {
       reportType,
       dateRange: { start: startDate, end: endDate },
@@ -2272,6 +2212,25 @@ tr:last-child td { border-bottom: none; }
           marginPct: d.totalCents > 0 ? Number(((d.profitCents / d.totalCents) * 100).toFixed(2)) : 0,
         } : {}),
         uniqueNumbers: d.numbers.size,
+        // R-2.1.4 Phase 3: per-transaction details (one entry per payment,
+        // repeats preserved). Missing phone/carrier exported as null.
+        details: d.details.map((det) => ({
+          phone: det.phoneNumber ? formatPhone(det.phoneNumber) : null,
+          carrier: det.carrier || null,
+          amount: formatCurrency(det.amountCents),
+          ...(canSeeOwnerFinancials ? { profit: formatCurrency(det.profitCents) } : {}),
+          time: det.timeISO || null,
+          invoice: det.invoice || null,
+        })),
+      })),
+      // R-2.1.4 Phase 2: genuine activations (semantic classification) —
+      // previously this dataset was the phone payments re-grouped by carrier.
+      activationsByCarrier: Object.entries(stats.activationsByCarrier).map(([carrier, d]) => ({
+        carrier,
+        activations: d.count,
+        total: formatCurrency(d.totalCents),
+        ...(canSeeOwnerFinancials ? { profit: formatCurrency(d.profitCents) } : {}),
+        uniqueNumbers: d.numbers.size,
       })),
       employees: stats.topEmployees.map((e) => ({
         name: e.name, transactions: e.transactions, revenue: formatCurrency(e.revenueCents),
@@ -2289,7 +2248,7 @@ tr:last-child td { border-bottom: none; }
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [stats, reportType, startDate, endDate, canSeeOwnerFinancials]);
+  }, [stats, reportType, startDate, endDate, canSeeOwnerFinancials, periodRange, toast, t]);
 
   // ============================================================
   //  RENDER
@@ -2350,6 +2309,13 @@ tr:last-child td { border-bottom: none; }
           <input type="date" className="input" value={endDate}
             onChange={(e) => { setEndDate(e.target.value); setReportType('range'); }}
             style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }} />
+          {/* R-2.1.4-REPORT-RANGE-CONTRACT-V1: visible validation — print and
+              export are blocked while the range is invalid; dates stay put. */}
+          {!periodRange.valid && (
+            <span style={{ fontSize: '0.72rem', color: '#f87171', fontWeight: 600 }}>
+              ⚠ {t(periodRange.invalidReason === 'reversed' ? 'reports.invalidRangeReversed' : 'reports.invalidRangeMissing')}
+            </span>
+          )}
         </div>
         {/* Round 10 fix 2: transactions header now shows real buckets instead of a
             single "4 transactions" lump that included refund sales as if they were
@@ -2709,25 +2675,55 @@ tr:last-child td { border-bottom: none; }
                         ? (d.profitCents / d.totalCents) * 100
                         : 0;
                       return (
-                        <tr key={provider} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{provider}</td>
-                          <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
-                          <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
-                          {canSeeOwnerFinancials && (
-                            <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: d.profitCents < 0 ? '#ef4444' : '#86efac' }}>
-                              {formatCurrency(d.profitCents)}
+                        <Fragment key={provider}>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '0.5rem 0.875rem', fontWeight: 600, color: '#e2e8f0' }}>{provider}</td>
+                            <td style={{ padding: '0.5rem 0.875rem', color: '#94a3b8' }}>{d.count}</td>
+                            <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: '#22c55e' }}>{formatCurrency(d.totalCents)}</td>
+                            {canSeeOwnerFinancials && (
+                              <td style={{ padding: '0.5rem 0.875rem', fontWeight: 700, color: d.profitCents < 0 ? '#ef4444' : '#86efac' }}>
+                                {formatCurrency(d.profitCents)}
+                              </td>
+                            )}
+                            {canSeeOwnerFinancials && (
+                              <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.75rem', color: marginPct >= 5 ? '#86efac' : marginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
+                                {marginPct.toFixed(1)}%
+                              </td>
+                            )}
+                            <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
+                              <span style={{ color: '#94a3b8', fontWeight: 700 }}>{uniqueNums.length}</span>
+                              {uniqueNums.length > 0 && <span style={{ marginLeft: '0.5rem' }}>— {preview}{more}</span>}
                             </td>
-                          )}
-                          {canSeeOwnerFinancials && (
-                            <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.75rem', color: marginPct >= 5 ? '#86efac' : marginPct >= 0 ? '#fbbf24' : '#ef4444' }}>
-                              {marginPct.toFixed(1)}%
-                            </td>
-                          )}
-                          <td style={{ padding: '0.5rem 0.875rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>
-                            <span style={{ color: '#94a3b8', fontWeight: 700 }}>{uniqueNums.length}</span>
-                            {uniqueNums.length > 0 && <span style={{ marginLeft: '0.5rem' }}>— {preview}{more}</span>}
-                          </td>
-                        </tr>
+                          </tr>
+                          {/* R-2.1.4 Phase 3: one indented detail row per phone-payment
+                              transaction (repeated payments to the same phone each keep
+                              their own row). Missing phone/carrier on legit historical
+                              records show "Not recorded" — the row still counts. */}
+                          {d.details.map((det, di) => (
+                            <tr key={`${provider}-det-${det.saleId}-${di}`} style={{ background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                              <td colSpan={canSeeOwnerFinancials ? 6 : 4} style={{ padding: '0.28rem 0.875rem 0.28rem 2rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', fontSize: '0.72rem' }}>
+                                  <div style={{ color: '#94a3b8', display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>
+                                      {det.phoneNumber ? formatPhone(det.phoneNumber) : t('reports.notRecorded')}
+                                    </span>
+                                    <span>· {det.carrier || t('reports.notRecorded')}</span>
+                                    {det.timeISO && <span>· {new Date(det.timeISO).toLocaleString()}</span>}
+                                    {det.invoice && <span>· #{det.invoice}</span>}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '0.9rem', whiteSpace: 'nowrap' }}>
+                                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatCurrency(det.amountCents)}</span>
+                                    {canSeeOwnerFinancials && (
+                                      <span style={{ color: det.profitCents < 0 ? '#ef4444' : '#86efac' }}>
+                                        {formatCurrency(det.profitCents)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
                       );
                     })}
                   {(() => {

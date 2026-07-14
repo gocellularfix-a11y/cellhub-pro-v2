@@ -5239,7 +5239,7 @@ export const translations: TranslationDictionary = {
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: bridge-eligible receipt on a Secondary.
   'print.willPrintOnPrimary':  { en: 'This receipt will print on the Primary Terminal.', es: 'Este recibo se imprimirá en la Terminal Principal.', pt: 'Este recibo será impresso no Terminal Principal.' },
   // RECEIPT-PRINTER-RANGE-FALLBACK-V1: shown when the receipt printer can't print a page subset.
-  'print.rangeUnsupported':    { en: 'This receipt printer can’t print selected pages. Printing the full receipt.', es: 'Esta impresora de recibos no puede imprimir páginas seleccionadas. Imprimiendo el recibo completo.', pt: 'Esta impressora de recibos não pode imprimir páginas selecionadas. Imprimindo o recibo completo.' },
+  'print.rangeUnsupported':    { en: 'This printer can’t print selected pages. Printing the full document instead.', es: 'Esta impresora no puede imprimir páginas seleccionadas. Se imprimió el documento completo.', pt: 'Esta impressora não pode imprimir páginas selecionadas. Imprimindo o documento completo.' },
 
   // ── R-PRINT-MEDIA-GUARD-V1: printer media validation ─────────
   'print.media.80mm':   { en: '80mm receipt', es: 'recibo 80mm', pt: 'recibo 80mm' },
@@ -6311,6 +6311,12 @@ export const translations: TranslationDictionary = {
   'reports.activationsByCarrier':   { en: 'Activations by Carrier',                        es: 'Activaciones por Compañía',                        pt: 'Ativações por Operadora' },
   'reports.activationsByCarrierSub':{ en: 'Phone activations grouped by carrier company',  es: 'Activaciones agrupadas por compañía telefónica',   pt: 'Ativações agrupadas por operadora' },
   'reports.activations':            { en: 'activations',                                   es: 'activaciones',                                     pt: 'ativações' },
+  // R-2.1.4 Phase 3: provider detail rows — missing phone/carrier on
+  // legitimate historical records shows this instead of hiding the row.
+  'reports.notRecorded':            { en: 'Not recorded',                                  es: 'No registrado',                                    pt: 'Não registrado' },
+  // R-2.1.4-REPORT-RANGE-CONTRACT-V1: custom-range validation messages.
+  'reports.invalidRangeMissing':    { en: 'Select a valid start and end date before printing or exporting.', es: 'Selecciona una fecha de inicio y fin válidas antes de imprimir o exportar.', pt: 'Selecione datas de início e fim válidas antes de imprimir ou exportar.' },
+  'reports.invalidRangeReversed':   { en: 'End date is before the start date. Fix the range to print or export.', es: 'La fecha final es anterior a la inicial. Corrige el rango para imprimir o exportar.', pt: 'A data final é anterior à inicial. Corrija o intervalo para imprimir ou exportar.' },
   'reports.lines':                  { en: 'lines',                                         es: 'líneas',                                           pt: 'linhas' },
 
   // ── Nav tab labels ────────────────────────────────────────
