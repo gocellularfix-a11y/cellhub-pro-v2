@@ -11,6 +11,7 @@ import {
   lineRevenueCents,
   computePhonePaymentEconomics,
   aggregatePhoneActivity,
+  buildActivationsByCarrierPrintModel,
 } from './phonePaymentReporting';
 import { getActivePortals } from '@/config/paymentPortals';
 
@@ -245,5 +246,166 @@ describe('economics parity with the category loop', () => {
     expect(computePhonePaymentEconomics(noRate, SETTINGS).commRate).toBe(0.10);
     const unknown = makeItem({ name: 'Mystery Bill Payment', category: 'phone_payment', price: 1000, carrier: 'Nowhere Mobile' });
     expect(computePhonePaymentEconomics(unknown, SETTINGS).commRate).toBe(0.07);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// R-2.1.4-PRINT-PAGES Phase 4 — printed Activations by Carrier
+// ══════════════════════════════════════════════════════════════
+
+function activationLine(carrier: string, phone: string, planCents: number, feeCents: number): SaleItem[] {
+  const items: SaleItem[] = [
+    makeItem({ name: `📱 Plan ${carrier}`, category: 'phone_payment', isActivation: true, price: planCents, carrier, phoneNumber: phone, commissionRate: 0.10 }),
+  ];
+  if (feeCents > 0) {
+    items.push(makeItem({ name: `⚡ Activation Fee ${carrier}`, category: 'activation', isActivation: true, price: feeCents, carrier, phoneNumber: phone }));
+  }
+  return items;
+}
+
+describe('printed Activations by Carrier — parity with the screen aggregation', () => {
+  const sales = [
+    makeSale('a1', activationLine('Verizon', '8055550101', 5000, 2500)),
+    makeSale('a2', activationLine('AT&T', '8055550102', 4000, 0)),
+    makeSale('p1', [billPayment('Page Plus', '8055550103', 3000, 'VidaPay')]),
+  ];
+
+  it('the print model is a pure projection of the SAME buckets the screen card renders', () => {
+    const { activationsByCarrier } = run(sales);
+    const model = buildActivationsByCarrierPrintModel(activationsByCarrier);
+    // Same carriers, same counts, same exact cent totals as the screen data:
+    expect(model.rows.map((r) => r.carrier).sort()).toEqual(Object.keys(activationsByCarrier).sort());
+    for (const row of model.rows) {
+      const bucket = activationsByCarrier[row.carrier];
+      expect(row.count).toBe(bucket.count);
+      expect(row.totalCents).toBe(bucket.totalCents);
+      expect(row.profitCents).toBe(bucket.profitCents);
+      expect(row.uniqueNumbers).toBe(bucket.numbers.size);
+    }
+    // Totals reconcile exactly in integer cents:
+    expect(model.totals.totalCents).toBe(model.rows.reduce((s, r) => s + r.totalCents, 0));
+    expect(model.totals.profitCents).toBe(model.rows.reduce((s, r) => s + r.profitCents, 0));
+    expect(Number.isInteger(model.totals.totalCents)).toBe(true);
+  });
+
+  it('payment records are excluded; genuine activations included; sorted by total desc', () => {
+    const { activationsByCarrier } = run(sales);
+    const model = buildActivationsByCarrierPrintModel(activationsByCarrier);
+    expect(model.rows.map((r) => r.carrier)).toEqual(['Verizon', 'AT&T']); // 7500 > 4000
+    expect(model.rows.find((r) => r.carrier === 'Page Plus')).toBeUndefined();
+    expect(model.totals.count).toBe(2);
+  });
+
+  it('missing activation carrier flows through as the no-carrier bucket (rendered "Not recorded")', () => {
+    const noCarrier = makeSale('a3', [
+      makeItem({ name: '⚡ Activation Fee', category: 'activation', isActivation: true, price: 2000, phoneNumber: '8055550104' }),
+    ]);
+    const { activationsByCarrier } = run([noCarrier]);
+    const model = buildActivationsByCarrierPrintModel(activationsByCarrier);
+    expect(model.rows).toHaveLength(1);
+    expect(model.rows[0].carrier).toBe(LABELS.noCarrier);
+    expect(model.rows[0].totalCents).toBe(2000);
+  });
+
+  it('margin comes from exact cents; profit values are integers (role privacy is a render concern, data stays exact)', () => {
+    const { activationsByCarrier } = run(sales);
+    const model = buildActivationsByCarrierPrintModel(activationsByCarrier);
+    for (const row of model.rows) {
+      expect(Number.isInteger(row.profitCents)).toBe(true);
+      expect(row.marginPct).toBeCloseTo((row.profitCents / row.totalCents) * 100, 10);
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// R-2.1.4 Phase 5 — deterministic fixture reproducing the exact
+// production screenshot: 26 phone payments / $1,063.00 total.
+// ══════════════════════════════════════════════════════════════
+
+function paymentsFixture(): Sale[] {
+  const sales: Sale[] = [];
+  let n = 0;
+  const add = (carrier: string, portal: string, amounts: number[]) => {
+    for (const cents of amounts) {
+      n++;
+      sales.push(makeSale(`fx${n}`, [billPayment(carrier, `80555512${String(n).padStart(2, '0')}`, cents, portal)]));
+    }
+  };
+  // Page Plus: 1 / $30 — via VidaPay
+  add('Page Plus', 'VidaPay', [3000]);
+  // Simple Mobile: 5 / $200 — via VidaPay (VidaPay total: 6 / $230)
+  add('Simple Mobile', 'VidaPay', [4000, 4000, 4000, 4000, 4000]);
+  // H2O: 9 / $230 — via H2O portal
+  add('H2O', 'H2O', [2500, 2500, 2500, 2500, 2500, 2500, 2500, 3000, 2500]);
+  // Verizon: 6 / $310 — via WebPOS
+  add('Verizon', 'WebPOS', [5000, 5000, 5000, 5000, 5000, 6000]);
+  // AT&T: 5 / $293 — via QPay
+  add('AT&T', 'QPay', [6000, 6000, 6000, 6000, 5300]);
+  return sales;
+}
+
+describe('exact 26/$1,063 production-screenshot fixture', () => {
+  it('reproduces the provider table exactly and reports ZERO activations', () => {
+    const { phonePaymentsByProvider, activationsByCarrier } = run(paymentsFixture());
+
+    const summary = Object.fromEntries(Object.entries(phonePaymentsByProvider)
+      .map(([k, v]) => [k, { count: v.count, totalCents: v.totalCents }]));
+    expect(summary).toEqual({
+      'VidaPay': { count: 6, totalCents: 23000 },
+      'H2O':     { count: 9, totalCents: 23000 },
+      'WebPOS':  { count: 6, totalCents: 31000 },
+      'QPay':    { count: 5, totalCents: 29300 },
+    });
+    const totalCount = Object.values(phonePaymentsByProvider).reduce((s, v) => s + v.count, 0);
+    const totalCents = Object.values(phonePaymentsByProvider).reduce((s, v) => s + v.totalCents, 0);
+    expect(totalCount).toBe(26);
+    expect(totalCents).toBe(106300); // $1,063.00 exactly
+
+    // THE FIX UNDER TEST: none of these 26 payments is an activation.
+    // (Previously this same dataset re-grouped by carrier WAS the
+    // "Activations by Carrier" card: H2O 9/$230, Verizon 6/$310,
+    // Simple Mobile 5/$200, AT&T 5/$293, Page Plus 1/$30.)
+    expect(Object.keys(activationsByCarrier)).toHaveLength(0);
+    const printModel = buildActivationsByCarrierPrintModel(activationsByCarrier);
+    expect(printModel.rows).toHaveLength(0);
+  });
+
+  it('26 provider detail rows reconcile exactly; Page Plus $30 appears ONLY as a payment', () => {
+    const { phonePaymentsByProvider } = run(paymentsFixture());
+    let detailRows = 0;
+    for (const bucket of Object.values(phonePaymentsByProvider)) {
+      detailRows += bucket.details.length;
+      expect(bucket.count).toBe(bucket.details.length);
+      expect(bucket.totalCents).toBe(bucket.details.reduce((s, d) => s + d.amountCents, 0));
+      expect(bucket.profitCents).toBe(bucket.details.reduce((s, d) => s + d.profitCents, 0));
+    }
+    expect(detailRows).toBe(26);
+    const pagePlus = phonePaymentsByProvider['VidaPay'].details.filter((d) => d.carrier === 'Page Plus');
+    expect(pagePlus).toHaveLength(1);
+    expect(pagePlus[0].amountCents).toBe(3000);
+    // No duplicate transaction references:
+    const ids = Object.values(phonePaymentsByProvider).flatMap((b) => b.details.map((d) => `${d.saleId}`));
+    expect(new Set(ids).size).toBe(26);
+  });
+
+  it('adding one genuine activation does not disturb the 26/$1,063 payments', () => {
+    const sales = [...paymentsFixture(), makeSale('act-fx', activationLine('Verizon', '8055559999', 5000, 2500))];
+    const { phonePaymentsByProvider, activationsByCarrier } = run(sales);
+    const totalCents = Object.values(phonePaymentsByProvider).reduce((s, v) => s + v.totalCents, 0);
+    const totalCount = Object.values(phonePaymentsByProvider).reduce((s, v) => s + v.count, 0);
+    expect(totalCount).toBe(26);
+    expect(totalCents).toBe(106300);
+    expect(activationsByCarrier['Verizon'].count).toBe(1);
+    expect(activationsByCarrier['Verizon'].totalCents).toBe(7500);
+  });
+
+  it('screen, print and export views consume the identical aggregation (single source)', () => {
+    const agg1 = run(paymentsFixture());
+    const agg2 = run(paymentsFixture());
+    const serialize = (v: unknown) => JSON.stringify(v, (_k, x) => (x instanceof Set ? Array.from(x).sort() : x));
+    expect(serialize(agg1)).toBe(serialize(agg2));
+    // The print model is derived (not re-classified) from the same buckets:
+    expect(serialize(buildActivationsByCarrierPrintModel(agg1.activationsByCarrier)))
+      .toBe(serialize(buildActivationsByCarrierPrintModel(agg2.activationsByCarrier)));
   });
 });

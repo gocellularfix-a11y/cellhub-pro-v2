@@ -207,6 +207,52 @@ export interface PhoneActivityAggregation {
   activationsByCarrier: Record<string, ActivationCarrierBucket>;
 }
 
+// ── Printed "Activations by Carrier" model (R-2.1.4-PRINT-PAGES Phase 4) ──
+// Pure projection of the SAME aggregation buckets the on-screen card uses,
+// so the printed section can never drift from the interactive report.
+
+export interface ActivationsPrintRow {
+  carrier: string;
+  count: number;
+  totalCents: number;
+  profitCents: number;
+  marginPct: number;       // computed from exact integer cents
+  uniqueNumbers: number;
+}
+
+export interface ActivationsPrintModel {
+  rows: ActivationsPrintRow[]; // sorted by totalCents descending
+  totals: { count: number; totalCents: number; profitCents: number; marginPct: number; uniqueNumbers: number };
+}
+
+export function buildActivationsByCarrierPrintModel(
+  activationsByCarrier: Record<string, ActivationCarrierBucket>,
+): ActivationsPrintModel {
+  const rows: ActivationsPrintRow[] = Object.entries(activationsByCarrier)
+    .map(([carrier, b]) => ({
+      carrier,
+      count: b.count,
+      totalCents: b.totalCents,
+      profitCents: b.profitCents,
+      marginPct: b.totalCents > 0 ? (b.profitCents / b.totalCents) * 100 : 0,
+      uniqueNumbers: b.numbers.size,
+    }))
+    .sort((a, b) => b.totalCents - a.totalCents);
+  const allNumbers = new Set<string>();
+  for (const b of Object.values(activationsByCarrier)) {
+    for (const n of b.numbers) allNumbers.add(n);
+  }
+  const totals = {
+    count: rows.reduce((s, r) => s + r.count, 0),
+    totalCents: rows.reduce((s, r) => s + r.totalCents, 0),
+    profitCents: rows.reduce((s, r) => s + r.profitCents, 0),
+    marginPct: 0,
+    uniqueNumbers: allNumbers.size,
+  };
+  totals.marginPct = totals.totalCents > 0 ? (totals.profitCents / totals.totalCents) * 100 : 0;
+  return { rows, totals };
+}
+
 function saleTimeISO(createdAt: unknown): string {
   if (!createdAt) return '';
   try {

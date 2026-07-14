@@ -503,57 +503,36 @@ function registerIpcHandlers() {
         }
       }
 
-      // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1b: Chromium only paginates DURING
-      // the print, so a requested pageRange is never validated against a real
-      // page count — single-page receipts with a custom range, or ranges past
-      // the last page, fail the whole job with an opaque error. When (and
-      // only when) a custom range was requested, probe the actual page count
-      // via printToPDF on the already-loaded window (cheap for receipts):
-      //   pageCount <= 1 → drop pageRanges entirely (print-all is the
-      //                    identical output for a one-page document)
-      //   pageCount  > 1 → clamp ranges into [0, pageCount-1]; if nothing
-      //                    survives, fail fast with a CLEAR message.
-      // Probe failure → send ranges as-is (pre-existing behavior).
-      let effectiveRanges = Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0
-        ? payload.pageRanges
-        : null;
-      // SPECIAL-ORDERS-PRINT-RANGE-FIX-V1: the previous RECEIPT-PRINTER-CUSTOM-
-      // RANGE-BYPASS-V1 nulled a "page-1-only" range for ANY receipt-width
-      // document BEFORE counting pages — which silently printed ALL pages of a
-      // MULTI-page receipt (e.g. a long special-order receipt). We now defer:
-      // the request falls through to the page-count probe below, which nulls
-      // the range ONLY after confirming the document is genuinely 1 page
-      // (preserving the receipt-printer {from:0,to:0} quirk workaround), and
-      // otherwise honors the requested range so "page 1 only" prints page 1.
-      //
-      // These flags are computed here (not nulled) so the probe-FAILURE
-      // fallback can still apply the single-page quirk workaround.
-      // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1 (original rationale): a valid
-      // {from:0,to:0} range fails the silent job on the shop printer while
-      // All-pages prints fine; for a genuinely one-page receipt, dropping the
-      // range is output-identical and avoids that driver quirk.
-      const isReceiptSize = ((payload.pageSize && payload.pageSize.width) || 101600) <= 101600;
-      // R-RECEIPT-4X6-CONTINUOUS-RECEIPT-NOT-QR-PAGE: distinguish TRUE continuous
-      // roll media (80mm: narrow width AND tall auto height — printed as ONE grown
-      // page by the content-height probe above, so the driver genuinely cannot
-      // select pages) from FIXED-size 4x6 label stock (real page boundaries). Only
-      // continuous media drops a requested range; 4x6 honors it via the clamp
-      // branch. Mirrors the width<=80mm && height>=150mm gate used to grow 80mm.
-      const reqW = (payload.pageSize && payload.pageSize.width) || 101600;
-      const reqH = (payload.pageSize && payload.pageSize.height) || 152400;
-      const isContinuousReceipt = reqW <= 80000 && reqH >= 150000 && !payload.landscape;
-      const onlyFirstPage = !!effectiveRanges && effectiveRanges.every((r) => (r.from || 0) === 0 && (r.to || 0) === 0);
-      // RECEIPT-PRINTER-RANGE-FALLBACK-V1: set when a custom range was requested
-      // on receipt media but could not be honored (driver can't select pages on
-      // a multi-page receipt) — we print the full receipt and tell the renderer.
-      let rangeUnsupportedWarning = false;
-      if (effectiveRanges) {
+      // R-2.1.4-PRINT-PAGES: REAL selected-page printing.
+      // webContents.print() with pageRanges fails the whole job on this
+      // Electron under Windows (empirically verified on laser + thermal
+      // drivers), so selected-page jobs never reach print() with ranges.
+      // Instead: printToPDF (which DOES honor 1-based pageRanges strings
+      // exactly — verified) slices the selected pages, pdf.js rasterizes
+      // them in-memory, and the composed full-page-image document prints
+      // through the proven no-ranges print() path. Any failure REJECTS the
+      // job — a selected-page request never silently prints the full
+      // document. See electron/printPages.js for the pipeline.
+      const printPages = require('./printPages');
+      const hadRangeRequest = Array.isArray(payload.pageRanges) && payload.pageRanges.length > 0;
+      const requestedRanges = printPages.normalizeZeroBasedRanges(payload.pageRanges); // 1-based, sorted, merged
+      if (hadRangeRequest && !requestedRanges) {
+        if (!printWin.isDestroyed()) printWin.close();
+        return { success: false, error: 'Invalid page range payload' };
+      }
+      if (requestedRanges) {
+        // Probe the true page count. NOTE: printToPDF pageSize takes INCHES
+        // (passing the renderer's microns yields an absurd page size —
+        // verified); preferCSSPageSize still lets document @page rules win,
+        // matching how the physical print paginates.
+        let pageCount = 0;
         try {
           const probePdf = await printWin.webContents.printToPDF({
             landscape: payload.landscape || false,
             printBackground: true,
             preferCSSPageSize: true,
-            pageSize: effectivePageSize,
+            pageSize: printPages.micronsToInches(effectivePageSize),
+            scale: (payload.scaleFactor || 100) / 100,
             margins: {
               top: payload.margins?.top || 0,
               bottom: payload.margins?.bottom || 0,
@@ -562,57 +541,41 @@ function registerIpcHandlers() {
             },
           });
           // Chromium/Skia PDFs list each page object as "/Type /Page" —
-          // count them (excluding the "/Type /Pages" tree node). 0 → heuristic
-          // failed → leave ranges untouched.
-          const pageCount = (probePdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
-          console.log('[print:run] page-count probe:', pageCount, 'requested ranges:', JSON.stringify(effectiveRanges));
-          if (pageCount === 1) {
-            // RECEIPT-PRINTER-CUSTOM-RANGE-BYPASS-V1: one-page document —
-            // a range covering page 1 prints all (identical output); a range
-            // that does NOT include page 1 is a clean validation error, never
-            // a generic "Print job failed".
-            const coversFirstPage = effectiveRanges.some((r) => (r.from || 0) === 0);
-            if (coversFirstPage) {
-              effectiveRanges = null;
-            } else {
-              if (!printWin.isDestroyed()) printWin.close();
-              return { success: false, error: 'Page range out of bounds — document has 1 page' };
-            }
-          } else if (pageCount > 1) {
-            if (isContinuousReceipt) {
-              // RECEIPT-PRINTER-RANGE-FALLBACK-V1 (scoped by R-RECEIPT-4X6-
-              // CONTINUOUS-RECEIPT-NOT-QR-PAGE): only TRUE continuous 80mm roll
-              // media is printed as one grown page, so the driver genuinely
-              // cannot select pages — drop the range, print the FULL receipt,
-              // and flag a warning. Fixed-size 4x6 label stock has real page
-              // boundaries and now falls through to the clamp branch so a
-              // user-selected page range IS honored. Letter/Legal/A4 likewise.
-              console.log('[print:run] continuous (80mm) multi-page + custom range → printing full receipt (driver cannot select pages)');
-              effectiveRanges = null;
-              rangeUnsupportedWarning = true;
-            } else {
-              const clamped = effectiveRanges
-                .map((r) => ({ from: Math.max(0, r.from || 0), to: Math.min(r.to || 0, pageCount - 1) }))
-                .filter((r) => r.from <= r.to);
-              if (clamped.length === 0) {
-                if (!printWin.isDestroyed()) printWin.close();
-                return { success: false, error: `Page range out of bounds — document has ${pageCount} pages` };
-              }
-              effectiveRanges = clamped;
-            }
-          }
+          // count them (excluding the "/Type /Pages" tree node).
+          pageCount = (probePdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
         } catch (probeErr) {
-          // SPECIAL-ORDERS-PRINT-RANGE-FIX-V1: if the probe can't run, preserve
-          // the receipt-printer quirk workaround for the page-1-only case
-          // (null = print all = identical output for a 1-page receipt). Any
-          // other range keeps the pre-existing "send as-is" behavior.
-          if (isReceiptSize && onlyFirstPage) {
-            console.log('[print:run] probe failed; receipt-size + page-1-only → null range (quirk workaround)');
-            effectiveRanges = null;
-          } else {
-            console.warn('[print:run] page-count probe failed, sending ranges as-is:', probeErr);
-          }
+          if (!printWin.isDestroyed()) printWin.close();
+          return { success: false, error: 'Could not determine the document page count: ' + ((probeErr && probeErr.message) || probeErr) };
         }
+        console.log('[print:run] page-count probe:', pageCount, 'requested 1-based ranges:', JSON.stringify(requestedRanges));
+        if (pageCount <= 0) {
+          if (!printWin.isDestroyed()) printWin.close();
+          return { success: false, error: 'Could not determine the document page count' };
+        }
+        // Pages beyond the document are REJECTED with the real page count —
+        // never clamped away silently, never substituted with a full print.
+        const beyond = printPages.pagesBeyondCount(requestedRanges, pageCount);
+        if (beyond.length > 0) {
+          if (!printWin.isDestroyed()) printWin.close();
+          return { success: false, error: `Page range out of bounds — document has ${pageCount} page${pageCount === 1 ? '' : 's'}` };
+        }
+        const selectsAll = requestedRanges.length === 1
+          && requestedRanges[0].from === 1
+          && requestedRanges[0].to === pageCount;
+        if (!selectsAll) {
+          const result = await printPages.printSelectedPages({
+            sourceWebContents: printWin.webContents,
+            payload,
+            ranges1: requestedRanges,
+            effectivePageSize,
+          });
+          console.log('[print:run] selected-page result:', JSON.stringify(result));
+          if (!printWin.isDestroyed()) printWin.close();
+          return { success: result.success, error: result.error, printedPages: result.printedPages };
+        }
+        // Range covers the entire document → output-identical to a normal
+        // full print → fall through to the proven direct path below (also
+        // preserves the receipt-printer page-1-of-1 quirk workaround).
       }
 
       return await new Promise((resolve) => {
@@ -647,45 +610,19 @@ function registerIpcHandlers() {
                 right: inchesToPrintPixels(payload.margins.right),
               }
             : { marginType: 'none' },
-          // R-PRINT-PAGE-RANGES-V1: forward parsed pageRanges from the
-          // print preview modal. webContents.print accepts an array of
-          // {from, to} — 0-BASED page indices, inclusive (the renderer
-          // converts from the 1-based UI values before sending — see
-          // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1). Omitted = all pages.
-          // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1b: effectiveRanges is the
-          // probe-validated version (single-page → null, clamped otherwise).
-          ...(effectiveRanges ? { pageRanges: effectiveRanges } : {}),
+          // R-2.1.4-PRINT-PAGES: pageRanges is NEVER passed to print() —
+          // it fails the whole job on Electron 31/Windows (verified).
+          // Selected-page jobs were already handled above via the
+          // printToPDF → pdf.js raster → composed-image pipeline; a job
+          // reaching this point prints the complete document (either "All
+          // pages" or a custom range covering every page).
         };
         console.log('[print:run] options:', JSON.stringify(printOptions));
-        const runPrint = (options) => new Promise((res) => {
-          printWin.webContents.print(options, (success, failureReason) => res({ success, failureReason }));
-        });
-        (async () => {
-          let outcome = await runPrint(printOptions);
-          // R-2.1.4-PAGERANGES-WIN-FALLBACK-V1: on this Electron (31.x) under
-          // Windows, webContents.print fails the WHOLE job with a generic
-          // "Print job failed" whenever pageRanges is present — verified
-          // empirically against both a laser (Canon MF210) and a thermal
-          // (POS-80C) driver: identical jobs succeed without ranges and fail
-          // with ANY range. That made every "Custom range…" print fail
-          // globally. Fallback: retry once WITHOUT ranges (full document) and
-          // surface the existing rangeUnsupported warning so the renderer
-          // tells the operator the full document was printed instead of
-          // failing silently. Range validation/clamping above still applies
-          // (out-of-bounds ranges keep their clear validation errors).
-          if (!outcome.success && effectiveRanges) {
-            console.warn('[print:run] job with pageRanges failed (' + (outcome.failureReason || 'unknown') + ') — retrying full document without ranges');
-            const retryOptions = { ...printOptions };
-            delete retryOptions.pageRanges;
-            rangeUnsupportedWarning = true;
-            outcome = await runPrint(retryOptions);
-          }
-          console.log('[print:run] result:', outcome.success, outcome.failureReason);
+        printWin.webContents.print(printOptions, (success, failureReason) => {
+          console.log('[print:run] result:', success, failureReason);
           if (!printWin.isDestroyed()) printWin.close();
-          // RECEIPT-PRINTER-RANGE-FALLBACK-V1: surface the "couldn't select
-          // pages → printed full receipt" warning on a successful print.
-          resolve({ success: outcome.success, error: outcome.failureReason || null, rangeUnsupported: rangeUnsupportedWarning });
-        })();
+          resolve({ success, error: failureReason || null });
+        });
       });
     } catch (err) {
       console.error('[print:run] FAILED:', err);

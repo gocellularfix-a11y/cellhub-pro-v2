@@ -40,6 +40,7 @@ import {
   normalizeCarrierName,
   computePhonePaymentEconomics,
   aggregatePhoneActivity,
+  buildActivationsByCarrierPrintModel,
 } from '@/services/reports/phonePaymentReporting';
 // R-2.1.4-REPORT-RANGE-CONTRACT-V1: canonical local-day range (validated,
 // inclusive end-of-day, never UTC-shifted).
@@ -1879,6 +1880,10 @@ export default function ReportsModule() {
       cash:         locale === 'es' ? 'Efectivo'                  : locale === 'pt' ? 'Dinheiro'                       : 'Cash',
       card:         locale === 'es' ? 'Tarjeta'                   : locale === 'pt' ? 'Cartão'                         : 'Card',
       ppHeader:     locale === 'es' ? '📞 Pagos por Proveedor'   : locale === 'pt' ? '📞 Pagamentos por Provedor'    : '📞 Phone Payments by Provider',
+      actHeader:    locale === 'es' ? '📲 Activaciones por Compañía' : locale === 'pt' ? '📲 Ativações por Operadora'  : '📲 Activations by Carrier',
+      actCarrier:   locale === 'es' ? 'Compañía'                  : locale === 'pt' ? 'Operadora'                      : 'Carrier',
+      actCount:     locale === 'es' ? 'Activaciones'              : locale === 'pt' ? 'Ativações'                      : 'Activations',
+      actLines:     locale === 'es' ? 'Líneas'                    : locale === 'pt' ? 'Linhas'                         : 'Lines',
       catHeader:    locale === 'es' ? '📦 Ventas por Categoría'  : locale === 'pt' ? '📦 Vendas por Categoria'       : '📦 Sales by Category',
       empHeader:    locale === 'es' ? '👥 Desempeño de Empleados': locale === 'pt' ? '👥 Desempenho de Funcionários' : '👥 Employee Performance',
       itemHeader:   locale === 'es' ? '⭐ Artículos Más Vendidos' : locale === 'pt' ? '⭐ Itens Mais Vendidos'         : '⭐ Top Selling Items',
@@ -1928,6 +1933,42 @@ export default function ReportsModule() {
         return providerRow + detailRows;
       })
       .join('');
+    // R-2.1.4-PRINT-PAGES Phase 4: printed Activations by Carrier — the SAME
+    // canonical aggregation the on-screen card renders (no second
+    // classification path). Only genuine semantic activations appear here;
+    // a missing carrier prints as "Not recorded".
+    const actModel = buildActivationsByCarrierPrintModel(stats.activationsByCarrier);
+    const actRows = actModel.rows
+      .map((r) => {
+        const carrierLabel = r.carrier === t('reports.noCarrier') ? L.notRecorded : r.carrier;
+        const profitCells = canSeeOwnerFinancials
+          ? `<td class="text-right text-green">${formatCurrency(r.profitCents)}</td><td class="text-right">${r.marginPct.toFixed(1)}%</td>`
+          : '';
+        return `<tr><td>${escHtml(carrierLabel)}</td><td class="text-right">${r.count}</td><td class="text-right">${formatCurrency(r.totalCents)}</td>${profitCells}<td class="text-right">${r.uniqueNumbers}</td></tr>`;
+      })
+      .join('');
+    const actTotalProfitCells = canSeeOwnerFinancials
+      ? `<td class="text-right text-green">${formatCurrency(actModel.totals.profitCents)}</td><td class="text-right">${actModel.totals.marginPct.toFixed(1)}%</td>`
+      : '';
+    const actTotalRow = `<tr class="row-total"><td>${L.total}</td><td class="text-right">${actModel.totals.count}</td><td class="text-right">${formatCurrency(actModel.totals.totalCents)}</td>${actTotalProfitCells}<td class="text-right">${actModel.totals.uniqueNumbers}</td></tr>`;
+    const actSection = actModel.rows.length === 0 ? '' : `
+<!-- ACTIVATIONS BY CARRIER (genuine activations only — R-2.1.4) -->
+<div class="section">
+  <div class="section-header">${escHtml(L.actHeader)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>${escHtml(L.actCarrier)}</th>
+        <th class="text-right">${escHtml(L.actCount)}</th>
+        <th class="text-right">Total</th>
+        ${canSeeOwnerFinancials ? `<th class="text-right">${escHtml(L.profit)}</th><th class="text-right">${escHtml(L.marginCol)}</th>` : ''}
+        <th class="text-right">${escHtml(L.actLines)}</th>
+      </tr>
+    </thead>
+    <tbody>${actRows}${actTotalRow}</tbody>
+  </table>
+</div>`;
+
     const ppTotal = {
       count: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.count, 0),
       revenue: Object.values(stats.phonePaymentsByProvider).reduce((s, d) => s + d.totalCents, 0),
@@ -2088,7 +2129,7 @@ tbody tr { page-break-inside: avoid; }
     <tbody>${ppRows}${ppTotalRow}</tbody>
   </table>
 </div>
-
+${actSection}
 <!-- SALES BY CATEGORY -->
 <div class="section">
   <div class="section-header">${escHtml(L.catHeader)}</div>

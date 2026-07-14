@@ -16,6 +16,10 @@ import type { PrintPageSizeKey } from '@/hooks/usePrint';
 // picked here. The confirm dialog is rendered by PrintMediaGuardHost at
 // zIndex 10000 (this modal is 9999), so awaiting it works from inside.
 import { checkPrintMediaJob, requestPrintMediaConfirmation, announcePrintRecovery } from '@/services/print/printMediaGuard';
+// R-2.1.4-PRINT-PAGES: canonical page-range parser — single source shared
+// with the tests; main re-normalizes the IPC payload defensively.
+import { parsePageRanges } from '@/utils/pageRanges';
+import type { PageRange, PageRangeError } from '@/utils/pageRanges';
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -244,27 +248,18 @@ export default function PrintPreviewModal({
   }, [open, html, lanReadOnly]);
 
 
-  // R-PRINT-PAGE-RANGES-V1: parse user-typed range like "1", "2", "1-2", "1,3",
-  // "1-2,4" into Electron's `pageRanges: [{from, to}]` shape (1-based, inclusive).
-  // Returns undefined when the input doesn't parse — caller falls back to all pages.
-  const parsePageRanges = (input: string): Array<{ from: number; to: number }> | undefined => {
-    const trimmed = (input || '').trim();
-    if (!trimmed) return undefined;
-    const out: Array<{ from: number; to: number }> = [];
-    for (const part of trimmed.split(',')) {
-      const seg = part.trim();
-      if (!seg) continue;
-      if (seg.includes('-')) {
-        const [a, b] = seg.split('-').map((s) => parseInt(s.trim(), 10));
-        if (Number.isFinite(a) && Number.isFinite(b) && a >= 1 && b >= a) {
-          out.push({ from: a, to: b });
-        }
-      } else {
-        const n = parseInt(seg, 10);
-        if (Number.isFinite(n) && n >= 1) out.push({ from: n, to: n });
-      }
+  // R-2.1.4-PRINT-PAGES: canonical shared parser (see @/utils/pageRanges).
+  // Every invalid input — INCLUDING an empty Custom Range — blocks the print
+  // with a specific message; an invalid selection never falls back to
+  // printing the complete document.
+  const pageRangeErrorMessage = (error: PageRangeError): string => {
+    switch (error) {
+      case 'empty':    return t('print.rangeError.empty');
+      case 'zero':     return t('print.rangeError.zero');
+      case 'negative': return t('print.rangeError.negative');
+      case 'reversed': return t('print.rangeError.reversed');
+      default:         return t('print.rangeError.syntax');
     }
-    return out.length > 0 ? out : undefined;
   };
 
   // ── Print ─────────────────────────────────────────────────
@@ -289,14 +284,19 @@ export default function PrintPreviewModal({
       return;
     }
     if (!window.electronAPI?.printRun || !selectedPrinter) return;
-    // Validate custom page range before sending to printer
+    // R-2.1.4-PRINT-PAGES: validate the custom page range BEFORE anything is
+    // sent to the printer. Empty/zero/negative/reversed/garbage input blocks
+    // the job with a specific EN/ES/PT message — the entered range stays in
+    // the input for correction.
+    let customRanges: PageRange[] | null = null;
     if (pageRangeMode === 'custom') {
       const parsed = parsePageRanges(pageRangeInput);
-      if (pageRangeInput.trim() && !parsed) {
-        setPageRangeError('Invalid range. Use: 1 · 1-2 · 1,3 · 1-2,4');
+      if (!parsed.ok) {
+        setPageRangeError(pageRangeErrorMessage(parsed.error));
         return;
       }
       setPageRangeError(null);
+      customRanges = parsed.ranges;
     }
     // R-PRINT-MEDIA-GUARD-V1: the user explicitly picked this printer, so a
     // mismatch never auto-reroutes here — it asks (Cancel focused / Print
@@ -330,15 +330,13 @@ export default function PrintPreviewModal({
       // affected the actual print, so multi-page reports kept printing
       // at 100% and spilling onto two pages. CSS transforms don't survive
       // the print pipeline; scaleFactor (passed to webContents.print) does.
-      // R-PRINT-PAGE-RANGES-V1: parsed pageRanges (or undefined for "all").
-      // RECEIPT-PRINTER-PAGE-RANGE-FIX-V1: the UI/parse is 1-based (what the
-      // owner types), but Electron's webContents.print expects 0-BASED page
-      // indices ({from: 0} = first page). Sending 1-based made "page 1"
-      // request index 1 (the second page) — out of bounds on single-page
-      // receipts → Chromium failed the whole print job with an error.
-      // Convert at the send boundary only; parse/validation stay 1-based.
-      const pageRanges = pageRangeMode === 'custom'
-        ? parsePageRanges(pageRangeInput)?.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
+      // R-2.1.4-PRINT-PAGES: the IPC payload stays 0-based [{from,to}]
+      // (existing contract). Main re-normalizes defensively, validates
+      // against the real page count and prints ONLY the selected pages via
+      // the printToPDF → pdf.js raster pipeline — never a full-document
+      // substitute. `customRanges` was validated above (1-based, normalized).
+      const pageRanges = customRanges
+        ? customRanges.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
         : undefined;
       const result = await window.electronAPI.printRun({
         html: currentHtml,
@@ -351,16 +349,8 @@ export default function PrintPreviewModal({
         pageRanges,
       });
       if (result.success) {
-        // RECEIPT-PRINTER-RANGE-FALLBACK-V1: the receipt printer can't select
-        // pages — it printed the full receipt. Show a clear, non-error message
-        // (and leave it up a bit longer so the operator can read it).
-        if (result.rangeUnsupported) {
-          setPrintResult(`⚠️ ${t('print.rangeUnsupported')}`);
-          setTimeout(() => onClose(), 2800);
-        } else {
-          setPrintResult('✅ Sent to printer');
-          setTimeout(() => onClose(), 1200);
-        }
+        setPrintResult('✅ Sent to printer');
+        setTimeout(() => onClose(), 1200);
       } else {
         setPrintResult(`❌ ${result.error || 'Print failed'}`);
         // R-PRINT-MEDIA-GUARD-V1: a failed job often means jammed/stuck media —

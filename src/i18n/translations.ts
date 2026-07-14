@@ -5240,6 +5240,13 @@ export const translations: TranslationDictionary = {
   'print.willPrintOnPrimary':  { en: 'This receipt will print on the Primary Terminal.', es: 'Este recibo se imprimirá en la Terminal Principal.', pt: 'Este recibo será impresso no Terminal Principal.' },
   // RECEIPT-PRINTER-RANGE-FALLBACK-V1: shown when the receipt printer can't print a page subset.
   'print.rangeUnsupported':    { en: 'This printer can’t print selected pages. Printing the full document instead.', es: 'Esta impresora no puede imprimir páginas seleccionadas. Se imprimió el documento completo.', pt: 'Esta impressora não pode imprimir páginas selecionadas. Imprimindo o documento completo.' },
+  // R-2.1.4-PRINT-PAGES: specific Custom Range validation messages. Invalid
+  // input blocks the print — it never falls back to printing everything.
+  'print.rangeError.empty':    { en: 'Enter the pages to print (e.g., 1 · 1-2 · 1,3-4).', es: 'Escribe las páginas a imprimir (ej. 1 · 1-2 · 1,3-4).', pt: 'Digite as páginas para imprimir (ex.: 1 · 1-2 · 1,3-4).' },
+  'print.rangeError.syntax':   { en: 'Invalid range. Use: 1 · 1-2 · 1,3 · 1-2,4', es: 'Rango inválido. Usa: 1 · 1-2 · 1,3 · 1-2,4', pt: 'Intervalo inválido. Use: 1 · 1-2 · 1,3 · 1-2,4' },
+  'print.rangeError.zero':     { en: 'Pages start at 1 — page 0 doesn’t exist.', es: 'Las páginas empiezan en 1 — la página 0 no existe.', pt: 'As páginas começam em 1 — a página 0 não existe.' },
+  'print.rangeError.negative': { en: 'Negative page numbers aren’t allowed.', es: 'No se permiten números de página negativos.', pt: 'Números de página negativos não são permitidos.' },
+  'print.rangeError.reversed': { en: 'Range is reversed — the first page must be ≤ the last (e.g., 2-4).', es: 'Rango invertido — la primera página debe ser ≤ la última (ej. 2-4).', pt: 'Intervalo invertido — a primeira página deve ser ≤ a última (ex.: 2-4).' },
 
   // ── R-PRINT-MEDIA-GUARD-V1: printer media validation ─────────
   'print.media.80mm':   { en: '80mm receipt', es: 'recibo 80mm', pt: 'recibo 80mm' },
