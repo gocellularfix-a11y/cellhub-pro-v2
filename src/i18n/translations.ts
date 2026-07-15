@@ -5247,6 +5247,10 @@ export const translations: TranslationDictionary = {
   'print.rangeError.zero':     { en: 'Pages start at 1 — page 0 doesn’t exist.', es: 'Las páginas empiezan en 1 — la página 0 no existe.', pt: 'As páginas começam em 1 — a página 0 não existe.' },
   'print.rangeError.negative': { en: 'Negative page numbers aren’t allowed.', es: 'No se permiten números de página negativos.', pt: 'Números de página negativos não são permitidos.' },
   'print.rangeError.reversed': { en: 'Range is reversed — the first page must be ≤ the last (e.g., 2-4).', es: 'Rango invertido — la primera página debe ser ≤ la última (ej. 2-4).', pt: 'Intervalo invertido — a primeira página deve ser ≤ a última (ex.: 2-4).' },
+  // R-2.1.4-PREVIEW: multi-page preview additions.
+  'print.rangeError.beyond':   { en: 'The document only has {n} pages.', es: 'El documento solo tiene {n} páginas.', pt: 'O documento tem apenas {n} páginas.' },
+  'print.pagesCurrent':        { en: 'Current page', es: 'Página actual', pt: 'Página atual' },
+  'print.previewFailed':       { en: 'Preview could not be generated. Printing is still available.', es: 'No se pudo generar la vista previa. Imprimir sigue disponible.', pt: 'Não foi possível gerar a pré-visualização. A impressão continua disponível.' },
 
   // ── R-PRINT-MEDIA-GUARD-V1: printer media validation ─────────
   'print.media.80mm':   { en: '80mm receipt', es: 'recibo 80mm', pt: 'recibo 80mm' },

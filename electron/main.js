@@ -332,6 +332,12 @@ function registerIpcHandlers() {
       await Promise.race([ready, safety]);
       console.log('[print:preview] render ready');
 
+      // R-2.1.4-PREVIEW: the preview PDF is now the SOURCE OF TRUTH for the
+      // modal's multi-page preview (page count, boundaries, navigation), so
+      // its pagination must match print:run exactly. printToPDF pageSize
+      // takes INCHES (verified empirically — the previous micron passthrough
+      // produced an absurd page size whenever a document had no @page CSS to
+      // mask it via preferCSSPageSize). Convert exactly like print:run does.
       // r-print-contract-v2: respect document CSS @page rules when present.
       // If the HTML has `@page { size: ... }`, preferCSSPageSize lets that
       // win over the payload pageSize. Repair tickets, unlock tickets, and
@@ -339,8 +345,9 @@ function registerIpcHandlers() {
       // ignored, forcing receipts into 4×6 by default.
       //
       // Electron printToPDF expects pageSize as either a preset string
-      // ('A4', 'Letter', etc.) OR { width, height } in MICRONS (1/1000 mm).
-      // PAGE_SIZES in the renderer already use microns so they pass through.
+      // ('A4', 'Letter', etc.) OR { width, height } in INCHES (empirically
+      // verified on Electron 31 — NOT microns as previously believed; the
+      // renderer's micron PAGE_SIZES are converted below).
       // Margins for printToPDF are in INCHES — the modal UI already labels
       // them as inches, so they pass through unchanged.
       const pdfOptions = {
@@ -348,7 +355,7 @@ function registerIpcHandlers() {
         printBackground: true,
         displayHeaderFooter: false,
         preferCSSPageSize: true,
-        pageSize: payload.pageSize || { width: 101600, height: 152400 },
+        pageSize: require('./printPages').micronsToInches(payload.pageSize || { width: 101600, height: 152400 }),
         scale: (payload.scaleFactor || 100) / 100,
         margins: {
           top: payload.margins?.top || 0,

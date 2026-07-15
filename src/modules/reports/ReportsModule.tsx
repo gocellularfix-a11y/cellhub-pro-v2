@@ -2000,7 +2000,10 @@ export default function ReportsModule() {
         const profitCells = canSeeOwnerFinancials
           ? `<td class="text-right text-green">${formatCurrency(c.profitCents)}</td><td class="text-right">${c.marginPct === null ? '—' : `${c.marginPct.toFixed(1)}%`}</td>`
           : '';
-        return `<tr><td>${escHtml(c.name)}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td>${profitCells}</tr>`;
+        // R-2.1.4-PREVIEW: print the SAME localized category label the screen
+        // shows (e.g. 'Activations / SIM'), not the internal grouping key —
+        // screen and printed category breakdowns must read identically.
+        return `<tr><td>${escHtml(reportCategoryLabel(c.name, t))}</td><td class="text-right">${c.quantity}</td><td class="text-right">${formatCurrency(c.revenueCents)}</td>${profitCells}</tr>`;
       })
       .join('');
     // R-REPORT-PRINT-REDESIGN: TOTAL row for Sales by Category. Margin uses
@@ -2201,7 +2204,12 @@ ${actSection}
 <div class="report-footer">${escHtml(storeName)} | CellHub Pro</div>
 
 </body></html>`;
-    openPrintWindow(html);
+    // R-2.1.4-PREVIEW: the Sales Report is a LETTER document (its HTML declares
+    // @page { size: letter }). Tell the preview modal the truth so the page-size
+    // picker, the multi-page preview geometry and the printed page size all
+    // agree — previously the modal opened at the 4×6 default and only the
+    // document @page CSS kept the output letter-sized.
+    openPrintWindow(html, { pageSize: 'letter', multiPage: true });
   }, [stats, settings, startDate, endDate, locale, canSeeOwnerFinancials, periodRange, toast, t]);
 
   // ── Export Report (JSON) ──────────────────────────────────

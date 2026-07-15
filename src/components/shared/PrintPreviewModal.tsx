@@ -4,7 +4,7 @@
 // margins, zoom. No dependency on Chrome or Windows print dialog.
 // ============================================================
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from '@/i18n';
 // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't own/scan printers.
 import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
@@ -18,8 +18,30 @@ import type { PrintPageSizeKey } from '@/hooks/usePrint';
 import { checkPrintMediaJob, requestPrintMediaConfirmation, announcePrintRecovery } from '@/services/print/printMediaGuard';
 // R-2.1.4-PRINT-PAGES: canonical page-range parser — single source shared
 // with the tests; main re-normalizes the IPC payload defensively.
-import { parsePageRanges } from '@/utils/pageRanges';
+import { parsePageRanges, pagesBeyondCount } from '@/utils/pageRanges';
 import type { PageRange, PageRangeError } from '@/utils/pageRanges';
+// R-2.1.4-PREVIEW: exact-parity multi-page preview — the preview renders the
+// REAL preview PDF (same options as print:run), so the page count/boundaries
+// shown are the print engine's own. Pure decision logic lives in previewModel.
+import { buildPreviewPdfRequest, currentPageFromScroll, rangesForPrint } from '@/services/print/previewModel';
+import type { PagesMode } from '@/services/print/previewModel';
+
+// pdf.js is loaded lazily (code-split) the first time a sheet-media preview
+// opens; the worker ships as a bundled asset so the app stays offline-safe.
+let pdfjsLibPromise: Promise<any> | null = null;
+function loadPdfjs(): Promise<any> {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = Promise.all([
+      import('pdfjs-dist/legacy/build/pdf'),
+      import('pdfjs-dist/legacy/build/pdf.worker.min.js?url'),
+    ]).then(([lib, worker]) => {
+      const pdfjs = (lib as { default?: unknown }).default ?? lib;
+      (pdfjs as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = (worker as { default: string }).default;
+      return pdfjs;
+    });
+  }
+  return pdfjsLibPromise;
+}
 
 // ── Page size presets (width × height in microns) ───────────
 const PAGE_SIZES: Record<string, { label: string; width: number; height: number }> = {
@@ -220,10 +242,31 @@ export default function PrintPreviewModal({
     if (receiptType === 'pos_receipt') setPageSize(initialPageSize || '4x6');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
+  // R-2.1.4-PREVIEW: this modal is ALWAYS mounted in the App tree — only `open`
+  // toggles visibility — so `useState(initialPageSize || '4x6')` captured the
+  // FIRST-mount value (options undefined → '4x6') and never re-initialized when
+  // a later caller opened the modal with a different pageSize. That pinned the
+  // Sales Report (which asks for 'letter') to the 4×6 default. Re-sync the
+  // page-size picker (and orientation/copies, which share the same latent
+  // first-mount capture) from the caller's values each time the modal OPENS.
+  // Fires only on the open transition, so a user's manual size change while the
+  // modal is open is never clobbered.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setPageSize(initialPageSize || '4x6');
+      setLandscape(initialLandscape || false);
+      setCopies(initialCopies || 1);
+    }
+    wasOpenRef.current = open;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   // R-PRINT-PAGE-RANGES-V1: page-range UI. 'all' is the default; 'custom'
   // exposes a free-text input where the owner enters "1", "2", "1-2",
   // "1,3", etc. Parsed into Electron pageRanges {from, to} on print.
-  const [pageRangeMode, setPageRangeMode] = useState<'all' | 'custom'>('all');
+  // R-2.1.4-PREVIEW: 'current' prints the page currently visible in the
+  // multi-page preview (never "always page 1").
+  const [pageRangeMode, setPageRangeMode] = useState<PagesMode>('all');
   const [pageRangeInput, setPageRangeInput] = useState<string>('');
   const [pageRangeError, setPageRangeError] = useState<string | null>(null);
 
@@ -275,13 +318,23 @@ export default function PrintPreviewModal({
         setPageRangeError(pageRangeErrorMessage(parsed.error));
         return;
       }
+      // R-2.1.4-PREVIEW: the preview knows the REAL page count (from the
+      // preview PDF) — reject pages beyond it here with the actual count,
+      // instead of the later generic main-process rejection.
+      if (isSheetPreview && previewPages > 0) {
+        const beyond = pagesBeyondCount(parsed.ranges, previewPages);
+        if (beyond.length > 0) {
+          setPageRangeError(t('print.rangeError.beyond').replace('{n}', String(previewPages)));
+          return;
+        }
+      }
       setPageRangeError(null);
       customRanges = parsed.ranges;
     }
     // The IPC/LAN payload stays 0-based [{from,to}] (canonical contract).
-    const zeroBasedRanges = customRanges
-      ? customRanges.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
-      : undefined;
+    // 'current' prints the page currently visible in the preview; a 1-page
+    // document degrades to a full print (identical output).
+    const zeroBasedRanges = rangesForPrint(pageRangeMode, currentPage, previewPages, customRanges);
     // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a bridge-eligible
     // receipt on a Secondary forwards to the Primary (which owns the printer)
     // instead of printing locally. Toast feedback via LanPrintBridgeListener.
@@ -474,13 +527,127 @@ export default function PrintPreviewModal({
     [currentHtml, previewScale, multiPage, isNarrowThermal, caps.fixedPrinterSafeSizing],
   );
 
-  // R-PRINT-MULTIPAGE-PREVIEW-V1: measured full-document height (px) for the
-  // multi-page preview iframe. Set on iframe load from the (same-origin)
-  // content body scrollHeight so the iframe is exactly as tall as the whole
-  // document and the outer Preview Area scrolls. Reset whenever the rendered
-  // HTML or page size changes so a stale height never clips a new document.
-  const [measuredDocHeight, setMeasuredDocHeight] = useState<number | null>(null);
-  useEffect(() => { setMeasuredDocHeight(null); }, [scaledHtml, pageSize, landscape, multiPage]);
+  // ── R-2.1.4-PREVIEW: exact-parity multi-page preview ────────────────────
+  // ROOT CAUSE this replaces: sheet-media documents rendered in ONE iframe
+  // whose height was hard-fixed to a single page (scrolling="no" +
+  // overflow:hidden), so a 4-page Sales Report previewed as page 1 only.
+  // The old multiPage sheet view (Tax Organizer) sliced GEOMETRICALLY
+  // (scrollHeight / pageHeight), which drifts from the print engine's real
+  // breaks. Now every sheet-media preview (letter/legal/a4/4x6) renders the
+  // REAL preview PDF — generated via print:preview with the SAME html +
+  // pageSize + orientation + margins + scale that print:run will use — with
+  // pdf.js, page by page. Page count, order and boundaries are the print
+  // engine's own. Narrow thermal/label/card media (80mm, Dymo, CR80) keep
+  // their tuned 1:1 iframe preview — continuous 80mm has no page concept
+  // and must never gain fake page breaks.
+  const isSheetPreview = !caps.fixedPrinterSafeSizing && !isNarrowThermal
+    && typeof window !== 'undefined' && !!window.electronAPI?.printPreview;
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const [previewPages, setPreviewPages] = useState(0);
+  const [previewDims, setPreviewDims] = useState<{ w: number; h: number } | null>(null); // PDF points
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const previewSeq = useRef(0);
+  const pageImgCache = useRef<Map<number, string>>(new Map());
+  const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  const pageCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const marginsSig = `${effectiveMargins.top}|${effectiveMargins.bottom}|${effectiveMargins.left}|${effectiveMargins.right}`;
+
+  useEffect(() => {
+    if (!open || !isSheetPreview) return;
+    const seq = ++previewSeq.current;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    // Debounce: slider drags / rapid control changes coalesce into one
+    // regeneration. Every print-affecting input is in the dep list, so any
+    // page-size / orientation / margin / scale change re-renders ALL pages.
+    const tid = window.setTimeout(async () => {
+      try {
+        const psNow = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
+        const req = buildPreviewPdfRequest({
+          html: currentHtml,
+          pageSizeMicrons: { width: psNow.width, height: psNow.height },
+          landscape: effectiveLandscape,
+          scaleFactor: effectiveScale,
+          margins: effectiveMargins,
+        });
+        const res = await window.electronAPI!.printPreview(req);
+        if (seq !== previewSeq.current) return;
+        if (!res?.success || !res.url) {
+          setPreviewError(res?.error || 'preview generation failed');
+          setPreviewLoading(false);
+          return;
+        }
+        const pdfjs = await loadPdfjs();
+        const b64 = String(res.url).split(',')[1] || '';
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false }).promise;
+        if (seq !== previewSeq.current) { try { doc.destroy(); } catch { /* ignore */ } return; }
+        const firstPage = await doc.getPage(1);
+        const vp = firstPage.getViewport({ scale: 1 });
+        pageImgCache.current = new Map();
+        pageCardRefs.current = [];
+        setPreviewDims({ w: vp.width, h: vp.height });
+        setPreviewDoc((prev: { destroy?: () => void } | null) => { try { prev?.destroy?.(); } catch { /* ignore */ } return doc; });
+        setPreviewPages(doc.numPages);
+        setCurrentPage(1);
+        setPreviewLoading(false);
+      } catch (err) {
+        if (seq === previewSeq.current) {
+          setPreviewError(String((err as Error)?.message || err));
+          setPreviewLoading(false);
+        }
+      }
+    }, 350);
+    return () => window.clearTimeout(tid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isSheetPreview, currentHtml, pageSize, lockPageSize, bakedPageSizeKey, effectiveLandscape, effectiveScale, marginsSig]);
+
+  // Release the PDF and reset preview state when the modal closes.
+  useEffect(() => {
+    if (open) return;
+    previewSeq.current++;
+    setPreviewDoc((prev: { destroy?: () => void } | null) => { try { prev?.destroy?.(); } catch { /* ignore */ } return null; });
+    setPreviewPages(0);
+    setPreviewDims(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+    setCurrentPage(1);
+    pageImgCache.current = new Map();
+    pageCardRefs.current = [];
+  }, [open]);
+
+  // Track the visible page while the operator scrolls (rAF-throttled;
+  // rect-based so the zoom transform doesn't skew the math).
+  const scrollRafPending = useRef(false);
+  const handlePreviewScroll = () => {
+    if (!isSheetPreview || previewPages < 1 || scrollRafPending.current) return;
+    scrollRafPending.current = true;
+    requestAnimationFrame(() => {
+      scrollRafPending.current = false;
+      const container = previewScrollRef.current;
+      if (!container) return;
+      const containerTop = container.getBoundingClientRect().top;
+      const tops = pageCardRefs.current
+        .slice(0, previewPages)
+        .map((el: HTMLDivElement | null) => (el ? el.getBoundingClientRect().top - containerTop + container.scrollTop : Number.POSITIVE_INFINITY));
+      const page = currentPageFromScroll(container.scrollTop, container.clientHeight, tops);
+      setCurrentPage((prev) => (prev === page ? prev : page));
+    });
+  };
+
+  const goToPage = (page: number) => {
+    const clamped = Math.min(Math.max(1, page), previewPages || 1);
+    setCurrentPage(clamped);
+    pageCardRefs.current[clamped - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // 'current' only exists for a multi-page sheet preview — never let it leak
+  // into a thermal/label job after a page-size switch.
+  useEffect(() => {
+    if (!isSheetPreview && pageRangeMode === 'current') setPageRangeMode('all');
+  }, [isSheetPreview, pageRangeMode]);
 
   // R-PAPERSIZE-DESYNC-LOCK-V1 guard: a POS receipt's template is already baked
   // from the baked page size. If the size that will actually be sent to the
@@ -502,17 +669,14 @@ export default function PrintPreviewModal({
   // physical page from the baked template size — never from a drifted `pageSize`.
   const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
 
-  // R-PRINT-MULTIPAGE-SHEETS-V1: preview geometry for the Adobe-style separated
-  // sheet view. CSS renders 1in = 96px, so convert the physical page (microns)
-  // to preview pixels. numPages is derived from the measured full-document height
-  // divided by one page's pixel height (geometric slicing). PREVIEW-ONLY — none
-  // of this touches the print pipeline; the actual page breaks come from the
-  // document's own @page CSS, unchanged.
-  const pageWidthPx = (effectiveLandscape ? ps.height : ps.width) / 25400 * 96;
-  const pageHeightPx = (effectiveLandscape ? ps.width : ps.height) / 25400 * 96;
-  const numPages = multiPage && measuredDocHeight
-    ? Math.max(1, Math.ceil(measuredDocHeight / pageHeightPx))
-    : 1;
+  // R-2.1.4-PREVIEW: preview geometry. CSS renders 1in = 96px. When the real
+  // preview PDF is loaded its own page dimensions win (they already include
+  // orientation and any document @page override); the micron conversion is
+  // only the loading-placeholder size. The old geometric numPages
+  // (scrollHeight / pageHeight slicing) is gone — page count now comes from
+  // the preview PDF itself, i.e. the print engine's pagination.
+  const pageWidthPx = previewDims ? previewDims.w * (96 / 72) : (effectiveLandscape ? ps.height : ps.width) / 25400 * 96;
+  const pageHeightPx = previewDims ? previewDims.h * (96 / 72) : (effectiveLandscape ? ps.width : ps.height) / 25400 * 96;
   const pageLabel = (n: number, total: number) =>
     locale === 'es' ? `Página ${n} de ${total}`
     : locale === 'pt' ? `Página ${n} de ${total}`
@@ -788,14 +952,24 @@ export default function PrintPreviewModal({
             <select
               value={pageRangeMode}
               onChange={(e) => {
-                setPageRangeMode(e.target.value as 'all' | 'custom');
+                setPageRangeMode(e.target.value as PagesMode);
                 setPageRangeError(null);
               }}
               style={selectStyle}
             >
               <option value="all">All pages</option>
+              {/* R-2.1.4-PREVIEW: prints the page currently visible in the
+                  multi-page preview (tracked by scrolling / Prev / Next). */}
+              {isSheetPreview && previewPages > 1 && (
+                <option value="current">{t('print.pagesCurrent')}</option>
+              )}
               <option value="custom">Custom range…</option>
             </select>
+            {pageRangeMode === 'current' && isSheetPreview && previewPages > 1 && (
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.3rem' }}>
+                {pageLabel(currentPage, previewPages)}
+              </div>
+            )}
             {pageRangeMode === 'custom' && (
               <>
                 <input
@@ -875,12 +1049,10 @@ export default function PrintPreviewModal({
         </div>
 
         {/* ── Preview Area ─────────────────────────────────── */}
-        <div style={{
-          flex: 1, background: '#1e293b', display: 'flex',
-          alignItems: 'flex-start', justifyContent: 'center',
-          overflow: 'auto', padding: '1.5rem',
-          position: 'relative',
-        }}>
+        {/* R-2.1.4-PREVIEW: outer wrapper is the positioning context (close
+            button + page navigation stay fixed) and the INNER div scrolls, so
+            the operator can scroll through every page of the document. */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b' }}>
           {/* Close button */}
           <button onClick={onClose} style={{
             position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10,
@@ -889,85 +1061,198 @@ export default function PrintPreviewModal({
             cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>×</button>
 
-          {/* r-print-preview-iframe-foundation: direct HTML render via iframe srcDoc.
-              This is the same pattern used in ReceiptModal (r-receipt-unify) which
-              works reliably in Electron 31 sandbox. No PDF intermediate. */}
+          {/* Page navigation — multi-page sheet documents only */}
+          {isSheetPreview && previewPages > 1 && (
+            <div style={{
+              position: 'absolute', top: '0.75rem', left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              background: 'rgba(15,23,42,0.92)', border: '1px solid rgba(255,255,255,0.14)',
+              borderRadius: '999px', padding: '0.25rem 0.5rem',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
+            }}>
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                title={locale === 'es' ? 'Página anterior' : locale === 'pt' ? 'Página anterior' : 'Previous page'}
+                style={{
+                  width: '26px', height: '26px', borderRadius: '50%', border: 'none', cursor: currentPage <= 1 ? 'default' : 'pointer',
+                  background: 'rgba(255,255,255,0.08)', color: currentPage <= 1 ? '#475569' : '#e2e8f0', fontSize: '0.95rem', fontWeight: 700,
+                }}
+              >‹</button>
+              <span style={{ fontSize: '0.78rem', color: '#e2e8f0', fontWeight: 700, minWidth: '96px', textAlign: 'center' }}>
+                {pageLabel(currentPage, previewPages)}
+              </span>
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= previewPages}
+                title={locale === 'es' ? 'Página siguiente' : locale === 'pt' ? 'Próxima página' : 'Next page'}
+                style={{
+                  width: '26px', height: '26px', borderRadius: '50%', border: 'none', cursor: currentPage >= previewPages ? 'default' : 'pointer',
+                  background: 'rgba(255,255,255,0.08)', color: currentPage >= previewPages ? '#475569' : '#e2e8f0', fontSize: '0.95rem', fontWeight: 700,
+                }}
+              >›</button>
+            </div>
+          )}
+
           <div
-            id="print-content"
+            ref={previewScrollRef}
+            onScroll={handlePreviewScroll}
             style={{
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: 'top center',
-              transition: 'transform 0.15s ease',
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+              overflow: 'auto', padding: '1.5rem',
             }}
           >
-            {multiPage ? (
-              // R-PRINT-MULTIPAGE-SHEETS-V1: Adobe-style separated sheets. Each
-              // sheet is a fixed page-size card (gap + shadow + border) that shows
-              // ONE page-height slice of the same document — the iframe is shifted
-              // up by i × pageHeight inside an overflow:hidden card — with a
-              // "Page X of N" label beneath. The first sheet's iframe measures the
-              // full document height to derive the page count. PREVIEW-ONLY: the
-              // print pipeline still paginates from the document's own @page CSS.
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-                {Array.from({ length: numPages }).map((_, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}>
-                    <div style={{
-                      width: `${pageWidthPx}px`, height: `${pageHeightPx}px`, overflow: 'hidden',
-                      background: '#fff', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.18)',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
-                    }}>
-                      <iframe
-                        srcDoc={scaledHtml}
-                        title={`Print preview page ${i + 1}`}
-                        sandbox="allow-same-origin"
-                        scrolling="no"
-                        onLoad={i === 0 ? (e) => {
-                          try {
-                            const doc = e.currentTarget.contentDocument;
-                            if (doc?.body) setMeasuredDocHeight(doc.body.scrollHeight);
-                          } catch { /* cross-origin guard — keep single-page fallback */ }
-                        } : undefined}
-                        style={{
-                          width: `${pageWidthPx}px`,
-                          height: measuredDocHeight ? `${measuredDocHeight}px` : `${pageHeightPx}px`,
-                          marginTop: `${-i * pageHeightPx}px`,
-                          border: 'none', display: 'block', background: '#fff',
-                        }}
-                      />
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>
-                      {pageLabel(i + 1, numPages)}
-                    </div>
+            <div
+              id="print-content"
+              style={{
+                transform: `scale(${zoom / 100})`,
+                transformOrigin: 'top center',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              {isSheetPreview ? (
+                // R-2.1.4-PREVIEW: every sheet-media document (letter/legal/
+                // a4/4x6, single OR multi page) previews as the REAL preview
+                // PDF pages — same page count, order and boundaries as the
+                // print engine. Each page renders lazily near the viewport.
+                previewError ? (
+                  <div style={{
+                    width: `${pageWidthPx}px`, minHeight: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px',
+                    color: '#fca5a5', fontSize: '0.85rem', padding: '1rem', textAlign: 'center',
+                  }}>
+                    ⚠ {t('print.previewFailed')}<br />{previewError}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <iframe
-                srcDoc={scaledHtml}
-                title="Print preview"
-                sandbox="allow-same-origin"
-                // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: suppress the
-                // iframe's own scrollbar/down-arrow. The outer Preview Area
-                // already scrolls (overflow:auto), so duplicate scroll
-                // controls on the iframe are pure noise on the receipt surface.
-                scrolling="no"
-                style={{
-                  width: effectiveLandscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
-                  height: effectiveLandscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
-                  minWidth: '300px',
-                  minHeight: '400px',
-                  background: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-                  display: 'block',
-                  overflow: 'hidden',
-                }}
-              />
-            )}
+                ) : previewDoc && previewDims && previewPages > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', opacity: previewLoading ? 0.55 : 1, transition: 'opacity 0.15s ease' }}>
+                    {Array.from({ length: previewPages }).map((_, i) => (
+                      <PreviewPdfPage
+                        key={`${previewSeq.current}-${i + 1}`}
+                        doc={previewDoc}
+                        pageNumber={i + 1}
+                        cssWidth={pageWidthPx}
+                        cssHeight={pageHeightPx}
+                        cache={pageImgCache.current}
+                        label={pageLabel(i + 1, previewPages)}
+                        refCb={(el) => { pageCardRefs.current[i] = el; }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
+                    width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
+                    background: '#fff', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.18)',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '0.85rem',
+                  }}>
+                    ⏳
+                  </div>
+                )
+              ) : (
+                <iframe
+                  srcDoc={scaledHtml}
+                  title="Print preview"
+                  sandbox="allow-same-origin"
+                  // R-PHONE-PAYMENT-ACTIVATION-RECEIPT-ZERO-FEE-FIX: suppress the
+                  // iframe's own scrollbar/down-arrow. The outer Preview Area
+                  // already scrolls (overflow:auto), so duplicate scroll
+                  // controls on the iframe are pure noise on the receipt surface.
+                  // R-2.1.4-PREVIEW: this iframe now serves ONLY continuous/
+                  // narrow media (80mm thermal, Dymo label, CR80 card) — media
+                  // with no page concept, where PDF page breaks would be fake.
+                  scrolling="no"
+                  style={{
+                    width: effectiveLandscape ? `${ps.height / 25400}in` : `${ps.width / 25400}in`,
+                    height: effectiveLandscape ? `${ps.width / 25400}in` : `${ps.height / 25400}in`,
+                    minWidth: '300px',
+                    minHeight: '400px',
+                    background: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                    display: 'block',
+                    overflow: 'hidden',
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── R-2.1.4-PREVIEW: one lazily-rendered PDF page card ──────
+// Renders the page to a PNG (2× CSS size for crispness) when the card nears
+// the viewport; rendered pages are cached per document so scrolling back is
+// instant and canvases are released immediately after rasterization.
+function PreviewPdfPage({ doc, pageNumber, cssWidth, cssHeight, cache, label, refCb }: {
+  doc: any;
+  pageNumber: number;
+  cssWidth: number;
+  cssHeight: number;
+  cache: Map<number, string>;
+  label: string;
+  refCb: (el: HTMLDivElement | null) => void;
+}) {
+  const [src, setSrc] = useState<string | null>(cache.get(pageNumber) || null);
+  const holderRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSrc(cache.get(pageNumber) || null);
+    const el = holderRef.current;
+    if (!el) return;
+    let cancelled = false;
+    const observer = new IntersectionObserver(async (entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      const cached = cache.get(pageNumber);
+      if (cached) { if (!cancelled) setSrc(cached); return; }
+      try {
+        const page = await doc.getPage(pageNumber);
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.max(0.5, (cssWidth / base.width) * 2);
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const url = canvas.toDataURL('image/png');
+        canvas.width = 0; canvas.height = 0; // release backing store eagerly
+        cache.set(pageNumber, url);
+        if (!cancelled) setSrc(url);
+      } catch { /* keep placeholder — the print path is unaffected */ }
+    }, { rootMargin: '800px' });
+    observer.observe(el);
+    return () => { cancelled = true; observer.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, pageNumber, cssWidth]);
+
+  return (
+    <div
+      ref={(el) => { holderRef.current = el; refCb(el); }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}
+    >
+      <div style={{
+        width: `${cssWidth}px`, height: `${cssHeight}px`, overflow: 'hidden',
+        background: '#fff', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.18)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+      }}>
+        {src ? (
+          <img src={src} alt={label} style={{ width: '100%', height: '100%', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+            ⏳
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>{label}</div>
     </div>
   );
 }
