@@ -12,6 +12,8 @@ import {
   computePhonePaymentEconomics,
   aggregatePhoneActivity,
   buildActivationsByCarrierPrintModel,
+  reportCategoryOverride,
+  ACTIVATIONS_CATEGORY,
 } from './phonePaymentReporting';
 import { getActivePortals } from '@/config/paymentPortals';
 
@@ -399,6 +401,16 @@ describe('exact 26/$1,063 production-screenshot fixture', () => {
     expect(activationsByCarrier['Verizon'].totalCents).toBe(7500);
   });
 
+  it('category re-bucketing never changes money: item revenue is identical whichever bucket a line lands in', () => {
+    // Gross/net/profit/tax/tender totals are sums over ITEMS/SALES, not over
+    // category labels — the override returns a LABEL only. Lock that shape:
+    const plan = makeItem({ name: '📱 Plan AT&T', category: 'phone_payment', isActivation: true, price: 5000, carrier: 'AT&T', commissionRate: 0.10 });
+    const before = computePhonePaymentEconomics(plan, SETTINGS);
+    expect(reportCategoryOverride(plan)).toBe(ACTIVATIONS_CATEGORY);
+    const after = computePhonePaymentEconomics(plan, SETTINGS); // unchanged by the override
+    expect(after).toEqual(before);
+  });
+
   it('screen, print and export views consume the identical aggregation (single source)', () => {
     const agg1 = run(paymentsFixture());
     const agg2 = run(paymentsFixture());
@@ -407,5 +419,71 @@ describe('exact 26/$1,063 production-screenshot fixture', () => {
     // The print model is derived (not re-classified) from the same buckets:
     expect(serialize(buildActivationsByCarrierPrintModel(agg1.activationsByCarrier)))
       .toBe(serialize(buildActivationsByCarrierPrintModel(agg2.activationsByCarrier)));
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// R-2.1.4-CLOSEOUT — Sales by Category classification
+// ══════════════════════════════════════════════════════════════
+
+describe('Sales by Category — activation-flow lines never bucket as Phone Payments', () => {
+  it('ordinary bill payments stay under Phone Payments (no override)', () => {
+    expect(reportCategoryOverride(billPayment('Page Plus', '8055550300', 3000))).toBeNull();
+    expect(reportCategoryOverride(billPayment('H2O', '8055550301', 2500))).toBeNull();
+  });
+
+  it('activation plan / fee / SIM lines all bucket under the Activations category', () => {
+    const plan = makeItem({ name: '📱 Plan Verizon', category: 'phone_payment', isActivation: true, price: 5000, carrier: 'Verizon' });
+    const fee = makeItem({ name: '⚡ Activation Fee Verizon', category: 'activation', price: 2500, carrier: 'Verizon' });
+    const sim = makeItem({ name: '📶 SIM — Verizon', category: 'sim', price: 1500, carrier: 'Verizon' });
+    expect(reportCategoryOverride(plan)).toBe(ACTIVATIONS_CATEGORY);
+    expect(reportCategoryOverride(fee)).toBe(ACTIVATIONS_CATEGORY);
+    expect(reportCategoryOverride(sim)).toBe(ACTIVATIONS_CATEGORY);
+    expect(ACTIVATIONS_CATEGORY).toBe('Activations');
+  });
+
+  it('a line lands in exactly ONE bucket — no double-counting is structurally possible', () => {
+    // The override is a single label replacement inside the same loop pass:
+    // one item → one catName. Assert exclusivity of the decision function:
+    const plan = makeItem({ name: '📱 Plan AT&T', category: 'phone_payment', isActivation: true, price: 5000 });
+    const bill = billPayment('AT&T', '8055550302', 5000);
+    expect(reportCategoryOverride(plan)).toBe(ACTIVATIONS_CATEGORY);
+    expect(reportCategoryOverride(bill)).toBeNull();
+  });
+
+  it('one activation (plan + fee + SIM): category revenue equals the exact integer-cent sum of its lines', () => {
+    const lines = [
+      makeItem({ name: '📱 Plan Verizon', category: 'phone_payment', isActivation: true, price: 5001, carrier: 'Verizon', commissionRate: 0.10 }),
+      makeItem({ name: '⚡ Activation Fee Verizon', category: 'activation', isActivation: true, price: 2499, carrier: 'Verizon' }),
+      makeItem({ name: '📶 SIM — Verizon', category: 'sim', price: 1500, carrier: 'Verizon', cost: 200 }),
+    ];
+    // Every line classifies as Activations; the category bucket accumulates
+    // lineRevenueCents per line — 3 category LINES, exact cents:
+    const categoryRevenue = lines
+      .filter((l) => reportCategoryOverride(l) === ACTIVATIONS_CATEGORY)
+      .reduce((s, l) => s + lineRevenueCents(l), 0);
+    expect(lines.every((l) => reportCategoryOverride(l) === ACTIVATIONS_CATEGORY)).toBe(true);
+    expect(categoryRevenue).toBe(5001 + 2499 + 1500);
+    // …while the Activations-by-Carrier card still counts ONE event (dedup
+    // by sale+phone is untouched):
+    const { activationsByCarrier } = run([makeSale('cat1', lines.map((l) => ({ ...l, phoneNumber: '8055550303' } as SaleItem)))]);
+    expect(activationsByCarrier['Verizon'].count).toBe(1);
+    expect(activationsByCarrier['Verizon'].totalCents).toBe(9000);
+  });
+
+  it('the exact 26/$1,063 fixture keeps Phone Payments at 26/$1,063 with ZERO activation-category lines', () => {
+    const sales = paymentsFixture();
+    let ppRevenue = 0;
+    let ppCount = 0;
+    let actLines = 0;
+    for (const sale of sales) {
+      for (const item of (sale.items || [])) {
+        if (reportCategoryOverride(item)) { actLines++; continue; }
+        if (classifyItem(item) === 'phone_payment') { ppCount++; ppRevenue += lineRevenueCents(item); }
+      }
+    }
+    expect(ppCount).toBe(26);
+    expect(ppRevenue).toBe(106300);
+    expect(actLines).toBe(0);
   });
 });

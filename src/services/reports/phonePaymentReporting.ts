@@ -89,6 +89,18 @@ export function normalizeCarrierName(raw: string): string {
   return s;
 }
 
+// R-2.1.4-CLOSEOUT: canonical Sales-by-Category bucket for activation-flow
+// lines. A plan line (category 'phone_payment' + isActivation), an activation
+// fee ('activation') and a SIM ('sim') all belong to the Activation sale
+// flow — never to ordinary "Phone Payments" and never as raw lowercase
+// category names. Single source: the reports loop and its drilldown both
+// call this; money math is untouched (only the display bucket changes).
+export const ACTIVATIONS_CATEGORY = 'Activations';
+
+export function reportCategoryOverride(item: SaleItem): string | null {
+  return isActivationSaleItem(item) ? ACTIVATIONS_CATEGORY : null;
+}
+
 /** Item line revenue in CENTS. Single source of truth. */
 export function lineRevenueCents(item: SaleItem): number {
   return (item.price || 0) * (item.qty || (item as unknown as { quantity?: number }).quantity || 1);

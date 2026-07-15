@@ -20,6 +20,8 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { persist, batchSave } from '@/services/persist';
 import { getConnection, buildSnapshot, pushSnapshot } from '@/services/lan/lanService';
+// R-2.1.4-CLOSEOUT: canonical bridged-print mapping (full print contract).
+import { buildBridgedPrintRunPayload } from '@/services/lan/printBridge';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { appendCustomerNote } from '@/utils/customerNotes';
@@ -155,21 +157,18 @@ export default function LanOperationDispatcher() {
     // Primary has no default printer or the job fails.
     const handlePrintReceipt = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
       const a = appRef.current;
-      const p = op.payload && op.payload.print;
-      const html = p && String(p.html || '');
-      if (!p || !html) return { ok: false, error: 'bad_payload' };
       if (!window.electronAPI?.printRun) return { ok: false, error: 'print_unavailable' };
       const settings = a.state.settings as unknown as Record<string, unknown>;
       const deviceName = ((settings?.detectedPrinters as string[] | undefined) || [])[0];
-      if (!deviceName) return { ok: false, error: 'no_printer' };
-      const copies = Math.max(1, Math.min(10, Math.round(Number(p.copies) || 1)));
+      // R-2.1.4-CLOSEOUT: the full print contract (pageRanges, margins,
+      // scale, landscape) is defensively re-validated and mapped onto the
+      // SAME printRun payload a direct print uses, so a bridged Custom Range
+      // job flows through the canonical selected-page pipeline. A payload
+      // with invalid pageRanges is REJECTED — never silently printed in full.
+      const built = buildBridgedPrintRunPayload(op.payload && op.payload.print, deviceName || '');
+      if (!built.ok) return { ok: false, error: built.error };
       try {
-        const res = await window.electronAPI.printRun({
-          html,
-          deviceName,
-          copies,
-          ...(p.pageSize ? { pageSize: p.pageSize } : {}),
-        });
+        const res = await window.electronAPI.printRun(built.payload);
         if (res && res.success) return { ok: true, printed: true };
         return { ok: false, error: (res && res.error) || 'print_failed' };
       } catch {

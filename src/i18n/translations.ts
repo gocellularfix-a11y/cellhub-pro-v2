@@ -7229,6 +7229,8 @@ export const translations: TranslationDictionary = {
   'reports.recon.subGrossReturns': { en: 'gross − returns',   es: 'bruto − devoluciones',               pt: 'bruto − devoluções' },
   // Category display labels (the internal grouping keys stay English).
   'reports.cat.phonePayments':   { en: 'Phone Payments',      es: 'Pagos de Telefonía',                 pt: 'Pagamentos de Telefonia' },
+  // R-2.1.4-CLOSEOUT: consolidated activation-flow category (plan + fee + SIM).
+  'reports.cat.activations':     { en: 'Activations / SIM',   es: 'Activaciones / SIM',                 pt: 'Ativações / SIM' },
   'reports.cat.topUps':          { en: 'Top-Ups',             es: 'Recargas',                           pt: 'Recargas' },
   'reports.cat.repairs':         { en: 'Repairs',             es: 'Reparaciones',                       pt: 'Reparos' },
   'reports.cat.unlocks':         { en: 'Unlocks',             es: 'Desbloqueos',                        pt: 'Desbloqueios' },

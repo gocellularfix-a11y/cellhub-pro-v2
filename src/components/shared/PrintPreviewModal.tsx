@@ -264,30 +264,10 @@ export default function PrintPreviewModal({
 
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = async () => {
-    // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a bridge-eligible
-    // receipt on a Secondary forwards to the Primary (which owns the printer)
-    // instead of printing locally. Toast feedback via LanPrintBridgeListener.
-    if (canBridge) {
-      setPrinting(true);
-      try {
-        // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
-        const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
-        const micron = effectiveLandscape ? { width: ps.height, height: ps.width } : { width: ps.width, height: ps.height };
-        const ack = await sendPrintReceipt({ receiptType: receiptType || 'receipt', html: currentHtml, copies, pageSize: micron });
-        emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
-      } catch {
-        emitLanPrintResult({ ok: false, error: 'bridge_error' });
-      } finally {
-        setPrinting(false);
-        onClose();
-      }
-      return;
-    }
-    if (!window.electronAPI?.printRun || !selectedPrinter) return;
-    // R-2.1.4-PRINT-PAGES: validate the custom page range BEFORE anything is
-    // sent to the printer. Empty/zero/negative/reversed/garbage input blocks
-    // the job with a specific EN/ES/PT message — the entered range stays in
-    // the input for correction.
+    // R-2.1.4-PRINT-PAGES / R-2.1.4-CLOSEOUT: validate the custom page range
+    // BEFORE anything is sent to a printer — local OR bridged. Empty/zero/
+    // negative/reversed/garbage input blocks the job with a specific
+    // EN/ES/PT message; the entered range stays in the input for correction.
     let customRanges: PageRange[] | null = null;
     if (pageRangeMode === 'custom') {
       const parsed = parsePageRanges(pageRangeInput);
@@ -298,6 +278,41 @@ export default function PrintPreviewModal({
       setPageRangeError(null);
       customRanges = parsed.ranges;
     }
+    // The IPC/LAN payload stays 0-based [{from,to}] (canonical contract).
+    const zeroBasedRanges = customRanges
+      ? customRanges.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
+      : undefined;
+    // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a bridge-eligible
+    // receipt on a Secondary forwards to the Primary (which owns the printer)
+    // instead of printing locally. Toast feedback via LanPrintBridgeListener.
+    // R-2.1.4-CLOSEOUT: the FULL validated print contract crosses the LAN
+    // (pageRanges, margins, scale, landscape) so the Primary routes the job
+    // through the same canonical selected-page pipeline as a direct print.
+    if (canBridge) {
+      setPrinting(true);
+      try {
+        // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
+        const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
+        const ack = await sendPrintReceipt({
+          receiptType: receiptType || 'receipt',
+          html: currentHtml,
+          copies,
+          pageSize: { width: ps.width, height: ps.height },
+          pageRanges: zeroBasedRanges,
+          margins: effectiveMargins,
+          scaleFactor: effectiveScale,
+          landscape: effectiveLandscape,
+        });
+        emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
+      } catch {
+        emitLanPrintResult({ ok: false, error: 'bridge_error' });
+      } finally {
+        setPrinting(false);
+        onClose();
+      }
+      return;
+    }
+    if (!window.electronAPI?.printRun || !selectedPrinter) return;
     // R-PRINT-MEDIA-GUARD-V1: the user explicitly picked this printer, so a
     // mismatch never auto-reroutes here — it asks (Cancel focused / Print
     // Anyway). Fail-open when printer types aren't configured in Settings.
@@ -331,13 +346,11 @@ export default function PrintPreviewModal({
       // at 100% and spilling onto two pages. CSS transforms don't survive
       // the print pipeline; scaleFactor (passed to webContents.print) does.
       // R-2.1.4-PRINT-PAGES: the IPC payload stays 0-based [{from,to}]
-      // (existing contract). Main re-normalizes defensively, validates
-      // against the real page count and prints ONLY the selected pages via
-      // the printToPDF → pdf.js raster pipeline — never a full-document
-      // substitute. `customRanges` was validated above (1-based, normalized).
-      const pageRanges = customRanges
-        ? customRanges.map((r) => ({ from: r.from - 1, to: r.to - 1 }))
-        : undefined;
+      // (existing contract, shared with the LAN bridge above). Main
+      // re-normalizes defensively, validates against the real page count and
+      // prints ONLY the selected pages via the printToPDF → pdf.js raster
+      // pipeline — never a full-document substitute.
+      const pageRanges = zeroBasedRanges;
       const result = await window.electronAPI.printRun({
         html: currentHtml,
         deviceName: selectedPrinter,

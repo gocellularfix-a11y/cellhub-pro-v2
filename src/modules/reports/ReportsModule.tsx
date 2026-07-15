@@ -41,6 +41,7 @@ import {
   computePhonePaymentEconomics,
   aggregatePhoneActivity,
   buildActivationsByCarrierPrintModel,
+  reportCategoryOverride,
 } from '@/services/reports/phonePaymentReporting';
 // R-2.1.4-REPORT-RANGE-CONTRACT-V1: canonical local-day range (validated,
 // inclusive end-of-day, never UTC-shifted).
@@ -186,6 +187,8 @@ export function getRepairProportionalCost(entity: Repair, _inventory: InventoryI
 // (custom) categories fall back to their raw name.
 const REPORT_CATEGORY_LABEL_KEYS: Record<string, string> = {
   'Phone Payments': 'reports.cat.phonePayments',
+  // R-2.1.4-CLOSEOUT: consolidated activation-flow bucket (plan/fee/SIM).
+  'Activations': 'reports.cat.activations',
   'Top-Ups': 'reports.cat.topUps',
   'Repairs': 'reports.cat.repairs',
   'Unlocks': 'reports.cat.unlocks',
@@ -1207,6 +1210,14 @@ export default function ReportsModule() {
           }
         }
 
+        // R-2.1.4-CLOSEOUT: activation-flow lines (plan with isActivation,
+        // fee 'activation', SIM 'sim') consolidate under 'Activations' —
+        // never ordinary 'Phone Payments' and never raw lowercase category
+        // names. Cost/profit math above is untouched (plan lines keep their
+        // commission economics); only the display bucket changes, so gross/
+        // net/profit/tax/tender totals are identical.
+        const activationCat = reportCategoryOverride(item);
+        if (activationCat) catName = activationCat;
         // R-REPORTS-LAYAWAY-CATEGORY-FIX: layaway-linked items always bucket
         // under 'Layaway' regardless of surface kind/category. Cost/profit math
         // computed above is unchanged — only the bucket label shifts. The
@@ -1744,6 +1755,10 @@ export default function ReportsModule() {
           : kind === 'service' ? 'Services'
           : kind === 'exchange_credit' ? 'Returns'
           : (item.category || 'Products');
+        // R-2.1.4-CLOSEOUT: mirror the stats-loop activation override so the
+        // drilldown finds the same rows the breakdown counted.
+        const drillActivationCat = reportCategoryOverride(item);
+        if (drillActivationCat) catGuess = drillActivationCat;
         // R-REPORTS-ANALYTICS-FINANCIAL-AUDIT-V1: mirror the aggregation
         // rule at line ~828 — layaway-linked items always bucket under
         // 'Layaway'. Without this, the breakdown shows "Layaway × 1" but

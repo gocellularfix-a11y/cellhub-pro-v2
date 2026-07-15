@@ -8,6 +8,9 @@
 // ============================================================
 
 import type { Sale } from '@/store/types';
+// R-2.1.4-CLOSEOUT: canonical LAN print contract (full print options wire).
+import { buildLanPrintJob } from './printBridge';
+import type { LanPrintJobInput } from './printBridge';
 
 export type LanRole = 'standalone' | 'primary' | 'secondary';
 
@@ -393,27 +396,23 @@ export async function sendCreateAppointment(input: LanCreateAppointmentInput): P
 // Secondary: forward a rendered receipt to the Primary, which prints it on its
 // own default printer. NOT idempotent — printing must NOT be auto-retried, so
 // this sends exactly once and surfaces the Primary's success/failure as-is.
-export interface LanPrintReceiptInput {
-  receiptType?: string;
-  html: string;
-  copies?: number;
-  pageSize?: { width: number; height: number }; // microns
-}
+// R-2.1.4-CLOSEOUT: the full validated print contract (pageRanges, margins,
+// scale, landscape) now crosses the LAN — see printBridge.ts (single source
+// for both serialization directions). Invalid ranges are blocked HERE on the
+// Secondary before anything is forwarded.
+export type LanPrintReceiptInput = LanPrintJobInput;
 export async function sendPrintReceipt(input: LanPrintReceiptInput): Promise<LanOperationAck> {
   if (!isElectron() || !window.electronAPI?.lanSendOperation) return { ok: false, error: 'not_electron' };
   const conn = getConnection();
   if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return { ok: false, error: 'not_paired' };
-  const html = String(input.html || '');
-  if (!html) return { ok: false, error: 'bad_payload' };
+  const built = buildLanPrintJob(input);
+  if (!built.ok) return { ok: false, error: built.error };
   const operation: LanOperation = {
     operationId: randomId(),
     type: 'LAN_PRINT_RECEIPT_REQUEST',
     payload: {
       print: {
-        receiptType: String(input.receiptType || 'receipt').slice(0, 40),
-        html,
-        copies: Math.max(1, Math.min(10, Math.round(input.copies || 1))),
-        pageSize: input.pageSize,
+        ...built.job,
         printJobId: randomId(),
         timestamp: Date.now(),
       },
