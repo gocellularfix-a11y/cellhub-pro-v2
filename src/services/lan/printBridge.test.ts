@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildLanPrintJob, buildBridgedPrintRunPayload, sanitizeZeroBasedRanges, resolveBridgePrinter,
-  buildPrinterInventory, buildLanPrintSubmit, buildPrintServerRunPayload,
+  buildPrinterInventory, buildLanPrintSubmit, buildPrintServerRunPayload, stablePrinterId,
 } from './printBridge';
 import { parsePageRanges } from '@/utils/pageRanges';
 // @ts-expect-error — CJS main-process module without type declarations.
@@ -244,10 +244,23 @@ describe('bridged SALES REPORT crosses the LAN intact and routes to the report p
   });
 });
 
-// ── R-PRINT-SERVER-V1 — print-server contract ──
+// ── R-PRINT-SERVER-V1 / V1.1 — print-server contract ──
+// V1.1: wire identity is printerId (stable hash of the exact device name);
+// displayName is presentation only and NEVER routes.
+
+describe('stablePrinterId — deterministic wire identity', () => {
+  it('is stable for the same device name and distinct across names', () => {
+    expect(stablePrinterId('Canon MF210 Series')).toBe(stablePrinterId('Canon MF210 Series'));
+    expect(stablePrinterId('Canon MF210 Series')).not.toBe(stablePrinterId('POS-80C'));
+    expect(stablePrinterId('Canon MF210 Series')).toMatch(/^prn-[0-9a-f]{8}-/);
+  });
+  it('renaming a printer CHANGES its identity (documented cache-invalidation limitation)', () => {
+    expect(stablePrinterId('Canon MF210')).not.toBe(stablePrinterId('Canon MF210 (Front Desk)'));
+  });
+});
 
 describe('buildPrinterInventory — Primary advertises its printers', () => {
-  it('serializes name/displayName/default/offline/media for the wire', () => {
+  it('serializes printerId/deviceName/displayName/default/offline/media for the wire', () => {
     const printers = [
       { name: 'Canon MF210 Series', displayName: 'Canon MF210', isDefault: false, status: 0 },
       { name: 'POS-80C', isDefault: true, status: 0 },
@@ -255,9 +268,9 @@ describe('buildPrinterInventory — Primary advertises its printers', () => {
     ];
     const map = { 'Canon MF210 Series': 'letter', 'POS-80C': '80mm' };
     expect(buildPrinterInventory(printers, map)).toEqual([
-      { name: 'Canon MF210 Series', displayName: 'Canon MF210', isDefault: false, offline: false, media: 'letter' },
-      { name: 'POS-80C', displayName: 'POS-80C', isDefault: true, offline: false, media: '80mm' },
-      { name: 'DYMO 450', displayName: 'DYMO LabelWriter 450', isDefault: false, offline: true, media: '' },
+      { printerId: stablePrinterId('Canon MF210 Series'), deviceName: 'Canon MF210 Series', displayName: 'Canon MF210', isDefault: false, offline: false, media: 'letter' },
+      { printerId: stablePrinterId('POS-80C'), deviceName: 'POS-80C', displayName: 'POS-80C', isDefault: true, offline: false, media: '80mm' },
+      { printerId: stablePrinterId('DYMO 450'), deviceName: 'DYMO 450', displayName: 'DYMO LabelWriter 450', isDefault: false, offline: true, media: '' },
     ]);
   });
 
@@ -268,6 +281,7 @@ describe('buildPrinterInventory — Primary advertises its printers', () => {
 });
 
 describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit printer', () => {
+  const CANON_ID = stablePrinterId('Canon MF210 Series');
   const submit = {
     receiptType: 'report',
     documentType: 'report',
@@ -278,6 +292,7 @@ describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit
     margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
     scaleFactor: 100,
     landscape: false,
+    printerId: CANON_ID,
     printerName: 'Canon MF210 Series',
     jobId: 'job-123',
   };
@@ -291,7 +306,7 @@ describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit
     expect(run.ok).toBe(true);
     if (!run.ok) return;
     expect(run.jobId).toBe('job-123');
-    expect(run.printerName).toBe('Canon MF210 Series');
+    expect(run.printerName).toBe('Canon MF210 Series'); // resolved from printerId
     expect(run.documentType).toBe('report');
     expect(run.payload).toEqual({
       html: '<h1>Sales Report</h1>',
@@ -306,7 +321,7 @@ describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit
   });
 
   it('Secondary blocks a submit without an explicit printer or jobId', () => {
-    expect(buildLanPrintSubmit({ ...submit, printerName: '' })).toEqual({ ok: false, error: 'no_printer_selected' });
+    expect(buildLanPrintSubmit({ ...submit, printerId: '' })).toEqual({ ok: false, error: 'no_printer_selected' });
     expect(buildLanPrintSubmit({ ...submit, jobId: '' })).toEqual({ ok: false, error: 'bad_job_id' });
   });
 
@@ -314,20 +329,76 @@ describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit
     expect(buildLanPrintSubmit({ ...submit, pageRanges: [{ from: 2, to: 1 }] })).toEqual({ ok: false, error: 'bad_page_ranges' });
   });
 
-  it('Primary REJECTS a job naming a printer it does not own (no arbitrary devices)', () => {
+  it('Primary REJECTS a job whose printerId resolves to no current device (stale/renamed/foreign)', () => {
     const built = buildLanPrintSubmit(submit);
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    const run = buildPrintServerRunPayload(JSON.parse(JSON.stringify(built.job)), ['POS-80C']);
+    // Canon was renamed/removed on the Primary since the inventory was cached:
+    const run = buildPrintServerRunPayload(JSON.parse(JSON.stringify({ ...built.job, printerName: '' })), ['POS-80C']);
     expect(run).toEqual({ ok: false, error: 'printer_not_found', jobId: 'job-123' });
   });
 
+  it('routing identity is printerId, not display text — a spoofed printerName loses to the id', () => {
+    const built = buildLanPrintSubmit({ ...submit, printerName: 'POS-80C' }); // hint lies
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const run = buildPrintServerRunPayload(JSON.parse(JSON.stringify(built.job)), ['POS-80C', 'Canon MF210 Series']);
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+    expect(run.printerName).toBe('Canon MF210 Series'); // id wins over the name hint
+  });
+
   it('Primary defensively rejects tampered payloads (ranges, missing html, missing jobId)', () => {
-    expect(buildPrintServerRunPayload({ jobId: 'j', printerName: 'X', html: '<p>d</p>', pageRanges: [{ from: 3, to: 1 }] }, ['X']))
+    const xId = stablePrinterId('X');
+    expect(buildPrintServerRunPayload({ jobId: 'j', printerId: xId, html: '<p>d</p>', pageRanges: [{ from: 3, to: 1 }] }, ['X']))
       .toEqual({ ok: false, error: 'bad_page_ranges', jobId: 'j' });
-    expect(buildPrintServerRunPayload({ jobId: 'j', printerName: 'X', html: '' }, ['X']))
+    expect(buildPrintServerRunPayload({ jobId: 'j', printerId: xId, html: '' }, ['X']))
       .toEqual({ ok: false, error: 'bad_payload', jobId: 'j' });
-    expect(buildPrintServerRunPayload({ printerName: 'X', html: '<p>d</p>' }, ['X']))
+    expect(buildPrintServerRunPayload({ printerId: xId, html: '<p>d</p>' }, ['X']))
       .toEqual({ ok: false, error: 'bad_job_id' });
+  });
+
+  it('R-V1.1: EVERY print option survives Secondary → wire → Primary → MAIN QUEUE → printPages', async () => {
+    // @ts-expect-error — CJS main-process module without type declarations.
+    const printQueue = (await import('../../../electron/printQueue.js')).default;
+    printQueue._reset();
+    // Current-page ({from:1,to:1} 0-based = page 2) and a custom scatter both ride the same contract:
+    for (const ranges of [[{ from: 1, to: 1 }], [{ from: 0, to: 1 }, { from: 3, to: 3 }]]) {
+      const built = buildLanPrintSubmit({
+        ...submit,
+        pageRanges: ranges,
+        copies: 3,
+        landscape: true,
+        scaleFactor: 80,
+        margins: { top: 0.25, bottom: 0.25, left: 0.1, right: 0.1 },
+        jobId: `contract-${ranges.length}`,
+      });
+      expect(built.ok).toBe(true);
+      if (!built.ok) return;
+      const run = buildPrintServerRunPayload(JSON.parse(JSON.stringify(built.job)), ['Canon MF210 Series']);
+      expect(run.ok).toBe(true);
+      if (!run.ok) return;
+      // Through the MAIN queue with a capturing executor — the payload that
+      // reaches the physical print step is byte-equal to the resolved one:
+      let executed: unknown = null;
+      printQueue.init({ execute: (p: unknown) => { executed = p; return Promise.resolve({ success: true }); } });
+      printQueue.submitJob({ jobId: run.jobId, payload: run.payload, metadata: { deviceId: 'PC-A', documentType: run.documentType, origin: 'lan-secondary' } });
+      const done = printQueue.completion(run.jobId);
+      await done;
+      expect(executed).toEqual({
+        html: '<h1>Sales Report</h1>',
+        deviceName: 'Canon MF210 Series',
+        copies: 3,
+        pageSize: LETTER,
+        pageRanges: ranges,
+        margins: { top: 0.25, bottom: 0.25, left: 0.1, right: 0.1 },
+        scaleFactor: 80,
+        landscape: true,
+      });
+      // …and normalizes to the same 1-based selection the canonical
+      // printPages pipeline prints (identical to a direct local job):
+      const norm = printPages.normalizeZeroBasedRanges((executed as { pageRanges: Array<{ from: number; to: number }> }).pageRanges);
+      expect(norm).toEqual(printPages.normalizeZeroBasedRanges(ranges));
+    }
   });
 });

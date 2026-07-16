@@ -63,6 +63,18 @@ export default function LanPrintBridgeListener() {
         );
         return;
       }
+      // R-PRINT-SERVER-V1.1: ambiguous outcome — the Primary may have
+      // accepted the job before the ACK was lost. Never auto-printed
+      // locally; the operator must check the physical printer first.
+      if (detail.state === 'unknown') {
+        toast(
+          tr('Print status is unknown. Check the printer before retrying.',
+             'El estado de la impresión es desconocido. Revisa la impresora antes de reintentar.',
+             'O status da impressão é desconhecido. Verifique a impressora antes de tentar novamente.'),
+          'error',
+        );
+        return;
+      }
 
       // ── Legacy / terminal results (silent receipt bridge + failures) ──
       if (detail.ok) {

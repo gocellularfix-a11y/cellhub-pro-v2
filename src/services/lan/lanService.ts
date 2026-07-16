@@ -185,7 +185,9 @@ export const LAN_PRINT_RESULT_EVENT = 'cellhub:lan-print-result';
 export interface LanPrintResultDetail {
   ok: boolean;
   error?: string;
-  state?: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'lost';
+  // R-PRINT-SERVER-V1.1: 'unknown' = ambiguous submit outcome (lost ACK —
+  // the Primary may have printed the job; never auto-duplicated locally).
+  state?: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'lost' | 'unknown';
   ahead?: number;
   jobId?: string;
 }

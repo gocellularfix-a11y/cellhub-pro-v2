@@ -25,10 +25,13 @@
 // R-PRINT-SERVER-V1: the Primary is now a full PRINT SERVER. A Secondary's
 // print modal shows the PRIMARY's printers and submits ONE complete job
 // (LAN_PRINT_SUBMIT) naming an explicit printer; the Primary validates it,
-// enqueues it on that printer's FIFO lane (printServerQueue) and ACKs
-// { jobId, queuePosition } immediately — status flows back via
-// LAN_PRINT_STATUS_REQUEST polling. The media-routed path above stays as
-// the SILENT receipt bridge (no picker) and as backward compatibility.
+// enqueues it on that printer's FIFO lane and ACKs { jobId, queuePosition }
+// immediately — status flows back via LAN_PRINT_STATUS_REQUEST polling.
+// The media-routed path above stays as the SILENT receipt bridge (no
+// picker) and as backward compatibility.
+// R-PRINT-SERVER-V1.1: the authoritative per-printer FIFO queue lives in
+// ELECTRON MAIN (electron/printQueue.js) — local Primary printRun jobs and
+// LAN jobs serialize through the SAME lane per physical printer.
 // ============================================================
 import { classifyMediaFromMicrons } from '@/services/print/printMediaGuard';
 import type { PrinterMediaType } from '@/services/print/printMediaGuard';
@@ -223,10 +226,31 @@ export function resolveBridgePrinter(
 }
 
 // ── R-PRINT-SERVER-V1: explicit-printer print-server contract ──
+// R-PRINT-SERVER-V1.1: wire identity is `printerId` — a deterministic stable
+// hash of the exact Windows device name (Electron exposes no stronger
+// identifier). displayName is presentation ONLY, never routing identity.
+// KNOWN LIMITATION: renaming a Windows printer changes its device name and
+// therefore its printerId — cached Secondary inventory goes stale and the
+// job is rejected (printer_not_found) until the inventory refreshes (auto on
+// reconnect, manual via the modal's ↻ button).
+
+/** Deterministic stable printer identity from the exact device name
+ *  (FNV-1a 32-bit, hex). Pure + collision-safe enough for a shop's printer
+ *  set; both sides compute it identically. */
+export function stablePrinterId(deviceName: string): string {
+  const s = String(deviceName || '');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `prn-${(h >>> 0).toString(16).padStart(8, '0')}-${s.length.toString(36)}`;
+}
 
 /** One printer as advertised by the Primary to its Secondaries. */
 export interface LanPrinterInfo {
-  name: string;
+  printerId: string;
+  deviceName: string;
   displayName: string;
   isDefault: boolean;
   /** Best-effort offline hint from the OS status flags (UI only — never
@@ -243,24 +267,30 @@ export function buildPrinterInventory(
 ): LanPrinterInfo[] {
   const map = (mediaMap && typeof mediaMap === 'object') ? mediaMap : {};
   return (Array.isArray(printers) ? printers : []).map((p): LanPrinterInfo => ({
-    name: String(p.name || ''),
+    printerId: stablePrinterId(String(p.name || '')),
+    deviceName: String(p.name || ''),
     displayName: String(p.displayName || p.name || ''),
     isDefault: !!p.isDefault,
     // Windows PRINTER_STATUS_OFFLINE = 0x80; other bits vary per driver.
     offline: (Number(p.status) & 0x80) !== 0,
     media: (map[String(p.name || '')] as PrinterMediaType | undefined) || '',
-  })).filter((p) => p.name);
+  })).filter((p) => p.deviceName);
 }
 
 /** Full print-server job: everything the modal decided, plus the explicit
  *  target printer. Same option shapes as LanPrintJob (single contract). */
 export interface LanPrintSubmitInput extends LanPrintJobInput {
-  printerName: string;
+  /** Wire routing identity (stablePrinterId of the target device name). */
+  printerId: string;
+  /** Device name at submit time — display/fallback only, never trusted
+   *  as routing identity by itself. */
+  printerName?: string;
   jobId: string;
   documentType?: string;
 }
 
 export interface LanPrintSubmitJob extends LanPrintJob {
+  printerId: string;
   printerName: string;
   jobId: string;
   documentType: string;
@@ -272,8 +302,8 @@ export interface LanPrintSubmitJob extends LanPrintJob {
  * before anything crosses the LAN).
  */
 export function buildLanPrintSubmit(input: LanPrintSubmitInput): { ok: true; job: LanPrintSubmitJob } | { ok: false; error: string } {
-  const printerName = String(input.printerName || '').trim();
-  if (!printerName) return { ok: false, error: 'no_printer_selected' };
+  const printerId = String(input.printerId || '').trim();
+  if (!printerId) return { ok: false, error: 'no_printer_selected' };
   const jobId = String(input.jobId || '').trim();
   if (!jobId) return { ok: false, error: 'bad_job_id' };
   const base = buildLanPrintJob(input);
@@ -282,7 +312,8 @@ export function buildLanPrintSubmit(input: LanPrintSubmitInput): { ok: true; job
     ok: true,
     job: {
       ...base.job,
-      printerName: printerName.slice(0, 200),
+      printerId: printerId.slice(0, 80),
+      printerName: String(input.printerName || '').slice(0, 200),
       jobId: jobId.slice(0, 80),
       documentType: String(input.documentType || input.receiptType || 'document').slice(0, 40),
     },
@@ -291,10 +322,13 @@ export function buildLanPrintSubmit(input: LanPrintSubmitInput): { ok: true; job
 
 /**
  * Primary side: defensively re-validate a received LAN_PRINT_SUBMIT payload
- * and resolve it against the Primary's CURRENT printer list. The named
- * printer must exist on the Primary — a Secondary can never route a job to
- * an arbitrary device string. Returns the printRun payload (canonical
- * pipeline) plus the validated job identity.
+ * and resolve its printerId against the Primary's CURRENT device names —
+ * a Secondary can never route a job to an arbitrary device string, and a
+ * stale printerId (printer renamed/removed since the inventory was cached)
+ * is rejected with printer_not_found (client refreshes + retries). Legacy
+ * fallback: an exact printerName match is accepted when no printerId
+ * resolves. Returns the printRun payload (canonical pipeline) plus the
+ * validated job identity.
  */
 export function buildPrintServerRunPayload(
   print: unknown,
@@ -303,16 +337,20 @@ export function buildPrintServerRunPayload(
   const p = print as Partial<LanPrintSubmitJob> | null | undefined;
   const jobId = p ? String(p.jobId || '').trim() : '';
   if (!p || !jobId) return { ok: false, error: 'bad_job_id' };
-  const printerName = String(p.printerName || '').trim();
-  if (!printerName) return { ok: false, error: 'no_printer_selected', jobId };
+  const printerId = String(p.printerId || '').trim();
+  const printerNameHint = String(p.printerName || '').trim();
+  if (!printerId && !printerNameHint) return { ok: false, error: 'no_printer_selected', jobId };
   const names = Array.isArray(availablePrinters) ? availablePrinters : [];
-  if (!names.includes(printerName)) return { ok: false, error: 'printer_not_found', jobId };
-  const built = buildBridgedPrintRunPayload(p, printerName);
+  // Resolve identity → CURRENT device name (never trust the wire string).
+  const deviceName = (printerId && names.find((n) => stablePrinterId(n) === printerId))
+    || (printerNameHint && names.includes(printerNameHint) ? printerNameHint : '');
+  if (!deviceName) return { ok: false, error: 'printer_not_found', jobId };
+  const built = buildBridgedPrintRunPayload(p, deviceName);
   if (!built.ok) return { ok: false, error: built.error, jobId };
   return {
     ok: true,
     jobId,
-    printerName,
+    printerName: deviceName,
     documentType: String(p.documentType || p.receiptType || 'document').slice(0, 40),
     payload: built.payload,
   };

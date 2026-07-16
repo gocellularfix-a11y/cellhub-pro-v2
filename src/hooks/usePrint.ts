@@ -6,7 +6,12 @@ import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService'
 // R-PRINT-SERVER-V1: Local Printing Mode — when the Primary is offline the
 // silent receipt bridge is skipped and the print falls through to the local
 // paths below (modal in local mode / local silent print).
+// R-PRINT-SERVER-V1.1: connecting also skips the bridge (server mode needs
+// PROOF of reachability), and a failed send is CLASSIFIED — definite
+// pre-dispatch failures fall through to local printing, ambiguous outcomes
+// never auto-print a possible duplicate.
 import { getMirrorStatus } from '@/services/lan/lanMirror';
+import { resolvePrintMode, classifySubmitFailure } from '@/services/print/printGating';
 // R-PRINT-MEDIA-GUARD-V1: media validation for the SILENT path — the job's
 // exact microns are compared to the target printer's configured media type
 // (warn / auto-route labels). Fail-open when nothing is configured.
@@ -133,10 +138,19 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
   // prints on its own hardware. Silent + toast-only feedback (no modal). NOT
   // retried (printing isn't idempotent). Any other print / role is unaffected.
   // R-PRINT-SERVER-V1: routed by media on the Primary and executed through its
-  // per-printer FIFO queue. When the Primary is OFFLINE (mirror state) the
-  // bridge is skipped → Local Printing Mode (the paths below print locally).
-  if (opts.bridgeReceipt && isLanSecondaryReadOnly() && getMirrorStatus().connState !== 'offline') {
+  // per-printer FIFO queue (the wire printJobId dedups on the Primary, so a
+  // re-sent operation can never print twice).
+  // R-PRINT-SERVER-V1.1: the bridge runs ONLY with proof of reachability
+  // (connected/reconnected — connecting/offline go straight to Local Printing
+  // Mode below). A failed send is classified: a DEFINITE pre-dispatch failure
+  // (unreachable — nothing was accepted) falls through to the local paths so
+  // the receipt is never silently discarded; an AMBIGUOUS outcome (lost ACK —
+  // the Primary may have printed it) never auto-prints a possible duplicate
+  // and surfaces a clear status-unknown message instead.
+  if (opts.bridgeReceipt && isLanSecondaryReadOnly()
+      && resolvePrintMode('secondary', getMirrorStatus().connState) === 'server') {
     const pageSize = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
+    let fallThroughToLocal = false;
     try {
       const ack = await sendPrintReceipt({
         receiptType: opts.receiptType || 'receipt',
@@ -144,11 +158,32 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
         copies: opts.copies || 1,
         pageSize,
       });
-      emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
+      if (ack.ok) {
+        emitLanPrintResult({ ok: true });
+      } else {
+        const kind = classifySubmitFailure(ack.error);
+        if (kind === 'unreachable') {
+          // Definite: the Primary never accepted the job → print locally.
+          emitLanPrintResult({ ok: false, error: ack.error || 'unreachable' });
+          fallThroughToLocal = true;
+        } else if (kind === 'ambiguous') {
+          emitLanPrintResult({ ok: false, state: 'unknown', error: ack.error || 'timeout' });
+        } else {
+          // Rejected by the Primary (e.g. no_receipt_printer) — nothing
+          // printed; existing toast guides configuration + manual retry.
+          emitLanPrintResult({ ok: false, error: ack.error || 'print_failed' });
+        }
+      }
     } catch {
+      // Renderer-side exception before/while sending — nothing crossed the
+      // LAN for sure → safe to print locally.
       emitLanPrintResult({ ok: false, error: 'bridge_error' });
+      fallThroughToLocal = true;
     }
-    return;
+    if (!fallThroughToLocal) return;
+    // Local Printing Mode fallback: continue into the existing local paths
+    // below (silent local print when a local printer is configured, else the
+    // modal opens in local mode) — same document, nothing re-rendered.
   }
 
   // ── Path 1: Electron silent print (bypass modal) ──────────

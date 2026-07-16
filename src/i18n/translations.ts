@@ -5244,6 +5244,9 @@ export const translations: TranslationDictionary = {
   'print.refreshPrinters':     { en: 'Refresh printer list from the Primary', es: 'Actualizar lista de impresoras de la Principal', pt: 'Atualizar lista de impressoras do Principal' },
   'print.noPrimaryPrinters':   { en: 'No printers found on the Primary', es: 'No se encontraron impresoras en la Principal', pt: 'Nenhuma impressora encontrada no Principal' },
   'print.localFallback':       { en: 'Primary offline — Local Printing Mode (this computer’s printers).', es: 'Principal fuera de línea — Modo de impresión local (impresoras de esta computadora).', pt: 'Principal offline — Modo de impressão local (impressoras deste computador).' },
+  // R-PRINT-SERVER-V1.1: ambiguous submit outcome — the Primary may have
+  // accepted the job before the ACK was lost. Never auto-duplicate.
+  'print.statusUnknown':       { en: 'Print status is unknown. Check the printer before retrying.', es: 'El estado de la impresión es desconocido. Revisa la impresora antes de reintentar.', pt: 'O status da impressão é desconhecido. Verifique a impressora antes de tentar novamente.' },
   // RECEIPT-PRINTER-RANGE-FALLBACK-V1: shown when the receipt printer can't print a page subset.
   'print.rangeUnsupported':    { en: 'This printer can’t print selected pages. Printing the full document instead.', es: 'Esta impresora no puede imprimir páginas seleccionadas. Se imprimió el documento completo.', pt: 'Esta impressora não pode imprimir páginas selecionadas. Imprimindo o documento completo.' },
   // R-2.1.4-PRINT-PAGES: specific Custom Range validation messages. Invalid

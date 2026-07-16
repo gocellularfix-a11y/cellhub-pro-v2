@@ -443,7 +443,12 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('print:run', async (_, payload) => {
+  // R-PRINT-SERVER-V1.1: executePrintRun is the CANONICAL physical print
+  // executor (body unchanged from the previous print:run handler). It is
+  // ONLY ever invoked by electron/printQueue.js — the single per-printer
+  // FIFO serialization boundary — never directly by an IPC handler. The
+  // printPages.js pipeline inside remains the only physical print engine.
+  const executePrintRun = async (payload) => {
     console.log('[print:run] called, printer:', payload.deviceName);
     const printWin = new BrowserWindow({
       show: false,
@@ -636,7 +641,25 @@ function registerIpcHandlers() {
       if (!printWin.isDestroyed()) printWin.close();
       return { success: false, error: err.message || String(err) };
     }
-  });
+  };
+
+  // R-PRINT-SERVER-V1.1: wire the main-process per-printer FIFO queue around
+  // the canonical executor. EVERY print path serializes here:
+  //   print:run          — legacy contract, PRESERVED: enqueue + await the
+  //                        terminal state + return {success, error,
+  //                        printedPages}. Generates an internal jobId when
+  //                        none is supplied; a payload-supplied jobId dedups
+  //                        (wire retries never print twice).
+  //   print:queue-submit — LAN print-server jobs: enqueue, ACK immediately
+  //                        with {success, jobId, state, ahead}.
+  //   print:queue-status — ownership-checked (jobId + deviceId) live status.
+  //   print:queue-cancel — ownership-checked cancel of a WAITING job.
+  const printQueue = require('./printQueue');
+  printQueue.init({ execute: executePrintRun });
+  ipcMain.handle('print:run', async (_, payload) => printQueue.submitAndWait(payload));
+  ipcMain.handle('print:queue-submit', async (_, req) => printQueue.submitJob(req));
+  ipcMain.handle('print:queue-status', async (_, req) => printQueue.status(req));
+  ipcMain.handle('print:queue-cancel', async (_, req) => printQueue.cancelJob(req));
 
   // Backup folder config
   ipcMain.handle('get-backup-folder', () => {

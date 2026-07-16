@@ -26,6 +26,11 @@ try {
     getPrinters:      ()         => ipcRenderer.invoke('get-printers'),
     printPreview:     (payload)  => ipcRenderer.invoke('print:preview', payload),
     printRun:         (payload)  => ipcRenderer.invoke('print:run', payload),
+    // R-PRINT-SERVER-V1.1: main-process per-printer FIFO queue (LAN print
+    // server). printRun above ALSO runs through the same queue internally.
+    printQueueSubmit: (req)      => ipcRenderer.invoke('print:queue-submit', req),
+    printQueueStatus: (req)      => ipcRenderer.invoke('print:queue-status', req),
+    printQueueCancel: (req)      => ipcRenderer.invoke('print:queue-cancel', req),
     // R-TAX-ORGANIZER-PDF-EXPORT-V1: narrow dialog-gated PDF export (see comment above).
     exportPdf:        (payload)  => ipcRenderer.invoke('pdf:save', payload),
 

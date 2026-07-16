@@ -47,7 +47,26 @@ interface ElectronAPI {
     // RECEIPT-PRINTER-RANGE-FALLBACK-V1: true when a custom range could not be
     // honored on receipt media (driver can't select pages) — the full receipt
     // was printed instead; the renderer shows a friendly warning.
-  }) => Promise<{ success: boolean; error?: string | null; rangeUnsupported?: boolean }>;
+    // R-PRINT-SERVER-V1.1: optional queue fields — a supplied jobId dedups
+    // (wire retries never print twice); deviceId/documentType/origin tag the
+    // job in the main-process queue. Stripped before physical execution.
+    jobId?: string;
+    deviceId?: string;
+    documentType?: string;
+    origin?: string;
+  }) => Promise<{ success: boolean; error?: string | null; rangeUnsupported?: boolean; printedPages?: number }>;
+  // R-PRINT-SERVER-V1.1: main-process per-printer FIFO queue IPC. submit ACKs
+  // immediately; status/cancel are OWNERSHIP-CHECKED (jobId + deviceId) and
+  // answer a generic job_not_found for unknown OR foreign jobs.
+  printQueueSubmit: (req: {
+    jobId: string;
+    payload: Record<string, unknown> & { deviceName: string };
+    metadata?: { deviceId?: string; documentType?: string; origin?: string };
+  }) => Promise<{ success: boolean; jobId?: string; state?: string; ahead?: number; duplicate?: boolean; error?: string }>;
+  printQueueStatus: (req: { jobId: string; deviceId: string }) =>
+    Promise<{ success: boolean; jobStatus?: LanPrintJobStatusWire & { printedPages?: number }; error?: string }>;
+  printQueueCancel: (req: { jobId: string; deviceId: string }) =>
+    Promise<{ success: boolean; jobStatus?: LanPrintJobStatusWire; error?: string }>;
   // R-TAX-ORGANIZER-PDF-EXPORT-V1: narrow, dialog-gated PDF export. Renderer
   // supplies html + a page-size key + a suggested filename only; the save path
   // comes from the native dialog and main writes only its own printToPDF buffer.
@@ -171,7 +190,10 @@ interface LanCheckoutPayload {
 // R-PRINT-SERVER-V1: print-server wire shapes. Duplicated structurally from
 // printBridge.ts (this ambient file cannot import app modules).
 interface LanWirePrinterInfo {
-  name: string;
+  // R-PRINT-SERVER-V1.1: printerId is the routing identity (stable hash of
+  // the device name); displayName is presentation only.
+  printerId: string;
+  deviceName: string;
   displayName: string;
   isDefault: boolean;
   offline: boolean;
@@ -182,7 +204,8 @@ interface LanPrintSubmitPayload {
   documentType?: string;
   html: string;
   copies: number;
-  printerName: string;
+  printerId: string;
+  printerName?: string;
   jobId: string;
   pageSize?: { width: number; height: number };
   pageRanges?: Array<{ from: number; to: number }>;

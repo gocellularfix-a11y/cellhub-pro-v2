@@ -23,16 +23,55 @@ export type PrintTargetMode = 'server' | 'local';
 /**
  * Resolve which print pipeline this machine uses right now.
  * `connState` is the Secondary mirror state ('connected' | 'reconnected' |
- * 'connecting' | 'offline'). A Secondary that is offline falls back to
- * Local Printing Mode automatically and returns to server mode when the
- * mirror reconnects (the caller re-evaluates on mirror updates).
+ * 'connecting' | 'offline').
+ *
+ * R-PRINT-SERVER-V1.1: server mode requires PROOF the Primary is reachable
+ * — only 'connected' / 'reconnected' qualify. 'connecting' (no successful
+ * sync yet) and 'offline' both resolve to Local Printing Mode; the caller
+ * re-evaluates on mirror updates, so the machine returns to server mode
+ * automatically (and refreshes the printer inventory) on reconnect.
  */
 export function resolvePrintMode(
   role: 'standalone' | 'primary' | 'secondary',
   connState: 'connecting' | 'connected' | 'offline' | 'reconnected',
 ): PrintTargetMode {
   if (role !== 'secondary') return 'local';
-  return connState === 'offline' ? 'local' : 'server';
+  return (connState === 'connected' || connState === 'reconnected') ? 'server' : 'local';
+}
+
+// ── R-PRINT-SERVER-V1.1: submit-failure classification ──────
+// When a LAN print submit fails, WHAT failed decides the recovery:
+//   'unreachable' — the request definitively never reached a working Primary
+//                   (pre-dispatch). Safe to fall back to Local Printing Mode;
+//                   no duplicate is possible.
+//   'rejected'    — the Primary answered and REFUSED the job (validation,
+//                   unknown printer, unsupported op). Nothing printed; show
+//                   the error and let the user fix + retry in server mode.
+//   'ambiguous'   — the outcome is unknown (timeout after the request may
+//                   have been accepted). The job may already be printing on
+//                   the Primary — NEVER auto-print locally (duplicate risk);
+//                   surface "status unknown, check the printer".
+
+export type SubmitFailureKind = 'unreachable' | 'rejected' | 'ambiguous';
+
+const UNREACHABLE_ERRORS = new Set([
+  'not_paired', 'unreachable', 'network_error', 'not_electron', 'bad_url',
+  'no_renderer', 'dispatch_unavailable', 'unauthorized',
+]);
+const REJECTED_ERRORS = new Set([
+  'printer_not_found', 'no_printer_selected', 'bad_job_id', 'bad_payload',
+  'bad_page_ranges', 'print_unavailable', 'printer_scan_failed',
+  'queue_submit_failed', 'unsupported_operation', 'dispatch_failed',
+  'dispatch_exception', 'no_report_printer', 'no_receipt_printer', 'no_printer',
+]);
+
+export function classifySubmitFailure(error: string | undefined | null): SubmitFailureKind {
+  const e = String(error || '');
+  if (UNREACHABLE_ERRORS.has(e)) return 'unreachable';
+  if (REJECTED_ERRORS.has(e)) return 'rejected';
+  // timeout / dispatch_timeout / bad_response / anything unknown: the job may
+  // have been accepted before the ACK was lost — treat as ambiguous.
+  return 'ambiguous';
 }
 
 export interface PrintDisabledInput {

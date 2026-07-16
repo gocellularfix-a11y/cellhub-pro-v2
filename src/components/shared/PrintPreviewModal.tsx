@@ -38,7 +38,9 @@ import type { PagesMode } from '@/services/print/previewModel';
 // R-PRINT-SERVER-V1: pure print-mode resolution + Print-button gating.
 // A connected Secondary prints through the Primary print server (server
 // mode); a Secondary whose Primary is offline falls back to local mode.
-import { resolvePrintMode, computePrintDisabled } from '@/services/print/printGating';
+// R-PRINT-SERVER-V1.1: + submit-failure classification (unreachable →
+// safe local fallback / ambiguous → never duplicate / rejected → retry).
+import { resolvePrintMode, computePrintDisabled, classifySubmitFailure } from '@/services/print/printGating';
 
 // pdf.js is loaded lazily (code-split) the first time a sheet-media preview
 // opens; the worker ships as a bundled asset so the app stays offline-safe.
@@ -216,7 +218,16 @@ export default function PrintPreviewModal({
   // it returns to server mode on reconnect. Reactive via the mirror pub/sub.
   const [connState, setConnState] = useState(() => getMirrorStatus().connState);
   useEffect(() => subscribeMirror((s) => setConnState(s.connState)), []);
-  const printMode = resolvePrintMode(lanReadOnly ? 'secondary' : 'standalone', connState);
+  // R-PRINT-SERVER-V1.1: a DEFINITE pre-dispatch submit failure (Primary
+  // unreachable) forces Local Printing Mode for this modal immediately —
+  // before the mirror poll notices — keeping the preview + settings intact
+  // so the operator can print locally without reopening the document. The
+  // override clears itself when the mirror proves the Primary is back.
+  const [forcedLocal, setForcedLocal] = useState(false);
+  useEffect(() => {
+    if (connState === 'connected' || connState === 'reconnected') setForcedLocal(false);
+  }, [connState]);
+  const printMode = forcedLocal ? 'local' : resolvePrintMode(lanReadOnly ? 'secondary' : 'standalone', connState);
   const serverMode = printMode === 'server';
   const [primaryCache, setPrimaryCache] = useState<PrimaryPrinterCache | null>(() => getPrimaryPrinterCache());
   useEffect(() => subscribePrimaryPrinters(setPrimaryCache), []);
@@ -331,16 +342,19 @@ export default function PrintPreviewModal({
 
   // R-PRINT-SERVER-V1: keep the remote pick valid against the live Primary
   // inventory — auto-select saved choice → Primary default → first printer.
+  // R-PRINT-SERVER-V1.1: selection is by printerId (stable wire identity),
+  // never by display text. A renamed Windows printer invalidates the cached
+  // id → the pick falls back to the default until re-chosen.
   useEffect(() => {
     if (!open || !serverMode) return;
     const list = primaryCache?.printers || [];
     if (list.length === 0) return;
-    if (selectedRemotePrinter && list.some((p) => p.name === selectedRemotePrinter)) return;
+    if (selectedRemotePrinter && list.some((p) => p.printerId === selectedRemotePrinter)) return;
     const saved = (() => { try { return localStorage.getItem('cellhub_lastRemotePrinter') || ''; } catch { return ''; } })();
-    const pick = (saved && list.find((p) => p.name === saved))
+    const pick = (saved && list.find((p) => p.printerId === saved))
       || list.find((p) => p.isDefault)
       || list[0];
-    if (pick) setSelectedRemotePrinter(pick.name);
+    if (pick) setSelectedRemotePrinter(pick.printerId);
   }, [open, serverMode, primaryCache, selectedRemotePrinter]);
 
 
@@ -394,28 +408,29 @@ export default function PrintPreviewModal({
     // margins, scale, landscape, copies) onto the same canonical printRun
     // pipeline a direct print uses. Toast feedback via LanPrintBridgeListener.
     if (serverMode) {
-      if (!selectedRemotePrinter) return;
+      const remote = (primaryCache?.printers || []).find((p) => p.printerId === selectedRemotePrinter);
+      if (!remote) return;
       // Media validation against the REMOTE printer's configured media type.
       // Warn only — the user's explicit choice is NEVER silently rerouted.
       const psCheck = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
       const remoteMap: PrinterMediaMap = {};
       (primaryCache?.printers || []).forEach((p) => {
-        if (p.media) remoteMap[p.name] = p.media as PrinterMediaType;
+        if (p.media) remoteMap[p.deviceName] = p.media as PrinterMediaType;
       });
-      const verdict = checkPrintMediaJob({ width: psCheck.width, height: psCheck.height }, selectedRemotePrinter, remoteMap);
+      const verdict = checkPrintMediaJob({ width: psCheck.width, height: psCheck.height }, remote.deviceName, remoteMap);
       // eslint-disable-next-line no-console
-      console.info('[print] media guard (server mode):', JSON.stringify({ printer: selectedRemotePrinter, verdict }));
+      console.info('[print] media guard (server mode):', JSON.stringify({ printer: remote.deviceName, verdict }));
       if (verdict.action !== 'ok') {
         // 'reroute' verdicts (label job, dedicated label printer exists) also
         // become an ask here — do NOT silently override the user's choice.
         const proceed = await requestPrintMediaConfirmation({
           docMedia: verdict.docMedia,
           printerMedia: verdict.printerMedia,
-          printerName: selectedRemotePrinter,
+          printerName: remote.deviceName,
         });
         if (!proceed) return;
       }
-      try { localStorage.setItem('cellhub_lastRemotePrinter', selectedRemotePrinter); } catch { /* ignore */ }
+      try { localStorage.setItem('cellhub_lastRemotePrinter', remote.printerId); } catch { /* ignore */ }
       setPrinting(true);
       setPrintResult(null);
       try {
@@ -431,12 +446,34 @@ export default function PrintPreviewModal({
           margins: effectiveMargins,
           scaleFactor: effectiveScale,
           landscape: effectiveLandscape,
-          printerName: selectedRemotePrinter,
+          printerId: remote.printerId,
+          printerName: remote.deviceName,
           jobId,
         });
         if (!ack.ok) {
-          // Submit rejected (Primary unreachable / printer vanished / bad
-          // payload) — keep the modal open so the user can retry.
+          // R-PRINT-SERVER-V1.1: classify BEFORE deciding recovery — a lost
+          // ACK is not the same as a refused job.
+          const kind = classifySubmitFailure(ack.error);
+          if (kind === 'unreachable') {
+            // Definite pre-dispatch failure: nothing printed. Flip THIS modal
+            // to Local Printing Mode (preview + settings intact) so the
+            // operator can print locally without reopening the document.
+            setForcedLocal(true);
+            setPrintResult(null);
+            emitLanPrintResult({ ok: false, error: ack.error || 'unreachable' });
+            return;
+          }
+          if (kind === 'ambiguous') {
+            // The Primary MAY have accepted the job before the ACK was lost.
+            // Never auto-print locally (duplicate risk); keep the jobId in
+            // the message context and tell the operator to check the printer.
+            setPrintResult(`⚠️ ${t('print.statusUnknown')}`);
+            emitLanPrintResult({ ok: false, state: 'unknown', error: ack.error || 'timeout', jobId });
+            return;
+          }
+          // 'rejected': the Primary answered and refused (validation /
+          // unknown printer) — nothing printed; show the error and let the
+          // user fix + retry in server mode.
           setPrintResult(`❌ ${ack.error || 'Print failed'}`);
           emitLanPrintResult({ ok: false, error: ack.error || 'print_failed' });
           return;
@@ -818,14 +855,16 @@ export default function PrintPreviewModal({
           {serverMode ? (
             <Field label={t('print.primaryPrinters').replace('{name}', primaryCache?.primaryName || 'Primary')}>
               <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'stretch' }}>
+                {/* R-PRINT-SERVER-V1.1: option VALUE is printerId (stable wire
+                    identity); displayName is presentation only. */}
                 <select
                   value={selectedRemotePrinter}
                   onChange={(e) => setSelectedRemotePrinter(e.target.value)}
                   style={{ ...selectStyle, flex: 1 }}
                 >
                   {(primaryCache?.printers || []).map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.displayName || p.name}{p.isDefault ? ' ★' : ''}{p.offline ? ` — ${t('print.printerOffline')}` : ''}
+                    <option key={p.printerId} value={p.printerId}>
+                      {p.displayName || p.deviceName}{p.isDefault ? ' ★' : ''}{p.offline ? ` — ${t('print.printerOffline')}` : ''}
                     </option>
                   ))}
                   {(primaryCache?.printers || []).length === 0 && (
