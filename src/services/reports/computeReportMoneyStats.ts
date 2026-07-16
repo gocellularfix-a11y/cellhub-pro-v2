@@ -350,7 +350,13 @@ export interface ReportMoneyStats {
   returnAndRefundAdjustmentsCents: number;
   netSalesCents: number;
   grossTaxCollectedCents: number;
+  /** = ordinaryTaxRefundedCents + exchangeTaxRefundedCents (I1.3 split). */
   taxRefundedCents: number;
+  /** Tax refunded by ordinary returns / refund rows / self-reversals. */
+  ordinaryTaxRefundedCents: number;
+  /** Tax embedded in tax-inclusive exchange credits (I1.3): reclassified
+   *  from revenue to tax refund — never counted twice. */
+  exchangeTaxRefundedCents: number;
   /** UNCLAMPED — a refund-only period is legitimately negative. */
   netTaxCents: number;
   /** Exact cost of returned goods reversed out of COGS (0 when unknown). */
@@ -367,8 +373,16 @@ export interface ReportMoneyStats {
   // ── I1.2 exchange accounting (additive; gross presentation preserved —
   //    the credit already nets inside the replacement sale's total, matching
   //    the receipt/Z-tape records) ──
-  /** Informational: Σ exchange-credit value recognized this period. */
+  /** Informational: Σ exchange-credit value recognized this period.
+   *  I1.3 composition (proven): = exchangeCreditPreTaxCents
+   *  + exchangeTaxRefundedCents + exchangeRefundedPassThroughCents. */
   exchangeCreditCents: number;
+  /** Pre-tax merchandise portion of the exchange credits. */
+  exchangeCreditPreTaxCents: number;
+  /** Refundable pass-through (CBE/screen/utility/mobility) embedded in
+   *  exchange credits — structurally 0: ReturnsModule never refunds fees
+   *  (refund sales stamp them 0). Kept explicit for the invariant. */
+  exchangeRefundedPassThroughCents: number;
   /** COGS of exchanged-away merchandise reversed out of this period
    *  (restocked goods are not a period cost; profit rises by the same). */
   exchangeReturnedCostReversalCents: number;
@@ -1093,7 +1107,22 @@ export function computeReportMoneyStatsFromCollections(
   //   the returned merchandise cost LEAVES period COGS and profit rises by
   //   the same amount; the replacement merchandise cost stays in COGS.
   //   Recognition date = return.createdAt (== replacement checkout for 2B).
+  // I1.3 EXCHANGE CREDIT COMPOSITION (proven at ReturnsModule.tsx:416-435,
+  // 685): returnItem.taxCents = forwardTaxFromBase(subtotal) for taxable
+  // items only; totalCents = subtotalCents + taxCents EXACTLY; the
+  // exchange_credit line is `price: -totalCents` (tax-inclusive) and
+  // non-taxable. CBE / screen fee / utility tax / mobility surcharge are
+  // NEVER part of a return credit (the refund sale stamps them 0), so
+  // exchangeRefundedPassThroughCents is structurally 0 — documented, no
+  // invented behavior. The credit's embedded TAX must therefore be
+  // reclassified: it is TAX REFUNDED (reduces net tax), not a reduction of
+  // pre-tax merchandise revenue and not a merchandise loss in profit.
+  // Safe fallback when taxCents is absent/zero on a legacy record: the
+  // composition-derived difference max(0, totalCents − subtotalCents).
   let exchangeCreditCents = 0;
+  let exchangeCreditPreTaxCents = 0;
+  let exchangeTaxRefundedCents = 0;
+  const exchangeRefundedPassThroughCents = 0;
   let exchangeReturnedCostReversalCents = 0;
   let exchangeEstimated = false;
   for (const r of returnsInPeriod) {
@@ -1102,6 +1131,11 @@ export function computeReportMoneyStatsFromCollections(
       const src = Array.isArray(input.customerReturns) ? input.customerReturns.find((cr) => cr.id === r.id) : undefined;
       const items = Array.isArray(src?.items) ? src!.items : [];
       exchangeCreditCents += r.totalCents;
+      const exTax = r.taxCents !== 0
+        ? r.taxCents
+        : Math.max(0, r.totalCents - r.subtotalCents);
+      exchangeTaxRefundedCents += exTax;
+      exchangeCreditPreTaxCents += r.totalCents - exTax;
       if (items.length === 0) {
         // Legacy exchange without line items → estimated cost, flagged.
         const est = estimatedReversal(r.subtotalCents);
@@ -1161,7 +1195,11 @@ export function computeReportMoneyStatsFromCollections(
   }
 
   const returnAndRefundAdjustmentsCents = adjustments.reduce((s, a) => s + a.revenueCents, 0);
-  const taxRefundedCents = adjustments.reduce((s, a) => s + a.taxCents, 0);
+  // I1.3 tax-refund split: ordinary returns/refund-rows/self-reversals vs
+  // the tax embedded in exchange credits. Never counted twice — ordinary
+  // adjustments never include exchange returns (dedicated path above).
+  const ordinaryTaxRefundedCents = adjustments.reduce((s, a) => s + a.taxCents, 0);
+  const taxRefundedCents = ordinaryTaxRefundedCents + exchangeTaxRefundedCents;
   const returnedCostReversalCents = adjustments.reduce((s, a) => s + a.costCents, 0);
   const returnedProfitReversalCents = adjustments.reduce((s, a) => s + a.profitCents, 0);
   const profitAdjustmentEstimated = adjustments.some((a) => a.estimated) || exchangeEstimated;
@@ -1179,16 +1217,29 @@ export function computeReportMoneyStatsFromCollections(
   //                 + exchangeCostReversal).
   const grossItemProfitCents = totalProfitCents - ccFeeProfitCents;
   totalCostCents = totalCostCents - returnedCostReversalCents - exchangeReturnedCostReversalCents;
-  const adjustedTotalProfitCents = totalProfitCents - returnedProfitReversalCents + exchangeReturnedCostReversalCents;
+  // I1.3: the exchange credit's embedded TAX is a tax refund, not a
+  // merchandise loss — add it back to profit (the credit line's full
+  // tax-inclusive value flowed through item profits as −total).
+  const adjustedTotalProfitCents = totalProfitCents - returnedProfitReversalCents
+    + exchangeReturnedCostReversalCents
+    + exchangeTaxRefundedCents
+    + exchangeRefundedPassThroughCents;
 
   // ── I1.2 PART B: NET pre-tax margin basis ──
-  //   netRevenueBeforeTax === grossRevenueBeforeTax − returnRevenueBeforeTaxAdjustment
+  //   netRevenueBeforeTax === grossRevenueBeforeTax
+  //                           − returnRevenueBeforeTaxAdjustment
+  //                           + exchangeTaxRefunded (+ passthrough)   (I1.3)
   // The margin denominator is the NET pre-tax revenue (post-returns), never
-  // the gross subtotal. Exchanges need no adjustment here: the credit line
-  // already nets inside the replacement sale's own subtotal.
+  // the gross subtotal. I1.3: the tax-INCLUSIVE exchange credit distorts the
+  // raw sale subtotal by exactly its embedded tax (the non-taxable credit
+  // line subtracts tax from a PRE-tax field) — add that tax back so net
+  // pre-tax revenue reflects actual merchandise/service revenue.
   const grossRevenueBeforeTaxCents = subtotalBeforeTaxCents;
   const returnRevenueBeforeTaxAdjustmentCents = adjustments.reduce((s, a) => s + a.subtotalCents, 0);
-  const netRevenueBeforeTaxCents = grossRevenueBeforeTaxCents - returnRevenueBeforeTaxAdjustmentCents;
+  const netRevenueBeforeTaxCents = grossRevenueBeforeTaxCents
+    - returnRevenueBeforeTaxAdjustmentCents
+    + exchangeTaxRefundedCents
+    + exchangeRefundedPassThroughCents;
   const profitMarginBasisCents = netRevenueBeforeTaxCents;
   // Meaningful only for a positive net basis: a zero/negative-revenue period
   // has NO meaningful margin — consumers must check profitMarginMeaningful
@@ -1259,6 +1310,8 @@ export function computeReportMoneyStatsFromCollections(
     netSalesCents,
     grossTaxCollectedCents,
     taxRefundedCents,
+    ordinaryTaxRefundedCents,
+    exchangeTaxRefundedCents,
     netTaxCents,
     returnedCostReversalCents,
     returnedProfitReversalCents,
@@ -1267,6 +1320,8 @@ export function computeReportMoneyStatsFromCollections(
     ccFeeProfitCents,
     // I1.2 exchange + net margin basis
     exchangeCreditCents,
+    exchangeCreditPreTaxCents,
+    exchangeRefundedPassThroughCents,
     exchangeReturnedCostReversalCents,
     grossRevenueBeforeTaxCents,
     returnRevenueBeforeTaxAdjustmentCents,
@@ -1324,6 +1379,8 @@ export function computeReportMoneyStatsFromCollections(
 export interface ReportMoneyInvariants {
   netSalesOk: boolean;
   netTaxOk: boolean;
+  taxSplitOk: boolean;
+  exchangeCreditOk: boolean;
   profitOk: boolean;
   netBeforeTaxOk: boolean;
   ok: boolean;
@@ -1332,24 +1389,43 @@ export interface ReportMoneyInvariants {
 /**
  * Canonical relations every ReportMoneyStats must satisfy:
  *   netSalesCents === grossSalesCents − returnAndRefundAdjustmentsCents
+ *   taxRefundedCents === ordinaryTaxRefundedCents + exchangeTaxRefundedCents
  *   netTaxCents   === grossTaxCollectedCents − taxRefundedCents
+ *   exchangeCreditCents === exchangeCreditPreTaxCents
+ *                           + exchangeTaxRefundedCents
+ *                           + exchangeRefundedPassThroughCents      (I1.3)
  *   totalProfitCents === grossItemProfitCents + ccFeeProfitCents
  *                        − returnedProfitReversalCents
- *                        + exchangeReturnedCostReversalCents   (I1.2)
+ *                        + exchangeReturnedCostReversalCents
+ *                        + exchangeTaxRefundedCents
+ *                        + exchangeRefundedPassThroughCents         (I1.3)
  *   netRevenueBeforeTaxCents === grossRevenueBeforeTaxCents
  *                                − returnRevenueBeforeTaxAdjustmentCents
+ *                                + exchangeTaxRefundedCents
+ *                                + exchangeRefundedPassThroughCents (I1.3)
  * (CellHub profit definition: per-line revenue − cost, commission economics
  *  inside line cost, CC fees 100% margin, taxes/CBE/screen fees pass-through,
  *  refund reversal exact where derivable else flagged estimated; exchanged-
- *  away merchandise cost leaves COGS, replacement merchandise cost stays.)
+ *  away merchandise cost leaves COGS, replacement merchandise cost stays;
+ *  tax embedded in a tax-inclusive exchange credit is TAX REFUNDED — never
+ *  merchandise revenue and never merchandise loss.)
  */
 export function checkReportMoneyInvariants(stats: ReportMoneyStats): ReportMoneyInvariants {
   const netSalesOk = stats.netSalesCents === stats.grossSalesCents - stats.returnAndRefundAdjustmentsCents;
+  const taxSplitOk = stats.taxRefundedCents === stats.ordinaryTaxRefundedCents + stats.exchangeTaxRefundedCents;
   const netTaxOk = stats.netTaxCents === stats.grossTaxCollectedCents - stats.taxRefundedCents;
+  const exchangeCreditOk = stats.exchangeCreditCents === stats.exchangeCreditPreTaxCents
+    + stats.exchangeTaxRefundedCents + stats.exchangeRefundedPassThroughCents;
   const profitOk = stats.totalProfitCents === stats.grossItemProfitCents + stats.ccFeeProfitCents
-    - stats.returnedProfitReversalCents + stats.exchangeReturnedCostReversalCents;
-  const netBeforeTaxOk = stats.netRevenueBeforeTaxCents === stats.grossRevenueBeforeTaxCents - stats.returnRevenueBeforeTaxAdjustmentCents;
-  return { netSalesOk, netTaxOk, profitOk, netBeforeTaxOk, ok: netSalesOk && netTaxOk && profitOk && netBeforeTaxOk };
+    - stats.returnedProfitReversalCents + stats.exchangeReturnedCostReversalCents
+    + stats.exchangeTaxRefundedCents + stats.exchangeRefundedPassThroughCents;
+  const netBeforeTaxOk = stats.netRevenueBeforeTaxCents === stats.grossRevenueBeforeTaxCents
+    - stats.returnRevenueBeforeTaxAdjustmentCents
+    + stats.exchangeTaxRefundedCents + stats.exchangeRefundedPassThroughCents;
+  return {
+    netSalesOk, netTaxOk, taxSplitOk, exchangeCreditOk, profitOk, netBeforeTaxOk,
+    ok: netSalesOk && netTaxOk && taxSplitOk && exchangeCreditOk && profitOk && netBeforeTaxOk,
+  };
 }
 
 /** Full pipeline: inclusion rules + core stats in one call. */

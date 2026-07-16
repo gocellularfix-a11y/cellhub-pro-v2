@@ -24,9 +24,12 @@ import {
 } from './computeReportMoneyStats';
 import type { ReportMoneyStatsInput, ReportMoneyStats } from './computeReportMoneyStats';
 
-/** I1.1: every fixture must satisfy the canonical reconciliation relations. */
+/** I1.1/I1.3: every fixture must satisfy the canonical reconciliation relations. */
 function expectInvariants(stats: ReportMoneyStats) {
-  expect(checkReportMoneyInvariants(stats)).toMatchObject({ netSalesOk: true, netTaxOk: true, profitOk: true, ok: true });
+  expect(checkReportMoneyInvariants(stats)).toEqual({
+    netSalesOk: true, netTaxOk: true, taxSplitOk: true,
+    exchangeCreditOk: true, profitOk: true, netBeforeTaxOk: true, ok: true,
+  });
 }
 
 // ── Fixture builders (real types; only money-relevant fields vary) ──
@@ -914,7 +917,10 @@ describe('I1.1 — cross-period refunds and dedup (required tests 3/5/6/7/8/15)'
     expect(s9.profitAdjustmentEstimated).toBe(true);
   });
 
-  it('I1.2 test 13 — exchange TAX is the checkout tax, never a fabricated refund', () => {
+  it('I1.3 REQUIRED SAME-PERIOD taxable exchange — full reconciliation ($87 paid = $80 pre-tax + $7 net tax)', () => {
+    // Original: $50 + $4.50 tax = $54.50, cost $20. Exchange: new $80
+    // (+$7 tax), credit −$54.50 (tax-INCLUSIVE, production shape),
+    // customer pays $32.50 more. Replacement cost $30.
     const original = mkSale({
       id: 'ex-t', items: [mkItem({ id: 'li-t', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
       subtotal: 5000, salesTax: 450, total: 5450,
@@ -932,11 +938,201 @@ describe('I1.1 — cross-period refunds and dedup (required tests 3/5/6/7/8/15)'
       subtotal: 2550, salesTax: 700, total: 3250,
     });
     const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
-    // Tax = original 450 + replacement checkout 700. The return's taxCents
-    // is NOT subtracted (no cash tax refund happened).
+    // Customer paid total: 5450 + 3250 = 8700 ($87).
+    expect(stats.grossSalesCents).toBe(8700);
+    expect(stats.netSalesCents).toBe(8700);
+    // Gross tax $11.50; embedded exchange tax $4.50 REFUNDED → net tax $7.
     expect(stats.grossTaxCollectedCents).toBe(1150);
-    expect(stats.taxRefundedCents).toBe(0);
-    expect(stats.netTaxCents).toBe(1150);
+    expect(stats.exchangeTaxRefundedCents).toBe(450);
+    expect(stats.ordinaryTaxRefundedCents).toBe(0);
+    expect(stats.taxRefundedCents).toBe(450);
+    expect(stats.netTaxCents).toBe(700);
+    // Pre-tax basis: raw subtotals 5000+2550=7550 + embedded tax 450 = 8000.
+    expect(stats.grossRevenueBeforeTaxCents).toBe(7550);
+    expect(stats.netRevenueBeforeTaxCents).toBe(8000);
+    // Manual-review relation: 8700 total − 700 net tax = 8000 net pre-tax.
+    expect(stats.netSalesCents - stats.netTaxCents).toBe(8000);
+    // Credit composition: 5450 = 5000 pre-tax + 450 tax + 0 pass-through.
+    expect(stats.exchangeCreditCents).toBe(5450);
+    expect(stats.exchangeCreditPreTaxCents).toBe(5000);
+    expect(stats.exchangeRefundedPassThroughCents).toBe(0);
+    // COGS $30 / profit $50 (tax portion is NOT a merchandise loss).
+    expect(stats.exchangeReturnedCostReversalCents).toBe(2000);
+    expect(stats.totalCostCents).toBe(3000);
+    expect(stats.totalProfitCents).toBe(5000);
+    // Margin on corrected net pre-tax basis: 5000/8000 = 62.5%.
+    expect(stats.profitMargin).toBe(62.5);
+    expect(stats.profitMarginMeaningful).toBe(true);
+    expect(stats.profitAdjustmentEstimated).toBe(false);
+    expectInvariants(stats);
+  });
+
+  it('I1.3 REQUIRED CROSS-PERIOD taxable exchange — current view + combined reconciliation', () => {
+    const original = mkSale({
+      id: 'ex-tc', createdAt: '2026-07-01T12:00:00',
+      items: [mkItem({ id: 'li-tc', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, salesTax: 450, total: 5450,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-tc', originalInvoice: original.invoiceNumber,
+      createdAt: AT('15:00:00'),
+      items: [{ id: 'li-tc', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 450, totalCents: 5450 }] as CustomerReturn['items'],
+      subtotalCents: 5000, taxCents: 450, totalCents: 5450,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Better Case', price: 8000, qty: 1, cost: 3000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5450, qty: 1, taxable: false }),
+      ],
+      subtotal: 2550, salesTax: 700, total: 3250,
+    });
+    const inp = { sales: [original, replacement], customerReturns: [exchangeReturn] };
+    // CURRENT period (07-10): only the replacement + the exchange event.
+    const cur = computeReportMoneyStats(input(inp));
+    expect(cur.grossSalesCents).toBe(3250);           // $32.50 collected now
+    expect(cur.netSalesCents).toBe(3250);
+    expect(cur.grossTaxCollectedCents).toBe(700);
+    expect(cur.exchangeTaxRefundedCents).toBe(450);
+    expect(cur.netTaxCents).toBe(250);                // $2.50
+    expect(cur.netRevenueBeforeTaxCents).toBe(3000);  // 2550 + 450 = $30
+    expect(cur.netSalesCents - cur.netTaxCents).toBe(3000); // manual review
+    expect(cur.totalCostCents).toBe(1000);            // 3000 − 2000 restored
+    expect(cur.totalProfitCents).toBe(2000);          // $20
+    expectInvariants(cur);
+    // ORIGINAL period (07-01): untouched by the later exchange.
+    const prev = computeReportMoneyStats({
+      ...input(inp),
+      periodRange: normalizeLocalDayRange('2026-07-01', '2026-07-01'),
+    });
+    expect(prev.netSalesCents).toBe(5450);
+    expect(prev.netTaxCents).toBe(450);
+    expect(prev.netRevenueBeforeTaxCents).toBe(5000);
+    expect(prev.totalCostCents).toBe(2000);
+    expect(prev.totalProfitCents).toBe(3000);
+    expectInvariants(prev);
+    // COMBINED: pre-tax 8000, tax 700, total 8700, COGS 3000, profit 5000.
+    expect(prev.netRevenueBeforeTaxCents + cur.netRevenueBeforeTaxCents).toBe(8000);
+    expect(prev.netTaxCents + cur.netTaxCents).toBe(700);
+    expect(prev.netSalesCents + cur.netSalesCents).toBe(8700);
+    expect(prev.totalCostCents + cur.totalCostCents).toBe(3000);
+    expect(prev.totalProfitCents + cur.totalProfitCents).toBe(5000);
+  });
+
+  it('I1.3 REQUIRED CHEAPER replacement with customer cash-back — no double tax, no double credit', () => {
+    // Original $50+$4.50; replacement $30+$2.70; credit −$54.50 → customer
+    // receives $21.80 (negative replacement total, gross pass-through).
+    const original = mkSale({
+      id: 'ex-ch', items: [mkItem({ id: 'li-ch', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, salesTax: 450, total: 5450,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-ch', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-ch', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 450, totalCents: 5450 }] as CustomerReturn['items'],
+      subtotalCents: 5000, taxCents: 450, totalCents: 5450,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Cheaper Case', price: 3000, qty: 1, cost: 1000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5450, qty: 1, taxable: false }),
+      ],
+      subtotal: -2450, salesTax: 270, total: -2180,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    // Retained: 5450 − 2180 = 3270 ($32.70 = $30 merch + $2.70 tax).
+    expect(stats.netSalesCents).toBe(3270);
+    expect(stats.grossTaxCollectedCents).toBe(720);   // 450 + 270
+    expect(stats.exchangeTaxRefundedCents).toBe(450);
+    expect(stats.netTaxCents).toBe(270);              // no double tax
+    expect(stats.netRevenueBeforeTaxCents).toBe(3000); // (5000 − 2450) + 450
+    expect(stats.netSalesCents - stats.netTaxCents).toBe(3000);
+    // Returned COGS reversed once; replacement COGS once.
+    expect(stats.totalCostCents).toBe(1000);           // (2000+1000) − 2000
+    expect(stats.totalProfitCents).toBe(2000);
+    expectInvariants(stats);
+  });
+
+  it('I1.3 test 5 — TAX-EXEMPT exchange: zero embedded tax, unchanged behavior', () => {
+    const original = mkSale({
+      id: 'ex-nt', items: [mkItem({ id: 'li-nt', name: 'Service', price: 5000, qty: 1, cost: 2000, taxable: false })],
+      subtotal: 5000, salesTax: 0, total: 5000,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-nt', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-nt', name: 'Service', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5000 }] as CustomerReturn['items'],
+      subtotalCents: 5000, taxCents: 0, totalCents: 5000,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Better Service', price: 8000, qty: 1, cost: 3000, taxable: false }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5000, qty: 1, taxable: false }),
+      ],
+      subtotal: 3000, salesTax: 0, total: 3000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    expect(stats.exchangeTaxRefundedCents).toBe(0);
+    expect(stats.netTaxCents).toBe(0);
+    expect(stats.netRevenueBeforeTaxCents).toBe(8000);
+    expect(stats.totalProfitCents).toBe(5000);
+    expectInvariants(stats);
+  });
+
+  it('I1.3 test 7 — exchange with MIXED taxable + exempt returned items splits tax correctly', () => {
+    const original = mkSale({
+      id: 'ex-mx',
+      items: [
+        mkItem({ id: 'li-mx1', name: 'Case', price: 3000, qty: 1, cost: 1000 }),                     // taxable
+        mkItem({ id: 'li-mx2', name: 'Labor', price: 2000, qty: 1, cost: 0, taxable: false }),        // exempt
+      ],
+      subtotal: 5000, salesTax: 270, total: 5270,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-mx', originalInvoice: original.invoiceNumber,
+      items: [
+        { id: 'li-mx1', name: 'Case', qty: 1, priceCents: 3000, subtotalCents: 3000, taxCents: 270, totalCents: 3270 },
+        { id: 'li-mx2', name: 'Labor', qty: 1, priceCents: 2000, subtotalCents: 2000, taxCents: 0, totalCents: 2000 },
+      ] as CustomerReturn['items'],
+      subtotalCents: 5000, taxCents: 270, totalCents: 5270,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Bundle', price: 8000, qty: 1, cost: 3000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5270, qty: 1, taxable: false }),
+      ],
+      subtotal: 2730, salesTax: 720, total: 3450,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    expect(stats.exchangeTaxRefundedCents).toBe(270);     // taxable portion only
+    expect(stats.exchangeCreditPreTaxCents).toBe(5000);
+    expect(stats.netTaxCents).toBe(270 + 720 - 270);      // 720
+    expect(stats.netRevenueBeforeTaxCents).toBe(5000 + 2730 + 270); // 8000
+    expectInvariants(stats);
+  });
+
+  it('I1.3 test 8 — missing taxCents: composition-derived fallback (total − subtotal), documented', () => {
+    const original = mkSale({
+      id: 'ex-f8', items: [mkItem({ id: 'li-f8', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, salesTax: 450, total: 5450,
+    });
+    // Legacy record: taxCents absent → normalization yields 0; total 5450 vs
+    // subtotal 5000 proves 450 of embedded tax (ReturnsModule composition).
+    const legacyReturn = {
+      id: 'ret-f8', returnNumber: 'RTN-F8', originalInvoice: original.invoiceNumber,
+      originalSaleId: 'ex-f8', customerName: 'X', customerPhone: '', employeeName: '',
+      createdAt: AT('15:00:00'), reason: 'defective', resolution: 'exchange', notes: '',
+      items: [{ id: 'li-f8', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5450 }],
+      subtotalCents: 5000, totalCents: 5450,
+    } as unknown as CustomerReturn;
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Better Case', price: 8000, qty: 1, cost: 3000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5450, qty: 1, taxable: false }),
+      ],
+      subtotal: 2550, salesTax: 700, total: 3250,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [legacyReturn] }));
+    expect(stats.exchangeTaxRefundedCents).toBe(450); // derived from 5450 − 5000
+    expect(stats.netTaxCents).toBe(700);
+    expect(stats.netRevenueBeforeTaxCents).toBe(8000);
     expectInvariants(stats);
   });
 
