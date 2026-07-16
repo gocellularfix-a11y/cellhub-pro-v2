@@ -8,9 +8,6 @@
 // ============================================================
 
 import type { Sale } from '@/store/types';
-// R-2.1.4-CLOSEOUT: canonical LAN print contract (full print options wire).
-import { buildLanPrintJob } from './printBridge';
-import type { LanPrintJobInput } from './printBridge';
 
 export type LanRole = 'standalone' | 'primary' | 'secondary';
 
@@ -403,36 +400,11 @@ export async function sendCreateAppointment(input: LanCreateAppointmentInput): P
   return ack;
 }
 
-// ── LAN-HARDWARE-BRIDGE-FOUNDATION-V1 ──
-// Secondary: forward a rendered receipt to the Primary, which prints it on its
-// own default printer. NOT idempotent — printing must NOT be auto-retried, so
-// this sends exactly once and surfaces the Primary's success/failure as-is.
-// R-2.1.4-CLOSEOUT: the full validated print contract (pageRanges, margins,
-// scale, landscape) now crosses the LAN — see printBridge.ts (single source
-// for both serialization directions). Invalid ranges are blocked HERE on the
-// Secondary before anything is forwarded.
-export type LanPrintReceiptInput = LanPrintJobInput;
-export async function sendPrintReceipt(input: LanPrintReceiptInput): Promise<LanOperationAck> {
-  if (!isElectron() || !window.electronAPI?.lanSendOperation) return { ok: false, error: 'not_electron' };
-  const conn = getConnection();
-  if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return { ok: false, error: 'not_paired' };
-  const built = buildLanPrintJob(input);
-  if (!built.ok) return { ok: false, error: built.error };
-  const operation: LanOperation = {
-    operationId: randomId(),
-    type: 'LAN_PRINT_RECEIPT_REQUEST',
-    payload: {
-      print: {
-        ...built.job,
-        printJobId: randomId(),
-        timestamp: Date.now(),
-      },
-    },
-    deviceId: getDeviceId(),
-    createdAt: Date.now(),
-  };
-  return window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
-}
+// ── LAN-HARDWARE-BRIDGE-FOUNDATION-V1 → R-PRINT-SERVER-V1.2 ──
+// The silent receipt forward now lives in printServerClient.sendSilentReceipt,
+// which dispatches through the NORMALIZED transport (dispatchPrintOperation)
+// so the caller can prove not_sent vs unknown delivery — the raw-ack variant
+// that lived here could not make that distinction and was removed.
 
 // ── R-LAN-POS-CHECKOUT-FORWARDING ──
 // Secondary: forward a completed Sale (built by the existing saleBuilder flow) to

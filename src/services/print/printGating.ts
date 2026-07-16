@@ -74,6 +74,35 @@ export function classifySubmitFailure(error: string | undefined | null): SubmitF
   return 'ambiguous';
 }
 
+// ── R-PRINT-SERVER-V1.2: recovery decision from a NORMALIZED outcome ──
+// The transport (printServerClient.dispatchPrintOperation) proves delivery;
+// this pure map turns its outcome into the ONE permitted recovery action.
+// Local fallback is allowed EXCLUSIVELY for a proven-undelivered dispatch —
+// an exception or timeout after dispatch began is 'status_unknown' and must
+// never print locally (the Primary may already have the job).
+
+export type PrintRecoveryAction = 'printed' | 'fallback_local' | 'status_unknown' | 'rejected';
+
+export interface NormalizedDispatchOutcome {
+  ok: boolean;
+  delivery?: 'not_sent' | 'unknown';
+  ack?: { ok: boolean; error?: string };
+  error?: string;
+}
+
+export function decidePrintRecovery(outcome: NormalizedDispatchOutcome): PrintRecoveryAction {
+  if (outcome.ok) {
+    // Delivery proven: the Primary answered. Either the job is accepted, or
+    // the Primary EXPLICITLY rejected it (config/validation) — a rejection
+    // never becomes 'unknown' and never auto-prints locally.
+    return outcome.ack && outcome.ack.ok ? 'printed' : 'rejected';
+  }
+  if (outcome.delivery === 'not_sent') return 'fallback_local';
+  // 'unknown' — and, defensively, ANY unnormalized shape — must never
+  // trigger an automatic local print.
+  return 'status_unknown';
+}
+
 export interface PrintDisabledInput {
   printing: boolean;
   pageRangeInvalid: boolean;      // custom range typed but invalid

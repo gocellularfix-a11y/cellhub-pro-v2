@@ -2,16 +2,19 @@ import { useCallback, useState } from 'react';
 // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: on a read-only LAN Secondary, receipt
 // prints are forwarded to the Primary (which owns the printer).
 import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
-import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
+import { emitLanPrintResult } from '@/services/lan/lanService';
 // R-PRINT-SERVER-V1: Local Printing Mode — when the Primary is offline the
 // silent receipt bridge is skipped and the print falls through to the local
 // paths below (modal in local mode / local silent print).
 // R-PRINT-SERVER-V1.1: connecting also skips the bridge (server mode needs
-// PROOF of reachability), and a failed send is CLASSIFIED — definite
-// pre-dispatch failures fall through to local printing, ambiguous outcomes
-// never auto-print a possible duplicate.
+// PROOF of reachability).
+// R-PRINT-SERVER-V1.2: the send flows through the NORMALIZED transport
+// (sendSilentReceipt → dispatchPrintOperation) and recovery is decided by
+// its proven outcome — local fallback ONLY for delivery:'not_sent'; an
+// unknown outcome never auto-prints a possible duplicate.
 import { getMirrorStatus } from '@/services/lan/lanMirror';
-import { resolvePrintMode, classifySubmitFailure } from '@/services/print/printGating';
+import { resolvePrintMode, decidePrintRecovery } from '@/services/print/printGating';
+import { sendSilentReceipt, generatePrintJobId } from '@/services/lan/printServerClient';
 // R-PRINT-MEDIA-GUARD-V1: media validation for the SILENT path — the job's
 // exact microns are compared to the target printer's configured media type
 // (warn / auto-route labels). Fail-open when nothing is configured.
@@ -150,40 +153,42 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
   if (opts.bridgeReceipt && isLanSecondaryReadOnly()
       && resolvePrintMode('secondary', getMirrorStatus().connState) === 'server') {
     const pageSize = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
-    let fallThroughToLocal = false;
-    try {
-      const ack = await sendPrintReceipt({
-        receiptType: opts.receiptType || 'receipt',
-        html,
-        copies: opts.copies || 1,
-        pageSize,
-      });
-      if (ack.ok) {
-        emitLanPrintResult({ ok: true });
-      } else {
-        const kind = classifySubmitFailure(ack.error);
-        if (kind === 'unreachable') {
-          // Definite: the Primary never accepted the job → print locally.
-          emitLanPrintResult({ ok: false, error: ack.error || 'unreachable' });
-          fallThroughToLocal = true;
-        } else if (kind === 'ambiguous') {
-          emitLanPrintResult({ ok: false, state: 'unknown', error: ack.error || 'timeout' });
-        } else {
-          // Rejected by the Primary (e.g. no_receipt_printer) — nothing
-          // printed; existing toast guides configuration + manual retry.
-          emitLanPrintResult({ ok: false, error: ack.error || 'print_failed' });
-        }
-      }
-    } catch {
-      // Renderer-side exception before/while sending — nothing crossed the
-      // LAN for sure → safe to print locally.
-      emitLanPrintResult({ ok: false, error: 'bridge_error' });
-      fallThroughToLocal = true;
+    // R-PRINT-SERVER-V1.2: the jobId is created BEFORE dispatch and rides
+    // the wire as printJobId — the Primary's main-process queue dedups on
+    // it, so re-sending after an unknown outcome can never double-print.
+    const jobId = generatePrintJobId();
+    // NO generic catch → local here: sendSilentReceipt NEVER throws — every
+    // exception is normalized inside the transport into 'not_sent' (proven
+    // undelivered) or 'unknown' (may have reached the Primary). A thrown
+    // exception is NOT proof that nothing crossed the LAN.
+    const outcome = await sendSilentReceipt({
+      receiptType: opts.receiptType || 'receipt',
+      html,
+      copies: opts.copies || 1,
+      pageSize,
+    }, jobId);
+    const action = decidePrintRecovery(outcome);
+    if (action === 'printed') {
+      emitLanPrintResult({ ok: true, jobId });
+      return;
     }
-    if (!fallThroughToLocal) return;
-    // Local Printing Mode fallback: continue into the existing local paths
-    // below (silent local print when a local printer is configured, else the
-    // modal opens in local mode) — same document, nothing re-rendered.
+    if (action === 'status_unknown') {
+      // The Primary MAY have accepted/printed the receipt — never print a
+      // possible duplicate locally; the operator checks the printer first.
+      emitLanPrintResult({ ok: false, state: 'unknown', error: (!outcome.ok && outcome.error) || 'timeout', jobId });
+      return;
+    }
+    if (action === 'rejected') {
+      // Explicit Primary rejection (e.g. no_receipt_printer) — nothing
+      // printed; the toast guides configuration + a deliberate retry.
+      emitLanPrintResult({ ok: false, error: (outcome.ok && outcome.ack.error) || 'print_failed', jobId });
+      return;
+    }
+    // action === 'fallback_local': delivery PROVEN not_sent — the receipt is
+    // never silently discarded. Continue into the existing local paths below
+    // (silent local print when a local printer is configured, else the modal
+    // opens in local mode) — same document, nothing re-rendered.
+    emitLanPrintResult({ ok: false, error: (!outcome.ok && outcome.error) || 'unreachable', jobId });
   }
 
   // ── Path 1: Electron silent print (bypass modal) ──────────

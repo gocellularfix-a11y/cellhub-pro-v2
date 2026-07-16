@@ -40,7 +40,9 @@ import type { PagesMode } from '@/services/print/previewModel';
 // mode); a Secondary whose Primary is offline falls back to local mode.
 // R-PRINT-SERVER-V1.1: + submit-failure classification (unreachable →
 // safe local fallback / ambiguous → never duplicate / rejected → retry).
-import { resolvePrintMode, computePrintDisabled, classifySubmitFailure } from '@/services/print/printGating';
+// R-PRINT-SERVER-V1.2: recovery decided from the NORMALIZED transport
+// outcome (decidePrintRecovery) — local fallback only on proven not_sent.
+import { resolvePrintMode, computePrintDisabled, classifySubmitFailure, decidePrintRecovery } from '@/services/print/printGating';
 
 // pdf.js is loaded lazily (code-split) the first time a sheet-media preview
 // opens; the worker ships as a bundled asset so the app stays offline-safe.
@@ -248,6 +250,11 @@ export default function PrintPreviewModal({
     try { return localStorage.getItem('cellhub_lastRemotePrinter') || ''; }
     catch { return ''; }
   });
+  // R-PRINT-SERVER-V1.2: jobId retained across an UNKNOWN submit outcome so
+  // a deliberate retry reuses it (the Primary queue dedups — no double
+  // print). Cleared on terminal outcomes, on close, and when the document
+  // changes (a different document is a NEW job).
+  const pendingJobIdRef = useRef<string | null>(null);
   const [pageSize, setPageSize] = useState(initialPageSize || '4x6');
   // R-POS-PAGESIZE-REBAKE-V1: the receipt markup actually previewed/printed.
   // Starts as the caller's baked html; when the POS page-size picker changes AND
@@ -284,6 +291,9 @@ export default function PrintPreviewModal({
   useEffect(() => {
     setCurrentHtml(html);
     if (receiptType === 'pos_receipt') setPageSize(initialPageSize || '4x6');
+    // R-PRINT-SERVER-V1.2: a different document is a NEW job — never reuse
+    // a retained jobId across documents.
+    pendingJobIdRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
   // R-2.1.4-PREVIEW: this modal is ALWAYS mounted in the App tree — only `open`
@@ -433,10 +443,14 @@ export default function PrintPreviewModal({
       try { localStorage.setItem('cellhub_lastRemotePrinter', remote.printerId); } catch { /* ignore */ }
       setPrinting(true);
       setPrintResult(null);
+      // R-PRINT-SERVER-V1.2: the jobId exists BEFORE dispatch and is retained
+      // for every ambiguous outcome — a deliberate retry reuses it and the
+      // Primary's main-process queue dedups on it (no double print).
+      const jobId = pendingJobIdRef.current || generatePrintJobId();
+      pendingJobIdRef.current = jobId;
       try {
         const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
-        const jobId = generatePrintJobId();
-        const ack = await submitPrintJob({
+        const outcome = await submitPrintJob({
           receiptType: receiptType || 'document',
           documentType: receiptType || 'document',
           html: currentHtml,
@@ -450,36 +464,58 @@ export default function PrintPreviewModal({
           printerName: remote.deviceName,
           jobId,
         });
-        if (!ack.ok) {
-          // R-PRINT-SERVER-V1.1: classify BEFORE deciding recovery — a lost
-          // ACK is not the same as a refused job.
-          const kind = classifySubmitFailure(ack.error);
+        // R-PRINT-SERVER-V1.2: recovery is decided by the NORMALIZED
+        // transport outcome — never by whether an error object vs. an
+        // exception came back.
+        const action = decidePrintRecovery(outcome);
+        if (action === 'fallback_local') {
+          // Delivery PROVEN not_sent: nothing reached the Primary. Flip THIS
+          // modal to Local Printing Mode (preview, page settings, margins,
+          // scale, orientation, copies, range and document all intact) so
+          // the operator can print locally without reopening anything.
+          pendingJobIdRef.current = null;
+          setForcedLocal(true);
+          setPrintResult(null);
+          emitLanPrintResult({ ok: false, error: (!outcome.ok && outcome.error) || 'unreachable' });
+          return;
+        }
+        if (action === 'status_unknown') {
+          // The Primary MAY have accepted the job before the ACK was lost.
+          // Never auto-print locally (duplicate risk); the jobId is RETAINED
+          // in pendingJobIdRef so a deliberate retry dedups on the Primary.
+          setPrintResult(`⚠️ ${t('print.statusUnknown')}`);
+          emitLanPrintResult({ ok: false, state: 'unknown', error: (!outcome.ok && outcome.error) || 'timeout', jobId });
+          return;
+        }
+        if (action === 'rejected') {
+          // Delivery proven + the Primary explicitly refused. Sub-classify:
+          // a reachability-class refusal (renderer not ready / auth revoked
+          // — job provably NOT enqueued) safely flips to local mode; a
+          // dispatcher timeout stays ambiguous; a validation refusal shows
+          // inline for fix + retry in server mode.
+          const err = (outcome.ok && outcome.ack.error) || 'print_failed';
+          const kind = classifySubmitFailure(err);
           if (kind === 'unreachable') {
-            // Definite pre-dispatch failure: nothing printed. Flip THIS modal
-            // to Local Printing Mode (preview + settings intact) so the
-            // operator can print locally without reopening the document.
+            pendingJobIdRef.current = null;
             setForcedLocal(true);
             setPrintResult(null);
-            emitLanPrintResult({ ok: false, error: ack.error || 'unreachable' });
+            emitLanPrintResult({ ok: false, error: err });
             return;
           }
           if (kind === 'ambiguous') {
-            // The Primary MAY have accepted the job before the ACK was lost.
-            // Never auto-print locally (duplicate risk); keep the jobId in
-            // the message context and tell the operator to check the printer.
             setPrintResult(`⚠️ ${t('print.statusUnknown')}`);
-            emitLanPrintResult({ ok: false, state: 'unknown', error: ack.error || 'timeout', jobId });
+            emitLanPrintResult({ ok: false, state: 'unknown', error: err, jobId });
             return;
           }
-          // 'rejected': the Primary answered and refused (validation /
-          // unknown printer) — nothing printed; show the error and let the
-          // user fix + retry in server mode.
-          setPrintResult(`❌ ${ack.error || 'Print failed'}`);
-          emitLanPrintResult({ ok: false, error: ack.error || 'print_failed' });
+          pendingJobIdRef.current = null;
+          setPrintResult(`❌ ${err}`);
+          emitLanPrintResult({ ok: false, error: err });
           return;
         }
-        // Queued on the Primary — announce position and track to terminal
-        // state in the background (toasts via LanPrintBridgeListener).
+        // 'printed' — queued on the Primary. Announce position and track to
+        // terminal state in the background (toasts via LanPrintBridgeListener).
+        pendingJobIdRef.current = null;
+        const ack = outcome.ok ? outcome.ack : { queuePosition: 0 };
         emitLanPrintResult({ ok: true, state: 'queued', ahead: ack.queuePosition || 0, jobId });
         void trackPrintJob(jobId, (p) => {
           if (p.state === 'printing') emitLanPrintResult({ ok: true, state: 'printing', jobId });
@@ -490,8 +526,10 @@ export default function PrintPreviewModal({
         });
         onClose();
       } catch {
-        setPrintResult('❌ Print failed');
-        emitLanPrintResult({ ok: false, error: 'bridge_error' });
+        // Defensive: an unnormalized throw is NOT proof of non-delivery —
+        // default to UNKNOWN (jobId retained), never a local fallback.
+        setPrintResult(`⚠️ ${t('print.statusUnknown')}`);
+        emitLanPrintResult({ ok: false, state: 'unknown', error: 'transport_exception', jobId });
       } finally {
         setPrinting(false);
       }
@@ -739,6 +777,8 @@ export default function PrintPreviewModal({
   // Release the PDF and reset preview state when the modal closes.
   useEffect(() => {
     if (open) return;
+    // R-PRINT-SERVER-V1.2: closing the modal abandons any retained jobId.
+    pendingJobIdRef.current = null;
     previewSeq.current++;
     setPreviewDoc((prev: { destroy?: () => void } | null) => { try { prev?.destroy?.(); } catch { /* ignore */ } return null; });
     setPreviewPages(0);

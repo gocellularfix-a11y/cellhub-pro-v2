@@ -16,8 +16,8 @@
 // ============================================================
 import { getConnection, isElectron } from './lanService';
 import type { LanPrinterInfo } from './printBridge';
-import { buildLanPrintSubmit } from './printBridge';
-import type { LanPrintSubmitInput } from './printBridge';
+import { buildLanPrintSubmit, buildLanPrintJob } from './printBridge';
+import type { LanPrintSubmitInput, LanPrintJobInput } from './printBridge';
 import { subscribeMirror, getMirrorStatus } from './lanMirror';
 
 const CACHE_KEY = 'cellhub:lan:primaryPrinters:v1';
@@ -76,10 +76,57 @@ function announce(c: PrimaryPrinterCache): void {
   _subs.forEach((cb) => { try { cb(c); } catch { /* ignore */ } });
 }
 
-function sendOp(type: LanOperation['type'], payload: LanOperation['payload']): Promise<LanOperationAck> {
-  if (!isElectron() || !window.electronAPI?.lanSendOperation) return Promise.resolve({ ok: false, error: 'not_electron' });
+// ── R-PRINT-SERVER-V1.2: normalized transport outcome contract ──────
+// A raw ack/exception does NOT say whether the request reached the Primary.
+// EVERY LAN print operation dispatches through dispatchPrintOperation, which
+// normalizes the outcome into an explicit, testable three-way contract:
+//
+//   { ok: true, ack }                       — the Primary's HTTP response was
+//       received. ack.ok may still be false (an EXPLICIT Primary rejection,
+//       e.g. printer_not_found / no_report_printer) — delivery is proven.
+//   { ok: false, delivery: 'not_sent' }     — the transport can PROVE the
+//       request was never dispatched to a reachable Primary (preflight
+//       failure, no pairing, missing Electron API, URL construction failure,
+//       TCP connection refused/host unreachable — no connection was ever
+//       established). ONLY this outcome permits automatic local fallback.
+//   { ok: false, delivery: 'unknown' }      — the request MAY have reached
+//       the Primary (timeout, socket reset after dispatch began, unreadable/
+//       missing response, dispatcher timeout, any unproven error). This
+//       outcome must NEVER automatically print locally — duplicate risk.
+//
+// Proof model: preflight failures return not_sent BEFORE the invoke starts
+// (dispatchStarted=false). Once the invoke begins, only error codes that
+// prove no connection was established ('bad_url' — request never built;
+// 'unreachable' — ECONNREFUSED/EHOSTUNREACH, the TCP handshake failed, so
+// no bytes carried the operation) map to not_sent. Every other post-dispatch
+// error — including the generic 'network_error' (e.g. ECONNRESET, which can
+// occur AFTER the request was transmitted), 'timeout', 'bad_response', a
+// null/garbled ack, or a thrown invoke exception — is 'unknown'.
+
+export type LanDispatchOutcome =
+  | { ok: true; ack: LanOperationAck }
+  | { ok: false; delivery: 'not_sent'; error: string }
+  | { ok: false; delivery: 'unknown'; error: string };
+
+/** Post-dispatch transport error codes (from electron main's HTTP client)
+ *  that PROVE the connection was never established → nothing was sent. */
+const PROVEN_NOT_SENT = new Set(['bad_url', 'unreachable']);
+/** Transport-level codes surfaced in the ack body by main's HTTP client —
+ *  the outcome is unproven (the request may have been transmitted). */
+const TRANSPORT_UNKNOWN = new Set(['timeout', 'network_error', 'bad_response']);
+
+export async function dispatchPrintOperation(
+  type: LanOperation['type'],
+  payload: LanOperation['payload'],
+): Promise<LanDispatchOutcome> {
+  // Preflight — provably nothing has been dispatched yet.
+  if (!isElectron() || !window.electronAPI?.lanSendOperation) {
+    return { ok: false, delivery: 'not_sent', error: 'not_electron' };
+  }
   const conn = getConnection();
-  if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) return Promise.resolve({ ok: false, error: 'not_paired' });
+  if (conn.role !== 'secondary' || !conn.primaryUrl || !conn.token) {
+    return { ok: false, delivery: 'not_sent', error: 'not_paired' };
+  }
   const operation: LanOperation = {
     operationId: `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
     type,
@@ -87,7 +134,35 @@ function sendOp(type: LanOperation['type'], payload: LanOperation['payload']): P
     deviceId: conn.deviceId,
     createdAt: Date.now(),
   };
-  return window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
+  let dispatchStarted = false;
+  try {
+    dispatchStarted = true;
+    const ack = await window.electronAPI.lanSendOperation({ primaryUrl: conn.primaryUrl, token: conn.token, operation });
+    if (!ack || typeof ack !== 'object') return { ok: false, delivery: 'unknown', error: 'bad_response' };
+    if (!ack.ok) {
+      const err = String(ack.error || '');
+      if (PROVEN_NOT_SENT.has(err)) return { ok: false, delivery: 'not_sent', error: err };
+      if (TRANSPORT_UNKNOWN.has(err) || !err) return { ok: false, delivery: 'unknown', error: err || 'bad_response' };
+      // Any other error code came FROM the Primary's own response body —
+      // delivery is proven; surface it as an explicit app-level rejection.
+      return { ok: true, ack };
+    }
+    return { ok: true, ack };
+  } catch (err) {
+    // A thrown exception is NOT proof that nothing crossed the LAN — the
+    // invoke may have failed after the request was transmitted. Only a
+    // throw BEFORE dispatch began could be not_sent.
+    if (!dispatchStarted) return { ok: false, delivery: 'not_sent', error: 'dispatch_setup_failed' };
+    return { ok: false, delivery: 'unknown', error: (err as Error)?.message || 'transport_exception' };
+  }
+}
+
+/** Legacy ack adapter for internal polling paths (printer list / status /
+ *  cancel), where an unknown-vs-not_sent distinction only means "retry". */
+async function sendOp(type: LanOperation['type'], payload: LanOperation['payload']): Promise<LanOperationAck> {
+  const outcome = await dispatchPrintOperation(type, payload);
+  if (outcome.ok) return outcome.ack;
+  return { ok: false, error: outcome.error };
 }
 
 /**
@@ -154,11 +229,37 @@ export function generatePrintJobId(): string {
 }
 
 /** Submit one complete print job to the Primary. Resolves with the enqueue
- *  ACK (jobId + queue position) — NOT with print completion. */
-export async function submitPrintJob(input: LanPrintSubmitInput): Promise<LanOperationAck> {
+ *  ACK (jobId + queue position) — NOT with print completion.
+ *  R-PRINT-SERVER-V1.2: returns the NORMALIZED transport outcome so the
+ *  caller can distinguish a proven-undelivered submit (safe local fallback)
+ *  from an unknown one (never duplicate). The caller-supplied jobId is
+ *  created BEFORE dispatch and retained across every outcome — a retry
+ *  decision reuses it, and the Primary queue dedups by it. */
+export async function submitPrintJob(input: LanPrintSubmitInput): Promise<LanDispatchOutcome> {
   const built = buildLanPrintSubmit(input);
-  if (!built.ok) return { ok: false, error: built.error };
-  return sendOp('LAN_PRINT_SUBMIT', { printSubmit: built.job as unknown as LanPrintSubmitPayload });
+  // Validation failure = provably nothing dispatched.
+  if (!built.ok) return { ok: false, delivery: 'not_sent', error: built.error };
+  return dispatchPrintOperation('LAN_PRINT_SUBMIT', { printSubmit: built.job as unknown as LanPrintSubmitPayload });
+}
+
+/** R-PRINT-SERVER-V1.2: silent receipt bridge (media-routed on the Primary,
+ *  no picker) through the SAME normalized transport. The caller supplies the
+ *  jobId (wire printJobId) BEFORE dispatch; the Primary's main-process queue
+ *  dedups on it, so a deliberate retry of an unknown outcome can never
+ *  double-print. */
+export async function sendSilentReceipt(
+  input: LanPrintJobInput,
+  jobId: string,
+): Promise<LanDispatchOutcome> {
+  const built = buildLanPrintJob(input);
+  if (!built.ok) return { ok: false, delivery: 'not_sent', error: built.error };
+  return dispatchPrintOperation('LAN_PRINT_RECEIPT_REQUEST', {
+    print: {
+      ...built.job,
+      printJobId: jobId,
+      timestamp: Date.now(),
+    } as unknown as LanPrintReceiptPayload,
+  });
 }
 
 /** Ask the Primary for one job's live status. */
