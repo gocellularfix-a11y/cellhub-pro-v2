@@ -568,7 +568,7 @@ export default function ReportsModule() {
   }), [safeSales, safeRepairs, safeUnlocks, safeSpecialOrders, safeLayaways, inventory, customerReturns, safeVendorReturns, settings, periodRange, locale, t]);
 
   const {
-    allFilteredSales, filteredSales, filteredRepairs, filteredUnlocks,
+    allFilteredSales, filteredSales, grossActivitySales, filteredRepairs, filteredUnlocks,
     filteredVendorReturns, allReturns, returnsInPeriod, returnsFromPeriodSales,
     standaloneRepairs, standaloneUnlocks,
   } = reportMoney.collections;
@@ -912,7 +912,9 @@ export default function ReportsModule() {
   const breakdownRows = useMemo(() => {
     let productCount = 0, productRevenue = 0;
     let phoneCount = 0, phoneRevenue = 0;
-    for (const sale of filteredSales) {
+    // I1.1: iterate GROSS ACTIVITY so the breakdown reconciles with the
+    // canonical category table (both include later-refunded originals).
+    for (const sale of grossActivitySales) {
       let saleProductRev = 0;
       let salePhoneRev = 0;
       for (const item of (sale.items || [])) {
@@ -934,7 +936,7 @@ export default function ReportsModule() {
       unlockCount: stats.unlockCount,
       unlockRevenue: unlockCat?.revenueCents || 0,
     };
-  }, [filteredSales, stats]);
+  }, [grossActivitySales, stats]);
 
   // ── Transactions display (search + secondary date filter) ──
   const displayedTx = useMemo(() => {
@@ -973,7 +975,9 @@ export default function ReportsModule() {
     if (!drilldownCategory) return null;
     const wantKey = normalizeCategoryKey(drilldownCategory);
     const items: Array<{ name: string; qty: number; revenueCents: number; saleInvoice: string; date: unknown }> = [];
-    for (const sale of filteredSales) {
+    // I1.1: drilldown iterates the SAME gross-activity population the
+    // category table aggregates, so clicking a row always finds its items.
+    for (const sale of grossActivitySales) {
       for (const item of (sale.items || [])) {
         const kind = classifyItem(item);
         let catGuess = kind === 'phone_payment' ? 'Phone Payments'
@@ -1009,7 +1013,7 @@ export default function ReportsModule() {
     }
     items.sort((a, b) => b.revenueCents - a.revenueCents);
     return items;
-  }, [drilldownCategory, filteredSales]);
+  }, [drilldownCategory, grossActivitySales]);
 
   // ── Returning customers analysis ──────────────────────────
   const customerAnalysis = useMemo(() => {

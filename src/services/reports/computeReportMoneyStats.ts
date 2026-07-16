@@ -77,6 +77,56 @@ export function isCountableSale(s: Sale): boolean {
   return s.status !== 'voided' && s.status !== 'refunded';
 }
 
+// ── CELLHUB-INTELLIGENCE-I1.1: canonical refund reconciliation ──
+//
+// Real refund representations found in the repository (all verified against
+// the producing flows):
+//   1. CustomerReturn records (ReturnsModule) — the AUTHORITATIVE money
+//      record: totalCents/taxCents/subtotalCents + items, originalSaleId,
+//      returnNumber, createdAt = the refund event date.
+//   2. `REF-<returnNumber>` refund Sales (ReturnsModule Phase 4/R-STORE-
+//      CREDIT-CERTIFICATE) — status='voided', isRefund:true, refundFor,
+//      returnNumber. AUDIT/VISIBILITY ONLY; excluded by status everywhere.
+//   3. Original sale marked status='refunded' (+refundedAt/refundReason) —
+//      ReturnsModule Phase 8, cash/card resolutions.
+//   4. Post-edit refund Sales (R-EDIT-AUDIT, Repair/Unlock/SO modules) —
+//      invoice `REFUND-*`, status='completed', NEGATIVE total, NO
+//      CustomerReturn record. The only countable refund-representation rows.
+//   5. Entity-cancellation `REFUND-*` audit Sales — status='voided',
+//      excluded by status (deposits tracked via cancellationsInPeriod).
+//
+// DEDUPLICATION PRECEDENCE (one business refund subtracts exactly once):
+//   P1. CustomerReturn records win. Recognized in the period of the RETURN
+//       date (r.createdAt) — this makes a same-period full refund net to 0
+//       and a cross-period refund produce a legitimate negative period.
+//   P2. A countable refund-audit sale (REFUND-*/isRefund/refundFor/
+//       returnNumber marker + negative total) counts ONLY when no
+//       CustomerReturn claims the same refund (matched by returnNumber,
+//       then by refundFor ↔ return.originalInvoice). Recognized at its own
+//       createdAt.
+//   P3. A status='refunded' original with NO CustomerReturn (matched by
+//       originalSaleId) and NO linked refund-audit sale is a LEGACY/manual
+//       mark with no money record. Conservative deterministic fallback:
+//       the original stays in gross activity and a SELF-REVERSAL adjustment
+//       for its full amount is recognized in ITS OWN period → that period
+//       nets to exactly 0 for the sale (never overstated, never negative).
+//
+// Stable identifiers only (returnNumber / originalSaleId / refundFor /
+// invoice prefix) — never amount+date matching.
+
+/** Countable refund-REPRESENTATION row (post-edit REFUND-* audit sales):
+ *  negative total + an explicit refund marker. A negative-total sale with
+ *  NO marker is NOT classified as a refund row (legacy pass-through: it
+ *  stays in gross activity and subtracts once by its own sign). */
+export function isRefundAuditSale(s: Sale): boolean {
+  if ((s.total || 0) >= 0) return false;
+  const inv = String(s.invoiceNumber || '');
+  return (s as unknown as { isRefund?: boolean }).isRefund === true
+    || /^REF(UND)?-/i.test(inv)
+    || !!(s as unknown as { refundFor?: string }).refundFor
+    || !!(s as unknown as { returnNumber?: string }).returnNumber;
+}
+
 /** Repair counts as completed revenue iff customer paid in full and picked up. */
 export function isRepairCompleted(r: Repair): boolean {
   const status = String(r.status || '').toLowerCase();
@@ -249,8 +299,15 @@ export interface ReportMoneyStatsInput {
 export interface ReportMoneyCollections {
   /** All sales in period (transactions table — includes voided/refunded for visibility). */
   allFilteredSales: Sale[];
-  /** Countable sales — used for ALL revenue/profit/tax calculations. */
+  /** Countable sales — non-voided/non-refunded (legacy set; UI helpers). */
   filteredSales: Sale[];
+  /** I1.1 GROSS ACTIVITY: non-voided sales EXCLUDING refund-audit rows but
+   *  INCLUDING later-refunded originals — a legitimately completed sale
+   *  stays in gross; its refund subtracts exactly once via adjustments. */
+  grossActivitySales: Sale[];
+  /** I1.1: countable refund-representation rows in period (post-edit
+   *  REFUND-* sales). Fed to the adjustments engine, never to gross. */
+  refundAuditSales: Sale[];
   filteredRepairs: Repair[];
   filteredUnlocks: Unlock[];
   filteredVendorReturns: unknown[];
@@ -274,13 +331,51 @@ export interface ReportCategoryRow {
 }
 
 export interface ReportMoneyStats {
+  // ── I1.1 canonical relations ──
+  //   netSalesCents        === grossSalesCents − returnAndRefundAdjustmentsCents
+  //   netTaxCents          === grossTaxCollectedCents − taxRefundedCents
+  //   totalProfitCents     === grossItemProfitCents + ccFeeProfitCents
+  //                            − returnedProfitReversalCents
+  //   (CellHub profit = Σ line (revenue − cost) over gross activity +
+  //    standalone repairs/unlocks, + CC-fee pass-through profit, minus the
+  //    exact/estimated profit of refunded goods. Taxes/CBE/screen fees are
+  //    pass-through and never in profit; commission economics live inside
+  //    the per-line cost. COGS side: totalCostCents already nets vendor
+  //    returns and returned-goods cost reversal.)
+  /** Gross sales: every legitimately completed period sale (INCLUDING later-
+   *  refunded originals), excluding voided + refund-representation rows,
+   *  plus standalone completed repairs/unlocks. */
+  grossSalesCents: number;
+  /** Deduplicated refund/return adjustments recognized in this period. */
+  returnAndRefundAdjustmentsCents: number;
+  netSalesCents: number;
+  grossTaxCollectedCents: number;
+  taxRefundedCents: number;
+  /** UNCLAMPED — a refund-only period is legitimately negative. */
+  netTaxCents: number;
+  /** Exact cost of returned goods reversed out of COGS (0 when unknown). */
+  returnedCostReversalCents: number;
+  /** Profit reversed for refunds (exact where derivable, else estimated). */
+  returnedProfitReversalCents: number;
+  /** True when ANY part of the profit reversal used the average-margin
+   *  estimate instead of exact item costs. */
+  profitAdjustmentEstimated: boolean;
+  /** Σ line (revenue − cost) over gross activity + standalones (pre-reversal). */
+  grossItemProfitCents: number;
+  /** CC-fee pass-through profit included in totalProfitCents. */
+  ccFeeProfitCents: number;
+  // ── Legacy aliases (same values as the canonical fields above) ──
+  /** = grossSalesCents */
   grossRevenueCents: number;
+  /** = netSalesCents */
   netRevenueCents: number;
+  /** = returnAndRefundAdjustmentsCents */
   totalReturnsCents: number;
   totalProfitCents: number;
   totalCostCents: number;
   subtotalBeforeTaxCents: number;
   profitMargin: number;
+  /** = netTaxCents (I1.1: no longer clamped at zero). */
   taxCollectedCents: number;
   productSalesTaxCents: number;
   utilityTaxCents: number;
@@ -337,8 +432,17 @@ export function deriveReportCollections(input: ReportMoneyStatsInput): ReportMon
       return db - da;
     });
 
-  /** Countable sales — used for ALL revenue/profit/tax calculations. */
+  /** Countable sales — non-voided/non-refunded (legacy set; UI helpers). */
   const filteredSales = allFilteredSales.filter(isCountableSale);
+
+  // I1.1: gross activity = non-voided, refund-audit rows carved out,
+  // refunded originals kept (their refund subtracts once via adjustments).
+  const grossActivitySales = allFilteredSales.filter(
+    (s) => s.status !== 'voided' && !isRefundAuditSale(s),
+  );
+  const refundAuditSales = allFilteredSales.filter(
+    (s) => s.status !== 'voided' && s.status !== 'refunded' && isRefundAuditSale(s),
+  );
 
   const filteredRepairs = safeRepairs.filter((r) => inRange(r.createdAt));
   const filteredUnlocks = safeUnlocks.filter((u) => inRange(u.createdAt));
@@ -361,9 +465,13 @@ export function deriveReportCollections(input: ReportMoneyStatsInput): ReportMon
   );
 
   // ── Repair-in-sale tracking (prevents double counting) ────
+  // I1.1: tracking spans EVERY non-voided sale representation (gross
+  // activity incl. refunded originals + refund-audit rows) — a repair or
+  // unlock represented in ANY POS row is never also counted standalone.
+  const trackingSales = grossActivitySales.concat(refundAuditSales);
   /** IDs and ticket numbers of repairs that were paid through POS in this period. */
   const repairsAlreadyInSales = new Set<string>();
-  for (const sale of filteredSales) {
+  for (const sale of trackingSales) {
     for (const item of (sale.items || [])) {
       if (item.repairId) repairsAlreadyInSales.add(item.repairId);
       const ticket = (item as unknown as { ticketNumber?: string; meta?: { repairId?: string; ticketNumber?: string } }).ticketNumber
@@ -381,7 +489,7 @@ export function deriveReportCollections(input: ReportMoneyStatsInput): ReportMon
 
   // ── Unlock-in-sale tracking ───────────────────────────────
   const unlocksAlreadyInSales = new Set<string>();
-  for (const sale of filteredSales) {
+  for (const sale of trackingSales) {
     for (const item of (sale.items || [])) {
       if (item.unlockId) unlocksAlreadyInSales.add(item.unlockId);
       const metaUnlockId = (item as unknown as { meta?: { unlockId?: string } }).meta?.unlockId;
@@ -396,6 +504,8 @@ export function deriveReportCollections(input: ReportMoneyStatsInput): ReportMon
   return {
     allFilteredSales,
     filteredSales,
+    grossActivitySales,
+    refundAuditSales,
     filteredRepairs,
     filteredUnlocks,
     filteredVendorReturns,
@@ -419,9 +529,12 @@ export function computeReportMoneyStatsFromCollections(
   const safeSpecialOrders: SpecialOrder[] = Array.isArray(input.specialOrders) ? input.specialOrders : [];
   const safeLayaways: Layaway[] = Array.isArray(input.layaways) ? input.layaways : [];
   const {
-    allFilteredSales, filteredSales, filteredRepairs, filteredUnlocks,
-    filteredVendorReturns, returnsFromPeriodSales, standaloneRepairs, standaloneUnlocks,
+    allFilteredSales, filteredSales, grossActivitySales, refundAuditSales,
+    filteredRepairs, filteredUnlocks,
+    filteredVendorReturns, allReturns, returnsInPeriod, standaloneRepairs, standaloneUnlocks,
   } = c;
+  // Silence legacy destructure (kept for interface stability).
+  void filteredSales;
 
   let salesSubtotalCents = 0;
   let salesDiscountCents = 0;
@@ -439,6 +552,9 @@ export function computeReportMoneyStatsFromCollections(
   let salesScreenFeeCents = 0;
   let totalCostCents = 0;
   let totalProfitCents = 0;
+  // I1.1: CC-fee pass-through profit tracked separately so the documented
+  // profit invariant (grossItemProfit + ccFeeProfit − reversal) is checkable.
+  let ccFeeProfitCents = 0;
   let cashCents = 0;
   let cardCents = 0;
   let storeCreditCents = 0;
@@ -464,8 +580,10 @@ export function computeReportMoneyStatsFromCollections(
   // under Activations by Carrier.
   const activePortals = getActivePortals(settings);
   const carrierPortalUrls = (settings as { carrierPortalUrls?: Record<string, string> }).carrierPortalUrls || {};
+  // I1.1: providers/carriers aggregate over GROSS ACTIVITY so they reconcile
+  // with the category table (both include later-refunded originals).
   const { phonePaymentsByProvider, activationsByCarrier } = aggregatePhoneActivity(
-    filteredSales,
+    grossActivitySales,
     settings,
     activePortals,
     carrierPortalUrls,
@@ -491,7 +609,19 @@ export function computeReportMoneyStatsFromCollections(
   const layawaysById = new Map(safeLayaways.map((l) => [l.id, l]));
   const ordersById = new Map(safeSpecialOrders.map((o) => [o.id, o]));
 
-  for (const sale of filteredSales) {
+  // I1.1: exact per-sale/per-item economics stash — powers exact (never
+  // estimated) reversal for orphan refunded originals and for returned
+  // items matched back to their original sale line.
+  interface LineEconomics { costCents: number; qty: number; revenueCents: number; profitCents: number }
+  interface SaleEconomics {
+    taxCents: number;                       // pure buckets (or legacy aggregate)
+    byId: Map<string, LineEconomics>;       // item.id → exact line economics
+    byName: Map<string, LineEconomics>;     // fallback match (first line wins)
+    profitCents: number;                    // Σ line profits (excl. cc fee)
+  }
+  const saleEconomics = new Map<string, SaleEconomics>();
+
+  for (const sale of grossActivitySales) {
     const saleSubtotal = sale.subtotal || 0;
     const saleSubAfterDisc = sale.subtotalAfterDiscount ?? saleSubtotal;
     salesSubtotalCents += saleSubtotal;
@@ -519,6 +649,15 @@ export function computeReportMoneyStatsFromCollections(
     }
     salesCbeCents += sale.cbeTotal || 0;
     salesScreenFeeCents += sale.screenFeeTotal || 0;
+
+    // I1.1 stash: this sale's own tax (same v2/legacy rule as the buckets).
+    const econ: SaleEconomics = {
+      taxCents: v2TaxSum !== 0 ? v2TaxSum : (sale.taxAmount || 0),
+      byId: new Map(),
+      byName: new Map(),
+      profitCents: 0,
+    };
+    saleEconomics.set(sale.id, econ);
 
     const pm = String(sale.paymentMethod || '').toLowerCase();
     const saleTotal = sale.total || 0;
@@ -635,10 +774,21 @@ export function computeReportMoneyStatsFromCollections(
         profitCents = revenueCents;
       } else {
         catName = item.category || 'Products';
-        let unitCost = item.cost || 0;
-        if (!unitCost && item.name) {
-          const inv = inventory.find((i) => i.name?.toLowerCase() === item.name.toLowerCase());
-          if (inv) unitCost = inv.cost || 0;
+        // I1.1 zero-vs-missing cost policy: an explicit numeric cost of 0
+        // means ZERO COST (POS always stamps the cart line's cost —
+        // saleBuilder.ts `cost: item.cost` — so 0 is a real value, e.g. an
+        // intentional giveaway). The inventory-name fallback fires ONLY when
+        // the field is genuinely MISSING (undefined/null on legacy records).
+        // Nullish check, never truthiness: 0 is never replaced.
+        let unitCost: number;
+        if (typeof item.cost === 'number' && !Number.isNaN(item.cost)) {
+          unitCost = item.cost;
+        } else {
+          unitCost = 0;
+          if (item.name) {
+            const inv = inventory.find((i) => i.name?.toLowerCase() === item.name.toLowerCase());
+            if (inv) unitCost = inv.cost || 0;
+          }
         }
         costCents = unitCost * qty;
         profitCents = revenueCents - costCents;
@@ -695,8 +845,17 @@ export function computeReportMoneyStatsFromCollections(
           cat.hasRealCostItem = true;
           totalCostCents += realCost;
           totalProfitCents += realProfit;
+          econ.profitCents += realProfit;
+          const line = { costCents: realCost, qty, revenueCents, profitCents: realProfit };
+          if (item.id) econ.byId.set(item.id, line);
+          const nameKey = String(item.name || '').toLowerCase();
+          if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
         } else {
           cat.pseudoRevenueCents += revenueCents;
+          const line = { costCents: 0, qty, revenueCents, profitCents: 0 };
+          if (item.id) econ.byId.set(item.id, line);
+          const nameKey = String(item.name || '').toLowerCase();
+          if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
         }
       } else {
         cat.costCents += costCents;
@@ -704,6 +863,11 @@ export function computeReportMoneyStatsFromCollections(
         cat.hasRealCostItem = true;
         totalCostCents += costCents;
         totalProfitCents += profitCents;
+        econ.profitCents += profitCents;
+        const line = { costCents, qty, revenueCents, profitCents };
+        if (item.id) econ.byId.set(item.id, line);
+        const nameKey = String(item.name || '').toLowerCase();
+        if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
       }
     }
 
@@ -720,10 +884,16 @@ export function computeReportMoneyStatsFromCollections(
       cat.profitCents += ccFee;
       cat.hasRealCostItem = true;
       totalProfitCents += ccFee;
+      ccFeeProfitCents += ccFee;
     }
   }
 
   // Standalone repairs (not in POS)
+  // I1.1: a completed, fully-paid, in-period repair with no POS representation
+  // now contributes to GROSS/NET revenue exactly like standalone unlocks —
+  // previously it entered categories/profit but never gross (inconsistent).
+  // No employee attribution: Repair has no seller field (documented).
+  let standaloneRepairRevenueCents = 0;
   for (const r of standaloneRepairs) {
     const rev = r.total ?? r.estimatedCost ?? 0;
     const partsCost = (r.parts || []).reduce((s, p) => s + (p.cost || 0) * (p.qty || (p as { quantity?: number }).quantity || 1), 0);
@@ -738,6 +908,7 @@ export function computeReportMoneyStatsFromCollections(
     cat.hasRealCostItem = true;
     totalCostCents += cost;
     totalProfitCents += profit;
+    standaloneRepairRevenueCents += rev;
   }
 
   // Standalone unlocks (not in POS)
@@ -764,34 +935,175 @@ export function computeReportMoneyStatsFromCollections(
   );
   totalCostCents = Math.max(0, totalCostCents - vendorReturnCogsCents);
 
-  // Round 10.1 fix 2: Gross excludes status==='refunded' AND negative-total
-  // refund audit sales. Returns are subtracted separately via returnsFromPeriodSales,
-  // so including refund sales here would double-deduct.
-  const grossRevenueCents = allFilteredSales.reduce((s, sale) => {
-    if (sale.status === 'refunded' || sale.status === 'voided') return s;
-    const t = sale.total || 0;
-    // R-EDIT-AUDIT F7-FIX-v2: allow negative totals so post-edit refund
-    // sales (REFUND-* with status='completed') subtract from gross.
-    return s + t;
-  }, 0) + standaloneUnlockRevenueCents;
-  const totalReturnsCents = returnsFromPeriodSales.reduce((s, r) => s + r.totalCents, 0);
-  const netRevenueCents = grossRevenueCents - totalReturnsCents;
+  // ══ I1.1 CANONICAL GROSS / ADJUSTMENTS / NET ═══════════════
+  // grossSales = every legitimately completed period sale (INCLUDING later-
+  // refunded originals — they were real revenue when charged), excluding
+  // voided + refund-representation rows, plus standalone completed
+  // repairs/unlocks. A refund then subtracts EXACTLY ONCE via the
+  // deduplicated adjustments below, recognized at the refund-event date.
+  const grossSalesCents = grossActivitySales.reduce((s, sale) => s + (sale.total || 0), 0)
+    + standaloneUnlockRevenueCents
+    + standaloneRepairRevenueCents;
 
-  // R-FINANCIAL-BUCKET-PURITY-FIX P2: customer-return refunds adjust the
-  // EXPOSED aggregate only — they never mutate any pure bucket.
-  const customerReturnTaxAdjustmentCents = returnsFromPeriodSales.reduce(
-    (s, r) => s + r.taxCents,
-    0,
-  );
+  const subtotalBeforeTaxCents = salesSubtotalCents - salesDiscountCents
+    + standaloneUnlockRevenueCents
+    + standaloneRepairRevenueCents;
 
-  const subtotalBeforeTaxCents = salesSubtotalCents - salesDiscountCents + standaloneUnlockRevenueCents;
+  // Average-margin ratio — ONLY the estimate fallback (level 4) uses it.
+  const avgMarginRatio = subtotalBeforeTaxCents > 0 ? totalProfitCents / subtotalBeforeTaxCents : 0;
 
-  // Profit-adjusted-for-returns: assume returns carried average margin
-  const returnsSubtotalCents = returnsFromPeriodSales.reduce((s, r) => s + r.subtotalCents, 0);
-  const returnsProfitAdjustmentCents = subtotalBeforeTaxCents > 0
-    ? Math.round((totalProfitCents / subtotalBeforeTaxCents) * returnsSubtotalCents)
-    : 0;
-  const adjustedTotalProfitCents = totalProfitCents - returnsProfitAdjustmentCents;
+  // ── Refund adjustments engine (dedup precedence P1→P3) ──
+  interface RefundAdjustment { revenueCents: number; taxCents: number; costCents: number; profitCents: number; estimated: boolean }
+  const adjustments: RefundAdjustment[] = [];
+  const allSales: Sale[] = Array.isArray(input.sales) ? input.sales : [];
+  const salesById = new Map(allSales.map((s) => [s.id, s]));
+
+  // Stable-link indexes (never amount+date matching).
+  const returnNumbers = new Set(allReturns.map((r) => r.returnNumber).filter(Boolean));
+  const returnInvoices = new Set(allReturns.map((r) => r.originalInvoice).filter(Boolean));
+  const returnedSaleIds = new Set(allReturns.map((r) => r.originalSaleId).filter((x): x is string => !!x));
+  const refundLinkedInvoices = new Set<string>();
+  const refundLinkedSaleIds = new Set<string>();
+  for (const s of allSales) {
+    const rf = (s as unknown as { refundFor?: string }).refundFor;
+    if (rf) refundLinkedInvoices.add(String(rf));
+    const lr = (s as unknown as { linkedRefunds?: Array<{ type: string; id: string }> }).linkedRefunds;
+    if (Array.isArray(lr)) {
+      for (const ref of lr) {
+        if (String(ref.type || '').toLowerCase().replace(/[_-]/g, '') === 'sale' && ref.id) refundLinkedSaleIds.add(ref.id);
+      }
+    }
+  }
+
+  // Returned-item cost hierarchy (documented):
+  //   1. Cost on the returned item itself — structurally ABSENT
+  //      (CustomerReturnItem carries no cost field; kept for future data).
+  //   2. STORED cost on the matching original sale item (by item id, then
+  //      case-insensitive name) — the exact path.
+  //   3. Inventory cost where identity is reliable: original item's
+  //      inventoryId, else the documented legacy name-match fallback.
+  //   4. Average-margin estimate — flagged `estimated: true`, never
+  //      silently presented as exact.
+  const estimatedReversal = (subtotalCents: number): { costCents: number; profitCents: number } => {
+    const profitCents = Math.round(subtotalCents * avgMarginRatio);
+    return { costCents: subtotalCents - profitCents, profitCents };
+  };
+
+  const reversalForReturn = (r: NormalizedReturn): RefundAdjustment => {
+    const orig = r.originalSaleId ? salesById.get(r.originalSaleId) : undefined;
+    const src = Array.isArray(input.customerReturns) ? input.customerReturns.find((cr) => cr.id === r.id) : undefined;
+    const items = Array.isArray(src?.items) ? src!.items : [];
+    if (items.length === 0) {
+      // Legacy return without line items → estimate on the whole subtotal.
+      const est = estimatedReversal(r.subtotalCents);
+      return { revenueCents: r.totalCents, taxCents: r.taxCents, ...est, estimated: r.subtotalCents !== 0 };
+    }
+    let costCents = 0;
+    let profitCents = 0;
+    let estimated = false;
+    for (const ri of items) {
+      const riSubtotal = ri.subtotalCents ?? Math.round((ri.subtotal || 0) * 100);
+      const riQty = ri.qty || 1;
+      // Level 2: stored cost on the matching original sale item.
+      let origItem: SaleItem | undefined;
+      if (orig) {
+        origItem = (orig.items || []).find((oi) => !!ri.id && oi.id === ri.id)
+          || (orig.items || []).find((oi) => String(oi.name || '').toLowerCase() === String(ri.name || '').toLowerCase());
+      }
+      let unitCost: number | null = null;
+      if (origItem && typeof origItem.cost === 'number' && !Number.isNaN(origItem.cost)) {
+        unitCost = origItem.cost;
+      } else if (origItem) {
+        // Level 3: inventory identity — inventoryId first, legacy name match second.
+        const inv = (origItem.inventoryId
+          ? inventory.find((i) => i.id === origItem!.inventoryId)
+          : undefined)
+          || (origItem.name ? inventory.find((i) => i.name?.toLowerCase() === origItem!.name.toLowerCase()) : undefined);
+        if (inv && typeof inv.cost === 'number') unitCost = inv.cost || 0;
+      }
+      if (unitCost !== null) {
+        const c = unitCost * riQty;
+        costCents += c;
+        profitCents += riSubtotal - c;
+      } else {
+        // Level 4: estimate — flagged.
+        const est = estimatedReversal(riSubtotal);
+        costCents += est.costCents;
+        profitCents += est.profitCents;
+        if (riSubtotal !== 0) estimated = true;
+      }
+    }
+    return { revenueCents: r.totalCents, taxCents: r.taxCents, costCents, profitCents, estimated };
+  };
+
+  // P1 — CustomerReturns recognized at the RETURN date within this period.
+  // EXCHANGE returns are skipped: their money representation is the
+  // negative `exchange_credit` line inside the replacement sale (already in
+  // gross activity). Counting the return record too would subtract the same
+  // business refund twice — a double-count the PREVIOUS implementation had.
+  // (Legacy limitation, documented: the exchanged-away item's COGS is not
+  // reversed anywhere — pre-existing exchange-flow behavior, out of scope.)
+  for (const r of returnsInPeriod) {
+    if (String(r.resolution || '').toLowerCase() === 'exchange') continue;
+    adjustments.push(reversalForReturn(r));
+  }
+
+  // P2 — countable refund-audit rows (post-edit REFUND-*) not represented
+  // by any CustomerReturn. Their negative fields carry the exact money; the
+  // refunded base is pure margin reversal (no goods returned) unless a line
+  // carries a stamped cost.
+  for (const s of refundAuditSales) {
+    const rn = (s as unknown as { returnNumber?: string }).returnNumber;
+    if (rn && returnNumbers.has(String(rn))) continue;
+    const rf = (s as unknown as { refundFor?: string }).refundFor;
+    if (rf && returnInvoices.has(String(rf))) continue;
+    const revenueCents = -(s.total || 0);
+    const v2 = ((s as unknown as { salesTax?: number }).salesTax || 0)
+      + ((s as unknown as { utilityTax?: number }).utilityTax || 0)
+      + ((s as unknown as { mobileSurcharge?: number }).mobileSurcharge || 0);
+    const taxCents = -(v2 !== 0 ? v2 : (s.taxAmount || 0));
+    let costCents = 0;
+    for (const it of (s.items || [])) {
+      if (typeof it.cost === 'number' && !Number.isNaN(it.cost)) costCents += Math.abs(it.cost) * (it.qty || 1);
+    }
+    adjustments.push({ revenueCents, taxCents, costCents, profitCents: (revenueCents - taxCents) - costCents, estimated: false });
+  }
+
+  // P3 — LEGACY refunded original with NO money record anywhere: exact
+  // self-reversal in its own period (nets that period to zero — honest,
+  // never overstated, never double-subtracted).
+  for (const sale of grossActivitySales) {
+    if (sale.status !== 'refunded') continue;
+    if (returnedSaleIds.has(sale.id)) continue;
+    if (refundLinkedSaleIds.has(sale.id)) continue;
+    if (sale.invoiceNumber && (returnInvoices.has(sale.invoiceNumber) || refundLinkedInvoices.has(sale.invoiceNumber))) continue;
+    const econ = saleEconomics.get(sale.id);
+    const costCents = econ ? Array.from(econ.byId.values()).reduce((s2, l) => s2 + l.costCents, 0) : 0;
+    adjustments.push({
+      revenueCents: sale.total || 0,
+      taxCents: econ ? econ.taxCents : 0,
+      costCents,
+      profitCents: econ ? econ.profitCents : 0,
+      estimated: false,
+    });
+  }
+
+  const returnAndRefundAdjustmentsCents = adjustments.reduce((s, a) => s + a.revenueCents, 0);
+  const taxRefundedCents = adjustments.reduce((s, a) => s + a.taxCents, 0);
+  const returnedCostReversalCents = adjustments.reduce((s, a) => s + a.costCents, 0);
+  const returnedProfitReversalCents = adjustments.reduce((s, a) => s + a.profitCents, 0);
+  const profitAdjustmentEstimated = adjustments.some((a) => a.estimated);
+
+  const netSalesCents = grossSalesCents - returnAndRefundAdjustmentsCents;
+  const customerReturnTaxAdjustmentCents = taxRefundedCents; // legacy alias
+
+  // Returned goods go back to stock → their cost leaves period COGS.
+  // totalProfitCents accumulated BOTH item profits and top-level CC fees in
+  // the loop; grossItemProfit is the item-only component (invariant:
+  // totalProfit === grossItemProfit + ccFeeProfit − reversal).
+  const grossItemProfitCents = totalProfitCents - ccFeeProfitCents;
+  totalCostCents = totalCostCents - returnedCostReversalCents;
+  const adjustedTotalProfitCents = totalProfitCents - returnedProfitReversalCents;
 
   const profitMargin = subtotalBeforeTaxCents > 0
     ? (adjustedTotalProfitCents / subtotalBeforeTaxCents) * 100
@@ -826,43 +1138,55 @@ export function computeReportMoneyStatsFromCollections(
     .sort((a, b) => b[1].revenueCents - a[1].revenueCents)
     .map(([name, d]) => ({ name, transactions: d.transactions, revenueCents: d.revenueCents }));
 
-  // Round 10 fix 2: bucketize transactions rather than lumping them as "txCount".
-  const cleanSalesCount = filteredSales.filter((s) => (s.total || 0) > 0).length;
-  const refundSalesCount = filteredSales.filter((s) => (s.total || 0) < 0).length;
-
-  // ── R-REPORT-ZTAPE-RECONCILIATION-FIX ─────────────────────────────────
-  // Additive reconciliation layer derived from the same raw accumulators the
-  // report already uses — no parallel summation, no new refund handling.
-  const reconTaxCollectedCents = productSalesTaxCents
+  // ── Tax (I1.1 canonical): gross collected / refunded / net — UNCLAMPED. ──
+  const grossTaxCollectedCents = productSalesTaxCents
     + utilityTaxCents
     + mobilitySurchargeCents
     + legacyTaxAmountCents;
+  const netTaxCents = grossTaxCollectedCents - taxRefundedCents;
+
+  // I1.1 transaction buckets: gross activity (incl. refunded originals) vs
+  // refund-representation rows vs status counts.
+  const cleanSalesCount = grossActivitySales.filter((s) => (s.total || 0) > 0).length;
+  const refundSalesCount = refundAuditSales.length;
+
+  // ── R-REPORT-ZTAPE-RECONCILIATION-FIX (I1.1 semantics) ────────────────
+  // grossCollected = gross sales (a later-refunded original DID collect on
+  // its day); refund outflows reconcile via refundTaxAdjustment/totalReturns
+  // and the net line. Derived from the same accumulators — no parallel sums.
+  const reconTaxCollectedCents = grossTaxCollectedCents;
   const reconFeeCollectedCents = salesCbeCents + salesScreenFeeCents;
-  const reconGrossCollectedCents = grossRevenueCents;
-  const reconRefundTaxAdjustmentCents = customerReturnTaxAdjustmentCents;
+  const reconGrossCollectedCents = grossSalesCents;
+  const reconRefundTaxAdjustmentCents = taxRefundedCents;
   const reconOperationalRevenueCents = reconGrossCollectedCents
     - reconTaxCollectedCents
     - reconFeeCollectedCents;
-  const reconNetRevenueCents = netRevenueCents;
+  const reconNetRevenueCents = netSalesCents;
 
   return {
-    grossRevenueCents,
-    netRevenueCents,
-    totalReturnsCents,
+    // I1.1 canonical fields
+    grossSalesCents,
+    returnAndRefundAdjustmentsCents,
+    netSalesCents,
+    grossTaxCollectedCents,
+    taxRefundedCents,
+    netTaxCents,
+    returnedCostReversalCents,
+    returnedProfitReversalCents,
+    profitAdjustmentEstimated,
+    grossItemProfitCents,
+    ccFeeProfitCents,
+    // Legacy aliases (same values)
+    grossRevenueCents: grossSalesCents,
+    netRevenueCents: netSalesCents,
+    totalReturnsCents: returnAndRefundAdjustmentsCents,
     totalProfitCents: adjustedTotalProfitCents,
     totalCostCents,
     subtotalBeforeTaxCents,
     profitMargin,
-    // R-FINANCIAL-BUCKET-PURITY-FIX P1: `taxCollectedCents` is an EXPLICIT
-    // aggregate of the four pure tax buckets minus the customer-return
-    // adjustment (numeric value preserved vs the pre-P1 accumulator).
-    taxCollectedCents: Math.max(0,
-      productSalesTaxCents
-      + utilityTaxCents
-      + mobilitySurchargeCents
-      + legacyTaxAmountCents
-      - customerReturnTaxAdjustmentCents,
-    ),
+    // I1.1: taxCollectedCents = NET tax, no longer clamped at zero — a
+    // refund-only period is legitimately negative.
+    taxCollectedCents: netTaxCents,
     productSalesTaxCents,
     utilityTaxCents,
     mobilitySurchargeCents,
@@ -870,9 +1194,6 @@ export function computeReportMoneyStatsFromCollections(
     customerReturnTaxAdjustmentCents,
     cbeCollectedCents: salesCbeCents,
     screenFeeCents: salesScreenFeeCents,
-    // R-REPORT-ZTAPE-RECONCILIATION-FIX: explicit Z-tape reconciliation
-    // bucket. Additive — never replaces legacy fields, never feeds back
-    // into them.
     recon: {
       grossCollectedCents: reconGrossCollectedCents,
       taxCollectedCents: reconTaxCollectedCents,
@@ -880,12 +1201,12 @@ export function computeReportMoneyStatsFromCollections(
       refundTaxAdjustmentCents: reconRefundTaxAdjustmentCents,
       operationalRevenueCents: reconOperationalRevenueCents,
       netRevenueCents: reconNetRevenueCents,
-      totalReturnsCents,
+      totalReturnsCents: returnAndRefundAdjustmentsCents,
     },
     cashCents,
     cardCents,
     storeCreditCents,
-    txCount: filteredSales.length,
+    txCount: grossActivitySales.length,
     cleanSalesCount,
     refundSalesCount,
     voidedCount: allFilteredSales.filter((s) => s.status === 'voided').length,
@@ -900,6 +1221,31 @@ export function computeReportMoneyStatsFromCollections(
     // R-ACTIVATIONS-BY-CARRIER-V1
     activationsByCarrier,
   };
+}
+
+// ── I1.1 reconciliation invariants (reusable; tests + future consumers) ──
+export interface ReportMoneyInvariants {
+  netSalesOk: boolean;
+  netTaxOk: boolean;
+  profitOk: boolean;
+  ok: boolean;
+}
+
+/**
+ * Canonical relations every ReportMoneyStats must satisfy:
+ *   netSalesCents === grossSalesCents − returnAndRefundAdjustmentsCents
+ *   netTaxCents   === grossTaxCollectedCents − taxRefundedCents
+ *   totalProfitCents === grossItemProfitCents + ccFeeProfitCents
+ *                        − returnedProfitReversalCents
+ * (CellHub profit definition: per-line revenue − cost, commission economics
+ *  inside line cost, CC fees 100% margin, taxes/CBE/screen fees pass-through,
+ *  refund reversal exact where derivable else flagged estimated.)
+ */
+export function checkReportMoneyInvariants(stats: ReportMoneyStats): ReportMoneyInvariants {
+  const netSalesOk = stats.netSalesCents === stats.grossSalesCents - stats.returnAndRefundAdjustmentsCents;
+  const netTaxOk = stats.netTaxCents === stats.grossTaxCollectedCents - stats.taxRefundedCents;
+  const profitOk = stats.totalProfitCents === stats.grossItemProfitCents + stats.ccFeeProfitCents - stats.returnedProfitReversalCents;
+  return { netSalesOk, netTaxOk, profitOk, ok: netSalesOk && netTaxOk && profitOk };
 }
 
 /** Full pipeline: inclusion rules + core stats in one call. */
