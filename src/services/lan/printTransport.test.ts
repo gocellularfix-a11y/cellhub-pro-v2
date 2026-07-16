@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { dispatchPrintOperation, sendSilentReceipt, submitPrintJob } from './printServerClient';
 import { decidePrintRecovery } from '@/services/print/printGating';
 import { stablePrinterId } from './printBridge';
+// @ts-expect-error — CJS main-process module without type declarations.
+import lanPairing from '../../../electron/lanPairing.js';
 
 // ── window / localStorage / electronAPI stubs (vitest env = node) ──
 const store = new Map<string, string>();
@@ -179,5 +181,36 @@ describe('jobId retention across outcomes', () => {
       printerId: '', jobId: 'x',
     });
     expect(out).toEqual({ ok: false, delivery: 'not_sent', error: 'no_printer_selected' });
+  });
+});
+
+// ── R-2.1.4-FINAL-REBUILD: the REAL electron main error mapping ────────
+// Direct tests against electron/lanPairing.js — not a mock. 'unreachable'
+// may ONLY come from connection-ESTABLISHMENT failures (no request could
+// have reached the Primary). Everything else stays a generic ambiguous code.
+describe('lanPairing.classifyOperationTransportError — real main-process mapping', () => {
+  it('connection-establishment failures (handshake never completed) → unreachable', () => {
+    for (const code of ['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH']) {
+      expect(lanPairing.classifyOperationTransportError(code)).toBe('unreachable');
+    }
+  });
+
+  it('post-dispatch socket errors are NEVER unreachable — generic network_error (→ delivery unknown)', () => {
+    for (const code of ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNABORTED', 'ERR_STREAM_DESTROYED', 'EAI_AGAIN', undefined, null, '']) {
+      expect(lanPairing.classifyOperationTransportError(code)).toBe('network_error');
+    }
+  });
+
+  it('the renderer transport maps the real main codes onto the outcome contract coherently', async () => {
+    pairAsSecondary();
+    // Real main code for a refused connection → proven not_sent:
+    lanSendOperation = () => Promise.resolve({ ok: false, error: lanPairing.classifyOperationTransportError('ECONNREFUSED') });
+    expect(await dispatchPrintOperation('LAN_PRINT_RECEIPT_REQUEST', {}))
+      .toEqual({ ok: false, delivery: 'not_sent', error: 'unreachable' });
+    // Real main code for a post-dispatch reset → unknown (never local):
+    lanSendOperation = () => Promise.resolve({ ok: false, error: lanPairing.classifyOperationTransportError('ECONNRESET') });
+    const out = await dispatchPrintOperation('LAN_PRINT_RECEIPT_REQUEST', {});
+    expect(out).toEqual({ ok: false, delivery: 'unknown', error: 'network_error' });
+    expect(decidePrintRecovery(out)).toBe('status_unknown');
   });
 });

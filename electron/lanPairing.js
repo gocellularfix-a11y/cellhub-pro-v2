@@ -577,6 +577,22 @@ function fetchSnapshot(opts) {
 }
 
 // ── Secondary side: send a test operation (PHASE 3A) ─────────
+// R-2.1.4-FINAL-REBUILD: pure transport-error classifier for /operation.
+// Only connection-ESTABLISHMENT failures prove that no request ever reached
+// the Primary (the TCP handshake itself failed) → 'unreachable', which the
+// renderer transport maps to delivery:'not_sent' (safe local fallback).
+// EVERY other socket error — ECONNRESET / EPIPE / ETIMEDOUT / 'socket hang
+// up' / aborted-after-dispatch / unknown codes — can occur AFTER the request
+// bytes were transmitted, so it must surface as the generic 'network_error'
+// (delivery:'unknown', never auto-print locally). Raw err.code passthrough
+// (the previous behavior) is forbidden: the renderer cannot classify codes
+// it has never seen, and printing a duplicate receipt is worse than an
+// "unknown status" message.
+const CONNECT_FAIL_CODES = new Set(['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH']);
+function classifyOperationTransportError(code) {
+  return CONNECT_FAIL_CODES.has(code) ? 'unreachable' : 'network_error';
+}
+
 function sendOperation(opts) {
   return new Promise((resolve) => {
     let url;
@@ -613,8 +629,9 @@ function sendOperation(opts) {
       },
     );
     req.on('error', (err) => {
-      const code = err.code === 'ECONNREFUSED' || err.code === 'EHOSTUNREACH' ? 'unreachable' : (err.code || 'network_error');
-      resolve({ ok: false, error: code });
+      // R-2.1.4-FINAL-REBUILD: never pass a raw err.code through — classify
+      // into the two-outcome contract (see classifyOperationTransportError).
+      resolve({ ok: false, error: classifyOperationTransportError(err && err.code) });
     });
     req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
     req.write(payload);
@@ -674,4 +691,6 @@ module.exports = {
   fetchLicense,
   // LOCAL-LAN-AUTO-DISCOVERY-V1
   discoverPrimaries,
+  // R-2.1.4-FINAL-REBUILD: exported for direct error-mapping tests.
+  classifyOperationTransportError,
 };
