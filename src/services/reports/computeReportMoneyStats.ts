@@ -364,6 +364,28 @@ export interface ReportMoneyStats {
   grossItemProfitCents: number;
   /** CC-fee pass-through profit included in totalProfitCents. */
   ccFeeProfitCents: number;
+  // ── I1.2 exchange accounting (additive; gross presentation preserved —
+  //    the credit already nets inside the replacement sale's total, matching
+  //    the receipt/Z-tape records) ──
+  /** Informational: Σ exchange-credit value recognized this period. */
+  exchangeCreditCents: number;
+  /** COGS of exchanged-away merchandise reversed out of this period
+   *  (restocked goods are not a period cost; profit rises by the same). */
+  exchangeReturnedCostReversalCents: number;
+  // ── I1.2 net pre-tax margin basis ──
+  //   netRevenueBeforeTaxCents === grossRevenueBeforeTaxCents
+  //                                − returnRevenueBeforeTaxAdjustmentCents
+  /** = subtotalBeforeTaxCents (gross pre-tax activity). */
+  grossRevenueBeforeTaxCents: number;
+  /** Pre-tax portion of the deduplicated refund adjustments. */
+  returnRevenueBeforeTaxAdjustmentCents: number;
+  netRevenueBeforeTaxCents: number;
+  /** The margin denominator (= netRevenueBeforeTaxCents). */
+  profitMarginBasisCents: number;
+  /** False for zero/negative-revenue periods — margin is NOT meaningful and
+   *  the compatibility profitMargin=0 must not be presented as a
+   *  business conclusion. */
+  profitMarginMeaningful: boolean;
   // ── Legacy aliases (same values as the canonical fields above) ──
   /** = grossSalesCents */
   grossRevenueCents: number;
@@ -404,6 +426,12 @@ export interface ReportMoneyStats {
   repairCount: number;
   completedRepairCount: number;
   unlockCount: number;
+  // ── Dimensional tables: GROSS ACTIVITY (I1.2 documented) ──
+  // Categories / top items / employees / providers / carriers aggregate the
+  // gross-activity population (incl. later-refunded originals). Returns are
+  // NOT allocated per dimension — these tables are gross, never "net", and
+  // no consumer may label them otherwise. Per-dimension net allocation is a
+  // dedicated later phase.
   categoriesByRevenue: ReportCategoryRow[];
   topItems: Array<{ name: string; quantity: number; revenueCents: number }>;
   topEmployees: Array<{ name: string; transactions: number; revenueCents: number }>;
@@ -953,7 +981,7 @@ export function computeReportMoneyStatsFromCollections(
   const avgMarginRatio = subtotalBeforeTaxCents > 0 ? totalProfitCents / subtotalBeforeTaxCents : 0;
 
   // ── Refund adjustments engine (dedup precedence P1→P3) ──
-  interface RefundAdjustment { revenueCents: number; taxCents: number; costCents: number; profitCents: number; estimated: boolean }
+  interface RefundAdjustment { revenueCents: number; taxCents: number; subtotalCents: number; costCents: number; profitCents: number; estimated: boolean }
   const adjustments: RefundAdjustment[] = [];
   const allSales: Sale[] = Array.isArray(input.sales) ? input.sales : [];
   const salesById = new Map(allSales.map((s) => [s.id, s]));
@@ -989,6 +1017,43 @@ export function computeReportMoneyStatsFromCollections(
     return { costCents: subtotalCents - profitCents, profitCents };
   };
 
+  /** Shared cost-matching hierarchy (ordinary returns AND exchanges):
+   *  1. cost on the returned item (structurally absent today — kept first),
+   *  2. STORED cost on the matching original sale item (stable id, then
+   *     case-insensitive name), 3. inventory identity (inventoryId, then the
+   *  documented legacy name match), 4. estimate — flagged, never exact. */
+  const resolveReturnedLine = (
+    ri: CustomerReturn['items'][number],
+    orig: Sale | undefined,
+  ): { costCents: number; subtotalCents: number; estimated: boolean } => {
+    const riSubtotal = ri.subtotalCents ?? Math.round((ri.subtotal || 0) * 100);
+    const riQty = ri.qty || 1;
+    const riCost = (ri as unknown as { costCents?: number }).costCents;
+    if (typeof riCost === 'number' && !Number.isNaN(riCost)) {
+      return { costCents: riCost, subtotalCents: riSubtotal, estimated: false };
+    }
+    let origItem: SaleItem | undefined;
+    if (orig) {
+      origItem = (orig.items || []).find((oi) => !!ri.id && oi.id === ri.id)
+        || (orig.items || []).find((oi) => String(oi.name || '').toLowerCase() === String(ri.name || '').toLowerCase());
+    }
+    let unitCost: number | null = null;
+    if (origItem && typeof origItem.cost === 'number' && !Number.isNaN(origItem.cost)) {
+      unitCost = origItem.cost;
+    } else if (origItem) {
+      const inv = (origItem.inventoryId
+        ? inventory.find((i) => i.id === origItem!.inventoryId)
+        : undefined)
+        || (origItem.name ? inventory.find((i) => i.name?.toLowerCase() === origItem!.name.toLowerCase()) : undefined);
+      if (inv && typeof inv.cost === 'number') unitCost = inv.cost || 0;
+    }
+    if (unitCost !== null) {
+      return { costCents: unitCost * riQty, subtotalCents: riSubtotal, estimated: false };
+    }
+    const est = estimatedReversal(riSubtotal);
+    return { costCents: est.costCents, subtotalCents: riSubtotal, estimated: riSubtotal !== 0 };
+  };
+
   const reversalForReturn = (r: NormalizedReturn): RefundAdjustment => {
     const orig = r.originalSaleId ? salesById.get(r.originalSaleId) : undefined;
     const src = Array.isArray(input.customerReturns) ? input.customerReturns.find((cr) => cr.id === r.id) : undefined;
@@ -996,55 +1061,61 @@ export function computeReportMoneyStatsFromCollections(
     if (items.length === 0) {
       // Legacy return without line items → estimate on the whole subtotal.
       const est = estimatedReversal(r.subtotalCents);
-      return { revenueCents: r.totalCents, taxCents: r.taxCents, ...est, estimated: r.subtotalCents !== 0 };
+      return { revenueCents: r.totalCents, taxCents: r.taxCents, subtotalCents: r.subtotalCents, ...est, estimated: r.subtotalCents !== 0 };
     }
     let costCents = 0;
     let profitCents = 0;
     let estimated = false;
     for (const ri of items) {
-      const riSubtotal = ri.subtotalCents ?? Math.round((ri.subtotal || 0) * 100);
-      const riQty = ri.qty || 1;
-      // Level 2: stored cost on the matching original sale item.
-      let origItem: SaleItem | undefined;
-      if (orig) {
-        origItem = (orig.items || []).find((oi) => !!ri.id && oi.id === ri.id)
-          || (orig.items || []).find((oi) => String(oi.name || '').toLowerCase() === String(ri.name || '').toLowerCase());
-      }
-      let unitCost: number | null = null;
-      if (origItem && typeof origItem.cost === 'number' && !Number.isNaN(origItem.cost)) {
-        unitCost = origItem.cost;
-      } else if (origItem) {
-        // Level 3: inventory identity — inventoryId first, legacy name match second.
-        const inv = (origItem.inventoryId
-          ? inventory.find((i) => i.id === origItem!.inventoryId)
-          : undefined)
-          || (origItem.name ? inventory.find((i) => i.name?.toLowerCase() === origItem!.name.toLowerCase()) : undefined);
-        if (inv && typeof inv.cost === 'number') unitCost = inv.cost || 0;
-      }
-      if (unitCost !== null) {
-        const c = unitCost * riQty;
-        costCents += c;
-        profitCents += riSubtotal - c;
-      } else {
-        // Level 4: estimate — flagged.
-        const est = estimatedReversal(riSubtotal);
-        costCents += est.costCents;
-        profitCents += est.profitCents;
-        if (riSubtotal !== 0) estimated = true;
-      }
+      const line = resolveReturnedLine(ri, orig);
+      costCents += line.costCents;
+      profitCents += line.subtotalCents - line.costCents;
+      if (line.estimated) estimated = true;
     }
-    return { revenueCents: r.totalCents, taxCents: r.taxCents, costCents, profitCents, estimated };
+    return { revenueCents: r.totalCents, taxCents: r.taxCents, subtotalCents: r.subtotalCents, costCents, profitCents, estimated };
   };
 
   // P1 — CustomerReturns recognized at the RETURN date within this period.
-  // EXCHANGE returns are skipped: their money representation is the
-  // negative `exchange_credit` line inside the replacement sale (already in
-  // gross activity). Counting the return record too would subtract the same
-  // business refund twice — a double-count the PREVIOUS implementation had.
-  // (Legacy limitation, documented: the exchanged-away item's COGS is not
-  // reversed anywhere — pre-existing exchange-flow behavior, out of scope.)
+  // EXCHANGE returns take the dedicated path below: their REVENUE credit is
+  // the negative `exchange_credit` line inside the replacement sale (already
+  // in gross activity — counting the return record too would subtract the
+  // same refund twice), but the returned merchandise's COGS must still be
+  // reversed exactly once (I1.2). Tax: the exchange checkout computed the
+  // transaction's real tax on the NEW items — no tax refund is fabricated.
+  //
+  // CANONICAL EXCHANGE POLICY (verified production contract):
+  //   CustomerReturn{resolution:'exchange', originalSaleId, returnNumber,
+  //   exchangeSaleId?/exchangeInvoiceNumber? (R-RETURNS-PHASE-2B)} ↔
+  //   replacement Sale carrying the `exchange_credit` line ↔ original Sale
+  //   (items marked returnedQty/fullyReturned). Returned goods restock via
+  //   ReturnsModule Phase 3 (legacy immediate) or finalizeSaleCore's
+  //   finalizeExchangeReturn (deferred 2B) — either way stock came back, so
+  //   the returned merchandise cost LEAVES period COGS and profit rises by
+  //   the same amount; the replacement merchandise cost stays in COGS.
+  //   Recognition date = return.createdAt (== replacement checkout for 2B).
+  let exchangeCreditCents = 0;
+  let exchangeReturnedCostReversalCents = 0;
+  let exchangeEstimated = false;
   for (const r of returnsInPeriod) {
-    if (String(r.resolution || '').toLowerCase() === 'exchange') continue;
+    if (String(r.resolution || '').toLowerCase() === 'exchange') {
+      const orig = r.originalSaleId ? salesById.get(r.originalSaleId) : undefined;
+      const src = Array.isArray(input.customerReturns) ? input.customerReturns.find((cr) => cr.id === r.id) : undefined;
+      const items = Array.isArray(src?.items) ? src!.items : [];
+      exchangeCreditCents += r.totalCents;
+      if (items.length === 0) {
+        // Legacy exchange without line items → estimated cost, flagged.
+        const est = estimatedReversal(r.subtotalCents);
+        exchangeReturnedCostReversalCents += est.costCents;
+        if (r.subtotalCents !== 0) exchangeEstimated = true;
+      } else {
+        for (const ri of items) {
+          const line = resolveReturnedLine(ri, orig);
+          exchangeReturnedCostReversalCents += line.costCents;
+          if (line.estimated) exchangeEstimated = true;
+        }
+      }
+      continue;
+    }
     adjustments.push(reversalForReturn(r));
   }
 
@@ -1066,7 +1137,7 @@ export function computeReportMoneyStatsFromCollections(
     for (const it of (s.items || [])) {
       if (typeof it.cost === 'number' && !Number.isNaN(it.cost)) costCents += Math.abs(it.cost) * (it.qty || 1);
     }
-    adjustments.push({ revenueCents, taxCents, costCents, profitCents: (revenueCents - taxCents) - costCents, estimated: false });
+    adjustments.push({ revenueCents, taxCents, subtotalCents: revenueCents - taxCents, costCents, profitCents: (revenueCents - taxCents) - costCents, estimated: false });
   }
 
   // P3 — LEGACY refunded original with NO money record anywhere: exact
@@ -1082,6 +1153,7 @@ export function computeReportMoneyStatsFromCollections(
     adjustments.push({
       revenueCents: sale.total || 0,
       taxCents: econ ? econ.taxCents : 0,
+      subtotalCents: sale.subtotalAfterDiscount ?? (sale.subtotal || 0),
       costCents,
       profitCents: econ ? econ.profitCents : 0,
       estimated: false,
@@ -1092,21 +1164,38 @@ export function computeReportMoneyStatsFromCollections(
   const taxRefundedCents = adjustments.reduce((s, a) => s + a.taxCents, 0);
   const returnedCostReversalCents = adjustments.reduce((s, a) => s + a.costCents, 0);
   const returnedProfitReversalCents = adjustments.reduce((s, a) => s + a.profitCents, 0);
-  const profitAdjustmentEstimated = adjustments.some((a) => a.estimated);
+  const profitAdjustmentEstimated = adjustments.some((a) => a.estimated) || exchangeEstimated;
 
   const netSalesCents = grossSalesCents - returnAndRefundAdjustmentsCents;
   const customerReturnTaxAdjustmentCents = taxRefundedCents; // legacy alias
 
-  // Returned goods go back to stock → their cost leaves period COGS.
+  // Returned goods go back to stock → their cost leaves period COGS. This
+  // covers BOTH ordinary returns and I1.2 exchanges (the exchanged-away
+  // item's cost leaves COGS; the replacement item's cost stays in COGS,
+  // accumulated by the main loop like any sold line).
   // totalProfitCents accumulated BOTH item profits and top-level CC fees in
   // the loop; grossItemProfit is the item-only component (invariant:
-  // totalProfit === grossItemProfit + ccFeeProfit − reversal).
+  // totalProfit === grossItemProfit + ccFeeProfit − returnReversal
+  //                 + exchangeCostReversal).
   const grossItemProfitCents = totalProfitCents - ccFeeProfitCents;
-  totalCostCents = totalCostCents - returnedCostReversalCents;
-  const adjustedTotalProfitCents = totalProfitCents - returnedProfitReversalCents;
+  totalCostCents = totalCostCents - returnedCostReversalCents - exchangeReturnedCostReversalCents;
+  const adjustedTotalProfitCents = totalProfitCents - returnedProfitReversalCents + exchangeReturnedCostReversalCents;
 
-  const profitMargin = subtotalBeforeTaxCents > 0
-    ? (adjustedTotalProfitCents / subtotalBeforeTaxCents) * 100
+  // ── I1.2 PART B: NET pre-tax margin basis ──
+  //   netRevenueBeforeTax === grossRevenueBeforeTax − returnRevenueBeforeTaxAdjustment
+  // The margin denominator is the NET pre-tax revenue (post-returns), never
+  // the gross subtotal. Exchanges need no adjustment here: the credit line
+  // already nets inside the replacement sale's own subtotal.
+  const grossRevenueBeforeTaxCents = subtotalBeforeTaxCents;
+  const returnRevenueBeforeTaxAdjustmentCents = adjustments.reduce((s, a) => s + a.subtotalCents, 0);
+  const netRevenueBeforeTaxCents = grossRevenueBeforeTaxCents - returnRevenueBeforeTaxAdjustmentCents;
+  const profitMarginBasisCents = netRevenueBeforeTaxCents;
+  // Meaningful only for a positive net basis: a zero/negative-revenue period
+  // has NO meaningful margin — consumers must check profitMarginMeaningful
+  // instead of presenting the compatibility 0 as a business conclusion.
+  const profitMarginMeaningful = netRevenueBeforeTaxCents > 0;
+  const profitMargin = profitMarginMeaningful
+    ? (adjustedTotalProfitCents / netRevenueBeforeTaxCents) * 100
     : 0;
 
   const categoriesByRevenue = Object.entries(categoryStats)
@@ -1176,6 +1265,14 @@ export function computeReportMoneyStatsFromCollections(
     profitAdjustmentEstimated,
     grossItemProfitCents,
     ccFeeProfitCents,
+    // I1.2 exchange + net margin basis
+    exchangeCreditCents,
+    exchangeReturnedCostReversalCents,
+    grossRevenueBeforeTaxCents,
+    returnRevenueBeforeTaxAdjustmentCents,
+    netRevenueBeforeTaxCents,
+    profitMarginBasisCents,
+    profitMarginMeaningful,
     // Legacy aliases (same values)
     grossRevenueCents: grossSalesCents,
     netRevenueCents: netSalesCents,
@@ -1228,6 +1325,7 @@ export interface ReportMoneyInvariants {
   netSalesOk: boolean;
   netTaxOk: boolean;
   profitOk: boolean;
+  netBeforeTaxOk: boolean;
   ok: boolean;
 }
 
@@ -1237,15 +1335,21 @@ export interface ReportMoneyInvariants {
  *   netTaxCents   === grossTaxCollectedCents − taxRefundedCents
  *   totalProfitCents === grossItemProfitCents + ccFeeProfitCents
  *                        − returnedProfitReversalCents
+ *                        + exchangeReturnedCostReversalCents   (I1.2)
+ *   netRevenueBeforeTaxCents === grossRevenueBeforeTaxCents
+ *                                − returnRevenueBeforeTaxAdjustmentCents
  * (CellHub profit definition: per-line revenue − cost, commission economics
  *  inside line cost, CC fees 100% margin, taxes/CBE/screen fees pass-through,
- *  refund reversal exact where derivable else flagged estimated.)
+ *  refund reversal exact where derivable else flagged estimated; exchanged-
+ *  away merchandise cost leaves COGS, replacement merchandise cost stays.)
  */
 export function checkReportMoneyInvariants(stats: ReportMoneyStats): ReportMoneyInvariants {
   const netSalesOk = stats.netSalesCents === stats.grossSalesCents - stats.returnAndRefundAdjustmentsCents;
   const netTaxOk = stats.netTaxCents === stats.grossTaxCollectedCents - stats.taxRefundedCents;
-  const profitOk = stats.totalProfitCents === stats.grossItemProfitCents + stats.ccFeeProfitCents - stats.returnedProfitReversalCents;
-  return { netSalesOk, netTaxOk, profitOk, ok: netSalesOk && netTaxOk && profitOk };
+  const profitOk = stats.totalProfitCents === stats.grossItemProfitCents + stats.ccFeeProfitCents
+    - stats.returnedProfitReversalCents + stats.exchangeReturnedCostReversalCents;
+  const netBeforeTaxOk = stats.netRevenueBeforeTaxCents === stats.grossRevenueBeforeTaxCents - stats.returnRevenueBeforeTaxAdjustmentCents;
+  return { netSalesOk, netTaxOk, profitOk, netBeforeTaxOk, ok: netSalesOk && netTaxOk && profitOk && netBeforeTaxOk };
 }
 
 /** Full pipeline: inclusion rules + core stats in one call. */

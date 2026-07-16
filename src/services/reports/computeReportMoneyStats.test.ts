@@ -752,13 +752,79 @@ describe('I1.1 — cross-period refunds and dedup (required tests 3/5/6/7/8/15)'
     expectInvariants(stats);
   });
 
-  it('EXCHANGE returns are NOT double-subtracted (money lives in the replacement-sale credit line)', () => {
+  it('I1.2 REQUIRED EXAMPLE — exchange with additional payment: net $80 / COGS $30 / profit $50 (tests 1/2/10/11/12)', () => {
+    // Original: $50 item, cost $20. Exchange: new item $80 (cost $30),
+    // credit $50, customer pays $30 more.
     const original = mkSale({
       id: 'ex-1', items: [mkItem({ id: 'li-x', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
       subtotal: 5000, total: 5000,
     });
     const exchangeReturn = mkReturn({
       resolution: 'exchange', originalSaleId: 'ex-1', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-x', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5000 }] as CustomerReturn['items'],
+      subtotalCents: 5000, totalCents: 5000,
+      ...( { exchangeSaleId: 'repl-1' } as Partial<CustomerReturn>),
+    });
+    const replacement = mkSale({
+      id: 'repl-1',
+      items: [
+        mkItem({ name: 'Better Case', price: 8000, qty: 1, cost: 3000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5000, qty: 1, taxable: false }),
+      ],
+      subtotal: 3000, total: 3000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    // 10: revenue credit represented exactly once (the credit line) — the
+    // return record adds NO extra revenue subtraction.
+    expect(stats.grossSalesCents).toBe(8000);
+    expect(stats.returnAndRefundAdjustmentsCents).toBe(0);
+    expect(stats.netSalesCents).toBe(8000);
+    // 11: returned item's $20 cost LEAVES COGS exactly once (exact, by id).
+    expect(stats.exchangeReturnedCostReversalCents).toBe(2000);
+    expect(stats.exchangeCreditCents).toBe(5000);
+    // 12: replacement $30 cost stays → final COGS $30, profit $50.
+    expect(stats.totalCostCents).toBe(3000);
+    expect(stats.totalProfitCents).toBe(5000);
+    expect(stats.profitAdjustmentEstimated).toBe(false);
+    expectInvariants(stats);
+  });
+
+  it('I1.2 test 3 — replacement CHEAPER than credit (negative replacement total, no refund marker → gross pass-through)', () => {
+    const original = mkSale({
+      id: 'ex-2', items: [mkItem({ id: 'li-y', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, total: 5000,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-2', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-y', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5000 }] as CustomerReturn['items'],
+      subtotalCents: 5000, totalCents: 5000,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Cheaper Case', price: 3000, qty: 1, cost: 1000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5000, qty: 1, taxable: false }),
+      ],
+      subtotal: -2000, total: -2000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    // Customer ends up with a $30 item (cost $10): net revenue $30,
+    // final COGS $10, profit $20.
+    expect(stats.netSalesCents).toBe(3000);
+    expect(stats.totalCostCents).toBe(1000);   // (2000 + 1000) − 2000 reversal
+    expect(stats.totalProfitCents).toBe(2000);
+    expectInvariants(stats);
+  });
+
+  it('I1.2 test 4 — CROSS-PERIOD exchange: current period reflects only current activity', () => {
+    const original = mkSale({
+      id: 'ex-3', createdAt: '2026-07-01T12:00:00',
+      items: [mkItem({ id: 'li-z', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, total: 5000,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-3', originalInvoice: original.invoiceNumber,
+      createdAt: AT('15:00:00'), // exchange happens in the CURRENT period
+      items: [{ id: 'li-z', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5000 }] as CustomerReturn['items'],
       subtotalCents: 5000, totalCents: 5000,
     });
     const replacement = mkSale({
@@ -769,10 +835,172 @@ describe('I1.1 — cross-period refunds and dedup (required tests 3/5/6/7/8/15)'
       subtotal: 3000, total: 3000,
     });
     const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
-    // Original 5000 + replacement net 3000; the exchange return adds NO extra subtraction.
-    expect(stats.grossSalesCents).toBe(8000);
-    expect(stats.returnAndRefundAdjustmentsCents).toBe(0);
-    expect(stats.netSalesCents).toBe(8000);
+    // Original sale is NOT copied into the current period.
+    expect(stats.grossSalesCents).toBe(3000);
+    expect(stats.netSalesCents).toBe(3000);
+    // Returned cost restoration legitimately REDUCES current-period COGS
+    // (exact, via cross-period original lookup): 3000 − 2000 = 1000.
+    expect(stats.exchangeReturnedCostReversalCents).toBe(2000);
+    expect(stats.totalCostCents).toBe(1000);
+    // Current-period profit: replacement pair 0 + restored cost 2000.
+    expect(stats.totalProfitCents).toBe(2000);
+    // Combined with July-1 period (profit 3000) → 5000 = REQUIRED EXAMPLE.
+    expectInvariants(stats);
+  });
+
+  it('I1.2 test 5 — exchange of ONE item from a multi-item original reverses only that item', () => {
+    const original = mkSale({
+      id: 'ex-4',
+      items: [
+        mkItem({ id: 'li-k1', name: 'Case', price: 3000, qty: 1, cost: 1000 }),
+        mkItem({ id: 'li-k2', name: 'Charger', price: 2000, qty: 1, cost: 500 }),
+      ],
+      subtotal: 5000, total: 5000,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-4', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-k2', name: 'Charger', qty: 1, priceCents: 2000, subtotalCents: 2000, taxCents: 0, totalCents: 2000 }] as CustomerReturn['items'],
+      subtotalCents: 2000, totalCents: 2000,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Fast Charger', price: 3500, qty: 1, cost: 1200 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -2000, qty: 1, taxable: false }),
+      ],
+      subtotal: 1500, total: 1500,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    expect(stats.exchangeReturnedCostReversalCents).toBe(500); // only the Charger
+    expect(stats.totalCostCents).toBe(1000 + 500 + 1200 - 500); // Case + Charger + FastCharger − reversal
+    expectInvariants(stats);
+  });
+
+  it('I1.2 tests 7/8/9 — exchange cost tiers: explicit zero / inventory fallback / estimated', () => {
+    // 7: explicit zero original cost → reversal 0, EXACT (not estimated).
+    const origZero = mkSale({ id: 'ex-z', items: [mkItem({ id: 'li-0', name: 'Promo', price: 4000, qty: 1, cost: 0 })], subtotal: 4000, total: 4000 });
+    const retZero = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-z', originalInvoice: origZero.invoiceNumber,
+      items: [{ id: 'li-0', name: 'Promo', qty: 1, priceCents: 4000, subtotalCents: 4000, taxCents: 0, totalCents: 4000 }] as CustomerReturn['items'],
+      subtotalCents: 4000, totalCents: 4000,
+    });
+    const s7 = computeReportMoneyStats(input({ sales: [origZero], customerReturns: [retZero] }));
+    expect(s7.exchangeReturnedCostReversalCents).toBe(0);
+    expect(s7.profitAdjustmentEstimated).toBe(false);
+
+    // 8: legacy MISSING cost → inventory fallback via inventoryId.
+    const legacyItem = mkItem({ id: 'li-m8', name: 'Old Case', price: 4000, qty: 1, inventoryId: 'inv-8' });
+    delete (legacyItem as Partial<SaleItem>).cost;
+    const origLegacy = mkSale({ id: 'ex-m8', items: [legacyItem], subtotal: 4000, total: 4000 });
+    const retLegacy = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-m8', originalInvoice: origLegacy.invoiceNumber,
+      items: [{ id: 'li-m8', name: 'Old Case', qty: 1, priceCents: 4000, subtotalCents: 4000, taxCents: 0, totalCents: 4000 }] as CustomerReturn['items'],
+      subtotalCents: 4000, totalCents: 4000,
+    });
+    const inv8 = [{ id: 'inv-8', name: 'Old Case', cost: 1500 } as unknown as InventoryItem];
+    const s8 = computeReportMoneyStats(input({ sales: [origLegacy], customerReturns: [retLegacy], inventory: inv8 }));
+    expect(s8.exchangeReturnedCostReversalCents).toBe(1500);
+    expect(s8.profitAdjustmentEstimated).toBe(false);
+
+    // 9: no original sale resolvable → ESTIMATED and flagged.
+    const someSale = mkSale({ items: [mkItem({ name: 'Filler', price: 10000, qty: 1, cost: 4000 })], subtotal: 10000, total: 10000 });
+    const retLost = mkReturn({
+      resolution: 'exchange', originalSaleId: 'missing-sale', originalInvoice: 'GONE-1',
+      items: [{ name: 'Mystery', qty: 1, priceCents: 2000, subtotalCents: 2000, taxCents: 0, totalCents: 2000 }] as CustomerReturn['items'],
+      subtotalCents: 2000, totalCents: 2000,
+    });
+    const s9 = computeReportMoneyStats(input({ sales: [someSale], customerReturns: [retLost] }));
+    // avg margin = 6000/10000 → est profit 1200 → est cost 800.
+    expect(s9.exchangeReturnedCostReversalCents).toBe(800);
+    expect(s9.profitAdjustmentEstimated).toBe(true);
+  });
+
+  it('I1.2 test 13 — exchange TAX is the checkout tax, never a fabricated refund', () => {
+    const original = mkSale({
+      id: 'ex-t', items: [mkItem({ id: 'li-t', name: 'Case', price: 5000, qty: 1, cost: 2000 })],
+      subtotal: 5000, salesTax: 450, total: 5450,
+    });
+    const exchangeReturn = mkReturn({
+      resolution: 'exchange', originalSaleId: 'ex-t', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-t', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 450, totalCents: 5450 }] as CustomerReturn['items'],
+      subtotalCents: 5000, taxCents: 450, totalCents: 5450,
+    });
+    const replacement = mkSale({
+      items: [
+        mkItem({ name: 'Better Case', price: 8000, qty: 1, cost: 3000 }),
+        mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5450, qty: 1, taxable: false }),
+      ],
+      subtotal: 2550, salesTax: 700, total: 3250,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original, replacement], customerReturns: [exchangeReturn] }));
+    // Tax = original 450 + replacement checkout 700. The return's taxCents
+    // is NOT subtracted (no cash tax refund happened).
+    expect(stats.grossTaxCollectedCents).toBe(1150);
+    expect(stats.taxRefundedCents).toBe(0);
+    expect(stats.netTaxCents).toBe(1150);
+    expectInvariants(stats);
+  });
+
+  it('I1.2 test 14 — MARGIN EXAMPLE: partial return uses NET pre-tax denominator → 60%, not 48%', () => {
+    // Gross pre-tax $100 (cost $40 → profit $60); return $20 (exact cost $8).
+    const original = mkSale({
+      id: 'mg-1',
+      items: [mkItem({ id: 'li-mg', name: 'Case', price: 2000, qty: 5, cost: 800 })],
+      subtotal: 10000, total: 10000,
+    });
+    const ret = mkReturn({
+      originalSaleId: 'mg-1', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-mg', name: 'Case', qty: 1, priceCents: 2000, subtotalCents: 2000, taxCents: 0, totalCents: 2000 }] as CustomerReturn['items'],
+      subtotalCents: 2000, totalCents: 2000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original], customerReturns: [ret] }));
+    expect(stats.grossRevenueBeforeTaxCents).toBe(10000);
+    expect(stats.returnRevenueBeforeTaxAdjustmentCents).toBe(2000);
+    expect(stats.netRevenueBeforeTaxCents).toBe(8000);
+    expect(stats.profitMarginBasisCents).toBe(8000);
+    expect(stats.totalProfitCents).toBe(4800); // 6000 − (2000−800)
+    expect(stats.profitMarginMeaningful).toBe(true);
+    expect(stats.profitMargin).toBe(60); // 4800/8000 — NOT 48
+    expectInvariants(stats);
+  });
+
+  it('I1.2 tests 15/17 — FULL same-period refund: margin NOT meaningful, numeric 0, no NaN/Infinity', () => {
+    const original = mkSale({
+      id: 'mg-2', status: 'refunded' as Sale['status'],
+      items: [mkItem({ id: 'li-mg2', name: 'Case', price: 10000, qty: 1, cost: 4000 })],
+      subtotal: 10000, total: 10000,
+    });
+    const ret = mkReturn({
+      originalSaleId: 'mg-2', originalInvoice: original.invoiceNumber,
+      items: [{ id: 'li-mg2', name: 'Case', qty: 1, priceCents: 10000, subtotalCents: 10000, taxCents: 0, totalCents: 10000 }] as CustomerReturn['items'],
+      subtotalCents: 10000, totalCents: 10000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original], customerReturns: [ret] }));
+    expect(stats.netRevenueBeforeTaxCents).toBe(0);
+    expect(stats.totalProfitCents).toBe(0);
+    expect(stats.profitMarginMeaningful).toBe(false);
+    expect(stats.profitMargin).toBe(0);
+    expect(Number.isFinite(stats.profitMargin)).toBe(true);
+    expectInvariants(stats);
+  });
+
+  it('I1.2 tests 16/17 — refund-only period: NEGATIVE net basis, margin NOT meaningful, no NaN/Infinity', () => {
+    const original = mkSale({
+      id: 'mg-3', createdAt: '2026-07-01T12:00:00', status: 'refunded' as Sale['status'],
+      items: [mkItem({ id: 'li-mg3', name: 'Case', price: 10000, qty: 1, cost: 4000 })],
+      subtotal: 10000, total: 10000,
+    });
+    const ret = mkReturn({
+      originalSaleId: 'mg-3', originalInvoice: original.invoiceNumber,
+      createdAt: AT('15:00:00'),
+      items: [{ id: 'li-mg3', name: 'Case', qty: 1, priceCents: 10000, subtotalCents: 10000, taxCents: 0, totalCents: 10000 }] as CustomerReturn['items'],
+      subtotalCents: 10000, totalCents: 10000,
+    });
+    const stats = computeReportMoneyStats(input({ sales: [original], customerReturns: [ret] }));
+    expect(stats.netRevenueBeforeTaxCents).toBe(-10000);
+    expect(stats.netSalesCents).toBe(-10000);
+    expect(stats.profitMarginMeaningful).toBe(false);
+    expect(stats.profitMargin).toBe(0);
+    expect(Number.isFinite(stats.profitMargin)).toBe(true);
     expectInvariants(stats);
   });
 
