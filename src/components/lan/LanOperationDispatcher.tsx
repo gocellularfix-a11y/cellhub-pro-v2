@@ -20,8 +20,9 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { persist, batchSave } from '@/services/persist';
 import { getConnection, buildSnapshot, pushSnapshot } from '@/services/lan/lanService';
-// R-2.1.4-CLOSEOUT: canonical bridged-print mapping (full print contract).
-import { buildBridgedPrintRunPayload } from '@/services/lan/printBridge';
+// R-2.1.4-CLOSEOUT / R-2.1.4-LAN-PRINT: canonical bridged-print mapping +
+// media-based Primary printer routing (single source).
+import { buildBridgedPrintRunPayload, resolveBridgePrinter } from '@/services/lan/printBridge';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { appendCustomerNote } from '@/utils/customerNotes';
@@ -159,13 +160,25 @@ export default function LanOperationDispatcher() {
       const a = appRef.current;
       if (!window.electronAPI?.printRun) return { ok: false, error: 'print_unavailable' };
       const settings = a.state.settings as unknown as Record<string, unknown>;
-      const deviceName = ((settings?.detectedPrinters as string[] | undefined) || [])[0];
+      const print = op.payload && op.payload.print;
+      // R-2.1.4-LAN-PRINT: route the bridged job to a Primary printer by the
+      // job's MEDIA TYPE (from pageSize) using the store's printer→media
+      // assignments — NEVER the blind detectedPrinters[0]. A Letter report
+      // with no report-printer assignment is rejected with a clear error
+      // (no_report_printer) so it is never sent to the receipt printer; the
+      // Secondary shows the failure and can retry after configuration.
+      const resolution = resolveBridgePrinter(
+        (print as { pageSize?: { width: number; height: number } } | undefined)?.pageSize,
+        (settings?.printerMediaTypes as Record<string, string> | undefined),
+        (settings?.detectedPrinters as string[] | undefined),
+      );
+      if (!resolution.ok) return { ok: false, error: resolution.error || 'no_printer' };
       // R-2.1.4-CLOSEOUT: the full print contract (pageRanges, margins,
       // scale, landscape) is defensively re-validated and mapped onto the
       // SAME printRun payload a direct print uses, so a bridged Custom Range
       // job flows through the canonical selected-page pipeline. A payload
       // with invalid pageRanges is REJECTED — never silently printed in full.
-      const built = buildBridgedPrintRunPayload(op.payload && op.payload.print, deviceName || '');
+      const built = buildBridgedPrintRunPayload(print, resolution.printer || '');
       if (!built.ok) return { ok: false, error: built.error };
       try {
         const res = await window.electronAPI.printRun(built.payload);

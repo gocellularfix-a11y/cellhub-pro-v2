@@ -25,6 +25,9 @@ import type { PageRange, PageRangeError } from '@/utils/pageRanges';
 // shown are the print engine's own. Pure decision logic lives in previewModel.
 import { buildPreviewPdfRequest, currentPageFromScroll, rangesForPrint } from '@/services/print/previewModel';
 import type { PagesMode } from '@/services/print/previewModel';
+// R-2.1.4-LAN-PRINT: pure Print-button gating (Secondary bridges without a
+// local printer). Single source shared with the tests.
+import { computeCanBridge, computePrintDisabled } from '@/services/print/printGating';
 
 // pdf.js is loaded lazily (code-split) the first time a sheet-media preview
 // opens; the worker ships as a bundled asset so the app stays offline-safe.
@@ -142,6 +145,10 @@ interface PrintPreviewModalProps {
   // it to the Primary (instead of a dead-end disabled state). Non-bridged prints
   // (e.g. Print Desk) stay disabled on a Secondary.
   bridgeReceipt?: boolean;
+  // R-2.1.4-LAN-PRINT: opt-in for bridging a non-receipt document (Sales
+  // Report) from a Secondary. Enables Print + the bridge branch without a
+  // local printer; the modal (preview + page range) still opens normally.
+  bridgeEligible?: boolean;
   receiptType?: string;
   /** R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page Letter document (e.g. Tax
    *  Organizer). Lets the preview iframe grow to full document height and
@@ -170,6 +177,7 @@ export default function PrintPreviewModal({
   initialCopies,
   initialLandscape,
   bridgeReceipt,
+  bridgeEligible,
   receiptType,
   multiPage,
   rebakeForPageSize,
@@ -197,7 +205,11 @@ export default function PrintPreviewModal({
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a Secondary CAN still
   // print a bridge-eligible receipt — it forwards to the Primary. Print Desk and
   // other non-bridged prints have no bridgeReceipt flag → stay disabled here.
-  const canBridge = lanReadOnly && !!bridgeReceipt;
+  // R-2.1.4-LAN-PRINT: a Secondary can bridge a POS receipt (bridgeReceipt)
+  // OR a document like the Sales Report (bridgeEligible). Either opt-in keeps
+  // the Print button enabled and routes the click through the LAN bridge —
+  // no local printer required on the Secondary.
+  const canBridge = computeCanBridge(lanReadOnly, bridgeReceipt, bridgeEligible);
   // ── State ─────────────────────────────────────────────────
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => {
@@ -682,6 +694,15 @@ export default function PrintPreviewModal({
     : locale === 'pt' ? `Página ${n} de ${total}`
     : `Page ${n} of ${total}`;
 
+  // R-2.1.4-LAN-PRINT: Print-button enable state (all inputs now in scope).
+  const printDisabled = computePrintDisabled({
+    printing,
+    pageRangeInvalid: pageRangeMode === 'custom' && !!pageRangeError,
+    lanReadOnly,
+    canBridge,
+    selectedPrinter,
+  });
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
@@ -1031,16 +1052,12 @@ export default function PrintPreviewModal({
               // a bridge-eligible receipt (canBridge) keeps Print ENABLED and
               // forwards to the Primary. A non-bridged print (no bridgeReceipt) is
               // disabled. Primary/standalone require a selected printer as before.
-              disabled={
-                printing
-                || (pageRangeMode === 'custom' && !!pageRangeError)
-                || (lanReadOnly ? !canBridge : !selectedPrinter)
-              }
+              disabled={printDisabled}
               style={{
                 flex: 2, padding: '0.65rem', borderRadius: '0.5rem', border: 'none',
                 background: printing ? '#334155' : '#3b82f6', color: '#fff', cursor: printing ? 'wait' : 'pointer',
                 fontSize: '0.9rem', fontWeight: 700,
-                opacity: ((lanReadOnly ? !canBridge : !selectedPrinter) || (pageRangeMode === 'custom' && !!pageRangeError)) ? 0.5 : 1,
+                opacity: printDisabled ? 0.5 : 1,
               }}
             >
               {printing ? '⏳ Printing...' : `🖨️ Print${copies > 1 ? ` (×${copies})` : ''}`}
@@ -1098,17 +1115,33 @@ export default function PrintPreviewModal({
             ref={previewScrollRef}
             onScroll={handlePreviewScroll}
             style={{
+              // R-2.1.4-PREVIEW-CENTER: BLOCK scroll container (not flex-center).
+              // A flex `justify-content: center` child that overflows gets its
+              // left edge clipped and unreachable by scroll — breaking zoom>100%
+              // horizontal scrolling. A block container + `margin: 0 auto` on the
+              // child centers when it fits and clamps to the start (fully
+              // scrollable) when it overflows.
               position: 'absolute', inset: 0,
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
               overflow: 'auto', padding: '1.5rem',
             }}
           >
             <div
               id="print-content"
               style={{
-                transform: `scale(${zoom / 100})`,
-                transformOrigin: 'top center',
-                transition: 'transform 0.15s ease',
+                // R-2.1.4-PREVIEW-CENTER: use CSS `zoom` (not `transform: scale`)
+                // so the element's LAYOUT box reflects the scaled visual size —
+                // `transform` scales only the paint, leaving the layout box at
+                // full size, so the container centered the unscaled box and the
+                // receipt drifted left below 100%. `zoom` + `width: fit-content`
+                // + `margin: 0 auto` keeps it horizontally centered at every
+                // zoom level and correct while scrolling. PREVIEW-ONLY — printRun
+                // uses currentHtml/the PDF, never this DOM, so print output,
+                // scaleFactor, pagination and selected-page printing are
+                // unchanged. `as any` because React's CSS type omits `zoom`.
+                ...( { zoom: zoom / 100 } as React.CSSProperties ),
+                width: 'fit-content',
+                margin: '0 auto',
+                transition: 'zoom 0.15s ease',
               }}
             >
               {isSheetPreview ? (

@@ -300,6 +300,7 @@ export default function App() {
         initialCopies={printModal.options?.copies}
         initialLandscape={printModal.options?.landscape}
         bridgeReceipt={printModal.options?.bridgeReceipt}
+        bridgeEligible={printModal.options?.bridgeEligible}
         receiptType={printModal.options?.receiptType}
         multiPage={printModal.options?.multiPage}
         rebakeForPageSize={printModal.options?.rebakeForPageSize}

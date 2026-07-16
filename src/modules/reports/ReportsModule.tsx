@@ -2209,7 +2209,10 @@ ${actSection}
     // picker, the multi-page preview geometry and the printed page size all
     // agree — previously the modal opened at the 4×6 default and only the
     // document @page CSS kept the output letter-sized.
-    openPrintWindow(html, { pageSize: 'letter', multiPage: true });
+    // R-2.1.4-LAN-PRINT: bridgeEligible lets a read-only Secondary forward the
+    // report to the Primary (which routes it to the configured Letter/report
+    // printer). receiptType tags the job as a report for the Primary's logs.
+    openPrintWindow(html, { pageSize: 'letter', multiPage: true, bridgeEligible: true, receiptType: 'report' });
   }, [stats, settings, startDate, endDate, locale, canSeeOwnerFinancials, periodRange, toast, t]);
 
   // ── Export Report (JSON) ──────────────────────────────────

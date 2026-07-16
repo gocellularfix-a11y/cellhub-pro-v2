@@ -60,6 +60,13 @@ export interface PrintOptions {
    *  the printer) instead of printing locally. Opt-in per receipt call site —
    *  default false keeps every other print (labels, reports, Primary) local. */
   bridgeReceipt?: boolean;
+  /** R-2.1.4-LAN-PRINT: opt-in for bridging a non-receipt DOCUMENT (e.g. a
+   *  Sales Report) from a read-only Secondary to the Primary. Unlike
+   *  bridgeReceipt this does NOT trigger the silent forward path — the modal
+   *  still opens (preview + page range), and its Print button forwards the
+   *  full contract to the Primary. Enables the Print button on a Secondary
+   *  without requiring a local printer. */
+  bridgeEligible?: boolean;
   /** Optional label for the forwarded receipt (e.g. 'pos_receipt'). */
   receiptType?: string;
   /** R-PRINT-MULTIPAGE-PREVIEW-V1: opt-in for multi-page sheet documents
