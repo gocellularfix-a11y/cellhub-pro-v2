@@ -5237,7 +5237,7 @@ export const translations: TranslationDictionary = {
   // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: shown in the print preview on a Secondary.
   'print.managedByPrimary':    { en: 'Managed by Primary Terminal — printing happens on the Primary computer.', es: 'Administrado por la Terminal Principal — la impresión ocurre en la computadora Principal.', pt: 'Gerenciado pelo Terminal Principal — a impressão ocorre no computador Principal.' },
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: bridge-eligible receipt on a Secondary.
-  'print.willPrintOnPrimary':  { en: 'This receipt will print on the Primary Terminal.', es: 'Este recibo se imprimirá en la Terminal Principal.', pt: 'Este recibo será impresso no Terminal Principal.' },
+  'print.willPrintOnPrimary':  { en: 'This will print on the Primary Terminal.', es: 'Esto se imprimirá en la Terminal Principal.', pt: 'Isto será impresso no Terminal Principal.' },
   // RECEIPT-PRINTER-RANGE-FALLBACK-V1: shown when the receipt printer can't print a page subset.
   'print.rangeUnsupported':    { en: 'This printer can’t print selected pages. Printing the full document instead.', es: 'Esta impresora no puede imprimir páginas seleccionadas. Se imprimió el documento completo.', pt: 'Esta impressora não pode imprimir páginas selecionadas. Imprimindo o documento completo.' },
   // R-2.1.4-PRINT-PAGES: specific Custom Range validation messages. Invalid
