@@ -168,9 +168,40 @@ interface LanPrintReceiptPayload {
 interface LanCheckoutPayload {
   sale: unknown;
 }
+// R-PRINT-SERVER-V1: print-server wire shapes. Duplicated structurally from
+// printBridge.ts (this ambient file cannot import app modules).
+interface LanWirePrinterInfo {
+  name: string;
+  displayName: string;
+  isDefault: boolean;
+  offline: boolean;
+  media: string; // '80mm' | 'label' | '4x6' | 'cr80' | 'letter' | ''
+}
+interface LanPrintSubmitPayload {
+  receiptType: string;
+  documentType?: string;
+  html: string;
+  copies: number;
+  printerName: string;
+  jobId: string;
+  pageSize?: { width: number; height: number };
+  pageRanges?: Array<{ from: number; to: number }>;
+  margins?: { top: number; bottom: number; left: number; right: number };
+  scaleFactor?: number;
+  landscape?: boolean;
+}
+interface LanPrintJobStatusWire {
+  jobId: string;
+  printerName: string;
+  state: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled';
+  ahead: number;
+  error?: string;
+}
 interface LanOperation {
   operationId: string;
-  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT' | 'LAN_PRINT_RECEIPT_REQUEST' | 'LAN_POS_CHECKOUT';
+  type: 'LAN_PING_OPERATION' | 'CREATE_CUSTOMER' | 'LAN_CUSTOMER_NOTE_ADD' | 'CREATE_APPOINTMENT' | 'LAN_PRINT_RECEIPT_REQUEST' | 'LAN_POS_CHECKOUT'
+    // R-PRINT-SERVER-V1: print-server protocol.
+    | 'LAN_PRINTER_LIST_REQUEST' | 'LAN_PRINT_SUBMIT' | 'LAN_PRINT_STATUS_REQUEST' | 'LAN_PRINT_CANCEL_REQUEST';
   payload: {
     message?: string;
     customer?: LanCustomerPayload;
@@ -178,6 +209,9 @@ interface LanOperation {
     appointment?: LanAppointmentPayload;
     print?: LanPrintReceiptPayload;
     checkout?: LanCheckoutPayload;
+    // R-PRINT-SERVER-V1
+    printSubmit?: LanPrintSubmitPayload;
+    jobRef?: { jobId: string };
   };
   deviceId: string;
   createdAt: number;
@@ -196,6 +230,12 @@ interface LanOperationAck {
   saleId?: string;
   duplicate?: boolean;
   error?: string;
+  // R-PRINT-SERVER-V1: print-server responses.
+  printers?: LanWirePrinterInfo[];
+  primaryName?: string;
+  jobId?: string;
+  queuePosition?: number;
+  jobStatus?: LanPrintJobStatusWire;
 }
 // LAN-PHASE-3B: a forwarded op handed from main to the Primary renderer.
 interface LanOperationDispatchRequest {
@@ -211,6 +251,12 @@ interface LanOperationDispatchResult {
   saleId?: string;
   duplicate?: boolean;
   error?: string;
+  // R-PRINT-SERVER-V1: print-server responses (mirrors LanOperationAck).
+  printers?: LanWirePrinterInfo[];
+  primaryName?: string;
+  jobId?: string;
+  queuePosition?: number;
+  jobStatus?: LanPrintJobStatusWire;
 }
 interface LanIncomingOperation {
   operationId: string;

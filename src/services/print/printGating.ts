@@ -1,42 +1,56 @@
 // ============================================================
-// R-2.1.4-LAN-PRINT — pure Print-button gating logic.
+// R-PRINT-SERVER-V1 — pure print-mode + Print-button gating logic.
 //
-// Extracted so the Secondary/Primary enable rules are unit-testable without
-// rendering PrintPreviewModal. The modal consumes these; behavior is
-// unchanged from the inline expressions it replaces.
+// The Primary is the print server for the LAN. Which pipeline a print uses
+// is a pure function of the machine's role and the live connection state:
+//
+//   'server' — this machine is a paired Secondary and the Primary is
+//              reachable → the modal lists the PRIMARY's printers and the
+//              job is submitted to the Primary's queue. EVERY document
+//              (receipts, reports, tickets, labels, barcodes) prints this
+//              way — no per-document opt-in flags anymore.
+//   'local'  — standalone / Primary, OR a Secondary whose Primary is
+//              offline (automatic Local Printing Mode) → local printer
+//              scan + direct printRun, exactly as before.
+//
+// Extracted so the enable rules are unit-testable without rendering
+// PrintPreviewModal. (Replaces the R-2.1.4-LAN-PRINT computeCanBridge
+// opt-in gating — bridgeReceipt/bridgeEligible no longer gate the modal.)
 // ============================================================
 
+export type PrintTargetMode = 'server' | 'local';
+
 /**
- * A print can be bridged to the Primary from a read-only LAN Secondary when
- * it opts in — either a POS receipt (bridgeReceipt) or a document such as the
- * Sales Report (bridgeEligible). On a non-Secondary this is always false.
+ * Resolve which print pipeline this machine uses right now.
+ * `connState` is the Secondary mirror state ('connected' | 'reconnected' |
+ * 'connecting' | 'offline'). A Secondary that is offline falls back to
+ * Local Printing Mode automatically and returns to server mode when the
+ * mirror reconnects (the caller re-evaluates on mirror updates).
  */
-export function computeCanBridge(
-  lanReadOnly: boolean,
-  bridgeReceipt: boolean | undefined,
-  bridgeEligible: boolean | undefined,
-): boolean {
-  return !!lanReadOnly && (!!bridgeReceipt || !!bridgeEligible);
+export function resolvePrintMode(
+  role: 'standalone' | 'primary' | 'secondary',
+  connState: 'connecting' | 'connected' | 'offline' | 'reconnected',
+): PrintTargetMode {
+  if (role !== 'secondary') return 'local';
+  return connState === 'offline' ? 'local' : 'server';
 }
 
 export interface PrintDisabledInput {
   printing: boolean;
   pageRangeInvalid: boolean;      // custom range typed but invalid
-  lanReadOnly: boolean;           // this machine is a read-only LAN Secondary
-  canBridge: boolean;             // the job can be forwarded to the Primary
-  selectedPrinter: string | undefined | null; // local printer choice
+  mode: PrintTargetMode;          // resolved print pipeline
+  selectedPrinter: string | undefined | null; // picked printer (local OR remote)
 }
 
 /**
- * The Print button is disabled when a job is already running, when a custom
- * page range is invalid, and — for LOCAL printing — when no printer is
- * selected. On a bridging Secondary a local printer is NOT required: the
- * button enables so the click can reach the LAN bridge.
+ * The Print button is disabled while a job is being submitted, while a
+ * custom page range is invalid, and when no printer is selected — in BOTH
+ * modes: server mode requires picking one of the Primary's printers, local
+ * mode one of the local printers. (No more printer-less bridge sends: the
+ * user always chooses the destination, like any network print server.)
  */
 export function computePrintDisabled(input: PrintDisabledInput): boolean {
   if (input.printing) return true;
   if (input.pageRangeInvalid) return true;
-  // Secondary (read-only): gate on bridge capability, not a local printer.
-  // Primary/standalone: require a selected local printer as before.
-  return input.lanReadOnly ? !input.canBridge : !input.selectedPrinter;
+  return !input.selectedPrinter;
 }

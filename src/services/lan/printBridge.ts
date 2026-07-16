@@ -21,6 +21,14 @@
 // detectedPrinters[0]. A Letter report is NEVER sent to a receipt printer:
 // with no explicit report-printer assignment the job is rejected with a
 // clear error, keeping the Secondary's Print button available for retry.
+//
+// R-PRINT-SERVER-V1: the Primary is now a full PRINT SERVER. A Secondary's
+// print modal shows the PRIMARY's printers and submits ONE complete job
+// (LAN_PRINT_SUBMIT) naming an explicit printer; the Primary validates it,
+// enqueues it on that printer's FIFO lane (printServerQueue) and ACKs
+// { jobId, queuePosition } immediately — status flows back via
+// LAN_PRINT_STATUS_REQUEST polling. The media-routed path above stays as
+// the SILENT receipt bridge (no picker) and as backward compatibility.
 // ============================================================
 import { classifyMediaFromMicrons } from '@/services/print/printMediaGuard';
 import type { PrinterMediaType } from '@/services/print/printMediaGuard';
@@ -212,4 +220,100 @@ export function resolveBridgePrinter(
   // 3. Receipt-class media, no assignment → existing default-printer route.
   if (printers[0]) return { ok: true, printer: printers[0], media, viaDefaultFallback: true };
   return { ok: false, media, error: 'no_receipt_printer' };
+}
+
+// ── R-PRINT-SERVER-V1: explicit-printer print-server contract ──
+
+/** One printer as advertised by the Primary to its Secondaries. */
+export interface LanPrinterInfo {
+  name: string;
+  displayName: string;
+  isDefault: boolean;
+  /** Best-effort offline hint from the OS status flags (UI only — never
+   *  blocks a submit; many drivers report 0 regardless). */
+  offline: boolean;
+  /** Media type assigned in Settings → Hardware on the Primary ('' = unset). */
+  media: PrinterMediaType | '';
+}
+
+/** Serialize the Primary's printer scan + media map for the wire. */
+export function buildPrinterInventory(
+  printers: Array<{ name: string; displayName?: string; isDefault: boolean; status: number }> | undefined | null,
+  mediaMap: Record<string, string> | undefined | null,
+): LanPrinterInfo[] {
+  const map = (mediaMap && typeof mediaMap === 'object') ? mediaMap : {};
+  return (Array.isArray(printers) ? printers : []).map((p): LanPrinterInfo => ({
+    name: String(p.name || ''),
+    displayName: String(p.displayName || p.name || ''),
+    isDefault: !!p.isDefault,
+    // Windows PRINTER_STATUS_OFFLINE = 0x80; other bits vary per driver.
+    offline: (Number(p.status) & 0x80) !== 0,
+    media: (map[String(p.name || '')] as PrinterMediaType | undefined) || '',
+  })).filter((p) => p.name);
+}
+
+/** Full print-server job: everything the modal decided, plus the explicit
+ *  target printer. Same option shapes as LanPrintJob (single contract). */
+export interface LanPrintSubmitInput extends LanPrintJobInput {
+  printerName: string;
+  jobId: string;
+  documentType?: string;
+}
+
+export interface LanPrintSubmitJob extends LanPrintJob {
+  printerName: string;
+  jobId: string;
+  documentType: string;
+}
+
+/**
+ * Secondary side: build + validate the LAN_PRINT_SUBMIT wire payload.
+ * Reuses buildLanPrintJob for every shared field (ranges blocked here,
+ * before anything crosses the LAN).
+ */
+export function buildLanPrintSubmit(input: LanPrintSubmitInput): { ok: true; job: LanPrintSubmitJob } | { ok: false; error: string } {
+  const printerName = String(input.printerName || '').trim();
+  if (!printerName) return { ok: false, error: 'no_printer_selected' };
+  const jobId = String(input.jobId || '').trim();
+  if (!jobId) return { ok: false, error: 'bad_job_id' };
+  const base = buildLanPrintJob(input);
+  if (!base.ok) return base;
+  return {
+    ok: true,
+    job: {
+      ...base.job,
+      printerName: printerName.slice(0, 200),
+      jobId: jobId.slice(0, 80),
+      documentType: String(input.documentType || input.receiptType || 'document').slice(0, 40),
+    },
+  };
+}
+
+/**
+ * Primary side: defensively re-validate a received LAN_PRINT_SUBMIT payload
+ * and resolve it against the Primary's CURRENT printer list. The named
+ * printer must exist on the Primary — a Secondary can never route a job to
+ * an arbitrary device string. Returns the printRun payload (canonical
+ * pipeline) plus the validated job identity.
+ */
+export function buildPrintServerRunPayload(
+  print: unknown,
+  availablePrinters: string[] | undefined | null,
+): { ok: true; jobId: string; printerName: string; documentType: string; payload: BridgedPrintRunPayload } | { ok: false; error: string; jobId?: string } {
+  const p = print as Partial<LanPrintSubmitJob> | null | undefined;
+  const jobId = p ? String(p.jobId || '').trim() : '';
+  if (!p || !jobId) return { ok: false, error: 'bad_job_id' };
+  const printerName = String(p.printerName || '').trim();
+  if (!printerName) return { ok: false, error: 'no_printer_selected', jobId };
+  const names = Array.isArray(availablePrinters) ? availablePrinters : [];
+  if (!names.includes(printerName)) return { ok: false, error: 'printer_not_found', jobId };
+  const built = buildBridgedPrintRunPayload(p, printerName);
+  if (!built.ok) return { ok: false, error: built.error, jobId };
+  return {
+    ok: true,
+    jobId,
+    printerName,
+    documentType: String(p.documentType || p.receiptType || 'document').slice(0, 40),
+    payload: built.payload,
+  };
 }

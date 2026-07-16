@@ -5,7 +5,10 @@
 // Primary print. Invalid ranges are blocked/rejected — never stripped into
 // an implicit "print all pages".
 import { describe, it, expect } from 'vitest';
-import { buildLanPrintJob, buildBridgedPrintRunPayload, sanitizeZeroBasedRanges, resolveBridgePrinter } from './printBridge';
+import {
+  buildLanPrintJob, buildBridgedPrintRunPayload, sanitizeZeroBasedRanges, resolveBridgePrinter,
+  buildPrinterInventory, buildLanPrintSubmit, buildPrintServerRunPayload,
+} from './printBridge';
 import { parsePageRanges } from '@/utils/pageRanges';
 // @ts-expect-error — CJS main-process module without type declarations.
 import printPages from '../../../electron/printPages.js';
@@ -238,5 +241,93 @@ describe('bridged SALES REPORT crosses the LAN intact and routes to the report p
   it('an invalid report range is blocked on the Secondary before LAN send', () => {
     const bad = buildLanPrintJob({ ...reportJob, pageRanges: [{ from: 3, to: 1 }] });
     expect(bad).toEqual({ ok: false, error: 'bad_page_ranges' });
+  });
+});
+
+// ── R-PRINT-SERVER-V1 — print-server contract ──
+
+describe('buildPrinterInventory — Primary advertises its printers', () => {
+  it('serializes name/displayName/default/offline/media for the wire', () => {
+    const printers = [
+      { name: 'Canon MF210 Series', displayName: 'Canon MF210', isDefault: false, status: 0 },
+      { name: 'POS-80C', isDefault: true, status: 0 },
+      { name: 'DYMO 450', displayName: 'DYMO LabelWriter 450', isDefault: false, status: 0x80 },
+    ];
+    const map = { 'Canon MF210 Series': 'letter', 'POS-80C': '80mm' };
+    expect(buildPrinterInventory(printers, map)).toEqual([
+      { name: 'Canon MF210 Series', displayName: 'Canon MF210', isDefault: false, offline: false, media: 'letter' },
+      { name: 'POS-80C', displayName: 'POS-80C', isDefault: true, offline: false, media: '80mm' },
+      { name: 'DYMO 450', displayName: 'DYMO LabelWriter 450', isDefault: false, offline: true, media: '' },
+    ]);
+  });
+
+  it('tolerates garbage inputs', () => {
+    expect(buildPrinterInventory(null, null)).toEqual([]);
+    expect(buildPrinterInventory([{ name: '', isDefault: false, status: 0 }], {})).toEqual([]);
+  });
+});
+
+describe('LAN_PRINT_SUBMIT — Secondary submits ONE complete job to an explicit printer', () => {
+  const submit = {
+    receiptType: 'report',
+    documentType: 'report',
+    html: '<h1>Sales Report</h1>',
+    copies: 2,
+    pageSize: LETTER,
+    pageRanges: [{ from: 0, to: 1 }],
+    margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+    scaleFactor: 100,
+    landscape: false,
+    printerName: 'Canon MF210 Series',
+    jobId: 'job-123',
+  };
+
+  it('the full contract survives Secondary→wire→Primary onto the canonical printRun payload', () => {
+    const built = buildLanPrintSubmit(submit);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const wire = JSON.parse(JSON.stringify(built.job));
+    const run = buildPrintServerRunPayload(wire, ['POS-80C', 'Canon MF210 Series']);
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+    expect(run.jobId).toBe('job-123');
+    expect(run.printerName).toBe('Canon MF210 Series');
+    expect(run.documentType).toBe('report');
+    expect(run.payload).toEqual({
+      html: '<h1>Sales Report</h1>',
+      deviceName: 'Canon MF210 Series',
+      copies: 2,
+      pageSize: LETTER,
+      pageRanges: [{ from: 0, to: 1 }],
+      margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+      scaleFactor: 100,
+      landscape: false,
+    });
+  });
+
+  it('Secondary blocks a submit without an explicit printer or jobId', () => {
+    expect(buildLanPrintSubmit({ ...submit, printerName: '' })).toEqual({ ok: false, error: 'no_printer_selected' });
+    expect(buildLanPrintSubmit({ ...submit, jobId: '' })).toEqual({ ok: false, error: 'bad_job_id' });
+  });
+
+  it('Secondary blocks invalid ranges before the LAN (same rule as the receipt bridge)', () => {
+    expect(buildLanPrintSubmit({ ...submit, pageRanges: [{ from: 2, to: 1 }] })).toEqual({ ok: false, error: 'bad_page_ranges' });
+  });
+
+  it('Primary REJECTS a job naming a printer it does not own (no arbitrary devices)', () => {
+    const built = buildLanPrintSubmit(submit);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const run = buildPrintServerRunPayload(JSON.parse(JSON.stringify(built.job)), ['POS-80C']);
+    expect(run).toEqual({ ok: false, error: 'printer_not_found', jobId: 'job-123' });
+  });
+
+  it('Primary defensively rejects tampered payloads (ranges, missing html, missing jobId)', () => {
+    expect(buildPrintServerRunPayload({ jobId: 'j', printerName: 'X', html: '<p>d</p>', pageRanges: [{ from: 3, to: 1 }] }, ['X']))
+      .toEqual({ ok: false, error: 'bad_page_ranges', jobId: 'j' });
+    expect(buildPrintServerRunPayload({ jobId: 'j', printerName: 'X', html: '' }, ['X']))
+      .toEqual({ ok: false, error: 'bad_payload', jobId: 'j' });
+    expect(buildPrintServerRunPayload({ printerName: 'X', html: '<p>d</p>' }, ['X']))
+      .toEqual({ ok: false, error: 'bad_job_id' });
   });
 });

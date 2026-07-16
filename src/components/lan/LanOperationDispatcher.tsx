@@ -22,7 +22,11 @@ import { persist, batchSave } from '@/services/persist';
 import { getConnection, buildSnapshot, pushSnapshot } from '@/services/lan/lanService';
 // R-2.1.4-CLOSEOUT / R-2.1.4-LAN-PRINT: canonical bridged-print mapping +
 // media-based Primary printer routing (single source).
-import { buildBridgedPrintRunPayload, resolveBridgePrinter } from '@/services/lan/printBridge';
+// R-PRINT-SERVER-V1: explicit-printer submit contract + printer inventory.
+import { buildBridgedPrintRunPayload, resolveBridgePrinter, buildPrinterInventory, buildPrintServerRunPayload } from '@/services/lan/printBridge';
+// R-PRINT-SERVER-V1: per-printer FIFO queue — the SAME physical printer never
+// receives two jobs concurrently; different printers print in parallel.
+import { printServerQueue } from '@/services/print/printServerQueue';
 import { normalizePhone } from '@/utils/normalize';
 import { generateId } from '@/utils/dates';
 import { appendCustomerNote } from '@/utils/customerNotes';
@@ -154,8 +158,12 @@ export default function LanOperationDispatcher() {
 
     // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: print a forwarded receipt on the
     // PRIMARY's own default printer. The Primary owns the hardware — the
-    // Secondary never names a device. Returns a clean printer error if the
-    // Primary has no default printer or the job fails.
+    // Secondary never names a device on this LEGACY/silent path. Returns a
+    // clean printer error if the Primary has no default printer or the job
+    // fails. R-PRINT-SERVER-V1: the job now runs through the per-printer
+    // FIFO queue (same lane as explicit submits), so it can never interleave
+    // with another job on the same physical printer; the ACK still awaits
+    // the real print result (unchanged contract for the silent receipt path).
     const handlePrintReceipt = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
       const a = appRef.current;
       if (!window.electronAPI?.printRun) return { ok: false, error: 'print_unavailable' };
@@ -181,12 +189,102 @@ export default function LanOperationDispatcher() {
       const built = buildBridgedPrintRunPayload(print, resolution.printer || '');
       if (!built.ok) return { ok: false, error: built.error };
       try {
-        const res = await window.electronAPI.printRun(built.payload);
-        if (res && res.success) return { ok: true, printed: true };
-        return { ok: false, error: (res && res.error) || 'print_failed' };
+        const jobId = String((print as { printJobId?: string } | undefined)?.printJobId || '') || `legacy-${op.operationId}`;
+        printServerQueue.submit({
+          jobId,
+          printerName: built.payload.deviceName,
+          deviceId: op.deviceId,
+          documentType: String((print as { receiptType?: string } | undefined)?.receiptType || 'receipt'),
+          execute: () => window.electronAPI!.printRun(built.payload).then((r) => ({ success: !!(r && r.success), error: (r && r.error) || undefined })),
+        });
+        const done = printServerQueue.completion(jobId);
+        const final = done ? await done : null;
+        if (final && final.state === 'completed') return { ok: true, printed: true };
+        return { ok: false, error: (final && final.error) || 'print_failed' };
       } catch {
         return { ok: false, error: 'print_exception' };
       }
+    };
+
+    // ── R-PRINT-SERVER-V1: Primary print-server handlers ──────────────
+
+    // Advertise the Primary's CURRENT printers (live scan, so a just-plugged
+    // printer shows on the next Secondary refresh) + media assignments.
+    const handlePrinterList = async (): Promise<LanOperationDispatchResult> => {
+      const a = appRef.current;
+      if (!window.electronAPI?.getPrinters) return { ok: false, error: 'print_unavailable' };
+      const settings = a.state.settings as unknown as Record<string, unknown>;
+      try {
+        const list = await window.electronAPI.getPrinters();
+        const printers = buildPrinterInventory(list, settings?.printerMediaTypes as Record<string, string> | undefined);
+        return {
+          ok: true,
+          printers: printers as unknown as LanWirePrinterInfo[],
+          primaryName: (settings?.storeName as string) || 'CellHub Primary',
+        };
+      } catch {
+        return { ok: false, error: 'printer_scan_failed' };
+      }
+    };
+
+    // Accept ONE complete explicit-printer job, validate it against the
+    // Primary's real printer list, enqueue it on that printer's FIFO lane and
+    // ACK immediately with { jobId, queuePosition }. Status flows back via
+    // LAN_PRINT_STATUS_REQUEST polls — never a long-held HTTP response.
+    const handlePrintSubmit = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
+      if (!window.electronAPI?.printRun || !window.electronAPI?.getPrinters) return { ok: false, error: 'print_unavailable' };
+      let names: string[] = [];
+      try { names = ((await window.electronAPI.getPrinters()) || []).map((p) => p.name); }
+      catch { return { ok: false, error: 'printer_scan_failed' }; }
+      const run = buildPrintServerRunPayload(op.payload && op.payload.printSubmit, names);
+      if (!run.ok) return { ok: false, error: run.error, jobId: run.jobId };
+      const status = printServerQueue.submit({
+        jobId: run.jobId,
+        printerName: run.printerName,
+        deviceId: op.deviceId,
+        documentType: run.documentType,
+        execute: () => window.electronAPI!.printRun(run.payload).then((r) => ({ success: !!(r && r.success), error: (r && r.error) || undefined })),
+      });
+      return {
+        ok: true,
+        jobId: status.jobId,
+        queuePosition: status.ahead,
+        jobStatus: {
+          jobId: status.jobId, printerName: status.printerName,
+          state: status.state, ahead: status.ahead, error: status.error,
+        },
+      };
+    };
+
+    const handlePrintStatus = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
+      const jobId = String(op.payload?.jobRef?.jobId || '');
+      if (!jobId) return { ok: false, error: 'bad_job_id' };
+      const status = printServerQueue.getStatus(jobId);
+      if (!status) return { ok: false, error: 'job_not_found' };
+      return {
+        ok: true,
+        jobId,
+        jobStatus: {
+          jobId: status.jobId, printerName: status.printerName,
+          state: status.state, ahead: status.ahead, error: status.error,
+        },
+      };
+    };
+
+    const handlePrintCancel = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
+      const jobId = String(op.payload?.jobRef?.jobId || '');
+      if (!jobId) return { ok: false, error: 'bad_job_id' };
+      const res = printServerQueue.cancel(jobId);
+      const status = res.status || printServerQueue.getStatus(jobId) || undefined;
+      return {
+        ok: res.ok,
+        error: res.ok ? undefined : res.error,
+        jobId,
+        jobStatus: status ? {
+          jobId: status.jobId, printerName: status.printerName,
+          state: status.state, ahead: status.ahead, error: status.error,
+        } : undefined,
+      };
     };
 
     const handleCreateCustomer = async (op: LanOperation): Promise<LanOperationDispatchResult> => {
@@ -349,6 +447,11 @@ export default function LanOperationDispatcher() {
       if (op.type === 'CREATE_APPOINTMENT') return handleCreateAppointment(op);
       if (op.type === 'LAN_PRINT_RECEIPT_REQUEST') return handlePrintReceipt(op);
       if (op.type === 'LAN_POS_CHECKOUT') return handlePosCheckout(op);
+      // R-PRINT-SERVER-V1: print-server protocol.
+      if (op.type === 'LAN_PRINTER_LIST_REQUEST') return handlePrinterList();
+      if (op.type === 'LAN_PRINT_SUBMIT') return handlePrintSubmit(op);
+      if (op.type === 'LAN_PRINT_STATUS_REQUEST') return handlePrintStatus(op);
+      if (op.type === 'LAN_PRINT_CANCEL_REQUEST') return handlePrintCancel(op);
       return { ok: false, error: 'unsupported_operation' };
     };
 

@@ -8,14 +8,24 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from '@/i18n';
 // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't own/scan printers.
 import { useLanReadOnlyMode } from '@/hooks/useLanReadOnly';
-// LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: forward bridged receipts.
-import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
+// R-PRINT-SERVER-V1: progress events for the toast layer.
+import { emitLanPrintResult } from '@/services/lan/lanService';
+// R-PRINT-SERVER-V1: Secondary print-server client — the modal lists the
+// PRIMARY's printers, submits ONE complete job to the chosen one, and tracks
+// queue status (Queued (N ahead) → Printing → Completed/Failed).
+import {
+  getPrimaryPrinterCache, subscribePrimaryPrinters, fetchPrimaryPrinters,
+  submitPrintJob, trackPrintJob, generatePrintJobId,
+} from '@/services/lan/printServerClient';
+import type { PrimaryPrinterCache } from '@/services/lan/printServerClient';
+import { subscribeMirror, getMirrorStatus } from '@/services/lan/lanMirror';
 // R-POS-PAGESIZE-REBAKE-V1: type for the optional receipt re-bake callback.
 import type { PrintPageSizeKey } from '@/hooks/usePrint';
 // R-PRINT-MEDIA-GUARD-V1: media validation against the printer the user
 // picked here. The confirm dialog is rendered by PrintMediaGuardHost at
 // zIndex 10000 (this modal is 9999), so awaiting it works from inside.
 import { checkPrintMediaJob, requestPrintMediaConfirmation, announcePrintRecovery } from '@/services/print/printMediaGuard';
+import type { PrinterMediaMap, PrinterMediaType } from '@/services/print/printMediaGuard';
 // R-2.1.4-PRINT-PAGES: canonical page-range parser — single source shared
 // with the tests; main re-normalizes the IPC payload defensively.
 import { parsePageRanges, pagesBeyondCount } from '@/utils/pageRanges';
@@ -25,9 +35,10 @@ import type { PageRange, PageRangeError } from '@/utils/pageRanges';
 // shown are the print engine's own. Pure decision logic lives in previewModel.
 import { buildPreviewPdfRequest, currentPageFromScroll, rangesForPrint } from '@/services/print/previewModel';
 import type { PagesMode } from '@/services/print/previewModel';
-// R-2.1.4-LAN-PRINT: pure Print-button gating (Secondary bridges without a
-// local printer). Single source shared with the tests.
-import { computeCanBridge, computePrintDisabled } from '@/services/print/printGating';
+// R-PRINT-SERVER-V1: pure print-mode resolution + Print-button gating.
+// A connected Secondary prints through the Primary print server (server
+// mode); a Secondary whose Primary is offline falls back to local mode.
+import { resolvePrintMode, computePrintDisabled } from '@/services/print/printGating';
 
 // pdf.js is loaded lazily (code-split) the first time a sheet-media preview
 // opens; the worker ships as a bundled asset so the app stays offline-safe.
@@ -140,14 +151,11 @@ interface PrintPreviewModalProps {
   initialPrinter?: string;
   initialCopies?: number;
   initialLandscape?: boolean;
-  // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: when a bridge-eligible
-  // receipt reaches this modal on a Secondary, keep Print ENABLED and forward
-  // it to the Primary (instead of a dead-end disabled state). Non-bridged prints
-  // (e.g. Print Desk) stay disabled on a Secondary.
+  // R-PRINT-SERVER-V1: DEPRECATED — the modal no longer needs per-document
+  // bridge opt-ins. On a connected Secondary EVERY document prints through
+  // the Primary print server (explicit printer pick); these props are kept
+  // so existing callers compile, but they are ignored.
   bridgeReceipt?: boolean;
-  // R-2.1.4-LAN-PRINT: opt-in for bridging a non-receipt document (Sales
-  // Report) from a Secondary. Enables Print + the bridge branch without a
-  // local printer; the modal (preview + page range) still opens normally.
   bridgeEligible?: boolean;
   receiptType?: string;
   /** R-PRINT-MULTIPAGE-PREVIEW-V1: multi-page Letter document (e.g. Tax
@@ -176,8 +184,6 @@ export default function PrintPreviewModal({
   initialPrinter,
   initialCopies,
   initialLandscape,
-  bridgeReceipt,
-  bridgeEligible,
   receiptType,
   multiPage,
   rebakeForPageSize,
@@ -202,19 +208,34 @@ export default function PrintPreviewModal({
   const lockPageSize = receiptType === 'pos_receipt' && !canRebake;
   // The baked template size = what ReceiptModal passed as pageSize (settings.paperSize).
   const bakedPageSizeKey = initialPageSize || '4x6';
-  // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a Secondary CAN still
-  // print a bridge-eligible receipt — it forwards to the Primary. Print Desk and
-  // other non-bridged prints have no bridgeReceipt flag → stay disabled here.
-  // R-2.1.4-LAN-PRINT: a Secondary can bridge a POS receipt (bridgeReceipt)
-  // OR a document like the Sales Report (bridgeEligible). Either opt-in keeps
-  // the Print button enabled and routes the click through the LAN bridge —
-  // no local printer required on the Secondary.
-  const canBridge = computeCanBridge(lanReadOnly, bridgeReceipt, bridgeEligible);
+  // ── R-PRINT-SERVER-V1: print mode + Primary printer inventory ──────
+  // A connected Secondary is a workstation on the Primary print server: the
+  // picker lists the PRIMARY's printers and the job is submitted to its
+  // queue. When the Primary goes offline the mirror flips to 'offline' and
+  // this resolves to LOCAL mode automatically (local scan + direct print);
+  // it returns to server mode on reconnect. Reactive via the mirror pub/sub.
+  const [connState, setConnState] = useState(() => getMirrorStatus().connState);
+  useEffect(() => subscribeMirror((s) => setConnState(s.connState)), []);
+  const printMode = resolvePrintMode(lanReadOnly ? 'secondary' : 'standalone', connState);
+  const serverMode = printMode === 'server';
+  const [primaryCache, setPrimaryCache] = useState<PrimaryPrinterCache | null>(() => getPrimaryPrinterCache());
+  useEffect(() => subscribePrimaryPrinters(setPrimaryCache), []);
+  const [refreshingPrinters, setRefreshingPrinters] = useState(false);
+  const refreshPrimaryPrinters = async () => {
+    setRefreshingPrinters(true);
+    try { await fetchPrimaryPrinters(); } finally { setRefreshingPrinters(false); }
+  };
   // ── State ─────────────────────────────────────────────────
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => {
     try { return localStorage.getItem('cellhub_lastPrinter') || initialPrinter || ''; }
     catch { return initialPrinter || ''; }
+  });
+  // R-PRINT-SERVER-V1: the remote (Primary) printer pick — separate state +
+  // storage key so a Secondary's remote choice never clobbers a local one.
+  const [selectedRemotePrinter, setSelectedRemotePrinter] = useState(() => {
+    try { return localStorage.getItem('cellhub_lastRemotePrinter') || ''; }
+    catch { return ''; }
   });
   const [pageSize, setPageSize] = useState(initialPageSize || '4x6');
   // R-POS-PAGESIZE-REBAKE-V1: the receipt markup actually previewed/printed.
@@ -285,8 +306,14 @@ export default function PrintPreviewModal({
   // ── Load printers on open ─────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    // LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: never scan local printers on a Secondary.
-    if (lanReadOnly) return;
+    // R-PRINT-SERVER-V1: server mode — refresh the PRIMARY's printer list
+    // (cache paints instantly; the fetch updates it). Never scan local
+    // printers while the Primary owns the hardware.
+    if (serverMode) {
+      void fetchPrimaryPrinters();
+      return;
+    }
+    // LOCAL mode (standalone / Primary / Secondary fallback): existing scan.
     if (!window.electronAPI?.getPrinters) return;
     window.electronAPI.getPrinters().then((list) => {
       setPrinters(list || []);
@@ -300,7 +327,21 @@ export default function PrintPreviewModal({
         if (def) setSelectedPrinter(def.name);
       }
     }).catch(() => {});
-  }, [open, html, lanReadOnly]);
+  }, [open, html, serverMode]);
+
+  // R-PRINT-SERVER-V1: keep the remote pick valid against the live Primary
+  // inventory — auto-select saved choice → Primary default → first printer.
+  useEffect(() => {
+    if (!open || !serverMode) return;
+    const list = primaryCache?.printers || [];
+    if (list.length === 0) return;
+    if (selectedRemotePrinter && list.some((p) => p.name === selectedRemotePrinter)) return;
+    const saved = (() => { try { return localStorage.getItem('cellhub_lastRemotePrinter') || ''; } catch { return ''; } })();
+    const pick = (saved && list.find((p) => p.name === saved))
+      || list.find((p) => p.isDefault)
+      || list[0];
+    if (pick) setSelectedRemotePrinter(pick.name);
+  }, [open, serverMode, primaryCache, selectedRemotePrinter]);
 
 
   // R-2.1.4-PRINT-PAGES: canonical shared parser (see @/utils/pageRanges).
@@ -347,19 +388,42 @@ export default function PrintPreviewModal({
     // 'current' prints the page currently visible in the preview; a 1-page
     // document degrades to a full print (identical output).
     const zeroBasedRanges = rangesForPrint(pageRangeMode, currentPage, previewPages, customRanges);
-    // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: a bridge-eligible
-    // receipt on a Secondary forwards to the Primary (which owns the printer)
-    // instead of printing locally. Toast feedback via LanPrintBridgeListener.
-    // R-2.1.4-CLOSEOUT: the FULL validated print contract crosses the LAN
-    // (pageRanges, margins, scale, landscape) so the Primary routes the job
-    // through the same canonical selected-page pipeline as a direct print.
-    if (canBridge) {
+    // R-PRINT-SERVER-V1: server mode — the user picked one of the PRIMARY's
+    // printers; submit ONE complete job to the Primary's queue and track it.
+    // The full validated contract crosses the LAN (printer, pageRanges,
+    // margins, scale, landscape, copies) onto the same canonical printRun
+    // pipeline a direct print uses. Toast feedback via LanPrintBridgeListener.
+    if (serverMode) {
+      if (!selectedRemotePrinter) return;
+      // Media validation against the REMOTE printer's configured media type.
+      // Warn only — the user's explicit choice is NEVER silently rerouted.
+      const psCheck = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
+      const remoteMap: PrinterMediaMap = {};
+      (primaryCache?.printers || []).forEach((p) => {
+        if (p.media) remoteMap[p.name] = p.media as PrinterMediaType;
+      });
+      const verdict = checkPrintMediaJob({ width: psCheck.width, height: psCheck.height }, selectedRemotePrinter, remoteMap);
+      // eslint-disable-next-line no-console
+      console.info('[print] media guard (server mode):', JSON.stringify({ printer: selectedRemotePrinter, verdict }));
+      if (verdict.action !== 'ok') {
+        // 'reroute' verdicts (label job, dedicated label printer exists) also
+        // become an ask here — do NOT silently override the user's choice.
+        const proceed = await requestPrintMediaConfirmation({
+          docMedia: verdict.docMedia,
+          printerMedia: verdict.printerMedia,
+          printerName: selectedRemotePrinter,
+        });
+        if (!proceed) return;
+      }
+      try { localStorage.setItem('cellhub_lastRemotePrinter', selectedRemotePrinter); } catch { /* ignore */ }
       setPrinting(true);
+      setPrintResult(null);
       try {
-        // R-PAPERSIZE-DESYNC-LOCK-V1: locked POS receipt always uses the baked size.
         const ps = PAGE_SIZES[lockPageSize ? bakedPageSizeKey : pageSize] || PAGE_SIZES['4x6'];
-        const ack = await sendPrintReceipt({
-          receiptType: receiptType || 'receipt',
+        const jobId = generatePrintJobId();
+        const ack = await submitPrintJob({
+          receiptType: receiptType || 'document',
+          documentType: receiptType || 'document',
           html: currentHtml,
           copies,
           pageSize: { width: ps.width, height: ps.height },
@@ -367,13 +431,32 @@ export default function PrintPreviewModal({
           margins: effectiveMargins,
           scaleFactor: effectiveScale,
           landscape: effectiveLandscape,
+          printerName: selectedRemotePrinter,
+          jobId,
         });
-        emitLanPrintResult({ ok: !!ack.ok, error: ack.ok ? undefined : (ack.error || 'print_failed') });
+        if (!ack.ok) {
+          // Submit rejected (Primary unreachable / printer vanished / bad
+          // payload) — keep the modal open so the user can retry.
+          setPrintResult(`❌ ${ack.error || 'Print failed'}`);
+          emitLanPrintResult({ ok: false, error: ack.error || 'print_failed' });
+          return;
+        }
+        // Queued on the Primary — announce position and track to terminal
+        // state in the background (toasts via LanPrintBridgeListener).
+        emitLanPrintResult({ ok: true, state: 'queued', ahead: ack.queuePosition || 0, jobId });
+        void trackPrintJob(jobId, (p) => {
+          if (p.state === 'printing') emitLanPrintResult({ ok: true, state: 'printing', jobId });
+        }).then((final) => {
+          if (final.state === 'completed') emitLanPrintResult({ ok: true, state: 'completed', jobId });
+          else if (final.state === 'cancelled') emitLanPrintResult({ ok: false, state: 'cancelled', jobId });
+          else emitLanPrintResult({ ok: false, state: final.state, error: final.error || 'print_failed', jobId });
+        });
+        onClose();
       } catch {
+        setPrintResult('❌ Print failed');
         emitLanPrintResult({ ok: false, error: 'bridge_error' });
       } finally {
         setPrinting(false);
-        onClose();
       }
       return;
     }
@@ -694,13 +777,13 @@ export default function PrintPreviewModal({
     : locale === 'pt' ? `Página ${n} de ${total}`
     : `Page ${n} of ${total}`;
 
-  // R-2.1.4-LAN-PRINT: Print-button enable state (all inputs now in scope).
+  // R-PRINT-SERVER-V1: Print-button enable state. Both modes require a
+  // picked printer (remote in server mode, local otherwise).
   const printDisabled = computePrintDisabled({
     printing,
     pageRangeInvalid: pageRangeMode === 'custom' && !!pageRangeError,
-    lanReadOnly,
-    canBridge,
-    selectedPrinter,
+    mode: printMode,
+    selectedPrinter: serverMode ? selectedRemotePrinter : selectedPrinter,
   });
 
   return (
@@ -728,15 +811,46 @@ export default function PrintPreviewModal({
             🖨️ Print
           </h2>
 
-          {/* Printer — LAN-PRINT-BRIDGE-UI-COVERAGE-FIX-V1: a Secondary doesn't
-              own/pick local printers. Show a managed-by-Primary card instead. */}
-          {lanReadOnly ? (
-            <div style={{
-              fontSize: '0.8rem', color: '#93c5fd', padding: '0.6rem 0.75rem', borderRadius: '0.5rem',
-              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)',
-            }}>
-              🖥️ {canBridge ? t('print.willPrintOnPrimary') : t('print.managedByPrimary')}
-            </div>
+          {/* Printer — R-PRINT-SERVER-V1: in server mode the picker lists the
+              PRIMARY's printers (network print server); local mode keeps the
+              local scan. A Secondary with its Primary offline lands in local
+              mode automatically (Local Printing Mode). */}
+          {serverMode ? (
+            <Field label={t('print.primaryPrinters').replace('{name}', primaryCache?.primaryName || 'Primary')}>
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'stretch' }}>
+                <select
+                  value={selectedRemotePrinter}
+                  onChange={(e) => setSelectedRemotePrinter(e.target.value)}
+                  style={{ ...selectStyle, flex: 1 }}
+                >
+                  {(primaryCache?.printers || []).map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.displayName || p.name}{p.isDefault ? ' ★' : ''}{p.offline ? ` — ${t('print.printerOffline')}` : ''}
+                    </option>
+                  ))}
+                  {(primaryCache?.printers || []).length === 0 && (
+                    <option value="">{refreshingPrinters ? '…' : t('print.noPrimaryPrinters')}</option>
+                  )}
+                </select>
+                <button
+                  onClick={() => { void refreshPrimaryPrinters(); }}
+                  disabled={refreshingPrinters}
+                  title={t('print.refreshPrinters')}
+                  style={{
+                    width: '36px', flexShrink: 0, borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.12)',
+                    background: 'rgba(255,255,255,0.06)', color: '#cbd5e1',
+                    cursor: refreshingPrinters ? 'wait' : 'pointer', fontSize: '0.95rem',
+                  }}
+                >{refreshingPrinters ? '…' : '↻'}</button>
+              </div>
+              <div style={{
+                marginTop: '0.45rem', fontSize: '0.74rem', color: '#93c5fd', padding: '0.45rem 0.6rem',
+                borderRadius: '0.4rem', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)',
+                lineHeight: 1.35,
+              }}>
+                🖥️ {t('print.willPrintOnPrimary')}
+              </div>
+            </Field>
           ) : (
             <Field label="Printer">
               <select
@@ -751,6 +865,16 @@ export default function PrintPreviewModal({
                 ))}
                 {printers.length === 0 && <option value="">{t('print.noPrintersFound')}</option>}
               </select>
+              {/* Secondary in Local Printing Mode: make the fallback visible. */}
+              {lanReadOnly && (
+                <div style={{
+                  marginTop: '0.45rem', fontSize: '0.74rem', color: '#fbbf24', padding: '0.45rem 0.6rem',
+                  borderRadius: '0.4rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+                  lineHeight: 1.35,
+                }}>
+                  ⚠️ {t('print.localFallback')}
+                </div>
+              )}
             </Field>
           )}
 
@@ -1048,10 +1172,8 @@ export default function PrintPreviewModal({
             </button>
             <button
               onClick={handlePrint}
-              // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: on a Secondary,
-              // a bridge-eligible receipt (canBridge) keeps Print ENABLED and
-              // forwards to the Primary. A non-bridged print (no bridgeReceipt) is
-              // disabled. Primary/standalone require a selected printer as before.
+              // R-PRINT-SERVER-V1: enabled once a printer is picked — one of
+              // the Primary's printers in server mode, a local one otherwise.
               disabled={printDisabled}
               style={{
                 flex: 2, padding: '0.65rem', borderRadius: '0.5rem', border: 'none',

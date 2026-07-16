@@ -3,6 +3,10 @@ import { useCallback, useState } from 'react';
 // prints are forwarded to the Primary (which owns the printer).
 import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { sendPrintReceipt, emitLanPrintResult } from '@/services/lan/lanService';
+// R-PRINT-SERVER-V1: Local Printing Mode — when the Primary is offline the
+// silent receipt bridge is skipped and the print falls through to the local
+// paths below (modal in local mode / local silent print).
+import { getMirrorStatus } from '@/services/lan/lanMirror';
 // R-PRINT-MEDIA-GUARD-V1: media validation for the SILENT path — the job's
 // exact microns are compared to the target printer's configured media type
 // (warn / auto-route labels). Fail-open when nothing is configured.
@@ -128,7 +132,10 @@ export async function openPrintWindow(html: string, options?: PrintOptions): Pro
   // On a read-only LAN Secondary, a receipt print is sent to the Primary, which
   // prints on its own hardware. Silent + toast-only feedback (no modal). NOT
   // retried (printing isn't idempotent). Any other print / role is unaffected.
-  if (opts.bridgeReceipt && isLanSecondaryReadOnly()) {
+  // R-PRINT-SERVER-V1: routed by media on the Primary and executed through its
+  // per-printer FIFO queue. When the Primary is OFFLINE (mirror state) the
+  // bridge is skipped → Local Printing Mode (the paths below print locally).
+  if (opts.bridgeReceipt && isLanSecondaryReadOnly() && getMirrorStatus().connState !== 'offline') {
     const pageSize = opts.pageSizeMicrons || PAGE_SIZE_MICRONS[opts.pageSize || '4x6'];
     try {
       const ack = await sendPrintReceipt({

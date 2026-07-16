@@ -5238,6 +5238,12 @@ export const translations: TranslationDictionary = {
   'print.managedByPrimary':    { en: 'Managed by Primary Terminal — printing happens on the Primary computer.', es: 'Administrado por la Terminal Principal — la impresión ocurre en la computadora Principal.', pt: 'Gerenciado pelo Terminal Principal — a impressão ocorre no computador Principal.' },
   // LAN-PRINT-BRIDGE-PRINTPREVIEW-BRIDGED-RECEIPT-FIX-V1: bridge-eligible receipt on a Secondary.
   'print.willPrintOnPrimary':  { en: 'This will print on the Primary Terminal.', es: 'Esto se imprimirá en la Terminal Principal.', pt: 'Isto será impresso no Terminal Principal.' },
+  // R-PRINT-SERVER-V1: Primary print-server picker on a Secondary.
+  'print.primaryPrinters':     { en: 'Printer — on {name}', es: 'Impresora — en {name}', pt: 'Impressora — em {name}' },
+  'print.printerOffline':      { en: 'Offline', es: 'Fuera de línea', pt: 'Offline' },
+  'print.refreshPrinters':     { en: 'Refresh printer list from the Primary', es: 'Actualizar lista de impresoras de la Principal', pt: 'Atualizar lista de impressoras do Principal' },
+  'print.noPrimaryPrinters':   { en: 'No printers found on the Primary', es: 'No se encontraron impresoras en la Principal', pt: 'Nenhuma impressora encontrada no Principal' },
+  'print.localFallback':       { en: 'Primary offline — Local Printing Mode (this computer’s printers).', es: 'Principal fuera de línea — Modo de impresión local (impresoras de esta computadora).', pt: 'Principal offline — Modo de impressão local (impressoras deste computador).' },
   // RECEIPT-PRINTER-RANGE-FALLBACK-V1: shown when the receipt printer can't print a page subset.
   'print.rangeUnsupported':    { en: 'This printer can’t print selected pages. Printing the full document instead.', es: 'Esta impresora no puede imprimir páginas seleccionadas. Se imprimió el documento completo.', pt: 'Esta impressora não pode imprimir páginas selecionadas. Imprimindo o documento completo.' },
   // R-2.1.4-PRINT-PAGES: specific Custom Range validation messages. Invalid

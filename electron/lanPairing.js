@@ -55,10 +55,16 @@ let getLicense = null;
 // to the Primary renderer; every other type is rejected at the server.
 // R-LAN-POS-CHECKOUT-FORWARDING: LAN_POS_CHECKOUT = Secondary forwards a completed
 // Sale; the Primary renderer finalizes it headlessly via finalizeSaleCore.
-const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT']);
+// R-PRINT-SERVER-V1: print-server protocol — the Primary advertises its
+// printers (LAN_PRINTER_LIST_REQUEST), accepts a complete explicit-printer
+// job (LAN_PRINT_SUBMIT → per-printer FIFO queue), and answers job status /
+// cancel polls. All validated in the Primary renderer dispatcher.
+const ALLOWED_OPS = new Set(['LAN_PING_OPERATION', 'CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT',
+  'LAN_PRINTER_LIST_REQUEST', 'LAN_PRINT_SUBMIT', 'LAN_PRINT_STATUS_REQUEST', 'LAN_PRINT_CANCEL_REQUEST']);
 // Operations routed through the renderer dispatcher (not the display-only path).
 // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: LAN_PRINT_RECEIPT_REQUEST → Primary prints.
-const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT']);
+const DISPATCHED_OPS = new Set(['CREATE_CUSTOMER', 'LAN_CUSTOMER_NOTE_ADD', 'CREATE_APPOINTMENT', 'LAN_PRINT_RECEIPT_REQUEST', 'LAN_POS_CHECKOUT',
+  'LAN_PRINTER_LIST_REQUEST', 'LAN_PRINT_SUBMIT', 'LAN_PRINT_STATUS_REQUEST', 'LAN_PRINT_CANCEL_REQUEST']);
 let lastOperation = null;
 // Active pairing window: { code, expiresAt, failed } or null when none.
 let pairState = null;
@@ -385,6 +391,13 @@ function startPrimary(opts) {
                   printed: body.printed || undefined,
                   duplicate: !!body.duplicate,
                   error: body.ok ? undefined : (body.error || 'dispatch_failed'),
+                  // R-PRINT-SERVER-V1: explicit passthrough of the print-server
+                  // response fields (never a blind spread — no accidental leakage).
+                  printers: Array.isArray(body.printers) ? body.printers : undefined,
+                  primaryName: body.primaryName || undefined,
+                  jobId: body.jobId || undefined,
+                  queuePosition: typeof body.queuePosition === 'number' ? body.queuePosition : undefined,
+                  jobStatus: body.jobStatus && typeof body.jobStatus === 'object' ? body.jobStatus : undefined,
                 }));
               })
               .catch(() => {

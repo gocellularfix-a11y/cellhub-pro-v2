@@ -178,8 +178,17 @@ export function requestMirrorResync(): void {
 // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: result of a forwarded receipt print. The
 // print funnel (usePrint) is non-React, so it emits this event and a global
 // <LanPrintBridgeListener> turns it into a localized toast.
+// R-PRINT-SERVER-V1: extended with queue progress — `state` narrates the job
+// lifecycle on the Primary print server (queued → printing → completed /
+// failed / cancelled / lost); `ahead` = jobs before this one on that printer.
 export const LAN_PRINT_RESULT_EVENT = 'cellhub:lan-print-result';
-export interface LanPrintResultDetail { ok: boolean; error?: string }
+export interface LanPrintResultDetail {
+  ok: boolean;
+  error?: string;
+  state?: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'lost';
+  ahead?: number;
+  jobId?: string;
+}
 export function emitLanPrintResult(detail: LanPrintResultDetail): void {
   try { window.dispatchEvent(new CustomEvent(LAN_PRINT_RESULT_EVENT, { detail })); } catch { /* ignore */ }
 }
