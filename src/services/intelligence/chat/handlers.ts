@@ -1024,8 +1024,9 @@ function handleTodaySummary(engine: IntelligenceEngine, lang: Lang3): ChatRespon
   const isFollowup = (now - lastTodaySummaryAt) < TODAY_SUMMARY_FOLLOWUP_WINDOW_MS;
   lastTodaySummaryAt = now;
 
-  // Empty path — no sales today yet.
-  if (m.transactions === 0) {
+  // Empty path — no financial activity today at all (I2A: a refund-only
+  // day has a real negative net and must be shown, not masked as empty).
+  if (m.transactions === 0 && m.netSalesCents === 0 && m.returnsCents === 0) {
     return { kind: 'answer', text: t('chat.today.empty') };
   }
 
@@ -1513,7 +1514,10 @@ function handleTodaySales(engine: IntelligenceEngine, lang: Lang3): ChatResponse
   const t = tChat(lang);
   const m = engine.getTodayMetrics();
 
-  if (m.transactions === 0) {
+  // I2A: "empty" means NO financial activity at all. A refund-only day has
+  // zero transactions but a real (negative) net — it must be SHOWN with its
+  // minus sign, never masked as "no sales yet".
+  if (m.transactions === 0 && m.netSalesCents === 0 && m.returnsCents === 0) {
     return { kind: 'answer', text: t('chat.todaySales.empty') };
   }
 
@@ -4499,7 +4503,7 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   // BEFORE the sales branch so "ventas por empleado" / "top employee"
   // route here, not into the generic sales summary.
   if (/employee|empleado|funcionário|funcionario/.test(q)) {
-    const rows = getEmployeePerformance(engine.getSales(), range);
+    const rows = getEmployeePerformance(engine.canonicalMoneySnapshot(), range);
     if (rows.length === 0) return { kind: 'answer', text: t('chat.dataQuery.employeesEmpty') };
     const lines = [t('chat.dataQuery.employeesHeader'), ''];
     rows.slice(0, 3).forEach((r, i) => {
@@ -4676,7 +4680,7 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
 
   // ── Phone payments ─────────────────────────────────────
   if (/phone payment|pagos? de tel|pagamento.*tel|recharge|recarga/.test(q)) {
-    const sum = getPhonePaymentSummary(engine.getSales(), range);
+    const sum = getPhonePaymentSummary(engine.canonicalMoneySnapshot(), range);
     if (sum.count === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
     return {
       kind: 'answer',
@@ -4720,7 +4724,7 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
 
   // ── Sales (default for "how much / cuánto / quanto / vendi") ───
   if (/sale|venta|sold|vendi|how much|cuanto|cuánto|quanto|profit|ganancia|lucro/.test(q)) {
-    const sum = getSalesSummary(engine.getSales(), range);
+    const sum = getSalesSummary(engine.canonicalMoneySnapshot(), range);
     if (sum.count === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
     const lines = [
       `${t('chat.dataQuery.salesHeader')} — ${rangeLabel(range, lang)}`,

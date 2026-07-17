@@ -1,5 +1,10 @@
 // CellHub Intelligence — Intelligence Engine Orchestrator
-import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment, StoreCreditLedger } from '@/store/types';
+import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaway, CustomerReturn, Expense, Employee, Appointment, StoreCreditLedger, StoreSettings } from '@/store/types';
+// CELLHUB-INTELLIGENCE-I2A: canonical report-money adapter — financial
+// calculations are owned by computeReportMoneyStats; the adapter and this
+// engine only wire data and map fields.
+import { computeCanonicalMoneyForRange, localDayRangeForDay } from './adapters/reportMoneyAdapter';
+import type { CanonicalMoneySnapshot } from './adapters/reportMoneyAdapter';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
 import { computeContextualBaseline } from './baseline/contextualBaseline';
 import { computeTrendDirectionReport } from './trends/trendDirection';
@@ -116,6 +121,9 @@ export interface EngineExtras {
   // R-INTEL-CROSS-001: store credit ledger — global (no storeId filter),
   // same contract as customers. Consumers call getStoreCreditLedger().
   storeCreditLedger?: StoreCreditLedger[];
+  // CELLHUB-INTELLIGENCE-I2A: vendor returns pass-through — required by the
+  // canonical report-money service (they reduce COGS). Read-only.
+  vendorReturns?: unknown[];
 }
 
 export class IntelligenceEngine {
@@ -141,6 +149,9 @@ export class IntelligenceEngine {
   // R-INTEL-CROSS-001: global ledger — no storeId filter (certs belong to
   // customers, not stores; same scope contract as customers).
   private storeCreditLedger: StoreCreditLedger[];
+  // CELLHUB-INTELLIGENCE-I2A: vendor returns (COGS reduction in the
+  // canonical money service). Raw pass-through, read-only.
+  private vendorReturns: unknown[];
   // R-CUSTOMER-PROFIT-PARITY-V1: store settings for per-customer
   // profit adjustment (phone payment commission, repair fallback).
   private profitSettings: ProfitAdjustmentSettings;
@@ -243,6 +254,8 @@ export class IntelligenceEngine {
     this.employees = extras.employees ?? [];
     this.appointments = extras.appointments ?? [];
     this.storeCreditLedger = extras.storeCreditLedger ?? [];
+    // CELLHUB-INTELLIGENCE-I2A: vendor returns for the canonical money service.
+    this.vendorReturns = extras.vendorReturns ?? [];
     // R-CUSTOMER-PROFIT-PARITY-V1: empty {} when omitted ⇒ adjustSalesItemCosts
     // falls back to defaultRate=0 (no profit fabricated; just clears the
     // 100% margin bug for items where the stamped commissionRate is missing).
@@ -598,65 +611,88 @@ export class IntelligenceEngine {
   // R-INTEL-CROSS-001: global ledger — no storeId filter, same contract as getCustomers().
   getStoreCreditLedger(): StoreCreditLedger[] { return this.storeCreditLedger; }
 
-  // R-INTELLIGENCE-CHAT-TODAY-UX-TWEAK: today-only metrics for the chat's
-  // today_summary intent. Filters sales by createdAt >= midnight + status
-  // not voided/refunded. Returns revenue, transaction count, average ticket
-  // (round-half-to-even via Math.round), and top-seller-by-revenue. Pure
-  // compute; safe to call on every chat handler invocation (cheap iteration
-  // over already-adapted sales array).
+  // CELLHUB-INTELLIGENCE-I2A: today-only metrics for the chat's today
+  // intents. Financial calculations are owned by computeReportMoneyStats —
+  // this method performs data wiring and field mapping ONLY (see
+  // adapters/reportMoneyAdapter.ts). The previous parallel implementation
+  // (midnight-forward filter + reduce over sale.total + local top-seller
+  // aggregation) was removed; Reports and Intelligence can no longer drift.
+  //
+  // Field mapping (old meaning → canonical):
+  //   revenueCents   ("sales today" in chat)  → netSalesCents
+  //     Old value ≈ countable-sale totals (gross w/o refunded originals,
+  //     refund-audit rows subtracting inline). Canonical NET sales is the
+  //     honest number for the same user-facing label.
+  //   transactions   → txCount (gross activity: incl. later-refunded
+  //     originals, excl. refund-representation rows).
+  //   avgTicketCents → derived display ratio netSales/txCount (presentation
+  //     only — not a canonical money policy).
+  //   topSeller      → topItems[0] when its revenue is positive (canonical
+  //     gross-activity item table; old positive-only contract preserved).
+  // Additive canonical fields are exposed for future handlers; NO profit
+  // numbers here (this DTO feeds ungated chat paths — profit stays in the
+  // gated EOD pipeline).
   getTodayMetrics(): {
     revenueCents: number;
     transactions: number;
     avgTicketCents: number;
     topSeller: { name: string; revenueCents: number } | null;
+    // I2A additive canonical fields:
+    grossSalesCents: number;
+    netSalesCents: number;
+    returnsCents: number;
+    netTaxCents: number;
+    voidedCount: number;
+    refundedCount: number;
+    profitMarginMeaningful: boolean;
+    profitAdjustmentEstimated: boolean;
   } {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayMs = todayStart.getTime();
-
-    const tsOf = (sale: Sale): number => {
-      const ca = (sale as { createdAt?: unknown }).createdAt;
-      if (!ca) return 0;
-      try {
-        const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
-          ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        return new Date(d).getTime();
-      } catch { return 0; }
-    };
-
-    const todaySales = this.sales.filter((s) => {
-      const t = tsOf(s);
-      if (!t || t < todayMs) return false;
-      const status = String((s as { status?: string }).status || '').toLowerCase();
-      return status !== 'voided' && status !== 'refunded';
-    });
-
-    const transactions = todaySales.length;
-    const revenueCents = todaySales.reduce((sum, s) => sum + ((s as { total?: number }).total || 0), 0);
+    const stats = computeCanonicalMoneyForRange(
+      this.canonicalMoneySnapshot(),
+      localDayRangeForDay(new Date()),
+    );
+    const transactions = stats.txCount;
+    const revenueCents = stats.netSalesCents;
+    // Display ratio only — no rounding/clamp policy beyond integer cents.
     const avgTicketCents = transactions > 0 ? Math.round(revenueCents / transactions) : 0;
+    const top = stats.topItems[0];
+    const topSeller = top && top.revenueCents > 0
+      ? { name: top.name, revenueCents: top.revenueCents }
+      : null;
+    return {
+      revenueCents,
+      transactions,
+      avgTicketCents,
+      topSeller,
+      grossSalesCents: stats.grossSalesCents,
+      netSalesCents: stats.netSalesCents,
+      returnsCents: stats.returnAndRefundAdjustmentsCents,
+      netTaxCents: stats.netTaxCents,
+      voidedCount: stats.voidedCount,
+      refundedCount: stats.refundedCount,
+      profitMarginMeaningful: stats.profitMarginMeaningful,
+      profitAdjustmentEstimated: stats.profitAdjustmentEstimated,
+    };
+  }
 
-    // Top seller by aggregated line revenue (price × qty).
-    const itemRev = new Map<string, number>();
-    for (const sale of todaySales) {
-      for (const item of (sale.items || [])) {
-        const name = String((item as { name?: string }).name || '').trim();
-        if (!name) continue;
-        const qty = (item as { qty?: number; quantity?: number }).qty
-          ?? (item as { quantity?: number }).quantity
-          ?? 1;
-        const lineRev = ((item as { price?: number }).price || 0) * qty;
-        itemRev.set(name, (itemRev.get(name) || 0) + lineRev);
-      }
-    }
-    let topSeller: { name: string; revenueCents: number } | null = null;
-    for (const [name, rev] of itemRev) {
-      if (rev > 0 && (!topSeller || rev > topSeller.revenueCents)) {
-        topSeller = { name, revenueCents: rev };
-      }
-    }
-
-    return { revenueCents, transactions, avgTicketCents, topSeller };
+  // CELLHUB-INTELLIGENCE-I2A: the RAW store snapshot for the canonical
+  // money service — the SAME un-adapted collections Reports reads (the
+  // schema-adapted this.sales would break parity). Data wiring only.
+  canonicalMoneySnapshot(): CanonicalMoneySnapshot {
+    return {
+      sales: this._rawSales,
+      repairs: this._rawRepairs,
+      unlocks: this._rawUnlocks,
+      specialOrders: this._rawSpecialOrders,
+      layaways: this._rawLayaways,
+      inventory: this._rawInventory,
+      customerReturns: this._rawCustomerReturns,
+      vendorReturns: this.vendorReturns,
+      // At runtime IntelligenceModule passes the FULL StoreSettings object
+      // (typed narrow as ProfitAdjustmentSettings). Callers that pass a
+      // narrow object simply get canonical commission defaults.
+      settings: this.profitSettings as unknown as StoreSettings,
+    };
   }
 
   // R-EOD-MONEY-WIRE: today-only money aggregation for the End-of-Day brief.
@@ -849,6 +885,8 @@ export class IntelligenceEngine {
     // Caller passes the latest settings each updateData() so commission
     // rate edits in Settings reflect immediately in customer history.
     if (extras.settings) this.profitSettings = extras.settings;
+    // CELLHUB-INTELLIGENCE-I2A: keep vendor returns live (canonical money).
+    if (extras.vendorReturns) this.vendorReturns = extras.vendorReturns;
 
     if (
       sales === this._rawSales

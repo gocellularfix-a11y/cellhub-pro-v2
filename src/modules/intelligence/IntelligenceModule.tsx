@@ -183,6 +183,9 @@ export default function IntelligenceModule() {
   const {
     sales, customers, inventory, repairs,
     specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger,
+    // CELLHUB-INTELLIGENCE-I2A: vendor returns feed the canonical money
+    // service (COGS reduction) — same source Reports uses.
+    vendorReturns,
     currentStoreId, consolidatedView,
     // R-CUSTOMER-PROFIT-PARITY-V1: settings carry carrierCommissions +
     // defaultCommissionRate. Engine uses them inside getCustomerHistory
@@ -286,7 +289,7 @@ export default function IntelligenceModule() {
     engineRef.current = new IntelligenceEngine(
       sales, customers, inventory, repairs,
       { lang: engineLang, storeId: consolidatedView ? undefined : currentStoreId, enableAlerts: true, enableScoring: true, cacheTimeoutMinutes: 15 },
-      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings },
+      { specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns },
     );
     engineConfigSigRef.current = engineConfigSig;
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.create', _t);
@@ -296,7 +299,7 @@ export default function IntelligenceModule() {
   {
     const _t = INTEL_PERF_ENABLED ? performance.now() : 0;
     engine.updateData(sales, customers, inventory, repairs, {
-      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings,
+      specialOrders, unlocks, layaways, customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns,
     });
     if (INTEL_PERF_ENABLED) perfLog('intel.module.engine.updateData', _t);
   }

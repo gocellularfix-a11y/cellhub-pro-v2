@@ -11,6 +11,15 @@
 import type {
   Sale, Customer, InventoryItem, Repair, Unlock, Layaway, SpecialOrder, CustomerReturn, Expense, Appointment,
 } from '@/store/types';
+// CELLHUB-INTELLIGENCE-I2A: financial calculations are owned by
+// computeReportMoneyStats — the adapter wires data and maps fields only.
+// The sales/employee/phone-payment money summaries below consume it; their
+// previous parallel reductions were removed.
+import {
+  computeCanonicalMoneyForRange,
+  localDayRangeForIntelRange,
+} from '@/services/intelligence/adapters/reportMoneyAdapter';
+import type { CanonicalMoneySnapshot } from '@/services/intelligence/adapters/reportMoneyAdapter';
 
 export type DateRange = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days';
 
@@ -68,42 +77,43 @@ export interface SalesSummary {
   revenueCents: number;
   avgTicketCents: number;
   topSeller: { name: string; revenueCents: number } | null;
+  // CELLHUB-INTELLIGENCE-I2A additive canonical fields:
+  grossSalesCents: number;
+  netSalesCents: number;
+  returnsCents: number;
+  netTaxCents: number;
+  profitMarginMeaningful: boolean;
+  profitAdjustmentEstimated: boolean;
 }
 
-export function getSalesSummary(sales: Sale[], range: DateRange): SalesSummary {
-  const { start, end } = getDateBounds(range);
-  const filtered = sales.filter((s) => {
-    const t = timestampOf((s as { createdAt?: unknown }).createdAt);
-    return t >= start && t < end && isCountableSale(s);
-  });
-  const count = filtered.length;
-  const revenueCents = filtered.reduce((sum, s) => sum + ((s as { total?: number }).total || 0), 0);
+// CELLHUB-INTELLIGENCE-I2A: canonical mapping —
+//   count        → txCount (gross activity)
+//   revenueCents → netSalesCents (the honest "sales in range" number;
+//                  previous parallel reduce over countable totals removed)
+//   avgTicket    → display ratio netSales/txCount (presentation only)
+//   topSeller    → topItems[0] when positive (old contract preserved)
+export function getSalesSummary(snapshot: CanonicalMoneySnapshot, range: DateRange): SalesSummary {
+  const stats = computeCanonicalMoneyForRange(snapshot, localDayRangeForIntelRange(range));
+  const count = stats.txCount;
+  const revenueCents = stats.netSalesCents;
   const avgTicketCents = count > 0 ? Math.round(revenueCents / count) : 0;
-
-  const itemRev = new Map<string, number>();
-  for (const s of filtered) {
-    for (const item of (s.items || [])) {
-      const name = String((item as { name?: string }).name || '').trim();
-      if (!name) continue;
-      const qty = (item as { qty?: number; quantity?: number }).qty
-        ?? (item as { quantity?: number }).quantity
-        ?? 1;
-      const lineRev = ((item as { price?: number }).price || 0) * qty;
-      itemRev.set(name, (itemRev.get(name) || 0) + lineRev);
-    }
-  }
-  let topSeller: { name: string; revenueCents: number } | null = null;
-  for (const [name, rev] of itemRev) {
-    if (rev > 0 && (!topSeller || rev > topSeller.revenueCents)) {
-      topSeller = { name, revenueCents: rev };
-    }
-  }
-
-  return { range, count, revenueCents, avgTicketCents, topSeller };
+  const top = stats.topItems[0];
+  const topSeller = top && top.revenueCents > 0
+    ? { name: top.name, revenueCents: top.revenueCents }
+    : null;
+  return {
+    range, count, revenueCents, avgTicketCents, topSeller,
+    grossSalesCents: stats.grossSalesCents,
+    netSalesCents: stats.netSalesCents,
+    returnsCents: stats.returnAndRefundAdjustmentsCents,
+    netTaxCents: stats.netTaxCents,
+    profitMarginMeaningful: stats.profitMarginMeaningful,
+    profitAdjustmentEstimated: stats.profitAdjustmentEstimated,
+  };
 }
 
-export function getTodaySummary(sales: Sale[]): SalesSummary {
-  return getSalesSummary(sales, 'today');
+export function getTodaySummary(snapshot: CanonicalMoneySnapshot): SalesSummary {
+  return getSalesSummary(snapshot, 'today');
 }
 
 // ── Inventory ───────────────────────────────────────────────
@@ -356,22 +366,16 @@ export interface PhonePaymentSummary {
   revenueCents: number;
 }
 
-export function getPhonePaymentSummary(sales: Sale[], range: DateRange): PhonePaymentSummary {
-  const { start, end } = getDateBounds(range);
+// CELLHUB-INTELLIGENCE-I2A: canonical provider buckets replace the local
+// item loop. Classification upgrade (same one Reports shipped in
+// R-2.1.4-REPORTS-ACTIVATION-CLASSIFICATION): genuine ACTIVATION lines no
+// longer count as bill payments — they live in activationsByCarrier.
+export function getPhonePaymentSummary(snapshot: CanonicalMoneySnapshot, range: DateRange): PhonePaymentSummary {
+  const stats = computeCanonicalMoneyForRange(snapshot, localDayRangeForIntelRange(range));
   let count = 0, revenueCents = 0;
-  for (const s of sales) {
-    const t = timestampOf((s as { createdAt?: unknown }).createdAt);
-    if (t < start || t >= end) continue;
-    if (!isCountableSale(s)) continue;
-    for (const item of (s.items || [])) {
-      const cat = String((item as { category?: string }).category || '').toLowerCase();
-      if (cat !== 'phone_payment') continue;
-      const qty = (item as { qty?: number; quantity?: number }).qty
-        ?? (item as { quantity?: number }).quantity
-        ?? 1;
-      count++;
-      revenueCents += ((item as { price?: number }).price || 0) * qty;
-    }
+  for (const bucket of Object.values(stats.phonePaymentsByProvider)) {
+    count += bucket.count;
+    revenueCents += bucket.totalCents;
   }
   return { range, count, revenueCents };
 }
@@ -448,32 +452,24 @@ export function getExpenseSummary(expenses: Expense[], range: DateRange): Expens
   return { range, count, totalCents, byCategory };
 }
 
-// ── Employee performance (R-DATA-EMPLOYEE-ACCESS-V1) ───────
-// Mirrors Reports' employeeStats logic exactly — keyed by sale.employeeName,
-// "Unknown" fallback, sums total + transaction count, sorts DESC by revenue.
-// Excludes voided/refunded sales (matches isCountableSale used elsewhere).
-// Money in cents. NO commission math, NO profit math — caller's spec.
+// ── Employee performance (R-DATA-EMPLOYEE-ACCESS-V1 → I2A) ───────
+// IS Reports' employee table: the canonical topEmployees (gross activity,
+// 'Unknown' fallback, revenue-desc). Money in cents. NO commission math,
+// NO profit math — caller's spec.
 export interface EmployeePerformanceRow {
   name: string;
   transactions: number;
   revenueCents: number;
 }
 
-export function getEmployeePerformance(sales: Sale[], range: DateRange): EmployeePerformanceRow[] {
-  const { start, end } = getDateBounds(range);
-  const stats: Record<string, { transactions: number; revenueCents: number }> = {};
-  for (const s of sales) {
-    if (!isCountableSale(s)) continue;
-    const t = timestampOf((s as { createdAt?: unknown }).createdAt);
-    if (t < start || t >= end) continue;
-    const name = (s as { employeeName?: string }).employeeName || 'Unknown';
-    if (!stats[name]) stats[name] = { transactions: 0, revenueCents: 0 };
-    stats[name].transactions++;
-    stats[name].revenueCents += (s as { total?: number }).total || 0;
-  }
-  return Object.entries(stats)
-    .map(([name, d]) => ({ name, transactions: d.transactions, revenueCents: d.revenueCents }))
-    .sort((a, b) => b.revenueCents - a.revenueCents);
+// CELLHUB-INTELLIGENCE-I2A: canonical topEmployees IS this contract
+// ({name, transactions, revenueCents}, revenue-desc, 'Unknown' fallback
+// label injected by the adapter). Local reduce removed.
+export function getEmployeePerformance(snapshot: CanonicalMoneySnapshot, range: DateRange): EmployeePerformanceRow[] {
+  const stats = computeCanonicalMoneyForRange(snapshot, localDayRangeForIntelRange(range));
+  return stats.topEmployees.map((e) => ({
+    name: e.name, transactions: e.transactions, revenueCents: e.revenueCents,
+  }));
 }
 
 // ── Liability — store credit + loyalty (R-DATA-LIABILITY-V1) ──
