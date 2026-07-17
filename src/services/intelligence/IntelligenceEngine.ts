@@ -4,6 +4,9 @@ import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaw
 // calculations are owned by computeReportMoneyStats; the adapter and this
 // engine only wire data and map fields.
 import { computeCanonicalMoneyForRange, localDayRangeForDay } from './adapters/reportMoneyAdapter';
+// I2B-1.1: the SAME inclusive local-day membership test the canonical service
+// uses — auxiliary EOD filters must never re-derive day boundaries.
+import { isWithinLocalDayRange } from '@/utils/reportRange';
 import type { CanonicalMoneySnapshot, CanonicalMoneySettings } from './adapters/reportMoneyAdapter';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
 import { computeContextualBaseline } from './baseline/contextualBaseline';
@@ -764,35 +767,37 @@ export class IntelligenceEngine {
   } {
     // Canonical money for THIS local calendar day over the raw scoped snapshot
     // (the same wiring getTodayMetrics uses). Financial math is owned entirely
-    // by computeReportMoneyStats — never re-derived here.
+    // by computeReportMoneyStats — never re-derived here. `range` is computed
+    // ONCE and shared with the auxiliary filters below so both sides always
+    // agree on the day even across a midnight tick (I2B-1.1).
+    const range = localDayRangeForDay(new Date());
     const snapshot = this.canonicalMoneySnapshot();
-    const c = computeCanonicalMoneyForRange(snapshot, localDayRangeForDay(new Date()));
+    const c = computeCanonicalMoneyForRange(snapshot, range);
 
     // Day-scoping for the NON-canonical display residuals + activity counts.
-    // Same timestamp resolution as getTodayMetrics — handles Firestore
-    // Timestamp (.toDate) and ISO strings/Date alike. 0 ⇒ unparseable ⇒
-    // excluded from "today".
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayMs = todayStart.getTime();
-    const tsOf = (rec: { createdAt?: unknown }): number => {
+    // I2B-1.1: BOTH boundaries of the SAME canonical local-day range — the
+    // previous `t >= todayMs` lower-bound-only filter let future-dated sales/
+    // returns leak into returnCount / hasData / hasSalesData / otherCents /
+    // creditCardFeeCents. Membership uses the SAME inclusive helper the
+    // canonical service uses (isWithinLocalDayRange) — never a re-derived
+    // day algorithm. Timestamp resolution handles Firestore Timestamp
+    // (.toDate) and ISO strings/Date alike; unparseable ⇒ excluded.
+    const dateOf = (rec: { createdAt?: unknown }): Date | null => {
       const ca = rec.createdAt;
-      if (!ca) return 0;
+      if (!ca) return null;
       try {
         const d = typeof (ca as { toDate?: () => Date }).toDate === 'function'
           ? (ca as { toDate: () => Date }).toDate()
-          : (ca as string | Date);
-        return new Date(d).getTime();
-      } catch { return 0; }
+          : new Date(ca as string | Date);
+        return isNaN(d.getTime()) ? null : d;
+      } catch { return null; }
     };
-    const daySales = (snapshot.sales || []).filter((s) => {
-      const t = tsOf(s as { createdAt?: unknown });
-      return !!t && t >= todayMs;
-    });
-    const dayReturns = (snapshot.customerReturns || []).filter((r) => {
-      const t = tsOf(r as { createdAt?: unknown });
-      return !!t && t >= todayMs;
-    });
+    const daySales = (snapshot.sales || []).filter(
+      (s) => isWithinLocalDayRange(dateOf(s as { createdAt?: unknown }), range),
+    );
+    const dayReturns = (snapshot.customerReturns || []).filter(
+      (r) => isWithinLocalDayRange(dateOf(r as { createdAt?: unknown }), range),
+    );
 
     // Display residuals ONLY: otherCents (unknown/legacy payment methods) and
     // creditCardFeeCents — the two breakdown fields the canonical service does

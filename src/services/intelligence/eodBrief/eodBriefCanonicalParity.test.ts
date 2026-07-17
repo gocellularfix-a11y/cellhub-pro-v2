@@ -293,4 +293,43 @@ describe('I2B-1 EOD ⇄ Reports parity', () => {
     expect(m.grossRevenueCents).toBe(10000);     // only today's sale
     expect(m.grossRevenueCents).toBe(c.grossSalesCents);
   });
+
+  it('16b. I2B-1.1 upper boundary — FUTURE-dated records never leak into the auxiliary fields', () => {
+    const tomorrowNoon = new Date(Date.now() + DAY);
+    tomorrowNoon.setHours(12, 0, 0, 0);
+    // Future sale carries BOTH residuals: an unknown payment method (→ would
+    // land in otherCents) and a creditCardFee — plus a future return.
+    const futureSale = sale({
+      id: 'future', createdAt: tomorrowNoon.toISOString(), total: 7777,
+      paymentMethod: 'crypto', creditCardFee: 555,
+    });
+    const futureReturn = ret({
+      id: 'future-r', createdAt: tomorrowNoon.toISOString(),
+      subtotalCents: 1000, totalCents: 1000,
+    });
+
+    // Baseline: ONLY future records → every auxiliary field must be empty.
+    const emptyDay = buildEngine([futureSale], { customerReturns: [futureReturn] });
+    const { m: mEmpty } = assertParity(emptyDay);
+    expect(mEmpty.returnCount).toBe(0);
+    expect(mEmpty.hasData).toBe(false);
+    expect(mEmpty.hasSalesData).toBe(false);
+    expect(mEmpty.tenderBreakdown.otherCents).toBe(0);
+    expect(mEmpty.feesAndTaxes.creditCardFeeCents).toBe(0);
+
+    // Mixed day: today's records included, future records STILL excluded —
+    // auxiliary fields reflect exactly the in-day activity.
+    const todayCrypto = sale({
+      id: 'today-crypto', createdAt: todayAt(11), total: 3000,
+      paymentMethod: 'crypto', creditCardFee: 120,
+    });
+    const todayReturn = ret({ id: 'today-r', createdAt: todayAt(14), subtotalCents: 500, totalCents: 500 });
+    const mixed = buildEngine([todayCrypto, futureSale], { customerReturns: [todayReturn, futureReturn] });
+    const { m: mMixed } = assertParity(mixed);
+    expect(mMixed.returnCount).toBe(1);                          // today's return only
+    expect(mMixed.hasData).toBe(true);
+    expect(mMixed.hasSalesData).toBe(true);
+    expect(mMixed.tenderBreakdown.otherCents).toBe(3000);        // today's crypto sale only
+    expect(mMixed.feesAndTaxes.creditCardFeeCents).toBe(120);    // today's fee only
+  });
 });
