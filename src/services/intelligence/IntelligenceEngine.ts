@@ -36,6 +36,8 @@ import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { diagnoseChurn } from './rootCause/churnCauses';
 import { computeCustomerProfit, adjustSalesItemCosts, type ProfitAdjustmentSettings } from '@/utils/customerProfit';
+// I2B-0.1: canonical customer money (same service Customer 360 uses).
+import { computeCustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -1384,22 +1386,25 @@ export class IntelligenceEngine {
 
     const customerSales = this.sales.filter(s => s.customerId === customerId);
 
-    // Returns linked by customerId (if stored) or via originalSaleId fallback.
-    const saleIds = new Set(customerSales.map(s => s.id));
-    const returnsForCustomer = this.customerReturns.filter((r) => {
-      if ((r as { customerId?: string }).customerId === customerId) return true;
-      return r.originalSaleId ? saleIds.has(r.originalSaleId) : false;
+    // CELLHUB-INTELLIGENCE-I2B-0.1: the customer's MONEY comes from the same
+    // canonical profile Customer 360 uses (computeCustomerMoneyProfile →
+    // computeReportMoneyStats). Attribution (id → originalSaleId linkage →
+    // normalized phone), commission precedence, refund/exchange reversal and
+    // the commissionable margin denominator are all owned there — chat and
+    // the Customer 360 modal can never disagree again. Replaces the legacy
+    // adjustSalesItemCosts + computeCustomerProfit pair (tax-inclusive
+    // denominator → Jenny's misleading 9.0% margin / "94% cost data").
+    const profile = computeCustomerMoneyProfile({
+      customer,
+      sales: this.sales,
+      repairs: this.repairs,
+      unlocks: this.unlocks,
+      layaways: this.layaways,
+      specialOrders: this.specialOrders,
+      customerReturns: this.customerReturns,
+      inventory: this.inventory,
+      settings: this.profitSettings,
     });
-
-    // R-CUSTOMER-PROFIT-PARITY-V1: align customer-history profit math
-    // with TaxReportsModule. Without this, phone_payment items with
-    // cost=0 inflate "profit" to ~100% of revenue (Juan Martinez: 4
-    // Verizon payments × $60 reported as $240 profit / 91% margin).
-    // adjustSalesItemCosts rewrites cost in-memory using the carrier
-    // commission rate (and 35% fallback for repair items missing parts
-    // cost), matching the canonical Tax module math.
-    const adjustedSales = adjustSalesItemCosts(customerSales, this.profitSettings);
-    const stats = computeCustomerProfit(adjustedSales, returnsForCustomer);
 
     // First / last visit — min/max over non-voided sale timestamps.
     const times = customerSales
@@ -1464,17 +1469,39 @@ export class IntelligenceEngine {
         storeCredit: customer.storeCredit || 0,
         carrier: (customer as { carrier?: string }).carrier,
       },
-      grossRevenue: stats.grossRevenue,
-      netRevenue: stats.netRevenue,
-      totalRefunded: stats.totalRefunded,
-      profit: stats.profit,
-      margin: stats.margin,
-      avgTicket: stats.avgTicket,
-      visitCount: stats.visitCount,
-      avgDaysBetweenVisits: stats.avgDaysBetweenVisits,
-      costCoverage: stats.costCoverage,
-      topCategoryByProfit: stats.topCategoryByProfit as string | null,
-      topCategoryProfit: stats.topCategoryProfit,
+      // Legacy field names preserved for the ~20 consumers; VALUES are
+      // canonical (I2B-0.1). margin is now over the commissionable pre-tax
+      // base; costCoverage is the exact-economic-basis fraction (a
+      // configured carrier commission counts as exact, not missing cost).
+      grossRevenue: profile.totalCollectedCents,
+      netRevenue: profile.netAfterReturnsCents,
+      // returnAndRefundAdjustmentsCents is a POSITIVE magnitude
+      // (netSales = gross − adjustments); clamp guards odd negatives.
+      totalRefunded: Math.max(0, profile.returnsCents),
+      profit: profile.profitCents,
+      margin: profile.marginPercent,
+      avgTicket: profile.averageTicketCents,
+      visitCount: profile.visitCount,
+      avgDaysBetweenVisits: profile.avgDaysBetweenVisits,
+      costCoverage: profile.exactCoveragePercent / 100,
+      topCategoryByProfit: profile.topCategoryByProfit,
+      topCategoryProfit: profile.topCategoryProfitCents,
+      // I2B-0.1: canonical money block — the exact fields Customer 360
+      // renders, so chat surfaces can quote them without re-deriving.
+      canonicalMoney: {
+        totalCollectedCents: profile.totalCollectedCents,
+        profitBearingRevenueCents: profile.profitBearingRevenueCents,
+        profitCents: profile.profitCents,
+        marginPercent: profile.marginPercent,
+        marginMeaningful: profile.marginMeaningful,
+        transactionCount: profile.transactionCount,
+        averageTicketCents: profile.averageTicketCents,
+        returnsCents: profile.returnsCents,
+        netAfterReturnsCents: profile.netAfterReturnsCents,
+        profitEstimated: profile.profitEstimated,
+        estimatedPercent: profile.estimatedPercent,
+        unavailablePercent: profile.unavailablePercent,
+      },
       firstVisit,
       lastVisit,
       topItems,

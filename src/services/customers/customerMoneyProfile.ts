@@ -131,6 +131,33 @@ export type EconomicBasis =
   | 'estimated'
   | 'unavailable';
 
+/** I2B-0.1: phone-payment rate provenance — mirrors ONLY the canonical
+ *  source LOOKUP (stamped → carrierCommissions[normalizeCarrier(...)] →
+ *  defaultCommissionRate → hardcoded 0.07 tail), never the math. Shared by
+ *  classification and the owner diagnostic trace. */
+export type CommissionRateSource =
+  | 'stamped' | 'configured_carrier' | 'configured_default' | 'estimated_fallback';
+
+export function describePhonePaymentRate(
+  item: SaleItem,
+  settings: CanonicalMoneySettings,
+): { rate: number; source: CommissionRateSource; carrier: string | null } {
+  let rawCarrier = String((item as { carrier?: string }).carrier
+    || (item as { carrierName?: string }).carrierName
+    || (item as { provider?: string }).provider || '').trim();
+  if (!rawCarrier && item.name) rawCarrier = item.name.split(/[-–]|Bill Payment/i)[0].trim();
+  const normalized = normalizeCarrier(rawCarrier);
+  const carrier = normalized || rawCarrier || null;
+  const stamped = (item as { commissionRate?: number }).commissionRate;
+  if (typeof stamped === 'number' && stamped > 0) return { rate: stamped, source: 'stamped', carrier };
+  const configured = normalized ? settings.carrierCommissions?.[normalized] : undefined;
+  if (typeof configured === 'number') return { rate: configured, source: 'configured_carrier', carrier };
+  if (typeof settings.defaultCommissionRate === 'number' && settings.defaultCommissionRate > 0) {
+    return { rate: settings.defaultCommissionRate, source: 'configured_default', carrier };
+  }
+  return { rate: 0.07, source: 'estimated_fallback', carrier }; // canonical hardcoded tail
+}
+
 function classifyLineBasis(
   item: SaleItem,
   settings: CanonicalMoneySettings,
@@ -138,20 +165,10 @@ function classifyLineBasis(
 ): EconomicBasis {
   const kind = classifyItem(item);
   if (kind === 'phone_payment') {
-    const stamped = (item as { commissionRate?: number }).commissionRate;
-    if (typeof stamped === 'number' && stamped > 0) return 'exact_stamped_commission';
-    // Mirror ONLY the source lookup (not the math): the canonical chain is
-    // stamped → carrierCommissions[normalizeCarrier(...)] → defaultCommissionRate → 0.07.
-    let rawCarrier = String((item as { carrier?: string }).carrier
-      || (item as { carrierName?: string }).carrierName
-      || (item as { provider?: string }).provider || '').trim();
-    if (!rawCarrier && item.name) rawCarrier = item.name.split(/[-–]|Bill Payment/i)[0].trim();
-    const normalized = normalizeCarrier(rawCarrier);
-    if (normalized && typeof settings.carrierCommissions?.[normalized] === 'number') {
+    const { source } = describePhonePaymentRate(item, settings);
+    if (source === 'stamped') return 'exact_stamped_commission';
+    if (source === 'configured_carrier' || source === 'configured_default') {
       return 'exact_configured_commission';
-    }
-    if (typeof settings.defaultCommissionRate === 'number' && settings.defaultCommissionRate > 0) {
-      return 'exact_configured_commission'; // configured DEFAULT rate
     }
     return 'estimated'; // canonical hardcoded 0.07 tail — not a configured value
   }
@@ -208,10 +225,17 @@ export interface CustomerMoneyProfile {
   estimatedPercent: number;
   unavailablePercent: number;
   returnsCents: number;
+  /** I2B-0.1: canonical net after returns/refunds (tax-inclusive netSalesCents). */
+  netAfterReturnsCents: number;
+  /** FINANCIAL transactions: countable sales + standalone completed
+   *  repairs/unlocks — the exact population behind totalCollectedCents.
+   *  Appointments and returns NEVER count; POS-linked entities count once. */
   transactionCount: number;
   averageTicketCents: number;
   visitCount: number;
   avgDaysBetweenVisits: number | null;
+  firstVisitAt: Date | null;
+  lastVisitAt: Date | null;
   topCategoryByProfit: string | null;
   topCategoryProfitCents: number;
   invoiceEconomics: InvoiceEconomics[];
@@ -235,6 +259,15 @@ function toLocalYMD(d: Date): string {
 
 export function computeCustomerMoneyProfile(input: CustomerMoneyProfileInput): CustomerMoneyProfile {
   const attributed = attributeCustomerCollections(input.customer, input);
+  return computeProfileFromAttributed(attributed, input);
+}
+
+/** Core compute over PRE-ATTRIBUTED collections. Shared by the single-customer
+ *  path and the batched customer-list path — one implementation, no drift. */
+function computeProfileFromAttributed(
+  attributed: AttributedCustomerCollections,
+  input: Omit<CustomerMoneyProfileInput, keyof CustomerCollectionsInput> & Partial<CustomerCollectionsInput>,
+): CustomerMoneyProfile {
   const periodRange = input.periodRange
     ?? normalizeLocalDayRange('1970-01-01', toLocalYMD(new Date()));
 
@@ -304,16 +337,16 @@ export function computeCustomerMoneyProfile(input: CustomerMoneyProfileInput): C
   const visitSales = inRangeCountable;
   const visitCount = visitSales.length;
   let avgDaysBetweenVisits: number | null = null;
-  if (visitCount >= 2) {
-    const times = visitSales
-      .map((s) => new Date(s.createdAt as string | Date).getTime())
-      .filter((t) => !Number.isNaN(t))
-      .sort((a, b) => a - b);
-    if (times.length >= 2) {
-      const spanDays = (times[times.length - 1] - times[0]) / 86_400_000;
-      avgDaysBetweenVisits = Math.round(spanDays / (times.length - 1));
-    }
+  const visitTimes = visitSales
+    .map((s) => new Date(s.createdAt as string | Date).getTime())
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => a - b);
+  if (visitTimes.length >= 2) {
+    const spanDays = (visitTimes[visitTimes.length - 1] - visitTimes[0]) / 86_400_000;
+    avgDaysBetweenVisits = Math.round(spanDays / (visitTimes.length - 1));
   }
+  const firstVisitAt = visitTimes.length > 0 ? new Date(visitTimes[0]) : null;
+  const lastVisitAt = visitTimes.length > 0 ? new Date(visitTimes[visitTimes.length - 1]) : null;
   let topCategoryByProfit: string | null = null;
   let topCategoryProfitCents = 0;
   const topCat = [...canonical.categoriesByRevenue].sort((a, b) => b.profitCents - a.profitCents)[0];
@@ -322,7 +355,12 @@ export function computeCustomerMoneyProfile(input: CustomerMoneyProfileInput): C
     topCategoryProfitCents = topCat.profitCents;
   }
 
-  const transactionCount = canonical.txCount;
+  // I2B-0.1: FINANCIAL transactions = the exact population that produced
+  // grossSalesCents — countable sales + standalone completed repairs/unlocks.
+  // Appointments/returns never count; POS-linked entities are already
+  // excluded from the standalone counts (never double-counted).
+  const transactionCount = canonical.txCount
+    + canonical.standaloneRepairCount + canonical.standaloneUnlockCount;
   return {
     totalCollectedCents: canonical.grossSalesCents,
     profitBearingRevenueCents: canonical.netRevenueBeforeTaxCents,
@@ -334,13 +372,235 @@ export function computeCustomerMoneyProfile(input: CustomerMoneyProfileInput): C
     estimatedPercent,
     unavailablePercent,
     returnsCents: canonical.returnAndRefundAdjustmentsCents,
+    netAfterReturnsCents: canonical.netSalesCents,
     transactionCount,
     averageTicketCents: transactionCount > 0 ? Math.round(canonical.grossSalesCents / transactionCount) : 0,
     visitCount,
     avgDaysBetweenVisits,
+    firstVisitAt,
+    lastVisitAt,
     topCategoryByProfit,
     topCategoryProfitCents,
     invoiceEconomics,
     canonical,
+  };
+}
+
+// ══ I2B-0.1: BATCHED customer-list profiles ══════════════════
+// One pass over every collection pre-buckets records per customer with the
+// SAME attribution precedence as attributeCustomerCollections (customerId →
+// originalSaleId linkage → normalized phone; a record linked to ANOTHER
+// customer is never inherited; two customers sharing a phone both match
+// unlinked records — identical to the per-customer filter semantics). Then
+// the shared core runs per customer over its small bucket. Replaces the
+// legacy O(customers × sales) list reduce.
+
+export interface CustomerProfilesBatchInput extends CustomerCollectionsInput {
+  inventory: InventoryItem[];
+  settings: CanonicalMoneySettings;
+  periodRange?: LocalDayRange;
+}
+
+export function computeCustomerMoneyProfiles(
+  customers: Customer[],
+  input: CustomerProfilesBatchInput,
+): Map<string, CustomerMoneyProfile> {
+  const ids = new Set(customers.map((c) => c.id));
+  const phoneOwners = new Map<string, string[]>(); // phoneKey → customerIds
+  for (const c of customers) {
+    const p = phoneKey(c.phone);
+    if (!p) continue;
+    const list = phoneOwners.get(p);
+    if (list) list.push(c.id); else phoneOwners.set(p, [c.id]);
+  }
+  // Owners of one record under the belongs() precedence.
+  const ownersOf = (recId: string | undefined, recPhone: string | undefined | null): string[] => {
+    if (recId) return ids.has(recId) ? [recId] : []; // linked → that customer only (or nobody)
+    const p = phoneKey(recPhone);
+    return p ? (phoneOwners.get(p) || []) : [];
+  };
+
+  interface Bucket extends AttributedCustomerCollections { refRepairs: Set<string>; refUnlocks: Set<string>; refLayaways: Set<string>; refSOs: Set<string> }
+  const buckets = new Map<string, Bucket>();
+  const bucketFor = (cid: string): Bucket => {
+    let b = buckets.get(cid);
+    if (!b) {
+      b = { sales: [], repairs: [], unlocks: [], layaways: [], specialOrders: [], customerReturns: [],
+        refRepairs: new Set(), refUnlocks: new Set(), refLayaways: new Set(), refSOs: new Set() };
+      buckets.set(cid, b);
+    }
+    return b;
+  };
+
+  const saleOwners = new Map<string, string[]>(); // saleId → owner customerIds
+  for (const s of (input.sales || [])) {
+    const owners = ownersOf(s.customerId, s.customerPhone);
+    if (owners.length === 0) continue;
+    saleOwners.set(s.id, owners);
+    for (const cid of owners) {
+      const b = bucketFor(cid);
+      b.sales.push(s);
+      for (const it of (s.items || [])) {
+        if (it.repairId) b.refRepairs.add(it.repairId);
+        if (it.unlockId) b.refUnlocks.add(it.unlockId);
+        if (it.layawayId) b.refLayaways.add(it.layawayId);
+        if (it.specialOrderId) b.refSOs.add(it.specialOrderId);
+      }
+    }
+  }
+  for (const r of (input.customerReturns || [])) {
+    const linked = r.originalSaleId ? (saleOwners.get(r.originalSaleId) || []) : [];
+    const own = ownersOf((r as { customerId?: string }).customerId, r.customerPhone);
+    const all = new Set([...linked, ...own]);
+    for (const cid of all) bucketFor(cid).customerReturns.push(r);
+  }
+  for (const rec of (input.repairs || [])) {
+    const own = ownersOf((rec as { customerId?: string }).customerId, rec.customerPhone);
+    const set = new Set(own);
+    for (const [cid, b] of buckets) if (b.refRepairs.has(rec.id)) set.add(cid);
+    for (const cid of set) bucketFor(cid).repairs.push(rec);
+  }
+  for (const rec of (input.unlocks || [])) {
+    const own = ownersOf((rec as { customerId?: string }).customerId, rec.customerPhone);
+    const set = new Set(own);
+    for (const [cid, b] of buckets) if (b.refUnlocks.has(rec.id)) set.add(cid);
+    for (const cid of set) bucketFor(cid).unlocks.push(rec);
+  }
+  for (const rec of (input.layaways || [])) {
+    const own = ownersOf((rec as { customerId?: string }).customerId, (rec as { customerPhone?: string }).customerPhone);
+    const set = new Set(own);
+    for (const [cid, b] of buckets) if (b.refLayaways.has(rec.id)) set.add(cid);
+    for (const cid of set) bucketFor(cid).layaways.push(rec);
+  }
+  for (const rec of (input.specialOrders || [])) {
+    const own = ownersOf((rec as { customerId?: string }).customerId, (rec as { customerPhone?: string }).customerPhone);
+    const set = new Set(own);
+    for (const [cid, b] of buckets) if (b.refSOs.has(rec.id)) set.add(cid);
+    for (const cid of set) bucketFor(cid).specialOrders.push(rec);
+  }
+
+  // One shared periodRange so every profile in the batch is consistent.
+  const periodRange = input.periodRange
+    ?? normalizeLocalDayRange('1970-01-01', toLocalYMD(new Date()));
+
+  const out = new Map<string, CustomerMoneyProfile>();
+  const EMPTY: AttributedCustomerCollections = { sales: [], repairs: [], unlocks: [], layaways: [], specialOrders: [], customerReturns: [] };
+  for (const c of customers) {
+    const b = buckets.get(c.id);
+    out.set(c.id, computeProfileFromAttributed(b ?? EMPTY, {
+      customer: c, inventory: input.inventory || [], settings: input.settings || {}, periodRange,
+    }));
+  }
+  return out;
+}
+
+/** Reference-keyed memo for the batched profiles. Any changed input
+ *  reference (store switch → new scoped arrays; any transaction update →
+ *  new collection array; settings change) invalidates the cache. Array
+ *  LENGTH is never consulted — identity only, so an in-place-equal-length
+ *  replacement still recomputes. Correctness is never traded for caching. */
+export function createCustomerProfilesCache(): {
+  get(customers: Customer[], input: CustomerProfilesBatchInput): Map<string, CustomerMoneyProfile>;
+} {
+  let last: { customers: Customer[]; input: CustomerProfilesBatchInput; result: Map<string, CustomerMoneyProfile> } | null = null;
+  return {
+    get(customers, input) {
+      if (last
+        && last.customers === customers
+        && last.input.sales === input.sales
+        && last.input.repairs === input.repairs
+        && last.input.unlocks === input.unlocks
+        && last.input.layaways === input.layaways
+        && last.input.specialOrders === input.specialOrders
+        && last.input.customerReturns === input.customerReturns
+        && last.input.inventory === input.inventory
+        && last.input.settings === input.settings
+        && last.input.periodRange === input.periodRange) {
+        return last.result;
+      }
+      const result = computeCustomerMoneyProfiles(customers, input);
+      last = { customers, input, result };
+      return result;
+    },
+  };
+}
+
+// ══ I2B-0.1 Part G: owner/development diagnostic trace ═══════
+// Pure, read-only invoice-level economics trace over live records. Never
+// mutates transactions, never logs — callers decide what to do with the
+// rows. Money comes from the canonical profile; rate provenance mirrors the
+// canonical source lookup (describePhonePaymentRate), never the math.
+
+export interface CustomerInvoiceTraceRow {
+  customerId: string;
+  invoiceNumber: string;
+  createdAt: unknown;
+  totalCollectedCents: number;
+  profitBearingCents: number;
+  taxAndPassThroughCents: number;
+  profitCents: number;
+  /** Commission rate resolved for the invoice's phone-payment line(s); null when none. */
+  commissionRate: number | null;
+  economicBasis: EconomicBasis;
+  rateSource: CommissionRateSource | null;
+  carrier: string | null;
+  warnings: string[];
+}
+
+export function traceCustomerInvoiceEconomics(
+  input: CustomerMoneyProfileInput,
+): { customerId: string; summary: Pick<CustomerMoneyProfile,
+      'totalCollectedCents' | 'profitBearingRevenueCents' | 'profitCents' | 'marginPercent'
+      | 'marginMeaningful' | 'returnsCents' | 'netAfterReturnsCents' | 'transactionCount'
+      | 'exactCoveragePercent' | 'estimatedPercent' | 'unavailablePercent'>;
+    invoices: CustomerInvoiceTraceRow[] } {
+  const profile = computeCustomerMoneyProfile(input);
+  const salesById = new Map((input.sales || []).map((s) => [s.id, s]));
+  const invoices: CustomerInvoiceTraceRow[] = profile.invoiceEconomics.map((inv) => {
+    const sale = salesById.get(inv.saleId);
+    const warnings: string[] = [];
+    const rates: Array<{ rate: number; source: CommissionRateSource; carrier: string | null }> = [];
+    for (const it of (sale?.items || [])) {
+      if (classifyItem(it) === 'phone_payment') rates.push(describePhonePaymentRate(it, input.settings || {}));
+    }
+    const first = rates[0] || null;
+    if (rates.length > 1 && rates.some((r) => r.rate !== first!.rate || r.source !== first!.source)) {
+      warnings.push('multiple_distinct_commission_rates_on_invoice');
+    }
+    if (first?.source === 'estimated_fallback') warnings.push('no_configured_commission_rate_hardcoded_7pct_tail');
+    if (inv.basis === 'estimated') warnings.push('estimated_economic_basis');
+    if (inv.basis === 'unavailable') warnings.push('unavailable_economic_basis');
+    if ((sale?.items || []).length === 0) warnings.push('invoice_has_no_line_items');
+    return {
+      customerId: input.customer.id,
+      invoiceNumber: inv.invoiceNumber,
+      createdAt: inv.createdAt,
+      totalCollectedCents: inv.totalCollectedCents,
+      profitBearingCents: inv.profitBearingCents,
+      taxAndPassThroughCents: inv.taxAndPassThroughCents,
+      profitCents: inv.profitCents,
+      commissionRate: first ? first.rate : null,
+      economicBasis: inv.basis,
+      rateSource: first ? first.source : null,
+      carrier: first ? first.carrier : null,
+      warnings,
+    };
+  });
+  return {
+    customerId: input.customer.id,
+    summary: {
+      totalCollectedCents: profile.totalCollectedCents,
+      profitBearingRevenueCents: profile.profitBearingRevenueCents,
+      profitCents: profile.profitCents,
+      marginPercent: profile.marginPercent,
+      marginMeaningful: profile.marginMeaningful,
+      returnsCents: profile.returnsCents,
+      netAfterReturnsCents: profile.netAfterReturnsCents,
+      transactionCount: profile.transactionCount,
+      exactCoveragePercent: profile.exactCoveragePercent,
+      estimatedPercent: profile.estimatedPercent,
+      unavailablePercent: profile.unavailablePercent,
+    },
+    invoices,
   };
 }

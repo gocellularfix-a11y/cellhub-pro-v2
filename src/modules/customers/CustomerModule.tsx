@@ -17,7 +17,11 @@ import { formatCurrency } from '@/utils/currency';
 // CELLHUB-INTELLIGENCE-I2B-0: canonical customer money (attribution + field
 // mapping over computeReportMoneyStats — replaces the legacy
 // computeCustomerProfit/adjustSalesItemCosts pair in this module).
-import { computeCustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
+import {
+  computeCustomerMoneyProfile,
+  createCustomerProfilesCache,
+  traceCustomerInvoiceEconomics,
+} from '@/services/customers/customerMoneyProfile';
 import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
@@ -303,26 +307,62 @@ export default function CustomerModule() {
   );
 
   // ── Per-customer sales stats (precomputed for table columns) ──
+  // I2B-0.1: the list's "Total Collected" now comes from the SAME canonical
+  // customer profile as the Customer 360 modal (batched: one bucketing pass
+  // over every collection, then the canonical service per customer — no
+  // per-customer full-array reduce). The reference-keyed cache invalidates
+  // on store switch / any collection or settings update (new array refs).
+  const profilesCache = useRef(createCustomerProfilesCache()).current;
+  const customerProfiles = useMemo(
+    () => profilesCache.get(customers, {
+      sales, repairs, unlocks, layaways, specialOrders,
+      customerReturns: returns_, inventory, settings: settings || {},
+    }),
+    [profilesCache, customers, sales, repairs, unlocks, layaways, specialOrders, returns_, inventory, settings],
+  );
   const customerStats = useMemo(() => {
-    const map = new Map<string, { totalSpent: number; visits: number; lastVisit: string }>();
+    const map = new Map<string, { totalCollected: number; visits: number; lastVisit: string }>();
     for (const c of customers) {
-      const phone = normalizePhone(c.phone);
-      const id = c.id;
-      const mySales = sales.filter((s) =>
-        s.status === 'completed' &&
-        (s.customerId === id || normalizePhone(s.customerPhone || '') === phone),
-      );
-      const totalSpent = mySales.reduce((sum, s) => sum + (s.total || 0), 0);
-      const visits = mySales.length;
-      let lastVisit = '';
-      if (mySales.length > 0) {
-        const sorted = mySales.map((s) => new Date(s.createdAt as string).getTime()).sort((a, b) => b - a);
-        lastVisit = new Date(sorted[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-      map.set(c.id, { totalSpent, visits, lastVisit });
+      const p = customerProfiles.get(c.id);
+      if (!p) continue;
+      map.set(c.id, {
+        totalCollected: p.totalCollectedCents,
+        visits: p.transactionCount,
+        lastVisit: p.lastVisitAt
+          ? p.lastVisitAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '',
+      });
     }
     return map;
-  }, [customers, sales]);
+  }, [customers, customerProfiles]);
+
+  // I2B-0.1 Part G: owner-triggered diagnostic — invoice-level customer
+  // economics trace over LIVE records, callable from DevTools:
+  //   __cellhubTraceCustomerEconomics('<customerId or phone>')
+  // Pure/read-only (never mutates transactions, never logs on its own) and
+  // registered ONLY when the current viewer may see owner financials.
+  const canSeeFinancialsGlobal = canViewOwnerFinancials(
+    settings, state.isAdminMode || state.currentEmployee?.role === 'owner',
+  );
+  useEffect(() => {
+    if (!canSeeFinancialsGlobal) return;
+    const w = window as unknown as Record<string, unknown>;
+    w.__cellhubTraceCustomerEconomics = (idOrPhone: string) => {
+      const key = String(idOrPhone || '').trim();
+      if (!key) return { error: 'customer_not_found' };
+      const keyPhone = normalizePhone(key);
+      const cust = customers.find((c) => c.id === key)
+        || (keyPhone.length >= 10
+          ? customers.find((c) => normalizePhone(c.phone || '').slice(-10) === keyPhone.slice(-10))
+          : undefined);
+      if (!cust) return { error: 'customer_not_found' };
+      return traceCustomerInvoiceEconomics({
+        customer: cust, sales, repairs, unlocks, layaways, specialOrders,
+        customerReturns: returns_, inventory, settings: settings || {},
+      });
+    };
+    return () => { delete w.__cellhubTraceCustomerEconomics; };
+  }, [canSeeFinancialsGlobal, customers, sales, repairs, unlocks, layaways, specialOrders, returns_, inventory, settings]);
 
   // ── CRUD ────────────────────────────────────────────────
   // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: on a read-only Secondary, a NEW
@@ -805,9 +845,11 @@ export default function CustomerModule() {
                     <td className="text-right">
                       {(() => {
                         const stats = customerStats.get(c.id);
-                        const spent = stats?.totalSpent || 0;
-                        return spent > 0
-                          ? <span className="text-emerald-400 font-semibold">{formatCurrency(spent)}</span>
+                        // I2B-0.1: canonical Total Collected (same number as
+                        // the Customer 360 modal — never a separate reduce).
+                        const collected = stats?.totalCollected || 0;
+                        return collected > 0
+                          ? <span className="text-emerald-400 font-semibold">{formatCurrency(collected)}</span>
                           : <span className="text-slate-600">—</span>;
                       })()}
                     </td>
@@ -1566,9 +1608,12 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   );
   const totalCollected = profile.totalCollectedCents;
 
-  // PRESERVE: this multi-entity transaction counter aggregates across
-  // 7 different domains and must NOT be moved into the helper.
-  const totalTransactions = sales.length + repairs.length + layaways.length +
+  // I2B-0.1: the 7-domain aggregate is CUSTOMER ACTIVITY ("Interactions"),
+  // not financial transactions — appointments and returns are not sales.
+  // Financial Transactions + Avg Ticket both come from the canonical
+  // profile (same population as Total Collected), so they reconcile:
+  // collected ≈ avgTicket × transactions (Jenny: $482.93 = $68.99 × 7).
+  const totalInteractions = sales.length + repairs.length + layaways.length +
     unlocks.length + specialOrders.length + returns.length + appointments.length;
 
   // Category display label — titlecase key (e.g. "accessory" → "Accessory")
@@ -1671,10 +1716,19 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             className="rounded-lg bg-white/5 p-3 text-center"
             title={t('customers.history.collectedTitle',
               formatCurrency(profile.profitBearingRevenueCents),
-              formatCurrency(profile.returnsCents))}
+              formatCurrency(Math.abs(profile.returnsCents)))}
           >
             <p className="text-xs text-slate-400">{t('customers.history.totalCollected')}</p>
             <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalCollected)}</p>
+            {/* I2B-0.1 Part E: gross collected ≠ retained. When returns/refunds
+                exist, show the canonical net (no math in the component); the
+                tooltip already itemizes the returns amount. No returns → no
+                visual noise. */}
+            {profile.returnsCents !== 0 && (
+              <p className="text-[10px] text-amber-400/90">
+                {t('customers.history.netAfterReturns', formatCurrency(profile.netAfterReturnsCents))}
+              </p>
+            )}
           </div>
           {canSeeOwnerFinancials && (
             <div
@@ -1730,7 +1784,13 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
             <p className="text-xs text-slate-400">{t('customers.history.transactions')}</p>
-            <p className="text-lg font-bold text-white">{totalTransactions}</p>
+            {/* I2B-0.1: FINANCIAL transactions (canonical — same denominator
+                as Avg Ticket). The 7-domain activity count is shown
+                separately below as "interactions", never used for money. */}
+            <p className="text-lg font-bold text-white">{profile.transactionCount}</p>
+            <p className="text-[10px] text-slate-500">
+              {t('customers.history.interactions', totalInteractions)}
+            </p>
           </div>
         </div>
 

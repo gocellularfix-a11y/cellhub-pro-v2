@@ -4721,7 +4721,9 @@ export const translations: TranslationDictionary = {
   'customers.col.phone':              { en: 'PHONE',                  es: 'TELÉFONO',                   pt: 'TELEFONE' },
   'customers.col.carrier':            { en: 'CARRIER',                es: 'COMPAÑÍA',                   pt: 'OPERADORA' },
   'customers.col.plan':               { en: 'PLAN',                   es: 'PLAN',                       pt: 'PLANO' },
-  'customers.col.totalSpent':         { en: 'TOTAL SPENT',            es: 'TOTAL GASTADO',              pt: 'TOTAL GASTO' },
+  // I2B-0.1: relabeled — the column now shows the CANONICAL Total Collected
+  // (same number as Customer 360), not a separate sale.total reduce.
+  'customers.col.totalSpent':         { en: 'TOTAL COLLECTED',        es: 'TOTAL COBRADO',              pt: 'TOTAL RECEBIDO' },
   'customers.col.visits':             { en: 'VISITS',                 es: 'VISITAS',                    pt: 'VISITAS' },
   'customers.col.lastVisit':          { en: 'LAST VISIT',             es: 'ÚLTIMA VISITA',              pt: 'ÚLTIMA VISITA' },
   'customers.col.credit':             { en: 'CREDIT',                 es: 'CRÉDITO',                    pt: 'CRÉDITO' },
@@ -4868,6 +4870,18 @@ export const translations: TranslationDictionary = {
     en: (commissionable: string, returns: string) => `Everything the customer paid (incl. taxes & fees). Profit-bearing base: ${commissionable} · Returns/refunds: ${returns}`,
     es: (commissionable: string, returns: string) => `Todo lo que pagó el cliente (incl. impuestos y cargos). Base comisionable: ${commissionable} · Devoluciones: ${returns}`,
     pt: (commissionable: string, returns: string) => `Tudo o que o cliente pagou (incl. impostos e taxas). Base comissionável: ${commissionable} · Devoluções: ${returns}`,
+  },
+  // I2B-0.1: gross collected vs retained — canonical net after returns.
+  'customers.history.netAfterReturns': {
+    en: (net: string) => `Net after returns: ${net}`,
+    es: (net: string) => `Neto después de devoluciones: ${net}`,
+    pt: (net: string) => `Líquido após devoluções: ${net}`,
+  },
+  // I2B-0.1: the 7-domain activity counter (never used for money math).
+  'customers.history.interactions': {
+    en: (n: number) => `${n} interaction${n === 1 ? '' : 's'}`,
+    es: (n: number) => `${n} interacci${n === 1 ? 'ón' : 'ones'}`,
+    pt: (n: number) => `${n} interaç${n === 1 ? 'ão' : 'ões'}`,
   },
   'customers.history.marginTitle': {
     en: (base: string) => `Profit divided by the commissionable amount (${base}), excluding taxes and pass-through fees.`,

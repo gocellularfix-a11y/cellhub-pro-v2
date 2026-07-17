@@ -433,6 +433,12 @@ export interface ReportMoneyStats {
   cardCents: number;
   storeCreditCents: number;
   txCount: number;
+  // I2B-0.1: standalone completed repairs/unlocks counted into GROSS revenue
+  // (not represented in any POS sale). Pure count exposure of the existing
+  // standalone populations — lets consumers form a financial-transaction
+  // denominator consistent with grossSalesCents.
+  standaloneRepairCount: number;
+  standaloneUnlockCount: number;
   cleanSalesCount: number;
   refundSalesCount: number;
   voidedCount: number;
@@ -456,11 +462,16 @@ export interface ReportMoneyStats {
   // change. itemProfit excludes the top-level CC-fee (exposed separately)
   // exactly as the internal stash records it. Consumers: invoice-level
   // customer economics (Customer 360).
+  // I2B-0.1 hardening: costCents comes from a direct per-line accumulator
+  // (lineCostCents) — NOT from the byId map — so legacy items without
+  // item.id and duplicate-ID lines each contribute exactly once. `lines`
+  // is the ordered per-line record (same-name lines stay distinct).
   perSaleEconomics: Record<string, {
     itemProfitCents: number;
     ccFeeProfitCents: number;
     costCents: number;
     taxCents: number;
+    lines: Array<{ id?: string; name: string; costCents: number; qty: number; revenueCents: number; profitCents: number }>;
   }>;
 }
 
@@ -668,10 +679,15 @@ export function computeReportMoneyStatsFromCollections(
   interface LineEconomics { costCents: number; qty: number; revenueCents: number; profitCents: number }
   interface SaleEconomics {
     taxCents: number;                       // pure buckets (or legacy aggregate)
-    byId: Map<string, LineEconomics>;       // item.id → exact line economics
+    byId: Map<string, LineEconomics>;       // item.id → LOOKUP/refund matching only
     byName: Map<string, LineEconomics>;     // fallback match (first line wins)
     profitCents: number;                    // Σ line profits (excl. cc fee)
     ccFeeCents?: number;                    // I2B-0: top-level cc fee (exposure only)
+    // I2B-0.1: direct accumulators — every processed line contributes exactly
+    // once (no-ID and duplicate-ID lines included). Exposure-only; the P3
+    // self-reversal keeps reading byId (financial policy untouched).
+    lineCostCents: number;
+    lines: Array<{ id?: string; name: string } & LineEconomics>;
   }
   const saleEconomics = new Map<string, SaleEconomics>();
 
@@ -710,6 +726,8 @@ export function computeReportMoneyStatsFromCollections(
       byId: new Map(),
       byName: new Map(),
       profitCents: 0,
+      lineCostCents: 0,
+      lines: [],
     };
     saleEconomics.set(sale.id, econ);
 
@@ -904,12 +922,15 @@ export function computeReportMoneyStatsFromCollections(
           if (item.id) econ.byId.set(item.id, line);
           const nameKey = String(item.name || '').toLowerCase();
           if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
+          econ.lineCostCents += line.costCents;
+          econ.lines.push({ id: item.id, name: String(item.name || ''), ...line });
         } else {
           cat.pseudoRevenueCents += revenueCents;
           const line = { costCents: 0, qty, revenueCents, profitCents: 0 };
           if (item.id) econ.byId.set(item.id, line);
           const nameKey = String(item.name || '').toLowerCase();
           if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
+          econ.lines.push({ id: item.id, name: String(item.name || ''), ...line });
         }
       } else {
         cat.costCents += costCents;
@@ -922,6 +943,8 @@ export function computeReportMoneyStatsFromCollections(
         if (item.id) econ.byId.set(item.id, line);
         const nameKey = String(item.name || '').toLowerCase();
         if (nameKey && !econ.byName.has(nameKey)) econ.byName.set(nameKey, line);
+        econ.lineCostCents += line.costCents;
+        econ.lines.push({ id: item.id, name: String(item.name || ''), ...line });
       }
     }
 
@@ -1374,6 +1397,8 @@ export function computeReportMoneyStatsFromCollections(
     cardCents,
     storeCreditCents,
     txCount: grossActivitySales.length,
+    standaloneRepairCount: standaloneRepairs.length,
+    standaloneUnlockCount: standaloneUnlocks.length,
     cleanSalesCount,
     refundSalesCount,
     voidedCount: allFilteredSales.filter((s) => s.status === 'voided').length,
@@ -1388,12 +1413,15 @@ export function computeReportMoneyStatsFromCollections(
     // R-ACTIVATIONS-BY-CARRIER-V1
     activationsByCarrier,
     // I2B-0: pure exposure of the internal stash (no new math).
+    // I2B-0.1: costCents from the direct accumulator (no-ID / duplicate-ID
+    // lines contribute exactly once); byId stays lookup-only.
     perSaleEconomics: Object.fromEntries(
       Array.from(saleEconomics.entries()).map(([saleId, e]) => [saleId, {
         itemProfitCents: e.profitCents,
         ccFeeProfitCents: e.ccFeeCents || 0,
-        costCents: Array.from(e.byId.values()).reduce((s, l) => s + l.costCents, 0),
+        costCents: e.lineCostCents,
         taxCents: e.taxCents,
+        lines: e.lines,
       }]),
     ),
   };

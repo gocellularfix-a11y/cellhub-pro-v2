@@ -264,8 +264,9 @@ export interface ProductOpportunity {
 }
 
 // R-INTEL-CUSTOMER-HISTORY: per-customer rollup for the lookup card
-// + future chat "historial de X" intent. Composes computeCustomerProfit
-// (src/utils/customerProfit.ts) with first/last visit, top items,
+// + chat "historial de X" intent. Since I2B-0.1 the money comes from
+// computeCustomerMoneyProfile (src/services/customers/customerMoneyProfile.ts,
+// canonical Reports economics) plus first/last visit, top items,
 // preferred payment, and linked-entity counts.
 export interface CustomerHistorySummary {
   customer: {
@@ -277,18 +278,35 @@ export interface CustomerHistorySummary {
     storeCredit: number;            // cents
     carrier?: string;
   };
-  // Financial rollup (from customerProfit helper) — all cents.
-  grossRevenue: number;
-  netRevenue: number;
-  totalRefunded: number;
-  profit: number;
-  margin: number;                   // percentage, e.g. 23.5
-  avgTicket: number;                // cents
+  // Financial rollup — CANONICAL since I2B-0.1 (computeCustomerMoneyProfile
+  // → computeReportMoneyStats; same numbers as the Customer 360 modal).
+  // Field names kept for existing consumers — all cents.
+  grossRevenue: number;             // = totalCollectedCents (tax-inclusive gross)
+  netRevenue: number;               // = netAfterReturnsCents (canonical net)
+  totalRefunded: number;            // magnitude of return/refund adjustments
+  profit: number;                   // = canonical profitCents
+  margin: number;                   // % over the COMMISSIONABLE pre-tax base
+  avgTicket: number;                // cents — gross ÷ financial transactions
   visitCount: number;
   avgDaysBetweenVisits: number | null;
-  costCoverage: number;             // 0..1 — fraction of sales with known cost
+  costCoverage: number;             // 0..1 — fraction with an EXACT economic basis
   topCategoryByProfit: string | null;
   topCategoryProfit: number;        // cents
+  // I2B-0.1: the exact canonical fields Customer 360 renders (parity block).
+  canonicalMoney: {
+    totalCollectedCents: number;
+    profitBearingRevenueCents: number;
+    profitCents: number;
+    marginPercent: number;
+    marginMeaningful: boolean;
+    transactionCount: number;
+    averageTicketCents: number;
+    returnsCents: number;
+    netAfterReturnsCents: number;
+    profitEstimated: boolean;
+    estimatedPercent: number;
+    unavailablePercent: number;
+  };
 
   firstVisit: Date | null;
   lastVisit: Date | null;
