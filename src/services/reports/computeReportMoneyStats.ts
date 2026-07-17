@@ -1221,7 +1221,12 @@ export function computeReportMoneyStatsFromCollections(
     if (refundLinkedSaleIds.has(sale.id)) continue;
     if (sale.invoiceNumber && (returnInvoices.has(sale.invoiceNumber) || refundLinkedInvoices.has(sale.invoiceNumber))) continue;
     const econ = saleEconomics.get(sale.id);
-    const costCents = econ ? Array.from(econ.byId.values()).reduce((s2, l) => s2 + l.costCents, 0) : 0;
+    // I2B-0.2: reverse cost from the DIRECT per-line accumulator — byId is a
+    // lookup structure only (legacy no-ID lines are absent from it and
+    // duplicate IDs overwrite). Every processed line reverses exactly once,
+    // matching the profit reversal (econ.profitCents) which always
+    // accumulated per-line. Explicit zero-cost lines stay zero.
+    const costCents = econ ? econ.lineCostCents : 0;
     adjustments.push({
       revenueCents: sale.total || 0,
       taxCents: econ ? econ.taxCents : 0,

@@ -36,8 +36,9 @@ import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { diagnoseChurn } from './rootCause/churnCauses';
 import { computeCustomerProfit, adjustSalesItemCosts, type ProfitAdjustmentSettings } from '@/utils/customerProfit';
-// I2B-0.1: canonical customer money (same service Customer 360 uses).
-import { computeCustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
+// I2B-0.1/0.2: canonical customer money (same service Customer 360 uses),
+// fed with RAW snapshot collections via the canonical attribution helper.
+import { attributeCustomerCollections, computeProfileFromAttributed } from '@/services/customers/customerMoneyProfile';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -1384,46 +1385,51 @@ export class IntelligenceEngine {
       return null;
     }
 
-    const customerSales = this.sales.filter(s => s.customerId === customerId);
-
-    // CELLHUB-INTELLIGENCE-I2B-0.1: the customer's MONEY comes from the same
-    // canonical profile Customer 360 uses (computeCustomerMoneyProfile →
-    // computeReportMoneyStats). Attribution (id → originalSaleId linkage →
-    // normalized phone), commission precedence, refund/exchange reversal and
-    // the commissionable margin denominator are all owned there — chat and
-    // the Customer 360 modal can never disagree again. Replaces the legacy
-    // adjustSalesItemCosts + computeCustomerProfit pair (tax-inclusive
-    // denominator → Jenny's misleading 9.0% margin / "94% cost data").
-    const profile = computeCustomerMoneyProfile({
-      customer,
-      sales: this.sales,
-      repairs: this.repairs,
-      unlocks: this.unlocks,
-      layaways: this.layaways,
-      specialOrders: this.specialOrders,
-      customerReturns: this.customerReturns,
-      inventory: this.inventory,
-      settings: this.profitSettings,
+    // CELLHUB-INTELLIGENCE-I2B-0.2: customer money AND history population
+    // come from the RAW scoped snapshot (canonicalMoneySnapshot — the same
+    // un-adapted collections Reports/Customer 360 read; I2A established
+    // that schema-adapted engine arrays break canonical parity). Attribution
+    // is the canonical policy (id → originalSaleId linkage → normalized
+    // phone; never name) via attributeCustomerCollections — the SAME
+    // implementation the modal and the customer list use. The money then
+    // flows through computeProfileFromAttributed (I2B-0.1 canonical core:
+    // commission precedence, refund/exchange reversal, commissionable
+    // margin denominator). No re-filtering, no re-adaptation.
+    const snap = this.canonicalMoneySnapshot();
+    const rawCustomer = this._rawCustomers.find(c => c.id === customerId) ?? customer;
+    const attributed = attributeCustomerCollections(rawCustomer, {
+      sales: snap.sales,
+      repairs: snap.repairs,
+      unlocks: snap.unlocks,
+      layaways: snap.layaways,
+      specialOrders: snap.specialOrders,
+      customerReturns: snap.customerReturns,
+      // vendor returns are STORE-WIDE COGS adjustments — never passed into
+      // a per-customer profile (excluded inside the profile core too).
+    });
+    const profile = computeProfileFromAttributed(attributed, {
+      customer: rawCustomer,
+      inventory: snap.inventory,
+      settings: snap.settings,
     });
 
-    // First / last visit — min/max over non-voided sale timestamps.
-    const times = customerSales
-      .filter(s => s.status !== 'voided')
-      .map(s => new Date(s.createdAt as string).getTime())
-      .filter(t => !Number.isNaN(t))
-      .sort((a, b) => a - b);
-    const firstVisit = times.length > 0 ? new Date(times[0]) : null;
-    const lastVisit = times.length > 0 ? new Date(times[times.length - 1]) : null;
+    // First / last visit — canonical countable population (same attributed
+    // sales the financial profile counts; a phone-linked legacy invoice can
+    // no longer be in the money but missing from the visit dates).
+    const firstVisit = profile.firstVisitAt;
+    const lastVisit = profile.lastVisitAt;
 
-    // Top items by revenue (top 5).
+    // Top items by revenue (top 5) — attributed raw sales, non-voided.
     const itemMap: Record<string, { quantity: number; revenue: number }> = {};
-    for (const sale of customerSales) {
+    for (const sale of attributed.sales) {
       if (sale.status === 'voided') continue;
       for (const item of sale.items || []) {
         const key = item.name || 'Unknown';
+        // Raw legacy lines may persist `quantity` instead of `qty`.
+        const qty = item.qty ?? (item as unknown as { quantity?: number }).quantity ?? 0;
         itemMap[key] = {
-          quantity: (itemMap[key]?.quantity || 0) + (item.qty || 0),
-          revenue: (itemMap[key]?.revenue || 0) + ((item.price || 0) * (item.qty || 0)),
+          quantity: (itemMap[key]?.quantity || 0) + qty,
+          revenue: (itemMap[key]?.revenue || 0) + ((item.price || 0) * qty),
         };
       }
     }
@@ -1432,9 +1438,9 @@ export class IntelligenceEngine {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // Preferred payment method — most frequent across non-voided sales.
+    // Preferred payment method — most frequent across non-voided attributed sales.
     const paymentCount: Record<string, number> = {};
-    for (const sale of customerSales) {
+    for (const sale of attributed.sales) {
       if (sale.status === 'voided') continue;
       const pm = String(sale.paymentMethod || '').toLowerCase();
       if (!pm) continue;
@@ -1443,11 +1449,13 @@ export class IntelligenceEngine {
     const preferredPaymentMethod = Object.entries(paymentCount)
       .sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-    // Linked entities — counts + active balance across all deposit modules.
-    const customerRepairs = this.repairs.filter(r => r.customerId === customerId);
-    const customerSOs = this.specialOrders.filter(o => o.customerId === customerId);
-    const customerUnlocks = this.unlocks.filter(u => u.customerId === customerId);
-    const customerLayaways = this.layaways.filter(l => l.customerId === customerId);
+    // Linked entities — the ATTRIBUTED raw entity collections (identity or
+    // referenced by the customer's own sale lines — same population whose
+    // economics the profile already counts).
+    const customerRepairs = attributed.repairs;
+    const customerSOs = attributed.specialOrders;
+    const customerUnlocks = attributed.unlocks;
+    const customerLayaways = attributed.layaways;
 
     const repairTotalValue = customerRepairs.reduce(
       (s, r) => s + (r.total || r.estimatedCost || 0),

@@ -263,8 +263,11 @@ export function computeCustomerMoneyProfile(input: CustomerMoneyProfileInput): C
 }
 
 /** Core compute over PRE-ATTRIBUTED collections. Shared by the single-customer
- *  path and the batched customer-list path — one implementation, no drift. */
-function computeProfileFromAttributed(
+ *  path, the batched customer-list path and the IntelligenceEngine chat path
+ *  (I2B-0.2) — one implementation, no drift. Callers MUST obtain the
+ *  attributed collections from attributeCustomerCollections (or the batch
+ *  bucketing, which replicates it) — never from an ad-hoc filter. */
+export function computeProfileFromAttributed(
   attributed: AttributedCustomerCollections,
   input: Omit<CustomerMoneyProfileInput, keyof CustomerCollectionsInput> & Partial<CustomerCollectionsInput>,
 ): CustomerMoneyProfile {
