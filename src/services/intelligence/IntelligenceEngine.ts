@@ -35,7 +35,11 @@ import { diagnoseRevenueDecline } from './rootCause/revenueCauses';
 import { diagnoseSlowDay } from './rootCause/slowDayCauses';
 import { diagnoseDeadStock } from './rootCause/deadStockCauses';
 import { diagnoseChurn } from './rootCause/churnCauses';
-import { computeCustomerProfit, adjustSalesItemCosts, type ProfitAdjustmentSettings } from '@/utils/customerProfit';
+// CELLHUB-INTELLIGENCE-I2B-1: the legacy customerProfit pipeline
+// (computeCustomerProfit + adjustSalesItemCosts) is no longer used by the
+// engine — getTodayMoney now sources canonical money. The helper file remains
+// only for its regression-lock test; ProfitAdjustmentSettings is referenced in
+// prose comments below (profitSettings is typed CanonicalMoneySettings).
 // I2B-0.1/0.2: canonical customer money (same service Customer 360 uses),
 // fed with RAW snapshot collections via the canonical attribution helper.
 import { attributeCustomerCollections, computeProfileFromAttributed } from '@/services/customers/customerMoneyProfile';
@@ -705,18 +709,20 @@ export class IntelligenceEngine {
     };
   }
 
-  // R-EOD-MONEY-WIRE: today-only money aggregation for the End-of-Day brief.
-  // Mirrors the canonical profit pipeline used by getCustomerHistory (which
-  // is itself aligned to TaxReportsModule via R-CUSTOMER-PROFIT-PARITY-V1):
-  // adjustSalesItemCosts() corrects phone_payment / repair costs, then
-  // computeCustomerProfit() derives gross / net / profit / margin / returns.
-  // Scope = today (createdAt >= local midnight). computeCustomerProfit()
-  // excludes voided sales internally; refunds are accounted via today's
-  // CustomerReturn records (totalCents || total*100, handled by the helper).
+  // CELLHUB-INTELLIGENCE-I2B-1: today-only money for the End-of-Day brief,
+  // sourced from THE canonical report service (computeReportMoneyStats) — the
+  // same pipeline Reports / Customer 360 / chat consume. getTodayMoney no
+  // longer runs the legacy adjustSalesItemCosts + computeCustomerProfit
+  // approximation: core money (gross / net / profit / margin / returns / cost /
+  // tax / tender / txCount / flags) is CANONICAL, computed over the RAW scoped
+  // snapshot for the LOCAL calendar day. EOD money === Reports money.
   //
-  // ONLY core money is real here. tenderBreakdown + fees/taxes are NOT
-  // computed (Priority A2) and are intentionally absent from this payload —
-  // the composer flags them unavailable rather than emitting fake zeros.
+  // The A2A tender/fees breakdown is display plumbing, NOT profit math. Cash /
+  // card / storeCredit and the tax/fee buckets now also come from canonical;
+  // only the two fields canonical does not model — otherCents (unknown/legacy
+  // payment methods) and creditCardFeeCents — are summed from the raw
+  // day-scoped active sales. No tax/profit/refund formula is reproduced here.
+  // externalCents stays 0. Negative values are preserved (never clamped).
   // All values are integer cents; profitMarginPct is a 0–100 percentage.
   getTodayMoney(): {
     grossRevenueCents: number;
@@ -725,12 +731,19 @@ export class IntelligenceEngine {
     profitMarginPct: number;
     returnCount: number;
     returnedAmountCents: number;
+    // I2B-1: additional canonical fields (parity-required — the same values
+    // Reports shows for this local day). Negative values preserved.
+    costCents: number;
+    grossTaxCents: number;
+    netTaxCents: number;
+    transactionCount: number;
+    profitEstimated: boolean;
+    marginMeaningful: boolean;
     hasData: boolean;
-    // R-INTELLIGENCE-EOD-A2A: tender + fees/tax breakdowns aggregated from
-    // existing Sale fields over the SAME today + non-voided set used for gross.
-    // Pure display aggregation — no new tax/checkout math. tenderBreakdown
-    // reconciles to grossRevenueCents; feesAndTaxes.totalCents === sum of lines.
-    // hasSalesData marks whether any active sale backs these (else all zero).
+    // R-INTELLIGENCE-EOD-A2A: tender + fees/tax breakdowns. Cash/card/storeCredit
+    // and the tax/fee buckets are canonical (I2B-1); otherCents + creditCardFee
+    // are raw day-scoped residuals canonical does not expose. hasSalesData marks
+    // whether any active sale backs these (else all zero).
     tenderBreakdown: {
       cashCents: number;
       cardCents: number;
@@ -749,13 +762,19 @@ export class IntelligenceEngine {
     };
     hasSalesData: boolean;
   } {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayMs = todayStart.getTime();
+    // Canonical money for THIS local calendar day over the raw scoped snapshot
+    // (the same wiring getTodayMetrics uses). Financial math is owned entirely
+    // by computeReportMoneyStats — never re-derived here.
+    const snapshot = this.canonicalMoneySnapshot();
+    const c = computeCanonicalMoneyForRange(snapshot, localDayRangeForDay(new Date()));
 
+    // Day-scoping for the NON-canonical display residuals + activity counts.
     // Same timestamp resolution as getTodayMetrics — handles Firestore
     // Timestamp (.toDate) and ISO strings/Date alike. 0 ⇒ unparseable ⇒
     // excluded from "today".
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
     const tsOf = (rec: { createdAt?: unknown }): number => {
       const ca = rec.createdAt;
       if (!ca) return 0;
@@ -766,89 +785,66 @@ export class IntelligenceEngine {
         return new Date(d).getTime();
       } catch { return 0; }
     };
-
-    const todaySales = this.sales.filter((s) => {
+    const daySales = (snapshot.sales || []).filter((s) => {
       const t = tsOf(s as { createdAt?: unknown });
       return !!t && t >= todayMs;
     });
-    const todayReturns = this.customerReturns.filter((r) => {
+    const dayReturns = (snapshot.customerReturns || []).filter((r) => {
       const t = tsOf(r as { createdAt?: unknown });
       return !!t && t >= todayMs;
     });
 
-    const adjusted = adjustSalesItemCosts(todaySales, this.profitSettings);
-    const stats = computeCustomerProfit(adjusted, todayReturns);
-
-    // R-INTELLIGENCE-EOD-A2A: tender + fees/tax display aggregation. Same
-    // counted set as computeCustomerProfit's gross (today, status !== 'voided'),
-    // so the tender buckets reconcile to grossRevenueCents and voided/refunded
-    // activity never inflates these totals. Reads ONLY existing Sale fields —
-    // no tax formulas, no checkout math, no mutation.
-    const activeTodaySales = todaySales.filter((s) => s.status !== 'voided');
-
-    let cashCents = 0, cardCents = 0, storeCreditCents = 0, otherCents = 0;
-    let salesTaxCents = 0, utilityTaxCents = 0, caMobilityFeeCents = 0;
-    let cbeFeeCents = 0, screenFeeCents = 0, creditCardFeeCents = 0;
-
-    for (const s of activeTodaySales) {
-      const total = s.total || 0;
+    // Display residuals ONLY: otherCents (unknown/legacy payment methods) and
+    // creditCardFeeCents — the two breakdown fields the canonical service does
+    // not model. Same active (non-voided) day set the A2A view always used.
+    // No tax/profit/refund math — every canonical value comes from `c` above.
+    const activeDaySales = daySales.filter((s) => s.status !== 'voided');
+    let otherCents = 0;
+    let creditCardFeeCents = 0;
+    for (const s of activeDaySales) {
       const pm = String(s.paymentMethod || '').trim().toLowerCase().replace(/\s+/g, '_');
-      const sp = s.splitPayment;
-      if (pm === 'split' && sp) {
-        // Use the stored split buckets directly (sum to total by POS contract).
-        cashCents += sp.cash || 0;
-        cardCents += sp.card || 0;
-        storeCreditCents += sp.storeCredit || 0;
-      } else if (pm === 'cash') {
-        cashCents += total;
-      } else if (pm === 'card') {
-        cardCents += total;
-      } else if (pm === 'store_credit') {
-        storeCreditCents += total;
-      } else {
-        // Unknown/legacy method, or 'split' with no buckets to decompose →
-        // keep the dollars accounted for so tender reconciles to gross.
-        otherCents += total;
-      }
-
-      salesTaxCents      += s.salesTax || 0;
-      utilityTaxCents    += s.utilityTax || 0;
-      caMobilityFeeCents += s.mobileSurcharge || 0;
-      cbeFeeCents        += s.cbeTotal || 0;
-      screenFeeCents     += s.screenFeeTotal || 0;
+      const isKnownTender = pm === 'cash' || pm === 'card' || pm === 'store_credit'
+        || (pm === 'split' && !!s.splitPayment);
+      if (!isKnownTender) otherCents += s.total || 0; // canonical drops these
       creditCardFeeCents += s.creditCardFee || 0;
     }
 
     const feesTotalCents =
-      salesTaxCents + utilityTaxCents + caMobilityFeeCents +
-      cbeFeeCents + screenFeeCents + creditCardFeeCents;
+      c.productSalesTaxCents + c.utilityTaxCents + c.mobilitySurchargeCents +
+      c.cbeCollectedCents + c.screenFeeCents + creditCardFeeCents;
 
     return {
-      grossRevenueCents: stats.grossRevenue,
-      netRevenueCents: stats.netRevenue,
-      grossProfitCents: stats.profit,
+      grossRevenueCents: c.grossSalesCents,
+      netRevenueCents: c.netSalesCents,
+      grossProfitCents: c.totalProfitCents,
       // Round to one decimal — display-stable, deterministic.
-      profitMarginPct: Math.round(stats.margin * 10) / 10,
-      returnCount: todayReturns.length,
-      returnedAmountCents: stats.totalRefunded,
-      hasData: todaySales.length > 0 || todayReturns.length > 0,
+      profitMarginPct: Math.round(c.profitMargin * 10) / 10,
+      returnCount: dayReturns.length,
+      returnedAmountCents: c.returnAndRefundAdjustmentsCents,
+      costCents: c.totalCostCents,
+      grossTaxCents: c.grossTaxCollectedCents,
+      netTaxCents: c.netTaxCents,
+      transactionCount: c.txCount,
+      profitEstimated: c.profitAdjustmentEstimated,
+      marginMeaningful: c.profitMarginMeaningful,
+      hasData: daySales.length > 0 || dayReturns.length > 0,
       tenderBreakdown: {
-        cashCents,
-        cardCents,
-        storeCreditCents,
+        cashCents: c.cashCents,
+        cardCents: c.cardCents,
+        storeCreditCents: c.storeCreditCents,
         externalCents: 0, // no external/carrier PaymentMethod exists today
         otherCents,
       },
       feesAndTaxes: {
-        salesTaxCents,
-        utilityTaxCents,
-        caMobilityFeeCents,
-        cbeFeeCents,
-        screenFeeCents,
+        salesTaxCents: c.productSalesTaxCents,
+        utilityTaxCents: c.utilityTaxCents,
+        caMobilityFeeCents: c.mobilitySurchargeCents,
+        cbeFeeCents: c.cbeCollectedCents,
+        screenFeeCents: c.screenFeeCents,
         creditCardFeeCents,
         totalCents: feesTotalCents,
       },
-      hasSalesData: activeTodaySales.length > 0,
+      hasSalesData: activeDaySales.length > 0,
     };
   }
 
