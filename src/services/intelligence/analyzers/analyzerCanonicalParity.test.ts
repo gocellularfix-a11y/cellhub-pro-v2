@@ -1,12 +1,11 @@
 // ============================================================
-// CELLHUB-INTELLIGENCE-I2B-2 — analyzer ⇄ canonical money parity.
+// CELLHUB-INTELLIGENCE-I2B-2 / I2B-2.1 — analyzer ⇄ canonical money parity.
 //
-// Proves the Financial / Sales / Customer analyzer money answers use the
-// established canonical services (computeReportMoneyStats /
-// customerMoneyProfile) rather than legacy sum(sale.total) reduces. Customer
-// expectations are computed through the canonical service and compared
-// field-by-field — never a re-implemented formula. JENNY MIRANDA is the
-// deterministic customer case.
+// The Financial / Sales / Customer analyzer AUTHORITATIVE money answers come
+// from the canonical services (computeReportMoneyStats / customerMoneyProfile)
+// via the injected canonical range provider — never a manual reduce. Every
+// expected value is computed through the canonical service and compared
+// field-by-field. JENNY MIRANDA is the deterministic customer case.
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
@@ -15,7 +14,11 @@ import { CustomerAnalyzer } from './CustomerAnalyzer';
 import { SalesAnalyzer } from './SalesAnalyzer';
 import { FinancialAnalyzer } from './FinancialAnalyzer';
 import { computeCustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
-import type { Customer, Sale, SaleItem, Repair, CustomerReturn } from '@/store/types';
+import {
+  computeCanonicalMoneyForRange, localDayRangeForWindow,
+} from '../adapters/reportMoneyAdapter';
+import type { CanonicalWindowProvider } from '../adapters/reportMoneyAdapter';
+import type { Customer, Sale, SaleItem, CustomerReturn } from '@/store/types';
 
 const JENNY: Customer = { id: 'cust-jenny', name: 'JENNY MIRANDA', phone: '8054523932' } as unknown as Customer;
 const SETTINGS = { carrierCommissions: { 'AT&T': 0.10 }, defaultCommissionRate: 0.07 };
@@ -49,7 +52,6 @@ function buildEngine(sales: Sale[], extras: Record<string, unknown> = {}): Intel
     { customerReturns: (extras.customerReturns as CustomerReturn[]) ?? [], settings: SETTINGS, ...extras } as never,
   );
 }
-/** Independent canonical profile — the ONLY source of expected customer values. */
 function canonicalJenny(sales: Sale[], returns: CustomerReturn[] = []) {
   return computeCustomerMoneyProfile({
     customer: JENNY, sales, repairs: [], unlocks: [], layaways: [], specialOrders: [],
@@ -57,11 +59,23 @@ function canonicalJenny(sales: Sale[], returns: CustomerReturn[] = []) {
   });
 }
 
-describe('I2B-2 Customer — Jenny deterministic case (test 19)', () => {
+// A canonical range provider over a fixed snapshot — the SAME projection the
+// engine injects into the analyzers. Used for direct-analyzer construction.
+function providerFor(sales: Sale[], returns: CustomerReturn[] = []): CanonicalWindowProvider {
+  const snapshot = {
+    sales, repairs: [], unlocks: [], specialOrders: [], layaways: [], inventory: [],
+    customerReturns: returns, vendorReturns: [], settings: SETTINGS,
+  };
+  return (window) => computeCanonicalMoneyForRange(snapshot, localDayRangeForWindow(window));
+}
+
+// ══ CUSTOMER (unchanged canonical behavior from 15a1db3) ══
+
+describe('I2B-2 Customer — Jenny deterministic case (test 24)', () => {
   const sales = jennySales();
   const engine = buildEngine(sales);
 
-  it('engine.getCustomerValueProfiles === customerMoneyProfile (test 24)', () => {
+  it('engine.getCustomerValueProfiles === customerMoneyProfile', () => {
     const p = engine.getCustomerValueProfiles().get('cust-jenny')!;
     const c = canonicalJenny(sales);
     expect(p.totalCollectedCents).toBe(c.totalCollectedCents);
@@ -71,166 +85,247 @@ describe('I2B-2 Customer — Jenny deterministic case (test 19)', () => {
     expect(p.averageTicketCents).toBe(c.averageTicketCents);
   });
 
-  it('$482.93 / $455.00 / $45.50 / 10.0% / 7 tx / $68.99', () => {
+  it('$482.93 / $455.00 / $45.50 / 10.0% / 7 tx / $68.99 (test 24: unchanged)', () => {
     const top = engine.getTopCustomersByValue(5);
     expect(top[0].customerId).toBe('cust-jenny');
-    expect(top[0].revenueCents).toBe(48293);          // Total Collected
-    expect(top[0].netAfterReturnsCents).toBe(48293);
-    expect(top[0].profitCents).toBe(4550);            // AT&T 10%
+    expect(top[0].revenueCents).toBe(48293);
+    expect(top[0].profitCents).toBe(4550);
     expect(top[0].marginPercent).toBe(10);
     expect(top[0].transactionCount).toBe(7);
     const p = engine.getCustomerValueProfiles().get('cust-jenny')!;
-    expect(p.profitBearingRevenueCents).toBe(45500);  // commissionable base
+    expect(p.profitBearingRevenueCents).toBe(45500);
     expect(p.averageTicketCents).toBe(6899);
-  });
-
-  it('configured commission is EXACT, not missing cost (test 20)', () => {
-    const p = engine.getCustomerValueProfiles().get('cust-jenny')!;
-    expect(p.exactCoveragePercent).toBe(100);
-    expect(p.estimatedPercent).toBe(0);
+    expect(p.exactCoveragePercent).toBe(100);      // configured commission is exact
     expect(p.profitEstimated).toBe(false);
   });
+});
 
-  it('CustomerAnalyzer financial methods == canonical (test 24, direct)', () => {
+describe('I2B-2.1 Customer — fallback removal + scope (tests 20/23)', () => {
+  it('20. a monetary method WITHOUT a canonical provider throws (no silent sum(sale.total))', () => {
+    const ca = new CustomerAnalyzer([JENNY], jennySales(), undefined, 'en'); // no provider
+    expect(() => ca.getCustomerLifetimeValue()).toThrow(/canonical money provider/);
+    expect(() => ca.getTopCustomers('spend')).toThrow(/canonical money provider/);
+    expect(() => ca.getMetrics()).toThrow(/canonical money provider/);
+    // Non-monetary methods still work without a provider.
+    expect(() => ca.getVIPs()).not.toThrow();
+    expect(() => ca.getAtRiskCustomers()).not.toThrow();
+  });
+
+  it('with a provider, CustomerAnalyzer money == canonical', () => {
+    const sales = jennySales();
+    const engine = buildEngine(sales);
     const ca = new CustomerAnalyzer([JENNY], sales, undefined, 'en', () => engine.getCustomerValueProfiles());
     expect(ca.getCustomerLifetimeValue()['cust-jenny']).toBe(48293);
     expect(ca.getTopCustomers('spend')[0].id).toBe('cust-jenny');
-    expect(ca.getMetrics().avgLTV).toBe(48293);       // only Jenny has activity
-  });
-});
-
-describe('I2B-2 Customer — returns, transactions vs interactions, id safety (21/22/23)', () => {
-  it('21. a return reduces net-after-returns but not Total Collected', () => {
-    const sales = jennySales();
-    const ret: CustomerReturn = {
-      id: 'r1', returnNumber: 'RTN-1', originalInvoice: sales[0].invoiceNumber, originalSaleId: sales[0].id,
-      customerName: 'JENNY MIRANDA', customerPhone: '8054523932', employeeName: 'op',
-      createdAt: '2026-06-20T12:00:00', reason: 'defective', resolution: 'cash', notes: '',
-      items: [{ id: sales[0].items[0].id, name: 'AT&T - 8054523932', qty: 1, priceCents: 6500, subtotalCents: 6500, taxCents: 399, totalCents: 6899 }] as CustomerReturn['items'],
-      subtotalCents: 6500, taxCents: 399, totalCents: 6899,
-    } as unknown as CustomerReturn;
-    const engine = buildEngine(sales, { customerReturns: [ret] });
-    const p = engine.getCustomerValueProfiles().get('cust-jenny')!;
-    const c = canonicalJenny(sales, [ret]);
-    expect(p.totalCollectedCents).toBe(48293);            // gross unchanged
-    expect(p.returnsCents).toBe(c.returnsCents);
-    expect(p.netAfterReturnsCents).toBe(c.netAfterReturnsCents);
-    expect(p.netAfterReturnsCents).toBe(48293 - 6899);
+    expect(ca.getMetrics().avgLTV).toBe(48293);
   });
 
-  it('22. financial transactions (7) are NOT the raw interaction count', () => {
-    // 7 payments + an appointment-like extra sale row that is voided → still 7.
-    const sales = [...jennySales(), mkSale({ id: 'void', status: 'voided' as Sale['status'], total: 9999 })];
-    const engine = buildEngine(sales);
-    expect(engine.getCustomerValueProfiles().get('cust-jenny')!.transactionCount).toBe(7);
-  });
-
-  it('23. duplicate / missing item IDs do not double-count collected', () => {
-    const dup = mkSale({
-      id: 'dupSale', createdAt: '2026-06-08T10:00:00',
-      items: [
-        mkItem({ id: 'dupI', name: 'Case', price: 1000, cost: 400 }),
-        mkItem({ id: 'dupI', name: 'Case B', price: 1000, cost: 400 }),
-        { ...mkItem({ name: 'NoId', price: 500, cost: 200 }), id: undefined } as unknown as SaleItem,
-      ],
-      subtotal: 2500, total: 2500,
-    });
-    const engine = buildEngine([jennyPayment(1), dup]);
-    const p = engine.getCustomerValueProfiles().get('cust-jenny')!;
-    const c = canonicalJenny([jennyPayment(1), dup]);
-    expect(p.totalCollectedCents).toBe(c.totalCollectedCents);
-    expect(p.totalCollectedCents).toBe(6899 + 2500);      // each line once, no double count
-  });
-});
-
-describe('I2B-2 Customer — top-customers ranking is one metric + deterministic', () => {
-  it('ranks by canonical Total Collected with deterministic id tie-break', () => {
+  it('23. customer store-scope: only the scoped snapshot is consulted', () => {
     const a: Customer = { id: 'cust-a', name: 'A', phone: '8051110000' } as unknown as Customer;
     const b: Customer = { id: 'cust-b', name: 'B', phone: '8052220000' } as unknown as Customer;
-    // Equal collected (5000 each) → stable order by id (cust-a before cust-b).
     const sales = [
       mkSale({ id: 'sa', customerId: 'cust-a', customerPhone: '8051110000', items: [mkItem({ name: 'X', price: 5000, cost: 2000 })], subtotal: 5000, total: 5000 }),
       mkSale({ id: 'sb', customerId: 'cust-b', customerPhone: '8052220000', items: [mkItem({ name: 'Y', price: 5000, cost: 2000 })], subtotal: 5000, total: 5000 }),
     ];
     const engine = buildEngine(sales, { customers: [b, a] });
     const top = engine.getTopCustomersByValue(5);
-    expect(top.map((t) => t.customerId)).toEqual(['cust-a', 'cust-b']);
+    expect(top.map((t) => t.customerId)).toEqual(['cust-a', 'cust-b']); // deterministic id tie-break
     expect(top[0].revenueCents).toBe(5000);
   });
 });
 
-// ── Sales / Financial analyzers: gross-activity population (voided excluded) ──
+// ══ SALES ANALYZER (authoritative money = canonical) ══
 
 const now = () => new Date().toISOString();
-function analyzerSale(over: Partial<Sale>): Sale {
+function aSale(over: Partial<Sale>): Sale {
   return {
     id: `as-${++seq}`, invoiceNumber: `INV-${seq}`, status: 'completed', paymentMethod: 'cash',
-    total: 10000, subtotal: 10000, createdAt: now(),
+    total: 10000, subtotal: 10000, createdAt: now(), customerId: undefined,
     items: [mkItem({ name: 'Glass', price: 10000, qty: 1, cost: 6000 })], ...over,
   } as Sale;
 }
-// end 1 day in the future so today's (now()) fixtures are inside the window.
 const wideWindow = () => ({ start: new Date(Date.now() - 7 * 86_400_000), end: new Date(Date.now() + 86_400_000), label: '7d' });
 
-describe('I2B-2 Sales analyzer — canonical gross-activity (tests 13/15/16/18)', () => {
-  it('15. voided sales are excluded from revenue + transaction count', () => {
-    const sa = new SalesAnalyzer([
-      analyzerSale({ id: 'ok', total: 10000 }),
-      analyzerSale({ id: 'void', total: 99999, status: 'voided' as Sale['status'] }),
-    ], []);
-    const m = sa.getMetrics(wideWindow());
-    expect(m.totalRevenue).toBe(10000);   // voided $999.99 excluded
+describe('I2B-2.1 Sales analyzer — authoritative money from canonical', () => {
+  it('totalRevenue = canonical gross, netRevenueCents = canonical net, tx = canonical (tests 14/15)', () => {
+    const sales = [aSale({ id: 'ok', total: 10000 }), aSale({ id: 'void', total: 99999, status: 'voided' as Sale['status'] })];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    const w = wideWindow();
+    const c = computeCanonicalMoneyForRange({ sales, repairs: [], unlocks: [], specialOrders: [], layaways: [], inventory: [], customerReturns: [], vendorReturns: [], settings: SETTINGS }, localDayRangeForWindow(w));
+    const m = sa.getMetrics(w);
+    expect(m.totalRevenue).toBe(c.grossSalesCents);
+    expect(m.totalRevenue).toBe(10000);            // voided $999.99 excluded canonically
+    expect(m.transactionCount).toBe(c.txCount);
     expect(m.transactionCount).toBe(1);
+    expect(m.netRevenueCents).toBe(c.netSalesCents);
+    expect(m.avgTransactionSize).toBe(10000);
   });
 
-  it('refund-audit rows are excluded (consistent with Reports)', () => {
-    const sa = new SalesAnalyzer([
-      analyzerSale({ id: 'ok', total: 10000 }),
-      analyzerSale({ id: 'REFUND-1', invoiceNumber: 'REFUND-INV-1', total: -4000, status: 'completed' as Sale['status'] }),
-    ], []);
-    expect(sa.getMetrics(wideWindow()).totalRevenue).toBe(10000); // −4000 refund row not counted
+  it('15. refund-audit row excluded (canonical grossActivity)', () => {
+    const sales = [aSale({ id: 'ok', total: 10000 }), aSale({ id: 'REFUND-1', invoiceNumber: 'REFUND-INV-1', total: -4000 })];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    expect(sa.getMetrics(wideWindow()).totalRevenue).toBe(10000);
   });
 
-  it('13. best-selling ranking uses ONE metric (gross line revenue); voided excluded', () => {
-    const sa = new SalesAnalyzer([
-      analyzerSale({ id: 's1', items: [mkItem({ name: 'Case', price: 3000, qty: 2, cost: 1000 })] }),   // 6000
-      analyzerSale({ id: 's2', items: [mkItem({ name: 'Cable', price: 2000, qty: 4, cost: 500 })] }),   // 8000
-      analyzerSale({ id: 'v', status: 'voided' as Sale['status'], items: [mkItem({ name: 'Case', price: 3000, qty: 99, cost: 1000 })] }),
-    ], []);
+  it('16. REAL negative canonical net-sales is returned unclamped', () => {
+    // Original out of the window (5 days ago), full refund inside → net negative.
+    const orig = aSale({ id: 'o', createdAt: new Date(Date.now() - 5 * 86_400_000).toISOString(), total: 8000, subtotal: 8000 });
+    const ret: CustomerReturn = {
+      id: 'r', returnNumber: 'RTN-1', originalInvoice: orig.invoiceNumber, originalSaleId: orig.id,
+      customerName: 'X', customerPhone: '', employeeName: 'op', createdAt: now(), reason: 'defective', resolution: 'cash', notes: '',
+      items: [{ id: orig.items[0].id, name: 'Glass', qty: 1, priceCents: 8000, subtotalCents: 8000, taxCents: 0, totalCents: 8000 }] as CustomerReturn['items'],
+      subtotalCents: 8000, taxCents: 0, totalCents: 8000,
+    } as unknown as CustomerReturn;
+    const win = { start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 86_400_000), label: 'today' };
+    const sa = new SalesAnalyzer([orig], [], undefined, 'en', providerFor([orig], [ret]));
+    const m = sa.getMetrics(win);
+    expect(m.totalRevenue).toBe(0);                // original out of window
+    expect(m.netRevenueCents).toBe(-8000);         // refund recognized → negative, unclamped
+    expect(m.netRevenueCents).toBeLessThan(0);
+  });
+
+  it('17. the SAME metric definition is used across two compared ranges', () => {
+    const sales = [
+      aSale({ id: 'a', createdAt: now(), total: 6000 }),
+      aSale({ id: 'b', createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), total: 4000 }),
+    ];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    const r1 = sa.getMetrics({ start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 86_400_000), label: 'r1' });
+    const r2 = sa.getMetrics({ start: new Date(Date.now() - 4 * 86_400_000), end: new Date(Date.now() - 2 * 86_400_000), label: 'r2' });
+    // Both totals are canonical grossSalesCents for their range — one metric.
+    expect(r1.totalRevenue).toBe(6000);
+    expect(r2.totalRevenue).toBe(4000);
+  });
+
+  it('payment breakdown + category breakdown reconcile to canonical (test 18)', () => {
+    const sales = [
+      aSale({ id: 'c1', paymentMethod: 'cash', total: 10000, items: [mkItem({ name: 'Case', category: 'accessory' as SaleItem['category'], price: 10000, qty: 1, cost: 4000 })] }),
+      aSale({ id: 'c2', paymentMethod: 'card', total: 5000, items: [mkItem({ name: 'Cable', category: 'accessory' as SaleItem['category'], price: 5000, qty: 1, cost: 2000 })] }),
+    ];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    const w = wideWindow();
+    const c = computeCanonicalMoneyForRange({ sales, repairs: [], unlocks: [], specialOrders: [], layaways: [], inventory: [], customerReturns: [], vendorReturns: [], settings: SETTINGS }, localDayRangeForWindow(w));
+    const m = sa.getMetrics(w);
+    expect(m.paymentMethodBreakdown.cash).toBe(c.cashCents);
+    expect(m.paymentMethodBreakdown.card).toBe(c.cardCents);
+    const canonAccessory = c.categoriesByRevenue.find((x) => x.name.toLowerCase() === 'accessory')!;
+    expect(m.categoryBreakdown['Accessory'] ?? m.categoryBreakdown['accessory']).toBe(canonAccessory.revenueCents);
+  });
+
+  it('13. best-selling ranking = single metric (gross item revenue) with deterministic tie-break', () => {
+    const sales = [
+      aSale({ id: 's1', items: [mkItem({ name: 'Beta', price: 3000, qty: 2, cost: 1000 })] }),   // 6000
+      aSale({ id: 's2', items: [mkItem({ name: 'Alpha', price: 2000, qty: 3, cost: 500 })] }),    // 6000 (tie)
+      aSale({ id: 'v', status: 'voided' as Sale['status'], items: [mkItem({ name: 'Beta', price: 3000, qty: 99, cost: 1000 })] }),
+    ];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
     const top = sa.getBestSellingItems(5);
-    expect(top.map((t) => t.name)).toEqual(['Cable', 'Case']); // single metric = revenue
-    expect(top[0].revenue).toBe(8000);
-    expect(top[1].revenue).toBe(6000);                          // voided Case qty 99 excluded
-  });
-
-  it('18. a positive gross-activity total is not clamped or omitted', () => {
-    const sa = new SalesAnalyzer([analyzerSale({ id: 'ok', total: 5000 })], []);
-    const m = sa.getMetrics(wideWindow());
-    expect(m.totalRevenue).toBe(5000);
-    expect(m.totalRevenue).toBeGreaterThan(0);
+    // equal revenue (6000) → tie broken by name asc: Alpha before Beta.
+    expect(top.map((t) => t.name)).toEqual(['Alpha', 'Beta']);
+    expect(top[0].revenue).toBe(6000);
+    expect(top[1].revenue).toBe(6000);             // voided qty 99 excluded
   });
 });
 
-describe('I2B-2 Financial analyzer — voided excluded from revenue/margin/profitability', () => {
-  it('voided sale does not inflate margin or card-fee estimate', () => {
-    const fa = new FinancialAnalyzer([
-      analyzerSale({ id: 'ok', total: 10000, items: [mkItem({ name: 'X', price: 10000, qty: 1, cost: 6000 })] }),
-      analyzerSale({ id: 'void', total: 50000, status: 'voided' as Sale['status'], items: [mkItem({ name: 'Y', price: 50000, qty: 1, cost: 0 })] }),
-    ], []);
-    const m = fa.getMetrics();
-    // gross margin over the ONE real $100 sale (cost $60) = 40%.
-    expect(m.grossMargin).toBe(40);
-    // card fee: 10000*0.029 + 1*30 = 320 (voided sale not counted).
-    expect(m.creditCardFees).toBe(320);
+// ══ FINANCIAL ANALYZER (authoritative margin/profitability = canonical) ══
+
+describe('I2B-2.1 Financial analyzer — canonical margin/profitability', () => {
+  function fin(sales: Sale[]) {
+    return new FinancialAnalyzer(sales, [], [], undefined, 'en', providerFor(sales));
+  }
+  function canon(sales: Sale[], w: { start: Date; end: Date }) {
+    return computeCanonicalMoneyForRange({ sales, repairs: [], unlocks: [], specialOrders: [], layaways: [], inventory: [], customerReturns: [], vendorReturns: [], settings: SETTINGS }, localDayRangeForWindow(w));
+  }
+
+  it('grossMargin + marginMeaningful come from canonical; voided excluded', () => {
+    const sales = [
+      aSale({ id: 'ok', total: 10000, subtotal: 10000, items: [mkItem({ name: 'X', price: 10000, qty: 1, cost: 6000 })] }),
+      aSale({ id: 'void', total: 50000, subtotal: 50000, status: 'voided' as Sale['status'], items: [mkItem({ name: 'Y', price: 50000, qty: 1, cost: 0 })] }),
+    ];
+    const w = wideWindow();
+    const c = canon(sales, w);
+    const m = fin(sales).getMetrics(w);
+    const expected = Math.round((c.grossItemProfitCents / c.subtotalBeforeTaxCents) * 100 * 100) / 100;
+    expect(m.grossMargin).toBe(expected);
+    expect(m.grossMargin).toBe(40);                // (10000−6000)/10000, voided excluded
+    expect(m.marginMeaningful).toBe(c.profitMarginMeaningful);
+    expect(m.creditCardFees).toBe(Math.round(c.grossSalesCents * 0.029 + c.txCount * 30));
   });
 
-  it('profitability by category excludes voided', () => {
-    const fa = new FinancialAnalyzer([
-      analyzerSale({ id: 'ok', items: [mkItem({ name: 'A', category: 'accessory' as SaleItem['category'], price: 3000, qty: 1, cost: 1000 })] }),
-      analyzerSale({ id: 'void', status: 'voided' as Sale['status'], items: [mkItem({ name: 'B', category: 'accessory' as SaleItem['category'], price: 9000, qty: 1, cost: 0 })] }),
-    ], []);
-    const prof = fa.getProfitabilityByCategory();
-    expect(prof['accessory'].revenue).toBe(3000);    // voided $90 excluded
-    expect(prof['accessory'].profit).toBe(2000);
+  it('marginMeaningful FALSE on a zero-basis window (compat grossMargin 0)', () => {
+    const sales = [aSale({ id: 'z', total: 5000, subtotal: 0, items: [mkItem({ name: 'X', price: 5000, qty: 1, cost: 2000 })] })];
+    const m = fin(sales).getMetrics(wideWindow());
+    expect(m.marginMeaningful).toBe(false);
+    expect(m.grossMargin).toBe(0);
+  });
+
+  it('profitability by category = canonical categoriesByRevenue; voided excluded', () => {
+    const sales = [
+      aSale({ id: 'ok', items: [mkItem({ name: 'A', category: 'accessory' as SaleItem['category'], price: 3000, qty: 1, cost: 1000 })] }),
+      aSale({ id: 'void', status: 'voided' as Sale['status'], items: [mkItem({ name: 'B', category: 'accessory' as SaleItem['category'], price: 9000, qty: 1, cost: 0 })] }),
+    ];
+    const w = wideWindow();
+    const c = canon(sales, w);
+    const prof = fin(sales).getProfitabilityByCategory(w);
+    const canonAccessory = c.categoriesByRevenue.find((x) => x.name.toLowerCase() === 'accessory')!;
+    const key = Object.keys(prof).find((k) => k.toLowerCase() === 'accessory')!;
+    expect(prof[key].revenue).toBe(canonAccessory.revenueCents);
+    expect(prof[key].cost).toBe(canonAccessory.costCents);
+    expect(prof[key].profit).toBe(canonAccessory.profitCents);
+    expect(prof[key].revenue).toBe(3000);          // voided $90 excluded
+  });
+
+  it('getMetrics without a canonical provider throws (no silent reduce)', () => {
+    expect(() => new FinancialAnalyzer([aSale({ id: 'x' })], []).getMetrics()).toThrow(/canonical money provider/);
+  });
+});
+
+// ══ Engine canonical range provider — scenario coverage (the analyzers' source) ══
+
+describe('I2B-2.1 engine.getCanonicalMoneyForWindow — scenario parity (tests 1-12 source)', () => {
+  const AT = (h: number) => { const d = new Date(); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+  const win = () => ({ start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 86_400_000) });
+
+  it('exchange with COGS + tax split flows through unchanged', () => {
+    const original = mkSale({ id: 'exo', createdAt: AT(9), total: 5000, subtotal: 5000, items: [mkItem({ id: 'li-x', name: 'Case', price: 5000, qty: 1, cost: 2000 })] });
+    const exchangeReturn: CustomerReturn = {
+      id: 'exr', returnNumber: 'RTN-EX', originalInvoice: original.invoiceNumber, originalSaleId: 'exo',
+      customerName: 'X', customerPhone: '', employeeName: 'op', createdAt: AT(15), reason: 'defective', resolution: 'exchange', notes: '',
+      items: [{ id: 'li-x', name: 'Case', qty: 1, priceCents: 5000, subtotalCents: 5000, taxCents: 0, totalCents: 5000 }] as CustomerReturn['items'],
+      subtotalCents: 5000, totalCents: 5000, exchangeSaleId: 'exrepl',
+    } as unknown as CustomerReturn;
+    // Replacement total nets the exchange credit: $80 goods − $50 credit = $30.
+    const replacement = mkSale({ id: 'exrepl', createdAt: AT(15), subtotal: 3000, total: 3000, items: [
+      mkItem({ name: 'Better', price: 8000, qty: 1, cost: 3000 }),
+      mkItem({ name: 'Exchange Credit RTN', category: 'exchange_credit' as SaleItem['category'], price: -5000, qty: 1, taxable: false }),
+    ] });
+    const engine = buildEngine([original, replacement], { customerReturns: [exchangeReturn] });
+    const c = engine.getCanonicalMoneyForWindow(win());
+    expect(c.netSalesCents).toBe(8000);
+    expect(c.totalCostCents).toBe(3000);
+    expect(c.totalProfitCents).toBe(5000);
+  });
+
+  it('standalone repair + unlock revenue is included in canonical gross', () => {
+    const repair = { id: 'rep', customerId: 'x', status: 'picked_up', balance: 0, total: 9000, laborCost: 2000, parts: [{ id: 'p', name: 'Screen', price: 0, cost: 1500, qty: 1 }], createdAt: AT(10) };
+    const unlock = { id: 'unl', customerId: 'x', status: 'completed', balance: 0, price: 4000, cost: 500, createdAt: AT(11) };
+    const engine = new IntelligenceEngine(
+      [] as unknown as Sale[], [], [], [repair] as never,
+      { lang: 'en', enableAlerts: false, enableScoring: false, cacheTimeoutMinutes: 15 },
+      { unlocks: [unlock], customerReturns: [], settings: SETTINGS } as never,
+    );
+    const c = engine.getCanonicalMoneyForWindow(win());
+    expect(c.grossSalesCents).toBeGreaterThan(0);
+    expect(c.standaloneRepairCount + c.standaloneUnlockCount).toBe(2);
+  });
+
+  it('consolidated multi-store scope: canonical over the combined snapshot', () => {
+    const sales = [
+      mkSale({ id: 'A1', createdAt: AT(9), customerId: undefined, ...( { storeId: 'A' } as Partial<Sale>), total: 6000, subtotal: 6000 }),
+      mkSale({ id: 'B1', createdAt: AT(10), customerId: undefined, ...( { storeId: 'B' } as Partial<Sale>), total: 7000, subtotal: 7000 }),
+    ];
+    const engine = buildEngine(sales, { customers: [] });
+    const c = engine.getCanonicalMoneyForWindow(win());
+    expect(c.grossSalesCents).toBe(13000);
   });
 });

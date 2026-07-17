@@ -6,6 +6,8 @@ import { standardDeviation, zScore } from '../utils/statistics';
 // I2B-2: canonical gross-activity classifier (voided + refund-audit rows are
 // not gross activity). Classifier only — no money math imported.
 import { isRefundAuditSale } from '@/services/reports/computeReportMoneyStats';
+// I2B-2.1: canonical range money — authoritative margin/profitability here.
+import type { CanonicalWindowProvider } from '../adapters/reportMoneyAdapter';
 
 /** Gross-activity money set (canonical population): non-voided, non-refund-audit. */
 function isGrossActivitySale(s: Sale): boolean {
@@ -24,19 +26,22 @@ export class FinancialAnalyzer {
   private expenses: ExpenseCategory[];
   private storeId?: string;
   private lang: string;
+  private getCanonical?: CanonicalWindowProvider;
 
   constructor(
     sales: Sale[],
     repairs: Repair[],
     expenses: ExpenseCategory[] = [],
     storeId?: string,
-    lang: string = 'en'
+    lang: string = 'en',
+    getCanonical?: CanonicalWindowProvider,
   ) {
     this.sales = sales;
     this.repairs = repairs;
     this.expenses = expenses;
     this.storeId = storeId;
     this.lang = lang;
+    this.getCanonical = getCanonical;
   }
 
   filterByStore<T extends { storeId?: string }>(items: T[]): T[] {
@@ -44,19 +49,34 @@ export class FinancialAnalyzer {
     return items.filter(item => (item as any).storeId === this.storeId);
   }
 
-  getMetrics(window?: { start: Date; end: Date }): FinancialMetrics {
-    // I2B-2: gross-activity only — voided + refund-audit rows excluded so
-    // revenue / COGS / margin / card-fee estimates no longer count voided
-    // sales (consistent with Reports' grossActivity set).
-    const salesFiltered = this.filterByStore(
-      window
-        ? this.sales.filter(s => {
-            const created = new Date(s.createdAt as string);
-            return created >= window.start && created <= window.end;
-          })
-        : this.sales
-    ).filter(isGrossActivitySale);
+  /** I2B-2.1: authoritative money REQUIRES the canonical range provider — no
+   *  silent manual-reduce fallback. window omitted ⇒ all-time. */
+  private canonical(window?: { start: Date; end: Date }) {
+    if (!this.getCanonical) {
+      throw new Error('FinancialAnalyzer.getMetrics requires a canonical money provider (I2B-2.1)');
+    }
+    return this.getCanonical(window ?? { start: new Date(0), end: new Date() });
+  }
 
+  getMetrics(window?: { start: Date; end: Date }): FinancialMetrics {
+    // I2B-2.1: AUTHORITATIVE fields from the canonical range projection.
+    // grossMargin = canonical gross item profit ÷ canonical pre-tax gross
+    // revenue (both canonical outputs — no manual profit/cost reduce).
+    const c = this.canonical(window);
+    const grossMargin = c.subtotalBeforeTaxCents > 0
+      ? (c.grossItemProfitCents / c.subtotalBeforeTaxCents) * 100
+      : 0;
+    const marginMeaningful = c.profitMarginMeaningful;
+
+    // expenses are non-canonical; the denominator is canonical gross revenue.
+    const totalExpenses = this.expenses.reduce((sum, e) => sum + e.amount, 0);
+    const expenseRatio = c.grossSalesCents > 0
+      ? (totalExpenses / c.grossSalesCents) * 100
+      : 0;
+
+    // ── OPERATIONAL (not canonical), clearly separated ──
+    // Repair deposits: an operational figure the canonical service does not
+    // model (its cbeCollectedCents is sale CBE fees, a different concept).
     const repairsFiltered = this.filterByStore(
       window
         ? this.repairs.filter(r => {
@@ -65,47 +85,26 @@ export class FinancialAnalyzer {
           })
         : this.repairs
     );
-
-    const revenue = salesFiltered.reduce((sum, s) => sum + (s.total || 0), 0);
-    const repairRevenue = repairsFiltered.reduce((sum, r) => sum + (r.total || r.estimatedCost || 0), 0);
-    const grossRevenue = revenue + repairRevenue;
-
-    let totalCOGS = 0;
-    for (const sale of salesFiltered) {
-      for (const item of sale.items || []) {
-        const cost = (item as any).cost || 0;
-        totalCOGS += cost * item.qty;
-      }
-    }
-    for (const repair of repairsFiltered) {
-      totalCOGS += repair.laborCost || 0;
-      for (const part of repair.parts || []) {
-        totalCOGS += (part.cost || 0) * part.qty;
-      }
-    }
-
-    const grossMargin = grossRevenue > 0 
-      ? ((grossRevenue - totalCOGS) / grossRevenue) * 100 
-      : 0;
-
-    const totalExpenses = this.expenses.reduce((sum, e) => sum + e.amount, 0);
-    const expenseRatio = grossRevenue > 0 
-      ? (totalExpenses / grossRevenue) * 100 
-      : 0;
-
     const cbeCollected = repairsFiltered.reduce((sum, r) => sum + (r.depositAmount || 0), 0);
 
-    // Money is integer cents: 2.9% of revenue-cents + a flat 30-cent
-    // ($0.30) per-transaction fee. (Previously used 0.30, which added a
-    // third of a cent per sale instead of 30 cents.)
-    const cardFees = revenue * 0.029 + salesFiltered.length * 30;
-    const creditCardFees = Math.round(cardFees);
+    // Card-fee ESTIMATE (2.9% + 30¢/txn), derived from the canonical gross +
+    // transaction count. NOT a canonical figure — a processor-fee projection.
+    const creditCardFees = Math.round(c.grossSalesCents * 0.029 + c.txCount * 30);
 
+    // Operational gross-activity daily sparkline (per-day, not a range total).
+    const salesActivity = this.filterByStore(
+      window
+        ? this.sales.filter(s => {
+            const created = new Date(s.createdAt as string);
+            return created >= window.start && created <= window.end;
+          })
+        : this.sales
+    ).filter(isGrossActivitySale);
     const cashFlowByDay: Record<string, number> = {};
     for (let i = 29; i >= 0; i--) {
       const day = getDaysAgo(i);
       const dayStr = day.toISOString().split('T')[0];
-      const daySales = salesFiltered.filter(s => {
+      const daySales = salesActivity.filter(s => {
         const d = new Date(s.createdAt as string);
         return d.toISOString().split('T')[0] === dayStr;
       });
@@ -114,6 +113,7 @@ export class FinancialAnalyzer {
 
     return {
       grossMargin: Math.round(grossMargin * 100) / 100,
+      marginMeaningful,
       expenseRatio: Math.round(expenseRatio * 100) / 100,
       cbeCollected,
       creditCardFees,
@@ -121,23 +121,15 @@ export class FinancialAnalyzer {
     };
   }
 
-  getProfitabilityByCategory(): Record<string, { revenue: number; cost: number; profit: number }> {
+  // I2B-2.1: canonical per-category revenue/cost/profit for the window
+  // (all-time when omitted). Sourced from computeReportMoneyStats'
+  // categoriesByRevenue — no manual per-item reduce.
+  getProfitabilityByCategory(window?: { start: Date; end: Date }): Record<string, { revenue: number; cost: number; profit: number }> {
+    const c = this.canonical(window);
     const result: Record<string, { revenue: number; cost: number; profit: number }> = {};
-
-    // I2B-2: gross-activity only (voided + refund-audit excluded).
-    for (const sale of this.filterByStore(this.sales).filter(isGrossActivitySale)) {
-      for (const item of sale.items || []) {
-        const cat = item.category || 'unknown';
-        if (!result[cat]) result[cat] = { revenue: 0, cost: 0, profit: 0 };
-        result[cat].revenue += (item.price || 0) * item.qty;
-        result[cat].cost += ((item as any).cost || 0) * item.qty;
-      }
+    for (const cat of c.categoriesByRevenue) {
+      result[cat.name] = { revenue: cat.revenueCents, cost: cat.costCents, profit: cat.profitCents };
     }
-
-    for (const cat of Object.keys(result)) {
-      result[cat].profit = result[cat].revenue - result[cat].cost;
-    }
-
     return result;
   }
 
@@ -247,9 +239,11 @@ export class FinancialAnalyzer {
   generateInsights(window?: { start: Date; end: Date }): Insight[] {
     const insights: Insight[] = [];
     const metrics = this.getMetrics(window);
-    const profitability = this.getProfitabilityByCategory();
+    const profitability = this.getProfitabilityByCategory(window);
 
-    if (metrics.grossMargin < 20) {
+    // I2B-2.1: only warn on a MEANINGFUL margin — a zero/negative-basis period
+    // has grossMargin=0 as a compatibility value, not a business conclusion.
+    if (metrics.marginMeaningful && metrics.grossMargin < 20) {
       insights.push({
         id: 'financial-margin-low',
         category: 'financial',

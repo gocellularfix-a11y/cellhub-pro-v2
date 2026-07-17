@@ -8,6 +8,8 @@ import { formatCurrency } from '@/utils/currency';
 // audit row are NOT gross activity (Reports excludes both). Classifier only;
 // no money math is imported.
 import { isRefundAuditSale } from '@/services/reports/computeReportMoneyStats';
+// I2B-2.1: canonical range money — authoritative totals come from here.
+import type { CanonicalWindowProvider } from '../adapters/reportMoneyAdapter';
 
 /** Gross-activity money set (canonical population): non-voided, non-refund-audit. */
 function isGrossActivitySale(s: Sale): boolean {
@@ -19,12 +21,31 @@ export class SalesAnalyzer {
   private customers: Customer[];
   private storeId?: string;
   private lang: string;
+  private getCanonical?: CanonicalWindowProvider;
 
-  constructor(sales: Sale[], customers: Customer[], storeId?: string, lang: string = 'en') {
+  constructor(
+    sales: Sale[],
+    customers: Customer[],
+    storeId?: string,
+    lang: string = 'en',
+    getCanonical?: CanonicalWindowProvider,
+  ) {
     this.sales = sales;
     this.customers = customers;
     this.storeId = storeId;
     this.lang = lang;
+    this.getCanonical = getCanonical;
+  }
+
+  /** I2B-2.1: authoritative money REQUIRES the canonical range provider — no
+   *  silent manual-reduce fallback. Callers (the engine) always wire it;
+   *  provider-less construction may still use the non-money operational
+   *  methods, but the money-bearing getMetrics fails loudly. */
+  private canonical(window: AnalysisWindow) {
+    if (!this.getCanonical) {
+      throw new Error('SalesAnalyzer.getMetrics requires a canonical money provider (I2B-2.1)');
+    }
+    return this.getCanonical(window);
   }
 
   filterByWindow(window: AnalysisWindow): Sale[] {
@@ -40,41 +61,46 @@ export class SalesAnalyzer {
   }
 
   getMetrics(window: AnalysisWindow): SalesMetrics {
-    // I2B-2: gross-activity only — voided + refund-audit rows excluded so the
-    // dashboard revenue / transaction count / breakdowns no longer count
-    // voided sales as revenue (consistent with Reports' grossActivity set).
-    const filtered = this.filterByStore(this.filterByWindow(window)).filter(isGrossActivitySale);
-    const totalRevenue = filtered.reduce((sum, s) => sum + (s.total || 0), 0);
-    const transactionCount = filtered.length;
-    const avgTransactionSize = transactionCount > 0 ? totalRevenue / transactionCount : 0;
+    // I2B-2.1: AUTHORITATIVE money from the canonical range projection — no
+    // manual reduce. totalRevenue is explicitly GROSS activity (grossSales);
+    // netRevenueCents is canonical net (can be NEGATIVE, unclamped).
+    const c = this.canonical(window);
+    const totalRevenue = c.grossSalesCents;
+    const transactionCount = c.txCount;
+    const avgTransactionSize = transactionCount > 0 ? Math.round(c.grossSalesCents / transactionCount) : 0;
 
-    const paymentBreakdown: Record<string, number> = {};
-    for (const sale of filtered) {
-      const pm = String(sale.paymentMethod || '').toLowerCase();
-      paymentBreakdown[pm] = (paymentBreakdown[pm] || 0) + (sale.total || 0);
+    // Payment breakdown = canonical tender (cash/card/store_credit). Reconciles
+    // with Reports; unknown/other tender is not modeled by the canonical
+    // service and is intentionally omitted here.
+    const paymentBreakdown: Record<string, number> = {
+      cash: c.cashCents,
+      card: c.cardCents,
+      store_credit: c.storeCreditCents,
+    };
+
+    // Category breakdown = canonical GROSS revenue per category.
+    const categoryBreakdown: Record<string, number> = {};
+    for (const cat of c.categoriesByRevenue) {
+      categoryBreakdown[cat.name] = cat.revenueCents;
     }
 
+    // dailyRevenue is an OPERATIONAL gross-activity sparkline (per-day series,
+    // NOT a canonical range total) — voided + refund-audit excluded (I2B-2).
+    const activity = this.filterByStore(this.filterByWindow(window)).filter(isGrossActivitySale);
     const dailyRevenue: number[] = [];
     for (let i = 6; i >= 0; i--) {
       const dayStart = getDaysAgo(i);
       const dayEnd = getDaysAgo(i - 1);
-      const daySales = filtered.filter(s => {
+      const daySales = activity.filter(s => {
         const d = new Date(s.createdAt as string);
         return d >= dayStart && d < dayEnd;
       });
       dailyRevenue.push(daySales.reduce((sum, s) => sum + (s.total || 0), 0));
     }
 
-    const categoryBreakdown: Record<string, number> = {};
-    for (const sale of filtered) {
-      for (const item of sale.items || []) {
-        const cat = item.category || 'unknown';
-        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + (item.price * item.qty);
-      }
-    }
-
     return {
       totalRevenue,
+      netRevenueCents: c.netSalesCents,
       transactionCount,
       avgTransactionSize,
       paymentMethodBreakdown: paymentBreakdown,
@@ -92,9 +118,11 @@ export class SalesAnalyzer {
     return { trend: 'flat', percent };
   }
 
+  // Operational item ranking. EXPLICIT METRIC: gross item revenue
+  // (price × qty) over gross-activity sales (voided + refund-audit excluded,
+  // I2B-2). I2B-2.1: deterministic tie-break — revenue desc, then name asc.
   getBestSellingItems(count: number = 5): Array<{ name: string; quantity: number; revenue: number }> {
     const itemMap: Record<string, { quantity: number; revenue: number }> = {};
-    // I2B-2: gross-activity only (voided + refund-audit excluded).
     const recentSales = this.filterByWindow({ start: getDaysAgo(30), end: new Date(), label: 'Last 30 days' })
       .filter(isGrossActivitySale);
     for (const sale of recentSales) {
@@ -108,7 +136,7 @@ export class SalesAnalyzer {
     }
     return Object.entries(itemMap)
       .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.revenue - a.revenue)
+      .sort((a, b) => (b.revenue - a.revenue) || a.name.localeCompare(b.name))
       .slice(0, count);
   }
 

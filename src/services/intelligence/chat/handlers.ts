@@ -4633,15 +4633,21 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   // ── Customers: top / inactive / general ────────────────
   if (/customer|cliente/.test(q)) {
     if (/top|mejor|melhor|best/.test(q)) {
-      // I2B-2: canonical Total Collected (returns-aware, attribution-correct)
-      // instead of the legacy sum(sale.total) customerId-only ranking.
-      // revenueCents === Customer 360 "Total Collected"; visitCount ===
-      // canonical financial transactions (not raw sale rows).
+      // I2B-2 / I2B-2.1: canonical Total Collected (returns-aware,
+      // attribution-correct) instead of the legacy sum(sale.total)
+      // customerId-only ranking. revenueCents === Customer 360 "Total
+      // Collected"; the parenthetical count is canonical FINANCIAL
+      // TRANSACTIONS (not raw sale rows, not visits/interactions), so the
+      // label says "transactions". The ranking metric is made explicit.
       const list = engine.getTopCustomersByValue(5);
       if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
-      const lines = [`${t('chat.dataQuery.customersHeader')} — top ${list.length}`, ''];
+      const byLabel = lang === 'es' ? 'por Total Cobrado' : lang === 'pt' ? 'por Total Recebido' : 'by Total Collected';
+      const txWord = (n: number) => lang === 'es' ? (n === 1 ? 'transacción' : 'transacciones')
+        : lang === 'pt' ? (n === 1 ? 'transação' : 'transações')
+        : (n === 1 ? 'transaction' : 'transactions');
+      const lines = [`${t('chat.dataQuery.customersHeader')} — top ${list.length} ${byLabel}`, ''];
       list.forEach((c, i) => {
-        lines.push(`${i + 1}. ${c.name || '—'} — ${COP(c.revenueCents)} (${c.transactionCount} ${lang === 'es' ? 'visitas' : lang === 'pt' ? 'visitas' : 'visits'})`);
+        lines.push(`${i + 1}. ${c.name || '—'} — ${COP(c.revenueCents)} (${c.transactionCount} ${txWord(c.transactionCount)})`);
       });
       return { kind: 'answer', text: lines.join('\n') };
     }

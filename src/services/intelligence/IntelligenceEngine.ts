@@ -3,7 +3,8 @@ import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaw
 // CELLHUB-INTELLIGENCE-I2A: canonical report-money adapter — financial
 // calculations are owned by computeReportMoneyStats; the adapter and this
 // engine only wire data and map fields.
-import { computeCanonicalMoneyForRange, localDayRangeForDay } from './adapters/reportMoneyAdapter';
+import { computeCanonicalMoneyForRange, localDayRangeForDay, localDayRangeForWindow } from './adapters/reportMoneyAdapter';
+import type { ReportMoneyStats } from '@/services/reports/computeReportMoneyStats';
 // I2B-1.1: the SAME inclusive local-day membership test the canonical service
 // uses — auxiliary EOD filters must never re-derive day boundaries.
 import { isWithinLocalDayRange } from '@/utils/reportRange';
@@ -308,7 +309,9 @@ export class IntelligenceEngine {
       this.sales,
       this.customers,
       this.config.storeId,
-      this.config.lang
+      this.config.lang,
+      // I2B-2.1: canonical range provider — authoritative money from canonical.
+      (window) => this.getCanonicalMoneyForWindow(window),
     );
     this.inventoryAnalyzer = new InventoryAnalyzer(
       this.inventory,
@@ -335,7 +338,9 @@ export class IntelligenceEngine {
       this.repairs,
       [],
       this.config.storeId,
-      this.config.lang
+      this.config.lang,
+      // I2B-2.1: canonical range provider — authoritative money from canonical.
+      (window) => this.getCanonicalMoneyForWindow(window),
     );
 
     this.alertEngine = new AlertEngine(
@@ -724,6 +729,16 @@ export class IntelligenceEngine {
     };
   }
 
+  // CELLHUB-INTELLIGENCE-I2B-2.1: THE canonical money projection for an
+  // arbitrary analyzer window. The single range provider injected into the
+  // Financial + Sales analyzers so their authoritative money fields come from
+  // computeReportMoneyStats — never a manual reduce. Day-granular (Reports
+  // ranges are day-granular). Financial math is owned by the canonical
+  // service; this is data wiring only.
+  getCanonicalMoneyForWindow(window: { start: Date; end: Date }): ReportMoneyStats {
+    return computeCanonicalMoneyForRange(this.canonicalMoneySnapshot(), localDayRangeForWindow(window));
+  }
+
   // CELLHUB-INTELLIGENCE-I2B-1: today-only money for the End-of-Day brief,
   // sourced from THE canonical report service (computeReportMoneyStats) — the
   // same pipeline Reports / Customer 360 / chat consume. getTodayMoney no
@@ -958,12 +973,12 @@ export class IntelligenceEngine {
     // were constructed with. Rebuild them so they see the fresh adapted
     // arrays. Constructor signatures + arg order kept identical to the
     // original constructor block above.
-    this.salesAnalyzer = new SalesAnalyzer(this.sales, this.customers, this.config.storeId, this.config.lang);
+    this.salesAnalyzer = new SalesAnalyzer(this.sales, this.customers, this.config.storeId, this.config.lang, (window) => this.getCanonicalMoneyForWindow(window));
     this.inventoryAnalyzer = new InventoryAnalyzer(this.inventory, this.sales, undefined, this.config.lang);
     this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
     // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG-EXTEND: customers are global — see CustomerScorer note above.
     this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, undefined, this.config.lang, () => this.getCustomerValueProfiles());
-    this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
+    this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang, (window) => this.getCanonicalMoneyForWindow(window));
     // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG: customers are global — see
     // detailed note above the matching call in the constructor.
     this.customerScorer = new CustomerScorer(this.customers, this.sales, undefined, this.config.lang);

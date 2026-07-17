@@ -110,12 +110,17 @@ export interface ForecastResult {
 }
 
 export interface SalesMetrics {
+  // I2B-2.1: GROSS-activity revenue (canonical grossSalesCents) — explicitly
+  // gross, NOT net. Sourced from computeReportMoneyStats, never a manual reduce.
   totalRevenue: number;
-  transactionCount: number;
-  avgTransactionSize: number;
-  paymentMethodBreakdown: Record<string, number>;
-  dailyRevenue: number[];
-  categoryBreakdown: Record<string, number>;
+  // I2B-2.1: canonical NET sales (grossSalesCents − return/refund adjustments).
+  // Can be NEGATIVE on a refund-only period — returned unclamped.
+  netRevenueCents: number;
+  transactionCount: number;         // = canonical txCount
+  avgTransactionSize: number;       // = grossSalesCents / txCount (canonical fields)
+  paymentMethodBreakdown: Record<string, number>;   // canonical cash/card/store_credit
+  dailyRevenue: number[];           // OPERATIONAL gross-activity daily sparkline (per-day series, not a range total)
+  categoryBreakdown: Record<string, number>;        // canonical GROSS revenue by category
 }
 
 export interface InventoryMetrics {
@@ -145,8 +150,15 @@ export interface CustomerMetrics {
 }
 
 export interface FinancialMetrics {
+  // I2B-2.1: canonical GROSS margin = grossItemProfitCents ÷ pre-tax gross
+  // revenue (both canonical outputs; no manual profit/cost reduce).
   grossMargin: number;
-  expenseRatio: number;
+  // I2B-2.1: canonical profitMarginMeaningful — false for zero/negative-basis
+  // periods; consumers must not present grossMargin=0 as a conclusion then.
+  marginMeaningful: boolean;
+  expenseRatio: number;             // expenses ÷ canonical gross revenue (expenses are non-canonical)
+  // OPERATIONAL (not canonical): repair deposits, a card-fee ESTIMATE, and a
+  // daily gross sparkline. Never presented as canonical profit/margin/revenue.
   cbeCollected: number;
   creditCardFees: number;
   cashFlowByDay: Record<string, number>;

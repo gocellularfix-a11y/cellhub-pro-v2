@@ -77,6 +77,20 @@ export function localDayRangeForDay(d: Date): LocalDayRange {
   return normalizeLocalDayRange(ymd, ymd);
 }
 
+/** CELLHUB-INTELLIGENCE-I2B-2.1: an arbitrary analyzer window (start/end
+ *  Dates) expressed as the canonical inclusive LOCAL-day range spanning those
+ *  days — the single conversion the Financial/Sales analyzers use to project
+ *  their windows onto computeReportMoneyStats. Day-granular by construction
+ *  (Reports ranges are day-granular); no timestamp-level reduce. */
+export function localDayRangeForWindow(window: { start: Date; end: Date }): LocalDayRange {
+  return normalizeLocalDayRange(toLocalYMD(window.start), toLocalYMD(window.end));
+}
+
+/** I2B-2.1: the lazy canonical range provider injected into the analyzers so
+ *  their authoritative money fields come from ONE canonical projection —
+ *  never a manual reduce. */
+export type CanonicalWindowProvider = (window: { start: Date; end: Date }) => ReportMoneyStats;
+
 /** The chat's coarse ranges, expressed as canonical LOCAL-day ranges with
  *  the SAME semantics the previous getDateBounds implemented:
  *  today · yesterday · Sunday-anchored this_week · calendar this_month ·

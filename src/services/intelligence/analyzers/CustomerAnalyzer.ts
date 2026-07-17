@@ -5,12 +5,13 @@ import { getDaysAgo } from '../utils/dateHelpers';
 import { percentile } from '../utils/statistics';
 import type { CustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
 
-/** I2B-2: lazy provider of canonical per-customer money profiles (batched).
- *  The engine supplies this so the analyzer's monetary methods share the
- *  SAME canonical Total Collected / profit / margin the customer list and
- *  Customer 360 use — never a legacy sum(sale.total) reduce. Optional so
- *  standalone/test construction still works (falls back to gross sale.total
- *  ONLY when no provider is given). */
+/** I2B-2 / I2B-2.1: lazy provider of canonical per-customer money profiles
+ *  (batched). The engine supplies this so the analyzer's monetary methods
+ *  share the SAME canonical Total Collected / profit / margin the customer
+ *  list and Customer 360 use — never a legacy sum(sale.total) reduce. It is
+ *  REQUIRED for the monetary methods (getMetrics.avgLTV, getTopCustomers
+ *  'spend', getCustomerLifetimeValue): those throw if it is absent (I2B-2.1
+ *  removed the silent legacy fallback). Non-monetary methods do not need it. */
 export type CustomerValueProfileProvider = () => Map<string, CustomerMoneyProfile>;
 
 export class CustomerAnalyzer {
@@ -34,25 +35,21 @@ export class CustomerAnalyzer {
     this.getValueProfiles = getValueProfiles;
   }
 
-  // I2B-2: canonical Total Collected per customer, returns-aware and
-  // attribution-correct (id → linkage → phone). Falls back to the legacy
-  // customerId-only gross reduce ONLY when no canonical provider is wired
-  // (keeps standalone/test construction working).
+  // I2B-2.1: canonical Total Collected per customer, returns-aware and
+  // attribution-correct (id → linkage → phone). The canonical provider is
+  // REQUIRED — the legacy sum(sale.total) fallback was REMOVED so a monetary
+  // method can never silently return a legacy gross total. A provider-less
+  // construction fails loudly here (non-monetary methods stay usable).
   private collectedByCustomer(): Map<string, number> {
-    if (this.getValueProfiles) {
-      const profiles = this.getValueProfiles();
-      const out = new Map<string, number>();
-      for (const c of this.filterByStore(this.customers)) {
-        out.set(c.id, profiles.get(c.id)?.totalCollectedCents ?? 0);
-      }
-      return out;
+    if (!this.getValueProfiles) {
+      throw new Error('CustomerAnalyzer monetary methods require a canonical money provider (I2B-2.1)');
     }
-    const legacy = new Map<string, number>();
-    for (const sale of this.sales) {
-      if (!sale.customerId) continue;
-      legacy.set(sale.customerId, (legacy.get(sale.customerId) || 0) + (sale.total || 0));
+    const profiles = this.getValueProfiles();
+    const out = new Map<string, number>();
+    for (const c of this.filterByStore(this.customers)) {
+      out.set(c.id, profiles.get(c.id)?.totalCollectedCents ?? 0);
     }
-    return legacy;
+    return out;
   }
 
   filterByStore<T extends { storeId?: string }>(items: T[]): T[] {
