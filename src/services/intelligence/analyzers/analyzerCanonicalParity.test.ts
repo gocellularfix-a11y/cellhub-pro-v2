@@ -68,6 +68,22 @@ function providerFor(sales: Sale[], returns: CustomerReturn[] = []): CanonicalWi
   };
   return (window) => computeCanonicalMoneyForRange(snapshot, localDayRangeForWindow(window));
 }
+// I2B-2.3: provider whose snapshot ALSO carries standalone repairs/unlocks
+// (so canonical grossSalesCents includes standalone service revenue while
+// txCount stays POS-only) — the exact shape that exposes the avg-ticket bug.
+function providerWith(opts: { sales: Sale[]; repairs?: unknown[]; unlocks?: unknown[] }): CanonicalWindowProvider {
+  const snapshot = {
+    sales: opts.sales, repairs: opts.repairs ?? [], unlocks: opts.unlocks ?? [],
+    specialOrders: [], layaways: [], inventory: [], customerReturns: [], vendorReturns: [], settings: SETTINGS,
+  };
+  return (window) => computeCanonicalMoneyForRange(snapshot as never, localDayRangeForWindow(window));
+}
+function stdRepair(id: string, total: number): unknown {
+  return { id, customerId: 'x', status: 'picked_up', balance: 0, total, laborCost: Math.round(total * 0.3), parts: [{ id: `${id}-p`, name: 'Screen', price: 0, cost: Math.round(total * 0.2), qty: 1 }], createdAt: new Date().toISOString() };
+}
+function stdUnlock(id: string, price: number): unknown {
+  return { id, customerId: 'x', status: 'completed', balance: 0, price, cost: Math.round(price * 0.1), createdAt: new Date().toISOString() };
+}
 
 // ══ CUSTOMER (unchanged canonical behavior from 15a1db3) ══
 
@@ -224,6 +240,59 @@ describe('I2B-2.1 Sales analyzer — authoritative money from canonical', () => 
     expect(top.map((t) => t.name)).toEqual(['Alpha', 'Beta']);
     expect(top[0].revenue).toBe(6000);
     expect(top[1].revenue).toBe(6000);             // voided qty 99 excluded
+  });
+});
+
+// ══ I2B-2.3 — avgTransactionSize = average POS transaction value ══
+
+describe('I2B-2.3 Sales analyzer — average ticket uses the POS population', () => {
+  it('POS-only day: 1 POS sale $100 → avg $100', () => {
+    const sales = [aSale({ id: 'p', total: 10000 })];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    const m = sa.getMetrics(wideWindow());
+    expect(m.transactionCount).toBe(1);
+    expect(m.avgTransactionSize).toBe(10000);
+  });
+
+  it('mixed POS + standalone repair + unlock: totalRevenue $350, tx 1, avg $100 (NOT $350)', () => {
+    const sales = [aSale({ id: 'p', total: 10000 })];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en',
+      providerWith({ sales, repairs: [stdRepair('r', 20000)], unlocks: [stdUnlock('u', 5000)] }));
+    const m = sa.getMetrics(wideWindow());
+    expect(m.totalRevenue).toBe(35000);          // canonical gross incl standalone services
+    expect(m.transactionCount).toBe(1);          // POS only
+    expect(m.avgTransactionSize).toBe(10000);    // POS $100 — standalone services excluded
+  });
+
+  it('multiple POS ($60 + $90 = $150) + standalone services → avg $75', () => {
+    const sales = [aSale({ id: 'p1', total: 6000 }), aSale({ id: 'p2', total: 9000 })];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en',
+      providerWith({ sales, repairs: [stdRepair('r', 30000)] }));
+    const m = sa.getMetrics(wideWindow());
+    expect(m.transactionCount).toBe(2);
+    expect(m.avgTransactionSize).toBe(7500);     // 15000 / 2, standalone $300 excluded
+    expect(m.totalRevenue).toBe(45000);          // gross incl the $300 repair
+  });
+
+  it('standalone-only day: totalRevenue positive, tx 0, avg 0', () => {
+    const sa = new SalesAnalyzer([], [], undefined, 'en',
+      providerWith({ sales: [], repairs: [stdRepair('r', 20000)], unlocks: [stdUnlock('u', 5000)] }));
+    const m = sa.getMetrics(wideWindow());
+    expect(m.totalRevenue).toBeGreaterThan(0);   // canonical gross from standalone services
+    expect(m.transactionCount).toBe(0);
+    expect(m.avgTransactionSize).toBe(0);        // no POS transactions → no average
+  });
+
+  it('voided + refund-audit rows never affect the POS numerator or count', () => {
+    const sales = [
+      aSale({ id: 'ok', total: 10000 }),
+      aSale({ id: 'void', total: 99999, status: 'voided' as Sale['status'] }),
+      aSale({ id: 'REFUND-1', invoiceNumber: 'REFUND-INV-1', total: -4000 }),
+    ];
+    const sa = new SalesAnalyzer(sales, [], undefined, 'en', providerFor(sales));
+    const m = sa.getMetrics(wideWindow());
+    expect(m.transactionCount).toBe(1);
+    expect(m.avgTransactionSize).toBe(10000);    // only the $100 POS sale
   });
 });
 

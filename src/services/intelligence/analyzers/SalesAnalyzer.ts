@@ -65,9 +65,22 @@ export class SalesAnalyzer {
     // manual reduce. totalRevenue is explicitly GROSS activity (grossSales);
     // netRevenueCents is canonical net (can be NEGATIVE, unclamped).
     const c = this.canonical(window);
-    const totalRevenue = c.grossSalesCents;
-    const transactionCount = c.txCount;
-    const avgTransactionSize = transactionCount > 0 ? Math.round(c.grossSalesCents / transactionCount) : 0;
+    const totalRevenue = c.grossSalesCents;      // canonical GROSS (POS + standalone services) — unchanged
+    const transactionCount = c.txCount;          // canonical POS transaction count — unchanged
+
+    // POS gross-activity population (non-voided, non-refund-audit POS sales) —
+    // the SAME set canonical txCount counts. SalesAnalyzer.sales holds POS
+    // sales only, so standalone repairs/unlocks are structurally absent here.
+    const activity = this.filterByStore(this.filterByWindow(window)).filter(isGrossActivitySale);
+
+    // I2B-2.3: average POS TRANSACTION value. Numerator = POS gross activity
+    // (NOT canonical grossSalesCents, which also includes standalone repair/
+    // unlock revenue with no matching transaction); denominator = canonical
+    // POS txCount. Same population both sides → standalone services never
+    // inflate the average. Reuses the established gross-activity filter — no
+    // new money formula, no standalone subtraction.
+    const posGrossRevenueCents = activity.reduce((sum, s) => sum + (s.total || 0), 0);
+    const avgTransactionSize = transactionCount > 0 ? Math.round(posGrossRevenueCents / transactionCount) : 0;
 
     // Payment breakdown = canonical tender (cash/card/store_credit). Reconciles
     // with Reports; unknown/other tender is not modeled by the canonical
@@ -86,7 +99,6 @@ export class SalesAnalyzer {
 
     // dailyRevenue is an OPERATIONAL gross-activity sparkline (per-day series,
     // NOT a canonical range total) — voided + refund-audit excluded (I2B-2).
-    const activity = this.filterByStore(this.filterByWindow(window)).filter(isGrossActivitySale);
     const dailyRevenue: number[] = [];
     for (let i = 6; i >= 0; i--) {
       const dayStart = getDaysAgo(i);
