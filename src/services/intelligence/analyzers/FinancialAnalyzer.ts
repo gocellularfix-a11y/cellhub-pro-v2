@@ -3,6 +3,14 @@ import type { Sale, Repair } from '@/store/types';
 import { Insight, FinancialMetrics } from '../types';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { standardDeviation, zScore } from '../utils/statistics';
+// I2B-2: canonical gross-activity classifier (voided + refund-audit rows are
+// not gross activity). Classifier only — no money math imported.
+import { isRefundAuditSale } from '@/services/reports/computeReportMoneyStats';
+
+/** Gross-activity money set (canonical population): non-voided, non-refund-audit. */
+function isGrossActivitySale(s: Sale): boolean {
+  return s.status !== 'voided' && !isRefundAuditSale(s);
+}
 
 export interface ExpenseCategory {
   name: string;
@@ -37,6 +45,9 @@ export class FinancialAnalyzer {
   }
 
   getMetrics(window?: { start: Date; end: Date }): FinancialMetrics {
+    // I2B-2: gross-activity only — voided + refund-audit rows excluded so
+    // revenue / COGS / margin / card-fee estimates no longer count voided
+    // sales (consistent with Reports' grossActivity set).
     const salesFiltered = this.filterByStore(
       window
         ? this.sales.filter(s => {
@@ -44,7 +55,7 @@ export class FinancialAnalyzer {
             return created >= window.start && created <= window.end;
           })
         : this.sales
-    );
+    ).filter(isGrossActivitySale);
 
     const repairsFiltered = this.filterByStore(
       window
@@ -113,7 +124,8 @@ export class FinancialAnalyzer {
   getProfitabilityByCategory(): Record<string, { revenue: number; cost: number; profit: number }> {
     const result: Record<string, { revenue: number; cost: number; profit: number }> = {};
 
-    for (const sale of this.filterByStore(this.sales)) {
+    // I2B-2: gross-activity only (voided + refund-audit excluded).
+    for (const sale of this.filterByStore(this.sales).filter(isGrossActivitySale)) {
       for (const item of sale.items || []) {
         const cat = item.category || 'unknown';
         if (!result[cat]) result[cat] = { revenue: 0, cost: 0, profit: 0 };

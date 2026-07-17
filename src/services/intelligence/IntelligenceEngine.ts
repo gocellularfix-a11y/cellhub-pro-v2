@@ -43,9 +43,15 @@ import { diagnoseChurn } from './rootCause/churnCauses';
 // engine — getTodayMoney now sources canonical money. The helper file remains
 // only for its regression-lock test; ProfitAdjustmentSettings is referenced in
 // prose comments below (profitSettings is typed CanonicalMoneySettings).
-// I2B-0.1/0.2: canonical customer money (same service Customer 360 uses),
+// I2B-0.1/0.2/2: canonical customer money (same service Customer 360 uses),
 // fed with RAW snapshot collections via the canonical attribution helper.
-import { attributeCustomerCollections, computeProfileFromAttributed } from '@/services/customers/customerMoneyProfile';
+// computeCustomerMoneyProfiles = the batched multi-customer profile used by
+// the customer list; reused here so analyzer/chat customer-value rankings
+// share ONE canonical source (no legacy sale.total reduce).
+import {
+  attributeCustomerCollections, computeProfileFromAttributed, computeCustomerMoneyProfiles,
+} from '@/services/customers/customerMoneyProfile';
+import type { CustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
 
 import { SalesAnalyzer } from './analyzers/SalesAnalyzer';
 import { InventoryAnalyzer } from './analyzers/InventoryAnalyzer';
@@ -221,6 +227,10 @@ export class IntelligenceEngine {
   // collapsing cost to O(C + Σ) for the first pass and O(C) for re-asks.
   // Invalidated alongside cachedResult in updateData() and invalidateCache().
   private cachedCustomerHistory?: Map<string, CustomerHistorySummary | null>;
+  // I2B-2: canonical per-customer money profiles (batched), memoized per data
+  // snapshot and invalidated by updateData(). One source for the customer
+  // list, the CustomerAnalyzer financial methods and the chat top-customers.
+  private cachedCustomerValueProfiles?: Map<string, CustomerMoneyProfile>;
 
   // R-PERF-INTELLIGENCE-CACHE: raw input references kept so updateData()
   // can ref-equality-skip when nothing changed across React re-renders.
@@ -316,7 +326,9 @@ export class IntelligenceEngine {
       this.customers,
       this.sales,
       undefined,
-      this.config.lang
+      this.config.lang,
+      // I2B-2: canonical customer-money source (lazy, memoized on the engine).
+      () => this.getCustomerValueProfiles(),
     );
     this.financialAnalyzer = new FinancialAnalyzer(
       this.sales,
@@ -950,7 +962,7 @@ export class IntelligenceEngine {
     this.inventoryAnalyzer = new InventoryAnalyzer(this.inventory, this.sales, undefined, this.config.lang);
     this.repairAnalyzer = new RepairAnalyzer(this.repairs, this.config.storeId, this.config.lang);
     // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG-EXTEND: customers are global — see CustomerScorer note above.
-    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, undefined, this.config.lang);
+    this.customerAnalyzer = new CustomerAnalyzer(this.customers, this.sales, undefined, this.config.lang, () => this.getCustomerValueProfiles());
     this.financialAnalyzer = new FinancialAnalyzer(this.sales, this.repairs, [], this.config.storeId, this.config.lang);
     // R-INTELLIGENCE-BEST-CUSTOMER-DATA-BUG: customers are global — see
     // detailed note above the matching call in the constructor.
@@ -969,6 +981,7 @@ export class IntelligenceEngine {
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
     this.cachedCustomerHistory = undefined;
+    this.cachedCustomerValueProfiles = undefined; // I2B-2: invalidate on data change
     this.cachedBaseline = undefined;
     this.cachedTrendReport = undefined;
     this.cachedProactiveReport = undefined;
@@ -995,6 +1008,7 @@ export class IntelligenceEngine {
     this.cachedMissedRev = undefined;
     this.cachedProductOpps = undefined;
     this.cachedCustomerHistory = undefined;
+    this.cachedCustomerValueProfiles = undefined; // I2B-2: invalidate on data change
     this.cachedBaseline = undefined;
     this.cachedTrendReport = undefined;
     this.cachedProactiveReport = undefined;
@@ -1528,6 +1542,67 @@ export class IntelligenceEngine {
     // calls within this data snapshot return O(1).
     this.cachedCustomerHistory!.set(customerId, summary);
     return summary;
+  }
+
+  // CELLHUB-INTELLIGENCE-I2B-2: canonical per-customer money profiles for
+  // EVERY customer, batched (one bucketing pass) and memoized per data
+  // snapshot. THE single source for customer-value analysis — same
+  // attribution (id → originalSaleId linkage → normalized phone; never name)
+  // and returns-aware Total Collected the Customer 360 list uses. Replaces
+  // the legacy `sum(sale.total)` customerId-only rankings. Financial math is
+  // owned by computeReportMoneyStats — never re-derived here.
+  getCustomerValueProfiles(): Map<string, CustomerMoneyProfile> {
+    if (this.cachedCustomerValueProfiles) return this.cachedCustomerValueProfiles;
+    const snap = this.canonicalMoneySnapshot();
+    const profiles = computeCustomerMoneyProfiles(this.customers, {
+      sales: snap.sales,
+      repairs: snap.repairs,
+      unlocks: snap.unlocks,
+      layaways: snap.layaways,
+      specialOrders: snap.specialOrders,
+      customerReturns: snap.customerReturns,
+      inventory: snap.inventory,
+      settings: snap.settings,
+    });
+    this.cachedCustomerValueProfiles = profiles;
+    return profiles;
+  }
+
+  // I2B-2: top customers by canonical Total Collected (returns-aware,
+  // attribution-correct) — the value ranking chat / rankings should quote.
+  // Shape mirrors the legacy TopCustomer plus canonical money so callers can
+  // present collected / profit / margin without re-deriving. Deterministic
+  // tie-break by customerId so equal-value customers order stably.
+  getTopCustomersByValue(limit: number = 5): Array<{
+    customerId: string;
+    name: string;
+    phone?: string;
+    revenueCents: number;            // = canonical Total Collected (gross, returns-aware)
+    profitCents: number;
+    marginPercent: number;
+    marginMeaningful: boolean;
+    transactionCount: number;
+    netAfterReturnsCents: number;
+  }> {
+    const profiles = this.getCustomerValueProfiles();
+    return this.customers
+      .map((c) => {
+        const p = profiles.get(c.id);
+        return {
+          customerId: c.id,
+          name: c.name || '',
+          phone: c.phone,
+          revenueCents: p ? p.totalCollectedCents : 0,
+          profitCents: p ? p.profitCents : 0,
+          marginPercent: p ? p.marginPercent : 0,
+          marginMeaningful: p ? p.marginMeaningful : false,
+          transactionCount: p ? p.transactionCount : 0,
+          netAfterReturnsCents: p ? p.netAfterReturnsCents : 0,
+        };
+      })
+      .filter((c) => c.transactionCount > 0 || c.revenueCents !== 0)
+      .sort((a, b) => (b.revenueCents - a.revenueCents) || a.customerId.localeCompare(b.customerId))
+      .slice(0, limit);
   }
 
   // R-INTELLIGENCE-ATTENTION-MODEL-V1: current operator attention state derived

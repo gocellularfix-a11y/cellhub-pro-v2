@@ -95,7 +95,7 @@ import { getActionImpact, getActionLearning } from '../actions/actionExecutor';
 // access layer for deterministic operational answers.
 import {
   getSalesSummary, getInventorySummary, getLowStockItems, getDeadStockItems,
-  getCustomerSummary, getTopCustomers, getInactiveCustomers,
+  getCustomerSummary, getInactiveCustomers,
   getRepairSummary, getReadyRepairs,
   getUnlockSummary, getLayawaySummary, getPendingLayaways,
   getPhonePaymentSummary, getSpecialOrderSummary, getReturnSummary,
@@ -4633,11 +4633,15 @@ function handleDataQuery(match: IntentMatch, engine: IntelligenceEngine, lang: L
   // ── Customers: top / inactive / general ────────────────
   if (/customer|cliente/.test(q)) {
     if (/top|mejor|melhor|best/.test(q)) {
-      const list = getTopCustomers(engine.getCustomers(), engine.getSales(), 5);
+      // I2B-2: canonical Total Collected (returns-aware, attribution-correct)
+      // instead of the legacy sum(sale.total) customerId-only ranking.
+      // revenueCents === Customer 360 "Total Collected"; visitCount ===
+      // canonical financial transactions (not raw sale rows).
+      const list = engine.getTopCustomersByValue(5);
       if (list.length === 0) return { kind: 'answer', text: t('chat.dataQuery.noData') };
       const lines = [`${t('chat.dataQuery.customersHeader')} — top ${list.length}`, ''];
       list.forEach((c, i) => {
-        lines.push(`${i + 1}. ${c.name || '—'} — ${COP(c.revenueCents)} (${c.visitCount} ${lang === 'es' ? 'visitas' : lang === 'pt' ? 'visitas' : 'visits'})`);
+        lines.push(`${i + 1}. ${c.name || '—'} — ${COP(c.revenueCents)} (${c.transactionCount} ${lang === 'es' ? 'visitas' : lang === 'pt' ? 'visitas' : 'visits'})`);
       });
       return { kind: 'answer', text: lines.join('\n') };
     }

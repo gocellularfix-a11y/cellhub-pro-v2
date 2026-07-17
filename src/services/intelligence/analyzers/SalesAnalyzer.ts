@@ -4,6 +4,15 @@ import { Insight, SalesMetrics, AnalysisWindow, ForecastResult } from '../types'
 import { calculateGrowthRate, linearRegression } from '../utils/statistics';
 import { getDaysAgo } from '../utils/dateHelpers';
 import { formatCurrency } from '@/utils/currency';
+// I2B-2: canonical gross-activity classifier — a voided sale and a refund
+// audit row are NOT gross activity (Reports excludes both). Classifier only;
+// no money math is imported.
+import { isRefundAuditSale } from '@/services/reports/computeReportMoneyStats';
+
+/** Gross-activity money set (canonical population): non-voided, non-refund-audit. */
+function isGrossActivitySale(s: Sale): boolean {
+  return s.status !== 'voided' && !isRefundAuditSale(s);
+}
 
 export class SalesAnalyzer {
   private sales: Sale[];
@@ -31,7 +40,10 @@ export class SalesAnalyzer {
   }
 
   getMetrics(window: AnalysisWindow): SalesMetrics {
-    const filtered = this.filterByStore(this.filterByWindow(window));
+    // I2B-2: gross-activity only — voided + refund-audit rows excluded so the
+    // dashboard revenue / transaction count / breakdowns no longer count
+    // voided sales as revenue (consistent with Reports' grossActivity set).
+    const filtered = this.filterByStore(this.filterByWindow(window)).filter(isGrossActivitySale);
     const totalRevenue = filtered.reduce((sum, s) => sum + (s.total || 0), 0);
     const transactionCount = filtered.length;
     const avgTransactionSize = transactionCount > 0 ? totalRevenue / transactionCount : 0;
@@ -82,7 +94,9 @@ export class SalesAnalyzer {
 
   getBestSellingItems(count: number = 5): Array<{ name: string; quantity: number; revenue: number }> {
     const itemMap: Record<string, { quantity: number; revenue: number }> = {};
-    const recentSales = this.filterByWindow({ start: getDaysAgo(30), end: new Date(), label: 'Last 30 days' });
+    // I2B-2: gross-activity only (voided + refund-audit excluded).
+    const recentSales = this.filterByWindow({ start: getDaysAgo(30), end: new Date(), label: 'Last 30 days' })
+      .filter(isGrossActivitySale);
     for (const sale of recentSales) {
       for (const item of sale.items || []) {
         const key = item.name || 'Unknown';
