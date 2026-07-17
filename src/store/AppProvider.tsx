@@ -32,6 +32,9 @@ import type {
 import { DEFAULT_SETTINGS } from '@/config/constants';
 import { normalizeCustomers } from '@/utils/customerNormalize';
 import { normalizeEmployees } from '@/utils/employeeNormalize';
+// CELLHUB-INTELLIGENCE-I2A.1: canonical store-scope policy (shared with the
+// multi-store parity tests — one rule, no drift).
+import { isUnscopedView, belongsToStore } from './storeScope';
 
 // ── Initial State ─────────────────────────────────────────
 
@@ -222,15 +225,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // The raw `state` is preserved for setters (they write full arrays).
   const filteredState = useMemo((): AppState => {
     const { currentStoreId, consolidatedView } = state;
-    // No filtering needed in consolidated view or single-store mode
-    // BUG-1 (R-INVENTORY-SEARCH): treat null/undefined/'' currentStoreId as
-    // single-store ('default'). A bad HYDRATE/import payload can leave it null,
-    // and items tagged storeId='default' would otherwise fail belongs() and
-    // disappear from every per-store collection (inventory, sales, repairs…).
-    if (consolidatedView || !currentStoreId || currentStoreId === 'default') return state;
+    // CELLHUB-INTELLIGENCE-I2A.1: the scope rule now lives in ONE pure
+    // module (src/store/storeScope.ts) shared with the multi-store parity
+    // tests — behavior is VERBATIM the previous inline implementation:
+    // consolidated / single-store ('default'/empty) → unfiltered state;
+    // otherwise belongs() = matching storeId OR legacy no-storeId
+    // (BUG-1 R-INVENTORY-SEARCH: legacy records must never vanish).
+    if (isUnscopedView(currentStoreId, consolidatedView)) return state;
 
-    const belongs = (storeId?: string) =>
-      !storeId || storeId === currentStoreId;
+    const belongs = (storeId?: string) => belongsToStore(storeId, currentStoreId);
 
     return {
       ...state,

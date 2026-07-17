@@ -4,7 +4,7 @@ import type { Sale, Customer, InventoryItem, Repair, SpecialOrder, Unlock, Layaw
 // calculations are owned by computeReportMoneyStats; the adapter and this
 // engine only wire data and map fields.
 import { computeCanonicalMoneyForRange, localDayRangeForDay } from './adapters/reportMoneyAdapter';
-import type { CanonicalMoneySnapshot } from './adapters/reportMoneyAdapter';
+import type { CanonicalMoneySnapshot, CanonicalMoneySettings } from './adapters/reportMoneyAdapter';
 import type { Insight, IntelligenceReport, StoreHealthScore, KPIDashboard, AnalysisWindow, CustomerHistorySummary, MissedRevenueReport, NextVisitPrediction, ProductOpportunity, ReorderRecommendation, RootCauseReport, SlowDayRootCauseReport, DeadStockRootCauseReport, ChurnRootCauseReport, DailyBriefResult, ContextualBaseline, TrendDirectionReport } from './types';
 import { computeContextualBaseline } from './baseline/contextualBaseline';
 import { computeTrendDirectionReport } from './trends/trendDirection';
@@ -117,7 +117,12 @@ export interface EngineExtras {
   // Without this, customer-history profit double-counts the carrier
   // pass-through portion of phone payments — the bug Jorge spotted
   // where Juan's 4 Verizon payments showed 91% margin.
-  settings?: ProfitAdjustmentSettings;
+  // CELLHUB-INTELLIGENCE-I2A.1: widened to CanonicalMoneySettings (a
+  // superset of ProfitAdjustmentSettings — same two commission fields plus
+  // paymentPortals/carrierPortalUrls) so the canonical money service gets a
+  // properly typed object with no double cast. Both real callers pass the
+  // full GLOBAL state.settings; narrow test literals stay assignable.
+  settings?: CanonicalMoneySettings;
   // R-INTEL-CROSS-001: store credit ledger — global (no storeId filter),
   // same contract as customers. Consumers call getStoreCreditLedger().
   storeCreditLedger?: StoreCreditLedger[];
@@ -152,9 +157,11 @@ export class IntelligenceEngine {
   // CELLHUB-INTELLIGENCE-I2A: vendor returns (COGS reduction in the
   // canonical money service). Raw pass-through, read-only.
   private vendorReturns: unknown[];
-  // R-CUSTOMER-PROFIT-PARITY-V1: store settings for per-customer
-  // profit adjustment (phone payment commission, repair fallback).
-  private profitSettings: ProfitAdjustmentSettings;
+  // R-CUSTOMER-PROFIT-PARITY-V1 → I2A.1: store settings for per-customer
+  // profit adjustment AND the canonical money snapshot. Typed as the
+  // explicit CanonicalMoneySettings contract (assignable wherever
+  // ProfitAdjustmentSettings is accepted).
+  private profitSettings: CanonicalMoneySettings;
 
   private salesAnalyzer: SalesAnalyzer;
   private inventoryAnalyzer: InventoryAnalyzer;
@@ -688,10 +695,10 @@ export class IntelligenceEngine {
       inventory: this._rawInventory,
       customerReturns: this._rawCustomerReturns,
       vendorReturns: this.vendorReturns,
-      // At runtime IntelligenceModule passes the FULL StoreSettings object
-      // (typed narrow as ProfitAdjustmentSettings). Callers that pass a
-      // narrow object simply get canonical commission defaults.
-      settings: this.profitSettings as unknown as StoreSettings,
+      // I2A.1: properly typed — CanonicalMoneySettings is the documented
+      // contract of every settings field the canonical service reads. The
+      // single type boundary lives in the adapter.
+      settings: this.profitSettings,
     };
   }
 

@@ -25,7 +25,25 @@ import type { ReportMoneyStats, ReportMoneyStatsInput } from '@/services/reports
 import { normalizeLocalDayRange } from '@/utils/reportRange';
 import type { LocalDayRange } from '@/utils/reportRange';
 
-/** Everything the canonical service needs, as Intelligence holds it. */
+/**
+ * I2A.1 — every StoreSettings field computeReportMoneyStats actually reads
+ * (verified consumption sites):
+ *   - carrierCommissions / defaultCommissionRate → computePhonePaymentEconomics
+ *     (commission economics; consumed via the CommissionSettings Pick)
+ *   - paymentPortals → getActivePortals (provider bucketing; falls back to
+ *     DEFAULT_PAYMENT_PORTALS when absent)
+ *   - carrierPortalUrls → provider portal mapping (defensive `|| {}` read)
+ * Tax / CBE / screen-fee AMOUNTS are stamped on sales at checkout — the
+ * canonical service reads NO tax-rate settings. Settings are GLOBAL in
+ * AppState (never store-scoped) — same object Reports receives.
+ */
+export type CanonicalMoneySettings = Partial<Pick<StoreSettings,
+  'carrierCommissions' | 'defaultCommissionRate' | 'carrierPortalUrls' | 'paymentPortals'>>;
+
+/** Everything the canonical service needs, as Intelligence holds it.
+ *  Collections are the AppProvider filteredState arrays — already scoped by
+ *  the canonical store policy (src/store/storeScope.ts): single-store =
+ *  selected store + legacy no-storeId records; consolidated = all stores. */
 export interface CanonicalMoneySnapshot {
   sales: Sale[];
   repairs: Repair[];
@@ -35,7 +53,7 @@ export interface CanonicalMoneySnapshot {
   inventory: InventoryItem[];
   customerReturns: CustomerReturn[];
   vendorReturns: unknown[];
-  settings: StoreSettings;
+  settings: CanonicalMoneySettings;
 }
 
 // Non-UI fallback labels (chat handlers re-localize their own text; these
@@ -108,7 +126,12 @@ export function computeCanonicalMoneyForRange(
     inventory: snapshot.inventory || [],
     customerReturns: snapshot.customerReturns || [],
     vendorReturns: snapshot.vendorReturns || [],
-    settings: snapshot.settings,
+    // I2A.1: THE single, documented type boundary. The canonical service's
+    // signature asks for StoreSettings but its verified reads are exactly
+    // the CanonicalMoneySettings fields above — all consumed defensively
+    // (Pick / `|| {}` / default portals). At runtime both real callers
+    // (Reports and IntelligenceModule) pass the SAME global state.settings.
+    settings: (snapshot.settings || {}) as StoreSettings,
     periodRange,
     labels: FALLBACK_LABELS,
   };

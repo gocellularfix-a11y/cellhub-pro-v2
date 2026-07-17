@@ -69,7 +69,7 @@ function buildEngine(w: World): IntelligenceEngine {
     {
       specialOrders: w.specialOrders ?? [], unlocks: w.unlocks ?? [], layaways: w.layaways ?? [],
       customerReturns: w.customerReturns ?? [], vendorReturns: w.vendorReturns ?? [],
-      settings: SETTINGS as unknown as Record<string, unknown>,
+      settings: SETTINGS,
     },
   );
 }
