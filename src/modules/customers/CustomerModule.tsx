@@ -14,7 +14,10 @@ import { Modal, ConfirmDialog } from '@/components/ui';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
-import { computeCustomerProfit, adjustSalesItemCosts } from '@/utils/customerProfit';
+// CELLHUB-INTELLIGENCE-I2B-0: canonical customer money (attribution + field
+// mapping over computeReportMoneyStats — replaces the legacy
+// computeCustomerProfit/adjustSalesItemCosts pair in this module).
+import { computeCustomerMoneyProfile } from '@/services/customers/customerMoneyProfile';
 import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { matchesSearchPhones } from '@/utils/search';
 import { normalizePhone, formatPhone } from '@/utils/normalize';
@@ -41,7 +44,9 @@ export default function CustomerModule() {
   // forced extra re-renders.
   const app = useApp();
   const { state, setCustomers, dispatch } = app;
-  const { customers, sales, repairs, unlocks, specialOrders, layaways, settings, customerSearchTerm, customerReturns, storeCreditLedger, pendingCustomerHistoryId } = state;
+  // I2B-0: inventory feeds the customer money profile's canonical cost
+  // fallback (store-scoped by AppProvider like every other collection).
+  const { customers, sales, repairs, unlocks, specialOrders, layaways, inventory, settings, customerSearchTerm, customerReturns, storeCreditLedger, pendingCustomerHistoryId } = state;
 
   // customerReturns now lives in AppState (hydrated at boot via SET_CUSTOMER_RETURNS).
   const returns_      = customerReturns || [];
@@ -919,6 +924,11 @@ export default function CustomerModule() {
             onEdit={() => { setViewHistory(null); setEditCustomer(viewHistory); setShowModal(true); }}
             onAddNote={(text) => handleAddCustomerNote(viewHistory, text)}
             settings={settings}
+            // I2B-0: GLOBAL (store-scoped) collections for the canonical
+            // customer money profile — the service attributes internally by
+            // customerId → return linkage → normalized phone. The pre-filtered
+            // history props above keep feeding the visible lists unchanged.
+            moneyCollections={{ sales, repairs, unlocks, layaways, specialOrders, customerReturns: returns_, inventory }}
           />
         );
       })()}
@@ -1502,7 +1512,7 @@ function CustomerFormModal({ customer, initialPhone, onSave, onClose, toast, con
 
 // ── Customer History ──────────────────────────────────────
 
-function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, onEdit, onAddNote, settings }: {
+function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, specialOrders, returns, appointments, certificates, onClose, onEdit, onAddNote, settings, moneyCollections }: {
   customer: Customer;
   sales: Sale[];
   repairs: any[];
@@ -1518,6 +1528,11 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   /** LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: append a note (parent decides local vs forward). */
   onAddNote?: (text: string) => void;
   settings: any;
+  /** I2B-0: global store-scoped collections for the canonical money profile. */
+  moneyCollections: {
+    sales: Sale[]; repairs: any[]; unlocks: any[]; layaways: any[];
+    specialOrders: any[]; customerReturns: any[]; inventory: any[];
+  };
 }) {
   const { t } = useTranslation();
   // LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: quick note-add input state.
@@ -1534,34 +1549,32 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
     settings,
     _hxAdminMode || _hxCurrentEmp?.role === 'owner',
   );
-  // R-CUSTOMER-PROFIT-PARITY-V1: shared helper now centralizes the
-  // phone_payment commission rewrite + repair 35% fallback. CustomerModule,
-  // IntelligenceEngine.getCustomerHistory, and (indirectly) the chat
-  // history sentence all go through the same math — no more divergence
-  // between the customer-history card and the chat answer.
-  const adjustedSales = useMemo(
-    () => adjustSalesItemCosts(sales, settings),
-    [sales, settings],
+  // CELLHUB-INTELLIGENCE-I2B-0: the customer's money truth comes from the
+  // canonical service via computeCustomerMoneyProfile (attribution + field
+  // mapping only — commission precedence, refund/exchange reversal, tax
+  // exclusion and negative days are all owned by computeReportMoneyStats).
+  // Replaces the legacy adjustSalesItemCosts + computeCustomerProfit pair,
+  // whose tax-inclusive denominator produced Jenny's misleading 9.0% margin
+  // and "94% cost data" warning for fully-configured carrier commissions.
+  const profile = useMemo(
+    () => computeCustomerMoneyProfile({
+      customer,
+      ...moneyCollections,
+      settings: settings || {},
+    }),
+    [customer, moneyCollections, settings],
   );
-
-  // Profit analytics — delegates refund math + per-line (price-cost)*qty
-  // aggregation to the pure helper. See src/utils/customerProfit.ts.
-  const stats = useMemo(
-    () => computeCustomerProfit(adjustedSales, returns),
-    [adjustedSales, returns],
-  );
-  const totalSpent = stats.netRevenue;
+  const totalCollected = profile.totalCollectedCents;
 
   // PRESERVE: this multi-entity transaction counter aggregates across
   // 7 different domains and must NOT be moved into the helper.
   const totalTransactions = sales.length + repairs.length + layaways.length +
     unlocks.length + specialOrders.length + returns.length + appointments.length;
 
-  // Category display label — titlecase enum key (e.g. "accessory" → "Accessory")
-  const categoryLabel = stats.topCategoryByProfit
-    ? stats.topCategoryByProfit.charAt(0).toUpperCase() + stats.topCategoryByProfit.slice(1)
+  // Category display label — titlecase key (e.g. "accessory" → "Accessory")
+  const categoryLabel = profile.topCategoryByProfit
+    ? profile.topCategoryByProfit.charAt(0).toUpperCase() + profile.topCategoryByProfit.slice(1)
     : '—';
-  const coveragePct = Math.round(stats.costCoverage * 100);
 
   const Badge = ({ status }: { status: string }) => {
     const cls = ['complete','completed','ready','picked_up'].includes((status||'').toLowerCase())
@@ -1651,26 +1664,46 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
             Revenue + store credit remain visible. Grid drops to 2 cols when
             both owner-only tiles are hidden so the layout doesn't collapse. */}
         <div className={`grid ${canSeeOwnerFinancials ? 'grid-cols-4' : 'grid-cols-2'} gap-2`}>
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <p className="text-xs text-slate-400">{t('customers.history.revenue')}</p>
-            <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalSpent)}</p>
+          {/* I2B-0: Total Collected = everything paid (merchandise + taxes +
+              pass-through). Tooltip surfaces returns and the commissionable
+              base so collected vs profit-bearing is never ambiguous. */}
+          <div
+            className="rounded-lg bg-white/5 p-3 text-center"
+            title={t('customers.history.collectedTitle',
+              formatCurrency(profile.profitBearingRevenueCents),
+              formatCurrency(profile.returnsCents))}
+          >
+            <p className="text-xs text-slate-400">{t('customers.history.totalCollected')}</p>
+            <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalCollected)}</p>
           </div>
           {canSeeOwnerFinancials && (
             <div
               className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30 p-3 text-center"
-              title={coveragePct < 100 ? t('customers.history.coverageTitle', coveragePct) : undefined}
+              title={profile.profitEstimated ? t('customers.history.profitEstimatedTitle', profile.estimatedPercent) : undefined}
             >
               <p className="text-xs text-emerald-300">
                 {t('customers.history.profit')}
-                {coveragePct < 100 && <span className="ml-1 text-amber-400">*</span>}
+                {(profile.profitEstimated || profile.unavailablePercent > 0) && <span className="ml-1 text-amber-400">*</span>}
               </p>
-              <p className="text-lg font-bold text-emerald-300">{formatCurrency(stats.profit)}</p>
+              <p className="text-lg font-bold text-emerald-300">{formatCurrency(profile.profitCents)}</p>
             </div>
           )}
           {canSeeOwnerFinancials && (
-            <div className="rounded-lg bg-white/5 p-3 text-center">
+            <div
+              className="rounded-lg bg-white/5 p-3 text-center"
+              // I2B-0: margin = profit ÷ COMMISSIONABLE (pre-tax) revenue —
+              // taxes/pass-through never lower the stated rate. The tooltip
+              // names the denominator explicitly (Jenny: 10.0% of $455.00,
+              // not 9.0% of $482.93).
+              title={t('customers.history.marginTitle', formatCurrency(profile.profitBearingRevenueCents))}
+            >
               <p className="text-xs text-slate-400">{t('customers.history.margin')}</p>
-              <p className="text-lg font-bold text-white">{stats.margin.toFixed(1)}%</p>
+              <p className="text-lg font-bold text-white">
+                {profile.marginMeaningful ? `${profile.marginPercent.toFixed(1)}%` : '—'}
+              </p>
+              <p className="text-[10px] text-slate-500 truncate">
+                {t('customers.history.marginBasis', formatCurrency(profile.profitBearingRevenueCents))}
+              </p>
             </div>
           )}
           <div className="rounded-lg bg-white/5 p-3 text-center">
@@ -1683,12 +1716,12 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
         <div className="grid grid-cols-4 gap-2">
           <div className="rounded-lg bg-white/5 p-3 text-center">
             <p className="text-xs text-slate-400">{t('customers.history.avgTicket')}</p>
-            <p className="text-lg font-bold text-white">{formatCurrency(stats.avgTicket)}</p>
+            <p className="text-lg font-bold text-white">{formatCurrency(profile.averageTicketCents)}</p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
             <p className="text-xs text-slate-400">{t('customers.history.returnsEvery')}</p>
             <p className="text-lg font-bold text-white">
-              {stats.avgDaysBetweenVisits !== null ? `${stats.avgDaysBetweenVisits}d` : '—'}
+              {profile.avgDaysBetweenVisits !== null ? `${profile.avgDaysBetweenVisits}d` : '—'}
             </p>
           </div>
           <div className="rounded-lg bg-white/5 p-3 text-center">
@@ -1701,11 +1734,19 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
           </div>
         </div>
 
-        {/* R-FINANCIAL-PRIVACY-V2: coverage warning relates to profit accuracy,
-            hide it for employees when the profit tile is also hidden. */}
-        {canSeeOwnerFinancials && coveragePct < 100 && stats.visitCount > 0 && (
+        {/* I2B-0 coverage semantics: a configured/stamped carrier commission
+            IS an exact economic basis — never "missing cost data". Warn only
+            about genuinely ESTIMATED or UNAVAILABLE portions; 100% exact →
+            no warning at all. (R-FINANCIAL-PRIVACY-V2: owner-only, matching
+            the profit tile.) */}
+        {canSeeOwnerFinancials && profile.visitCount > 0 && profile.estimatedPercent > 0 && (
           <div className="text-xs text-amber-400/80 text-center -mt-2">
-            {t('customers.history.coverageWarn', coveragePct)}
+            {t('customers.history.coverageEstimated', profile.estimatedPercent)}
+          </div>
+        )}
+        {canSeeOwnerFinancials && profile.visitCount > 0 && profile.unavailablePercent > 0 && (
+          <div className="text-xs text-amber-400/80 text-center -mt-2">
+            {t('customers.history.coverageUnavailable', profile.unavailablePercent)}
           </div>
         )}
 

@@ -4862,6 +4862,38 @@ export const translations: TranslationDictionary = {
   'customers.form.clearMsg':          { en: 'Clear all form fields?', es: '¿Borrar todos los campos del formulario?', pt: 'Limpar todos os campos do formulário?' },
   'customers.form.clearConfirm':      { en: 'Clear',                  es: 'Borrar',                     pt: 'Limpar' },
   'customers.history.revenue':        { en: 'Revenue',                es: 'Ingresos',                   pt: 'Receita' },
+  // CELLHUB-INTELLIGENCE-I2B-0: unambiguous money cards.
+  'customers.history.totalCollected': { en: 'Total Collected',        es: 'Total Cobrado',              pt: 'Total Recebido' },
+  'customers.history.collectedTitle': {
+    en: (commissionable: string, returns: string) => `Everything the customer paid (incl. taxes & fees). Profit-bearing base: ${commissionable} · Returns/refunds: ${returns}`,
+    es: (commissionable: string, returns: string) => `Todo lo que pagó el cliente (incl. impuestos y cargos). Base comisionable: ${commissionable} · Devoluciones: ${returns}`,
+    pt: (commissionable: string, returns: string) => `Tudo o que o cliente pagou (incl. impostos e taxas). Base comissionável: ${commissionable} · Devoluções: ${returns}`,
+  },
+  'customers.history.marginTitle': {
+    en: (base: string) => `Profit divided by the commissionable amount (${base}), excluding taxes and pass-through fees.`,
+    es: (base: string) => `Ganancia dividida entre el monto comisionable (${base}), sin impuestos ni cargos de traspaso.`,
+    pt: (base: string) => `Lucro dividido pelo valor comissionável (${base}), excluindo impostos e taxas repassadas.`,
+  },
+  'customers.history.marginBasis': {
+    en: (base: string) => `of ${base}`,
+    es: (base: string) => `de ${base}`,
+    pt: (base: string) => `de ${base}`,
+  },
+  'customers.history.profitEstimatedTitle': {
+    en: (pct: number) => `${pct}% of this profit uses an estimate (no exact cost/commission source).`,
+    es: (pct: number) => `${pct}% de esta ganancia usa un estimado (sin fuente exacta de costo/comisión).`,
+    pt: (pct: number) => `${pct}% deste lucro usa uma estimativa (sem fonte exata de custo/comissão).`,
+  },
+  'customers.history.coverageEstimated': {
+    en: (pct: number) => `* ${pct}% of profit-bearing revenue is estimated (no exact cost/commission source)`,
+    es: (pct: number) => `* ${pct}% del ingreso con ganancia es estimado (sin fuente exacta de costo/comisión)`,
+    pt: (pct: number) => `* ${pct}% da receita com lucro é estimada (sem fonte exata de custo/comissão)`,
+  },
+  'customers.history.coverageUnavailable': {
+    en: (pct: number) => `* ${pct}% could not be calculated (no cost data at all)`,
+    es: (pct: number) => `* ${pct}% no se pudo calcular (sin ningún dato de costo)`,
+    pt: (pct: number) => `* ${pct}% não pôde ser calculado (sem nenhum dado de custo)`,
+  },
   // CUSTOMER-360-HEADER-V1: identity snapshot header in CustomerHistoryModal.
   'customers.history.lastVisit':      { en: 'Last Visit',             es: 'Última Visita',              pt: 'Última Visita' },
   'customers.history.profit':         { en: 'Profit',                 es: 'Ganancia',                   pt: 'Lucro' },

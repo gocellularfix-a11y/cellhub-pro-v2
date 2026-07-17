@@ -451,6 +451,17 @@ export interface ReportMoneyStats {
   topEmployees: Array<{ name: string; transactions: number; revenueCents: number }>;
   phonePaymentsByProvider: PhoneActivityAggregation['phonePaymentsByProvider'];
   activationsByCarrier: PhoneActivityAggregation['activationsByCarrier'];
+  // CELLHUB-INTELLIGENCE-I2B-0: PURE EXPOSURE of the existing internal
+  // per-sale economics stash (saleEconomics) — zero new math, zero policy
+  // change. itemProfit excludes the top-level CC-fee (exposed separately)
+  // exactly as the internal stash records it. Consumers: invoice-level
+  // customer economics (Customer 360).
+  perSaleEconomics: Record<string, {
+    itemProfitCents: number;
+    ccFeeProfitCents: number;
+    costCents: number;
+    taxCents: number;
+  }>;
 }
 
 // ── Derivation (inclusion rules — moved verbatim) ────────────
@@ -660,6 +671,7 @@ export function computeReportMoneyStatsFromCollections(
     byId: Map<string, LineEconomics>;       // item.id → exact line economics
     byName: Map<string, LineEconomics>;     // fallback match (first line wins)
     profitCents: number;                    // Σ line profits (excl. cc fee)
+    ccFeeCents?: number;                    // I2B-0: top-level cc fee (exposure only)
   }
   const saleEconomics = new Map<string, SaleEconomics>();
 
@@ -927,6 +939,9 @@ export function computeReportMoneyStatsFromCollections(
       cat.hasRealCostItem = true;
       totalProfitCents += ccFee;
       ccFeeProfitCents += ccFee;
+      // I2B-0: per-sale exposure only — NOT added to econ.profitCents (the
+      // P3 self-reversal reads that field; policy unchanged).
+      econ.ccFeeCents = (econ.ccFeeCents || 0) + ccFee;
     }
   }
 
@@ -1372,6 +1387,15 @@ export function computeReportMoneyStatsFromCollections(
     phonePaymentsByProvider,
     // R-ACTIVATIONS-BY-CARRIER-V1
     activationsByCarrier,
+    // I2B-0: pure exposure of the internal stash (no new math).
+    perSaleEconomics: Object.fromEntries(
+      Array.from(saleEconomics.entries()).map(([saleId, e]) => [saleId, {
+        itemProfitCents: e.profitCents,
+        ccFeeProfitCents: e.ccFeeCents || 0,
+        costCents: Array.from(e.byId.values()).reduce((s, l) => s + l.costCents, 0),
+        taxCents: e.taxCents,
+      }]),
+    ),
   };
 }
 
