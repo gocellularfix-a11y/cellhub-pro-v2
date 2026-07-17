@@ -32,10 +32,10 @@ describe('sizing math (printToPDF takes INCHES — verified empirically)', () =>
     expect(r.width).toBeCloseTo(80 / 25.4, 10);
     expect(r.height).toBeCloseTo(297 / 25.4, 10);
   });
-  it('receipt-class media rasters at 300 dpi, sheets at 200 dpi', () => {
+  it('every media rasters at 300 dpi (CONTRAST-REGRESSION: 200 dpi softened letter report text)', () => {
     expect(rasterDpiForPageSize(R80MM)).toBe(300);
     expect(rasterDpiForPageSize(R4X6)).toBe(300);
-    expect(rasterDpiForPageSize(LETTER)).toBe(200);
+    expect(rasterDpiForPageSize(LETTER)).toBe(300);
   });
 });
 

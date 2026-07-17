@@ -80,11 +80,14 @@ function toPdfRangeString(ranges1) {
   return ranges1.map((r) => (r.from === r.to ? String(r.from) : `${r.from}-${r.to}`)).join(',');
 }
 
-/** Raster DPI per media: small receipt/label stock rasters at 300 dpi so
- *  barcodes stay crisp on thermal printers; larger sheets use 200 dpi. */
+/** Raster DPI per media. CELLHUB-PRINT-REPORT-CONTRAST-REGRESSION: letter
+ *  reports raster at 300 dpi too — 200 dpi visibly softened 7-8pt report
+ *  text on selected-page prints (the only rasterizing path; full prints
+ *  stay vector). A letter page at 300 dpi is a 2550×3300 canvas — in-memory
+ *  cost is fine and the spool is one page image either way. */
 function rasterDpiForPageSize(pageSizeMicrons) {
-  const w = (pageSizeMicrons && pageSizeMicrons.width) || 215900;
-  return w <= 101600 ? 300 : 200;
+  void pageSizeMicrons;
+  return 300;
 }
 
 // ── pdf.js source cache (read once per process) ──────────────

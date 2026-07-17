@@ -47,6 +47,8 @@ import { normalizeLocalDayRange, isWithinLocalDayRange } from '@/utils/reportRan
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
 import { summarizeLedger, voidLedgerEntry } from '@/services/storeCredit/ledger';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
+// CELLHUB-PRINT-REPORT-CONTRAST-REGRESSION: shared print-safe report CSS.
+import { REPORT_PRINT_CSS } from './reportPrintStyles';
 // R-REPORTS-EDIT-SALE-ITEM-V1: shared totals helper + audit trail helpers.
 // calculateCartTotals re-derives subtotal/salesTax/total from the modified
 // items so we don't reimplement tax math here. captureSnapshot/appendEditEntry
@@ -1278,51 +1280,10 @@ export default function ReportsModule() {
       : 0;
     const marginPct = (stats.profitMargin || 0).toFixed(1);
 
-    const html = `<!DOCTYPE html><html><head><title>${escHtml(L.title)}</title><style>
-@page { size: letter; margin: 0.5in; }
-* { box-sizing: border-box; }
-body { font-family: Arial, sans-serif; font-size: 9pt; color: #1a1a2e; margin: 0; }
-
-.report-header { margin-bottom: 16px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px; }
-.report-title { font-size: 18pt; font-weight: 900; margin: 0; }
-.report-meta { font-size: 8pt; color: #666; margin-top: 2px; }
-
-.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-.summary-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
-.summary-card .label { font-size: 7pt; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 2px; }
-.summary-card .value { font-size: 14pt; font-weight: 900; }
-.summary-card .sub { font-size: 7pt; color: #888; margin-top: 2px; }
-.value-green { color: #16a34a; }
-.value-red { color: #dc2626; }
-.value-blue { color: #2563eb; }
-
-.meta-row { display: flex; gap: 24px; margin-bottom: 16px; font-size: 8pt; color: #444; }
-.meta-row span { font-weight: 700; color: #1a1a2e; }
-
-.section { margin-bottom: 16px; }
-.section-header { background: #1a1a2e; color: #fff; padding: 6px 10px; border-radius: 4px 4px 0 0; font-size: 9pt; font-weight: 700; margin-bottom: 0; }
-
-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-th { background: #f1f5f9; padding: 5px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 7pt; color: #475569; border-bottom: 1px solid #e2e8f0; }
-td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
-tr:last-child td { border-bottom: none; }
-.row-total td { font-weight: 900; background: #f8fafc; border-top: 2px solid #1a1a2e; }
-.text-right { text-align: right; }
-.text-green { color: #16a34a; font-weight: 700; }
-.text-red { color: #dc2626; font-weight: 700; }
-
-/* R-2.1.4 Phase 3: per-transaction rows under each provider summary. */
-.pp-detail td { font-size: 7pt; color: #555; padding: 2px 8px; background: #fafbfc; }
-.pp-detail .pp-detail-meta { padding-left: 18px; }
-/* Keep each row intact across page breaks (provider blocks stay readable). */
-tbody tr { page-break-inside: avoid; }
-
-.net-banner { background: #1a1a2e; color: #fff; padding: 10px 16px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 12pt; font-weight: 900; }
-
-.report-footer { text-align: center; margin-top: 12px; font-size: 7pt; color: #aaa; }
-
-@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-</style></head><body>
+    // CELLHUB-PRINT-REPORT-CONTRAST-REGRESSION: print CSS extracted to a
+    // testable module with print-safe contrast rules (near-black text, dark
+    // secondary grays, grayscale-visible borders, no opacity/transform).
+    const html = `<!DOCTYPE html><html><head><title>${escHtml(L.title)}</title><style>${REPORT_PRINT_CSS}</style></head><body>
 
 <!-- HEADER -->
 <div class="report-header">
