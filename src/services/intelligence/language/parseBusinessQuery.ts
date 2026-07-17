@@ -9,13 +9,17 @@
 
 import type {
   ParsedBusinessQuery, ParseBusinessQueryOptions, BusinessLanguage,
-  BusinessMetric, BusinessIntent, RecognizedEntity,
+  BusinessMetric, BusinessIntent, RecognizedEntity, BusinessComparison,
+  BusinessQueryOperand, ParsedDateRange, RuntimeEntitySet,
 } from './types';
 import { normalizeBusinessText } from './normalizeBusinessText';
-import { LANGUAGE_MARKERS, SUMMARIZE_TERMS, FIND_CUSTOMER_TERMS, FILTER_TERMS } from './businessDictionary';
+import {
+  LANGUAGE_MARKERS, SUMMARIZE_TERMS, FIND_CUSTOMER_TERMS, FILTER_TERMS,
+  COMPARISON_CONNECTORS_ALWAYS, COMPARISON_CONNECTORS_CONDITIONAL, COMPARE_VERBS, BARE_RANKING_TOKENS,
+} from './businessDictionary';
 import {
   recognizeMetric, recognizeDimension, recognizeComparison, recognizePhoneStoreConcept,
-  recognizeNamedDateRange, recognizeCustomDateRange, recognizeEntity, hasPhrase,
+  recognizeNamedDateRange, recognizeCustomDateRange, recognizeEntity, findAllNamedDateRanges, hasPhrase,
 } from './recognizeBusinessEntities';
 
 /** Detect language deterministically from folded text via high-signal markers.
@@ -34,6 +38,99 @@ export function detectBusinessLanguage(folded: string, forced?: BusinessLanguage
 }
 
 const DEFAULT_METRIC: BusinessMetric = 'gross_sales';
+
+// ── I3-1.1: two-operand comparison detection ────────────────
+
+/** Recognize one operand from a side of a split query. corrected preserves '&'
+ *  so a carrier "at&t" resolves; phone-store concepts (repair/unlock) resolve
+ *  as service/category entities. */
+function recognizeOperand(side: string, entities?: RuntimeEntitySet): BusinessQueryOperand {
+  const m = recognizeMetric(side)?.metric;
+  const ent = recognizeEntity(side, side, entities);
+  const phone = ent ? null : recognizePhoneStoreConcept(side);
+  const dimension = ent?.dimension ?? phone?.dimension ?? recognizeDimension(side)?.dimension;
+  const dateRange = recognizeNamedDateRange(side)?.dateRange;
+  let entity: RecognizedEntity | undefined;
+  if (ent) entity = ent.entity;
+  else if (phone) entity = { type: phone.dimension ?? 'unknown', canonicalName: phone.concept, rawText: phone.term };
+  return { metric: m, dimension, entity, dateRange };
+}
+
+/** Find the first comparison connector; CONDITIONAL ones require a compare verb. */
+function findConnector(corrected: string, hasCompareVerb: boolean): string | null {
+  const padded = ' ' + corrected + ' ';
+  const always = [...COMPARISON_CONNECTORS_ALWAYS].sort((a, b) => b.length - a.length);
+  let bestIdx = Infinity; let bestConn: string | null = null;
+  for (const c of always) {
+    const i = padded.indexOf(' ' + c + ' ');
+    if (i >= 0 && i < bestIdx) { bestIdx = i; bestConn = c; }
+  }
+  if (bestConn) return bestConn;
+  if (hasCompareVerb) {
+    for (const c of COMPARISON_CONNECTORS_CONDITIONAL) {
+      const i = padded.indexOf(' ' + c + ' ');
+      if (i >= 0 && i < bestIdx) { bestIdx = i; bestConn = c; }
+    }
+  }
+  return bestConn;
+}
+
+interface TwoOperand {
+  comparison: BusinessComparison;
+  operands: { left: BusinessQueryOperand; right: BusinessQueryOperand };
+  dimension?: import('./types').BusinessDimension;
+  topMetric?: BusinessMetric;    // set for entity/period comparisons; omitted for between_metrics
+  dateRange?: ParsedDateRange;   // shared top-level date (entities/metrics only)
+}
+
+function detectTwoOperandComparison(corrected: string, entities: RuntimeEntitySet | undefined): TwoOperand | null {
+  const hasCompareVerb = COMPARE_VERBS.some((v) => hasPhrase(corrected, v));
+  const connector = findConnector(corrected, hasCompareVerb);
+  const namedFull = recognizeNamedDateRange(corrected)?.dateRange;
+
+  if (connector) {
+    const padded = ' ' + corrected + ' ';
+    const i = padded.indexOf(' ' + connector + ' ');
+    const left = padded.slice(1, i).trim();
+    const right = padded.slice(i + connector.length + 2).trim();
+    const L = recognizeOperand(left, entities);
+    const R = recognizeOperand(right, entities);
+    if (L.entity && R.entity) {
+      return {
+        comparison: 'between_entities',
+        operands: {
+          left: { dimension: L.dimension, entity: L.entity },
+          right: { dimension: R.dimension, entity: R.entity },
+        },
+        dimension: L.dimension ?? R.dimension,
+        topMetric: L.metric ?? R.metric,
+        dateRange: namedFull,
+      };
+    }
+    if (L.metric && R.metric && L.metric !== R.metric) {
+      return {
+        comparison: 'between_metrics',
+        operands: { left: { metric: L.metric }, right: { metric: R.metric } },
+        dateRange: namedFull,   // e.g. "cash vs card this month"
+      };
+    }
+    // otherwise fall through to the period check below
+  }
+
+  // Period-versus-period: two DISTINCT named ranges + a comparison context.
+  const dates = findAllNamedDateRanges(corrected);
+  if (dates.length >= 2 && dates[0].kind !== dates[1].kind && (connector || hasCompareVerb)) {
+    return {
+      comparison: 'between_periods',
+      operands: {
+        left: { dateRange: { kind: dates[0].kind } },
+        right: { dateRange: { kind: dates[1].kind } },
+      },
+      topMetric: recognizeMetric(corrected)?.metric,
+    };
+  }
+  return null;
+}
 
 export function parseBusinessQuery(input: string, options: ParseBusinessQueryOptions = {}): ParsedBusinessQuery {
   const norm = normalizeBusinessText(input, options.language);
@@ -77,31 +174,51 @@ export function parseBusinessQuery(input: string, options: ParseBusinessQueryOpt
   // An entity resolves its own dimension (e.g. a carrier name → carrier).
   if (entityRec && !dimension) dimension = entityRec.dimension;
 
-  // ── Comparison ──
-  // Guard: a BARE ranking token ("mas"/"mais"/"menos") that is actually part
-  // of a "more than / less than" FILTER ("mas de 100") must NOT rank.
+  // ── Two-operand comparison (I3-1.1) ──
+  const twoOp = detectTwoOperandComparison(norm.corrected, options.entities);
+  let comparisonOperands: { left: BusinessQueryOperand; right: BusinessQueryOperand } | undefined;
+  let dateRange: ParsedDateRange | undefined = dateRec?.dateRange;
+
+  // ── Single comparison / ranking ──
+  // Guards on a BARE ranking token ("mas"/"mais"/"menos"): it must NOT rank
+  // when it is part of a "more than / less than" FILTER, NOR when there is no
+  // dimension to rank (I3-1.1 — "ganamos más este mes" is not a ranking).
   const hasFilterPhrase = FILTER_TERMS.some((f) => hasPhrase(norm.corrected, f));
-  const BARE_RANKING = new Set(['mas', 'mais', 'menos']);
   let effectiveComparison = comparisonRec;
-  if (effectiveComparison && BARE_RANKING.has(effectiveComparison.term) && hasFilterPhrase) {
+  if (effectiveComparison && BARE_RANKING_TOKENS.has(effectiveComparison.term)
+      && (hasFilterPhrase || !dimension)) {
     effectiveComparison = null;
   }
-  const comparison = effectiveComparison?.comparison;
+
+  let comparison: BusinessComparison | undefined = effectiveComparison?.comparison;
+
+  if (twoOp) {
+    comparison = twoOp.comparison;
+    comparisonOperands = twoOp.operands;
+    if (twoOp.dimension && !dimension) dimension = twoOp.dimension;
+    if (twoOp.comparison === 'between_metrics') {
+      metric = undefined;         // operands are authoritative — no single top metric
+    } else if (twoOp.topMetric && !metricRec) {
+      metric = twoOp.topMetric;   // shared metric across entities/periods
+    }
+    // between_periods: the two periods live in the operands, not top-level.
+    dateRange = twoOp.comparison === 'between_periods' ? undefined : twoOp.dateRange;
+  }
 
   // ── Intent inference ──
   const wantsFindCustomer = FIND_CUSTOMER_TERMS.some((t) => hasPhrase(norm.corrected, t))
-    || (entityRec?.dimension === 'customer' && !metric && !effectiveComparison?.isRanking);
-  const wantsSummarize = SUMMARIZE_TERMS.some((t) => hasPhrase(norm.corrected, t)) && !!dimension && !effectiveComparison?.isRanking;
-  const wantsRank = !!effectiveComparison?.isRanking && !!dimension;
-  const wantsCompare = comparison === 'versus_previous_period' || comparison === 'between_periods';
+    || (entityRec?.dimension === 'customer' && !metric && !effectiveComparison?.isRanking && !twoOp);
+  const wantsSummarize = SUMMARIZE_TERMS.some((t) => hasPhrase(norm.corrected, t)) && !!dimension && !effectiveComparison?.isRanking && !twoOp;
+  const wantsRank = !!effectiveComparison?.isRanking && !!dimension && !twoOp;
+  const wantsCompare = !!twoOp || comparison === 'versus_previous_period';
 
   let intent: BusinessIntent;
   if (wantsFindCustomer) {
     intent = 'find_customer';
-  } else if (wantsRank) {
-    intent = 'rank_dimension';
   } else if (wantsCompare) {
     intent = 'compare_metric';
+  } else if (wantsRank) {
+    intent = 'rank_dimension';
   } else if (wantsSummarize) {
     intent = 'summarize_dimension';
   } else if (metric) {
@@ -110,8 +227,10 @@ export function parseBusinessQuery(input: string, options: ParseBusinessQueryOpt
     intent = 'unknown';
   }
 
-  // Ranking / comparison / summarize need a metric — default it if absent.
-  if ((intent === 'rank_dimension' || intent === 'compare_metric' || intent === 'summarize_dimension') && !metric) {
+  // Ranking / entity-or-period comparison / summarize need a metric — default
+  // it if absent (never for between_metrics, whose operands ARE the metrics).
+  if ((intent === 'rank_dimension' || intent === 'summarize_dimension'
+       || (intent === 'compare_metric' && comparison !== 'between_metrics')) && !metric) {
     metric = DEFAULT_METRIC;
     assumptions.push('No explicit metric named; defaulted to gross_sales.');
   }
@@ -124,7 +243,8 @@ export function parseBusinessQuery(input: string, options: ParseBusinessQueryOpt
     && entityRec?.dimension === 'carrier') {
     ambiguities.push('"provider" is ambiguous here — a carrier name was also mentioned (carrier ≠ payment provider).');
   }
-  if (intent !== 'unknown' && intent !== 'find_customer' && !dateRec) {
+  const hasAnyDate = !!dateRange || comparison === 'between_periods';
+  if (intent !== 'unknown' && intent !== 'find_customer' && !hasAnyDate) {
     ambiguities.push('No date range specified — the executor should apply the product default.');
   }
   for (const f of FILTER_TERMS) {
@@ -143,9 +263,10 @@ export function parseBusinessQuery(input: string, options: ParseBusinessQueryOpt
     if (metricRec) confidence += metricRec.isBare ? 0.15 : 0.25;
     else if (metric) confidence += 0.1;   // defaulted
     if (dimension) confidence += 0.15;
-    if (dateRec) confidence += 0.1;
+    if (hasAnyDate) confidence += 0.1;
     if (comparison) confidence += 0.1;
     if (entityRec) confidence += 0.08;
+    if (comparisonOperands) confidence += 0.05;
     confidence = Math.min(0.98, Math.round(confidence * 100) / 100);
   }
 
@@ -155,8 +276,9 @@ export function parseBusinessQuery(input: string, options: ParseBusinessQueryOpt
     intent,
     metric,
     dimension,
-    dateRange: dateRec?.dateRange,
+    dateRange,
     comparison,
+    comparisonOperands,
     entity,
     sourceLanguage,
     normalizedText: norm.corrected,

@@ -101,7 +101,10 @@ export const DATE_RANGE_TERMS: ReadonlyArray<TermGroup<DateRangeKind>> = [
 
 // ── Comparison / ranking ────────────────────────────────────
 export const COMPARISON_TERMS: ReadonlyArray<TermGroup<BusinessComparison>> = [
-  { value: 'versus_previous_period', terms: ['previous period', 'periodo anterior', 'vs last', 'versus', 'compared to', 'compare', 'compara', 'comparar', 'comparacion', 'comparacao', ' vs ', 'contra el', 'em relacao'] },
+  // I3-1.1: versus_previous_period now ONLY fires for explicit "previous
+  // period" language. Generic versus/vs/compare/contra are handled by the
+  // two-operand comparison logic (between_metrics/entities/periods).
+  { value: 'versus_previous_period', terms: ['previous period', 'periodo anterior', 'vs last', 'compared to last', 'em relacao ao periodo anterior', 'em relacao ao anterior'] },
   { value: 'highest', terms: ['highest', 'the most', 'most', 'best', 'top', 'mas', 'mais', 'mayor', 'mejor', 'mas alto', 'que mas', 'maior', 'melhor', 'mais alto', 'que mais'] },
   { value: 'lowest', terms: ['lowest', 'the least', 'least', 'worst', 'menos', 'menor', 'peor', 'mas bajo', 'que menos', 'pior', 'mais baixo'] },
   { value: 'increase', terms: ['increase', 'increased', 'increasing', 'growing', 'grew', 'went up', 'subio', 'aumento', 'crecio', 'creciendo', 'aumentou', 'subiu', 'cresceu'] },
@@ -110,6 +113,19 @@ export const COMPARISON_TERMS: ReadonlyArray<TermGroup<BusinessComparison>> = [
 
 /** Ranking comparisons that imply intent = rank_dimension when a dimension is present. */
 export const RANKING_COMPARISONS: ReadonlySet<BusinessComparison> = new Set<BusinessComparison>(['highest', 'lowest']);
+
+// ── I3-1.1: two-operand comparison connectors ───────────────
+// ALWAYS split on these (unambiguous comparison connectors).
+export const COMPARISON_CONNECTORS_ALWAYS: readonly string[] = [
+  'compared with', 'compared to', 'comparado con', 'comparar con', 'comparado com', 'comparar com',
+  'versus', 'vs', 'contra', 'against',
+];
+// CONDITIONAL connectors (and/y/e/entre) — used ONLY when a compare verb is
+// also present, so ordinary "X and Y" / date ranges are not mis-split.
+export const COMPARISON_CONNECTORS_CONDITIONAL: readonly string[] = ['with', 'con', 'com', 'entre', 'and', 'y', 'e'];
+export const COMPARE_VERBS: readonly string[] = ['compare', 'compara', 'comparar', 'comparado', 'compared', 'comparacion', 'comparacao'];
+/** Bare ranking tokens that must NOT rank without a dimension (I3-1.1 guard). */
+export const BARE_RANKING_TOKENS: ReadonlySet<string> = new Set(['mas', 'mais', 'menos']);
 
 /** Explicit "more than / less than" filters — recognized as terms but NOT a
  *  comparison enum value (they filter, not rank). Kept for matchedTerms/ambiguity. */

@@ -78,7 +78,19 @@ export type BusinessComparison =
   | 'increase'
   | 'decrease'
   | 'versus_previous_period'
-  | 'between_periods';
+  | 'between_periods'
+  | 'between_metrics'    // I3-1.1: "cash versus card"
+  | 'between_entities';  // I3-1.1: "AT&T versus Verizon"
+
+/** I3-1.1: one side of a two-operand comparison. The executor treats the two
+ *  operands as authoritative for between_metrics / between_entities /
+ *  between_periods. No money — describes the operand only. */
+export interface BusinessQueryOperand {
+  metric?: BusinessMetric;
+  dimension?: BusinessDimension;
+  entity?: RecognizedEntity;
+  dateRange?: ParsedDateRange;
+}
 
 /** A recognized entity reference. rawText is always present; canonicalId/
  *  canonicalName are filled when a RUNTIME entity (supplied by the caller)
@@ -97,6 +109,10 @@ export interface ParsedBusinessQuery {
   dimension?: BusinessDimension;
   dateRange?: ParsedDateRange;
   comparison?: BusinessComparison;
+  /** I3-1.1: two-operand comparison (between_metrics / between_entities /
+   *  between_periods). Present only for those comparison kinds; operands are
+   *  authoritative for the executor. */
+  comparisonOperands?: { left: BusinessQueryOperand; right: BusinessQueryOperand };
   entity?: RecognizedEntity;
   sourceLanguage: BusinessLanguage;
   normalizedText: string;

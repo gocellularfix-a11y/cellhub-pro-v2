@@ -87,40 +87,89 @@ export function recognizeNamedDateRange(corrected: string): DateRangeRecognition
 }
 
 const MONTH_ALT = Object.keys(MONTH_NAMES).sort((a, b) => b.length - a.length).join('|');
-// "july 15" (EN)  |  "15 de julio" / "15 de julho" (ES/PT)
-const EN_POINT = new RegExp(`(${MONTH_ALT})\\s+(\\d{1,2})`, 'g');
-const ES_PT_POINT = new RegExp(`(\\d{1,2})\\s+de\\s+(${MONTH_ALT})`, 'g');
 const RANGE_CONNECTOR = /\b(to|through|thru|until|al|a|hasta|ate)\b|-/;
 
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
+/** Local days-in-month (no UTC): new Date(year, month, 0) → last day of `month`. */
+function daysInMonth(year: number, month: number): number { return new Date(year, month, 0).getDate(); }
+function validDate(year: number, month: number, day: number): boolean {
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
 
-/** Explicit custom range across EN/ES/PT. Returns date-only ISO (YYYY-MM-DD),
- *  local calendar days, no UTC. Year comes from referenceDate. */
+interface DatePoint { month?: number; day: number; year?: number; idx: number }
+
+// EN: "july 1" / "july 1, 2025" / "july 1 2025"
+const EN_POINT = new RegExp(`(${MONTH_ALT})\\s+(\\d{1,2})(?:\\s*,?\\s*(\\d{4}))?`, 'g');
+// ES/PT: "1 de julio" / "1 de julio de 2025"  AND bare "1" (shared-month form "del 1 al 15 de julio")
+const ES_PT_POINT = new RegExp(`(\\d{1,2})(?:\\s+de\\s+(${MONTH_ALT})(?:\\s+de\\s+(\\d{4}))?)?`, 'g');
+
+/** I3-1.1: explicit custom range across EN/ES/PT with optional explicit years
+ *  and shared month/year. Date-only ISO (YYYY-MM-DD), local calendar days, no
+ *  UTC. Explicit year wins over referenceDate; a single trailing year applies
+ *  to the whole range. Impossible dates are REJECTED (returns null). */
 export function recognizeCustomDateRange(corrected: string, referenceDate: Date): DateRangeRecognition | null {
-  const year = referenceDate.getFullYear();
-  const points: Array<{ month: number; day: number; idx: number }> = [];
+  if (!RANGE_CONNECTOR.test(corrected)) return null;
+  const refYear = referenceDate.getFullYear();
+  const points: DatePoint[] = [];
   let mm: RegExpExecArray | null;
+
   const en = new RegExp(EN_POINT.source, 'g');
   while ((mm = en.exec(corrected)) !== null) {
-    const month = MONTH_NAMES[mm[1]]; const day = parseInt(mm[2], 10);
-    if (month && day >= 1 && day <= 31) points.push({ month, day, idx: mm.index });
+    points.push({ month: MONTH_NAMES[mm[1]], day: parseInt(mm[2], 10), year: mm[3] ? parseInt(mm[3], 10) : undefined, idx: mm.index });
   }
-  const esp = new RegExp(ES_PT_POINT.source, 'g');
-  while ((mm = esp.exec(corrected)) !== null) {
-    const month = MONTH_NAMES[mm[2]]; const day = parseInt(mm[1], 10);
-    if (month && day >= 1 && day <= 31) points.push({ month, day, idx: mm.index });
+  if (points.length < 2) {
+    // ES/PT day-first form (may share a month across both days).
+    points.length = 0;
+    const esp = new RegExp(ES_PT_POINT.source, 'g');
+    while ((mm = esp.exec(corrected)) !== null) {
+      const day = parseInt(mm[1], 10);
+      if (day < 1 || day > 31) continue;
+      points.push({ day, month: mm[2] ? MONTH_NAMES[mm[2]] : undefined, year: mm[3] ? parseInt(mm[3], 10) : undefined, idx: mm.index });
+    }
   }
-  if (points.length < 2 || !RANGE_CONNECTOR.test(corrected)) return null;
+  if (points.length < 2) return null;
   points.sort((a, b) => a.idx - b.idx);
-  const [s, e] = points;
+  const s = points[0]; const e = points[1];
+
+  // Shared month/year fallback (e.g. "del 1 al 15 de julio de 2025").
+  const sMonth = s.month ?? e.month;
+  const eMonth = e.month ?? s.month;
+  const sYear = s.year ?? e.year ?? refYear;
+  const eYear = e.year ?? s.year ?? refYear;
+  if (sMonth === undefined || eMonth === undefined) return null;
+  if (!validDate(sYear, sMonth, s.day) || !validDate(eYear, eMonth, e.day)) return null;
+
   return {
     dateRange: {
       kind: 'custom',
-      startDate: `${year}-${pad2(s.month)}-${pad2(s.day)}`,
-      endDate: `${year}-${pad2(e.month)}-${pad2(e.day)}`,
+      startDate: `${sYear}-${pad2(sMonth)}-${pad2(s.day)}`,
+      endDate: `${eYear}-${pad2(eMonth)}-${pad2(e.day)}`,
     },
     term: 'custom range',
   };
+}
+
+/** I3-1.1: all named date ranges present, in order of appearance — used to
+ *  detect period-versus-period ("this month ... last month"). */
+export function findAllNamedDateRanges(corrected: string): Array<{ kind: DateRangeKind; idx: number }> {
+  const found: Array<{ kind: DateRangeKind; idx: number; length: number }> = [];
+  for (const g of DATE_RANGE_TERMS) {
+    for (const term of g.terms) {
+      const i = (' ' + corrected + ' ').indexOf(' ' + term + ' ');
+      if (i >= 0) found.push({ kind: g.value, idx: i, length: term.length });
+    }
+  }
+  // De-duplicate overlapping matches, keeping the longest per position; then
+  // collapse to distinct kinds in order.
+  found.sort((a, b) => a.idx - b.idx || b.length - a.length);
+  const out: Array<{ kind: DateRangeKind; idx: number }> = [];
+  const seen = new Set<DateRangeKind>();
+  for (const f of found) {
+    if (seen.has(f.kind)) continue;
+    seen.add(f.kind);
+    out.push({ kind: f.kind, idx: f.idx });
+  }
+  return out.sort((a, b) => a.idx - b.idx);
 }
 
 // ── Runtime + well-known carrier entity resolution ──────────

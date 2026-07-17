@@ -44,8 +44,8 @@ describe('I3-1 — English (15+)', () => {
     ['Which carrier sold the most this month?', { intent: 'rank_dimension', metric: 'gross_sales', dimension: 'carrier', comparison: 'highest', dateKind: 'this_month' }],
     ['Who was the top employee last week?', { intent: 'rank_dimension', dimension: 'employee', comparison: 'highest', dateKind: 'last_week' }],
     ['Which customers spent the most?', { intent: 'rank_dimension', metric: 'total_collected', dimension: 'customer', comparison: 'highest' }],
-    ['Compare this month with last month net sales', { intent: 'compare_metric', metric: 'net_sales', comparison: 'versus_previous_period' }],
-    ['Show cash versus card', { intent: 'compare_metric', metric: 'cash', comparison: 'versus_previous_period' }],
+    ['Compare this month with last month net sales', { intent: 'compare_metric', metric: 'net_sales', comparison: 'between_periods' }],
+    ['Show cash versus card', { intent: 'compare_metric', comparison: 'between_metrics' }],
     ['Sales by category this month', { intent: 'summarize_dimension', dimension: 'category', dateKind: 'this_month' }],
     ['Store credit collected today', { intent: 'get_metric', metric: 'store_credit', dateKind: 'today' }],
   ];
@@ -69,7 +69,7 @@ describe('I3-1 — Spanish (15+)', () => {
     ['¿Cuáles clientes tienen más total cobrado?', { intent: 'rank_dimension', metric: 'total_collected', dimension: 'customer', comparison: 'highest' }],
     ['¿Cuánto cobramos con tarjeta ayer?', { intent: 'get_metric', metric: 'card', dateKind: 'yesterday' }],
     ['Ventas por categoría este mes', { intent: 'summarize_dimension', dimension: 'category', dateKind: 'this_month' }],
-    ['Compara este mes con el mes pasado la ganancia', { intent: 'compare_metric', metric: 'profit', comparison: 'versus_previous_period' }],
+    ['Compara este mes con el mes pasado la ganancia', { intent: 'compare_metric', metric: 'profit', comparison: 'between_periods' }],
   ];
   rows.forEach(([q, e]) => it(q, () => check(q, e)));
 });
@@ -90,7 +90,7 @@ describe('I3-1 — Portuguese (15+)', () => {
     ['Quais clientes têm maior total recebido?', { intent: 'rank_dimension', metric: 'total_collected', dimension: 'customer', comparison: 'highest' }],
     ['Quanto recebemos no cartão ontem?', { intent: 'get_metric', metric: 'card', dateKind: 'yesterday' }],
     ['Vendas por categoria neste mês', { intent: 'summarize_dimension', dimension: 'category', dateKind: 'this_month' }],
-    ['Compare este mês com o mês passado o lucro', { intent: 'compare_metric', metric: 'profit', comparison: 'versus_previous_period' }],
+    ['Compare este mês com o mês passado o lucro', { intent: 'compare_metric', metric: 'profit', comparison: 'between_periods' }],
     ['Qual foi o custo deste mês?', { intent: 'get_metric', metric: 'cost', dateKind: 'this_month' }],
   ];
   rows.forEach(([q, e]) => it(q, () => check(q, e)));
@@ -178,7 +178,7 @@ describe('I3-1 — ambiguous-metric behavior (5)', () => {
 describe('I3-1 — comparison & ranking (5)', () => {
   it('rank carrier by gross sales', () => check('which carrier sold the most this month', { intent: 'rank_dimension', dimension: 'carrier', comparison: 'highest' }));
   it('lowest category by profit', () => check('which category had the lowest profit', { intent: 'rank_dimension', metric: 'profit', dimension: 'category', comparison: 'lowest' }));
-  it('compare periods', () => check('compare this month with last month', { intent: 'compare_metric', comparison: 'versus_previous_period' }));
+  it('compare periods', () => check('compare this month with last month', { intent: 'compare_metric', comparison: 'between_periods' }));
   it('increase detection', () => expect(p('did sales increase this month').comparison).toBe('increase'));
   it('"more than" filter does not become a ranking', () => {
     const r = p('sales more than 100 today');
