@@ -739,6 +739,28 @@ export class IntelligenceEngine {
     return computeCanonicalMoneyForRange(this.canonicalMoneySnapshot(), localDayRangeForWindow(window));
   }
 
+  // CELLHUB-INTELLIGENCE-I3-2: READ-ONLY execution context for the structured
+  // business-query executor. Exposes canonical projections (full + scoped),
+  // the batched canonical customer profiles, and the store-scoped raw data
+  // needed for exact entity SCOPING — no mutation methods, no private-field
+  // tricks. Financial math stays owned by computeReportMoneyStats.
+  getStructuredQueryContext(referenceDate?: Date): import('./query/types').StructuredQueryContext {
+    const snapshot = this.canonicalMoneySnapshot();
+    return {
+      snapshot,
+      computeForRange: (range) => computeCanonicalMoneyForRange(snapshot, range),
+      computeForScopedSnapshot: (partial, range) =>
+        computeCanonicalMoneyForRange({ ...snapshot, ...partial }, range),
+      getCustomerValueProfiles: () => this.getCustomerValueProfiles(),
+      getTopCustomersByValue: (limit) => this.getTopCustomersByValue(limit),
+      getCustomerHistory: (id) => this.getCustomerHistory(id),
+      customers: this.customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+      employees: this.employees.map((e) => ({ id: e.id, name: e.name })),
+      storeId: this.config.storeId,
+      referenceDate: referenceDate ?? new Date(),
+    };
+  }
+
   // CELLHUB-INTELLIGENCE-I2B-1: today-only money for the End-of-Day brief,
   // sourced from THE canonical report service (computeReportMoneyStats) — the
   // same pipeline Reports / Customer 360 / chat consume. getTodayMoney no

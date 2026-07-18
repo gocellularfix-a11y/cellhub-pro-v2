@@ -222,6 +222,8 @@ import {
 import { getWorkflowDefinition } from '../workflows/workflowRegistry';
 import type { WorkflowSession } from '../workflows/types';
 import type { OperationalExecutionAction } from '../execution/types';
+// CELLHUB-INTELLIGENCE-I3-2: canonical structured business-query executor.
+import { tryHandleStructuredBusinessQuery } from '../query/tryHandleStructuredBusinessQuery';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -515,8 +517,14 @@ export function handleIntent(
     case 'help':
       return handleHelp(es);
 
-    case 'data_query':
+    case 'data_query': {
+      // CELLHUB-INTELLIGENCE-I3-2: canonical structured business queries take
+      // the high-confidence path first; anything unsupported/ambiguous falls
+      // back to the EXISTING legacy data-query handler unchanged.
+      const structured = tryHandleStructuredBusinessQuery(engine, match.query || '', lang);
+      if (structured) return structured;
       return handleDataQuery(match, engine, lang);
+    }
 
     // R-INTELLIGENCE-CONTEXT-AWARE-V1
     case 'active_context_query':
@@ -621,6 +629,11 @@ export function handleIntent(
       // resolution before falling through to the analytics summary.
       const entityMatch = resolveOperationalEntity(match.query || '', engine);
       if (entityMatch) return handleEntityLookup(entityMatch, engine, lang);
+      // CELLHUB-INTELLIGENCE-I3-2: a general business question that no
+      // operational intent claimed may still be a structured query (incl.
+      // follow-ups like "what about last month?"). Unsupported → legacy.
+      const structured = tryHandleStructuredBusinessQuery(engine, match.query || '', lang);
+      if (structured) return structured;
       return handleFallbackQuestion(match, engine, lang);
     }
 
