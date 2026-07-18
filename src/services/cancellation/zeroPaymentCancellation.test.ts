@@ -137,6 +137,18 @@ describe('planSimpleCancellation — pure cancel effect (Special Orders reproduc
     expect(plan.ok).toBe(false);
   });
 
+  it('double-submit: re-planning the SAME order after it is cancelled is blocked', () => {
+    // First pass cancels; a rapid second onSuccess re-plans the now-cancelled
+    // record (as the handler re-reads it) → blocked, so it can never cancel twice.
+    const first = planSimpleCancellation({ type: 'special_order', record: order, cart, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = planSimpleCancellation({ type: 'special_order', record: first.updatedRecord, cart: first.nextCart, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.kind).toBe('already_cancelled');
+  });
+
   it('removes by exact id, not by amount/name/index (two same-priced lines)', () => {
     const cart2 = [
       { id: 'a', specialOrderId: 'so-guillermo', price: 200 },

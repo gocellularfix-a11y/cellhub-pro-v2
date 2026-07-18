@@ -91,6 +91,7 @@ export default function SpecialOrdersModule() {
   // refund flow (cancelTarget → CancelSpecialOrderModal), which is untouched.
   const [simpleCancelTarget, setSimpleCancelTarget] = useState<SpecialOrder | null>(null);
   const [simpleCancelPinOpen, setSimpleCancelPinOpen] = useState(false);
+  const simpleCancelSubmittingRef = useRef(false);
   // R-SO-CANCEL-DOUBLECLICK-UX1: parent-owned busy flag so the cancel modal's
   // confirm button disables on first click and ignores rapid double-clicks.
   const [cancelInFlight, setCancelInFlight] = useState(false);
@@ -904,6 +905,12 @@ export default function SpecialOrdersModule() {
   // plan (status → cancelled, exact cart line removed by specialOrderId). NO
   // Sale, NO refund Sale, NO payment, NO store credit, NO refund resolution.
   const handleSimpleCancelConfirmed = useCallback(() => {
+    // Double-submit guard: onSuccess can only drive ONE cancellation even on a
+    // rapid double-click (the eligibility recheck below would also block a
+    // second pass, but this avoids a spurious "can no longer cancel" toast).
+    if (simpleCancelSubmittingRef.current) return;
+    simpleCancelSubmittingRef.current = true;
+    try {
     const target = simpleCancelTarget;
     setSimpleCancelPinOpen(false);
     setSimpleCancelTarget(null);
@@ -939,6 +946,9 @@ export default function SpecialOrdersModule() {
     setCart(nextCart);
 
     toast(lang === 'es' ? 'Orden cancelada.' : lang === 'pt' ? 'Pedido cancelado.' : 'Order cancelled.', 'success');
+    } finally {
+      simpleCancelSubmittingRef.current = false;
+    }
   }, [simpleCancelTarget, setSpecialOrders, setCart, toast, lang]);
 
   const handleComplete = useCallback((order: SpecialOrder) => {
@@ -1306,6 +1316,8 @@ export default function SpecialOrdersModule() {
       <AdminPinGate
         open={simpleCancelPinOpen}
         adminPin={settings?.adminPin || ''}
+        requireFreshEntry
+        lang={lang}
         onSuccess={handleSimpleCancelConfirmed}
         onCancel={() => { setSimpleCancelPinOpen(false); setSimpleCancelTarget(null); }}
       />

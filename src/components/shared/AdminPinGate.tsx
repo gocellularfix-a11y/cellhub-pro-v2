@@ -1,12 +1,19 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
-import { comparePin } from '@/utils/pinHash';
+import { authorizeAdminPin, adminPinNotConfiguredMessage, adminPinInvalidMessage } from './adminPinAuth';
 
 interface AdminPinGateProps {
   open: boolean;
   adminPin: string;
   onSuccess: () => void;
   onCancel: () => void;
+  // SPECIAL-ORDERS-FRESH-PIN: destructive-action mode. When set, the entered
+  // PIN is cleared every time the gate opens so a prior entry can never carry
+  // over (fresh challenge each attempt). AdminPinGate already has NO role and
+  // NO session bypass; this is opt-in and does not change behavior for other
+  // callers (default false). `lang` localizes the messages.
+  requireFreshEntry?: boolean;
+  lang?: string;
 }
 
 export default function AdminPinGate({
@@ -14,36 +21,46 @@ export default function AdminPinGate({
   adminPin,
   onSuccess,
   onCancel,
+  requireFreshEntry,
+  lang,
 }: AdminPinGateProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('Invalid PIN. Try again.');
+  const [errorMsg, setErrorMsg] = useState(adminPinInvalidMessage(lang));
 
-  // r27 B2: no admin PIN configured → block access entirely.
-  // The previous behavior silently allowed '1234' as a fallback, which
-  // meant any unconfigured install had a known admin password.
-  const noAdminPinConfigured = !adminPin || adminPin.trim() === '';
+  // SPECIAL-ORDERS-FRESH-PIN: clear the entry whenever the gate (re)opens, so a
+  // fresh PIN must be typed for every destructive attempt — no remembered
+  // digits, no reuse. Safe for all callers (a reopened gate starting empty is
+  // always correct).
+  useEffect(() => {
+    if (open) { setPin(''); setError(false); }
+  }, [open, requireFreshEntry]);
 
   const submit = useCallback(() => {
-    if (noAdminPinConfigured) {
+    // Route through the pure authorization contract: no role bypass, no
+    // session bypass, and an unconfigured (blank) admin PIN can NEVER approve.
+    const result = authorizeAdminPin(pin, adminPin);
+    if (result === 'not_configured') {
       setError(true);
-      setErrorMsg('No admin PIN is configured. Set one in Settings → Store Info first.');
+      // Destructive/fresh callers get the action-specific localized message;
+      // other callers keep the original generic guidance (unchanged behavior).
+      setErrorMsg(requireFreshEntry
+        ? adminPinNotConfiguredMessage(lang)
+        : 'No admin PIN is configured. Set one in Settings → Store Info first.');
       setPin('');
       return;
     }
-    // r27 B2: hashed compare via bcryptjs (legacy plaintext still works
-    // during the migration window — see pinHash.ts comparePin).
-    if (comparePin(pin, adminPin)) {
+    if (result === 'ok') {
       setPin('');
       setError(false);
-      setErrorMsg('Invalid PIN. Try again.');
+      setErrorMsg(adminPinInvalidMessage(lang));
       onSuccess();
     } else {
       setError(true);
-      setErrorMsg('Invalid PIN. Try again.');
+      setErrorMsg(adminPinInvalidMessage(lang));
       setPin('');
     }
-  }, [pin, adminPin, noAdminPinConfigured, onSuccess]);
+  }, [pin, adminPin, lang, onSuccess]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
