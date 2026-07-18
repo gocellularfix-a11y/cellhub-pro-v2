@@ -26,6 +26,13 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+// R-GLOBAL-CART-TRAY-OVERLAP-FIX: collapsed pill anchored BOTTOM-right (a
+// collision-free corner). Previously top:16/right:20 overlapped every
+// TicketListLayout header (New Special Order / Add Item / headerActions).
+// The position lives in a dependency-free module so it stays unit-testable.
+export { COLLAPSED_CART_PILL_POSITION } from './cartTrayLayout';
+import { COLLAPSED_CART_PILL_POSITION } from './cartTrayLayout';
+
 export default function GlobalCartTray() {
   const { state, setActiveTab, dispatch } = useApp();
   const { cart, settings, lang, activeTab, customers, pendingPosCustomer } = state;
@@ -120,7 +127,7 @@ export default function GlobalCartTray() {
           onClick={() => setDrawerOpen(true)}
           title={`${L.cart}: ${count} ${L.items} · ${money(totals.total)}`}
           style={{
-            position: 'fixed', top: '16px', right: '20px', zIndex: 55,
+            position: 'fixed', ...COLLAPSED_CART_PILL_POSITION, zIndex: 55,
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.5rem 0.9rem', borderRadius: '999px',
             background: 'linear-gradient(135deg, #6366f1, #4f46e5)',

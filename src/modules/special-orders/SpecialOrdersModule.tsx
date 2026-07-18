@@ -28,6 +28,8 @@ import CancelSpecialOrderModal from './CancelSpecialOrderModal';
 import { usePrint } from '@/hooks/usePrint';
 import AdminPinGate from '@/components/shared/AdminPinGate';
 import { usePinGate } from '@/hooks/usePinGate';
+// SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: shared eligibility + pure cancel plan.
+import { getSimpleCancelEligibility, planSimpleCancellation } from '@/services/cancellation/zeroPaymentCancellation';
 import ReasonSelectorModal from '@/components/ReasonSelectorModal';
 import EditHistoryModal from '@/components/EditHistoryModal';
 import {
@@ -84,6 +86,11 @@ export default function SpecialOrdersModule() {
   const [form, setForm] = useState<Partial<SpecialOrder>>({});
   const [depositModalOrder, setDepositModalOrder] = useState<SpecialOrder | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SpecialOrder | null>(null);
+  // SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: simple (no-refund) cancel flow — a
+  // confirm dialog then an admin-PIN gate; separate from the paid/deposit
+  // refund flow (cancelTarget → CancelSpecialOrderModal), which is untouched.
+  const [simpleCancelTarget, setSimpleCancelTarget] = useState<SpecialOrder | null>(null);
+  const [simpleCancelPinOpen, setSimpleCancelPinOpen] = useState(false);
   // R-SO-CANCEL-DOUBLECLICK-UX1: parent-owned busy flag so the cancel modal's
   // confirm button disables on first click and ignores rapid double-clicks.
   const [cancelInFlight, setCancelInFlight] = useState(false);
@@ -892,6 +899,48 @@ export default function SpecialOrdersModule() {
     }
   }, [cancelInFlight, t, setCustomers, setSales, setSpecialOrders, toast, currentEmployee, approvalGate.requestApproval]);
 
+  // SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: simple cancellation AFTER a valid admin
+  // PIN. Re-checks eligibility against the fresh record, then applies the PURE
+  // plan (status → cancelled, exact cart line removed by specialOrderId). NO
+  // Sale, NO refund Sale, NO payment, NO store credit, NO refund resolution.
+  const handleSimpleCancelConfirmed = useCallback(() => {
+    const target = simpleCancelTarget;
+    setSimpleCancelPinOpen(false);
+    setSimpleCancelTarget(null);
+    if (!target) return;
+
+    const fresh = specialOrdersRef.current.find((o) => o.id === target.id) || target;
+    const now = new Date().toISOString();
+    const plan = planSimpleCancellation({
+      type: 'special_order',
+      record: fresh as typeof fresh & { id: string },
+      cart: cartRef.current as unknown as Array<Record<string, unknown>>,
+      cartLinkKey: 'specialOrderId',
+      now,
+    });
+    if (!plan.ok) {
+      // Eligibility changed between opening the modal and confirming (e.g. a
+      // deposit arrived) — abort with a safe toast; nothing mutated.
+      toast(lang === 'es' ? 'Esta orden ya no puede cancelarse de forma simple.'
+        : lang === 'pt' ? 'Este pedido não pode mais ser cancelado de forma simples.'
+        : 'This order can no longer be simply cancelled.', 'error');
+      return;
+    }
+
+    // Apply: SO entity → cancelled (persisted), cart line removed.
+    const updated = plan.updatedRecord as unknown as SpecialOrder;
+    const nextOrders = specialOrdersRef.current.map((o) => (o.id === target.id ? updated : o));
+    specialOrdersRef.current = nextOrders;
+    setSpecialOrders(nextOrders);
+    persist.specialOrder(updated.id, updated as unknown as Record<string, unknown>);
+
+    const nextCart = plan.nextCart as unknown as typeof cart;
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    toast(lang === 'es' ? 'Orden cancelada.' : lang === 'pt' ? 'Pedido cancelado.' : 'Order cancelled.', 'success');
+  }, [simpleCancelTarget, setSpecialOrders, setCart, toast, lang]);
+
   const handleComplete = useCallback((order: SpecialOrder) => {
     const balance = order.balance || 0;
     const deposit = order.depositAmount || 0;
@@ -1151,6 +1200,13 @@ export default function SpecialOrdersModule() {
             setEditOrder(null);
             setCancelTarget(o);
           }}
+          onRequestSimpleCancel={(o) => {
+            // SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: close editor, open the confirm
+            // → admin-PIN → simple-cancel flow (no refund path).
+            setShowModal(false);
+            setEditOrder(null);
+            setSimpleCancelTarget(o);
+          }}
           onPrint={editOrder ? () => printSpecialOrderEntity(editOrder) : undefined}
           onClose={() => { setShowModal(false); setEditOrder(null); }}
           lang={lang}
@@ -1221,6 +1277,38 @@ export default function SpecialOrdersModule() {
           onClose={() => { setCancelInFlight(false); setCancelTarget(null); }}
         />
       )}
+
+      {/* SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: confirm (with order details) then
+          admin PIN, for the simple no-refund cancellation of an eligible order. */}
+      {simpleCancelTarget && !simpleCancelPinOpen && (
+        <ConfirmDialog
+          open
+          variant="warning"
+          title={lang === 'es' ? 'Cancelar orden' : lang === 'pt' ? 'Cancelar pedido' : 'Cancel Order'}
+          message={[
+            lang === 'es' ? `Orden: ${simpleCancelTarget.id.slice(-6).toUpperCase()}`
+              : lang === 'pt' ? `Pedido: ${simpleCancelTarget.id.slice(-6).toUpperCase()}`
+              : `Order: ${simpleCancelTarget.id.slice(-6).toUpperCase()}`,
+            `${lang === 'es' ? 'Cliente' : lang === 'pt' ? 'Cliente' : 'Customer'}: ${simpleCancelTarget.customerName || '—'}`,
+            `${lang === 'es' ? 'Artículo' : lang === 'pt' ? 'Item' : 'Item'}: ${simpleCancelTarget.itemDescription || '—'}`,
+            `${lang === 'es' ? 'Total' : 'Total'}: ${formatCurrency(simpleCancelTarget.price || (simpleCancelTarget as unknown as { total?: number }).total || 0)} · ${lang === 'es' ? 'Saldo' : lang === 'pt' ? 'Saldo' : 'Balance'}: ${formatCurrency(simpleCancelTarget.balance || 0)}`,
+            '',
+            lang === 'es' ? 'Requiere PIN de administrador. No se crea venta ni pago.'
+              : lang === 'pt' ? 'Requer PIN de administrador. Nenhuma venda ou pagamento é criado.'
+              : 'Requires admin PIN. No sale or payment is created.',
+          ].join('\n')}
+          confirmLabel={lang === 'es' ? 'Cancelar orden' : lang === 'pt' ? 'Cancelar pedido' : 'Cancel Order'}
+          cancelLabel={lang === 'es' ? 'Volver' : lang === 'pt' ? 'Voltar' : 'Back'}
+          onConfirm={() => setSimpleCancelPinOpen(true)}
+          onCancel={() => setSimpleCancelTarget(null)}
+        />
+      )}
+      <AdminPinGate
+        open={simpleCancelPinOpen}
+        adminPin={settings?.adminPin || ''}
+        onSuccess={handleSimpleCancelConfirmed}
+        onCancel={() => { setSimpleCancelPinOpen(false); setSimpleCancelTarget(null); }}
+      />
 
       {/* R-APPROVAL-GATE-SPECIALORDERS-V1 */}
       {approvalGate.modal}
@@ -1422,6 +1510,9 @@ interface SpecialOrderModalProps {
   // R-EDIT-AUDIT F5: signature extended to accept optional audit metadata.
   onSave: (auditMeta?: SpecialOrderAuditMeta) => void;
   onRequestCancel?: (order: SpecialOrder) => void;
+  // SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: simple (no-refund) cancel for an
+  // eligible zero-payment order. Distinct from the paid onRequestCancel.
+  onRequestSimpleCancel?: (order: SpecialOrder) => void;
   onPrint?: () => void;
   onClose: () => void;
   lang: string;
@@ -1432,7 +1523,7 @@ interface SpecialOrderModalProps {
 // FIX Bug 2: align modal statuses with filter tab values (normalized lowercase)
 const SPECIAL_ORDER_STATUSES = ['ordered', 'in_transit', 'received', 'ready', 'picked_up', 'cancelled', 'refund_pending', 'refunded'];
 
-function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onPrint, onClose, lang, allOrders }: SpecialOrderModalProps) {
+function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSave, onRequestCancel, onRequestSimpleCancel, onPrint, onClose, lang, allOrders }: SpecialOrderModalProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const upd = (field: keyof SpecialOrder, val: any) => setForm({ ...form, [field]: val });
@@ -2133,6 +2224,23 @@ function SpecialOrderModal({ editOrder, form, setForm, customers, settings, onSa
               className="btn btn-secondary"
               style={{ flex: 1, color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
               onClick={() => { handleClose(); onRequestCancel(editOrder); }}
+            >
+              ❌ {t('so.modal.cancelOrder')}
+            </button>
+          )}
+          {/* SPECIAL-ORDERS-ZERO-PAYMENT-CANCEL: simple cancel for an eligible
+              order with NO payment history and a non-final status — explicit
+              "Cancel Order" (secondary to Save), admin-PIN gated by the parent.
+              Mutually exclusive with the paid button above (which requires
+              depositAmount > 0; simple eligibility requires no payment history). */}
+          {editOrder
+            && onRequestSimpleCancel
+            && getSimpleCancelEligibility('special_order', editOrder as unknown as { status?: string; depositAmount?: number; payments?: unknown[] }).eligible && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ flex: 1, color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
+              onClick={() => { handleClose(); onRequestSimpleCancel(editOrder); }}
             >
               ❌ {t('so.modal.cancelOrder')}
             </button>

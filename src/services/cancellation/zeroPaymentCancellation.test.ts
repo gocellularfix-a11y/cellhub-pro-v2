@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  hasPaymentHistory, getSimpleCancelEligibility, canSimplyCancel,
+  hasPaymentHistory, getSimpleCancelEligibility, canSimplyCancel, planSimpleCancellation,
 } from './zeroPaymentCancellation';
 import type { CancellableRecord } from './zeroPaymentCancellation';
 
@@ -87,6 +87,63 @@ describe('Layaways eligibility', () => {
     for (const status of ['completed', 'fulfilled', 'forfeited']) {
       expect(getSimpleCancelEligibility('layaway', { status }).kind).toBe('final_status');
     }
+  });
+});
+
+describe('planSimpleCancellation — pure cancel effect (Special Orders reproduction)', () => {
+  const NOW = '2026-07-18T10:00:00.000Z';
+  // GUILLERMO RODRIGUEZ $2.00 order added to cart, plus an unrelated cart line.
+  const order = { id: 'so-guillermo', status: 'ordered', depositAmount: 0, balance: 200, payments: [] };
+  const cart = [
+    { id: 'line-so', specialOrderId: 'so-guillermo', name: 'Special Order', price: 200, qty: 1 },
+    { id: 'line-other', name: 'Screen Protector', price: 999, qty: 1 },
+  ];
+
+  it('eligible order → cancels, removes ONLY the linked cart line, keeps unrelated', () => {
+    const plan = planSimpleCancellation({ type: 'special_order', record: order, cart, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updatedRecord.status).toBe('cancelled');
+    expect((plan.updatedRecord as { cancelledAt?: string }).cancelledAt).toBe(NOW);
+    expect(plan.removedCartCount).toBe(1);
+    expect(plan.nextCart.map((c) => c.id)).toEqual(['line-other']);   // unrelated preserved
+    // cart total decreased by exactly the $2.00 line.
+    const before = cart.reduce((s, c) => s + (c.price as number), 0);
+    const after = plan.nextCart.reduce((s, c) => s + (c.price as number), 0);
+    expect(before - after).toBe(200);
+  });
+
+  it('produces NO Sale / payment / store-credit (plan carries only record + cart)', () => {
+    const plan = planSimpleCancellation({ type: 'special_order', record: order, cart, cartLinkKey: 'specialOrderId', now: NOW });
+    // The plan surface is exactly the cancellation outputs — no financial artifacts.
+    expect(Object.keys(plan).sort()).toEqual(['nextCart', 'ok', 'removedCartCount', 'updatedRecord']);
+    if (!plan.ok) return;
+    // No refund/sale/store-credit fields are added to the cancelled record.
+    for (const k of ['refundSale', 'sale', 'payment', 'storeCredit', 'depositRefundMethod', 'depositRefundAmount']) {
+      expect(k in plan.updatedRecord).toBe(false);
+    }
+  });
+
+  it('re-checks eligibility: a paid order is blocked, cart untouched', () => {
+    const paid = { id: 'so-paid', status: 'ordered', depositAmount: 500, balance: 0 };
+    const plan = planSimpleCancellation({ type: 'special_order', record: paid, cart, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.kind).toBe('payment_history');
+  });
+
+  it('already-cancelled order is blocked (no duplicate cancellation)', () => {
+    const plan = planSimpleCancellation({ type: 'special_order', record: { id: 'x', status: 'cancelled' }, cart, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(plan.ok).toBe(false);
+  });
+
+  it('removes by exact id, not by amount/name/index (two same-priced lines)', () => {
+    const cart2 = [
+      { id: 'a', specialOrderId: 'so-guillermo', price: 200 },
+      { id: 'b', specialOrderId: 'so-other', price: 200 },   // same amount, different order
+    ];
+    const plan = planSimpleCancellation({ type: 'special_order', record: order, cart: cart2, cartLinkKey: 'specialOrderId', now: NOW });
+    expect(plan.ok && plan.nextCart.map((c) => c.id)).toEqual(['b']);   // only Guillermo's line removed
   });
 });
 

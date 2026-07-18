@@ -113,3 +113,52 @@ export function getSimpleCancelEligibility(type: CancellableType, record: Cancel
 export function canSimplyCancel(type: CancellableType, record: CancellableRecord): boolean {
   return getSimpleCancelEligibility(type, record).eligible;
 }
+
+/** PURE plan for a simple (no-refund) cancellation. Rechecks eligibility, then
+ *  returns the cancelled record + the cart with ONLY the linked line removed —
+ *  it creates NO Sale, NO payment, NO store credit, and mutates nothing. The
+ *  caller applies the returned values (setState + persist). Cart lines are
+ *  removed by an EXACT source identifier (e.g. 'specialOrderId'), never by
+ *  name / amount / index. */
+export interface SimpleCancellationPlan<TRecord, TCartItem> {
+  ok: true;
+  updatedRecord: TRecord;
+  nextCart: TCartItem[];
+  removedCartCount: number;
+}
+export interface SimpleCancellationBlocked {
+  ok: false;
+  kind: 'already_cancelled' | 'final_status' | 'payment_history';
+  reasonKey: string;
+}
+
+export function planSimpleCancellation<
+  TRecord extends CancellableRecord & { id: string },
+  TCartItem extends Record<string, unknown>,
+>(params: {
+  type: CancellableType;
+  record: TRecord;
+  cart: ReadonlyArray<TCartItem>;
+  /** The cart-line field that stores this record's id (e.g. 'specialOrderId'). */
+  cartLinkKey: string;
+  now: string;
+}): SimpleCancellationPlan<TRecord, TCartItem> | SimpleCancellationBlocked {
+  const elig = getSimpleCancelEligibility(params.type, params.record);
+  if (!elig.eligible) return { ok: false, kind: elig.kind, reasonKey: elig.reasonKey };
+
+  const updatedRecord = {
+    ...params.record,
+    status: 'cancelled',
+    cancelledAt: params.now,
+    updatedAt: params.now,
+  } as TRecord;
+
+  const id = params.record.id;
+  const nextCart = params.cart.filter((line) => line[params.cartLinkKey] !== id);
+  return {
+    ok: true,
+    updatedRecord,
+    nextCart,
+    removedCartCount: params.cart.length - nextCart.length,
+  };
+}
