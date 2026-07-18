@@ -10,6 +10,7 @@ import { formatCurrency } from '@/utils/currency';
 import type { BusinessLanguage, BusinessMetric } from '../language/types';
 import type {
   StructuredBusinessQueryResult, StructuredScalarValue, ResolvedBusinessDateRange,
+  StructuredUnsupportedReason,
 } from './types';
 
 type L3 = BusinessLanguage;
@@ -69,6 +70,62 @@ export function formatValue(v: StructuredScalarValue, lang: L3): string {
 
 const CUSTOMER_ROW_ORDER = ['total_collected', 'commissionable_revenue', 'customer_profit', 'customer_margin', 'transaction_count', 'average_ticket'];
 
+/** Localized FINANCIAL-transaction word — never "visits"/"interactions". */
+export function transactionsWord(n: number, lang: L3): string {
+  if (lang === 'es') return n === 1 ? 'transacción' : 'transacciones';
+  if (lang === 'pt') return n === 1 ? 'transação' : 'transações';
+  return n === 1 ? 'transaction' : 'transactions';
+}
+
+/** TERMINAL localized answers for TYPED recognized-but-blocked reasons. A
+ *  confidently recognized financial question never falls back to a legacy
+ *  financial handler — it gets one of these customer-safe explanations. */
+export function formatTerminalReason(reason: StructuredUnsupportedReason, lang: L3): string {
+  const M: Record<StructuredUnsupportedReason, Record<L3, string>> = {
+    unsupported_metric_dimension: {
+      en: "I can't calculate that breakdown exactly from the available transaction attribution, so I won't estimate it.",
+      es: 'No puedo calcular ese desglose con exactitud usando la atribución disponible, por lo que no voy a estimarlo.',
+      pt: 'Não consigo calcular esse detalhamento com exatidão usando a atribuição disponível, então não vou estimá-lo.',
+    },
+    mixed_carrier_attribution: {
+      en: "One or more transactions in this period include more than one carrier (or extra unattributed items), so an exact per-carrier total isn't available — I won't estimate it.",
+      es: 'Una o más transacciones de este período incluyen más de una compañía (o artículos sin atribución), así que no hay un total exacto por compañía — no voy a estimarlo.',
+      pt: 'Uma ou mais transações deste período incluem mais de uma operadora (ou itens sem atribuição), então não há um total exato por operadora — não vou estimá-lo.',
+    },
+    employee_attribution_incomplete: {
+      en: "This period includes completed services that aren't attributed to an employee, so an exact per-employee total isn't available — I won't estimate it.",
+      es: 'Este período incluye servicios completados sin empleado asignado, así que no hay un total exacto por empleado — no voy a estimarlo.',
+      pt: 'Este período inclui serviços concluídos sem funcionário atribuído, então não há um total exato por funcionário — não vou estimá-lo.',
+    },
+    store_comparison_unavailable: {
+      en: "Only the current store's data is available here, so per-store comparisons aren't available.",
+      es: 'Aquí solo están los datos de la tienda actual, así que las comparaciones por tienda no están disponibles.',
+      pt: 'Apenas os dados da loja atual estão disponíveis aqui, então comparações por loja não estão disponíveis.',
+    },
+    return_count_unavailable: {
+      en: 'I can report the exact refunded amount, but not a count of returns.',
+      es: 'Puedo reportar el monto exacto devuelto, pero no un conteo de devoluciones.',
+      pt: 'Posso informar o valor exato devolvido, mas não uma contagem de devoluções.',
+    },
+    invalid_date_range: {
+      en: "That date range isn't valid, so I didn't run the query.",
+      es: 'Ese rango de fechas no es válido, así que no ejecuté la consulta.',
+      pt: 'Esse intervalo de datas não é válido, então não executei a consulta.',
+    },
+    missing_comparison_operand: {
+      en: "I couldn't identify both sides of that comparison, so I didn't run it.",
+      es: 'No pude identificar ambos lados de esa comparación, así que no la ejecuté.',
+      pt: 'Não consegui identificar os dois lados dessa comparação, então não a executei.',
+    },
+    incompatible_dimensions: {
+      en: "Those two things aren't directly comparable (different dimensions), so I didn't run the comparison.",
+      es: 'Esas dos cosas no son comparables directamente (dimensiones distintas), así que no ejecuté la comparación.',
+      pt: 'Essas duas coisas não são comparáveis diretamente (dimensões diferentes), então não executei a comparação.',
+    },
+  };
+  return M[reason][lang];
+}
+
 export function formatBusinessQueryAnswer(result: StructuredBusinessQueryResult, lang: L3): string {
   const p = result.parsed;
   const dateLbl = rangeLabel(result.resolvedRange, lang);
@@ -90,6 +147,9 @@ export function formatBusinessQueryAnswer(result: StructuredBusinessQueryResult,
       : lang === 'pt' ? 'Há várias correspondências, a qual você se refere?'
       : 'Multiple matches found — which one do you mean?';
     return `${head}\n${result.diagnostics.candidates.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
+  }
+  if ((result.status === 'unsupported' || result.status === 'ambiguous') && result.unsupportedReason) {
+    return formatTerminalReason(result.unsupportedReason, lang);
   }
   if (result.status !== 'answered') return '';
 
@@ -144,7 +204,10 @@ export function formatBusinessQueryAnswer(result: StructuredBusinessQueryResult,
     const header = withDate(`${metricLbl}`);
     const lines = [header];
     result.rows.forEach((r, i) => {
-      lines.push(`${i + 1}. ${r.label} — ${formatValue(r.value, lang)}`);
+      // Customer rows carry the canonical FINANCIAL transaction count —
+      // rendered as localized "transactions", never "visits"/"interactions".
+      const tx = typeof r.txCount === 'number' ? ` · ${r.txCount} ${transactionsWord(r.txCount, lang)}` : '';
+      lines.push(`${i + 1}. ${r.label} — ${formatValue(r.value, lang)}${tx}`);
     });
     return lines.join('\n');
   }

@@ -13,7 +13,7 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { parseBusinessQuery } from '../language';
 import type { BusinessLanguage } from '../language/types';
 import { executeBusinessQuery, STRUCTURED_QUERY_MIN_CONFIDENCE } from './executeBusinessQuery';
-import { formatBusinessQueryAnswer } from './formatBusinessQueryAnswer';
+import { formatBusinessQueryAnswer, formatTerminalReason } from './formatBusinessQueryAnswer';
 import { setAnalyticalContext, mergeFollowUp } from './analyticalContext';
 import { buildRuntimeEntitySet } from './buildRuntimeEntitySet';
 
@@ -46,30 +46,40 @@ export function tryHandleStructuredBusinessQuery(
     if (parsed.confidence < STRUCTURED_QUERY_MIN_CONFIDENCE) return null;
 
     // ── Structured blocking guards (fields, not message matching) ──
-    // 1. A comparison connector with NO resolved operands ("A vs B vs C") —
-    //    never degrade a comparison into an unrelated single-metric answer.
+    // These are RECOGNIZED business questions that cannot execute exactly —
+    // they get a TERMINAL localized response, never a legacy financial answer.
+    const terminal = (reason: import('./types').StructuredUnsupportedReason): StructuredChatResponse =>
+      ({ kind: 'answer', text: formatTerminalReason(reason, lang) });
+
+    // 1. A comparison connector with NO resolved operands ("sales A vs B vs C")
+    //    — never degrade a comparison into an unrelated single-metric answer.
     if (/\b(vs|versus|contra)\b/.test(parsed.normalizedText)
         && !parsed.comparisonOperands
         && parsed.comparison === undefined) {
-      return null;
+      return terminal('missing_comparison_operand');
     }
     // 2. A month-name custom-date ATTEMPT the parser rejected (e.g. Feb 30) —
-    //    never silently fall back to the default range for an invalid date.
+    //    never silently execute the default range for an invalid date.
     if (parsed.dateRange?.kind !== 'custom'
         && /\b(to|through|until|al|a|hasta|ate)\b/.test(parsed.normalizedText)
         && /(january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|janeiro|fevereiro|marco|maio|junho|julho|setembro|outubro|novembro|dezembro)\s+\d{1,2}|\d{1,2}\s+de\s+/.test(parsed.normalizedText)) {
-      return null;
+      return terminal('invalid_date_range');
     }
     // 3. Provider/carrier conflict: a payment_provider dimension with a CARRIER
     //    entity is genuinely ambiguous — never guess.
     if (parsed.dimension === 'payment_provider' && parsed.entity?.type === 'carrier') {
-      return null;
+      return terminal('incompatible_dimensions');
+    }
+    // 4. "How many returns" — the canonical service exposes the refunded
+    //    AMOUNT exactly, not a return count. Typed terminal, never a guess.
+    if (parsed.metric === 'returns'
+        && /\b(how many|cuantas|cuantos|quantas|quantos)\b/.test(parsed.normalizedText)) {
+      return terminal('return_count_unavailable');
     }
 
     const result = executeBusinessQuery(parsed, ctx);
 
-    // Only trustworthy outcomes take over the answer; everything else falls
-    // back to the existing legacy behavior.
+    // Trustworthy outcomes take over the answer.
     if (result.status === 'answered') {
       setAnalyticalContext(parsed);
       const text = formatBusinessQueryAnswer(result, lang);
@@ -77,12 +87,18 @@ export function tryHandleStructuredBusinessQuery(
     }
     if (result.status === 'no_data' || result.status === 'not_found'
         || (result.status === 'ambiguous' && parsed.intent === 'find_customer' && result.diagnostics?.candidates?.length)) {
-      // Trustworthy structured interpretation with an honest non-answer.
-      // Failed/unsupported execution never replaces the last valid context.
+      // Honest non-answer for a trustworthy interpretation. Failed execution
+      // never replaces the last valid analytical context.
       const text = formatBusinessQueryAnswer(result, lang);
       return text ? { kind: 'answer', text } : null;
     }
-    return null;   // unsupported / ambiguous / error → legacy fallback
+    // RECOGNIZED-but-blocked (typed reason) → TERMINAL localized response.
+    // A confidently recognized financial question must never fall through to
+    // a legacy financial handler.
+    if ((result.status === 'unsupported' || result.status === 'ambiguous') && result.unsupportedReason) {
+      return terminal(result.unsupportedReason);
+    }
+    return null;   // genuinely unrecognized / internal error → legacy fallback
   } catch (err) {
     // Never crash chat; log through the existing console convention and fall back.
     // eslint-disable-next-line no-console

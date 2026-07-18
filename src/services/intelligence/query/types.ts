@@ -23,6 +23,27 @@ export type StructuredQueryStatus =
   | 'not_found'
   | 'error';
 
+/** TYPED reason for a recognized-but-blocked query. The live gate turns these
+ *  into TERMINAL localized responses — a confidently recognized financial
+ *  question must never fall through to a legacy financial handler. Decisions
+ *  are made on this type, never on diagnostic strings. */
+export type StructuredUnsupportedReason =
+  | 'unsupported_metric_dimension'
+  | 'mixed_carrier_attribution'
+  | 'employee_attribution_incomplete'
+  | 'store_comparison_unavailable'
+  | 'return_count_unavailable'
+  | 'invalid_date_range'
+  | 'missing_comparison_operand'
+  | 'incompatible_dimensions';
+
+/** Support level for a metric/dimension pair (Part J matrix). */
+export type SupportLevel =
+  | 'exact_supported'
+  | 'exact_supported_with_condition'
+  | 'unsupported_exactness'
+  | 'unavailable_context';
+
 export type StructuredQuerySourceKind =
   | 'canonical_report_money'
   | 'canonical_customer_money'
@@ -43,6 +64,9 @@ export interface StructuredQueryRow {
   value: StructuredScalarValue;
   /** stable secondary key for deterministic ties (canonical id or name). */
   tieKey: string;
+  /** Canonical FINANCIAL transaction count (customer rows) — rendered as
+   *  localized "transactions", never "visits"/"interactions". */
+  txCount?: number;
 }
 
 export interface StructuredComparisonResult {
@@ -82,6 +106,8 @@ export interface StructuredBusinessQueryResult {
   rows?: StructuredQueryRow[];
   comparisonResult?: StructuredComparisonResult;
   sourceKinds: StructuredQuerySourceKind[];
+  /** Present on unsupported/ambiguous — the TYPED terminal reason. */
+  unsupportedReason?: StructuredUnsupportedReason;
   diagnostics?: StructuredQueryDiagnostics;
 }
 

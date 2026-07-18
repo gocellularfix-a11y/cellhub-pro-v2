@@ -15,3 +15,5 @@ export { buildRuntimeEntitySet } from './buildRuntimeEntitySet';
 export { tryHandleStructuredBusinessQuery } from './tryHandleStructuredBusinessQuery';
 export { setAnalyticalContext, getAnalyticalContext, clearAnalyticalContext, mergeFollowUp } from './analyticalContext';
 export { METRIC_REGISTRY } from './canonicalMetricRegistry';
+export { getSupportLevel } from './supportMatrix';
+export { formatTerminalReason, transactionsWord } from './formatBusinessQueryAnswer';

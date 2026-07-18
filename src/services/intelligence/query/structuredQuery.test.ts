@@ -217,9 +217,35 @@ describe('I3-2 — English matrix (canonical parity)', () => {
     expect(r?.text).toContain('AT&T');       // 3×$68.99 > 2×$60.00
     expect(r?.text.indexOf('AT&T')).toBeLessThan(r!.text.indexOf('Verizon'));
   });
-  it('16. which employee generated the highest profit (scoped canonical)', () => {
+  it('16. employee profit with an UNATTRIBUTED standalone service in range → terminal truth message', () => {
+    // The main world's standalone repair/unlock carry no employeeName — a
+    // per-employee total would silently omit their revenue, so the executor
+    // refuses (employee_attribution_incomplete) instead of answering.
     const r = ask(engine, 'Which employee generated the highest profit?');
+    expect(r?.text).toMatch(/aren't attributed to an employee|won't estimate/);
+  });
+  it('16b. employee profit answers when ALL service records are attributed (services included)', () => {
+    const world2 = buildWorld();
+    // Attribute the standalone services to Ana — now exact per-employee.
+    (world2.repairs[0] as unknown as { employeeName?: string }).employeeName = 'Ana';
+    (world2.unlocks[0] as unknown as { employeeName?: string }).employeeName = 'Ana';
+    const engine2 = buildEngine(world2);
+    const r = ask(engine2, 'Which employee generated the highest profit?');
     expect(r?.text).toMatch(/Ana|Luis/);
+    expect(r?.text).not.toMatch(/won't estimate/);
+    // Ana's profit INCLUDES her attributed standalone repair+unlock (canonical
+    // expected: scoped snapshot through the canonical service).
+    const anaScope = {
+      sales: world2.sales.filter((s) => s.employeeName === 'Ana'),
+      repairs: world2.repairs, unlocks: world2.unlocks,
+    };
+    const cAna = computeReportMoneyStats({
+      sales: anaScope.sales, repairs: anaScope.repairs, unlocks: anaScope.unlocks,
+      specialOrders: [], layaways: [], inventory: [], customerReturns: [], vendorReturns: [],
+      settings: SETTINGS as never, periodRange: localDayRangeForIntelRange('last_30_days', REF),
+      labels: { noProvider: '(No provider)', noCarrier: '(No carrier)', unknownEmployee: 'Unknown' },
+    });
+    expect(r?.text).toContain(formatCurrency(cAna.totalProfitCents));
   });
   it('17. sales by category this month (canonical rows)', () => {
     const c = canonical(world, 'this_month');
@@ -237,6 +263,10 @@ describe('I3-2 — English matrix (canonical parity)', () => {
     expect(r?.text).toContain('Total Collected');
     expect(r?.text).toContain('JENNY MIRANDA');
     expect(r?.text).toContain(formatCurrency(profile.totalCollectedCents));
+    // Canonical FINANCIAL transaction count on the row — never "visits".
+    expect(r?.text).toContain(`${profile.transactionCount} transactions`);
+    expect(r?.text.toLowerCase()).not.toContain('visits');
+    expect(r?.text.toLowerCase()).not.toContain('interactions');
   });
   it('19. find customer Jenny Miranda (canonical 360 parity)', () => {
     const profile = computeCustomerMoneyProfile({
@@ -331,11 +361,25 @@ describe('I3-2 — safety & fallback (never fabricate, never hijack)', () => {
     expect(ask(engine, q)).toBeNull();
   }));
 
-  it('55. invalid custom date (Feb 30) never silently defaults', () => {
-    expect(ask(engine, 'sales february 1 to february 30, 2025')).toBeNull();
+  it('55. invalid custom date (Feb 30) → TERMINAL, never silently defaults nor legacy', () => {
+    const r = ask(engine, 'sales february 1 to february 30, 2025');
+    expect(r?.text).toMatch(/isn't valid, so I didn't run/);
   });
-  it('53. provider dimension + carrier entity conflict → fallback', () => {
-    expect(ask(engine, 'which provider sold the most AT&T')).toBeNull();
+  it('53. provider dimension + carrier entity conflict → TERMINAL, never a guess', () => {
+    const r = ask(engine, 'which provider sold the most AT&T');
+    expect(r?.text).toMatch(/aren't directly comparable|didn't run/);
+  });
+  it('sales A versus B versus C (unresolved comparison over a metric) → TERMINAL', () => {
+    const r = ask(engine, 'sales A versus B versus C');
+    expect(r?.text).toMatch(/both sides of that comparison/);
+  });
+  it('how many returns → TERMINAL return_count_unavailable (amount exists, count does not)', () => {
+    const r = ask(engine, 'how many returns this month');
+    expect(r?.text).toMatch(/refunded amount, but not a count/);
+  });
+  it('sales by store → TERMINAL store_comparison_unavailable', () => {
+    const r = ask(engine, 'sales by store this month');
+    expect(r?.text).toMatch(/current store'?s data|per-store comparisons/);
   });
   it('56. unknown customer → localized not-found', () => {
     const r = ask(engine, 'Find customer Zzyzx Nobody');
@@ -352,8 +396,42 @@ describe('I3-2 — safety & fallback (never fabricate, never hijack)', () => {
     const r = tryHandleStructuredBusinessQuery(engine2, 'Find customer Jenny Miranda', 'en', REF);
     expect(r?.text).toMatch(/which one|coincidencias|correspond/i);
   });
-  it('58. unsupported service-dimension money grouping → fallback (never $0.00)', () => {
-    expect(ask(engine, 'Compare repairs with unlocks this month')).toBeNull();
+  it('58. unsupported service-dimension money grouping → TERMINAL (never $0.00, never legacy)', () => {
+    const r = ask(engine, 'Compare repairs with unlocks this month');
+    expect(r?.text).toMatch(/can't calculate that breakdown exactly|won't estimate/);
+    expect(r?.text).not.toContain('$0.00');
+  });
+
+  it('MIXED-CARRIER: entity compare with a mixed sale → terminal, never a partial total', () => {
+    const world = buildWorld();
+    // One sale containing BOTH carriers — makes per-carrier totals inexact.
+    world.sales.push(sale({
+      createdAt: '2026-07-12T10:00:00',
+      items: [
+        item({ name: 'AT&T - 8054523932', category: 'phone_payment' as SaleItem['category'], price: 6500, qty: 1, carrier: 'AT&T', portal: 'ePay' }),
+        item({ name: 'Verizon - 8051112222', category: 'phone_payment' as SaleItem['category'], price: 6000, qty: 1, carrier: 'Verizon', portal: 'VidaPay' }),
+      ],
+      subtotal: 12500, total: 12500,
+    }));
+    const engine2 = buildEngine(world);
+    const r = ask(engine2, 'Compare AT&T profit versus Verizon profit this month');
+    expect(r?.text).toMatch(/more than one carrier|won't estimate/);
+    // Never presents any partial per-carrier number.
+    expect(r?.text).not.toMatch(/\$\d/);
+  });
+  it('MIXED-CARRIER: ranking with a mixed sale → terminal, no potentially false winner', () => {
+    const world = buildWorld();
+    world.sales.push(sale({
+      createdAt: '2026-07-12T10:00:00',
+      items: [
+        item({ name: 'Verizon - X', category: 'phone_payment' as SaleItem['category'], price: 20000, qty: 1, carrier: 'Verizon', portal: 'VidaPay' }),
+        item({ name: 'Case', price: 500, qty: 1, cost: 100 }),   // carrier + unattributed item
+      ],
+      subtotal: 20500, total: 20500,
+    }));
+    const r = ask(buildEngine(world), 'Which carrier sold the most this month?');
+    expect(r?.text).toMatch(/more than one carrier|won't estimate/);
+    expect(r?.text).not.toContain('AT&T —');
   });
   it('executor-boundary error → fallback (never crash)', () => {
     const broken = { getStructuredQueryContext: () => { throw new Error('boom'); } } as unknown as IntelligenceEngine;

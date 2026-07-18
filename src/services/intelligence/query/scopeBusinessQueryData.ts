@@ -19,6 +19,9 @@
 import type { Sale, SaleItem } from '@/store/types';
 import { normalizeCarrier } from '@/utils/normalize';
 import { KNOWN_CARRIER_NAME_RE } from '@/services/reports/phonePaymentReporting';
+import { isRepairCompleted, isUnlockCompleted } from '@/services/reports/computeReportMoneyStats';
+import { isWithinLocalDayRange } from '@/utils/reportRange';
+import type { LocalDayRange } from '@/utils/reportRange';
 import type { CanonicalMoneySnapshot } from '../adapters/reportMoneyAdapter';
 
 /** Resolve the carrier of a single sale item (same field precedence the
@@ -83,14 +86,80 @@ export function scopeSalesByEmployee(sales: Sale[], employee: { id?: string; nam
   });
 }
 
-/** Every distinct employee name appearing on sales (for ranking candidates). */
-export function discoverEmployees(sales: Sale[]): string[] {
-  const names = new Set<string>();
+/** Generic record-level employee attribution (Repair/Unlock carry
+ *  employeeId/employeeName — exact when populated). */
+function belongsToEmployee(rec: { employeeId?: string; employeeName?: string }, employee: { id?: string; name: string }): boolean {
+  if (employee.id && rec.employeeId) return rec.employeeId === employee.id;
+  return String(rec.employeeName || '').trim().toLowerCase() === employee.name.trim().toLowerCase();
+}
+
+/** Records with NO employee attribution at all (unattributable). */
+export function hasEmployeeAttribution(rec: { employeeId?: string; employeeName?: string }): boolean {
+  return !!(rec.employeeId || (rec.employeeName && String(rec.employeeName).trim()));
+}
+
+/** Employee-scoped snapshot: the employee's sales PLUS their attributed
+ *  standalone repairs/unlocks (both record types carry employeeId/Name).
+ *  Scoping only — canonical service computes all money. */
+export function employeeSnapshot(base: CanonicalMoneySnapshot, employee: { id?: string; name: string }): Partial<CanonicalMoneySnapshot> {
+  return {
+    sales: scopeSalesByEmployee(base.sales || [], employee),
+    repairs: (base.repairs || []).filter((r) => belongsToEmployee(r as { employeeId?: string; employeeName?: string }, employee)),
+    unlocks: (base.unlocks || []).filter((u) => belongsToEmployee(u as { employeeId?: string; employeeName?: string }, employee)),
+    specialOrders: [],
+    layaways: [],
+    customerReturns: base.customerReturns,
+    vendorReturns: [],
+    inventory: base.inventory,
+    settings: base.settings,
+  };
+}
+
+/** Carrier-IMPURE sales in a set: any sale that touches at least one carrier
+ *  but whose items do not ALL resolve to that single carrier (two carriers,
+ *  or carrier + unattributed accessory). These make per-carrier money
+ *  inexact — the executor refuses rather than excluding or allocating. */
+export function countCarrierImpureSales(sales: Sale[]): number {
+  let impure = 0;
   for (const s of sales) {
-    const n = String(s.employeeName || '').trim();
-    if (n) names.add(n);
+    const items = s.items || [];
+    if (items.length === 0) continue;
+    const carriers = new Set(items.map(itemCarrier));
+    const named = [...carriers].filter((c) => c !== '');
+    if (named.length >= 1 && carriers.size > 1) impure++;
   }
+  return impure;
+}
+
+/** Every distinct employee name appearing on sales OR attributed standalone
+ *  services (for ranking candidates). */
+export function discoverEmployees(base: CanonicalMoneySnapshot): string[] {
+  const names = new Set<string>();
+  const add = (n?: string) => { const t = String(n || '').trim(); if (t) names.add(t); };
+  for (const s of base.sales || []) add(s.employeeName);
+  for (const r of base.repairs || []) add((r as { employeeName?: string }).employeeName);
+  for (const u of base.unlocks || []) add((u as { employeeName?: string }).employeeName);
   return [...names].sort();
+}
+
+/** Completed (revenue-contributing) service records in range with NO employee
+ *  attribution — their revenue would be silently omitted from any per-employee
+ *  answer, so the executor refuses whole-business employee money when > 0. */
+export function countUnattributedServiceRecords(base: CanonicalMoneySnapshot, range: LocalDayRange): number {
+  const inRange = (createdAt: unknown): boolean => {
+    const d = new Date(createdAt as string | Date);
+    return !isNaN(d.getTime()) && isWithinLocalDayRange(d, range);
+  };
+  let count = 0;
+  for (const r of base.repairs || []) {
+    if (isRepairCompleted(r) && inRange(r.createdAt)
+      && !hasEmployeeAttribution(r as { employeeId?: string; employeeName?: string })) count++;
+  }
+  for (const u of base.unlocks || []) {
+    if (isUnlockCompleted(u) && inRange(u.createdAt)
+      && !hasEmployeeAttribution(u as { employeeId?: string; employeeName?: string })) count++;
+  }
+  return count;
 }
 
 /** Snapshot scoped to a subset of sales; repairs/unlocks/layaways/SOs are
