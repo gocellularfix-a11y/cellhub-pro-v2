@@ -79,6 +79,9 @@ import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations
 import { collectBusinessFindings } from './insights/findingsEngine';
 import { buildInsightCards } from './insights/insightCards';
 import { suggestQuestions } from './insights/suggestedQuestions';
+// CELLHUB-INTELLIGENCE-I4: Business Manager layer.
+import { buildBusinessBrief } from './manager/businessBriefBuilder';
+import { buildManagerDashboard } from './manager/managerDashboard';
 import { resolveBusinessDateRange as resolveBusinessDateRangeForInsightsImpl } from './query/resolveBusinessDateRange';
 import type { ResolvedBusinessDateRange } from './query/types';
 
@@ -796,6 +799,30 @@ export class IntelligenceEngine {
       suggestions: suggestQuestions(findings, this.config.lang),
       generatedForRange: { startYMD: range.startYMD, endYMD: range.endYMD },
     };
+  }
+
+  // CELLHUB-INTELLIGENCE-I4: Business Manager APIs — deterministic
+  // projections of the insights layer (brief / dashboard / digest). Read-only,
+  // on-demand, no background work, no UI.
+  getBusinessBrief(
+    referenceDate?: Date,
+    rangeKind: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' = 'last_30_days',
+  ): import('./manager/types').BusinessBrief {
+    return buildBusinessBrief(this.getBusinessInsights(referenceDate, rangeKind));
+  }
+
+  getManagerDashboard(
+    referenceDate?: Date,
+    rangeKind: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' = 'last_30_days',
+  ): import('./manager/types').ManagerDashboard {
+    return buildManagerDashboard(this.getBusinessInsights(referenceDate, rangeKind));
+  }
+
+  getBusinessDigest(
+    rangeKind: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days',
+    referenceDate?: Date,
+  ): import('./manager/types').BusinessDigest {
+    return { rangeKind, brief: this.getBusinessBrief(referenceDate, rangeKind) };
   }
 
   // CELLHUB-INTELLIGENCE-I2B-1: today-only money for the End-of-Day brief,

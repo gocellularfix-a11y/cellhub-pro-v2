@@ -224,6 +224,8 @@ import type { WorkflowSession } from '../workflows/types';
 import type { OperationalExecutionAction } from '../execution/types';
 // CELLHUB-INTELLIGENCE-I3-2: canonical structured business-query executor.
 import { tryHandleStructuredBusinessQuery } from '../query/tryHandleStructuredBusinessQuery';
+// CELLHUB-INTELLIGENCE-I4: Business Manager smart follow-ups (exact-phrase rule engine).
+import { tryHandleManagerQuestion } from '../manager/smartFollowups';
 
 // R-INTELLIGENCE-PRODUCT-PROMOTION-MODULE-V1: exported so per-domain
 // modules (productPromotion.ts, etc.) can format cents→display verbatim.
@@ -518,6 +520,10 @@ export function handleIntent(
       return handleHelp(es);
 
     case 'data_query': {
+      // CELLHUB-INTELLIGENCE-I4: exact manager questions ("what should I
+      // focus on today?") answer from the Business Manager brief.
+      const manager = tryHandleManagerQuestion(engine, match.query || '', lang);
+      if (manager) return manager;
       // CELLHUB-INTELLIGENCE-I3-2: canonical structured business queries take
       // the high-confidence path first; anything unsupported/ambiguous falls
       // back to the EXISTING legacy data-query handler unchanged.
@@ -629,6 +635,9 @@ export function handleIntent(
       // resolution before falling through to the analytics summary.
       const entityMatch = resolveOperationalEntity(match.query || '', engine);
       if (entityMatch) return handleEntityLookup(entityMatch, engine, lang);
+      // CELLHUB-INTELLIGENCE-I4: exact manager questions first (rule engine).
+      const manager = tryHandleManagerQuestion(engine, match.query || '', lang);
+      if (manager) return manager;
       // CELLHUB-INTELLIGENCE-I3-2: a general business question that no
       // operational intent claimed may still be a structured query (incl.
       // follow-ups like "what about last month?"). Unsupported → legacy.
