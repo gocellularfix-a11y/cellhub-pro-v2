@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { IntelligenceEngine } from '../IntelligenceEngine';
 import { computeHealthSections } from './healthEngine';
-import { tryHandleManagerQuestion, recognizeManagerIntent } from './smartFollowups';
+import { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence } from './smartFollowups';
 import type { InsightFinding } from '../insights/types';
 import type { Customer, Sale } from '@/store/types';
 
@@ -68,20 +68,109 @@ describe('I4.1.1 — supportive allowlist (neutral never healthy)', () => {
     const share = finding({ id: 'service_share:repairs', kind: 'service_share', severity: 'information' });
     expect(sectionOf([share], 'services').status).toBe('unavailable');
   });
-  it('10. explicitly positive finding still produces healthy with cited reasons', () => {
-    const best = finding({ id: 'employee_best_profit:ana', kind: 'employee_best_profit', severity: 'positive' });
-    const employees = sectionOf([best], 'employees');
-    expect(employees.status).toBe('healthy');
-    expect(employees.reasonFindingIds).toEqual([best.id]);
+  it('10. explicitly SECTION-LEVEL positive finding still produces healthy with cited reasons', () => {
+    // I4.1.2: rankings no longer prove health; service_growth (absolute
+    // population growth) remains genuine section-level evidence.
+    const growth = finding({ id: 'service_growth:repairs', kind: 'service_growth', severity: 'positive' });
+    const services = sectionOf([growth], 'services');
+    expect(services.status).toBe('healthy');
+    expect(services.reasonFindingIds).toEqual([growth.id]);
   });
-  it('11./12. flat/up metric trend → healthy; down trend → watch (without refusal)', () => {
+  it('11./12. UP metric trend → healthy; FLAT → unavailable (no level proof); down → watch', () => {
+    const up = finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } });
+    expect(sectionOf([up], 'revenue').status).toBe('healthy');
     const flat = finding({ id: 'metric_trend:margin', kind: 'metric_trend', severity: 'information', data: { metric: 'margin', direction: 'flat' } });
-    expect(sectionOf([flat], 'margin').status).toBe('healthy');
+    expect(sectionOf([flat], 'margin').status).toBe('unavailable');   // I4.1.2: flat ≠ good level
     const down = finding({ id: 'metric_trend:profit', kind: 'metric_trend', severity: 'warning', data: { metric: 'profit', direction: 'down' } });
     expect(sectionOf([down], 'profit').status).toBe('watch');
   });
   it('13. no findings → zero healthy sections', () => {
     expect(computeHealthSections([]).filter((h) => h.status === 'healthy')).toEqual([]);
+  });
+});
+
+// ══ I4.1.2 — ranking/pattern evidence + applicable manager evidence ══
+describe('I4.1.2 — rankings and isolated patterns never prove health', () => {
+  it('1-6. every relative ranking alone → its section unavailable', () => {
+    const cases: Array<[InsightFinding['kind'], string]> = [
+      ['employee_best_revenue', 'employees'], ['employee_best_profit', 'employees'], ['employee_best_margin', 'employees'],
+      ['employee_most_repairs', 'employees'], ['employee_most_unlocks', 'employees'], ['employee_highest_avg_ticket', 'employees'],
+      ['carrier_highest_revenue', 'carriers'], ['carrier_highest_profit', 'carriers'], ['carrier_highest_transactions', 'carriers'],
+    ];
+    for (const [kind, section] of cases) {
+      const f = finding({ id: `${kind}:x`, kind, severity: 'positive' });
+      expect(sectionOf([f], section).status, kind).toBe('unavailable');
+    }
+  });
+  it('7./8. isolated customer patterns alone → customers unavailable', () => {
+    const hv = finding({ id: 'customer_high_value:c1', kind: 'customer_high_value', severity: 'positive' });
+    expect(sectionOf([hv], 'customers').status).toBe('unavailable');
+    const freq = finding({ id: 'customer_frequent:c1', kind: 'customer_frequent', severity: 'positive' });
+    expect(sectionOf([freq], 'customers').status).toBe('unavailable');
+  });
+  it('13. refusal still overrides upward evidence', () => {
+    const up = finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } });
+    const refusal = finding({ id: 'employee_attribution_incomplete:range', kind: 'employee_attribution_incomplete', severity: 'information' });
+    const warn = finding({ id: 'employee_unusually_low:a', kind: 'employee_unusually_low', severity: 'warning' });
+    const employees = computeHealthSections([up, refusal, warn]).find((h) => h.key === 'employees')!;
+    expect(employees.status).toBe('unavailable');
+  });
+});
+
+describe('I4.1.2 — applicable manager evidence contract', () => {
+  const NO_DATA_EN = 'There is not enough business information to answer that yet.';
+  const ranking = () => finding({ id: 'employee_best_profit:ana', kind: 'employee_best_profit', severity: 'positive' });
+  const share = () => finding({ id: 'service_share:repairs', kind: 'service_share', severity: 'information' });
+  const refusal = () => finding({ id: 'employee_attribution_incomplete:range', kind: 'employee_attribution_incomplete', severity: 'information' });
+  const risk = () => finding({ id: 'customer_lost:c1', kind: 'customer_lost', severity: 'warning', data: { name: 'PEDRO', daysSinceLastVisit: 120 } });
+  const opp = () => finding({ id: 'carrier_fastest_growing:att', kind: 'carrier_fastest_growing', severity: 'opportunity', data: { carrier: 'AT&T', value: 500 } });
+
+  const engineWith = (findings: InsightFinding[]): IntelligenceEngine => ({
+    getBusinessInsights: () => ({ findings, cards: [], suggestions: [], generatedForRange: RANGE }),
+  } as unknown as IntelligenceEngine);
+
+  it('helper: rankings/share/refusal are NOT applicable; risk/opportunity/up-trend ARE', () => {
+    expect(hasApplicableManagerEvidence([ranking(), share(), refusal()])).toBe(false);
+    expect(hasApplicableManagerEvidence([risk()])).toBe(true);
+    expect(hasApplicableManagerEvidence([opp()])).toBe(true);
+    expect(hasApplicableManagerEvidence([finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } })])).toBe(true);
+  });
+  it('14./16./18. only rankings or only refusals → focus terminal no-data (no fake score)', () => {
+    for (const fs of [[ranking()], [refusal()], [ranking(), share()]]) {
+      const r = tryHandleManagerQuestion(engineWith(fs), 'What should I focus on today?', 'en', REF)!;
+      expect(r.text).toBe(NO_DATA_EN);
+      expect(r.text).not.toContain('/100');
+    }
+  });
+  it('15./17. only neutral or only refusal findings → brief terminal no-data', () => {
+    expect(tryHandleManagerQuestion(engineWith([share()]), 'business brief', 'en', REF)!.text).toBe(NO_DATA_EN);
+    expect(tryHandleManagerQuestion(engineWith([refusal()]), 'business brief', 'en', REF)!.text).toBe(NO_DATA_EN);
+  });
+  it('19./21. a supported risk still produces problem + focus responses', () => {
+    const problem = tryHandleManagerQuestion(engineWith([risk()]), 'What is my biggest problem?', 'en', REF)!;
+    expect(problem.text).toContain('PEDRO');
+    const focus = tryHandleManagerQuestion(engineWith([risk()]), 'What should I focus on today?', 'en', REF)!;
+    expect(focus.text).toContain('/100');   // real brief renders
+  });
+  it('20. a supported opportunity still produces an opportunity response', () => {
+    const r = tryHandleManagerQuestion(engineWith([opp()]), 'What opportunity am I missing?', 'en', REF)!;
+    expect(r.text).toContain('AT&T');
+  });
+  it('22. applicable evidence without a risk never claims "no problems" beyond evidence', () => {
+    const r = tryHandleManagerQuestion(engineWith([opp()]), 'What is my biggest problem?', 'en', REF)!;
+    expect(r.text).toBe('I do not have enough supported evidence to identify a business problem.');
+    expect(r.text.toLowerCase()).not.toContain('no critical problems');
+  });
+  it('23. ES/PT applicable-no-data behavior', () => {
+    expect(tryHandleManagerQuestion(engineWith([ranking()]), '¿En qué me enfoco hoy?', 'es', REF)!.text)
+      .toBe('Todavía no hay suficiente información del negocio para responder eso.');
+    expect(tryHandleManagerQuestion(engineWith([ranking()]), 'Em que devo focar hoje?', 'pt', REF)!.text)
+      .toBe('Ainda não há informações suficientes do negócio para responder isso.');
+  });
+  it('28. deterministic repeated execution', () => {
+    const a = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
+    const b = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
+    expect(b).toEqual(a);
   });
 });
 

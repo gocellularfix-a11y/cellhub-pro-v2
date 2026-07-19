@@ -19,7 +19,7 @@ import type { BusinessAction, HealthSection, HealthSectionKey, HealthStatus } fr
 
 /** Deterministic per-kind evidence classification (I4.1.1: explicit
  *  allowlists; UNKNOWN kinds are NEUTRAL, never supportive). */
-type EvidenceClass = 'refusal' | 'negative' | 'supportive' | 'neutral';
+export type EvidenceClass = 'refusal' | 'negative' | 'supportive' | 'neutral';
 
 const REFUSAL_KINDS: readonly InsightFindingKind[] = ['employee_attribution_incomplete', 'carrier_attribution_mixed'];
 
@@ -34,25 +34,36 @@ const NEGATIVE_KINDS: readonly InsightFindingKind[] = [
 ];
 
 /** EXPLICIT supportive allowlist — only findings whose defined semantics
- *  genuinely prove positive/stable health. Opportunity, informational,
- *  share/composition, contributor and unknown kinds are NOT here: they are
- *  neutral and can never produce healthy. */
+ *  prove the condition of the COMPLETE section (I4.1.2).
+ *  NOT supportive (neutral):
+ *  - relative rankings (employee_best_* / carrier_highest_*): every group has
+ *    a "best" member even when the whole group performs badly;
+ *  - isolated customer patterns (high_value/frequent): one good customer
+ *    does not prove the customer BASE is healthy;
+ *  - flat trends: no movement proves nothing about the underlying level;
+ *  - opportunity / informational / share / contributor / unknown kinds.
+ *  They all remain valid highlights/summary/dashboard context — they just
+ *  cannot establish section health. */
 const SUPPORTIVE_KINDS: readonly InsightFindingKind[] = [
-  'customer_high_value', 'customer_frequent',
-  'employee_best_revenue', 'employee_best_profit', 'employee_best_margin',
-  'employee_most_repairs', 'employee_most_unlocks', 'employee_highest_avg_ticket',
-  'carrier_highest_profit', 'carrier_highest_revenue', 'carrier_highest_transactions',
-  'service_growth',
+  'service_growth',   // absolute period-over-period population growth
 ];
 
-function evidenceClassOf(f: InsightFinding): EvidenceClass {
+/** Exported classifier (pure) — also consumed by the applicable-manager-
+ *  evidence contract in smartFollowups. */
+export function classifyHealthEvidence(f: InsightFinding): EvidenceClass {
   if (REFUSAL_KINDS.includes(f.kind)) return 'refusal';
   if (NEGATIVE_KINDS.includes(f.kind)) return 'negative';
-  // Up/flat trends are stable evidence for their mapped section; down is risk.
-  if (f.kind === 'metric_trend') return f.data.direction === 'down' ? 'negative' : 'supportive';
+  if (f.kind === 'metric_trend') {
+    // down = risk; up = section-level positive movement; flat = NEUTRAL
+    // (lack of movement never proves the level is good).
+    if (f.data.direction === 'down') return 'negative';
+    if (f.data.direction === 'up') return 'supportive';
+    return 'neutral';
+  }
   if (SUPPORTIVE_KINDS.includes(f.kind)) return 'supportive';
-  return 'neutral';   // opportunity/informational/share/unknown → insufficient
+  return 'neutral';   // rankings/isolated patterns/share/opportunity/unknown
 }
+const evidenceClassOf = classifyHealthEvidence;
 
 const SECTION_KINDS: Record<HealthSectionKey, InsightFindingKind[]> = {
   revenue: ['sales_below_rolling_average', 'large_refund_period'],

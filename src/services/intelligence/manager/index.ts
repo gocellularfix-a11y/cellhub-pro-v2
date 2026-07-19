@@ -13,10 +13,10 @@ export { ACTION_STATUS_TRANSITIONS, canTransitionAction } from './types';
 
 export { actionsForFindings, ACTION_PRIORITY_RANK } from './actionEngine';
 export { computeBusinessScore, SCORE_BASE, SCORE_WEIGHTS, SCORE_POSITIVE_CAP } from './businessScore';
-export { computeHealthSections } from './healthEngine';
+export { computeHealthSections, classifyHealthEvidence } from './healthEngine';
 export { buildPriorityQueue } from './priorityEngine';
 export { buildBusinessBrief, buildExecutiveSummary, MAX_SUMMARY_ITEMS } from './businessBriefBuilder';
 export { buildManagerDashboard, DASHBOARD_LIST_LIMIT } from './managerDashboard';
-export { tryHandleManagerQuestion, recognizeManagerIntent } from './smartFollowups';
+export { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence, isApplicableManagerEvidence } from './smartFollowups';
 export { buildNotificationContracts } from './notificationContracts';
 export { formatBusinessBrief, formatAction, formatSummaryItem, formatHealthSection } from './formatManager';

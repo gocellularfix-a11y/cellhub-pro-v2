@@ -18,7 +18,26 @@ import type { IntelligenceEngine } from '../IntelligenceEngine';
 import { formatFinding } from '../insights/formatFindings';
 import { buildBusinessBrief } from './businessBriefBuilder';
 import { formatBusinessBrief, formatAction, formatHealthSection } from './formatManager';
-import { HEALTH_REFUSAL_KINDS } from './healthEngine';
+import { HEALTH_REFUSAL_KINDS, classifyHealthEvidence } from './healthEngine';
+import type { InsightFinding } from '../insights/types';
+
+/** I4.1.2 — APPLICABLE MANAGER EVIDENCE (pure contract).
+ *  A finding is applicable managerial evidence only when it is EVALUATIVE:
+ *  a supported (non-refusal) risk, an actual opportunity, or explicit
+ *  section-level positive/negative evidence. Refusals, neutral rankings,
+ *  isolated patterns, composition/share and unrelated informational findings
+ *  never constitute a business brief or a Today's Focus by themselves. */
+export function isApplicableManagerEvidence(f: InsightFinding): boolean {
+  const cls = classifyHealthEvidence(f);
+  if (cls === 'refusal') return false;
+  if (cls === 'negative' || cls === 'supportive') return true;
+  // Neutral class: only an explicit OPPORTUNITY is still actionable evidence.
+  return f.severity === 'opportunity';
+}
+
+export function hasApplicableManagerEvidence(findings: InsightFinding[]): boolean {
+  return findings.some(isApplicableManagerEvidence);
+}
 
 type L3 = BusinessLanguage;
 
@@ -84,37 +103,41 @@ export function tryHandleManagerQuestion(
       return !!f && (HEALTH_REFUSAL_KINDS as readonly string[]).includes(f.kind);
     };
 
-    // I4.1.1: with ZERO findings there is nothing to manage — recognized
-    // intents answer an honest terminal no-data response (never a
-    // normal-looking brief/score, never null, never legacy routing).
-    const noData = insights.findings.length === 0;
+    // I4.1.2: intents answer only over APPLICABLE managerial evidence — not
+    // over mere finding existence. Refusals / neutral rankings / shares
+    // never render a normal-looking brief, score or focus.
+    const applicable = hasApplicableManagerEvidence(insights.findings);
 
     if (intent === 'focus' || intent === 'brief') {
-      if (noData) return terminalNoData(lang);
+      if (!applicable) return terminalNoData(lang);
       return { kind: 'answer', text: formatBusinessBrief(brief, lang, byId) };
     }
 
     if (intent === 'health') {
-      // All-unavailable output stays useful, but it must clearly state the
-      // information is insufficient — never imply a completed evaluation.
+      // All-unavailable output stays honest: when NO section is evaluable,
+      // clearly state the information is insufficient — never imply a
+      // completed health evaluation.
+      const anyEvaluable = brief.health.some((h) => h.evaluable);
       const lines = [
         lang === 'es' ? '🩺 Salud del negocio' : lang === 'pt' ? '🩺 Saúde do negócio' : '🩺 Business health',
-        ...(noData ? [terminalNoData(lang).text] : []),
+        ...(anyEvaluable ? [] : [terminalNoData(lang).text]),
         ...brief.health.map((h) => `• ${formatHealthSection(h, lang)}`),
       ];
       return { kind: 'answer', text: lines.join('\n') };
     }
 
     if (intent === 'problem') {
-      if (noData) return terminalNoData(lang);
+      if (!applicable) return terminalNoData(lang);
       // BUSINESS issues only — refusal findings are data-quality limits.
       const issue = [...brief.criticalAlerts, ...brief.warnings].find((f) => !isRefusal(f.id));
       if (!issue) {
+        // Evidence exists but does not establish a problem — never claim
+        // "no problems" beyond what the evidence supports.
         return {
           kind: 'answer',
-          text: lang === 'es' ? 'No hay problemas críticos detectados ahora mismo.'
-            : lang === 'pt' ? 'Nenhum problema crítico detectado no momento.'
-            : 'No critical problems detected right now.',
+          text: lang === 'es' ? 'No tengo suficiente evidencia confiable para identificar un problema del negocio.'
+            : lang === 'pt' ? 'Não tenho evidência confiável suficiente para identificar um problema do negócio.'
+            : 'I do not have enough supported evidence to identify a business problem.',
         };
       }
       const action = brief.recommendedActions.find((a) => a.relatedFindingId === issue.id);
@@ -123,8 +146,9 @@ export function tryHandleManagerQuestion(
       return { kind: 'answer', text: lines.join('\n') };
     }
 
-    // intent === 'opportunity'
-    if (noData) return terminalNoData(lang);
+    // intent === 'opportunity' — requires an ACTUAL supported opportunity
+    // finding (neutral rankings/positive observations never count).
+    if (!applicable) return terminalNoData(lang);
     const opportunity = brief.opportunities[0];
     if (!opportunity) {
       return {
