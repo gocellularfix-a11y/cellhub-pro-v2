@@ -75,6 +75,24 @@ import type { RepairScore } from './scoring/RepairScorer';
 import { getDaysAgo } from './utils/dateHelpers';
 import { adaptSale, adaptCustomer, adaptInventory, adaptRepair } from './adapters/schemaAdapter';
 import { findRepairInventoryGaps, type RepairInventoryGap } from './correlations';
+// CELLHUB-INTELLIGENCE-I3-3: Business Analyst layer.
+import { collectBusinessFindings } from './insights/findingsEngine';
+import { buildInsightCards } from './insights/insightCards';
+import { suggestQuestions } from './insights/suggestedQuestions';
+import { resolveBusinessDateRange as resolveBusinessDateRangeForInsightsImpl } from './query/resolveBusinessDateRange';
+import type { ResolvedBusinessDateRange } from './query/types';
+
+// Named-range resolver for the insights API (kept tiny + typed).
+function resolveBusinessDateRangeForInsights(
+  kind: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days',
+  referenceDate: Date,
+): ResolvedBusinessDateRange {
+  const resolved = kind === 'last_30_days'
+    ? resolveBusinessDateRangeForInsightsImpl(undefined, referenceDate)
+    : resolveBusinessDateRangeForInsightsImpl({ kind }, referenceDate);
+  // Named kinds always resolve; the fallback default is last_30_days.
+  return resolved ?? resolveBusinessDateRangeForInsightsImpl(undefined, referenceDate)!;
+}
 // R-INTEL-AUTO-ACTION-QUEUE-ARCH-FIX: refresh() is now side-effect-free.
 // buildOutreachQueueItems() stays as a pure helper — chat handlers (only
 // who_to_contact_today right now) call it explicitly and persist via
@@ -758,6 +776,25 @@ export class IntelligenceEngine {
       employees: this.employees.map((e) => ({ id: e.id, name: e.name })),
       storeId: this.config.storeId,
       referenceDate: referenceDate ?? new Date(),
+    };
+  }
+
+  // CELLHUB-INTELLIGENCE-I3-3: Business Analyst API — deterministic findings,
+  // typed cards and suggested questions over ONE canonical range (default:
+  // the product's last_30_days). Read-only; all money via canonical
+  // projections inside the insights modules. API only — no UI here.
+  getBusinessInsights(
+    referenceDate?: Date,
+    rangeKind: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' = 'last_30_days',
+  ): import('./insights/types').BusinessInsightsResult {
+    const ctx = this.getStructuredQueryContext(referenceDate);
+    const range = resolveBusinessDateRangeForInsights(rangeKind, ctx.referenceDate);
+    const findings = collectBusinessFindings(ctx, range);
+    return {
+      findings,
+      cards: buildInsightCards(ctx, range, findings),
+      suggestions: suggestQuestions(findings, this.config.lang),
+      generatedForRange: { startYMD: range.startYMD, endYMD: range.endYMD },
     };
   }
 

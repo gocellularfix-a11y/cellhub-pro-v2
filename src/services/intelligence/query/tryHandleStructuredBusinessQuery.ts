@@ -14,8 +14,14 @@ import { parseBusinessQuery } from '../language';
 import type { BusinessLanguage } from '../language/types';
 import { executeBusinessQuery, STRUCTURED_QUERY_MIN_CONFIDENCE } from './executeBusinessQuery';
 import { formatBusinessQueryAnswer, formatTerminalReason } from './formatBusinessQueryAnswer';
-import { setAnalyticalContext, mergeFollowUp } from './analyticalContext';
+import { setAnalyticalContext, mergeFollowUp, getAnalyticalContext } from './analyticalContext';
 import { buildRuntimeEntitySet } from './buildRuntimeEntitySet';
+// I3-3: analyst explanation layer (trend + exact contributors on answers).
+import { buildAnswerExplanation } from '../insights/explanationLayer';
+
+// I3-3 Part 13: "What changed?" — a follow-up that re-runs the last metric as
+// a previous-period comparison. Deterministic patterns, EN/ES/PT.
+const WHAT_CHANGED_RE = /^[¿¡]?\s*(what changed|what happened|que cambio|qué cambió|que paso|qué pasó|o que mudou|o que aconteceu)\s*\??$/i;
 
 /** Minimal ChatResponse shape (kept structural to avoid an import cycle with
  *  handlers.ts — same fields the chat renders). */
@@ -35,6 +41,25 @@ export function tryHandleStructuredBusinessQuery(
     const ctx = engine.getStructuredQueryContext(referenceDate);
     const entities = buildRuntimeEntitySet(ctx);
     let parsed = parseBusinessQuery(rawQuery, { language: lang, referenceDate: ctx.referenceDate, entities });
+
+    // I3-3: "What changed?" — rebuild the last metric as a previous-period
+    // comparison from the analytical context (no reparse of the old question).
+    if (WHAT_CHANGED_RE.test(rawQuery.trim())) {
+      const context = getAnalyticalContext();
+      if (context?.metric) {
+        parsed = {
+          ...parsed,
+          intent: 'compare_metric',
+          comparison: 'versus_previous_period',
+          metric: context.metric,
+          dimension: context.dimension,
+          entity: undefined,             // whole-store comparison
+          dateRange: context.dateRange,
+          confidence: 0.7,
+          assumptions: [...parsed.assumptions, 'Re-ran the previous metric versus its prior period.'],
+        };
+      }
+    }
 
     // Follow-up merge for partial questions ("what about last month?").
     if (parsed.intent === 'unknown' || (!parsed.metric && parsed.intent === 'get_metric') || (parsed.metric && !parsed.dateRange && parsed.intent === 'get_metric')) {
@@ -83,7 +108,11 @@ export function tryHandleStructuredBusinessQuery(
     if (result.status === 'answered') {
       setAnalyticalContext(parsed);
       const text = formatBusinessQueryAnswer(result, lang);
-      return text ? { kind: 'answer', text } : null;
+      if (!text) return null;
+      // I3-3 explanation layer: trend + exact contributors, only when
+      // mathematically available (whole-store single metrics).
+      const explanation = buildAnswerExplanation(result, ctx, lang);
+      return { kind: 'answer', text: explanation.length > 0 ? `${text}\n${explanation.join('\n')}` : text };
     }
     if (result.status === 'no_data' || result.status === 'not_found'
         || (result.status === 'ambiguous' && parsed.intent === 'find_customer' && result.diagnostics?.candidates?.length)) {
