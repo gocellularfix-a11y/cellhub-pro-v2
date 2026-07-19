@@ -39,7 +39,7 @@ export function actionsForFindings(findings: InsightFinding[]): BusinessAction[]
       id: `${rule.kind}:${f.id}`,
       kind: rule.kind,
       priority: rule.priority,
-      status: 'created',
+      status: 'proposed',            // I4.1 lifecycle: new actions are proposed
       relatedFindingId: f.id,
       createdYMD: f.dateRange.endYMD,
       data: { ...f.data },

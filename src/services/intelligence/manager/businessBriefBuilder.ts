@@ -49,6 +49,10 @@ export function buildExecutiveSummary(findings: InsightFinding[]): ExecutiveSumm
 export function buildBusinessBrief(insights: BusinessInsightsResult): BusinessBrief {
   const { findings } = insights;
   const actions = actionsForFindings(findings);
+  // I4.1: health first (with actions for relatedActionIds); unavailable
+  // sections feed score CONFIDENCE only — never the performance number.
+  const health = computeHealthSections(findings, actions);
+  const unavailableCount = health.filter((h) => h.status === 'unavailable').length;
   return {
     generatedForRange: insights.generatedForRange,
     executiveSummary: buildExecutiveSummary(findings),
@@ -58,8 +62,8 @@ export function buildBusinessBrief(insights: BusinessInsightsResult): BusinessBr
     positiveHighlights: findings.filter((f) => f.severity === 'positive'),
     recommendedActions: actions,
     suggestedQuestions: insights.suggestions,
-    score: computeBusinessScore(findings),
-    health: computeHealthSections(findings),
+    score: computeBusinessScore(findings, unavailableCount),
+    health,
     priorityQueue: buildPriorityQueue(findings, actions),
   };
 }

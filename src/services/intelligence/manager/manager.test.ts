@@ -125,7 +125,7 @@ describe('I4 — action engine', () => {
     const contact = actions.find((a) => a.kind === 'contact_customer' && a.relatedFindingId === 'customer_lost:cust-lost');
     expect(contact).toBeTruthy();
     expect(contact!.priority).toBe('high');
-    expect(contact!.status).toBe('created');
+    expect(contact!.status).toBe('proposed');   // I4.1 lifecycle default
     expect(contact!.id).toBe('contact_customer:customer_lost:cust-lost');
     // Priority ordering: no lower-priority action before a higher one.
     const rank = { critical: 0, high: 1, medium: 2, low: 3 } as const;
@@ -172,10 +172,17 @@ describe('I4 — health sections', () => {
     const health = computeHealthSections(insights.findings);
     expect(health.map((h) => h.key)).toEqual(['revenue', 'profit', 'margin', 'customers', 'employees', 'inventory', 'services', 'carriers']);
     const customers = health.find((h) => h.key === 'customers')!;
-    expect(customers.status).toBe('watch');   // lost customer = warning
+    expect(customers.status).toBe('watch');   // lost customer = warning-class risk
     expect(customers.reasonFindingIds).toContain('customer_lost:cust-lost');
+    // I4.1: healthy REQUIRES cited positive/stable evidence; no evidence →
+    // unavailable, never healthy-by-silence.
     for (const h of health.filter((x) => x.status === 'healthy')) {
-      expect(h.reasonFindingIds).toEqual([]);   // healthy carries no reasons
+      expect(h.reasonFindingIds.length).toBeGreaterThan(0);
+      expect(h.evaluable).toBe(true);
+    }
+    for (const h of health.filter((x) => x.status === 'unavailable')) {
+      expect(h.evaluable).toBe(false);
+      expect(h.confidence).toBe(0);
     }
   });
   it('critical finding escalates its section to critical', () => {

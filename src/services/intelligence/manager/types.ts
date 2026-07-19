@@ -39,44 +39,81 @@ export type BusinessActionKind =
   | 'lean_into_carrier_growth';
 
 export type BusinessActionPriority = 'critical' | 'high' | 'medium' | 'low';
-export type BusinessActionStatus = 'created' | 'resolved' | 'dismissed';
+
+/** Full action lifecycle (I4.1). New actions are always 'proposed' — creation
+ *  time is metadata (createdYMD), never a lifecycle state. */
+export type BusinessActionStatus = 'proposed' | 'accepted' | 'in_progress' | 'resolved' | 'dismissed';
+
+/** Valid lifecycle transitions — a pure typed contract for future
+ *  persistence surfaces (no mutation/storage here). */
+export const ACTION_STATUS_TRANSITIONS: Record<BusinessActionStatus, readonly BusinessActionStatus[]> = {
+  proposed: ['accepted', 'dismissed'],
+  accepted: ['in_progress', 'dismissed'],
+  in_progress: ['resolved', 'dismissed'],
+  resolved: [],
+  dismissed: [],
+};
+
+/** Pure transition validator. */
+export function canTransitionAction(from: BusinessActionStatus, to: BusinessActionStatus): boolean {
+  return ACTION_STATUS_TRANSITIONS[from].includes(to);
+}
 
 export interface BusinessAction {
   /** Deterministic id: `${kind}:${findingId}`. */
   id: string;
   kind: BusinessActionKind;
   priority: BusinessActionPriority;
-  status: BusinessActionStatus;      // future persistence contract — always 'created' here
+  status: BusinessActionStatus;      // always 'proposed' at creation
   relatedFindingId: string;
-  /** YMD stamp derived from the analyzed range end (deterministic). */
+  /** YMD stamp derived from the analyzed range end (deterministic metadata). */
   createdYMD: string;
   data: Record<string, string | number | boolean | null>;
 }
 
 // ── business score (Part 4) ─────────────────────────────────
 export interface BusinessScore {
-  /** 0..100, deterministic from findings only. */
+  /** 0..100 business PERFORMANCE, deterministic from findings only.
+   *  Unavailable sections never move this number. */
   score: number;
+  /** 0..1 EVIDENCE confidence — how much data supports the score. Lowered by
+   *  unavailable health sections and by having no findings at all. Kept
+   *  strictly separate from performance (I4.1). */
+  confidence: number;
   /** Per-severity counts + applied deltas for full reproducibility. */
   breakdown: {
     criticalCount: number; warningCount: number; opportunityCount: number; positiveCount: number;
     trendDirection: TrendDirection | null;   // headline gross_sales trend
     appliedDelta: number;                    // total delta vs the 100 base
+    unavailableSections: number;             // confidence input, never a score input
   };
 }
 
-// ── health sections (Part 5) ────────────────────────────────
+// ── health sections (Part 5, I4.1 truth contract) ───────────
 export type HealthSectionKey =
   | 'revenue' | 'profit' | 'margin' | 'customers'
   | 'employees' | 'inventory' | 'services' | 'carriers';
 
-export type HealthStatus = 'healthy' | 'watch' | 'critical';
+/** 'unavailable' = not enough evidence to evaluate truthfully. Absence of a
+ *  negative finding is NEVER evidence of health. */
+export type HealthStatus = 'healthy' | 'watch' | 'critical' | 'unavailable';
 
 export interface HealthSection {
   key: HealthSectionKey;
   status: HealthStatus;
-  /** Exact reasons — the finding ids that produced this status. */
+  /** 0..1 — evidence confidence for THIS section (0 when unavailable). */
+  confidence: number;
+  /** True only when the section had enough evidence to be evaluated. */
+  evaluable: boolean;
+  /** Every applicable finding considered for this section. */
+  evidenceFindingIds: string[];
+  /** The findings that PROVE the status (positive/stable ids for healthy;
+   *  risk ids for watch/critical; refusal ids for unavailable). */
   reasonFindingIds: string[];
+  topPositiveFindingId: string | null;
+  topRiskFindingId: string | null;
+  /** Actions whose related finding belongs to this section. */
+  relatedActionIds: string[];
 }
 
 // ── priority queue (Part 6) ─────────────────────────────────
@@ -114,6 +151,8 @@ export interface ManagerDashboard {
     generatedForRange: { startYMD: string; endYMD: string };
     executiveSummary: ExecutiveSummaryItem[];
   };
+  /** I4.1: areas that could NOT be evaluated (data-confidence notices). */
+  dataConfidenceNotices: HealthSectionKey[];
   todaysFocus: PriorityItem | null;
   businessScore: BusinessScore;
   alerts: InsightFinding[];               // critical + warning

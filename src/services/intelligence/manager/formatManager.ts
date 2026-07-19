@@ -104,6 +104,12 @@ export function formatHealthSection(section: HealthSection, lang: L3): string {
     healthy: { en: 'Healthy', es: 'Saludable', pt: 'Saudável' },
     watch: { en: 'Watch', es: 'Vigilar', pt: 'Atenção' },
     critical: { en: 'Critical', es: 'Crítico', pt: 'Crítico' },
+    // I4.1: unavailable is presented HONESTLY — never as healthy/all-clear.
+    unavailable: {
+      en: 'Not enough information to evaluate this area',
+      es: 'No hay suficiente información para evaluar esta área',
+      pt: 'Não há informações suficientes para avaliar esta área',
+    },
   };
   return `${KEY[section.key][lang]}: ${STATUS[section.status][lang]}`;
 }
@@ -119,10 +125,16 @@ export function formatBusinessBrief(brief: BusinessBrief, lang: L3, findingsById
   const score = brief.score.score;
   lines.push(`${H('Score', 'Puntuación', 'Pontuação')}: ${score}/100`);
 
-  const nonHealthy = brief.health.filter((h) => h.status !== 'healthy');
-  if (nonHealthy.length > 0) {
+  const attention = brief.health.filter((h) => h.status === 'watch' || h.status === 'critical');
+  if (attention.length > 0) {
     lines.push(H('Attention areas:', 'Áreas de atención:', 'Áreas de atenção:'));
-    lines.push(...nonHealthy.map((h) => `• ${formatHealthSection(h, lang)}`));
+    lines.push(...attention.map((h) => `• ${formatHealthSection(h, lang)}`));
+  }
+  // I4.1: unavailable areas surface as an honest data notice — never healthy.
+  const unavailable = brief.health.filter((h) => h.status === 'unavailable');
+  if (unavailable.length > 0) {
+    lines.push(H('Not enough information for:', 'Sin información suficiente para:', 'Sem informações suficientes para:'));
+    lines.push(...unavailable.map((h) => `• ${formatHealthSection(h, lang).split(':')[0]}`));
   }
 
   const alerts = [...brief.criticalAlerts, ...brief.warnings].slice(0, 3);

@@ -21,7 +21,15 @@ export const SCORE_WEIGHTS = {
 } as const;
 export const SCORE_POSITIVE_CAP = 10;   // positives/opportunities can add at most +10 combined
 
-export function computeBusinessScore(findings: InsightFinding[]): BusinessScore {
+// I4.1 — evidence confidence (STRICTLY separate from performance):
+// unavailable sections and empty evidence lower CONFIDENCE, never the score.
+export const CONFIDENCE_PENALTY_PER_UNAVAILABLE = 0.1;
+export const MIN_CONFIDENCE = 0.2;
+export const NO_FINDINGS_CONFIDENCE = 0.2;
+
+/** @param unavailableSections count of health sections that could not be
+ *  evaluated — a CONFIDENCE input only; it never moves the score. */
+export function computeBusinessScore(findings: InsightFinding[], unavailableSections = 0): BusinessScore {
   let criticalCount = 0; let warningCount = 0; let opportunityCount = 0; let positiveCount = 0;
   for (const f of findings) {
     if (f.severity === 'critical') criticalCount++;
@@ -45,8 +53,16 @@ export function computeBusinessScore(findings: InsightFinding[]): BusinessScore 
     + (trendDirection === 'up' ? SCORE_WEIGHTS.trendUp : trendDirection === 'down' ? SCORE_WEIGHTS.trendDown : 0);
 
   const score = Math.max(0, Math.min(100, SCORE_BASE + appliedDelta));
+
+  // Evidence confidence: no findings at all → floor; otherwise 1 minus a
+  // fixed penalty per unavailable section, floored. Deterministic.
+  const confidence = findings.length === 0
+    ? NO_FINDINGS_CONFIDENCE
+    : Math.max(MIN_CONFIDENCE, Math.round((1 - unavailableSections * CONFIDENCE_PENALTY_PER_UNAVAILABLE) * 100) / 100);
+
   return {
     score,
-    breakdown: { criticalCount, warningCount, opportunityCount, positiveCount, trendDirection, appliedDelta },
+    confidence,
+    breakdown: { criticalCount, warningCount, opportunityCount, positiveCount, trendDirection, appliedDelta, unavailableSections },
   };
 }
