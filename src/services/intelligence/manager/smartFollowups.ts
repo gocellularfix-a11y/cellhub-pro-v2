@@ -53,6 +53,17 @@ function terminalUnavailable(lang: L3): ManagerChatResponse {
   };
 }
 
+/** I4.1.1: honest terminal answer when there is NO business data to analyze —
+ *  a recognized intent never shows a normal-looking brief/score over nothing. */
+function terminalNoData(lang: L3): ManagerChatResponse {
+  return {
+    kind: 'answer',
+    text: lang === 'es' ? 'Todavía no hay suficiente información del negocio para responder eso.'
+      : lang === 'pt' ? 'Ainda não há informações suficientes do negócio para responder isso.'
+      : 'There is not enough business information to answer that yet.',
+  };
+}
+
 export function tryHandleManagerQuestion(
   engine: IntelligenceEngine,
   rawQuery: string,
@@ -73,19 +84,29 @@ export function tryHandleManagerQuestion(
       return !!f && (HEALTH_REFUSAL_KINDS as readonly string[]).includes(f.kind);
     };
 
+    // I4.1.1: with ZERO findings there is nothing to manage — recognized
+    // intents answer an honest terminal no-data response (never a
+    // normal-looking brief/score, never null, never legacy routing).
+    const noData = insights.findings.length === 0;
+
     if (intent === 'focus' || intent === 'brief') {
+      if (noData) return terminalNoData(lang);
       return { kind: 'answer', text: formatBusinessBrief(brief, lang, byId) };
     }
 
     if (intent === 'health') {
+      // All-unavailable output stays useful, but it must clearly state the
+      // information is insufficient — never imply a completed evaluation.
       const lines = [
         lang === 'es' ? '🩺 Salud del negocio' : lang === 'pt' ? '🩺 Saúde do negócio' : '🩺 Business health',
+        ...(noData ? [terminalNoData(lang).text] : []),
         ...brief.health.map((h) => `• ${formatHealthSection(h, lang)}`),
       ];
       return { kind: 'answer', text: lines.join('\n') };
     }
 
     if (intent === 'problem') {
+      if (noData) return terminalNoData(lang);
       // BUSINESS issues only — refusal findings are data-quality limits.
       const issue = [...brief.criticalAlerts, ...brief.warnings].find((f) => !isRefusal(f.id));
       if (!issue) {
@@ -103,6 +124,7 @@ export function tryHandleManagerQuestion(
     }
 
     // intent === 'opportunity'
+    if (noData) return terminalNoData(lang);
     const opportunity = brief.opportunities[0];
     if (!opportunity) {
       return {

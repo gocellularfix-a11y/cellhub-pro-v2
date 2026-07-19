@@ -17,8 +17,9 @@
 import type { InsightFinding, InsightFindingKind } from '../insights/types';
 import type { BusinessAction, HealthSection, HealthSectionKey, HealthStatus } from './types';
 
-/** Deterministic per-kind evidence classification. */
-type EvidenceClass = 'negative' | 'refusal' | 'supportive';
+/** Deterministic per-kind evidence classification (I4.1.1: explicit
+ *  allowlists; UNKNOWN kinds are NEUTRAL, never supportive). */
+type EvidenceClass = 'refusal' | 'negative' | 'supportive' | 'neutral';
 
 const REFUSAL_KINDS: readonly InsightFindingKind[] = ['employee_attribution_incomplete', 'carrier_attribution_mixed'];
 
@@ -29,13 +30,28 @@ const NEGATIVE_KINDS: readonly InsightFindingKind[] = [
   'product_stopped_selling',
   'customer_declining', 'customer_inactive', 'customer_lost',
   'service_decline',
+  'top_negative_contributor',
+];
+
+/** EXPLICIT supportive allowlist — only findings whose defined semantics
+ *  genuinely prove positive/stable health. Opportunity, informational,
+ *  share/composition, contributor and unknown kinds are NOT here: they are
+ *  neutral and can never produce healthy. */
+const SUPPORTIVE_KINDS: readonly InsightFindingKind[] = [
+  'customer_high_value', 'customer_frequent',
+  'employee_best_revenue', 'employee_best_profit', 'employee_best_margin',
+  'employee_most_repairs', 'employee_most_unlocks', 'employee_highest_avg_ticket',
+  'carrier_highest_profit', 'carrier_highest_revenue', 'carrier_highest_transactions',
+  'service_growth',
 ];
 
 function evidenceClassOf(f: InsightFinding): EvidenceClass {
   if (REFUSAL_KINDS.includes(f.kind)) return 'refusal';
   if (NEGATIVE_KINDS.includes(f.kind)) return 'negative';
+  // Up/flat trends are stable evidence for their mapped section; down is risk.
   if (f.kind === 'metric_trend') return f.data.direction === 'down' ? 'negative' : 'supportive';
-  return 'supportive';
+  if (SUPPORTIVE_KINDS.includes(f.kind)) return 'supportive';
+  return 'neutral';   // opportunity/informational/share/unknown → insufficient
 }
 
 const SECTION_KINDS: Record<HealthSectionKey, InsightFindingKind[]> = {
@@ -75,25 +91,29 @@ export function computeHealthSections(findings: InsightFinding[], actions: Busin
 
   return SECTION_ORDER.map((key) => {
     const sectionFindings = bySection.get(key)!;   // priority-sorted upstream
-    const critical = sectionFindings.filter((f) => f.severity === 'critical');
-    const negatives = sectionFindings.filter((f) => evidenceClassOf(f) === 'negative');
     const refusals = sectionFindings.filter((f) => evidenceClassOf(f) === 'refusal');
-    const supportive = sectionFindings.filter((f) => evidenceClassOf(f) === 'supportive' && !REFUSAL_KINDS.includes(f.kind));
+    const critical = sectionFindings.filter((f) => f.severity === 'critical' && evidenceClassOf(f) !== 'refusal');
+    const negatives = sectionFindings.filter((f) => evidenceClassOf(f) === 'negative');
+    const supportive = sectionFindings.filter((f) => evidenceClassOf(f) === 'supportive');
 
     let status: HealthStatus;
     let reasons: InsightFinding[];
-    if (critical.length > 0) {
+    // I4.1.1 PRECEDENCE: refusal/incomplete-attribution evidence means the
+    // section CANNOT be truthfully evaluated — unavailable wins over any
+    // apparent critical/warning/positive evidence in the same section.
+    if (refusals.length > 0) {
+      status = 'unavailable'; reasons = refusals;
+    } else if (critical.length > 0) {
       status = 'critical'; reasons = critical;
     } else if (negatives.length > 0) {
       status = 'watch'; reasons = negatives;
-    } else if (refusals.length > 0) {
-      // Refusal evidence can NEVER become healthy — the area is unevaluable.
-      status = 'unavailable'; reasons = refusals;
     } else if (supportive.length > 0) {
-      // Healthy ONLY with explicit positive/stable evidence, cited as reasons.
+      // Healthy ONLY with explicitly allowlisted positive/stable evidence.
+      // Neutral evidence (opportunity/informational/share/unknown) is
+      // insufficient and never produces healthy.
       status = 'healthy'; reasons = supportive;
     } else {
-      // No applicable evidence at all → unavailable, never healthy-by-silence.
+      // Neutral-only or no evidence → unavailable, never healthy-by-silence.
       status = 'unavailable'; reasons = [];
     }
 
