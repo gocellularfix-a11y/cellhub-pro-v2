@@ -139,24 +139,27 @@ describe('CHAT-R1.3 — exact required 20-query matrix (live pipeline)', () => {
     // 30-day rolling summary is the forbidden substitution here.
     expect(r.text).not.toContain('Last 30 days');
   });
-  it('10. COMPARE LAST MONTH TO THIS MONTH SALES → both periods, difference, %', () => {
+  it('10. COMPARE LAST MONTH TO THIS MONTH SALES → current-vs-previous business direction (R1.4)', () => {
     const r = live('COMPARE LAST MONTH TO THIS MONTH SALES');
     expect(r.intent).toBe('data_query');
-    expect(r.text).toContain('last month: $195.00');
-    expect(r.text).toContain('this month: $365.00');
-    expect(r.text).toContain('Difference:');
-    expect(r.text).toMatch(/-?\d+(\.\d+)?%/);
+    // Business semantics regardless of utterance order: CURRENT first,
+    // difference = current − previous → growth is POSITIVE.
+    expect(r.text).toContain('this month: $365.00 · last month: $195.00');
+    expect(r.text).toContain('Difference: $170.00 (+87.2%)');
     expect(r.text).not.toMatch(/NaN|Infinity/);
     expectNoGenericSummary(r.text, 'row 10');
   });
-  it('11. COMPARE THIS WEEK TO LAST WEEK SALES → both periods, difference, %', () => {
+  it('11. COMPARE THIS WEEK TO LAST WEEK SALES → both periods, correctly signed decline', () => {
     const r = live('COMPARE THIS WEEK TO LAST WEEK SALES');
     expect(r.intent).toBe('data_query');
-    expect(r.text).toContain('this week: $120.00');
-    expect(r.text).toContain('last week: $185.00');
+    expect(r.text).toContain('this week: $120.00 · last week: $185.00');
     expect(r.text).toContain('Difference: -$65.00 (-35.1%)');
     expect(r.text).not.toMatch(/NaN|Infinity/);
     expectNoGenericSummary(r.text, 'row 11');
+  });
+  it('10b/11b. reversed utterances answer with the SAME business direction (R1.4)', () => {
+    expect(live('COMPARE THIS MONTH TO LAST MONTH SALES').text).toContain('Difference: $170.00 (+87.2%)');
+    expect(live('COMPARE LAST WEEK TO THIS WEEK SALES').text).toContain('Difference: -$65.00 (-35.1%)');
   });
   it('12. SALES BY CARRIER LAST MONTH → carrier-grouped, dimension retained', () => {
     const r = live('SALES BY CARRIER LAST MONTH');
@@ -172,11 +175,12 @@ describe('CHAT-R1.3 — exact required 20-query matrix (live pipeline)', () => {
     expect(r.text).not.toContain("couldn't find a customer");
     expectNoGenericSummary(r.text, 'row 13');
   });
-  it('14. BEST SELLING PRODUCT LAST WEEK → product ranking, not total sales', () => {
+  it('14. BEST SELLING PRODUCT LAST WEEK → PRODUCTS only, not payment/service lines (R1.4)', () => {
     const r = live('BEST SELLING PRODUCT LAST WEEK');
     expect(r.intent).toBe('data_query');
     expect(r.text).toContain('(last week)');
     expect(r.text).toContain('1. Charger — $120.00');
+    expect(r.text).not.toContain('AT&T - 8054445555');      // phone payment is NOT a product
     expect(r.text).not.toContain('Gross sales: $185.00');   // must NOT collapse to the period total
     expectNoGenericSummary(r.text, 'row 14');
   });

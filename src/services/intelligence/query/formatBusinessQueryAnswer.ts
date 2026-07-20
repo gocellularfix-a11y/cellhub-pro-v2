@@ -185,8 +185,13 @@ export function formatBusinessQueryAnswer(result: StructuredBusinessQueryResult,
     const leftLbl = METRIC_LABELS[c.leftLabel]?.[lang] ?? RANGE_LABELS[c.leftLabel]?.[lang] ?? c.leftLabel;
     const rightLbl = METRIC_LABELS[c.rightLabel]?.[lang] ?? RANGE_LABELS[c.rightLabel]?.[lang] ?? c.rightLabel;
     const metricLbl = p.metric && p.comparison !== 'between_metrics' ? `${metricLabel(p.metric, lang)} — ` : '';
+    // CHAT-R1.4: for a PERIOD comparison both operand labels ARE the periods —
+    // repeating one of them as a range suffix ("… · last month: $X (this
+    // month)") misread as scoping. Metric/entity comparisons keep the suffix
+    // (there the range is real shared context: "cash: X · card: Y (this month)").
+    const headline = `${metricLbl}${leftLbl}: ${formatValue(c.left, lang)} · ${rightLbl}: ${formatValue(c.right, lang)}`;
     const lines = [
-      withDate(`${metricLbl}${leftLbl}: ${formatValue(c.left, lang)} · ${rightLbl}: ${formatValue(c.right, lang)}`),
+      p.comparison === 'between_periods' ? headline : withDate(headline),
     ];
     const deltaVal: StructuredScalarValue = { kind: c.left.kind, amount: c.deltaAmount, meaningful: true };
     const deltaWord = lang === 'es' ? 'Diferencia' : lang === 'pt' ? 'Diferença' : 'Difference';

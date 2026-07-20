@@ -23,6 +23,9 @@ import {
   countUnattributedServiceRecords,
 } from './scopeBusinessQueryData';
 import { normalizeCarrier } from '@/utils/normalize';
+// CHAT-R1.4: canonical sale-line classifier — product rankings exclude
+// transaction/service lines using the SAME classification Reports uses.
+import { classifyItem } from '@/services/reports/phonePaymentReporting';
 
 /** Documented gate: a query executes only at or above this parser confidence. */
 export const STRUCTURED_QUERY_MIN_CONFIDENCE = 0.55;
@@ -204,7 +207,21 @@ function rowsForDimension(
 
   if (dimension === 'product') {
     if (metric !== 'gross_sales') return { error: 'unsupported', reason: 'product rows expose gross line revenue only' };
-    return stats.topItems.map((i) => ({ label: i.name, value: money(i.revenueCents), tieKey: i.name.toLowerCase() }));
+    // CHAT-R1.4: canonical topItems accumulates EVERY sale line. A PRODUCT
+    // ranking must exclude transaction/service lines (phone payments,
+    // top-ups, repair/unlock lines, fees, exchange credits). classifyItem is
+    // the canonical line classifier — no second vocabulary. Special orders
+    // stay: they are merchandise sales. topItems itself is untouched.
+    const nonProductNames = new Set<string>();
+    for (const s of ctx.snapshot.sales) {
+      for (const it of s.items ?? []) {
+        const kind = classifyItem(it);
+        if (kind !== 'product' && kind !== 'special_order') nonProductNames.add(it.name);
+      }
+    }
+    return stats.topItems
+      .filter((i) => !nonProductNames.has(i.name))
+      .map((i) => ({ label: i.name, value: money(i.revenueCents), tieKey: i.name.toLowerCase() }));
   }
 
   if (dimension === 'employee') {
@@ -363,13 +380,20 @@ export function executeBusinessQuery(parsed: ParsedBusinessQuery, ctx: Structure
       const leftRange = resolveBusinessDateRange(ops.left.dateRange, ctx.referenceDate);
       const rightRange = resolveBusinessDateRange(ops.right.dateRange, ctx.referenceDate);
       if (!leftRange || !rightRange) return blocked(parsed, 'ambiguous', 'invalid_date_range', 'invalid comparison period');
+      // CHAT-R1.4: BUSINESS semantics, not utterance order — a period
+      // comparison is always presented as the CURRENT (chronologically later)
+      // period versus the PREVIOUS (earlier) one, so "COMPARE LAST MONTH TO
+      // THIS MONTH" and "COMPARE THIS MONTH TO LAST MONTH" both answer
+      // current-vs-previous with the same (correctly signed) difference.
+      const [currentRange, previousRange] = leftRange.startYMD >= rightRange.startYMD
+        ? [leftRange, rightRange] : [rightRange, leftRange];
       const metric = parsed.metric ?? 'gross_sales';
-      const left = extractMetric(metric, sourcesFor(ctx, leftRange));
-      const right = extractMetric(metric, sourcesFor(ctx, rightRange));
-      if (!left || !right) return blocked(parsed, 'unsupported', 'unsupported_metric_dimension', 'metric not extractable');
+      const current = extractMetric(metric, sourcesFor(ctx, currentRange));
+      const previous = extractMetric(metric, sourcesFor(ctx, previousRange));
+      if (!current || !previous) return blocked(parsed, 'unsupported', 'unsupported_metric_dimension', 'metric not extractable');
       return {
-        status: 'answered', parsed, resolvedRange: leftRange, sourceKinds: ['canonical_report_money'],
-        comparisonResult: compare(leftRange.labelKind, rightRange.labelKind, left, right),
+        status: 'answered', parsed, resolvedRange: currentRange, sourceKinds: ['canonical_report_money'],
+        comparisonResult: compare(currentRange.labelKind, previousRange.labelKind, current, previous),
       };
     }
 

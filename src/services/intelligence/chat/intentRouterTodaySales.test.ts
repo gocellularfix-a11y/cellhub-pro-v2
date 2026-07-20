@@ -69,8 +69,11 @@ describe('day-state, EOD, and general-sales distinctions preserved', () => {
     expect(id('resumen de ventas', 'es')).toBe('sales_summary');
   });
 
-  it('daily brief composer stays put (current v3 operator brief)', () => {
-    expect(id('daily brief')).toBe('daily_operator_brief_v3');
+  it('daily brief routing: exact manager phrase → manager; non-exact ES stays on the v3 composer', () => {
+    // CHAT-R1.4: 'daily brief' is inside the exact I4 BRIEF pattern — the
+    // Business Manager owns it end to end (was daily_operator_brief_v3).
+    expect(id('daily brief')).toBe('data_query');
+    // 'resumen diario' is NOT in the exact manager set → v3 composer keeps it.
     expect(id('resumen diario', 'es')).toBe('daily_operator_brief_v3');
   });
 });

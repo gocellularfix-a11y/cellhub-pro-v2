@@ -48,9 +48,11 @@ describe('R-REGRESSION: intent contract (empirically captured)', () => {
     // normalize to "ahora" → same immediate-action handler.
     ['que hago ahorita',           'es', 'recommended_next_best_action'],
     ['que hago ahorta',            'es', 'recommended_next_best_action'],
-    ['what should i do today',     'en', 'daily_operator_brief'],
+    // CHAT-R1.4: exact I4 manager phrase — manager-owned via data_query (was daily_operator_brief).
+    ['what should i do today',     'en', 'data_query'],
     ['what are my priorities',     'en', 'proactive_operations'],
-    ['what is my biggest problem', 'en', 'proactive_operations'],
+    // CHAT-R1.4: exact I4 manager phrase — manager-owned via data_query (was proactive_operations).
+    ['what is my biggest problem', 'en', 'data_query'],
     // best customer
     ['mi mejor cliente',           'es', 'best_customer'],
     ['my best customer',           'en', 'best_customer'],

@@ -2791,23 +2791,18 @@ export function classifyIntent(
     }
   }
 
-  // CHAT-R1.3: EXACT Business Manager questions route to the manager-first
-  // data_query handler. Root cause (R1.3 matrix rows 16/20): 'WHAT SHOULD I
-  // FOCUS ON TODAY' and 'HOW IS MY BUSINESS DOING' scored the legacy
-  // focus_today/health_check banks, so the I4 manager — reachable only via
-  // data_query/fallback_question — never saw them, and legacy answered with
-  // the pre-I4 operator focus / "Store health: A (100/100)" grade.
-  // CONTESTED-PHRASE EXCEPTIONS (kept, documented for the auditor): three
-  // I4-recognized phrases already have DEDICATED live owners locked by the
-  // routing contract — 'daily brief' (daily_operator_brief_v3), 'what should
-  // i do today' (daily_operator_brief) and 'what is my biggest problem'
-  // (proactive_operations). Those winners keep their phrases; every other
-  // recognized manager phrase (incl. the required FOCUS/BRIEF/HEALTH rows)
-  // is manager-owned end to end.
-  const MANAGER_CLAIM_EXCEPTIONS: ReadonlyArray<IntentId> = [
-    'daily_operator_brief', 'daily_operator_brief_v3', 'daily_brief', 'proactive_operations', 'what_to_do_today',
-  ];
-  if (!MANAGER_CLAIM_EXCEPTIONS.includes(winner.id) && recognizeManagerIntent(rawQuery)) {
+  // CHAT-R1.3/R1.4: EXACT Business Manager questions route to the
+  // manager-first data_query handler — the FULL I4-recognized set, no
+  // exceptions (R1.4 removed the contested-phrase carve-outs by auditor
+  // decision: 'daily brief', 'what should i do today' and 'what is my
+  // biggest problem' are manager-owned like the rest of the exact set).
+  // Root cause (R1.3 matrix rows 16/20): these phrases scored legacy banks,
+  // and the I4 manager — reachable only via data_query/fallback_question —
+  // never saw them, so legacy answered with pre-I4 focus/health content.
+  // The recognizer is exact-pattern (anti-hijack): non-exact phrasings
+  // ('what to do today', 'health check', 'resumen diario') keep their
+  // legacy owners untouched.
+  if (recognizeManagerIntent(rawQuery)) {
     winner.id = 'data_query';
   }
 
