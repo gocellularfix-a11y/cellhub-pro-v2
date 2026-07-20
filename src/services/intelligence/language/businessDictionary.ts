@@ -59,7 +59,12 @@ export const METRIC_TERMS: ReadonlyArray<TermGroup<BusinessMetric>> = [
   { value: 'interactions', terms: ['interactions', 'interaction', 'interacciones', 'interaccion', 'interacoes', 'interacao'] },
 
   // Bare revenue/sales terms (loosest — default handled in the parser)
-  { value: 'gross_sales', terms: ['sales', 'sale', 'sold', 'revenue', 'ventas', 'venta', 'vendio', 'vendido', 'vendi', 'vendimos', 'ingresos', 'ingreso', 'vendas', 'venda', 'vendeu', 'vendemos', 'receita', 'faturamento'] },
+  // CHAT-R1.2: ANCHORED past-interrogative 'did we/i sell' added so "how much
+  // did we sell last week" executes canonically (ES 'vendimos' / PT 'vendemos'
+  // already covered). Deliberately NOT the bare infinitive 'sell' — that token
+  // appears in recommendation asks ("what should i sell") that belong to the
+  // legacy/opportunity handlers, and whole-word matching would claim them.
+  { value: 'gross_sales', terms: ['sales', 'sale', 'sold', 'did we sell', 'did i sell', 'revenue', 'ventas', 'venta', 'vendio', 'vendido', 'vendi', 'vendimos', 'ingresos', 'ingreso', 'vendas', 'venda', 'vendeu', 'vendemos', 'receita', 'faturamento'] },
   // Bare tax term (default handled in the parser)
   { value: 'net_tax', terms: ['tax', 'taxes', 'impuesto', 'impuestos', 'imposto', 'impostos'] },
 ];

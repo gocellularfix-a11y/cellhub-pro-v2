@@ -138,7 +138,11 @@ export function tryHandleStructuredBusinessQuery(
     if ((result.status === 'unsupported' || result.status === 'ambiguous') && result.unsupportedReason) {
       return terminal(result.unsupportedReason);
     }
-    return null;   // reason-less non-financial outcome → legacy keeps ownership
+    // CHAT-R1.2: NO post-recognition null escape. A reason-less outcome after
+    // recognition (an 'error' status, or an ambiguous result without
+    // candidates) is an internal condition of a RECOGNIZED query — terminal
+    // honest unavailability, never a legacy handler with another period.
+    return terminal('structured_engine_unavailable');
 
     } catch (err) {
       // CHAT-R1.1 TERMINALITY: recognized query + internal failure → honest
