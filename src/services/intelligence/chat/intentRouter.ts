@@ -296,7 +296,12 @@ const PROPOSE_DEAL_KEYWORDS = [
 // ("he said", "customer said", "respondió") AND common pasted reply
 // phrases ("how much", "lowest", "interested"). The handler runs a
 // deterministic regex classifier — no AI, no agents.
-const CONVERSATION_RUNNER_KEYWORDS = [
+// CHAT-R1.1: the explicit "owner is reporting a customer reply" prefixes are
+// split out so the structured-theft override below can tell a REPORTED reply
+// ("he said how much…") from a bare business question that merely contains a
+// reply-cue token ("how much did we sell last week"). Scoring is unchanged —
+// CONVERSATION_RUNNER_KEYWORDS still concatenates both groups verbatim.
+const CONVERSATION_REPORTING_PREFIXES = [
   // Explicit reporting prefixes — EN
   'he said', 'she said', 'they said', 'customer said', 'they replied',
   'they asked', 'they want', 'reply was', 'their reply',
@@ -307,6 +312,10 @@ const CONVERSATION_RUNNER_KEYWORDS = [
   // PT
   'ele respondeu', 'ela respondeu', 'cliente respondeu', 'eles responderam',
   'me disse', 'o cliente disse', 'a cliente disse',
+];
+
+const CONVERSATION_RUNNER_KEYWORDS = [
+  ...CONVERSATION_REPORTING_PREFIXES,
   // Common pasted-reply cues — EN
   'how much', "what's the lowest", 'whats the lowest', 'can you do better',
   'too expensive', 'too pricey', 'too much', 'maybe later',
@@ -2738,6 +2747,28 @@ export function classifyIntent(
       parsed.intent !== 'unknown'
       && (parsed.dateRange !== undefined || parsed.comparison !== undefined || parsed.comparisonOperands !== undefined)
     ) {
+      winner.id = 'data_query';
+    }
+  }
+
+  // CHAT-R1.1: conversation_runner's pasted-reply cues ('how much', 'cuánto
+  // cuesta', 'quanto custa') steal explicit business questions that carry an
+  // EXPLICIT period ('how much did we sell last week' ties 1-1 with
+  // data_query's 'how much' and wins on earlier scores-array position). A
+  // REPORTED customer reply is identified by an explicit reporting prefix
+  // ('he said…', 'el cliente dijo…') — those stay with the runner untouched.
+  // A bare cue + an explicit parsed period is a business data ask: route to
+  // data_query (structured gate first, period-aware legacy data handler as
+  // the fallback — its own bank carries 'how much' by design).
+  if (
+    winner.id === 'conversation_runner'
+    && !CONVERSATION_REPORTING_PREFIXES.some(p => query.includes(p))
+  ) {
+    const parsed = parseBusinessQuery(query);
+    // EXPLICIT date range or FULLY-RESOLVED comparison operands only. A bare
+    // comparison word is NOT enough: reply cues themselves contain ranking
+    // words ("what's the lowest") and must stay with the runner.
+    if (parsed.dateRange !== undefined || parsed.comparisonOperands !== undefined) {
       winner.id = 'data_query';
     }
   }

@@ -35,7 +35,11 @@ export type StructuredUnsupportedReason =
   | 'return_count_unavailable'
   | 'invalid_date_range'
   | 'missing_comparison_operand'
-  | 'incompatible_dimensions';
+  | 'incompatible_dimensions'
+  // CHAT-R1.1: a RECOGNIZED structured query hit an internal failure (or an
+  // empty presentation) after recognition — terminal honest unavailability,
+  // never a silent legacy fallback with a different period/meaning.
+  | 'structured_engine_unavailable';
 
 /** Support level for a metric/dimension pair (Part J matrix). */
 export type SupportLevel =

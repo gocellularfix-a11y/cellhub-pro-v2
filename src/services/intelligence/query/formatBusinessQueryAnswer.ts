@@ -122,6 +122,12 @@ export function formatTerminalReason(reason: StructuredUnsupportedReason, lang: 
       es: 'Esas dos cosas no son comparables directamente (dimensiones distintas), así que no ejecuté la comparación.',
       pt: 'Essas duas coisas não são comparáveis diretamente (dimensões diferentes), então não executei a comparação.',
     },
+    // CHAT-R1.1: recognized query + internal failure → honest terminal.
+    structured_engine_unavailable: {
+      en: "I couldn't complete that business query right now. Please try again.",
+      es: 'No pude completar esa consulta del negocio en este momento. Inténtalo de nuevo.',
+      pt: 'Não consegui concluir essa consulta do negócio no momento. Tente novamente.',
+    },
   };
   return M[reason][lang];
 }

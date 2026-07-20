@@ -46,6 +46,10 @@ const BUSINESS_TYPO_ALIASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\btransactons\b/g, 'transactions'],
   [/\bcustmer\b/g, 'customer'],
   [/\bcustmers\b/g, 'customers'],
+  // CHAT-R1.1: production QA typo 'LAST WEE SALES'. ANCHORED to the period
+  // phrase — a bare 'wee' token is a real English word and is never rewritten.
+  [/\blast wee\b/g, 'last week'],
+  [/\bthis wee\b/g, 'this week'],
   // Spanish
   [/\bganacia\b/g, 'ganancia'],
   [/\bganancias\b/g, 'ganancia'],

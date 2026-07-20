@@ -46,7 +46,6 @@ describe('CHAT-R1 — explicit period/comparison outranks the generic summary', 
     expect(id('total sales')).toBe('sales_summary');
     expect(id('week sales')).toBe('sales_summary');       // bare period word ≠ explicit range
     expect(id('month sales')).toBe('sales_summary');
-    expect(id('last wee sales')).toBe('sales_summary');   // unparseable typo → honest generic
   });
   it('neighboring precedence overrides keep their intents (forecast/trend/today)', () => {
     expect(id('sales forecast')).toBe('forecast_items');
@@ -57,6 +56,38 @@ describe('CHAT-R1 — explicit period/comparison outranks the generic summary', 
     const a = classifyIntent('last week sales', [], 'en');
     const b = classifyIntent('last week sales', [], 'en');
     expect(b).toEqual(a);
+  });
+});
+
+// ══ CHAT-R1.1 — controlled period-typo correction ═══════════
+describe('CHAT-R1.1 — production typo LAST WEE SALES routes to the exact period', () => {
+  it('anchored "last wee"/"this wee" correct to the explicit period → data_query', () => {
+    expect(id('last wee sales')).toBe('data_query');
+    expect(id('LAST WEE SALES')).toBe('data_query');
+    expect(id('this wee sales')).toBe('data_query');
+  });
+  it('a bare "wee" token is NEVER rewritten (anchored correction only)', () => {
+    // No period phrase → no explicit range → the generic summary keeps it.
+    expect(id('wee sales')).toBe('sales_summary');
+  });
+});
+
+// ══ CHAT-R1.1 — conversation_runner theft closure ═══════════
+describe('CHAT-R1.1 — reply-cue tokens no longer steal explicit period questions', () => {
+  it('bare cue + explicit period = business data ask → data_query', () => {
+    expect(id('how much did we sell last week')).toBe('data_query');
+    expect(id('how much did we sell yesterday')).toBe('data_query');
+    expect(id('how much did we make last month')).toBe('data_query');
+  });
+  it('REPORTED customer replies keep the conversation runner (reporting prefix)', () => {
+    expect(id('he said how much')).toBe('conversation_runner');
+    expect(id('customer said how much for the iphone')).toBe('conversation_runner');
+    expect(id('el cliente dijo cuánto cuesta', 'es')).toBe('conversation_runner');
+  });
+  it('bare reply cues WITHOUT a period stay with the runner', () => {
+    expect(id('can you do better')).toBe('conversation_runner');
+    expect(id('too expensive')).toBe('conversation_runner');
+    expect(id("what's the lowest")).toBe('conversation_runner');
   });
 });
 

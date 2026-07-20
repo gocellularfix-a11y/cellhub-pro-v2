@@ -70,11 +70,18 @@ export function tryHandleStructuredBusinessQuery(
     if (parsed.intent === 'unknown') return null;
     if (parsed.confidence < STRUCTURED_QUERY_MIN_CONFIDENCE) return null;
 
+    // ── RECOGNITION ESTABLISHED (CHAT-R1.1) ────────────────────
+    // From this point the structured layer OWNS the request: every outcome
+    // below — answer, honest no-data, typed terminal, or internal failure —
+    // is final. Nothing recognized ever falls through to a legacy handler
+    // that could answer with a different period or meaning.
+    const terminal = (reason: import('./types').StructuredUnsupportedReason): StructuredChatResponse =>
+      ({ kind: 'answer', text: formatTerminalReason(reason, lang) });
+    try {
+
     // ── Structured blocking guards (fields, not message matching) ──
     // These are RECOGNIZED business questions that cannot execute exactly —
     // they get a TERMINAL localized response, never a legacy financial answer.
-    const terminal = (reason: import('./types').StructuredUnsupportedReason): StructuredChatResponse =>
-      ({ kind: 'answer', text: formatTerminalReason(reason, lang) });
 
     // 1. A comparison connector with NO resolved operands ("sales A vs B vs C")
     //    — never degrade a comparison into an unrelated single-metric answer.
@@ -108,7 +115,9 @@ export function tryHandleStructuredBusinessQuery(
     if (result.status === 'answered') {
       setAnalyticalContext(parsed);
       const text = formatBusinessQueryAnswer(result, lang);
-      if (!text) return null;
+      // CHAT-R1.1: an executed answer with an empty presentation is an
+      // internal failure of a RECOGNIZED query — terminal, never legacy.
+      if (!text) return terminal('structured_engine_unavailable');
       // I3-3 explanation layer: trend + exact contributors, only when
       // mathematically available (whole-store single metrics).
       const explanation = buildAnswerExplanation(result, ctx, lang);
@@ -117,9 +126,11 @@ export function tryHandleStructuredBusinessQuery(
     if (result.status === 'no_data' || result.status === 'not_found'
         || (result.status === 'ambiguous' && parsed.intent === 'find_customer' && result.diagnostics?.candidates?.length)) {
       // Honest non-answer for a trustworthy interpretation. Failed execution
-      // never replaces the last valid analytical context.
+      // never replaces the last valid analytical context. CHAT-R1.1: an empty
+      // no-data presentation stays terminal — a recognized query never falls
+      // through to a legacy handler with a different period/meaning.
       const text = formatBusinessQueryAnswer(result, lang);
-      return text ? { kind: 'answer', text } : null;
+      return text ? { kind: 'answer', text } : terminal('structured_engine_unavailable');
     }
     // RECOGNIZED-but-blocked (typed reason) → TERMINAL localized response.
     // A confidently recognized financial question must never fall through to
@@ -127,9 +138,19 @@ export function tryHandleStructuredBusinessQuery(
     if ((result.status === 'unsupported' || result.status === 'ambiguous') && result.unsupportedReason) {
       return terminal(result.unsupportedReason);
     }
-    return null;   // genuinely unrecognized / internal error → legacy fallback
+    return null;   // reason-less non-financial outcome → legacy keeps ownership
+
+    } catch (err) {
+      // CHAT-R1.1 TERMINALITY: recognized query + internal failure → honest
+      // localized terminal response. NEVER null, NEVER a legacy answer with a
+      // different period. (Mirrors the I4.1 manager terminality contract.)
+      // eslint-disable-next-line no-console
+      console.warn('[intelligence] structured query failed AFTER recognition — terminal:', err);
+      return terminal('structured_engine_unavailable');
+    }
   } catch (err) {
-    // Never crash chat; log through the existing console convention and fall back.
+    // Pre-recognition failure (context/entities/parse): nothing was
+    // recognized yet, so the legacy path legitimately keeps ownership.
     // eslint-disable-next-line no-console
     console.warn('[intelligence] structured query failed, falling back:', err);
     return null;
