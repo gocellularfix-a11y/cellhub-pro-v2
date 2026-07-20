@@ -24,6 +24,7 @@ const MODULE_PALETTE: Record<string, { bg: string; border: string; label: string
   customers:      { bg: 'linear-gradient(145deg, #181460, #0f0c38)', border: '#2d2580', label: '#818cf8' },
   appointments:   { bg: 'linear-gradient(145deg, #142008, #0c1604)', border: '#203a10', label: '#a3e635' },
   intelligence:   { bg: 'linear-gradient(145deg, #081830, #04101e)', border: '#0a2a50', label: '#38bdf8' },
+  manager:        { bg: 'linear-gradient(145deg, #101830, #0a1020)', border: '#26335a', label: '#a5b4fc' },
   reports:        { bg: 'linear-gradient(145deg, #301408, #1e0c04)', border: '#603010', label: '#fb923c' },
   purchaseOrders: { bg: 'linear-gradient(145deg, #0e2050, #081530)', border: '#1a3880', label: '#60a5fa' },
   companion:      { bg: 'linear-gradient(145deg, #082030, #04101c)', border: '#0a3050', label: '#38bdf8' },

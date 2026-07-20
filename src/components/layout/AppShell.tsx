@@ -56,6 +56,8 @@ const AppointmentsModule = lazy(() => import('@/modules/appointments/Appointment
 // R-HELP-MANUAL-V1: in-app Help / Manual module.
 const HelpModule = lazy(() => import('@/modules/help/HelpModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
+// CELLHUB-INTELLIGENCE-I5: read-only visible Business Manager surface.
+const BusinessManagerPage = lazy(() => import('@/modules/intelligence/manager/BusinessManagerPage'));
 // COMPANION: parallel simplified companion using REST polling.
 const CompanionPage = lazy(() => import('@/modules/companion/CompanionPage'));
 const PurchaseOrdersModule = lazy(() => import('@/modules/purchase-orders/PurchaseOrdersModule'));
@@ -434,6 +436,7 @@ export default function AppShell() {
 
           {/* ── Admin-only modules ── */}
           {activeTab === 'intelligence'   && (isAdminMode ? <IntelligenceModule />      : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'manager'        && (isAdminMode ? <BusinessManagerPage />     : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'companion'      && (isAdminMode ? <CompanionPage />           : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'settings'       && (isAdminMode ? <SettingsModule />         : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'reports'        && (!isAdminMode

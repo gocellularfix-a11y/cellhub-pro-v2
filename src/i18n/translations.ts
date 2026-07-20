@@ -6397,6 +6397,7 @@ export const translations: TranslationDictionary = {
   'nav.customers':       { en: 'Customers',         es: 'Clientes',             pt: 'Clientes' },
   'nav.appointments':    { en: 'Appointments',      es: 'Citas',                pt: 'Agendamentos' },
   'nav.intelligence':    { en: 'Intelligence',      es: 'Inteligencia',         pt: 'Inteligência' },
+  'nav.businessManager': { en: 'Business Manager',  es: 'Gerente del Negocio',  pt: 'Gerente do Negócio' },
   'nav.companion':       { en: 'Companion',         es: 'Companion',            pt: 'Companion' },
   'nav.purchaseOrders':  { en: 'Purchase Orders',   es: 'Órdenes de Compra',    pt: 'Pedidos de Compra' },
 

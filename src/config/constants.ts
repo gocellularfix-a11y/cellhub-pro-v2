@@ -155,6 +155,8 @@ export const NAV_TABS: NavTab[] = [
   { id: 'customers',     labelKey: 'customers',     icon: '👤', allowedRoles: ['owner','manager','sales','cashier'] },
   { id: 'appointments',  labelKey: 'appointments',  icon: '📅', allowedRoles: ['owner','manager','sales','technician'] },
   { id: 'intelligence',  labelKey: 'intelligence',  icon: '🧠', adminOnly: true },
+  // CELLHUB-INTELLIGENCE-I5: read-only visible Business Manager surface.
+  { id: 'manager',       labelKey: 'businessManager', icon: '💼', adminOnly: true },
   // COMPANION: simplified companion (REST polling, no socket).
   { id: 'companion',     labelKey: 'companion',     icon: '📲', adminOnly: true },
   { id: 'purchaseOrders', labelKey: 'purchaseOrders',  icon: '🛒', adminOnly: true },
