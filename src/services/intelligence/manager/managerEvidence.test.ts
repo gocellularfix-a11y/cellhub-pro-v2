@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { IntelligenceEngine } from '../IntelligenceEngine';
 import { computeHealthSections } from './healthEngine';
-import { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence } from './smartFollowups';
+import { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence, hasBriefPerformanceEvidence, hasFocusEvidence, hasProblemEvidence, hasOpportunityEvidence } from './smartFollowups';
 import type { InsightFinding } from '../insights/types';
 import type { Customer, Sale } from '@/store/types';
 
@@ -68,13 +68,15 @@ describe('I4.1.1 — supportive allowlist (neutral never healthy)', () => {
     const share = finding({ id: 'service_share:repairs', kind: 'service_share', severity: 'information' });
     expect(sectionOf([share], 'services').status).toBe('unavailable');
   });
-  it('10. explicitly SECTION-LEVEL positive finding still produces healthy with cited reasons', () => {
-    // I4.1.2: rankings no longer prove health; service_growth (absolute
-    // population growth) remains genuine section-level evidence.
-    const growth = finding({ id: 'service_growth:repairs', kind: 'service_growth', severity: 'positive' });
+  it('10./28./29. service_growth is PER-POPULATION (typed I3-3 scope) → never proves complete services health', () => {
+    // I4.1.3 audit: the finding contract keys per population
+    // (`service_growth:${population}`, data.population) — growth of ONE
+    // service type, not the whole services area → neutral → unavailable.
+    const growth = finding({ id: 'service_growth:repairs', kind: 'service_growth', severity: 'positive', data: { population: 'repairs', changePct: 40 } });
+    expect(growth.id).toContain(':repairs');           // per-population scope evidence
+    expect(growth.data.population).toBe('repairs');
     const services = sectionOf([growth], 'services');
-    expect(services.status).toBe('healthy');
-    expect(services.reasonFindingIds).toEqual([growth.id]);
+    expect(services.status).toBe('unavailable');
   });
   it('11./12. UP metric trend → healthy; FLAT → unavailable (no level proof); down → watch', () => {
     const up = finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } });
@@ -170,6 +172,89 @@ describe('I4.1.2 — applicable manager evidence contract', () => {
   it('28. deterministic repeated execution', () => {
     const a = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
     const b = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
+    expect(b).toEqual(a);
+  });
+});
+
+// ══ I4.1.3 — intent-specific evidence contracts ═════════════
+describe('I4.1.3 — intent-specific evidence', () => {
+  const NO_DATA_EN = 'There is not enough business information to answer that yet.';
+  const INSUFF_PROBLEM_EN = 'I do not have enough supported evidence to identify a business problem.';
+  const opp = () => finding({ id: 'carrier_fastest_growing:att', kind: 'carrier_fastest_growing', severity: 'opportunity', data: { carrier: 'AT&T', value: 500 } });
+  const risk = () => finding({ id: 'customer_lost:c1', kind: 'customer_lost', severity: 'warning', data: { name: 'PEDRO', daysSinceLastVisit: 120 } });
+  const upTrend = () => finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } });
+  const ranking = () => finding({ id: 'employee_best_profit:ana', kind: 'employee_best_profit', severity: 'positive' });
+  const pattern = () => finding({ id: 'customer_high_value:c1', kind: 'customer_high_value', severity: 'positive' });
+  const engineWith = (findings: InsightFinding[]): IntelligenceEngine => ({
+    getBusinessInsights: () => ({ findings, cards: [], suggestions: [], generatedForRange: RANGE }),
+  } as unknown as IntelligenceEngine);
+
+  it('20. helpers disagree on the SAME opportunity-only input (intent-specific)', () => {
+    const fs = [opp()];
+    expect(hasBriefPerformanceEvidence(fs)).toBe(false);
+    expect(hasOpportunityEvidence(fs)).toBe(true);
+    expect(hasProblemEvidence(fs)).toBe(false);
+    expect(hasFocusEvidence(fs)).toBe(true);
+  });
+  it('1./2./23. one opportunity alone → NO brief, NO /100, terminal no-data (EN/ES/PT)', () => {
+    const en = tryHandleManagerQuestion(engineWith([opp()]), 'business brief', 'en', REF)!;
+    expect(en.text).toBe(NO_DATA_EN);
+    expect(en.text).not.toContain('/100');
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'resumen del negocio', 'es', REF)!.text)
+      .toBe('Todavía no hay suficiente información del negocio para responder eso.');
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'resumo do negócio', 'pt', REF)!.text)
+      .toBe('Ainda não há informações suficientes do negócio para responder isso.');
+  });
+  it('3./4./21. opportunity-only focus → focused opportunity response (no brief/score), EN/ES/PT', () => {
+    const en = tryHandleManagerQuestion(engineWith([opp()]), 'What should I focus on today?', 'en', REF)!;
+    expect(en.text).toContain("Today's best focus is this opportunity:");
+    expect(en.text).toContain('AT&T');
+    expect(en.text).not.toContain('/100');
+    expect(en.text).not.toContain('Business brief');
+    expect(tryHandleManagerQuestion(engineWith([opp()]), '¿En qué me enfoco hoy?', 'es', REF)!.text)
+      .toContain('El mejor enfoque para hoy es esta oportunidad:');
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'Em que devo focar hoje?', 'pt', REF)!.text)
+      .toContain('O melhor foco para hoje é esta oportunidade:');
+  });
+  it('5./22. opportunity-only problem → insufficient-supported-problem (EN/ES/PT)', () => {
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'What is my biggest problem?', 'en', REF)!.text).toBe(INSUFF_PROBLEM_EN);
+    expect(tryHandleManagerQuestion(engineWith([opp()]), '¿Cuál es mi mayor problema?', 'es', REF)!.text)
+      .toBe('No tengo suficiente evidencia confiable para identificar un problema del negocio.');
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'Qual é o meu maior problema?', 'pt', REF)!.text)
+      .toBe('Não tenho evidência confiável suficiente para identificar um problema do negócio.');
+  });
+  it('6. opportunity intent still returns the actual opportunity', () => {
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'What opportunity am I missing?', 'en', REF)!.text).toContain('AT&T');
+  });
+  it('7./8./9. supported risk → problem + focus + qualifies as brief performance evidence', () => {
+    expect(tryHandleManagerQuestion(engineWith([risk()]), 'What is my biggest problem?', 'en', REF)!.text).toContain('PEDRO');
+    expect(tryHandleManagerQuestion(engineWith([risk()]), 'What should I focus on today?', 'en', REF)!.text).toContain('/100');
+    expect(hasBriefPerformanceEvidence([risk()])).toBe(true);
+  });
+  it('10./11. upward trend qualifies for brief; but never satisfies the opportunity intent', () => {
+    expect(hasBriefPerformanceEvidence([upTrend()])).toBe(true);
+    const r = tryHandleManagerQuestion(engineWith([upTrend()]), 'What opportunity am I missing?', 'en', REF)!;
+    expect(r.text).toBe('No standout opportunities in this period.');
+  });
+  it('12.-15. refusals / rankings / neutral shares / isolated patterns alone → no brief', () => {
+    const refusalOnly = [finding({ id: 'employee_attribution_incomplete:range', kind: 'employee_attribution_incomplete', severity: 'information' })];
+    const shareOnly = [finding({ id: 'service_share:repairs', kind: 'service_share', severity: 'information' })];
+    for (const fs of [refusalOnly, [ranking()], shareOnly, [pattern()]]) {
+      const r = tryHandleManagerQuestion(engineWith(fs), 'business brief', 'en', REF)!;
+      expect(r.text).toBe(NO_DATA_EN);
+      expect(r.text).not.toContain('/100');
+    }
+  });
+  it('16./17. health: zero evaluable states insufficiency; opportunity-only stays unevaluable', () => {
+    const r = tryHandleManagerQuestion(engineWith([opp()]), 'business health', 'en', REF)!;
+    expect(r.text).toContain(NO_DATA_EN);
+    expect(r.text).not.toMatch(/Healthy/);
+  });
+  it('24./26./27. recognized never null; unrecognized null; deterministic', () => {
+    expect(tryHandleManagerQuestion(engineWith([]), 'business brief', 'en', REF)).not.toBeNull();
+    expect(tryHandleManagerQuestion(engineWith([opp()]), 'profit this month', 'en', REF)).toBeNull();
+    const a = tryHandleManagerQuestion(engineWith([opp()]), 'What should I focus on today?', 'en', REF);
+    const b = tryHandleManagerQuestion(engineWith([opp()]), 'What should I focus on today?', 'en', REF);
     expect(b).toEqual(a);
   });
 });

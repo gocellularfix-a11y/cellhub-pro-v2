@@ -34,19 +34,23 @@ const NEGATIVE_KINDS: readonly InsightFindingKind[] = [
 ];
 
 /** EXPLICIT supportive allowlist — only findings whose defined semantics
- *  prove the condition of the COMPLETE section (I4.1.2).
+ *  prove the condition of the COMPLETE section (I4.1.2/I4.1.3).
  *  NOT supportive (neutral):
  *  - relative rankings (employee_best_* / carrier_highest_*): every group has
  *    a "best" member even when the whole group performs badly;
  *  - isolated customer patterns (high_value/frequent): one good customer
  *    does not prove the customer BASE is healthy;
  *  - flat trends: no movement proves nothing about the underlying level;
+ *  - service_growth (I4.1.3 audit): its typed I3-3 contract keys the finding
+ *    PER POPULATION (`service_growth:${population}` with data.population ∈
+ *    repairs|unlocks|phone_payments|activations) — it proves growth of ONE
+ *    service type, never the complete services area;
  *  - opportunity / informational / share / contributor / unknown kinds.
  *  They all remain valid highlights/summary/dashboard context — they just
- *  cannot establish section health. */
-const SUPPORTIVE_KINDS: readonly InsightFindingKind[] = [
-  'service_growth',   // absolute period-over-period population growth
-];
+ *  cannot establish section health. The only section-level supportive
+ *  evidence today is an UP metric_trend mapped to its section (handled in
+ *  classifyHealthEvidence). */
+const SUPPORTIVE_KINDS: readonly InsightFindingKind[] = [];
 
 /** Exported classifier (pure) — also consumed by the applicable-manager-
  *  evidence contract in smartFollowups. */

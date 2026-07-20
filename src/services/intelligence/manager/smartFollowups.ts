@@ -21,12 +21,10 @@ import { formatBusinessBrief, formatAction, formatHealthSection } from './format
 import { HEALTH_REFUSAL_KINDS, classifyHealthEvidence } from './healthEngine';
 import type { InsightFinding } from '../insights/types';
 
-/** I4.1.2 — APPLICABLE MANAGER EVIDENCE (pure contract).
+/** I4.1.2 — general applicability classifier (kept for consumers/tests).
  *  A finding is applicable managerial evidence only when it is EVALUATIVE:
  *  a supported (non-refusal) risk, an actual opportunity, or explicit
- *  section-level positive/negative evidence. Refusals, neutral rankings,
- *  isolated patterns, composition/share and unrelated informational findings
- *  never constitute a business brief or a Today's Focus by themselves. */
+ *  section-level positive/negative evidence. */
 export function isApplicableManagerEvidence(f: InsightFinding): boolean {
   const cls = classifyHealthEvidence(f);
   if (cls === 'refusal') return false;
@@ -37,6 +35,47 @@ export function isApplicableManagerEvidence(f: InsightFinding): boolean {
 
 export function hasApplicableManagerEvidence(findings: InsightFinding[]): boolean {
   return findings.some(isApplicableManagerEvidence);
+}
+
+// ── I4.1.3 — INTENT-SPECIFIC evidence contracts (pure) ──────
+// Applicability differs per intent: one opportunity is actionable for a
+// focus/opportunity answer but is NOT sufficient performance evidence for a
+// complete Business Brief with a score.
+
+/** True when a finding is explicit business-PERFORMANCE evidence: a
+ *  supported non-refusal risk (negative class) or section-level positive
+ *  evidence (supportive class). Opportunities/rankings/patterns/shares/
+ *  neutrals/refusals never qualify. */
+export function isPerformanceEvidence(f: InsightFinding): boolean {
+  const cls = classifyHealthEvidence(f);
+  return cls === 'negative' || cls === 'supportive';
+}
+
+/** Brief/score: requires supported performance evidence. */
+export function hasBriefPerformanceEvidence(findings: InsightFinding[]): boolean {
+  return findings.some(isPerformanceEvidence);
+}
+
+/** True for an actual supported opportunity FINDING (severity opportunity,
+ *  never a refusal). */
+export function isSupportedOpportunity(f: InsightFinding): boolean {
+  return f.severity === 'opportunity' && classifyHealthEvidence(f) !== 'refusal';
+}
+
+export function hasOpportunityEvidence(findings: InsightFinding[]): boolean {
+  return findings.some(isSupportedOpportunity);
+}
+
+/** Problem: an actual supported non-refusal business risk. */
+export function hasProblemEvidence(findings: InsightFinding[]): boolean {
+  return findings.some((f) =>
+    (f.severity === 'critical' || f.severity === 'warning') && classifyHealthEvidence(f) !== 'refusal');
+}
+
+/** Focus: a risk, an opportunity, or performance evidence — any real
+ *  non-refusal priority item. */
+export function hasFocusEvidence(findings: InsightFinding[]): boolean {
+  return hasProblemEvidence(findings) || hasOpportunityEvidence(findings) || hasBriefPerformanceEvidence(findings);
 }
 
 type L3 = BusinessLanguage;
@@ -103,14 +142,38 @@ export function tryHandleManagerQuestion(
       return !!f && (HEALTH_REFUSAL_KINDS as readonly string[]).includes(f.kind);
     };
 
-    // I4.1.2: intents answer only over APPLICABLE managerial evidence — not
-    // over mere finding existence. Refusals / neutral rankings / shares
-    // never render a normal-looking brief, score or focus.
-    const applicable = hasApplicableManagerEvidence(insights.findings);
+    // I4.1.3: evidence applicability is INTENT-SPECIFIC — no single global
+    // boolean. One opportunity can power a focus answer without ever
+    // rendering a Business Brief or a performance score.
+    const briefEvidence = hasBriefPerformanceEvidence(insights.findings);
+    const opportunityEvidence = hasOpportunityEvidence(insights.findings);
+    const problemEvidence = hasProblemEvidence(insights.findings);
 
-    if (intent === 'focus' || intent === 'brief') {
-      if (!applicable) return terminalNoData(lang);
+    if (intent === 'brief') {
+      // A normal brief (with /100 score) requires PERFORMANCE evidence —
+      // opportunity-only/neutral/refusal input gets the terminal no-data.
+      if (!briefEvidence) return terminalNoData(lang);
       return { kind: 'answer', text: formatBusinessBrief(brief, lang, byId) };
+    }
+
+    if (intent === 'focus') {
+      if (briefEvidence) {
+        return { kind: 'answer', text: formatBusinessBrief(brief, lang, byId) };
+      }
+      if (opportunityEvidence) {
+        // Opportunity-only: a focused answer — never a full brief/score.
+        const opportunity = brief.opportunities.find((f) => !isRefusal(f.id))!;
+        const action = brief.recommendedActions.find((a) => a.relatedFindingId === opportunity.id);
+        const lines = [
+          lang === 'es' ? 'El mejor enfoque para hoy es esta oportunidad:'
+            : lang === 'pt' ? 'O melhor foco para hoje é esta oportunidade:'
+            : "Today's best focus is this opportunity:",
+          formatFinding(opportunity, lang),
+        ];
+        if (action) lines.push(`→ ${formatAction(action, lang)}`);
+        return { kind: 'answer', text: lines.join('\n') };
+      }
+      return terminalNoData(lang);
     }
 
     if (intent === 'health') {
@@ -127,12 +190,24 @@ export function tryHandleManagerQuestion(
     }
 
     if (intent === 'problem') {
-      if (!applicable) return terminalNoData(lang);
+      // I4.1.3: gated on ACTUAL supported risk — never on broad
+      // performance/opportunity evidence.
+      if (!problemEvidence) {
+        if (opportunityEvidence || briefEvidence) {
+          // Evidence exists but does not establish a problem — never claim
+          // "no problems" beyond what the evidence supports.
+          return {
+            kind: 'answer',
+            text: lang === 'es' ? 'No tengo suficiente evidencia confiable para identificar un problema del negocio.'
+              : lang === 'pt' ? 'Não tenho evidência confiável suficiente para identificar um problema do negócio.'
+              : 'I do not have enough supported evidence to identify a business problem.',
+          };
+        }
+        return terminalNoData(lang);   // only neutral/refusal evidence
+      }
       // BUSINESS issues only — refusal findings are data-quality limits.
       const issue = [...brief.criticalAlerts, ...brief.warnings].find((f) => !isRefusal(f.id));
       if (!issue) {
-        // Evidence exists but does not establish a problem — never claim
-        // "no problems" beyond what the evidence supports.
         return {
           kind: 'answer',
           text: lang === 'es' ? 'No tengo suficiente evidencia confiable para identificar un problema del negocio.'
@@ -147,17 +222,20 @@ export function tryHandleManagerQuestion(
     }
 
     // intent === 'opportunity' — requires an ACTUAL supported opportunity
-    // finding (neutral rankings/positive observations never count).
-    if (!applicable) return terminalNoData(lang);
-    const opportunity = brief.opportunities[0];
-    if (!opportunity) {
-      return {
-        kind: 'answer',
-        text: lang === 'es' ? 'No hay oportunidades destacadas en este período.'
-          : lang === 'pt' ? 'Nenhuma oportunidade destacada neste período.'
-          : 'No standout opportunities in this period.',
-      };
+    // finding (risks/up-trends/rankings/neutrals never satisfy it).
+    if (!opportunityEvidence) {
+      if (briefEvidence || problemEvidence) {
+        // Real evaluation happened, but no opportunity emerged — honest.
+        return {
+          kind: 'answer',
+          text: lang === 'es' ? 'No hay oportunidades destacadas en este período.'
+            : lang === 'pt' ? 'Nenhuma oportunidade destacada neste período.'
+            : 'No standout opportunities in this period.',
+        };
+      }
+      return terminalNoData(lang);   // nothing applicable at all
     }
+    const opportunity = brief.opportunities.find((f) => !isRefusal(f.id))!;
     const action = brief.recommendedActions.find((a) => a.relatedFindingId === opportunity.id);
     const lines = [formatFinding(opportunity, lang)];
     if (action) lines.push(`→ ${formatAction(action, lang)}`);

@@ -17,6 +17,6 @@ export { computeHealthSections, classifyHealthEvidence } from './healthEngine';
 export { buildPriorityQueue } from './priorityEngine';
 export { buildBusinessBrief, buildExecutiveSummary, MAX_SUMMARY_ITEMS } from './businessBriefBuilder';
 export { buildManagerDashboard, DASHBOARD_LIST_LIMIT } from './managerDashboard';
-export { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence, isApplicableManagerEvidence } from './smartFollowups';
+export { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence, isApplicableManagerEvidence, hasBriefPerformanceEvidence, hasFocusEvidence, hasProblemEvidence, hasOpportunityEvidence, isPerformanceEvidence, isSupportedOpportunity } from './smartFollowups';
 export { buildNotificationContracts } from './notificationContracts';
 export { formatBusinessBrief, formatAction, formatSummaryItem, formatHealthSection } from './formatManager';
