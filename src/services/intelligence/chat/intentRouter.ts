@@ -15,6 +15,10 @@
 
 import type { Customer } from '@/store/types';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+// CELLHUB-INTELLIGENCE-CHAT-R1: the deterministic I3-1 parser is the single
+// source of truth for "does this query name an EXPLICIT period/comparison?" —
+// used only by the structured-precedence override below (no engine, no I/O).
+import { parseBusinessQuery } from '../language';
 
 export interface IntentContext {
   query: string;           // raw user input
@@ -1528,6 +1532,16 @@ const TREND_DIRECTION_KEYWORDS = [
 // here ONLY with shadow-report evidence of a new theft path.
 const TREND_THIEF_INTENTS: ReadonlyArray<IntentId> = ['sales_summary'];
 
+// CELLHUB-INTELLIGENCE-CHAT-R1: the generic last-30-days summary is the
+// documented thief of PERIOD-SPECIFIC and COMPARISON sales asks.
+// SALES_KEYWORDS carries bare 'sales'/'ventas'/'week'/'month'/'semana'/'mes'
+// tokens, so 'last week sales' scores 2 for sales_summary while the anchored
+// DATA_QUERY phrase scores at most 1 — and the structured I3-2 gate is only
+// reachable through data_query/fallback_question, so it never runs. Used by
+// the structured-precedence override in classifyIntent; add here ONLY with
+// evidence of a new theft path.
+const STRUCTURED_THIEF_INTENTS: ReadonlyArray<IntentId> = ['sales_summary'];
+
 const HELP_KEYWORDS = [
   'ayuda', 'help', 'que puedes', 'qué puedes', 'what can you',
   'comandos', 'commands',
@@ -2700,6 +2714,34 @@ export function classifyIntent(
     winner.id = 'today_sales';
   }
 
+  // CELLHUB-INTELLIGENCE-CHAT-R1: explicit metric+period / comparison wording
+  // must always win over the generic last-30-days summary. Root cause (QA
+  // evidence: 'LAST WEEK SALES' and 'COMPARE LAST MONTH TO THIS MONTH SALES'
+  // both answered with the rolling 30-day summary): SALES_KEYWORDS' bare
+  // period tokens hand sales_summary a 2+ score on every period-specific
+  // sales ask, and the structured I3-2 gate — which parses and answers these
+  // exactly — only runs inside the data_query/fallback_question handlers.
+  // Correction, same shape as the forecast/trend overrides above: when the
+  // documented generic thief won AND the deterministic I3-1 parser (single
+  // source of truth — no second vocabulary list to drift) recognizes the
+  // query WITH an explicit date range or comparison, route to data_query.
+  // Its handler already runs manager check → structured gate → legacy
+  // fallback, so a recognized ask gets the exact period answer and anything
+  // the executor declines degrades to the existing legacy data path — never
+  // to a silent wrong-period summary. Plain summary asks ('how are sales',
+  // 'resumen de ventas', 'total sales') parse WITHOUT an explicit range and
+  // keep their locked sales_summary routing. Runs AFTER the forecast/trend/
+  // today overrides, so prediction/trajectory/today asks keep their intents.
+  if (STRUCTURED_THIEF_INTENTS.includes(winner.id)) {
+    const parsed = parseBusinessQuery(query);
+    if (
+      parsed.intent !== 'unknown'
+      && (parsed.dateRange !== undefined || parsed.comparison !== undefined || parsed.comparisonOperands !== undefined)
+    ) {
+      winner.id = 'data_query';
+    }
+  }
+
   const confidence = Math.min(1, winner.score / 2);
   const result: IntentMatch = { id: winner.id, confidence };
 
@@ -2715,6 +2757,16 @@ export function classifyIntent(
       console.debug(`[IntelligenceRouter] alias matched phrase=${a.phrase} intent=${winner.id}`);
       break;
     }
+  }
+
+  // CELLHUB-INTELLIGENCE-CHAT-R1: pass the raw query to data_query. Its
+  // handler chain (manager check → structured I3-2 gate → legacy data
+  // handler) reads match.query — without this line every scored data_query
+  // reached handlers with '' in live chat, so the structured gate NEVER ran
+  // for data_query traffic and the legacy handler answered "No data found"
+  // (fallback_question was unaffected: its early returns carry the query).
+  if (winner.id === 'data_query') {
+    result.query = rawQuery;
   }
 
   // R-INTELLIGENCE-PENDING-DEAL-V1: pass raw query so the handler can parse
