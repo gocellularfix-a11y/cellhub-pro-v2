@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import { IntelligenceEngine } from '../IntelligenceEngine';
 import { computeHealthSections } from './healthEngine';
 import { tryHandleManagerQuestion, recognizeManagerIntent, hasApplicableManagerEvidence, hasBriefPerformanceEvidence, hasFocusEvidence, hasProblemEvidence, hasOpportunityEvidence } from './smartFollowups';
+import { formatBusinessBrief } from './formatManager';
+import type { BusinessBrief, HealthSection } from './types';
 import type { InsightFinding } from '../insights/types';
 import type { Customer, Sale } from '@/store/types';
 
@@ -234,7 +236,8 @@ describe('I4.1.3 — intent-specific evidence', () => {
   it('10./11. upward trend qualifies for brief; but never satisfies the opportunity intent', () => {
     expect(hasBriefPerformanceEvidence([upTrend()])).toBe(true);
     const r = tryHandleManagerQuestion(engineWith([upTrend()]), 'What opportunity am I missing?', 'en', REF)!;
-    expect(r.text).toBe('No standout opportunities in this period.');
+    // I4.1.4: absence of a supported opportunity is NOT confirmed absence.
+    expect(r.text).toBe('I do not have enough supported evidence to identify a standout opportunity in this period.');
   });
   it('12.-15. refusals / rankings / neutral shares / isolated patterns alone → no brief', () => {
     const refusalOnly = [finding({ id: 'employee_attribution_incomplete:range', kind: 'employee_attribution_incomplete', severity: 'information' })];
@@ -305,5 +308,129 @@ describe('I4.1.1 — recognized no-data intents (terminal, honest)', () => {
     const a = tryHandleManagerQuestion(emptyEngine(), 'business health', 'es', REF);
     const b = tryHandleManagerQuestion(emptyEngine(), 'business health', 'es', REF);
     expect(b).toEqual(a);
+  });
+});
+
+// ══ I4.1.4 — presentation truth closure ═════════════════════
+describe('I4.1.4 — score+confidence presentation, honest insufficient opportunity', () => {
+  const NO_DATA_EN = 'There is not enough business information to answer that yet.';
+  const INSUFF_OPP = {
+    en: 'I do not have enough supported evidence to identify a standout opportunity in this period.',
+    es: 'No tengo suficiente evidencia confiable para identificar una oportunidad destacada en este período.',
+    pt: 'Não tenho evidência confiável suficiente para identificar uma oportunidade de destaque neste período.',
+  };
+  const risk = () => finding({ id: 'customer_lost:c1', kind: 'customer_lost', severity: 'warning', data: { name: 'PEDRO', daysSinceLastVisit: 120 } });
+  const opp = () => finding({ id: 'carrier_fastest_growing:att', kind: 'carrier_fastest_growing', severity: 'opportunity', data: { carrier: 'AT&T', value: 500 } });
+  const upTrend = () => finding({ id: 'metric_trend:gross_sales', kind: 'metric_trend', severity: 'positive', data: { metric: 'gross_sales', direction: 'up' } });
+  const share = () => finding({ id: 'service_share:repairs', kind: 'service_share', severity: 'information' });
+  const refusal = () => finding({ id: 'employee_attribution_incomplete:range', kind: 'employee_attribution_incomplete', severity: 'information' });
+  const engineWith = (findings: InsightFinding[]): IntelligenceEngine => ({
+    getBusinessInsights: () => ({ findings, cards: [], suggestions: [], generatedForRange: RANGE }),
+  } as unknown as IntelligenceEngine);
+
+  const healthSection = (key: HealthSection['key'], status: HealthSection['status']): HealthSection => ({
+    key, status, confidence: status === 'unavailable' ? 0 : 1, evaluable: status !== 'unavailable',
+    evidenceFindingIds: [], reasonFindingIds: [], topPositiveFindingId: null, topRiskFindingId: null, relatedActionIds: [],
+  });
+  const briefWith = (confidence: number, health: HealthSection[] = []): BusinessBrief => ({
+    generatedForRange: RANGE,
+    executiveSummary: [],
+    criticalAlerts: [], warnings: [], opportunities: [], positiveHighlights: [],
+    recommendedActions: [], suggestedQuestions: [],
+    score: {
+      score: 90, confidence,
+      breakdown: { criticalCount: 0, warningCount: 0, opportunityCount: 0, positiveCount: 0, trendDirection: null, appliedDelta: -10, unavailableSections: health.filter((h) => h.status === 'unavailable').length },
+    },
+    health,
+    priorityQueue: [],
+  });
+
+  it('1./2./3./19. supported risk → brief shows performance score AND evidence confidence on separate adjacent lines (EN)', () => {
+    const r = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF)!;
+    expect(r.text).toMatch(/Performance score: \d+\/100/);
+    expect(r.text).toMatch(/Evidence confidence: \d+%/);
+    const lines = r.text.split('\n');
+    const scoreIdx = lines.findIndex((l) => l.startsWith('Performance score:'));
+    expect(scoreIdx).toBeGreaterThanOrEqual(0);
+    expect(lines[scoreIdx + 1]).toMatch(/^Evidence confidence: \d+%$/);
+  });
+  it('4./6. confidence 0.2 renders as 20% — never the raw decimal', () => {
+    const text = formatBusinessBrief(briefWith(0.2), 'en', new Map());
+    expect(text).toContain('Evidence confidence: 20%');
+    expect(text).not.toContain('0.2');
+    expect(text).not.toMatch(/confidence: 0\./i);
+  });
+  it('5. confidence 1 renders as 100%', () => {
+    expect(formatBusinessBrief(briefWith(1), 'en', new Map())).toContain('Evidence confidence: 100%');
+  });
+  it('7. formatted brief never exposes undefined, NaN, or dev terminology', () => {
+    for (const conf of [0.2, 0.35, 1]) {
+      const text = formatBusinessBrief(briefWith(conf, [healthSection('employees', 'unavailable')]), 'en', new Map());
+      expect(text).not.toMatch(/undefined|NaN|refusal|attribution_guard|canonical|cents/i);
+    }
+  });
+  it('8. unavailable-area notices stay visible together with score and confidence', () => {
+    const text = formatBusinessBrief(briefWith(0.5, [healthSection('revenue', 'watch'), healthSection('employees', 'unavailable')]), 'en', new Map());
+    expect(text).toContain('Performance score: 90/100');
+    expect(text).toContain('Evidence confidence: 50%');
+    expect(text).toContain('Not enough information for:');
+    expect(text).toContain('Employees');
+    // Order: score → confidence → attention → unavailable notices.
+    expect(text.indexOf('Performance score')).toBeLessThan(text.indexOf('Evidence confidence'));
+    expect(text.indexOf('Evidence confidence')).toBeLessThan(text.indexOf('Not enough information for:'));
+  });
+  it('9./10. opportunity-only brief → terminal no-data; opportunity-only focus → no score, no confidence', () => {
+    const brief = tryHandleManagerQuestion(engineWith([opp()]), 'business brief', 'en', REF)!;
+    expect(brief.text).toBe(NO_DATA_EN);
+    const focus = tryHandleManagerQuestion(engineWith([opp()]), 'What should I focus on today?', 'en', REF)!;
+    expect(focus.text).toContain("Today's best focus is this opportunity:");
+    expect(focus.text).not.toContain('/100');
+    expect(focus.text).not.toContain('Performance score');
+    expect(focus.text).not.toContain('Evidence confidence');
+  });
+  it('11. actual supported opportunity → opportunity intent still returns it', () => {
+    const r = tryHandleManagerQuestion(engineWith([opp()]), 'What opportunity am I missing?', 'en', REF)!;
+    expect(r.text).toContain('AT&T');
+    expect(r.text).not.toBe(INSUFF_OPP.en);
+  });
+  it('12./14. upward performance evidence without opportunity → insufficient-supported-opportunity (EN)', () => {
+    const r = tryHandleManagerQuestion(engineWith([upTrend()]), 'What opportunity am I missing?', 'en', REF)!;
+    expect(r.text).toBe(INSUFF_OPP.en);
+    expect(r.text).not.toContain('No standout opportunities');
+  });
+  it('13./15./16. supported risk without opportunity → insufficient-supported-opportunity, never confirmed absence (EN/ES/PT)', () => {
+    expect(tryHandleManagerQuestion(engineWith([risk()]), 'What opportunity am I missing?', 'en', REF)!.text).toBe(INSUFF_OPP.en);
+    const es = tryHandleManagerQuestion(engineWith([risk()]), '¿Qué oportunidad me estoy perdiendo?', 'es', REF)!;
+    expect(es.text).toBe(INSUFF_OPP.es);
+    expect(es.text).not.toContain('No hay oportunidades');
+    const pt = tryHandleManagerQuestion(engineWith([risk()]), 'Que oportunidade estou perdendo?', 'pt', REF)!;
+    expect(pt.text).toBe(INSUFF_OPP.pt);
+    expect(pt.text).not.toContain('Nenhuma oportunidade');
+  });
+  it('17./18. neutral-only and refusal-only opportunity intent → terminal no-data', () => {
+    expect(tryHandleManagerQuestion(engineWith([share()]), 'What opportunity am I missing?', 'en', REF)!.text).toBe(NO_DATA_EN);
+    expect(tryHandleManagerQuestion(engineWith([refusal()]), 'What opportunity am I missing?', 'en', REF)!.text).toBe(NO_DATA_EN);
+  });
+  it('20./21. ES/PT performance-score and evidence-confidence labels', () => {
+    const es = tryHandleManagerQuestion(engineWith([risk()]), 'resumen del negocio', 'es', REF)!;
+    expect(es.text).toMatch(/Puntuación de desempeño: \d+\/100/);
+    expect(es.text).toMatch(/Confianza de la evidencia: \d+%/);
+    const pt = tryHandleManagerQuestion(engineWith([risk()]), 'resumo do negócio', 'pt', REF)!;
+    expect(pt.text).toMatch(/Pontuação de desempenho: \d+\/100/);
+    expect(pt.text).toMatch(/Confiança das evidências: \d+%/);
+  });
+  it('22./23./24. recognized intents terminal; internal exception terminal; unrecognized null', () => {
+    expect(tryHandleManagerQuestion(engineWith([]), 'What opportunity am I missing?', 'en', REF)).not.toBeNull();
+    const broken = { getBusinessInsights: () => { throw new Error('boom'); } } as unknown as IntelligenceEngine;
+    expect(tryHandleManagerQuestion(broken, 'What opportunity am I missing?', 'en', REF)!.text).toMatch(/isn't available right now/);
+    expect(tryHandleManagerQuestion(engineWith([risk()]), 'profit this month', 'en', REF)).toBeNull();
+  });
+  it('25. deterministic repeated formatting', () => {
+    const a = formatBusinessBrief(briefWith(0.2, [healthSection('employees', 'unavailable')]), 'en', new Map());
+    const b = formatBusinessBrief(briefWith(0.2, [healthSection('employees', 'unavailable')]), 'en', new Map());
+    expect(b).toBe(a);
+    const ra = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
+    const rb = tryHandleManagerQuestion(engineWith([risk()]), 'business brief', 'en', REF);
+    expect(rb).toEqual(ra);
   });
 });

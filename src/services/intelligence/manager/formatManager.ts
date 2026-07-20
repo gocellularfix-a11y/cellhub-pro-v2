@@ -122,8 +122,14 @@ export function formatBusinessBrief(brief: BusinessBrief, lang: L3, findingsById
   lines.push(H('📋 Business brief', '📋 Resumen del negocio', '📋 Resumo do negócio'));
   lines.push(...brief.executiveSummary.map((i) => `• ${formatSummaryItem(i, lang)}`));
 
+  // I4.1.4: the score NEVER renders without its evidence confidence — the
+  // score is performance; confidence is how complete the supporting evidence
+  // is. Confidence renders as a deterministic whole percentage (0..1 → %),
+  // never a raw decimal.
   const score = brief.score.score;
-  lines.push(`${H('Score', 'Puntuación', 'Pontuação')}: ${score}/100`);
+  const confidencePct = Math.round(brief.score.confidence * 100);
+  lines.push(`${H('Performance score', 'Puntuación de desempeño', 'Pontuação de desempenho')}: ${score}/100`);
+  lines.push(`${H('Evidence confidence', 'Confianza de la evidencia', 'Confiança das evidências')}: ${confidencePct}%`);
 
   const attention = brief.health.filter((h) => h.status === 'watch' || h.status === 'critical');
   if (attention.length > 0) {

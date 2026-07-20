@@ -225,12 +225,14 @@ export function tryHandleManagerQuestion(
     // finding (risks/up-trends/rankings/neutrals never satisfy it).
     if (!opportunityEvidence) {
       if (briefEvidence || problemEvidence) {
-        // Real evaluation happened, but no opportunity emerged — honest.
+        // I4.1.4: evidence exists elsewhere, but the ABSENCE of a supported
+        // opportunity finding is never proof that no opportunity exists —
+        // state insufficient supported evidence, not confirmed absence.
         return {
           kind: 'answer',
-          text: lang === 'es' ? 'No hay oportunidades destacadas en este período.'
-            : lang === 'pt' ? 'Nenhuma oportunidade destacada neste período.'
-            : 'No standout opportunities in this period.',
+          text: lang === 'es' ? 'No tengo suficiente evidencia confiable para identificar una oportunidad destacada en este período.'
+            : lang === 'pt' ? 'Não tenho evidência confiável suficiente para identificar uma oportunidade de destaque neste período.'
+            : 'I do not have enough supported evidence to identify a standout opportunity in this period.',
         };
       }
       return terminalNoData(lang);   // nothing applicable at all
