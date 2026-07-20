@@ -19,6 +19,9 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 // source of truth for "does this query name an EXPLICIT period/comparison?" —
 // used only by the structured-precedence override below (no engine, no I/O).
 import { parseBusinessQuery } from '../language';
+// CHAT-R1.3: exact-pattern manager recognition (I4) is the single source of
+// truth for "is this a Business Manager question?" — anti-hijack by design.
+import { recognizeManagerIntent } from '../manager/smartFollowups';
 
 export interface IntentContext {
   query: string;           // raw user input
@@ -2771,6 +2774,41 @@ export function classifyIntent(
     if (parsed.dateRange !== undefined || parsed.comparisonOperands !== undefined) {
       winner.id = 'data_query';
     }
+  }
+
+  // CHAT-R1.3: the customer name-lookup intent steals customer RANKING asks.
+  // Root cause (matrix row 13): 'TOP 5 CUSTOMERS THIS MONTH' misses the
+  // anchored 'top customers' data_query phrase (the '5' breaks the substring)
+  // but hits the bare customer-history bank — and the name extractor then
+  // fails with "couldn't find a customer". When the parser reads the query as
+  // an explicit CUSTOMER RANKING, route to data_query (structured executor
+  // first, honest terminal/legacy fallback otherwise). Real history asks
+  // ('historial de juan', 'juan history') never parse as rank_dimension.
+  if (winner.id === 'customer_history') {
+    const parsed = parseBusinessQuery(query);
+    if (parsed.intent === 'rank_dimension' && parsed.dimension === 'customer') {
+      winner.id = 'data_query';
+    }
+  }
+
+  // CHAT-R1.3: EXACT Business Manager questions route to the manager-first
+  // data_query handler. Root cause (R1.3 matrix rows 16/20): 'WHAT SHOULD I
+  // FOCUS ON TODAY' and 'HOW IS MY BUSINESS DOING' scored the legacy
+  // focus_today/health_check banks, so the I4 manager — reachable only via
+  // data_query/fallback_question — never saw them, and legacy answered with
+  // the pre-I4 operator focus / "Store health: A (100/100)" grade.
+  // CONTESTED-PHRASE EXCEPTIONS (kept, documented for the auditor): three
+  // I4-recognized phrases already have DEDICATED live owners locked by the
+  // routing contract — 'daily brief' (daily_operator_brief_v3), 'what should
+  // i do today' (daily_operator_brief) and 'what is my biggest problem'
+  // (proactive_operations). Those winners keep their phrases; every other
+  // recognized manager phrase (incl. the required FOCUS/BRIEF/HEALTH rows)
+  // is manager-owned end to end.
+  const MANAGER_CLAIM_EXCEPTIONS: ReadonlyArray<IntentId> = [
+    'daily_operator_brief', 'daily_operator_brief_v3', 'daily_brief', 'proactive_operations', 'what_to_do_today',
+  ];
+  if (!MANAGER_CLAIM_EXCEPTIONS.includes(winner.id) && recognizeManagerIntent(rawQuery)) {
+    winner.id = 'data_query';
   }
 
   const confidence = Math.min(1, winner.score / 2);

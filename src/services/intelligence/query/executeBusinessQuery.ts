@@ -395,6 +395,18 @@ export function executeBusinessQuery(parsed: ParsedBusinessQuery, ctx: Structure
     if (!range) return blocked(parsed, 'ambiguous', 'invalid_date_range', 'invalid date range');
     const dimension = parsed.dimension;
     if (!dimension) return blocked(parsed, 'ambiguous', 'missing_comparison_operand', 'dimension unresolved');
+    // CHAT-R1.3 (matrix row 13): customer rows come from LIFETIME canonical
+    // profiles (getTopCustomersByValue) while every other dimension is
+    // period-scoped via sourcesFor(ctx, range). An EXPLICITLY period-scoped
+    // customer ranking would answer lifetime values under the requested
+    // period label — a mislabeled answer. Honest typed terminal instead.
+    // Bare rankings ('top customers', no explicit period) keep their locked
+    // I3-2 behavior unchanged.
+    // 'all time' IS the lifetime basis — an explicit all-time ask executes
+    // exactly (locked: 'top customers all time' canonical ranking).
+    if (dimension === 'customer' && parsed.dateRange !== undefined && parsed.dateRange.kind !== 'all_time') {
+      return blocked(parsed, 'unsupported', 'customer_ranking_period_unavailable', 'customer ranking is lifetime-only; explicit period cannot execute exactly');
+    }
     let metric = parsed.metric ?? 'gross_sales';
     if (dimension === 'customer' && metric === 'gross_sales') metric = 'total_collected';
     const rows = rowsForDimension(ctx, range, dimension, metric);

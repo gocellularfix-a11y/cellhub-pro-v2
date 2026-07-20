@@ -39,7 +39,11 @@ export type StructuredUnsupportedReason =
   // CHAT-R1.1: a RECOGNIZED structured query hit an internal failure (or an
   // empty presentation) after recognition — terminal honest unavailability,
   // never a silent legacy fallback with a different period/meaning.
-  | 'structured_engine_unavailable';
+  | 'structured_engine_unavailable'
+  // CHAT-R1.3: customer rankings come from LIFETIME canonical profiles; an
+  // explicitly period-scoped customer ranking cannot execute exactly and is
+  // never answered with mislabeled lifetime values.
+  | 'customer_ranking_period_unavailable';
 
 /** Support level for a metric/dimension pair (Part J matrix). */
 export type SupportLevel =

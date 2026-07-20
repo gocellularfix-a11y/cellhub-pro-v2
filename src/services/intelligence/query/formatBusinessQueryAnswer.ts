@@ -128,6 +128,13 @@ export function formatTerminalReason(reason: StructuredUnsupportedReason, lang: 
       es: 'No pude completar esa consulta del negocio en este momento. Inténtalo de nuevo.',
       pt: 'Não consegui concluir essa consulta do negócio no momento. Tente novamente.',
     },
+    // CHAT-R1.3: per-period customer rankings would require reattributing
+    // every transaction window — lifetime is the exact canonical basis.
+    customer_ranking_period_unavailable: {
+      en: "I can rank customers by exact lifetime value, but not for a specific period — I won't estimate it.",
+      es: 'Puedo clasificar clientes por su valor histórico exacto, pero no por un período específico — no voy a estimarlo.',
+      pt: 'Posso classificar clientes pelo valor histórico exato, mas não por um período específico — não vou estimá-lo.',
+    },
   };
   return M[reason][lang];
 }
