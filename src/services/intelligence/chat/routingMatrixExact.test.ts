@@ -145,7 +145,7 @@ describe('CHAT-R1.3 — exact required 20-query matrix (live pipeline)', () => {
     // Business semantics regardless of utterance order: CURRENT first,
     // difference = current − previous → growth is POSITIVE.
     expect(r.text).toContain('this month: $365.00 · last month: $195.00');
-    expect(r.text).toContain('Difference: $170.00 (+87.2%)');
+    expect(r.text).toContain('Difference: +$170.00 (+87.2%)');
     expect(r.text).not.toMatch(/NaN|Infinity/);
     expectNoGenericSummary(r.text, 'row 10');
   });
@@ -158,7 +158,7 @@ describe('CHAT-R1.3 — exact required 20-query matrix (live pipeline)', () => {
     expectNoGenericSummary(r.text, 'row 11');
   });
   it('10b/11b. reversed utterances answer with the SAME business direction (R1.4)', () => {
-    expect(live('COMPARE THIS MONTH TO LAST MONTH SALES').text).toContain('Difference: $170.00 (+87.2%)');
+    expect(live('COMPARE THIS MONTH TO LAST MONTH SALES').text).toContain('Difference: +$170.00 (+87.2%)');
     expect(live('COMPARE LAST WEEK TO THIS WEEK SALES').text).toContain('Difference: -$65.00 (-35.1%)');
   });
   it('12. SALES BY CARRIER LAST MONTH → carrier-grouped, dimension retained', () => {

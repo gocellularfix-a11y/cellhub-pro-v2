@@ -199,7 +199,12 @@ export function formatBusinessQueryAnswer(result: StructuredBusinessQueryResult,
       const pts = lang === 'es' ? 'puntos' : lang === 'pt' ? 'pontos' : 'points';
       lines.push(`${deltaWord}: ${c.percentagePointDelta.toFixed(1)} ${pts}`);
     } else {
-      let d = `${deltaWord}: ${formatValue(deltaVal, lang)}`;
+      // CHAT-R1.5.1: positive deltas carry an explicit '+' — the direction of
+      // a comparison must be readable from the difference itself, matching
+      // the signed percentage next to it. Negative values already carry '-';
+      // a zero delta stays unsigned.
+      const sign = c.deltaAmount > 0 ? '+' : '';
+      let d = `${deltaWord}: ${sign}${formatValue(deltaVal, lang)}`;
       if (c.percentChange !== undefined) d += ` (${c.percentChange > 0 ? '+' : ''}${c.percentChange.toFixed(1)}%)`;
       lines.push(d);
     }
