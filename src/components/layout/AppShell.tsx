@@ -12,7 +12,7 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 // inventory match + POS-identical cart-line construction for global scans.
 import {
   resolveDocumentByTicket,
-  resolveInventoryByExactCode,
+  resolveInventoryCandidatesByExactCode,
   addInventoryItemToCart,
 } from '@/services/scanner/globalScanResolver';
 import { useGlobalCart } from '@/hooks/useGlobalCart';
@@ -134,22 +134,21 @@ export default function AppShell() {
     dispatch({ type: 'SET_PENDING_BARCODE_INVOICE', payload: invoice });
   }, [dispatch]);
 
-  // R-GLOBAL-SCAN-ANYWHERE-V1: global scan handler for non-document codes.
-  // On the POS tab the historical behavior is preserved (pre-fill POS search —
-  // POS owns its own flow). Everywhere else, priority order:
+  // R-GLOBAL-SCAN-ANYWHERE-V1 + GSCAN-1: ONE global scan flow for every
+  // operational screen, POS included. Priority order:
   //   1) ticket barcode (repair/unlock/layaway/special order, printed as
   //      ticketNumber or id.slice(-8)) → open the entity via the existing
   //      open-event coordinators below — NEVER added to the cart
-  //   2) exact inventory identifier (barcode / SKU / IMEI) → add to the
-  //      GLOBAL cart (the same state.cart POS checks out) + pop the tray
-  //   3) no match → safe toast, nothing created, no navigation
+  //   2) exact SINGLE inventory identifier (barcode / SKU / IMEI) → the
+  //      canonical add path (same state.cart POS checks out). On POS the
+  //      line appears in the live cart without touching customer/discount/
+  //      payment state (POSModule local state); elsewhere the tray pops.
+  //   3) AMBIGUOUS identifier (several records share it) → never silently
+  //      pick one: route to the existing selection mechanism (POS search
+  //      pre-filled with the code) + info toast.
+  //   4) no match → POS keeps its manual-search flow (pre-fill); other
+  //      screens show the safe toast. Nothing created, nothing mutated.
   const handleInventoryScan = useCallback((code: string) => {
-    if (activeTab === 'pos') {
-      dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
-      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
-      return;
-    }
-
     const doc = resolveDocumentByTicket(code, { repairs, unlocks, layaways, specialOrders });
     if (doc) {
       // eslint-disable-next-line no-console
@@ -166,21 +165,36 @@ export default function AppShell() {
       return;
     }
 
-    const item = resolveInventoryByExactCode(code, inventory);
-    if (item) {
-      const res = addInventoryItemToCart(cart, item);
-      if (!res.ok) {
-        toast(t(res.reason === 'out_of_stock' ? 'outOfStock' : 'notEnoughStock'), 'warning');
+    const res = resolveInventoryCandidatesByExactCode(code, inventory);
+    if (res.kind === 'match') {
+      const add = addInventoryItemToCart(cart, res.item);
+      if (!add.ok) {
+        toast(t(add.reason === 'out_of_stock' ? 'outOfStock' : 'notEnoughStock'), 'warning');
         return;
       }
-      // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook.
-      commitCart(res.cart, { openDrawer: true });
-      toast(t('pos.itemAdded', item.name), 'success');
+      // R-GLOBAL-CART-UNIFY-V1: write + auto-open drawer via the shared hook
+      // (the tray renders null on POS, so openDrawer is a no-op there).
+      commitCart(add.cart, { openDrawer: true });
+      toast(t('pos.itemAdded', res.item.name), 'success');
+      return;
+    }
+    if (res.kind === 'ambiguous') {
+      // eslint-disable-next-line no-console
+      console.info('[cellhub] global scan: ambiguous code ←', code, res.candidates.length, 'candidates');
+      dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
+      dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+      toast(t('scanner.ambiguous'), 'info');
       return;
     }
 
     // eslint-disable-next-line no-console
     console.info('[cellhub] global scan: no document/inventory match for', code);
+    if (activeTab === 'pos') {
+      // POS manual-search flow preserved: an unrecognized code pre-fills the
+      // search bar exactly as before.
+      dispatch({ type: 'SET_INVENTORY_SEARCH', payload: code });
+      return;
+    }
     toast(t('scanner.noMatch'), 'info');
   }, [activeTab, dispatch, repairs, unlocks, layaways, specialOrders, inventory, cart, commitCart, toast, t]);
 

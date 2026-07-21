@@ -5,6 +5,10 @@
 // for rapid keystroke sequences (scanners type full strings in
 // <100ms, humans can't type that fast).
 //
+// GSCAN-1: the timing state machine lives in the PURE module
+// src/services/scanner/scannerSequence.ts (named thresholds, node-tested).
+// This hook is a thin DOM adapter: focus guards + routing only.
+//
 // Routing priority:
 //   1. Structured receipt (CHP|SALE|...) → unwrap → onInvoiceScan(saleRef)
 //      [R-RECEIPT-BARCODE-SALE-CUSTOMER-LINK-V1]
@@ -14,12 +18,24 @@
 //       physical credentials printed without the separator still resolve]
 //   4. Anything else                     → POS search (inventory barcode)
 //
-// Input-focus behavior:
-//   Scanner detection runs even when an input/textarea/select is focused,
-//   but only routes when the buffered code matches a KNOWN barcode shape
-//   (CH:, CHP|, INV-, GC-?digit). Anything else inside an input is treated
-//   as fast human typing and ignored — so manual typing keeps its normal
-//   search behavior. [R-CREDENTIAL-BARCODE-SCAN-V2]
+// Input-focus behavior (GSCAN-1 root-cause fix):
+//   Scanner detection runs even when an input/textarea/select is focused.
+//   A buffered code routes from inside a focused input when EITHER:
+//     a) it matches a KNOWN barcode shape (CH:, CHP|, INV-, GC-?digit) — the
+//        historical rule, shape is proof enough at any speed; OR
+//     b) the WHOLE sequence was scanner-fast (every inter-key gap AND the
+//        Enter terminator within SCANNER_MAX_INTERKEY_MS) — this is what
+//        lets plain UPC/EAN/SKU/IMEI codes scan from any screen even while
+//        a search/form field has focus. The routed code is cleared from the
+//        input so it never lingers as typed text.
+//   Slow/normal human typing never satisfies (b), so manual search + normal
+//   Enter keep working exactly as before.
+//
+// Security guard (GSCAN-1, centralized here — the ONLY exemption point):
+//   No routing while focus is on a password input (Admin PIN gate, approval
+//   PIN) or inside any element marked data-scanner-exempt. AppShell only
+//   mounts after login/setup, so those screens are outside the listener
+//   entirely.
 //
 // Usage: call once at AppShell level.
 // ============================================================
@@ -31,6 +47,12 @@ import {
   isChBarcode,
   parseChBarcode,
 } from '@/services/barcode/receiptPayload';
+import {
+  createScannerSequenceTracker,
+  SCANNER_AUTOFLUSH_MS,
+  SCANNER_MAX_INTERKEY_MS,
+  SCANNER_MIN_LENGTH,
+} from '@/services/scanner/scannerSequence';
 
 interface Options {
   invoicePrefix: string;        // e.g. 'INV' — from settings.invoicePrefix
@@ -38,8 +60,16 @@ interface Options {
   onInvoiceScan: (inv: string) => void;       // navigate to Returns + pre-fill
   onCustomerScan: (code: string) => void;     // open PhonePaymentModal pre-filled
   onInventoryScan: (code: string) => void;    // navigate to POS + pre-fill
-  minLength?: number;           // min chars to be considered a real scan (default 4)
-  maxInterval?: number;         // max ms between chars to count as scanner (default 80)
+  minLength?: number;           // min chars to be considered a real scan
+  maxInterval?: number;         // max ms between chars to count as scanner
+}
+
+/** GSCAN-1 centralized input-security guard: never execute a scan route
+ *  while a protected field owns focus. */
+function isScanExemptTarget(el: Element | null): boolean {
+  if (!el) return false;
+  if (el instanceof HTMLInputElement && el.type === 'password') return true;
+  return !!(el as HTMLElement).closest?.('[data-scanner-exempt]');
 }
 
 export function useBarcodeScanner({
@@ -48,14 +78,13 @@ export function useBarcodeScanner({
   onInvoiceScan,
   onCustomerScan,
   onInventoryScan,
-  minLength = 4,
-  maxInterval = 80,
+  minLength = SCANNER_MIN_LENGTH,
+  maxInterval = SCANNER_MAX_INTERKEY_MS,
 }: Options): void {
-  const bufferRef  = useRef<string>('');
-  const lastKeyRef = useRef<number>(0);
-  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const tracker = createScannerSequenceTracker({ minLength, maxInterkeyMs: maxInterval });
     // R-CREDENTIAL-BARCODE-SCAN-V3: classifier-first router.
     //
     // Two regexes — configured + generic. Codes that match EITHER are
@@ -75,16 +104,14 @@ export function useBarcodeScanner({
     const genericCredRe = /^[A-Z]{1,4}-?\d{3,}/;
 
     // Recognises any payload that the router would intentionally consume.
-    // Used to gate routing when an input/textarea/select is focused so we
-    // never grab arbitrary fast-typed search text.
     const matchesKnownBarcode = (raw: string): boolean => {
       if (isChBarcode(raw) || isStructuredReceiptBarcode(raw)) return true;
       const upper = raw.toUpperCase();
       return upper.startsWith(`${upperInv}-`) || custRe.test(upper) || genericCredRe.test(upper);
     };
 
-    // Clear a scanned payload that landed in an input before opening the
-    // action modal so the search/results UI doesn't linger underneath.
+    // Clear a scanned payload that landed in an input before routing so the
+    // barcode never lingers as typed text in the focused field.
     const clearScannedFromInput = (input: HTMLInputElement | HTMLTextAreaElement, code: string) => {
       try {
         const val = input.value;
@@ -105,58 +132,57 @@ export function useBarcodeScanner({
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-
       const now = Date.now();
-      const gap = now - lastKeyRef.current;
-      lastKeyRef.current = now;
 
       // Enter = scanner finished — flush the buffer
       if (e.key === 'Enter') {
-        const code = bufferRef.current.trim();
-        bufferRef.current = '';
+        const flush = tracker.flushEnter(now);
         if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        if (code.length >= minLength) {
-          // Inside a focused input, only route if the code looks like a real
-          // barcode payload. Otherwise it's a fast human typing — let the
-          // normal Enter/search flow proceed.
-          if (isInput && !matchesKnownBarcode(code)) return;
-          if (isInput && target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
-            clearScannedFromInput(target, code);
-            e.preventDefault();
+        if (!flush) return;
+        // GSCAN-1 security: protected fields never execute a scan route.
+        if (isScanExemptTarget(target)) return;
+        if (isInput) {
+          // Inside a focused input: route on known shape (any speed) OR a
+          // fully scanner-fast sequence (plain UPC/SKU/IMEI). Anything else
+          // is human typing — the normal Enter/search flow proceeds.
+          if (!matchesKnownBarcode(flush.code) && !flush.scannerFast) return;
+          if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+            clearScannedFromInput(target, flush.code);
           }
-          routeScan(code);
+          e.preventDefault();
         }
+        routeScan(flush.code);
         return;
       }
 
-      // Non-printable or meta keys — ignore
-      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
-
-      // Gap too large → human typing, reset buffer
-      if (gap > maxInterval && bufferRef.current.length > 0) {
-        bufferRef.current = '';
+      // Non-printable or meta keys — timing note only (mirrors historical
+      // listener which stamped every keydown).
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) {
+        tracker.noteKey(now);
+        return;
       }
 
-      bufferRef.current += e.key;
+      tracker.feedChar(e.key, now);
 
-      // Auto-flush after 200ms silence (some scanners don't send Enter)
+      // Auto-flush after silence (some scanners don't send Enter)
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        const code = bufferRef.current.trim();
-        bufferRef.current = '';
-        if (code.length >= minLength && gap <= maxInterval) {
-          // Auto-flush has no triggering event — use document.activeElement
-          // to detect a focused input.
-          const ae = document.activeElement as HTMLElement | null;
-          const aeTag = ae?.tagName;
-          const aeIsInput = aeTag === 'INPUT' || aeTag === 'TEXTAREA' || aeTag === 'SELECT';
-          if (aeIsInput && !matchesKnownBarcode(code)) return;
-          if (aeIsInput && ae && (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) {
-            clearScannedFromInput(ae, code);
+        timerRef.current = null;
+        const flush = tracker.flushTimeout();
+        if (!flush || !flush.scannerFast) return;
+        // Auto-flush has no triggering event — use document.activeElement.
+        const ae = document.activeElement;
+        if (isScanExemptTarget(ae)) return;
+        const aeTag = (ae as HTMLElement | null)?.tagName;
+        const aeIsInput = aeTag === 'INPUT' || aeTag === 'TEXTAREA' || aeTag === 'SELECT';
+        if (aeIsInput) {
+          if (!matchesKnownBarcode(flush.code)) return;
+          if (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement) {
+            clearScannedFromInput(ae, flush.code);
           }
-          routeScan(code);
         }
-      }, 200);
+        routeScan(flush.code);
+      }, SCANNER_AUTOFLUSH_MS);
     };
 
     const routeScan = (code: string) => {
@@ -181,9 +207,7 @@ export function useBarcodeScanner({
       // payload (CHP|SALE|{invoiceNumber}[|CUST|{customerId}]) takes
       // precedence. We unwrap to the saleRef and reuse onInvoiceScan
       // so BarcodeActionModal handles the lookup + customer-history
-      // shortcut path it already implements. The customer link in the
-      // payload is informational redundancy — the in-memory sale's
-      // sale.customerId drives the existing UI buttons.
+      // shortcut path it already implements.
       if (isStructuredReceiptBarcode(code)) {
         const parsed = parseReceiptBarcodePayload(code);
         if (parsed && parsed.saleRef) {
@@ -221,7 +245,8 @@ export function useBarcodeScanner({
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      tracker.reset();
     };
   }, [invoicePrefix, customerPrefix, onInvoiceScan, onCustomerScan, onInventoryScan, minLength, maxInterval]);
 }

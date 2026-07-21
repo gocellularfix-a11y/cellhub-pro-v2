@@ -1043,6 +1043,9 @@ export const translations: TranslationDictionary = {
   'notEnoughStock': { en: 'Not enough stock!', es: '¡No hay suficiente stock!', pt: 'Estoque insuficiente!' },
   // R-GLOBAL-SCAN-ANYWHERE-V1: safe no-match feedback for the global scanner.
   'scanner.noMatch': { en: 'No match found for scanned code', es: 'Sin coincidencia para el código escaneado', pt: 'Nenhuma correspondência para o código escaneado' },
+  // GSCAN-1: several inventory records share the scanned identifier — the
+  // cashier picks from the POS search results instead of a silent guess.
+  'scanner.ambiguous': { en: 'Multiple items match this code — select one', es: 'Varios artículos coinciden con este código — selecciona uno', pt: 'Vários itens correspondem a este código — selecione um' },
   'noteLabel': { en: 'Nota:', es: 'Nota:', pt: 'Nota:' }, // TODO: verify — ES-only key
   'notes': { en: 'Notes', es: 'Notas', pt: 'Observações' },
   'notesLabel': { en: 'Notes', es: 'Notas', pt: 'Observações' },

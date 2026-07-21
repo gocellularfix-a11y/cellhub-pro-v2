@@ -77,19 +77,51 @@ export function resolveDocumentByTicket(
 
 // ── Inventory resolution ──────────────────────────────────
 
+// GSCAN-1: structured resolution. Lookup order barcode → SKU → IMEI (the
+// identifiers CellHub inventory actually carries — IMEI is the serialized
+// identifier; there is no separate serialNumber field in InventoryItem).
+// EXACT match only, never fuzzy. When several DISTINCT records share the
+// winning identifier the result is an explicit ambiguity — the caller uses
+// the existing selection mechanism (POS search) instead of silently adding
+// the first record. Inventory arriving here is already store-scoped by
+// AppProvider's belongs() filter, so cross-store items can never resolve.
+export type InventoryScanResolution =
+  | { kind: 'match'; item: InventoryItem }
+  | { kind: 'ambiguous'; candidates: InventoryItem[] }
+  | { kind: 'none' };
+
+export function resolveInventoryCandidatesByExactCode(
+  code: string,
+  inventory: InventoryItem[],
+): InventoryScanResolution {
+  const c = norm(code);
+  if (!c) return { kind: 'none' };
+  const eq = (field: string | undefined) => !!field && norm(field) === c;
+  const tiers: Array<(i: InventoryItem) => boolean> = [
+    (i) => eq(i.barcode),
+    (i) => eq(i.sku),
+    (i) => eq(i.imei),
+  ];
+  for (const match of tiers) {
+    const found = inventory.filter(match);
+    if (found.length === 1) return { kind: 'match', item: found[0] };
+    if (found.length > 1) return { kind: 'ambiguous', candidates: found.slice(0, 5) };
+  }
+  return { kind: 'none' };
+}
+
+/** Legacy single-item resolution — first candidate of the structured
+ *  resolver (identical order semantics to the original implementation).
+ *  Kept for existing consumers/tests; the global scan path uses the
+ *  structured resolver so ambiguity is never silently collapsed. */
 export function resolveInventoryByExactCode(
   code: string,
   inventory: InventoryItem[],
 ): InventoryItem | null {
-  const c = norm(code);
-  if (!c) return null;
-  const eq = (field: string | undefined) => !!field && norm(field) === c;
-  return (
-    inventory.find((i) => eq(i.barcode))
-    ?? inventory.find((i) => eq(i.sku))
-    ?? inventory.find((i) => eq(i.imei))
-    ?? null
-  );
+  const res = resolveInventoryCandidatesByExactCode(code, inventory);
+  if (res.kind === 'match') return res.item;
+  if (res.kind === 'ambiguous') return res.candidates[0];
+  return null;
 }
 
 // ── Stock + cart building (extracted from POSModule) ──────
