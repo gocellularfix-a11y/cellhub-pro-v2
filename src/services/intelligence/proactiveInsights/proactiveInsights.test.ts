@@ -1,49 +1,25 @@
 // ============================================================
-// I6-0 — Proactive Insight foundation tests.
+// I6-0A — Proactive Insight foundation: windows + engine contract.
 //
-// Deterministic fixtures with an explicit reference date through the REAL
-// engine API (engine.getProactiveInsights → canonical computeForRange).
-// Locks: window math (full days, no overlap, no partial today), canonical
-// values, threshold behavior in both directions, honest insufficiency,
-// confidence bands, determinism, structure-only output (no free text).
+// Locks: window math (full local days, no overlap, no partial today, DST-
+// safe local-calendar arithmetic, 30-day carrier window), engine behavior
+// (deterministic registry order, failure isolation, finite-number guard,
+// fingerprint dedup, stable ordering, result cap, injected referenceDate,
+// store scope, structure-only output) and the confidence band contract.
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { IntelligenceEngine } from '../IntelligenceEngine';
-import { resolveAnalysisWindows, ANALYSIS_WINDOW_DAYS } from './analysisWindow';
-import { evaluateEvidenceConfidence, CONFIDENCE_BANDS } from './confidence';
-import {
-  SALES_MATERIAL_CHANGE_PCT, SALES_CRITICAL_DECLINE_PCT,
-  MIN_BASELINE_REVENUE_CENTS, MIN_WINDOW_TRANSACTIONS, MIN_CONFIDENCE,
-} from './thresholds';
-import type { ProactiveEvidence } from './types';
-import type { Customer, Sale, SaleItem } from '@/store/types';
+import { scopeCollection } from '@/store/storeScope';
+import { runProactiveInsightDetectors, PROACTIVE_DETECTORS, hasNonFinitePublicValue } from './proactiveInsightEngine';
+import { resolveAnalysisWindows, resolveTrailingWindow, resolveCarrierWindow, ANALYSIS_WINDOW_DAYS } from './analysisWindow';
+import { sampleBandConfidence, capConfidence, CONFIDENCE_BANDS } from './confidence';
+import { buildFingerprint } from './fingerprint';
+import { MIN_WINDOW_TRANSACTIONS, MIN_CONFIDENCE, MAX_INSIGHTS_PER_RUN, CARRIER_WINDOW_DAYS } from './thresholds';
+import type { ProactiveInsight, ProactiveInsightDetector } from './types';
+import { REF, engineWith, windowSales, sale } from './testHarness';
 
-const REF = new Date(2026, 6, 15, 12, 0, 0);   // Wed 2026-07-15
-// current window  = 2026-07-08 … 2026-07-14 (7 full days, ends yesterday)
-// baseline window = 2026-07-01 … 2026-07-07 (previous 7, no overlap)
-
-let seq = 0;
-const item = (price: number, name = 'Case'): SaleItem =>
-  ({ id: `it-${++seq}`, name, category: 'accessory' as SaleItem['category'], price, qty: 1, cost: Math.round(price / 2), cbeEligible: false, taxable: true } as SaleItem);
-const sale = (createdAt: string, price: number): Sale =>
-  ({ id: `s-${++seq}`, invoiceNumber: `INV-${seq}`, items: [item(price)], subtotal: price, taxAmount: 0, cbeTotal: 0, total: price,
-     paymentMethod: 'cash', status: 'completed', createdAt, employeeName: 'Ana' } as unknown as Sale);
-
-function engineWith(sales: Sale[]): IntelligenceEngine {
-  return new IntelligenceEngine(
-    sales, [] as Customer[], [], [],
-    { lang: 'en', enableAlerts: false, enableScoring: false, cacheTimeoutMinutes: 15 },
-    { customerReturns: [], settings: { defaultCommissionRate: 0.07 } } as never,
-  );
-}
-/** N sales of `each` cents spread across the window days (deterministic). */
-function windowSales(startDay: number, month: string, n: number, each: number): Sale[] {
-  return Array.from({ length: n }, (_, i) => sale(`2026-${month}-${String(startDay + (i % 7)).padStart(2, '0')}T10:00:00`, each));
-}
-
-describe('I6-0 — analysis windows (pure)', () => {
-  it('current = 7 FULL days ending yesterday; baseline = previous 7; no overlap; no partial today', () => {
+describe('I6-0A — analysis windows (pure, shared)', () => {
+  it('7v7: current = 7 FULL days ending yesterday; baseline = previous 7; no overlap; no partial today', () => {
     const w = resolveAnalysisWindows(REF);
     expect(w.referenceYMD).toBe('2026-07-15');
     expect(w.current.startYMD).toBe('2026-07-08');
@@ -54,6 +30,13 @@ describe('I6-0 — analysis windows (pure)', () => {
     expect(w.current.range.valid).toBe(true);
     expect(w.baseline.range.valid).toBe(true);
   });
+  it('30-day carrier window: 30 full local days ending yesterday', () => {
+    const w = resolveCarrierWindow(REF);
+    expect(w.startYMD).toBe('2026-06-15');
+    expect(w.endYMD).toBe('2026-07-14');
+    expect(w.dayCount).toBe(CARRIER_WINDOW_DAYS);
+    expect(w.range.valid).toBe(true);
+  });
   it('month boundary resolves correctly (reference Jul 3 → baseline reaches June)', () => {
     const w = resolveAnalysisWindows(new Date(2026, 6, 3, 9, 0, 0));
     expect(w.current.startYMD).toBe('2026-06-26');
@@ -61,98 +44,173 @@ describe('I6-0 — analysis windows (pure)', () => {
     expect(w.baseline.startYMD).toBe('2026-06-19');
     expect(w.baseline.endYMD).toBe('2026-06-25');
   });
-  it('deterministic: same reference date → identical windows', () => {
+  it('DST transition (US spring-forward Mar 8 2026) never skews a local day', () => {
+    const w = resolveAnalysisWindows(new Date(2026, 2, 12, 9, 0, 0));  // Mar 12
+    expect(w.current.startYMD).toBe('2026-03-05');
+    expect(w.current.endYMD).toBe('2026-03-11');       // crosses Mar 8 DST
+    expect(w.baseline.startYMD).toBe('2026-02-26');
+    expect(w.baseline.endYMD).toBe('2026-03-04');
+  });
+  it('trailing helper is pure and deterministic', () => {
+    expect(resolveTrailingWindow(REF, 7, 'current_7_full_days')).toEqual(resolveAnalysisWindows(REF).current);
     expect(resolveAnalysisWindows(REF)).toEqual(resolveAnalysisWindows(REF));
   });
 });
 
-describe('I6-0 — sales material change detector (live engine API)', () => {
-  it('material INCREASE emits a positive insight with full evidence + thresholds', () => {
-    // baseline: 5 × $40 = $200 · current: 5 × $60 = $300 → +50%
-    const engine = engineWith([...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 6000)]);
-    const r = engine.getProactiveInsights(REF);
-    expect(r.insights).toHaveLength(1);
-    const i = r.insights[0];
-    expect(i.kind).toBe('sales_material_change');
-    expect(i.direction).toBe('increase');
-    expect(i.severity).toBe('positive');
-    expect(i.id).toBe('sales_material_change:2026-07-08:2026-07-14');
-    expect(i.evidence.baselineCents).toBe(20000);
-    expect(i.evidence.currentCents).toBe(30000);
-    expect(i.evidence.changePct).toBe(50);
-    expect(i.evidence.sourceKind).toBe('canonical_report_money');
-    expect(i.thresholds.materialChangePct).toBe(SALES_MATERIAL_CHANGE_PCT);
-    expect(i.confidence).toBe(CONFIDENCE_BANDS.moderateSample);   // 10 tx combined
-    expect(r.evaluations[0].status).toBe('emitted');
+describe('I6-0A — engine contract', () => {
+  const materialGrowth = () => [...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 6000)];
+
+  it('registry order is the mandated deterministic order', () => {
+    expect(PROACTIVE_DETECTORS.map((d) => d.id)).toEqual([
+      'sales_momentum', 'gross_margin_pressure', 'carrier_concentration', 'evidence_quality',
+    ]);
   });
-  it('material DECLINE emits warning; 40%+ decline is critical', () => {
-    // warning: $300 → $200 = −33.3%
-    const warn = engineWith([...windowSales(1, '07', 5, 6000), ...windowSales(8, '07', 5, 4000)])
-      .getProactiveInsights(REF).insights[0];
-    expect(warn.direction).toBe('decline');
-    expect(warn.severity).toBe('warning');
-    expect(warn.evidence.changePct).toBe(-33.3);
-    // critical: $500 → $200 = −60%
-    const crit = engineWith([...windowSales(1, '07', 5, 10000), ...windowSales(8, '07', 5, 4000)])
-      .getProactiveInsights(REF).insights[0];
-    expect(crit.severity).toBe('critical');
-    expect(crit.evidence.changePct).toBeLessThanOrEqual(-SALES_CRITICAL_DECLINE_PCT);
+  it('same snapshot + same referenceDate → identical result (fingerprints included), repeated', () => {
+    const build = () => engineWith(materialGrowth()).getProactiveInsights(REF);
+    expect(build()).toEqual(build());
   });
-  it('below-threshold change emits NOTHING but stays auditable', () => {
-    // $200 → $220 = +10% < 20%
-    const r = engineWith([...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 4400)]).getProactiveInsights(REF);
-    expect(r.insights).toHaveLength(0);
-    expect(r.evaluations[0].status).toBe('below_threshold');
-    expect(r.evaluations[0].evidence.changePct).toBe(10);
+  it('one diagnostic per registered detector, every run', () => {
+    const r = engineWith(materialGrowth()).getProactiveInsights(REF);
+    expect(r.diagnostics.map((d) => d.detectorId)).toEqual(PROACTIVE_DETECTORS.map((d) => d.id));
   });
-  it('honest insufficiency: thin windows, sub-floor baseline and zero baseline never claim anything', () => {
-    // (a) thin: 2 tx per window < MIN_WINDOW_TRANSACTIONS.
-    const thin = engineWith([...windowSales(1, '07', 2, 4000), ...windowSales(8, '07', 2, 8000)]).getProactiveInsights(REF);
-    expect(thin.insights).toHaveLength(0);
-    expect(thin.evaluations[0].status).toBe('insufficient_evidence');
-    expect(thin.evaluations[0].confidence).toBe(CONFIDENCE_BANDS.insufficient);
-    // (b) sub-floor baseline: 4 × $20 = $80 < $100 floor.
-    const subFloor = engineWith([...windowSales(1, '07', 4, 2000), ...windowSales(8, '07', 5, 8000)]).getProactiveInsights(REF);
-    expect(subFloor.evaluations[0].status).toBe('insufficient_evidence');
-    expect(subFloor.evaluations[0].evidence.baselineCents).toBeLessThan(MIN_BASELINE_REVENUE_CENTS);
-    // (c) zero baseline: changePct is null, never Infinity.
-    const zero = engineWith(windowSales(8, '07', 5, 8000)).getProactiveInsights(REF);
-    expect(zero.insights).toHaveLength(0);
-    expect(zero.evaluations[0].evidence.changePct).toBeNull();
-    // (d) no data at all.
-    const empty = engineWith([]).getProactiveInsights(REF);
-    expect(empty.insights).toHaveLength(0);
-    expect(empty.evaluations[0].status).toBe('insufficient_evidence');
+  it('injected reference date moves the windows; no real-clock dependence', () => {
+    const engine = engineWith(materialGrowth());
+    const a = engine.getProactiveInsights(REF);
+    const b = engine.getProactiveInsights(new Date(2026, 6, 22, 12, 0, 0));
+    expect(a.referenceYMD).toBe('2026-07-15');
+    expect(b.referenceYMD).toBe('2026-07-22');
+    expect(a).not.toEqual(b);
   });
-  it("today's partial sales never move the windows (sale dated on the reference day is ignored)", () => {
-    const base = [...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 6000)];
+  it("today's partial sales never move the result (sale dated on the reference day is ignored)", () => {
+    const base = materialGrowth();
     const withToday = [...base, sale('2026-07-15T09:00:00', 99999)];
     expect(engineWith(withToday).getProactiveInsights(REF)).toEqual(engineWith(base).getProactiveInsights(REF));
   });
-  it('deterministic: identical inputs → identical result, repeated', () => {
-    const build = () => engineWith([...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 6000)]).getProactiveInsights(REF);
-    expect(build()).toEqual(build());
+
+  // ── isolation / guard / dedup / cap (stub detectors — engine mechanics) ──
+  const stubInsight = (fingerprint: string, severity: ProactiveInsight['severity'] = 'info'): ProactiveInsight => ({
+    fingerprint, detectorId: 'sales_momentum', category: 'sales', severity,
+    direction: 'neutral', confidence: 0.9, confidenceReasons: ['complete_periods'],
+    evidence: {
+      detectorId: 'sales_momentum', metric: 'gross_sales', sourceKind: 'canonical_report_money',
+      windows: resolveAnalysisWindows(REF), currentCents: 1, baselineCents: 1,
+      currentTransactionCount: 5, baselineTransactionCount: 5, changePct: 0,
+    },
+    thresholds: {},
   });
-  it('structure-only contract: no free-text fields anywhere in the result', () => {
-    const r = engineWith([...windowSales(1, '07', 5, 4000), ...windowSales(8, '07', 5, 6000)]).getProactiveInsights(REF);
+  const okDetector = (fingerprints: string[], severity?: ProactiveInsight['severity']): ProactiveInsightDetector => ({
+    id: 'sales_momentum', category: 'sales',
+    run: () => ({
+      insights: fingerprints.map((f) => stubInsight(f, severity)),
+      diagnostic: { detectorId: 'sales_momentum', status: 'emitted', reasons: [], evidence: null, confidence: 0.9, emittedCount: fingerprints.length },
+    }),
+  });
+
+  it('a throwing detector is ISOLATED as detector_error — others still run, no fake insights', () => {
+    const boom: ProactiveInsightDetector = {
+      id: 'gross_margin_pressure', category: 'margin',
+      run: () => { throw new Error('boom'); },
+    };
+    const ctx = engineWith(materialGrowth()).getStructuredQueryContext(REF);
+    const r = runProactiveInsightDetectors(ctx, [okDetector(['a']), boom]);
+    expect(r.insights).toHaveLength(1);
+    expect(r.diagnostics[1].status).toBe('detector_error');
+    expect(r.diagnostics[1].reasons).toEqual(['detector_exception']);
+    expect(r.diagnostics[1].emittedCount).toBe(0);
+  });
+  it('non-finite public numbers demote the whole detector to detector_error (fail safe)', () => {
+    const bad: ProactiveInsightDetector = {
+      id: 'carrier_concentration', category: 'carriers',
+      run: () => {
+        const i = stubInsight('bad');
+        (i as unknown as { confidence: number }).confidence = Number.NaN;
+        return { insights: [i], diagnostic: { detectorId: 'carrier_concentration', status: 'emitted', reasons: [], evidence: null, confidence: 0.9, emittedCount: 1 } };
+      },
+    };
+    const ctx = engineWith(materialGrowth()).getStructuredQueryContext(REF);
+    const r = runProactiveInsightDetectors(ctx, [bad]);
+    expect(r.insights).toHaveLength(0);
+    expect(r.diagnostics[0].status).toBe('detector_error');
+    expect(r.diagnostics[0].reasons).toEqual(['non_finite_public_number']);
+  });
+  it('duplicate fingerprints dedup (first occurrence wins)', () => {
+    const ctx = engineWith(materialGrowth()).getStructuredQueryContext(REF);
+    const r = runProactiveInsightDetectors(ctx, [okDetector(['dup', 'dup', 'unique'])]);
+    expect(r.insights.map((i) => i.fingerprint).sort()).toEqual(['dup', 'unique']);
+  });
+  it('stable ordering: severity rank → category → fingerprint; cap applies after sort', () => {
+    const many = Array.from({ length: MAX_INSIGHTS_PER_RUN + 5 }, (_, i) => `fp-${String(i).padStart(2, '0')}`);
+    const ctx = engineWith(materialGrowth()).getStructuredQueryContext(REF);
+    const r = runProactiveInsightDetectors(ctx, [okDetector(['z-info']), okDetector(['a-critical'], 'critical'), okDetector(many)]);
+    expect(r.insights).toHaveLength(MAX_INSIGHTS_PER_RUN);
+    expect(r.insights[0].fingerprint).toBe('a-critical');     // critical outranks info
+    const rest = r.insights.slice(1).map((i) => i.fingerprint);
+    expect(rest).toEqual([...rest].sort());                    // fingerprint-stable within band
+  });
+
+  // ── live integration: real registry over a rich fixture ──
+  it('live run: insights are severity-ordered, fingerprint-deduped and capped', () => {
+    // Critical sales decline + margin collapse + carrier concentration.
+    const baseline = windowSales(1, '07', 7, 20000, { itemOpts: { cost: 12000, carrier: 'Verizon' } });   // margin 40%
+    const current = windowSales(8, '07', 7, 8000, { itemOpts: { cost: 6400, carrier: 'Verizon' } });      // margin 20%, −60% sales
+    const r = engineWith([...baseline, ...current]).getProactiveInsights(REF);
+    expect(r.insights.length).toBeGreaterThanOrEqual(3);
+    expect(r.insights.length).toBeLessThanOrEqual(MAX_INSIGHTS_PER_RUN);
+    const ranks = { critical: 0, important: 1, watch: 2, info: 3 } as const;
+    const order = r.insights.map((i) => ranks[i.severity]);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(new Set(r.insights.map((i) => i.fingerprint)).size).toBe(r.insights.length);
+    expect(hasNonFinitePublicValue(r)).toBe(false);
+  });
+  it('structure-only contract: no free-text fields, no undefined/NaN/Infinity anywhere', () => {
+    const r = engineWith(materialGrowth()).getProactiveInsights(REF);
     const json = JSON.stringify(r);
     expect(json).not.toMatch(/text|message|title|description/);
     expect(json).not.toMatch(/undefined|NaN|Infinity/);
   });
+
+  // ── store scope: mixed two-store data through the CANONICAL mechanism ──
+  it('store scope: other-store records never affect the scoped result (canonical scopeCollection)', () => {
+    const storeA = [
+      ...windowSales(1, '07', 5, 4000, { storeId: 'store-a' }),
+      ...windowSales(8, '07', 5, 6000, { storeId: 'store-a' }),
+    ];
+    const storeB = [
+      ...windowSales(1, '07', 7, 99000, { storeId: 'store-b', itemOpts: { cost: 0, carrier: 'Cricket' } }),
+      ...windowSales(8, '07', 7, 1000, { storeId: 'store-b', itemOpts: { cost: 0, carrier: 'Cricket' } }),
+    ];
+    const scoped = scopeCollection([...storeA, ...storeB], 'store-a', false);
+    const mixed = engineWith(scoped, 'store-a').getProactiveInsights(REF);
+    const pure = engineWith(storeA, 'store-a').getProactiveInsights(REF);
+    expect(mixed).toEqual(pure);                                   // B leaked nothing
+    const momentum = mixed.insights.find((i) => i.detectorId === 'sales_momentum');
+    expect(momentum).toBeDefined();
+    expect(momentum!.direction).toBe('positive');                  // B alone would be a crash −99%
+    expect(momentum!.fingerprint).toContain(':store-a:');          // store in fingerprint
+  });
 });
 
-describe('I6-0 — confidence bands (pure contract)', () => {
-  const ev = (cur: number, base: number): ProactiveEvidence => ({
-    metric: 'gross_sales', sourceKind: 'canonical_report_money',
-    windows: resolveAnalysisWindows(REF),
-    currentCents: 100000, baselineCents: 100000,
-    currentTransactionCount: cur, baselineTransactionCount: base, changePct: 0,
-  });
-  it('bands are deterministic and exported', () => {
-    expect(evaluateEvidenceConfidence(ev(2, 20))).toBe(CONFIDENCE_BANDS.insufficient);
-    expect(evaluateEvidenceConfidence(ev(MIN_WINDOW_TRANSACTIONS, MIN_WINDOW_TRANSACTIONS))).toBe(CONFIDENCE_BANDS.smallSample);
-    expect(evaluateEvidenceConfidence(ev(5, 5))).toBe(CONFIDENCE_BANDS.moderateSample);
-    expect(evaluateEvidenceConfidence(ev(15, 15))).toBe(CONFIDENCE_BANDS.strongSample);
+describe('I6-0A — confidence bands (pure contract)', () => {
+  it('bands are deterministic, reasons explain every value', () => {
+    expect(sampleBandConfidence(2, 20)).toEqual({ value: CONFIDENCE_BANDS.insufficient, reasons: ['complete_periods', 'insufficient_sample'] });
+    expect(sampleBandConfidence(MIN_WINDOW_TRANSACTIONS, MIN_WINDOW_TRANSACTIONS)).toEqual({ value: CONFIDENCE_BANDS.smallSample, reasons: ['complete_periods', 'small_sample'] });
+    expect(sampleBandConfidence(5, 5)).toEqual({ value: CONFIDENCE_BANDS.moderateSample, reasons: ['complete_periods', 'moderate_sample'] });
+    expect(sampleBandConfidence(15, 15)).toEqual({ value: CONFIDENCE_BANDS.strongSample, reasons: ['complete_periods', 'strong_sample'] });
     expect(MIN_CONFIDENCE).toBeGreaterThan(CONFIDENCE_BANDS.insufficient);
+  });
+  it('capConfidence lowers value, records the reason once, never raises', () => {
+    const base = sampleBandConfidence(15, 15);
+    const capped = capConfidence(base, 0.5, 'low_cost_coverage');
+    expect(capped.value).toBe(0.5);
+    expect(capped.reasons).toContain('low_cost_coverage');
+    expect(capConfidence(capped, 0.7, 'low_cost_coverage')).toEqual(capped);  // no raise, no dup
+  });
+  it('fingerprints derive ONLY from detector/store/category/ranges/dimension/direction', () => {
+    const fp = buildFingerprint({
+      detectorId: 'sales_momentum', storeId: null, category: 'sales',
+      ranges: [{ startYMD: '2026-07-08', endYMD: '2026-07-14' }, { startYMD: '2026-07-01', endYMD: '2026-07-07' }],
+      dimension: 'gross_sales', direction: 'negative',
+    });
+    expect(fp).toBe('sales_momentum:single_store:sales:2026-07-08..2026-07-14|2026-07-01..2026-07-07:gross_sales:negative');
   });
 });
