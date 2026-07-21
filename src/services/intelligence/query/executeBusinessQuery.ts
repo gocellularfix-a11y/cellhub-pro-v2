@@ -207,21 +207,27 @@ function rowsForDimension(
 
   if (dimension === 'product') {
     if (metric !== 'gross_sales') return { error: 'unsupported', reason: 'product rows expose gross line revenue only' };
-    // CHAT-R1.4: canonical topItems accumulates EVERY sale line. A PRODUCT
-    // ranking must exclude transaction/service lines (phone payments,
-    // top-ups, repair/unlock lines, fees, exchange credits). classifyItem is
-    // the canonical line classifier — no second vocabulary. Special orders
-    // stay: they are merchandise sales. topItems itself is untouched.
-    const nonProductNames = new Set<string>();
-    for (const s of ctx.snapshot.sales) {
-      for (const it of s.items ?? []) {
-        const kind = classifyItem(it);
-        if (kind !== 'product' && kind !== 'special_order') nonProductNames.add(it.name);
-      }
-    }
-    return stats.topItems
-      .filter((i) => !nonProductNames.has(i.name))
-      .map((i) => ({ label: i.name, value: money(i.revenueCents), tieKey: i.name.toLowerCase() }));
+    // CHAT-R1.5: aggregate ONLY qualifying merchandise LINES from the
+    // requested scope. Line-level record selection happens BEFORE the
+    // canonical projection, then computeForScopedSnapshot runs the FULL
+    // canonical math over the kept lines (its documented contract: scoping
+    // selects records; money math stays canonical) — date windowing,
+    // voided/refund-audit exclusion, special-order price override and line
+    // revenue all stay canonical with zero duplicated formulas. A name sold
+    // both as merchandise and as a payment/service line ranks with its
+    // product revenue ONLY (the R1.4 global name-set filter could drop valid
+    // merchandise or retain mixed revenue — closed here).
+    const merchandiseLineSales = ctx.snapshot.sales
+      .map((s) => ({
+        ...s,
+        items: (s.items ?? []).filter((it) => {
+          const kind = classifyItem(it);
+          return kind === 'product' || kind === 'special_order';
+        }),
+      }))
+      .filter((s) => s.items.length > 0);
+    const scoped = ctx.computeForScopedSnapshot({ sales: merchandiseLineSales }, range.range);
+    return scoped.topItems.map((i) => ({ label: i.name, value: money(i.revenueCents), tieKey: i.name.toLowerCase() }));
   }
 
   if (dimension === 'employee') {
@@ -380,13 +386,23 @@ export function executeBusinessQuery(parsed: ParsedBusinessQuery, ctx: Structure
       const leftRange = resolveBusinessDateRange(ops.left.dateRange, ctx.referenceDate);
       const rightRange = resolveBusinessDateRange(ops.right.dateRange, ctx.referenceDate);
       if (!leftRange || !rightRange) return blocked(parsed, 'ambiguous', 'invalid_date_range', 'invalid comparison period');
-      // CHAT-R1.4: BUSINESS semantics, not utterance order — a period
-      // comparison is always presented as the CURRENT (chronologically later)
-      // period versus the PREVIOUS (earlier) one, so "COMPARE LAST MONTH TO
-      // THIS MONTH" and "COMPARE THIS MONTH TO LAST MONTH" both answer
-      // current-vs-previous with the same (correctly signed) difference.
-      const [currentRange, previousRange] = leftRange.startYMD >= rightRange.startYMD
-        ? [leftRange, rightRange] : [rightRange, leftRange];
+      // CHAT-R1.4/R1.5: BUSINESS semantics for RECOGNIZED current/previous
+      // pairs only — "COMPARE LAST MONTH TO THIS MONTH" and its reverse both
+      // answer current-vs-previous with the same correctly-signed difference.
+      // R1.5: normalization is SELECTIVE. Arbitrary combinations (custom
+      // dates, mixed granularity like this_week vs last_month) keep the
+      // user's utterance order — reordering an explicitly requested A-vs-B
+      // would misrepresent the question. Quarter/year pairs: no such range
+      // kinds exist in the parser contract (documented).
+      const CURRENT_PREVIOUS_PAIRS: ReadonlyArray<readonly [string, string]> = [
+        ['today', 'yesterday'], ['this_week', 'last_week'], ['this_month', 'last_month'],
+      ];
+      const lk = ops.left.dateRange.kind;
+      const rk = ops.right.dateRange.kind;
+      const isRecognizedPair = CURRENT_PREVIOUS_PAIRS.some(([cur, prev]) =>
+        (lk === cur && rk === prev) || (lk === prev && rk === cur));
+      const [currentRange, previousRange] = isRecognizedPair && leftRange.startYMD < rightRange.startYMD
+        ? [rightRange, leftRange] : [leftRange, rightRange];
       const metric = parsed.metric ?? 'gross_sales';
       const current = extractMetric(metric, sourcesFor(ctx, currentRange));
       const previous = extractMetric(metric, sourcesFor(ctx, previousRange));
