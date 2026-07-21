@@ -150,10 +150,13 @@ describe('I6-0A — engine contract', () => {
 
   // ── live integration: real registry over a rich fixture ──
   it('live run: insights are severity-ordered, fingerprint-deduped and capped', () => {
-    // Critical sales decline + margin collapse + carrier concentration.
-    const baseline = windowSales(1, '07', 7, 20000, { itemOpts: { cost: 12000, carrier: 'Verizon' } });   // margin 40%
-    const current = windowSales(8, '07', 7, 8000, { itemOpts: { cost: 6400, carrier: 'Verizon' } });      // margin 20%, −60% sales
-    const r = engineWith([...baseline, ...current]).getProactiveInsights(REF);
+    // Critical sales decline + margin collapse + carrier concentration
+    // (structured June phone payments: inside the 30-day carrier window,
+    // outside both 7v7 windows — I6-0B strict population).
+    const baseline = windowSales(1, '07', 7, 20000, { itemOpts: { cost: 12000 } });   // margin 40%
+    const current = windowSales(8, '07', 7, 8000, { itemOpts: { cost: 6400 } });      // margin 20%, −60% sales
+    const carrierJune = windowSales(16, '06', 12, 5000, { itemOpts: { carrier: 'Verizon', name: 'Bill Payment', category: 'phone_payment' } });
+    const r = engineWith([...baseline, ...current, ...carrierJune]).getProactiveInsights(REF);
     expect(r.insights.length).toBeGreaterThanOrEqual(3);
     expect(r.insights.length).toBeLessThanOrEqual(MAX_INSIGHTS_PER_RUN);
     const ranks = { critical: 0, important: 1, watch: 2, info: 3 } as const;

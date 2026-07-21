@@ -18,7 +18,7 @@
 
 import type { Sale, SaleItem } from '@/store/types';
 import { normalizeCarrier } from '@/utils/normalize';
-import { KNOWN_CARRIER_NAME_RE } from '@/services/reports/phonePaymentReporting';
+import { classifyItem, isActivationSaleItem, KNOWN_CARRIER_NAME_RE } from '@/services/reports/phonePaymentReporting';
 import { isRepairCompleted, isUnlockCompleted } from '@/services/reports/computeReportMoneyStats';
 import { isWithinLocalDayRange } from '@/utils/reportRange';
 import type { LocalDayRange } from '@/utils/reportRange';
@@ -39,19 +39,58 @@ export function itemCarrier(item: SaleItem): string {
   return '';
 }
 
+// ── I6-0B: STRICT structured carrier classification ─────────
+// The legacy itemCarrier() name-prefix fallback exists for legacy phone-
+// payment records ("Verizon Bill Payment" items with no carrier field) and
+// stays the chat/insights behavior. Its substring test also classifies
+// PRODUCT names that merely start with a carrier word ("Ultra Case") — a
+// false carrier. Consumers that need a population with STRUCTURAL carrier
+// evidence (proactive carrier concentration) use the strict resolver below.
+
+/** Item kinds that represent genuine carrier activity (canonical
+ *  classifyItem vocabulary — category/type fields, never names). */
+export function isCarrierActivityItem(item: SaleItem): boolean {
+  const kind = classifyItem(item);
+  return kind === 'phone_payment' || kind === 'topup' || isActivationSaleItem(item);
+}
+
+/** STRICT canonical carrier resolution — STRUCTURED evidence only:
+ *  1. the item must be genuine carrier activity (phone payment / top-up /
+ *     activation by canonical classification) — products, accessories,
+ *     repairs, unlocks and services NEVER qualify, whatever their name;
+ *  2. the carrier must come from the explicit carrier/carrierName FIELD,
+ *     and the ENTIRE field value must be a KNOWN carrier (full-string
+ *     match against the canonical shared matcher — a substring hit like
+ *     "Ultra Case" never classifies).
+ *  item.name / description / SKU / customer data are never consulted.
+ *  Returns '' when there is no unambiguous structured carrier. */
+export function resolveStructuredCarrier(item: SaleItem): string {
+  if (!isCarrierActivityItem(item)) return '';
+  const raw = String((item as { carrier?: string }).carrier
+    || (item as { carrierName?: string }).carrierName || '').trim();
+  if (!raw) return '';
+  const m = raw.match(KNOWN_CARRIER_NAME_RE);
+  if (!m || m[0].length !== raw.length) return '';
+  return normalizeCarrier(raw);
+}
+
+export type ItemCarrierResolver = (item: SaleItem) => string;
+
 export interface CarrierScopeResult {
   sales: Sale[];
   excludedMixedSales: number;
 }
 
-/** Sales belonging EXACTLY to `carrierCanonical` (every item resolves to it). */
-export function scopeSalesByCarrier(sales: Sale[], carrierCanonical: string): CarrierScopeResult {
+/** Sales belonging EXACTLY to `carrierCanonical` (every item resolves to
+ *  it). `resolver` defaults to the legacy itemCarrier (chat/insights
+ *  behavior unchanged); strict consumers pass resolveStructuredCarrier. */
+export function scopeSalesByCarrier(sales: Sale[], carrierCanonical: string, resolver: ItemCarrierResolver = itemCarrier): CarrierScopeResult {
   const out: Sale[] = [];
   let excludedMixed = 0;
   for (const s of sales) {
     const items = s.items || [];
     if (items.length === 0) continue;
-    const carriers = new Set(items.map(itemCarrier));
+    const carriers = new Set(items.map(resolver));
     if (carriers.size === 1 && carriers.has(carrierCanonical)) {
       out.push(s);
     } else if (carriers.has(carrierCanonical)) {
@@ -62,12 +101,12 @@ export function scopeSalesByCarrier(sales: Sale[], carrierCanonical: string): Ca
 }
 
 /** Every distinct canonical carrier present as a PURE single-carrier sale. */
-export function discoverCarriers(sales: Sale[]): string[] {
+export function discoverCarriers(sales: Sale[], resolver: ItemCarrierResolver = itemCarrier): string[] {
   const found = new Set<string>();
   for (const s of sales) {
     const items = s.items || [];
     if (items.length === 0) continue;
-    const carriers = new Set(items.map(itemCarrier));
+    const carriers = new Set(items.map(resolver));
     if (carriers.size === 1) {
       const only = [...carriers][0];
       if (only) found.add(only);
@@ -119,12 +158,12 @@ export function employeeSnapshot(base: CanonicalMoneySnapshot, employee: { id?: 
  *  but whose items do not ALL resolve to that single carrier (two carriers,
  *  or carrier + unattributed accessory). These make per-carrier money
  *  inexact — the executor refuses rather than excluding or allocating. */
-export function countCarrierImpureSales(sales: Sale[]): number {
+export function countCarrierImpureSales(sales: Sale[], resolver: ItemCarrierResolver = itemCarrier): number {
   let impure = 0;
   for (const s of sales) {
     const items = s.items || [];
     if (items.length === 0) continue;
-    const carriers = new Set(items.map(itemCarrier));
+    const carriers = new Set(items.map(resolver));
     const named = [...carriers].filter((c) => c !== '');
     if (named.length >= 1 && carriers.size > 1) impure++;
   }

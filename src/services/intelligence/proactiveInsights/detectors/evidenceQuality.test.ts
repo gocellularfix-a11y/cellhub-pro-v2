@@ -15,6 +15,7 @@ import {
   EXCESSIVE_UNKNOWN_CLASSIFICATION_SHARE, LOW_COST_COVERAGE, MIN_CUSTOMER_ATTRIBUTION_SHARE,
 } from '../thresholds';
 import { resolveAnalysisWindows } from '../analysisWindow';
+import { customerAttributionShare } from '../evidenceMeasures';
 import type { EvidenceQualityEvidence } from '../types';
 import { REF, engineWith, windowSales, sale, item, contextOf } from '../testHarness';
 
@@ -58,27 +59,52 @@ describe('I6-0A — evidence quality detector', () => {
       .evidence as EvidenceQualityEvidence;
     expect(ev.earliestActivityYMD).toBe('2026-07-08');       // after baseline start 07-01
   });
-  it('EXCESSIVE UNKNOWN CLASSIFICATION: carrier-impure share ≥ threshold is a cause', () => {
-    const pure = windowSales(8, '07', 7, 5000, { itemOpts: { carrier: 'Verizon', name: 'Bill Payment' } });
+  it('EXCESSIVE UNKNOWN CLASSIFICATION: ambiguous CARRIER-ACTIVITY share ≥ threshold is a cause', () => {
+    const pure = windowSales(8, '07', 7, 5000, { itemOpts: { carrier: 'Verizon', name: 'Bill Payment', category: 'phone_payment' } });
     const mixed = Array.from({ length: 3 }, (_, i) =>
       sale(`2026-07-${String(9 + i).padStart(2, '0')}T11:00:00`, 7000, {
-        items: [item(5000, { carrier: 'Verizon', name: 'Bill Payment' }), item(2000, { name: 'Case' })],
+        items: [item(5000, { carrier: 'Verizon', name: 'Bill Payment', category: 'phone_payment' }), item(2000, { name: 'Case' })],
       }));
-    const r = run([...healthy(), ...pure, ...mixed]);        // 10 touching, 3 impure = 0.3
+    const r = run([...healthy(), ...pure, ...mixed]);        // 10 touching, 3 ambiguous = 0.3
     expect(causesOf(r)).toContain('excessive_unknown_classification');
     const ev = r.insights.find((x) => (x.evidence as EvidenceQualityEvidence).cause === 'excessive_unknown_classification')!
       .evidence as EvidenceQualityEvidence;
     expect(ev.measuredRatio).toBe(0.3);
     expect(ev.ratioThreshold).toBe(EXCESSIVE_UNKNOWN_CLASSIFICATION_SHARE);
   });
-  it('MISSING CUSTOMER ATTRIBUTION: unattributed sales below the share floor are a cause', () => {
-    const r = run([...windowSales(1, '07', 5, 4000, { customerId: null }), ...windowSales(8, '07', 7, 4400, { customerId: null })]);
-    expect(causesOf(r)).toContain('missing_customer_attribution');
-    const ev = r.insights.find((x) => (x.evidence as EvidenceQualityEvidence).cause === 'missing_customer_attribution')!
+  it('I6-0B: NORMAL PRODUCTS are outside the carrier population — never "unknown carriers"', () => {
+    // Pre-I6-0B these product names were carrier-touching via the legacy
+    // name fallback and could explode into data-quality noise.
+    const products = [
+      'Ultra Case', 'Ultra Screen Protector', 'Verizon Case', 'AT&T Charger',
+      'Cricket Tempered Glass', 'Simple Mobile Cable', 'H2O Bottle', 'Page Plus Accessory',
+    ].map((name, i) => sale(`2026-07-${String(8 + (i % 7)).padStart(2, '0')}T10:00:00`, 3000, { items: [item(3000, { name })] }));
+    const r = run([...healthy(), ...products]);
+    expect(causesOf(r)).not.toContain('excessive_unknown_classification');
+  });
+  it('I6-0B: carrier-activity WITHOUT a structured carrier IS unknown classification', () => {
+    // 8 structured + 2 structurally-unknown phone payments → share 0.2.
+    const pure = windowSales(8, '07', 8, 5000, { itemOpts: { carrier: 'Verizon', name: 'Bill Payment', category: 'phone_payment' } });
+    const unknown = [
+      sale('2026-07-09T12:00:00', 5000, { items: [item(5000, { name: 'Bill Payment', category: 'phone_payment' })] }),          // no field
+      sale('2026-07-10T12:00:00', 5000, { items: [item(5000, { carrier: 'BansheeTel', category: 'phone_payment' })] }),          // unknown value
+    ];
+    const r = run([...healthy(), ...pure, ...unknown]);
+    expect(causesOf(r)).toContain('excessive_unknown_classification');
+    const ev = r.insights.find((x) => (x.evidence as EvidenceQualityEvidence).cause === 'excessive_unknown_classification')!
       .evidence as EvidenceQualityEvidence;
-    expect(ev.measuredRatio).toBe(0);
-    expect(ev.ratioThreshold).toBe(MIN_CUSTOMER_ATTRIBUTION_SHARE);
-    expect(r.insights.find((x) => (x.evidence as EvidenceQualityEvidence).cause === 'missing_customer_attribution')!.severity).toBe('info');
+    expect(ev.measuredRatio).toBe(0.2);
+  });
+  it('MISSING CUSTOMER ATTRIBUTION is measurement-only: NEVER emitted while no active detector requires it', () => {
+    // Fully unattributed data — the measurement sees share 0…
+    const sales = [...windowSales(1, '07', 5, 4000, { customerId: null }), ...windowSales(8, '07', 7, 4400, { customerId: null })];
+    expect(customerAttributionShare(sales as never, resolveAnalysisWindows(REF).current.range)).toBe(0);
+    // …but no cause is emitted (future debt is not a current business problem).
+    const r = run(sales);
+    expect(causesOf(r)).not.toContain('missing_customer_attribution');
+    expect(r.insights).toHaveLength(0);
+    // The vocabulary and threshold remain reserved for future detectors.
+    expect(MIN_CUSTOMER_ATTRIBUTION_SHARE).toBeGreaterThan(0);
   });
   it('STALE ACTIVITY: history exists but nothing recent; ABSENT ACTIVITY supersedes stale', () => {
     // Stale: current window has sales only on 07-08/07-09 (> 3 days before REF).

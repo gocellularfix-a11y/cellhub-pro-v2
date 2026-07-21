@@ -1,11 +1,17 @@
 // ============================================================
 // I6-0A — Detector 3: carrier concentration (30 full local days).
 //
-// The eligible population is REAL carrier activity, classified by the
-// CANONICAL carrier machinery reused verbatim from the I3-2 executor
-// (query/scopeBusinessQueryData.ts): itemCarrier → KNOWN_CARRIER_NAME_RE
-// only, so products, brands, repairs, unlocks, services, customer names,
-// phone numbers or any incidental string can never classify as a carrier.
+// The eligible population is REAL carrier activity with STRUCTURAL
+// evidence (I6-0B hardening): the shared strict resolver
+// resolveStructuredCarrier (query/scopeBusinessQueryData.ts) — canonical
+// carrier-activity classification (phone payment / top-up / activation by
+// classifyItem/isActivationSaleItem) PLUS an explicit carrier FIELD whose
+// entire value is a known carrier. Item names, descriptions, SKUs,
+// customer names, phone numbers, brands, products ("Ultra Case"), repairs,
+// unlocks and services can never classify — free text alone is never
+// carrier evidence. Legacy name-only phone payments are conservatively
+// OUTSIDE this population (chat/insights keep the legacy itemCarrier
+// fallback — behavior there is unchanged).
 // Exact-or-exclude: only PURE single-carrier sales are eligible;
 // carrier-impure sales are EXCLUDED and counted in evidence.
 //
@@ -20,7 +26,7 @@
 // ============================================================
 
 import {
-  countCarrierImpureSales, discoverCarriers, scopeSalesByCarrier, snapshotWithSales,
+  countCarrierImpureSales, discoverCarriers, resolveStructuredCarrier, scopeSalesByCarrier, snapshotWithSales,
 } from '../../query/scopeBusinessQueryData';
 import type {
   CarrierConcentrationEvidence, CarrierShareRow, DetectorRunResult, DiagnosticReason,
@@ -60,13 +66,13 @@ function run(context: ProactiveInsightContext): DetectorRunResult {
   // Canonical eligible activity per carrier: pure single-carrier sales →
   // canonical projection → txCount (voided/refund policy stays canonical).
   const rows: CarrierShareRow[] = [];
-  for (const carrier of discoverCarriers(windowSales)) {
-    const scoped = snapshotWithSales(context.query.snapshot, scopeSalesByCarrier(windowSales, carrier).sales);
+  for (const carrier of discoverCarriers(windowSales, resolveStructuredCarrier)) {
+    const scoped = snapshotWithSales(context.query.snapshot, scopeSalesByCarrier(windowSales, carrier, resolveStructuredCarrier).sales);
     const txCount = context.query.computeForScopedSnapshot(scoped, window.range).txCount;
     if (txCount > 0) rows.push({ carrier, transactionCount: txCount });
   }
   rows.sort((a, b) => b.transactionCount - a.transactionCount || a.carrier.localeCompare(b.carrier));
-  const excludedMixedSales = countCarrierImpureSales(windowSales);
+  const excludedMixedSales = countCarrierImpureSales(windowSales, resolveStructuredCarrier);
 
   const noActivity = rows.length === 0;
   const totalEligible = rows.reduce((sum, r) => sum + r.transactionCount, 0);

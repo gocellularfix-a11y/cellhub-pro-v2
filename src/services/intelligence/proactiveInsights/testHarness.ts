@@ -20,19 +20,22 @@ export interface ItemOpts {
   name?: string;
   cost?: number;
   carrier?: string;
+  category?: string;
+  isActivation?: boolean;
 }
 
 export function item(price: number, opts: ItemOpts = {}): SaleItem {
   return {
     id: `it-${++seq}`,
     name: opts.name ?? 'Case',
-    category: 'accessory' as SaleItem['category'],
+    category: (opts.category ?? 'accessory') as SaleItem['category'],
     price,
     qty: 1,
     cost: opts.cost ?? Math.round(price / 2),
     cbeEligible: false,
     taxable: true,
     ...(opts.carrier ? { carrier: opts.carrier } : {}),
+    ...(opts.isActivation ? { isActivation: true } : {}),
   } as SaleItem;
 }
 

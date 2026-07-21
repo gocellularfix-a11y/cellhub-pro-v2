@@ -22,9 +22,9 @@ import {
 } from '../thresholds';
 import { CONFIDENCE_BANDS } from '../confidence';
 import { buildFingerprint } from '../fingerprint';
-import { costCoverageOf, customerAttributionShare, salesInRange, scanActivityDates } from '../evidenceMeasures';
+import { costCoverageOf, salesInRange, scanActivityDates } from '../evidenceMeasures';
 import { resolveTrailingWindow } from '../analysisWindow';
-import { countCarrierImpureSales, itemCarrier } from '../../query/scopeBusinessQueryData';
+import { isCarrierActivityItem, resolveStructuredCarrier } from '../../query/scopeBusinessQueryData';
 
 const APPLIED = {
   lowCostCoverage: LOW_COST_COVERAGE,
@@ -89,22 +89,35 @@ function run(context: ProactiveInsightContext): DetectorRunResult {
     causes.set('insufficient_history', { measuredRatio: null, ratioThreshold: null });
   }
 
-  // 4) Excessive unknown/ambiguous carrier classification (canonical
-  //    classifier reused — impure share among carrier-touching sales).
+  // 4) Excessive unknown/ambiguous carrier classification (I6-0B strict
+  //    ownership): the population is CARRIER-ACTIVITY sales only — a sale
+  //    with at least one canonical carrier-activity item (phone payment /
+  //    top-up / activation). Normal products/accessories are simply OUTSIDE
+  //    the carrier population, never "unknown carriers". Unclassifiable =
+  //    a touching sale that does not resolve to exactly ONE structured
+  //    carrier across all its items (no structured carrier, an unknown
+  //    carrier value, several carriers, or carrier + unattributed lines —
+  //    the same exactness the concentration population requires).
   const sales30 = salesInRange(allSales, context.window30.range);
-  const carrierTouching = sales30.filter((s) => (s.items || []).some((it) => itemCarrier(it) !== '')).length;
-  if (carrierTouching > 0) {
-    const unknownShare = round3(countCarrierImpureSales(sales30) / carrierTouching);
+  const touching = sales30.filter((s) => (s.items || []).some(isCarrierActivityItem));
+  if (touching.length > 0) {
+    const unclassifiable = touching.filter((s) => {
+      const carriers = new Set((s.items || []).map(resolveStructuredCarrier));
+      const named = [...carriers].filter((c) => c !== '');
+      return named.length !== 1 || carriers.size > 1;
+    }).length;
+    const unknownShare = round3(unclassifiable / touching.length);
     if (unknownShare >= EXCESSIVE_UNKNOWN_CLASSIFICATION_SHARE) {
       causes.set('excessive_unknown_classification', { measuredRatio: unknownShare, ratioThreshold: EXCESSIVE_UNKNOWN_CLASSIFICATION_SHARE });
     }
   }
 
-  // 5) Missing customer attribution (customer-scoped metrics require it).
-  const attribution = customerAttributionShare(allSales, windows.current.range);
-  if (attribution !== null && attribution < MIN_CUSTOMER_ATTRIBUTION_SHARE) {
-    causes.set('missing_customer_attribution', { measuredRatio: attribution, ratioThreshold: MIN_CUSTOMER_ATTRIBUTION_SHARE });
-  }
+  // 5) Missing customer attribution — MEASUREMENT-ONLY for now (I6-0B): no
+  //    active detector/metric consumes customer attribution yet, so the
+  //    cause is NEVER emitted (future debt is not a current business
+  //    problem). The helper (evidenceMeasures.customerAttributionShare),
+  //    the cause vocabulary and its threshold stay in place; activate this
+  //    block when a registered detector actually requires attribution.
 
   const insights: ProactiveInsight[] = [...causes.entries()].map(([cause, m]) => {
     const evidence: EvidenceQualityEvidence = {
