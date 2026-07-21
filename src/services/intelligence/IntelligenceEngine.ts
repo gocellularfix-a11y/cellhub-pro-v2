@@ -81,6 +81,8 @@ import { buildInsightCards } from './insights/insightCards';
 import { suggestQuestions } from './insights/suggestedQuestions';
 // CELLHUB-INTELLIGENCE-I4: Business Manager layer.
 import { buildBusinessBrief } from './manager/businessBriefBuilder';
+// CELLHUB-INTELLIGENCE-I6-0: proactive insight foundation (read-only detectors).
+import { runProactiveInsightDetectors } from './proactiveInsights/proactiveInsightEngine';
 import { buildManagerDashboard } from './manager/managerDashboard';
 import { resolveBusinessDateRange as resolveBusinessDateRangeForInsightsImpl } from './query/resolveBusinessDateRange';
 import type { ResolvedBusinessDateRange } from './query/types';
@@ -799,6 +801,15 @@ export class IntelligenceEngine {
       suggestions: suggestQuestions(findings, this.config.lang),
       generatedForRange: { startYMD: range.startYMD, endYMD: range.endYMD },
     };
+  }
+
+  // CELLHUB-INTELLIGENCE-I6-0: Proactive Insight foundation — deterministic
+  // detectors over the SAME canonical store-scoped context the structured
+  // executor uses. Read-only, on-demand, no persistence, no notifications,
+  // no background work. Future presenter/Manager/alert rounds consume this.
+  getProactiveInsights(referenceDate?: Date): import('./proactiveInsights/types').ProactiveInsightsResult {
+    const ctx = this.getStructuredQueryContext(referenceDate);
+    return runProactiveInsightDetectors(ctx);
   }
 
   // CELLHUB-INTELLIGENCE-I4: Business Manager APIs — deterministic
