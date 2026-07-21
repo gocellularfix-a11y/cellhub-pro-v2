@@ -34,6 +34,10 @@ import BusinessHealthGrid from './BusinessHealthGrid';
 import DataConfidenceNotice from './DataConfidenceNotice';
 import ExecutiveSummary from './ExecutiveSummary';
 import BusinessBriefSection from './BusinessBriefSection';
+// CELLHUB-INTELLIGENCE-I6-C2: additive proactive "Today's Intelligence"
+// section — coexists with the approved I4 sections below (nothing removed).
+import ProactiveInsightsSection from '../proactive/ProactiveInsightsSection';
+import type { PresentedInsights } from '@/services/intelligence/presentation';
 
 export default function BusinessManagerPage() {
   const { state } = useApp();
@@ -84,6 +88,22 @@ export default function BusinessManagerPage() {
     sales, customers, inventory, repairs, specialOrders, unlocks, layaways,
     customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns]);
 
+  // CELLHUB-INTELLIGENCE-I6-C2: proactive presented intelligence from the
+  // SAME engine instance (no second engine, no duplicated presentation) —
+  // read-only, error-safe, independent of the I4 evaluation above.
+  const proactive = useMemo<PresentedInsights | null>(() => {
+    try {
+      return engine.getPresentedInsights(refDate);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[intelligence] proactive presentation failed:', err);
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, refDate, lang, refreshSeq,
+    sales, customers, inventory, repairs, specialOrders, unlocks, layaways,
+    customerReturns, expenses, employees, appointments, storeCreditLedger, settings, vendorReturns]);
+
   const handleRefresh = () => {
     engine.invalidateCache();
     setRefDate(new Date());
@@ -131,6 +151,11 @@ export default function BusinessManagerPage() {
         </div>
         {headerRight}
       </div>
+
+      {/* CELLHUB-INTELLIGENCE-I6-C2: proactive "Today's Intelligence" — shown
+          above the approved I4 sections. Independent pipeline; renders its own
+          honest empty state and never blocks the I4 content below. */}
+      <ProactiveInsightsSection presented={proactive} lang={lang} />
 
       {!result.ok ? (
         <div style={CARD}>

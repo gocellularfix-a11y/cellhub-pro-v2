@@ -79,6 +79,10 @@ const StatusPushMount = lazy(() => import('@/components/companion/StatusPushMoun
 // it never surfaced unless the cashier opened that tab. Module-level dedup
 // inside the component keeps the IntelligenceModule mount from doubling up.
 const PaymentVerificationNudge = lazy(() => import('@/components/PaymentVerificationNudge'));
+// CELLHUB-INTELLIGENCE-I6-C2: proactive Recommendation Bubble — calm bottom-
+// LEFT entry point into Business Manager. Admin-gated mount (business
+// financials); own corner so it never overlaps the operator orb / cart pill.
+const RecommendationBubble = lazy(() => import('@/modules/intelligence/proactive/RecommendationBubble'));
 
 // ── Admin lock screen ─────────────────────────────────────
 function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: string }) {
@@ -532,6 +536,16 @@ export default function AppShell() {
       <Suspense fallback={null}>
         <PaymentVerificationNudge />
       </Suspense>
+
+      {/* CELLHUB-INTELLIGENCE-I6-C2: Recommendation Bubble — single instance,
+          admin-only (proactive business intelligence). Anchored bottom-left,
+          away from the operator orb + cart pill; hides itself on engine error
+          or when dismissed for the session. Never blocks POS/scanner/dialogs. */}
+      {isAdminMode && (
+        <Suspense fallback={null}>
+          <RecommendationBubble />
+        </Suspense>
+      )}
     </div>
   );
 }

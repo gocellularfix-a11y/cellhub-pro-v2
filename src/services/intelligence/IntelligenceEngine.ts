@@ -83,6 +83,8 @@ import { suggestQuestions } from './insights/suggestedQuestions';
 import { buildBusinessBrief } from './manager/businessBriefBuilder';
 // CELLHUB-INTELLIGENCE-I6-0: proactive insight foundation (read-only detectors).
 import { runProactiveInsightDetectors } from './proactiveInsights/proactiveInsightEngine';
+// CELLHUB-INTELLIGENCE-I6-C1: unified presentation layer (owner-facing models).
+import { presentProactiveInsights } from './presentation';
 import { buildManagerDashboard } from './manager/managerDashboard';
 import { resolveBusinessDateRange as resolveBusinessDateRangeForInsightsImpl } from './query/resolveBusinessDateRange';
 import type { ResolvedBusinessDateRange } from './query/types';
@@ -810,6 +812,17 @@ export class IntelligenceEngine {
   getProactiveInsights(referenceDate?: Date): import('./proactiveInsights/types').ProactiveInsightsResult {
     const ctx = this.getStructuredQueryContext(referenceDate);
     return runProactiveInsightDetectors(ctx);
+  }
+
+  // CELLHUB-INTELLIGENCE-I6-C2: canonical presented-intelligence entry. The
+  // SINGLE place raw proactive insights become owner-facing, ready-to-render
+  // models — every visible consumer (Business Manager, Recommendation Bubble,
+  // future chat/notifications) calls THIS, never the presenter or detectors
+  // directly, so wording/ordering/grouping/localization/suppression stay
+  // single-sourced. Read-only, deterministic, store-scoped, language-aware
+  // (uses the engine's configured language). No UI, no persistence, no network.
+  getPresentedInsights(referenceDate?: Date): import('./presentation/types').PresentedInsights {
+    return presentProactiveInsights(this.getProactiveInsights(referenceDate), this.config.lang);
   }
 
   // CELLHUB-INTELLIGENCE-I4: Business Manager APIs — deterministic
