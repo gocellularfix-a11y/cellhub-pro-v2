@@ -32,6 +32,16 @@ export interface ExternalPaymentMetadata {
   source: string;
   /** Optional runner session identifier for deduplication. */
   runnerSessionId?: string;
+  /** P0-C1: customer this payment belongs to (was read untyped before). */
+  customerId?: string;
+  /** P0-C1: the resolved portal that was actually launched (parity + resume). */
+  portalId?: string;
+  /** P0-C1: the launched portal URL (frozen at launch, for resume). */
+  portalUrl?: string;
+  /** P0-C1: deterministic idempotency key for ONE attempt — see
+   *  paymentAttemptKey(). Dedupes duplicate launches/returns for the same
+   *  still-pending attempt. */
+  dedupeKey?: string;
 }
 
 // ── Workflow record ───────────────────────────────────────────────────────────

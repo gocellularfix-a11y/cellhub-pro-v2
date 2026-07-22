@@ -798,9 +798,12 @@ export default function FloatingOperatorBubble() {
 
   // ── Workflow continuity derived state + handlers ───────────────────────────
 
-  const pendingExternalPayment = pendingWorkflows.find(
-    (w) => w.type === 'external_payment' && w.status === 'pending',
-  ) ?? null;
+  // P0-C1: the resume card follows the MOST RECENTLY STARTED pending external
+  // payment (the attempt the cashier just launched) — never the oldest
+  // lingering record, so a stale older workflow can't hijack the card.
+  const pendingExternalPayment = pendingWorkflows
+    .filter((w) => w.type === 'external_payment' && w.status === 'pending')
+    .reduce<PendingWorkflow | null>((latest, w) => (!latest || w.startedAt > latest.startedAt ? w : latest), null);
 
   // Rich resume context — rebuilt only when pendingWorkflows changes (not on every tick).
   const resumeCtx = useMemo<WorkflowResumeContext | null>(
@@ -810,14 +813,21 @@ export default function FloatingOperatorBubble() {
     [pendingWorkflows],
   );
 
-  // Navigate to Phone Payments and mark the workflow as resumed.
+  // P0-C1: Resume reopens the REAL Phone Services context in POS. The old
+  // target tab ('phone-payments') has no AppShell route — it rendered a blank
+  // screen. We now reuse the proven scanner-open path: navigate to POS and set
+  // the pending phone-payment customer, which auto-opens PhonePaymentModal
+  // pre-filled with that customer (POSModule effect). No new store action, no
+  // DOM hacks, no timers.
   const handleResumeWorkflow = useCallback(() => {
     if (!pendingExternalPayment) return;
     resumeWorkflow(pendingExternalPayment.id);
     setActiveWorkflowStep(pendingExternalPayment.id, 'confirm_payment_return');
     resetReturnCooldown();
     setReturnDetected(false);
-    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'phone-payments' });
+    dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
+    const customerId = (pendingExternalPayment.metadata as { customerId?: string }).customerId;
+    if (customerId) dispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: customerId });
     setIsOverlayOpen(false);
   }, [pendingExternalPayment, dispatch]);
 

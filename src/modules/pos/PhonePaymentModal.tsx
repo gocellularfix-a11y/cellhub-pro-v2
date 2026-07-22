@@ -38,13 +38,17 @@ import { matchesSearch } from '@/utils/fuzzyMatch';
 import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
-import { startWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
-import { getActivePortals, getDefaultPortalId, type PaymentPortal } from '@/config/paymentPortals';
+// P0-C1: idempotent, launch-first workflow creation (replaces startWorkflow here).
+import { beginExternalPhonePayment } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { getActivePortals, type PaymentPortal } from '@/config/paymentPortals';
+// P0-C1: canonical portal resolver — displayed portal == launched portal.
+import { resolvePaymentPortal, runExternalPaymentLaunch, paymentAttemptKey } from './phonePaymentPortal';
 import { buildCustomerTimeline } from '@/services/intelligence/customerTimeline/customerTimelineEngine';
 import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
 // R-CUSTOMER-LINE-PAYMENTS-V1: per-line monthly amount resolution.
-import { getPaymentDollarsForPhone } from '@/services/customers/linePayments';
+// P0-C1: getCarrierForPhone — per-line saved carrier authority for Known Lines.
+import { getPaymentDollarsForPhone, getCarrierForPhone } from '@/services/customers/linePayments';
 
 // Shared sanitization for phoneNumber — used in onChange, validation,
 // and CartItem construction. Defense in depth: trust nothing that
@@ -273,11 +277,15 @@ export default function PhonePaymentModal({
   // ── Active payment portals (from settings, fallback to defaults) ──
   const PORTALS = useMemo<PaymentPortal[]>(() => getActivePortals(settings), [settings]);
 
-  // Auto-highlight the portal that matches the selected carrier
+  // P0-C1: the displayed portal ALWAYS reflects the canonical resolution for
+  // the current carrier — the same resolver the launch handlers use — so the
+  // shown portal can never diverge from the launched portal. Also CLEARS a
+  // stale highlight when the carrier has no configured portal (previously the
+  // old highlight lingered). The portal grid is read-only (carrier-derived).
   useEffect(() => {
-    if (!carrier) return;
-    const defaultPortal = getDefaultPortalId(carrier, PORTALS, settings.carrierPortalUrls || {});
-    if (defaultPortal) setPortal(defaultPortal);
+    if (!carrier) { setPortal(''); return; }
+    const resolved = resolvePaymentPortal(carrier, PORTALS, settings.carrierPortalUrls || {});
+    setPortal(resolved?.portalId || '');
   }, [carrier, PORTALS, settings.carrierPortalUrls]);
 
   // R-SIM-INTAKE: auto-populate of spiff was removed. Spiff is now opt-in via
@@ -531,16 +539,9 @@ export default function PhonePaymentModal({
     if (mp) setAmount(mp);
     setSelectedKnownLines({});
     setPaidKnownLines({});
-    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the Operator bubble.
-    const phonesArr = (c as { phones?: string[] }).phones;
-    const lineCount = Array.isArray(phonesArr) && phonesArr.length > 0
-      ? phonesArr.length
-      : (c.phone ? 1 : 0);
-    emitOperatorActivity('phone.payment.customer_selected', {
-      customerId: c.id,
-      phone: cleanPhone,
-      lineCount,
-    });
+    // P0-C1: do NOT wake the Operator bubble on customer selection. Selecting a
+    // customer is NOT a started payment; the payment-workflow bubble must only
+    // appear after an explicit external portal launch (handlePortalForKnownLine).
   };
 
   // ── R-PHONE-AUTOFILL: typed-phone auto-fill ──────────────────────────
@@ -695,15 +696,11 @@ export default function PhonePaymentModal({
     if (phoneNumber.length !== 10) return;
     const t = setTimeout(() => {
       lookupByPhone(phoneNumber);
-      // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: wake the bubble after the
-      // debounce settles. Helper resolves customer + history from app
-      // state without us reading lookupByPhone's setState side-effects.
-      emitOperatorActivity('phone.payment.number_entered', {
-        phone: phoneNumber,
-      });
+      // P0-C1: do NOT wake the Operator bubble when a phone number is typed.
+      // Typing a number is NOT a started payment. Autofill lookup still runs.
     }, 500);
     return () => clearTimeout(t);
-  }, [phoneNumber, lookupByPhone, emitOperatorActivity]);
+  }, [phoneNumber, lookupByPhone]);
 
   // R-PHONE-FAMILY-MULTICUST: add a customer's line to the multi-line rows
   // without replacing the previously selected customer. Fills the first
@@ -823,15 +820,10 @@ export default function PhonePaymentModal({
     // selected phone numbers and forcing the cashier into the empty manual
     // multi-line UI. Per-line amount inputs in the panel (below) now let
     // multi-select work in place — no mode switch required.
-    // R-OPERATOR-LIVE-BUBBLE-OVERLAY-V2 fix: only emit on add path.
-    if (didAdd) {
-      const cents = Math.round((parseFloat(amtStr) || 0) * 100);
-      emitOperatorActivity('phone.payment.known_line_selected', {
-        customerId: selectedCustomer?.id,
-        phone: norm,
-        amountCents: cents > 0 ? cents : undefined,
-      });
-    }
+    // P0-C1: do NOT wake the Operator bubble when a known line is selected.
+    // Checking a line is NOT a started payment; the payment-workflow bubble
+    // must only appear after an explicit external portal launch.
+    void didAdd;
   };
 
   const updateKnownLineAmount = (norm: string, val: string) => {
@@ -1271,9 +1263,13 @@ export default function PhonePaymentModal({
     const newItems = buildCartItems();
     if (newItems.length === 0) return;
 
-    const url = settings.carrierPortalUrls?.[carrier];
+    // P0-C1: resolve URL through the canonical resolver (same object that
+    // drives the displayed portal) so display and launch always agree; also
+    // fixes the historic raw-vs-normalized carrier-key mismatch.
+    const resolved = resolvePaymentPortal(carrier, PORTALS, settings.carrierPortalUrls || {});
+    const url = resolved?.url || '';
     if (url) {
-      const c = normalizeCarrier(carrier).toLowerCase();
+      const c = (resolved?.carrier || carrier).toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
         ? 'qpayWindow' : 'externalPortalWindow';
       openExternalIfOnline(url, winName, 'noopener,noreferrer');
@@ -1376,8 +1372,9 @@ export default function PhonePaymentModal({
       commissionRate: commRate,
     };
 
-    // Open this carrier's portal (if URL configured).
-    const url = settings.carrierPortalUrls?.[normCarrier];
+    // P0-C1: resolve THIS line's own carrier through the canonical resolver.
+    const resolved = resolvePaymentPortal(line.carrier, PORTALS, settings.carrierPortalUrls || {});
+    const url = resolved?.url || '';
     if (url) {
       const c = normCarrier.toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
@@ -1435,8 +1432,12 @@ export default function PhonePaymentModal({
       toast(t('phonePay.errInvalidAmount'), 'error');
       return false;
     }
-    // Carrier required (global state — known-lines flow uses the global pick).
-    if (!carrier) {
+    // P0-C1: carrier is PER-LINE — the line's own saved carrier
+    // (customer.carriers[index]) is authoritative; the global pick is only a
+    // fallback for lines with no saved carrier. No global carrier overwrites
+    // every row anymore.
+    const lineCarrier = getCarrierForPhone(selectedCustomer, norm) || carrier;
+    if (!lineCarrier) {
       toast(t('phonePay.errPickCarrierLine'), 'error');
       return false;
     }
@@ -1462,7 +1463,11 @@ export default function PhonePaymentModal({
       return true;
     }
 
-    const normCarrier = normalizeCarrier(carrier);
+    const normCarrier = normalizeCarrier(lineCarrier);
+    // P0-C1: stamp the resolved portal so it survives into the sale/history
+    // (CartItem.portal → SaleItem.portal). Closes part of the audit's
+    // "portal never persisted" gap. Carrier still drives the resolution.
+    const resolvedPortal = resolvePaymentPortal(lineCarrier, PORTALS, settings.carrierPortalUrls || {});
     const customerNote = `${firstName} ${lastName}`.trim();
     const priceCents = Math.round(amt * 100);
     const commRate = (settings.carrierCommissions?.[normCarrier]
@@ -1482,6 +1487,7 @@ export default function PhonePaymentModal({
       phoneNumber: norm,
       notes: customerNote,
       commissionRate: commRate,
+      ...(resolvedPortal?.portalId ? { portal: resolvedPortal.portalId } : {}),
     };
 
     const nextCart = [...cartRef.current, newItem];
@@ -1537,52 +1543,79 @@ export default function PhonePaymentModal({
   // Spec called this getCarrierPortalUrl(carrier, phone); adapted to the
   // existing carrierPortalUrls map (no helper of that name exists).
   const handlePortalForKnownLine = (phone: string) => {
-    if (!carrier) {
-      toast(t('phonePay.errPickCarrierLine'), 'error');
-      return;
-    }
-    const normCarrier = normalizeCarrier(carrier);
-    const url = settings.carrierPortalUrls?.[normCarrier];
-    if (!url) return;
-    window.open(url, '_blank');
-    // R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: record richer workflow context so
-    // Intelligence can surface a resume card when the cashier returns.
-    // NEVER auto-confirms — human click required.
     const normPhone = normalizePhone(phone);
+    // P0-C1: PER-LINE carrier authority — this line's own saved carrier
+    // (customer.carriers[index]), global pick only as fallback. Displayed and
+    // launched portal both come from ONE canonical resolution of that carrier.
+    const lineCarrier = getCarrierForPhone(selectedCustomer, normPhone) || carrier;
+    const resolved = resolvePaymentPortal(lineCarrier, PORTALS, settings.carrierPortalUrls || {});
     const amtCents = Math.round(parseFloat(selectedKnownLines[normPhone] || '0') * 100);
     const selectedNorms = knownLines.filter((n) => selectedKnownLines[n] !== undefined);
     const lineIndex = selectedNorms.findIndex((n) => n === normPhone);
     const totalLines = selectedNorms.length;
-    const now = Date.now();
-    startWorkflow(
-      'external_payment',
-      {
-        phone: normPhone,
-        carrier: normCarrier,
-        amountCents: amtCents,
-        activeLine: normPhone,
-        lineIndex,
-        totalLines,
-        source: 'phone_payments',
+
+    // P0-C1: LAUNCH-FIRST. Open the portal, and ONLY on a successful launch
+    // request create/reuse ONE idempotent pending workflow (dedupeKey). A
+    // failed launch (offline / no URL / no carrier) creates NO workflow.
+    // Uses openExternalIfOnline (offline guard) instead of the old raw
+    // window.open that bypassed it.
+    const launched = runExternalPaymentLaunch({
+      resolved,
+      open: (u) => {
+        const c = (resolved?.carrier || lineCarrier).toLowerCase();
+        const winName = (c.includes('att') || u.includes('qpay') || u.includes('myrtpay'))
+          ? 'qpayWindow' : 'externalPortalWindow';
+        return openExternalIfOnline(u, winName, 'noopener,noreferrer');
       },
-      {
-        steps: [
-          { id: 'external_portal_opened',  label: 'Portal opened',    status: 'completed', createdAt: now, updatedAt: now },
-          { id: 'confirm_payment_return',  label: 'Confirm payment',  status: 'active',    createdAt: now, updatedAt: now },
-        ],
+      begin: (portalUrl) => {
+        const now = Date.now();
+        const dedupeKey = paymentAttemptKey({
+          customerId: selectedCustomer?.id, phoneNumber: normPhone,
+          amountCents: amtCents, portalId: resolved?.portalId || '',
+        });
+        // R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: rich, FROZEN workflow context
+        // (phone/carrier/amount/portal/customer) so the resume card shows the
+        // exact attempt. NEVER auto-confirms — human click required.
+        beginExternalPhonePayment(
+          {
+            phone: normPhone,
+            carrier: resolved?.carrier || normalizeCarrier(lineCarrier),
+            amountCents: amtCents,
+            activeLine: normPhone,
+            lineIndex,
+            totalLines,
+            source: 'phone_payments',
+            customerId: selectedCustomer?.id,
+            portalId: resolved?.portalId || '',
+            portalUrl,
+            dedupeKey,
+          },
+          {
+            steps: [
+              { id: 'external_portal_opened',  label: 'Portal opened',    status: 'completed', createdAt: now, updatedAt: now },
+              { id: 'confirm_payment_return',  label: 'Confirm payment',  status: 'active',    createdAt: now, updatedAt: now },
+            ],
+          },
+        );
       },
-    );
+      onError: (reason) => {
+        if (reason === 'no_carrier') toast(t('phonePay.errPickCarrierLine'), 'error');
+        else if (reason === 'launch_failed') toast(
+          lang === 'es' ? 'No se pudo abrir el portal de pago.'
+            : lang === 'pt' ? 'Não foi possível abrir o portal de pagamento.'
+            : 'Could not open the payment portal.',
+          'error',
+        );
+        // no_portal_url: no configured URL for this carrier — stay silent
+        // (preserves prior no-op behavior; nothing was ever going to open).
+      },
+    });
 
     // PHONE-MULTILINE-PORTAL-AUTOCART-V1: multi-line / family-plan flow ONLY
-    // (2+ selected known lines). Beyond opening the portal, fuse the per-line
-    // steps the cashier used to do by hand: commit THIS line to the cart and
-    // flip its paid flag (via the shared, idempotent commitKnownLineToCart), so
-    // the runner auto-advances to the next pending line. When the LAST pending
-    // line is processed, surface the cart (onClose → POS shows it) with every
-    // payment line already added. SINGLE-LINE is unchanged: it only opens the
-    // portal here and the cashier adds to cart manually as before. The cart-add
-    // is fully idempotent, so re-clicking the same line never duplicates it.
-    if (selectedNorms.length >= 2) {
+    // (2+ selected known lines) AND only when the portal actually launched.
+    // Commit THIS line (idempotent) and auto-advance. Single-line is unchanged
+    // (portal opens; cashier adds to cart manually). Never duplicates a line.
+    if (launched && selectedNorms.length >= 2) {
       const committed = commitKnownLineToCart(normPhone);
       if (committed) {
         const stillPending = selectedNorms.filter(
@@ -3392,23 +3425,28 @@ export default function PhonePaymentModal({
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#667eea', display: 'inline-block' }} />
             {t('phonePay.paymentPortalHeader')}
           </div>
+          {/* P0-C1: READ-ONLY portal indicator. The portal is determined by the
+              carrier (one canonical resolution drives both this display and the
+              launch), so these are non-interactive chips — clicking a different
+              pill can no longer make the UI disagree with what actually opens. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
             {PORTALS.map((p) => {
               const active = portal === p.id;
               return (
-                <button key={p.id} onClick={() => setPortal(active ? '' : p.id)} style={{
+                <div key={p.id} aria-hidden={!active} title={active ? t('phonePay.paymentPortalHeader') : undefined} style={{
                   padding: '0.6rem 0.4rem', borderRadius: '0.5rem',
                   border: `1px solid ${active ? p.color : 'rgba(255,255,255,0.1)'}`,
                   background: active ? `${p.color}26` : 'rgba(255,255,255,0.04)',
                   color: active ? p.color : '#94a3b8',
-                  cursor: 'pointer', fontSize: '0.78rem', fontWeight: active ? 700 : 600,
+                  cursor: 'default', fontSize: '0.78rem', fontWeight: active ? 700 : 600,
+                  opacity: active ? 1 : 0.5,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem',
                   transition: 'all 0.15s',
                   boxShadow: active ? `0 0 0 2px ${p.color}40` : 'none',
                 }}>
                   <span style={{ fontSize: '1rem' }}>{p.emoji}</span>
                   <span>{p.label}</span>
-                </button>
+                </div>
               );
             })}
           </div>

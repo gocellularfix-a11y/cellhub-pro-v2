@@ -123,6 +123,45 @@ export function startWorkflow(
   return workflow;
 }
 
+/**
+ * P0-C1 — canonical, IDEMPOTENT entry point for beginning an external
+ * phone-payment attempt. If an active (pending, non-expired) external_payment
+ * workflow already exists for the same `dedupeKey`, it is REUSED (its TTL is
+ * refreshed) and returned — a repeated portal click or a focus return never
+ * creates a second pending workflow for the same attempt. A genuinely new
+ * attempt (different key, or the prior one already completed/cancelled)
+ * creates a fresh workflow. Caller MUST have successfully requested the portal
+ * launch BEFORE calling this (no workflow on a failed launch).
+ */
+export function beginExternalPhonePayment(
+  metadata: ExternalPaymentMetadata,
+  options?: StartWorkflowOptions,
+): PendingWorkflow {
+  const key = metadata.dedupeKey;
+  if (key) {
+    const existing = readAll().find(
+      (w) => w.type === 'external_payment' && isActive(w)
+        && (w.metadata as ExternalPaymentMetadata).dedupeKey === key,
+    );
+    if (existing) {
+      // Same attempt still pending → reuse it (refresh TTL), never duplicate.
+      return resumeWorkflow(existing.id, options?.ttlMs) ?? existing;
+    }
+  }
+  return startWorkflow('external_payment', metadata, options);
+}
+
+/**
+ * P0-C1 — the MOST RECENTLY STARTED active external_payment workflow (the one
+ * the cashier just launched), not the oldest. The bubble resumes THIS one so a
+ * lingering older workflow can never hijack the resume card.
+ */
+export function getMostRecentExternalPaymentWorkflow(): PendingWorkflow | null {
+  const active = readAll().filter((w) => w.type === 'external_payment' && isActive(w));
+  if (active.length === 0) return null;
+  return active.reduce((latest, w) => (w.startedAt > latest.startedAt ? w : latest));
+}
+
 /** Reset expiry on an existing pending workflow (extend TTL). */
 export function resumeWorkflow(id: string, ttlMs: number = DEFAULT_TTL_MS): PendingWorkflow | null {
   const all = readAll();
@@ -220,7 +259,9 @@ export function getPendingResumeContexts(): WorkflowResumeContext[] {
  */
 export function getMostImportantResumeContext(): WorkflowResumeContext | null {
   const active = readAll().filter(isActive);
-  const extPayment = active.find((w) => w.type === 'external_payment');
+  // P0-C1: prefer the MOST RECENTLY STARTED external payment (the one just
+  // launched) — never blindly the oldest record.
+  const extPayment = getMostRecentExternalPaymentWorkflow();
   if (extPayment) return buildResumeContext(extPayment);
   if (active.length > 0) return buildResumeContext(active[0]);
   return null;
@@ -233,7 +274,11 @@ export function getPendingWorkflows(): PendingWorkflow[] {
   return readAll().filter(isActive);
 }
 
-/** The first active external_payment workflow, or null. */
+/**
+ * The CURRENT active external_payment workflow, or null. P0-C1: this is the
+ * MOST RECENTLY STARTED one (the attempt the cashier just launched) — never
+ * blindly the oldest lingering record.
+ */
 export function getPendingExternalPaymentWorkflow(): PendingWorkflow | null {
-  return readAll().find((w) => w.type === 'external_payment' && isActive(w)) ?? null;
+  return getMostRecentExternalPaymentWorkflow();
 }

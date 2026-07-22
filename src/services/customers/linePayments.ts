@@ -129,3 +129,29 @@ export function getPaymentDollarsForPhone(
 ): string {
   return centsToDollarsString(getPaymentCentsForPhone(c, phone));
 }
+
+/**
+ * P0-C1 — the SAVED carrier for a specific phone NUMBER (matched by digits
+ * against phones[]/legacy phone), from the parallel `carriers[]` array; the
+ * legacy primary `carrier` is used for index 0 only. Returns '' when unknown.
+ * This is the per-line carrier authority: Known-Lines must use THIS, not one
+ * global carrier for every row. Never mutates; a payment never rewrites it.
+ */
+export function getCarrierForPhone(
+  c: Partial<Customer> | null | undefined,
+  phone: unknown,
+): string {
+  if (!c) return '';
+  const target = digits(phone).slice(-10);
+  if (!target) return '';
+  const carriers = Array.isArray((c as { carriers?: string[] }).carriers) ? (c as { carriers?: string[] }).carriers! : [];
+  const phones = Array.isArray(c.phones) ? c.phones : (c.phone ? [c.phone] : []);
+  for (let i = 0; i < phones.length; i++) {
+    if (digits(phones[i]).slice(-10) === target) {
+      return (carriers[i] || (i === 0 ? (c.carrier || '') : '') || '').trim();
+    }
+  }
+  // Legacy primary phone not mirrored into phones[]
+  if (digits(c.phone).slice(-10) === target) return (carriers[0] || c.carrier || '').trim();
+  return '';
+}
