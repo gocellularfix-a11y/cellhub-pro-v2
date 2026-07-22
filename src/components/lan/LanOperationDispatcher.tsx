@@ -35,6 +35,9 @@ import { appendCustomerNote } from '@/utils/customerNotes';
 import type { Customer, Appointment, Sale, InventoryItem, StoreSettings } from '@/store/types';
 import { resolvePosCheckout } from '@/services/lan/posCheckoutForwarding';
 import type { FinalizeSaleCoreSuccess } from '@/modules/pos/finalizeSaleCore';
+// P0-C1c (F-B/F-F): the SAME committed-sale workflow cleanup local POS uses, so
+// a forwarded checkout also closes its phone-payment workflows after commit.
+import { completeCommittedPhonePaymentWorkflows } from '@/modules/pos/completePhonePaymentWorkflows';
 
 // Intra-session idempotency: operationIds already handled (race guard before
 // the first persist is visible in state).
@@ -445,6 +448,13 @@ export default function LanOperationDispatcher() {
           for (const rec of ex.persistedReturns) persist.customerReturn(rec.id, rec as unknown as Record<string, unknown>);
         }
       }
+      // P0-C1c (F-B): the forwarded sale is now committed/persisted on the
+      // Primary (persist.sale + applies above). Close its phone-payment
+      // workflows with the SAME shared cleanup local POS uses — never before
+      // the commit, never on a rejected finalize. Idempotent + never throws, so
+      // a store cleanup failure cannot revert this committed sale (F-F). See the
+      // helper for the machine-local LAN caveat.
+      completeCommittedPhonePaymentWorkflows(result.sideEffects.completeWorkflowIds, 'lan', taggedSale.id);
       await pushCheckoutSnapshot(result);
       return { ok: true, saleId: taggedSale.id, duplicate: false };
     };

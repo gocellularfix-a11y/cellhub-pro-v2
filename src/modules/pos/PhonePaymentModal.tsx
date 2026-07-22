@@ -41,7 +41,7 @@ import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 // P0-C1: idempotent, launch-first workflow creation (replaces startWorkflow here).
 // P0-C1b: getWorkflowById for exact resume by frozen workflow id.
 import { beginExternalPhonePayment, getWorkflowById } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
-import { resolveResumeAttempt } from './phonePaymentResume';
+import { resolveResumeAttempt, phonePaymentLineKey, buildResumedCartItemFields, type ResumeRestore } from './phonePaymentResume';
 import { getActivePortals, type PaymentPortal } from '@/config/paymentPortals';
 // P0-C1: canonical portal resolver — displayed portal == launched portal.
 import { resolvePaymentPortal, runExternalPaymentLaunch, paymentAttemptKey, openExternalPortal } from './phonePaymentPortal';
@@ -281,6 +281,15 @@ export default function PhonePaymentModal({
   // workflow identity (survives to SaleItem; sale completion closes it).
   const lineWorkflowIds = useRef<Record<string, string>>({});
 
+  // ── P0-C1c (F-A/F-D) — active FROZEN resumed attempt ──────────────────────
+  // When the Operator Bubble resumes an exact workflow, this holds the frozen
+  // intent (portalId/portalUrl/carrier/amount/phone/workflowId). While set, it
+  // OVERRIDES the current-settings portal resolution and the known/multi cart
+  // routing so a customer edit or a settings change after launch can never
+  // alter the restored attempt. Cleared on add-to-cart/close (reset), on a new
+  // resume selection (this effect re-runs), and on a manual new/edited intent.
+  const [resumedAttempt, setResumedAttempt] = useState<ResumeRestore | null>(null);
+
   // ── Active payment portals (from settings, fallback to defaults) ──
   const PORTALS = useMemo<PaymentPortal[]>(() => getActivePortals(settings), [settings]);
 
@@ -290,10 +299,14 @@ export default function PhonePaymentModal({
   // stale highlight when the carrier has no configured portal (previously the
   // old highlight lingered). The portal grid is read-only (carrier-derived).
   useEffect(() => {
+    // P0-C1c (F-A): a frozen resumed attempt owns the displayed portal. Never
+    // re-derive it from current settings while the resume is active, so a
+    // settings change after launch cannot swap the shown portal.
+    if (resumedAttempt) { setPortal(resumedAttempt.portalId); return; }
     if (!carrier) { setPortal(''); return; }
     const resolved = resolvePaymentPortal(carrier, PORTALS, settings.carrierPortalUrls || {});
     setPortal(resolved?.portalId || '');
-  }, [carrier, PORTALS, settings.carrierPortalUrls]);
+  }, [carrier, PORTALS, settings.carrierPortalUrls, resumedAttempt]);
 
   // R-SIM-INTAKE: auto-populate of spiff was removed. Spiff is now opt-in via
   // the useSpiff toggle (default OFF) and entered manually by the cashier.
@@ -342,6 +355,14 @@ export default function PhonePaymentModal({
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => {
     if (!open || !pendingPhonePaymentCustomerId) return;
+    // P0-C1c (F-G): EXACT RESUME OUTRANKS SCANNER INTAKE — deterministic, not
+    // by accidental effect order. If a resume is queued or already active, drop
+    // this scanner autofill so it can never overwrite frozen carrier/amount/
+    // portal. The resume effect applies the frozen customer/name itself.
+    if (resumePhonePaymentWorkflowId || resumedAttempt) {
+      appDispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: '' });
+      return;
+    }
     const match = customers.find((c) => c.id === pendingPhonePaymentCustomerId);
     if (!match) {
       appDispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: '' });
@@ -397,6 +418,12 @@ export default function PhonePaymentModal({
       return;
     }
     const r = res.restore;
+    // P0-C1c (F-G): exact resume outranks scanner intake — drop any queued
+    // scanner customer so its effect can't run afterward and overwrite the
+    // frozen data below.
+    if (pendingPhonePaymentCustomerId) {
+      appDispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: '' });
+    }
     // Restore the EXACT frozen intent on the single-line surface, ready to add
     // to cart / Confirm Paid. Carrier drives the read-only portal via its effect.
     setModalTab('payment');
@@ -404,6 +431,12 @@ export default function PhonePaymentModal({
     setSelectedKnownLines({});
     setPaidKnownLines({});
     setAutoFilledSnap(null);                 // guard: keep-or-replace must not clobber the restore
+    // P0-C1c (F-G, walk-in): clear stale identity BEFORE applying frozen data so
+    // a walk-in resume can never inherit a previously selected customer / name.
+    setCustSearch('');
+    setSelectedCustomer(null);
+    setFirstName('');
+    setLastName('');
     setPhoneNumber(sanitizePhone(r.phoneNumber));
     setCarrier(r.transactionCarrier);
     setAmount((r.amountCents / 100).toFixed(2));
@@ -418,8 +451,12 @@ export default function PhonePaymentModal({
       }
     }
     // Keep the workflowId so the resumed line's cart item carries it and sale
-    // completion closes THIS exact workflow.
-    lineWorkflowIds.current[sanitizePhone(r.phoneNumber)] = r.workflowId;
+    // completion closes THIS exact workflow. P0-C1c (F-E): canonical key.
+    lineWorkflowIds.current[phonePaymentLineKey(r.phoneNumber)] = r.workflowId;
+    // P0-C1c (F-A/F-D): the frozen attempt is now the authority for the
+    // displayed portal AND for the single cart item — bypasses the known/multi
+    // branch (see buildCartItems / canAddToCart / breakdown).
+    setResumedAttempt(r);
     appDispatch({ type: 'RESUME_PHONE_PAYMENT_ATTEMPT', payload: '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, resumePhonePaymentWorkflowId]);
@@ -922,6 +959,9 @@ export default function PhonePaymentModal({
     // R-PHONE-AUTOCOPY-ALL-SOURCES-V1: clear the dedupe sentinel so the next
     // modal session can re-copy the same phone (clipboard may be stale).
     lastCopiedPhoneRef.current = null;
+    // P0-C1c (F-A): drop the frozen resume override — covers add-to-cart and
+    // definitive modal close (both call reset()).
+    setResumedAttempt(null);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -948,10 +988,18 @@ export default function PhonePaymentModal({
 
   // ── Can add to cart? ─────────────────────────────────────
   const canAddToCart = useMemo(() => {
+    // P0-C1c (F-D): a frozen resumed attempt is always addable until it lands in
+    // the cart — it bypasses the known/multi branch that would otherwise leave a
+    // Known-Lines customer with empty validLines and a dead Add button.
+    if (resumedAttempt) {
+      const key = phonePaymentLineKey(resumedAttempt.phoneNumber);
+      return !cart.some((it) => it.category === 'phone_payment'
+        && phonePaymentLineKey(it.phoneNumber || '') === key);
+    }
     if (!carrier) return false;
     if (isMultiLine || knownLines.length > 0) return validLines.length > 0;
     return phoneNumber.trim().length > 0 && parseFloat(amount) > 0;
-  }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount]);
+  }, [resumedAttempt, cart, carrier, isMultiLine, knownLines, validLines, phoneNumber, amount]);
 
   // ── PHONE-MULTILINE-DEDUP-V1: processed-line tracking ────
   // A known/multi line is "processed" once it lives in the cart as a
@@ -964,9 +1012,12 @@ export default function PhonePaymentModal({
   // Count of still-pending (not-yet-in-cart) selected lines in the known/multi
   // flow. null in single-line mode so single-line gating stays exactly as before.
   const pendingMultiCount = useMemo<number | null>(() => {
+    // P0-C1c (F-D): a frozen resumed attempt is a single line — bypass multi
+    // gating (null) so canAddToCartNow falls back to canAddToCart.
+    if (resumedAttempt) return null;
     if (!(isMultiLine || knownLines.length > 0)) return null;
     return validLines.filter((l) => !isPhoneInCart(normalizePhone(l.number))).length;
-  }, [isMultiLine, knownLines, validLines, isPhoneInCart]);
+  }, [resumedAttempt, isMultiLine, knownLines, validLines, isPhoneInCart]);
   // Global Add-to-Cart is allowed only when something is still pending. In
   // single-line mode pendingMultiCount is null → falls back to canAddToCart.
   const canAddToCartNow = canAddToCart && pendingMultiCount !== 0;
@@ -1011,7 +1062,17 @@ export default function PhonePaymentModal({
     // Subtotal: sum of all line amounts (or single amount), in CENTS
     let subtotalCents = 0;
     let lineCount = 0;
-    if (isMultiLine || knownLines.length > 0) {
+    if (resumedAttempt) {
+      // P0-C1c (F-D): a frozen resumed attempt is exactly one line at its
+      // frozen carrier + amount — keep the preview honest (no $0 for a
+      // Known-Lines customer whose selectedKnownLines were cleared on resume).
+      const cents = resumedAttempt.amountCents;
+      if (cents > 0) {
+        subtotalCents = cents;
+        lineCount = 1;
+        addLineCommission(resumedAttempt.transactionCarrier, cents);
+      }
+    } else if (isMultiLine || knownLines.length > 0) {
       for (const l of validLines) {
         const cents = Math.round((parseFloat(l.amount) || 0) * 100);
         if (cents > 0) {
@@ -1071,7 +1132,7 @@ export default function PhonePaymentModal({
       mobility:    mobilityPerLineCents / 100,
       lineCount,
     };
-  }, [carrier, isMultiLine, knownLines, validLines, amount, settings]);
+  }, [resumedAttempt, carrier, isMultiLine, knownLines, validLines, amount, settings]);
 
   // ── Build cart items — single source of truth ─────────────
   // Each phone payment becomes its own line item.
@@ -1082,6 +1143,21 @@ export default function PhonePaymentModal({
   const buildCartItems = useCallback((): CartItem[] => {
     const customerNote = `${firstName} ${lastName}`.trim();
     const items: CartItem[] = [];
+
+    // ── P0-C1c (F-D/F-A): FROZEN resumed attempt — highest priority ──────────
+    // Build EXACTLY one cart item from the frozen workflow metadata (carrier,
+    // amount, portalId, workflowId), NOT from the current customer carrier /
+    // monthly amount / last payment / current portal settings. This bypasses
+    // the known/multi branch that would otherwise take over for a Known-Lines
+    // customer (knownLines.length > 0) and produce zero lines.
+    if (resumedAttempt) {
+      const phone = normalizePhone(resumedAttempt.phoneNumber);
+      // Never rebuild a line already committed to the cart (idempotent add).
+      if (cartRef.current.some((it) => it.category === 'phone_payment' && it.phoneNumber === phone)) return [];
+      // Pure builder: fields come 100% from frozen metadata (see phonePaymentResume).
+      items.push({ id: generateId(), ...buildResumedCartItemFields(resumedAttempt, settings, customerNote) });
+      return items;
+    }
 
     if (isMultiLine || knownLines.length > 0) {
       // R-PHONE-FAMILY-PERLINE: each PhonePaymentLine has its own carrier.
@@ -1130,7 +1206,7 @@ export default function PhonePaymentModal({
           notes: lineNote,
           // P0-C1b: portal + workflow identity persisted on every route.
           ...(lineResolved?.portalId ? { portal: lineResolved.portalId } : {}),
-          ...(lineWorkflowIds.current[phone] ? { workflowId: lineWorkflowIds.current[phone] } : {}),
+          ...(lineWorkflowIds.current[phonePaymentLineKey(phone)] ? { workflowId: lineWorkflowIds.current[phonePaymentLineKey(phone)] } : {}),
         });
       });
     } else {
@@ -1175,7 +1251,7 @@ export default function PhonePaymentModal({
         notes: customerNote,
         // P0-C1b: portal + workflow identity persisted on the single-line route.
         ...(singleResolved?.portalId ? { portal: singleResolved.portalId } : {}),
-        ...(lineWorkflowIds.current[digits] ? { workflowId: lineWorkflowIds.current[digits] } : {}),
+        ...(lineWorkflowIds.current[phonePaymentLineKey(phoneNumber)] ? { workflowId: lineWorkflowIds.current[phonePaymentLineKey(phoneNumber)] } : {}),
       });
     }
 
@@ -1185,7 +1261,7 @@ export default function PhonePaymentModal({
     // (see calculateCartTotals in types.ts). DO NOT push them as separate items here
     // or the customer gets double-charged.
     return items;
-  }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount,
+  }, [resumedAttempt, carrier, isMultiLine, knownLines, validLines, phoneNumber, amount,
       firstName, lastName, breakdown, t, toast, PORTALS, settings]);
 
   // ── Add to Customers ─────────────────────────────────────
@@ -1331,7 +1407,9 @@ export default function PhonePaymentModal({
     // drives the displayed portal) so display and launch always agree; also
     // fixes the historic raw-vs-normalized carrier-key mismatch.
     const resolved = resolvePaymentPortal(carrier, PORTALS, settings.carrierPortalUrls || {});
-    const url = resolved?.url || '';
+    // P0-C1c (F-A): during a frozen resume, a re-open uses the FROZEN portal URL
+    // — never one re-derived from current settings.
+    const url = resumedAttempt?.portalUrl || resolved?.url || '';
     if (url) {
       const c = (resolved?.carrier || carrier).toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
@@ -1359,7 +1437,7 @@ export default function PhonePaymentModal({
     }
     reset();
     onClose();
-  }, [carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
+  }, [resumedAttempt, carrier, settings, buildCartItems, setCart, onClose, selectedCustomer, propagateSelectedCustomer, emitOperatorActivity]);
 
   // ── Add to cart ───────────────────────────────────────────
   const handleAddToCart = useCallback(() => {
@@ -1439,7 +1517,7 @@ export default function PhonePaymentModal({
       commissionRate: commRate,
       // P0-C1b: portal + workflow identity persisted on the manual-line route.
       ...(resolved?.portalId ? { portal: resolved.portalId } : {}),
-      ...(lineWorkflowIds.current[phone] ? { workflowId: lineWorkflowIds.current[phone] } : {}),
+      ...(lineWorkflowIds.current[phonePaymentLineKey(phone)] ? { workflowId: lineWorkflowIds.current[phonePaymentLineKey(phone)] } : {}),
     };
     if (url) {
       const c = normCarrier.toLowerCase();
@@ -1556,7 +1634,7 @@ export default function PhonePaymentModal({
       ...(resolvedPortal?.portalId ? { portal: resolvedPortal.portalId } : {}),
       // P0-C1b: exact workflow identity for this line (if a portal was launched
       // for it) → survives to SaleItem → sale completion closes it.
-      ...(lineWorkflowIds.current[norm] ? { workflowId: lineWorkflowIds.current[norm] } : {}),
+      ...(lineWorkflowIds.current[phonePaymentLineKey(norm)] ? { workflowId: lineWorkflowIds.current[phonePaymentLineKey(norm)] } : {}),
     };
 
     const nextCart = [...cartRef.current, newItem];
@@ -1669,7 +1747,8 @@ export default function PhonePaymentModal({
           },
         );
         // P0-C1b: remember this line's workflowId so its cart line carries it.
-        lineWorkflowIds.current[normPhone] = wf.id;
+        // P0-C1c (F-E): canonical key so any equivalent phone format finds it.
+        lineWorkflowIds.current[phonePaymentLineKey(phone)] = wf.id;
       },
       onError: (reason) => {
         if (reason === 'no_carrier') toast(t('phonePay.errPickCarrierLine'), 'error');
@@ -2755,6 +2834,9 @@ export default function PhonePaymentModal({
                   setNewLinePhone('');
                   setNewLineAmount('');
                   setLines([{ id: generateId(), number: '', amount: '', carrier: '' }]);
+                  // P0-C1c (F-A): changing customer starts a fresh flow — drop
+                  // any frozen resume override.
+                  setResumedAttempt(null);
                   setShowCustDropdown(true);
                 }}
                 style={{
@@ -2785,7 +2867,7 @@ export default function PhonePaymentModal({
               const color = CARRIER_COLORS[c] || '#667eea';
               const active = carrier === c;
               return (
-                <button key={c} onClick={() => setCarrier(c)} style={{
+                <button key={c} onClick={() => { setResumedAttempt(null); setCarrier(c); }} style={{
                   padding: '0.55rem 0.4rem', borderRadius: '0.5rem',
                   border: active ? `2px solid ${color}` : '1px solid rgba(255,255,255,0.12)',
                   background: active ? `${color}22` : 'rgba(255,255,255,0.04)',
@@ -3341,6 +3423,9 @@ export default function PhonePaymentModal({
                     maxLength={20}
                     pattern="[0-9]*"
                     onChange={(e) => {
+                      // P0-C1c (F-A): a manual phone edit is a new/edited intent
+                      // — drop any frozen resume override.
+                      setResumedAttempt(null);
                       setPhoneNumber(sanitizePhone(e.target.value));
                       autoCopyPhone(e.target.value);
                     }}

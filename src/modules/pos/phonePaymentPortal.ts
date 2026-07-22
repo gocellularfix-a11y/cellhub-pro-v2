@@ -124,34 +124,124 @@ export function paymentAttemptKey(a: {
 /** P0-C1b — structured outcome of requesting an external window open. */
 export type ExternalOpenResult =
   | { ok: true; handle: Window | null }
-  | { ok: false; reason: 'offline' | 'missing_url' | 'popup_blocked' | 'open_exception' };
+  | { ok: false; reason: 'offline' | 'missing_url' | 'invalid_url' | 'popup_blocked' | 'open_exception' };
 
 /**
- * P0-C1b — open an external payment portal and REPORT what actually happened,
- * so "failed launch = no workflow" can distinguish real failures from success:
- *   - no url            → missing_url
- *   - offline           → offline (guardOnline emits the offline toast event)
- *   - window.open throws → open_exception
- *   - window.open null  → popup_blocked  (BROWSER/PWA only)
- *   - otherwise         → ok
- * Electron caveat: window.open can return null on SUCCESS in Electron, so null
- * is NOT treated as blocked there — never false-block the production desktop app.
+ * P0-C1c (F-C) — validate an external portal URL BEFORE opening it. Only
+ * http:/https: are allowed; javascript:, data:, file:, and any other scheme are
+ * rejected (a manipulated settings URL can never launch a script/local file).
+ * A schemeless bare domain (e.g. "portal.att.com") is normalized to https —
+ * production carrier portals are always https, so this preserves existing
+ * configured portals without a rigid host allowlist. Returns the safe URL to
+ * navigate to, or null when the URL is empty / unparseable / a blocked scheme.
  */
-export function openExternalPortal(url: string, target?: string, features?: string): ExternalOpenResult {
+export function toSafeExternalUrl(raw: string): string | null {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme !== 'http' && scheme !== 'https') return null; // block javascript:/data:/file:/etc.
+    try { new URL(trimmed); return trimmed; } catch { return null; }
+  }
+  // Schemeless → assume https (production portals are https). Guard parseability.
+  const withScheme = `https://${trimmed}`;
+  try { new URL(withScheme); return withScheme; } catch { return null; }
+}
+
+/** Minimal window surface the opener needs — keeps openExternalPortal testable. */
+interface OpenerWindow {
+  open(url: string, target?: string, features?: string): OpenedWindow | null;
+}
+interface OpenedWindow {
+  opener?: unknown;
+  location?: { replace?(url: string): void };
+  close?(): void;
+}
+
+/** Injectable dependencies (defaults resolve to the real environment). */
+export interface OpenExternalDeps {
+  /** null = no window available (node/test); undefined = use global window. */
+  win?: OpenerWindow | null;
+  /** override platform detection (defaults to isElectron()). */
+  electron?: boolean;
+  /** override online guard (defaults to guardOnline — emits the offline event). */
+  online?: () => boolean;
+}
+
+/**
+ * P0-C1c (F-C) — open an external payment portal SAFELY and report what
+ * actually happened, so "failed launch = no workflow" can distinguish real
+ * failures from success WITHOUT exposing window.opener:
+ *   - no url                 → missing_url
+ *   - blocked/unparseable url → invalid_url  (javascript:/data:/file:/…)
+ *   - offline                → offline (guardOnline emits the offline toast event)
+ *   - window.open throws     → open_exception
+ *   - otherwise              → ok
+ *
+ * BROWSER/PWA: open a BLANK window synchronously (no noopener) so a null return
+ * is an UNAMBIGUOUS popup-block signal — the historic bug was passing
+ * 'noopener' to window.open, which returns null even on SUCCESS, false-blocking
+ * every browser open. The opener is then severed (handle.opener = null) BEFORE
+ * navigating (reverse-tabnabbing mitigation) and the window is navigated to the
+ * validated URL via location.replace. A navigation throw → open_exception (and
+ * the blank window is closed), so no workflow is created for a failed launch.
+ *
+ * ELECTRON: window.open can return null on SUCCESS, so null is NOT treated as
+ * blocked — navigate directly (features preserved) and only a thrown error is a
+ * failure. Never false-block the production desktop app.
+ */
+export function openExternalPortal(
+  url: string,
+  target?: string,
+  features?: string,
+  deps: OpenExternalDeps = {},
+): ExternalOpenResult {
+  const online = deps.online ?? guardOnline;
+  const electron = deps.electron ?? isElectron();
+  const win: OpenerWindow | null = deps.win !== undefined
+    ? deps.win
+    : (typeof window === 'undefined' ? null : (window as unknown as OpenerWindow));
+
   if (!url) return { ok: false, reason: 'missing_url' };
-  if (!guardOnline()) return { ok: false, reason: 'offline' };
-  let handle: Window | null = null;
+  const safeUrl = toSafeExternalUrl(url);
+  if (!safeUrl) return { ok: false, reason: 'invalid_url' };
+  if (!online()) return { ok: false, reason: 'offline' };
+  if (!win) return { ok: false, reason: 'open_exception' };
+
+  if (electron) {
+    // Electron renderer: null return is NOT a block — navigate directly.
+    try {
+      const handle = win.open(safeUrl, target, features);
+      return { ok: true, handle: (handle as unknown as Window) ?? null };
+    } catch {
+      return { ok: false, reason: 'open_exception' };
+    }
+  }
+
+  // Browser/PWA: blank-open first so null unambiguously = popup blocked.
+  let handle: OpenedWindow | null = null;
   try {
-    handle = typeof window === 'undefined' ? null : window.open(url, target, features);
+    handle = win.open('', target);
   } catch {
     return { ok: false, reason: 'open_exception' };
   }
-  if (handle === null && !isElectron()) return { ok: false, reason: 'popup_blocked' };
-  return { ok: true, handle };
+  if (!handle) return { ok: false, reason: 'popup_blocked' };
+  // Reverse-tabnabbing: sever the opener BEFORE navigating cross-origin.
+  try { handle.opener = null; } catch { /* already cross-origin — ignore */ }
+  try {
+    if (handle.location && typeof handle.location.replace === 'function') {
+      handle.location.replace(safeUrl);
+    }
+  } catch {
+    try { handle.close?.(); } catch { /* ignore */ }
+    return { ok: false, reason: 'open_exception' };
+  }
+  return { ok: true, handle: handle as unknown as Window };
 }
 
 export type LaunchFailureReason =
-  | 'no_carrier' | 'no_portal_url' | 'offline' | 'popup_blocked' | 'open_exception';
+  | 'no_carrier' | 'no_portal_url' | 'offline' | 'invalid_url' | 'popup_blocked' | 'open_exception';
 
 /**
  * Launch-FIRST orchestration for one external-payment attempt (pure — the open

@@ -50,8 +50,9 @@ import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { classifyCheckoutAck } from '@/services/lan/posCheckoutForwarding';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
-// P0-C1b: complete external-payment workflows when their sale is committed.
-import { completeWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+// P0-C1b/P0-C1c: complete external-payment workflows when their sale is committed.
+// F-B/F-F: shared, idempotent, never-throwing cleanup used by every finalizeSaleCore caller.
+import { completeCommittedPhonePaymentWorkflows } from './completePhonePaymentWorkflows';
 // R-GLOBAL-SCAN-ANYWHERE-V1: stock rule + default CartItem construction now
 // live in the shared resolver so the global AppShell scanner builds cart
 // lines EXACTLY like POS does. Custom-category taxMode overrides stay here.
@@ -440,13 +441,12 @@ export default function POSModule() {
       if (coreResult.sideEffects.clearWorkflowTrack) {
         try { clearWorkflowTrack(coreResult.sideEffects.clearWorkflowTrack); } catch { /* non-critical */ }
       }
-      // P0-C1b: complete EXACTLY the external-payment workflows of the phone
-      // lines that were sold, so the resume/confirm bubble clears and an app
-      // restart never revives them. Idempotent: completeWorkflow no-ops on an
-      // already-completed/missing id. Only runs on a committed sale.
-      for (const wfId of coreResult.sideEffects.completeWorkflowIds) {
-        try { completeWorkflow(wfId); } catch { /* non-critical */ }
-      }
+      // P0-C1b/P0-C1c (F-B/F-F): complete EXACTLY the external-payment workflows
+      // of the phone lines that were sold, so the resume/confirm bubble clears
+      // and an app restart never revives them. Idempotent + never throws (a
+      // localStorage cleanup failure must not revert this committed sale). Only
+      // runs here, AFTER the sale is persisted above.
+      completeCommittedPhonePaymentWorkflows(coreResult.sideEffects.completeWorkflowIds, 'local', sale.id);
       // R-INTELLIGENCE-PAYMENT-VERIFY-V1: schedule the carrier-portal confirm nudge.
       if (coreResult.sideEffects.phonePaymentVerify) {
         try {
