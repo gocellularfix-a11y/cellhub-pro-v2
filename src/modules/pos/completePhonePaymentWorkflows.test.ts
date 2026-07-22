@@ -24,7 +24,7 @@ describe('completeCommittedPhonePaymentWorkflows', () => {
   });
 
   it('drops falsy ids', () => {
-    const r = completeCommittedPhonePaymentWorkflows(['a', '', undefined as unknown as string, null as unknown as string], 'lan');
+    const r = completeCommittedPhonePaymentWorkflows(['a', '', undefined as unknown as string, null as unknown as string], 'lan-secondary');
     expect(r.attempted).toBe(1);
     expect(completeWorkflow).toHaveBeenCalledTimes(1);
     expect(completeWorkflow).toHaveBeenCalledWith('a');
@@ -33,14 +33,14 @@ describe('completeCommittedPhonePaymentWorkflows', () => {
   it('is a no-op for empty / null / undefined input (idempotent)', () => {
     expect(completeCommittedPhonePaymentWorkflows([], 'local').attempted).toBe(0);
     expect(completeCommittedPhonePaymentWorkflows(null, 'local').attempted).toBe(0);
-    expect(completeCommittedPhonePaymentWorkflows(undefined, 'lan').attempted).toBe(0);
+    expect(completeCommittedPhonePaymentWorkflows(undefined, 'lan-secondary').attempted).toBe(0);
     expect(completeWorkflow).not.toHaveBeenCalled();
   });
 
   it('one throwing id does not abort the rest; captured in failedIds; NEVER throws', () => {
     completeWorkflow.mockImplementation((id: string) => { if (id === 'boom') throw new Error('ls quota'); });
     let r!: ReturnType<typeof completeCommittedPhonePaymentWorkflows>;
-    expect(() => { r = completeCommittedPhonePaymentWorkflows(['x', 'boom', 'y'], 'lan', 's9'); }).not.toThrow();
+    expect(() => { r = completeCommittedPhonePaymentWorkflows(['x', 'boom', 'y'], 'lan-secondary', 's9'); }).not.toThrow();
     expect(completeWorkflow).toHaveBeenCalledTimes(3);   // did NOT stop at 'boom'
     expect(r.completed).toBe(2);
     expect(r.failedIds).toEqual(['boom']);

@@ -30,7 +30,10 @@
 
 import { completeWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 
-export type WorkflowCleanupContext = 'local' | 'lan';
+// P0-C1d: 'lan-secondary' = the Secondary completes its OWN machine-local
+// workflow after a committed forwarded checkout (the owning machine); the
+// Primary uses 'lan-primary' (idempotent no-op for ids it does not own).
+export type WorkflowCleanupContext = 'local' | 'lan-primary' | 'lan-secondary';
 
 export interface WorkflowCleanupResult {
   /** Distinct ids attempted after dedupe. */

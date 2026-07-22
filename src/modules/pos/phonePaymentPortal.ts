@@ -229,10 +229,15 @@ export function openExternalPortal(
   if (!handle) return { ok: false, reason: 'popup_blocked' };
   // Reverse-tabnabbing: sever the opener BEFORE navigating cross-origin.
   try { handle.opener = null; } catch { /* already cross-origin — ignore */ }
+  // P0-C1d (F-I): success REQUIRES that we actually requested navigation. If the
+  // handle exposes no navigable location.replace, we never launched anything —
+  // close the blank window and report failure so NO workflow is created.
+  if (!handle.location || typeof handle.location.replace !== 'function') {
+    try { handle.close?.(); } catch { /* ignore */ }
+    return { ok: false, reason: 'open_exception' };
+  }
   try {
-    if (handle.location && typeof handle.location.replace === 'function') {
-      handle.location.replace(safeUrl);
-    }
+    handle.location.replace(safeUrl);
   } catch {
     try { handle.close?.(); } catch { /* ignore */ }
     return { ok: false, reason: 'open_exception' };

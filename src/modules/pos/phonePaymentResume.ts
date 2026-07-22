@@ -45,6 +45,29 @@ export interface ResumeRestore {
   customerId: string;
 }
 
+/**
+ * P0-C1d (F-H) — does an edited `carrier` still refer to the SAME frozen attempt?
+ * True → KEEP the resume override (a redundant click on the already-frozen
+ * carrier must not drop it). False → the carrier really changed (or no resume
+ * is active) → the caller drops the override and starts a fresh intent.
+ * Carrier equality is normalized so casing/spacing variants match.
+ */
+export function resumedCarrierUnchanged(r: ResumeRestore | null, carrier: string): boolean {
+  if (!r) return false;
+  return normalizeCarrier(carrier) === normalizeCarrier(r.transactionCarrier);
+}
+
+/**
+ * P0-C1d (F-H) — does an edited `phone` still refer to the SAME frozen line?
+ * True → KEEP the override (equivalent formats — `(805) 555-1212`, `8055551212`,
+ * `+1 805 555 1212` — must not drop it). False → really different (or no resume)
+ * → drop the override. Uses the canonical line key so equivalence matches.
+ */
+export function resumedPhoneUnchanged(r: ResumeRestore | null, phone: string): boolean {
+  if (!r) return false;
+  return phonePaymentLineKey(phone) === phonePaymentLineKey(r.phoneNumber);
+}
+
 export type ResumeResolution =
   | { ok: true; restore: ResumeRestore }
   | { ok: false; reason: 'not_found' | 'not_pending' | 'expired' | 'invalid_metadata' };

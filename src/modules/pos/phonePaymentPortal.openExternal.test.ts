@@ -54,6 +54,29 @@ describe('openExternalPortal — BROWSER/PWA opener contract (F-C)', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  // ── P0-C1d (F-I): success REQUIRES that navigation was actually requested ──
+  it('F-I. handle with NO location → open_exception + close (NOT success, no workflow)', () => {
+    const close = vi.fn();
+    const handle = { opener: {}, close };                       // no `location` at all
+    const res = openExternalPortal('https://pay.example.com', 'w', undefined, deps({ open: () => handle }));
+    expect(res).toEqual({ ok: false, reason: 'open_exception' });
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('F-I. handle whose location.replace is not a function → open_exception + close', () => {
+    const close = vi.fn();
+    const handle = { opener: {}, location: { replace: undefined as unknown as () => void }, close };
+    const res = openExternalPortal('https://pay.example.com', 'w', undefined, deps({ open: () => handle }));
+    expect(res).toEqual({ ok: false, reason: 'open_exception' });
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('F-I. opener is severed even when navigation is unavailable', () => {
+    const handle = { opener: {}, close: vi.fn() };
+    openExternalPortal('https://pay.example.com', 'w', undefined, deps({ open: () => handle }));
+    expect(handle.opener).toBeNull();
+  });
+
   it('dangerous schemes are rejected BEFORE any window is opened', () => {
     const open = vi.fn();
     for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'file:///x']) {

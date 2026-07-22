@@ -47,7 +47,7 @@ import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
 import { finalizeSaleCore } from './finalizeSaleCore';
 import { sendPosCheckout, requestMirrorResync, generateLanOperationId } from '@/services/lan/lanService';
 import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
-import { classifyCheckoutAck } from '@/services/lan/posCheckoutForwarding';
+import { classifyCheckoutAck, secondaryWorkflowIdsToComplete } from '@/services/lan/posCheckoutForwarding';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
 // P0-C1b/P0-C1c: complete external-payment workflows when their sale is committed.
@@ -635,6 +635,17 @@ export default function POSModule() {
     void (async () => {
       const ack = await sendPosCheckout(pending.sale, pending.operationId);
       const outcome = classifyCheckoutAck(ack);
+      // P0-C1d (F-B): the Secondary owns its machine-local workflow store, so it
+      // must complete its OWN phone-payment workflows once the Primary commits.
+      // IDs come from the EXACT sale that was forwarded (pending.sale — immutable
+      // snapshot captured before the await, NOT the live cart which may have
+      // changed). Empty for rejected/unknown → no cleanup on those (retry keeps
+      // the workflow pending). Idempotent + never throws (does not affect the
+      // committed sale). Runs for a dedup/retry 'committed' too.
+      const secondaryWfIds = secondaryWorkflowIdsToComplete(outcome, pending.sale.items);
+      if (secondaryWfIds.length > 0) {
+        completeCommittedPhonePaymentWorkflows(secondaryWfIds, 'lan-secondary', pending.sale.id);
+      }
       if (outcome === 'committed') {
         pendingForwardRef.current = null;
         // Secondary-only UI cleanup (UI state only — no persist, no global writes).

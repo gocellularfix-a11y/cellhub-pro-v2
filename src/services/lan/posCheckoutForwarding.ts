@@ -21,6 +21,9 @@ import type {
   StoreCreditLedger, CustomerReturn, StoreSettings,
 } from '@/store/types';
 import { finalizeSaleCore, type FinalizeSaleCoreSuccess } from '@/modules/pos/finalizeSaleCore';
+// P0-C1d: canonical workflow-id collector (phone_payment lines, deduped) — the
+// SAME source finalizeSaleCore uses; never re-implemented here.
+import { collectPhonePaymentWorkflowIds } from '@/modules/pos/phonePaymentResume';
 
 /** Tag field used for idempotency (stored as extra JSON on the persisted sale). */
 export const LAN_CHECKOUT_OP_TAG = 'lanOperationId';
@@ -133,4 +136,25 @@ export function classifyCheckoutAck(ack: LanOperationAck | null | undefined): Fo
   const err = ack && typeof ack.error === 'string' ? ack.error : '';
   if (DETERMINATE_NOT_COMMITTED.has(err)) return 'rejected';
   return 'unknown';
+}
+
+/**
+ * P0-C1d (F-B) — which phone-payment workflowIds the SECONDARY must complete in
+ * its OWN (machine-local) workflow store after forwarding this checkout. The
+ * Secondary is the machine that created + persisted the workflow, so it is the
+ * only place completeWorkflow() actually clears it. Pure & deterministic:
+ *   - ONLY when the Primary DEFINITIVELY committed ('committed' — includes a
+ *     dedup/retry duplicate, since handlePosCheckout returns ack.ok for those).
+ *   - NEVER on 'rejected' (no sale) or 'unknown' (indeterminate — keep pending
+ *     so a later retry that resolves to committed does the cleanup then).
+ *   - ids come from the EXACT sale items the Secondary forwarded (canonical
+ *     collector) — never from the current mutable cart, the modal, the bubble,
+ *     the customer, or an ACK-supplied list.
+ */
+export function secondaryWorkflowIdsToComplete(
+  outcome: ForwardOutcome,
+  committedSaleItems: Array<{ category?: string; workflowId?: string }>,
+): string[] {
+  if (outcome !== 'committed') return [];
+  return collectPhonePaymentWorkflowIds(committedSaleItems);
 }

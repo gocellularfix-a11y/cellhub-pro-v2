@@ -454,7 +454,7 @@ export default function LanOperationDispatcher() {
       // the commit, never on a rejected finalize. Idempotent + never throws, so
       // a store cleanup failure cannot revert this committed sale (F-F). See the
       // helper for the machine-local LAN caveat.
-      completeCommittedPhonePaymentWorkflows(result.sideEffects.completeWorkflowIds, 'lan', taggedSale.id);
+      completeCommittedPhonePaymentWorkflows(result.sideEffects.completeWorkflowIds, 'lan-primary', taggedSale.id);
       await pushCheckoutSnapshot(result);
       return { ok: true, saleId: taggedSale.id, duplicate: false };
     };

@@ -41,7 +41,7 @@ import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 // P0-C1: idempotent, launch-first workflow creation (replaces startWorkflow here).
 // P0-C1b: getWorkflowById for exact resume by frozen workflow id.
 import { beginExternalPhonePayment, getWorkflowById } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
-import { resolveResumeAttempt, phonePaymentLineKey, buildResumedCartItemFields, type ResumeRestore } from './phonePaymentResume';
+import { resolveResumeAttempt, phonePaymentLineKey, buildResumedCartItemFields, resumedCarrierUnchanged, resumedPhoneUnchanged, type ResumeRestore } from './phonePaymentResume';
 import { getActivePortals, type PaymentPortal } from '@/config/paymentPortals';
 // P0-C1: canonical portal resolver — displayed portal == launched portal.
 import { resolvePaymentPortal, runExternalPaymentLaunch, paymentAttemptKey, openExternalPortal } from './phonePaymentPortal';
@@ -2867,7 +2867,7 @@ export default function PhonePaymentModal({
               const color = CARRIER_COLORS[c] || '#667eea';
               const active = carrier === c;
               return (
-                <button key={c} onClick={() => { setResumedAttempt(null); setCarrier(c); }} style={{
+                <button key={c} onClick={() => { if (!resumedCarrierUnchanged(resumedAttempt, c)) setResumedAttempt(null); setCarrier(c); }} style={{
                   padding: '0.55rem 0.4rem', borderRadius: '0.5rem',
                   border: active ? `2px solid ${color}` : '1px solid rgba(255,255,255,0.12)',
                   background: active ? `${color}22` : 'rgba(255,255,255,0.04)',
@@ -3423,10 +3423,12 @@ export default function PhonePaymentModal({
                     maxLength={20}
                     pattern="[0-9]*"
                     onChange={(e) => {
-                      // P0-C1c (F-A): a manual phone edit is a new/edited intent
-                      // — drop any frozen resume override.
-                      setResumedAttempt(null);
-                      setPhoneNumber(sanitizePhone(e.target.value));
+                      // P0-C1c (F-A) / P0-C1d (F-H): a manual phone edit drops the
+                      // frozen resume override ONLY when the number actually
+                      // changes — an equivalent re-type (formatting/+1) keeps it.
+                      const next = sanitizePhone(e.target.value);
+                      if (!resumedPhoneUnchanged(resumedAttempt, next)) setResumedAttempt(null);
+                      setPhoneNumber(next);
                       autoCopyPhone(e.target.value);
                     }}
                   />
