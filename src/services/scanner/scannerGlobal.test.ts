@@ -143,6 +143,24 @@ describe('GSCAN-1 — single-listener architecture', () => {
     expect(read('components/shared/AdminPinGate.tsx').includes('type="password"')).toBe(true);
     expect(read('components/shared/ApprovalPinModal.tsx').includes('type="password"')).toBe(true);
   });
+  it('P0-INV-1: the guard is exposed as a pure predicate (node-testable)', () => {
+    const hook = read('hooks/useBarcodeScanner.ts');
+    // The DOM adapter delegates to the pure, exported decision.
+    expect(hook.includes('export function isScanExemptElement')).toBe(true);
+    expect(hook.includes('isScanExemptElement(')).toBe(true);
+  });
+  it('P0-INV-1: the Inventory New Item / Edit modal CLAIMS scan ownership via data-scanner-exempt', () => {
+    const inv = read('modules/inventory/InventoryModule.tsx');
+    // The form modal marks its content data-scanner-exempt so the global scanner
+    // skips routing while it is open — the scan lands in the SKU/IMEI field
+    // instead of firing a global inventory lookup + "No match found" toast.
+    expect(inv.includes('data-scanner-exempt')).toBe(true);
+    // The ownership claim lives inside the InventoryFormModal render (the modal),
+    // not on the page grid — so it is scoped to the modal's DOM lifetime.
+    const modalStart = inv.indexOf('function InventoryFormModal');
+    expect(modalStart).toBeGreaterThan(-1);
+    expect(inv.indexOf('data-scanner-exempt', modalStart)).toBeGreaterThan(modalStart);
+  });
   it('AppShell scan flow uses the canonical shared services only (no duplicated inventory logic)', () => {
     const appShell = read('components/layout/AppShell.tsx');
     expect(appShell.includes('resolveInventoryCandidatesByExactCode')).toBe(true);

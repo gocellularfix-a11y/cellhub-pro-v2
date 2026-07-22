@@ -1889,6 +1889,15 @@ function InventoryFormModal({
       title={isEdit ? `✏️ ${t('inventory.form.editTitle')}` : `📦 ${t('inventory.form.newTitle')}`}
       size="max-w-lg"
     >
+      {/* P0-INV-1: this New Item / Edit modal OWNS SKU/IMEI scans. Marking its
+          content data-scanner-exempt makes the global scan-anywhere keydown
+          handler skip scan ROUTING while focus is inside the modal, so a scanned
+          SKU/IMEI simply lands in the field (feeding checkDuplicate) instead of
+          firing a global inventory lookup + "No match found" toast and wiping the
+          input. display:contents = zero layout impact. The attribute exists on
+          the DOM only while the modal is mounted, so closing it restores global
+          scanning immediately — no stale scanner lock to clean up. */}
+      <div data-scanner-exempt style={{ display: 'contents' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: '68vh', overflowY: 'auto', paddingRight: '2px' }}>
 
         {/* SKU / IMEI + Generate + Label.
@@ -2580,6 +2589,7 @@ function InventoryFormModal({
           )}
         </button>
       </div>
+      </div>{/* /data-scanner-exempt (P0-INV-1) */}
     </Modal>
     <ConfirmDialog
       open={zeroPriceConfirm}

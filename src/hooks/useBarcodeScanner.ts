@@ -64,12 +64,27 @@ interface Options {
   maxInterval?: number;         // max ms between chars to count as scanner
 }
 
-/** GSCAN-1 centralized input-security guard: never execute a scan route
- *  while a protected field owns focus. */
-function isScanExemptTarget(el: Element | null): boolean {
+/**
+ * GSCAN-1 / P0-INV-1 — pure, DOM-globals-free exemption decision (node-testable).
+ * A scan route must NOT run while focus is on a password input (Admin/approval
+ * PIN gates) or inside any element marked data-scanner-exempt — the mechanism
+ * a modal uses to CLAIM scan ownership (e.g. the Inventory New Item modal, which
+ * owns SKU/IMEI scans). Accepts any element-like with `tagName`/`type`/`closest`
+ * so it can be unit-tested without a real DOM. `tagName === 'INPUT'` is exactly
+ * equivalent to `instanceof HTMLInputElement` for real focus targets, but avoids
+ * the DOM global so the guard is testable in the node env. */
+export function isScanExemptElement(
+  el: { tagName?: string; type?: string; closest?: (sel: string) => unknown } | null | undefined,
+): boolean {
   if (!el) return false;
-  if (el instanceof HTMLInputElement && el.type === 'password') return true;
-  return !!(el as HTMLElement).closest?.('[data-scanner-exempt]');
+  if (el.tagName === 'INPUT' && el.type === 'password') return true;
+  return !!el.closest?.('[data-scanner-exempt]');
+}
+
+/** GSCAN-1 centralized input-security guard: never execute a scan route
+ *  while a protected field owns focus. Thin DOM adapter over isScanExemptElement. */
+function isScanExemptTarget(el: Element | null): boolean {
+  return isScanExemptElement(el as unknown as Parameters<typeof isScanExemptElement>[0]);
 }
 
 export function useBarcodeScanner({
