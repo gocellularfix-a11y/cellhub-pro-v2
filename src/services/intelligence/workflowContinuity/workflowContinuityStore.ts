@@ -282,3 +282,8 @@ export function getPendingWorkflows(): PendingWorkflow[] {
 export function getPendingExternalPaymentWorkflow(): PendingWorkflow | null {
   return getMostRecentExternalPaymentWorkflow();
 }
+
+/** P0-C1b — raw record by id (ANY status), for exact-resume validation. */
+export function getWorkflowById(id: string): PendingWorkflow | null {
+  return readAll().find((w) => w.id === id) ?? null;
+}

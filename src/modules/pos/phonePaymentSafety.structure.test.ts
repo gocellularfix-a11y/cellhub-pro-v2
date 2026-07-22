@@ -45,8 +45,17 @@ describe('resume opens the real POS context (no dead phone-payments tab)', () =>
     // never a SET_ACTIVE_TAB navigation from the bubble's resume handler.
     expect(BUBBLE).not.toContain("payload: 'phone-payments'");
   });
-  it('the bubble resume navigates to POS and reopens the modal with the customer', () => {
+  it('the bubble resume navigates to POS and resumes the EXACT workflow by id', () => {
     expect(BUBBLE).toContain("payload: 'pos'");
-    expect(BUBBLE).toContain('SET_PENDING_PHONE_PAYMENT_CUSTOMER');
+    expect(BUBBLE).toContain('RESUME_PHONE_PAYMENT_ATTEMPT');
+    expect(BUBBLE).toContain('pendingExternalPayment.id');
+  });
+});
+
+describe('P0-C1b wiring', () => {
+  it('the modal restores the frozen attempt and detects popup blocks', () => {
+    expect(MODAL).toContain('resolveResumeAttempt');
+    expect(MODAL).toContain('openExternalPortal');
+    expect(MODAL).toContain('workflowId');
   });
 });

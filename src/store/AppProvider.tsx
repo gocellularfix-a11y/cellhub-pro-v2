@@ -71,6 +71,7 @@ const initialState: AppState = {
   pendingBarcodeInvoice: '',
   pendingReportDate: '',
   pendingPhonePaymentCustomerId: '',
+  resumePhonePaymentWorkflowId: '',
   pendingCustomerHistoryId: '',
   pendingPosCustomer: '',
   highlightRecordId: '',  // set by global scanner → consumed by ReturnsModule
@@ -143,6 +144,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, pendingReportDate: action.payload };
     case 'SET_PENDING_PHONE_PAYMENT_CUSTOMER':
       return { ...state, pendingPhonePaymentCustomerId: action.payload };
+    // P0-C1b: carries the exact workflowId the Operator Bubble asked to resume.
+    case 'RESUME_PHONE_PAYMENT_ATTEMPT':
+      return { ...state, resumePhonePaymentWorkflowId: action.payload };
     case 'SET_PENDING_CUSTOMER_HISTORY':
       return { ...state, pendingCustomerHistoryId: action.payload };
     case 'SET_PENDING_POS_CUSTOMER':

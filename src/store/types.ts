@@ -705,6 +705,9 @@ export interface CartItem {
   accountPin?: string;
   portal?: string;
   commissionRate?: number;  // carrier commission % (e.g. 0.10 for AT&T), used by PhonePaymentModal
+  // P0-C1b: external-payment workflow identity for this phone-payment line.
+  // Survives to SaleItem so sale completion can complete the exact workflow.
+  workflowId?: string;
   // For repairs / special orders added to cart
   repairId?: string;
   specialOrderId?: string;
@@ -769,6 +772,9 @@ export interface SaleItem {
   phoneNumber?: string;
   carrier?: string;
   portal?: string;
+  // P0-C1b: external-payment workflow identity (flows from CartItem) so sale
+  // completion completes exactly this line's workflow.
+  workflowId?: string;
   // Linked entities
   repairId?: string;
   specialOrderId?: string;
@@ -1499,6 +1505,10 @@ export interface AppState {
   pendingBarcodeInvoice: string;
   pendingReportDate: string;              // set by BarcodeActionModal → Reports navigates to the sale's date, not today
   pendingPhonePaymentCustomerId: string;  // set by scanner when customer credential scanned → opens PhonePaymentModal pre-filled
+  // P0-C1b: set by the Operator Bubble's Resume → POSModule opens
+  // PhonePaymentModal, which restores the EXACT frozen attempt by this
+  // workflowId (not just the customer). '' when no resume is pending.
+  resumePhonePaymentWorkflowId: string;
   pendingCustomerHistoryId: string;       // R-BARCODE-CUSTOMER-HISTORY-FIRST-CLICK-RACE-FIX-V1: set by BarcodeActionModal Customer History → CustomerModule reads on mount and opens history modal (race-free vs CustomEvent dispatch when module not yet mounted)
   pendingPosCustomer: string;             // set by RepairModule cart-add → POSModule picks up and sets selectedCustomer
   highlightRecordId: string;    // set by GlobalSearch navigate → consumed by list modules to flash+scroll
@@ -1565,6 +1575,7 @@ export type AppAction =
   | { type: 'SET_PENDING_BARCODE_INVOICE'; payload: string }
   | { type: 'SET_PENDING_REPORT_DATE'; payload: string }
   | { type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER'; payload: string }
+  | { type: 'RESUME_PHONE_PAYMENT_ATTEMPT'; payload: string }  // P0-C1b: workflowId ('' clears)
   | { type: 'SET_PENDING_CUSTOMER_HISTORY'; payload: string }
   | { type: 'SET_PENDING_POS_CUSTOMER'; payload: string }
   | { type: 'SET_HIGHLIGHT_RECORD'; payload: string }

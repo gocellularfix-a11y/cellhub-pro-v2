@@ -110,6 +110,9 @@ export function buildSale(input: BuildSaleInput): Sale {
       phoneNumber: item.phoneNumber,
       carrier: item.carrier,
       portal: item.portal,
+      // P0-C1b: preserve external-payment workflow identity so sale completion
+      // can complete exactly this line's workflow.
+      workflowId: item.workflowId,
       repairId: item.repairId,
       specialOrderId: item.specialOrderId,
       unlockId: item.unlockId,

@@ -10,6 +10,8 @@ import {
   getMostRecentExternalPaymentWorkflow,
   getPendingWorkflows,
   completeWorkflow,
+  cancelWorkflow,
+  getWorkflowById,
 } from './workflowContinuityStore';
 import type { ExternalPaymentMetadata } from './workflowContinuityTypes';
 
@@ -80,5 +82,46 @@ describe('most-recent selection (never the oldest)', () => {
     const picked = getMostRecentExternalPaymentWorkflow();
     expect(picked?.id).toBe(newer.id);
     expect(picked?.id).not.toBe(older.id);
+  });
+});
+
+describe('idempotency — dedupe allows genuine later attempts', () => {
+  it('a cancelled attempt allows a fresh workflow for the same key', () => {
+    const a = beginExternalPhonePayment(meta());
+    cancelWorkflow(a.id);
+    nowMs += 1000;
+    const b = beginExternalPhonePayment(meta());
+    expect(b.id).not.toBe(a.id);
+  });
+
+  it('a TTL-expired attempt allows a fresh workflow for the same key', () => {
+    const a = beginExternalPhonePayment(meta());          // expiresAt = now + 30min
+    nowMs += 31 * 60 * 1000;                                // advance past TTL
+    const b = beginExternalPhonePayment(meta());
+    expect(b.id).not.toBe(a.id);
+  });
+
+  it('walk-in (no customerId) keys are stable and reuse while pending', () => {
+    const w1 = beginExternalPhonePayment(meta({ customerId: undefined, dedupeKey: 'walkin|555|3000|H2O' }));
+    const w2 = beginExternalPhonePayment(meta({ customerId: undefined, dedupeKey: 'walkin|555|3000|H2O' }));
+    expect(w2.id).toBe(w1.id);
+  });
+
+  it('two different customers with the same phone stay distinct (keys differ)', () => {
+    const a = beginExternalPhonePayment(meta({ customerId: 'cA', dedupeKey: 'cA|555|3000|H2O' }));
+    nowMs += 100;
+    const b = beginExternalPhonePayment(meta({ customerId: 'cB', dedupeKey: 'cB|555|3000|H2O' }));
+    expect(b.id).not.toBe(a.id);
+    expect(getPendingWorkflows().filter((w) => w.type === 'external_payment')).toHaveLength(2);
+  });
+});
+
+describe('getWorkflowById — raw record for resume validation', () => {
+  it('returns the record regardless of status, or null when missing', () => {
+    const a = beginExternalPhonePayment(meta());
+    expect(getWorkflowById(a.id)?.id).toBe(a.id);
+    completeWorkflow(a.id);
+    expect(getWorkflowById(a.id)?.status).toBe('completed'); // still readable (for validation)
+    expect(getWorkflowById('nope')).toBeNull();
   });
 });

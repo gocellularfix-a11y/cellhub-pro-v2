@@ -39,10 +39,12 @@ import { generateId } from '@/utils/dates';
 import { persist } from '@/services/persist';
 import { CustomerFormModal } from '@/modules/customers/CustomerModule';
 // P0-C1: idempotent, launch-first workflow creation (replaces startWorkflow here).
-import { beginExternalPhonePayment } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+// P0-C1b: getWorkflowById for exact resume by frozen workflow id.
+import { beginExternalPhonePayment, getWorkflowById } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
+import { resolveResumeAttempt } from './phonePaymentResume';
 import { getActivePortals, type PaymentPortal } from '@/config/paymentPortals';
 // P0-C1: canonical portal resolver — displayed portal == launched portal.
-import { resolvePaymentPortal, runExternalPaymentLaunch, paymentAttemptKey } from './phonePaymentPortal';
+import { resolvePaymentPortal, runExternalPaymentLaunch, paymentAttemptKey, openExternalPortal } from './phonePaymentPortal';
 import { buildCustomerTimeline } from '@/services/intelligence/customerTimeline/customerTimelineEngine';
 import type { CartItem, StoreSettings, Customer, Sale, InventoryItem } from '@/store/types';
 import type { PhonePaymentLine } from './types';
@@ -274,6 +276,11 @@ export default function PhonePaymentModal({
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { cartRef.current = cart; }, [cart]);
 
+  // P0-C1b: normalizedPhone → external-payment workflowId, captured when the
+  // portal is launched, so the cart line for that line can carry its exact
+  // workflow identity (survives to SaleItem; sale completion closes it).
+  const lineWorkflowIds = useRef<Record<string, string>>({});
+
   // ── Active payment portals (from settings, fallback to defaults) ──
   const PORTALS = useMemo<PaymentPortal[]>(() => getActivePortals(settings), [settings]);
 
@@ -319,7 +326,7 @@ export default function PhonePaymentModal({
   // which auto-opens this modal. We detect the pending ID here and
   // autofill everything from the customer record.
   const { state: appState, dispatch: appDispatch } = useApp();
-  const { pendingPhonePaymentCustomerId, inventory, repairs: appRepairs, layaways: appLayaways, storeCreditLedger: appLedger } = appState;
+  const { pendingPhonePaymentCustomerId, resumePhonePaymentWorkflowId, inventory, repairs: appRepairs, layaways: appLayaways, storeCreditLedger: appLedger } = appState;
   // R-FINANCIAL-PRIVACY-PHONE-PAYMENT-LEAK: gate the commission preview card
   // below ("💰 Your Commission" + carrier rate + per-line breakdown). Owner-
   // only financial data — must hide entirely for non-owner employees. Math,
@@ -369,6 +376,53 @@ export default function PhonePaymentModal({
     appDispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pendingPhonePaymentCustomerId]);
+
+  // ── P0-C1b: EXACT resume from a frozen workflow ───────────────────────────
+  // The Operator Bubble dispatched RESUME_PHONE_PAYMENT_ATTEMPT with the exact
+  // workflowId. The FROZEN workflow — not the customer record — is the
+  // authority for phone/carrier/amount/portal, so a customer edited after the
+  // launch cannot alter the restored attempt. A completed/cancelled/expired/
+  // missing/invalid workflow is NOT restored; we show a safe notice and clear.
+  useEffect(() => {
+    if (!open || !resumePhonePaymentWorkflowId) return;
+    const res = resolveResumeAttempt(getWorkflowById(resumePhonePaymentWorkflowId), Date.now());
+    if (!res.ok) {
+      toast(
+        lang === 'es' ? 'Ese pago ya no está disponible para reanudar.'
+          : lang === 'pt' ? 'Esse pagamento não está mais disponível para retomar.'
+          : 'That payment is no longer available to resume.',
+        'info',
+      );
+      appDispatch({ type: 'RESUME_PHONE_PAYMENT_ATTEMPT', payload: '' });
+      return;
+    }
+    const r = res.restore;
+    // Restore the EXACT frozen intent on the single-line surface, ready to add
+    // to cart / Confirm Paid. Carrier drives the read-only portal via its effect.
+    setModalTab('payment');
+    setIsMultiLine(false);
+    setSelectedKnownLines({});
+    setPaidKnownLines({});
+    setAutoFilledSnap(null);                 // guard: keep-or-replace must not clobber the restore
+    setPhoneNumber(sanitizePhone(r.phoneNumber));
+    setCarrier(r.transactionCarrier);
+    setAmount((r.amountCents / 100).toFixed(2));
+    // The customer record is used ONLY for descriptive name/lines — never to
+    // re-derive the frozen phone/carrier/amount above.
+    if (r.customerId) {
+      const match = customersRef.current.find((c) => c.id === r.customerId);
+      if (match) {
+        setSelectedCustomer(match);
+        setFirstName(match.firstName || (match.name || '').split(' ')[0] || '');
+        setLastName(match.lastName || (match.name || '').split(' ').slice(1).join(' ') || '');
+      }
+    }
+    // Keep the workflowId so the resumed line's cart item carries it and sale
+    // completion closes THIS exact workflow.
+    lineWorkflowIds.current[sanitizePhone(r.phoneNumber)] = r.workflowId;
+    appDispatch({ type: 'RESUME_PHONE_PAYMENT_ATTEMPT', payload: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, resumePhonePaymentWorkflowId]);
 
   // ── Customer search results ───────────────────────────────
   const custResults = useMemo(() => {
@@ -1055,6 +1109,8 @@ export default function PhonePaymentModal({
         const commRate = (settings.carrierCommissions?.[normalizedCarrier]
           ?? settings.defaultCommissionRate
           ?? 0.07);
+        // P0-C1b: resolve THIS line's portal so it persists to the sale.
+        const lineResolved = resolvePaymentPortal(lineCarrierRaw, PORTALS, settings.carrierPortalUrls || {});
         items.push({
           id: generateId(),
           name: `${normalizedCarrier} - ${formatPhone(phone)}`,
@@ -1072,6 +1128,9 @@ export default function PhonePaymentModal({
           // silent zero corrupted reports when carrier missing from settings).
           commissionRate: commRate,
           notes: lineNote,
+          // P0-C1b: portal + workflow identity persisted on every route.
+          ...(lineResolved?.portalId ? { portal: lineResolved.portalId } : {}),
+          ...(lineWorkflowIds.current[phone] ? { workflowId: lineWorkflowIds.current[phone] } : {}),
         });
       });
     } else {
@@ -1093,6 +1152,8 @@ export default function PhonePaymentModal({
       const commRate = (settings.carrierCommissions?.[normalizedCarrier]
         ?? settings.defaultCommissionRate
         ?? 0.07);
+      // P0-C1b: resolve the portal so single-line sales also persist it.
+      const singleResolved = resolvePaymentPortal(carrier, PORTALS, settings.carrierPortalUrls || {});
       items.push({
         id: generateId(),
         name: `${normalizedCarrier} - ${formatPhone(digits)}`,
@@ -1105,13 +1166,16 @@ export default function PhonePaymentModal({
         // Re-sanitize at the persist boundary (defense in depth) — never
         // trust raw state; guarantees the 10-digit phoneNumber shipped to
         // cart → sale → receipt → SMS is identical to what validation saw.
-        phoneNumber: sanitizePhone(phoneNumber),
+        phoneNumber: digits,
         // R-PHONE-FAMILY-MULTILINE-TOTALS: parity with multi-line path +
         // handlePortalForLine/activation — reports need this to attribute
         // commission on historical single-line sales.
         // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
         commissionRate: commRate,
         notes: customerNote,
+        // P0-C1b: portal + workflow identity persisted on the single-line route.
+        ...(singleResolved?.portalId ? { portal: singleResolved.portalId } : {}),
+        ...(lineWorkflowIds.current[digits] ? { workflowId: lineWorkflowIds.current[digits] } : {}),
       });
     }
 
@@ -1122,7 +1186,7 @@ export default function PhonePaymentModal({
     // or the customer gets double-charged.
     return items;
   }, [carrier, isMultiLine, knownLines, validLines, phoneNumber, amount,
-      firstName, lastName, breakdown, t, toast]);
+      firstName, lastName, breakdown, t, toast, PORTALS, settings]);
 
   // ── Add to Customers ─────────────────────────────────────
   // ── Open customer form (add new or edit existing) ────────
@@ -1355,6 +1419,9 @@ export default function PhonePaymentModal({
     const commRate = (settings.carrierCommissions?.[normCarrier]
       ?? settings.defaultCommissionRate
       ?? 0.07);
+    // P0-C1: resolve THIS line's own carrier through the canonical resolver.
+    const resolved = resolvePaymentPortal(line.carrier, PORTALS, settings.carrierPortalUrls || {});
+    const url = resolved?.url || '';
     const newItem: CartItem = {
       id: generateId(),
       name: `${normCarrier} - ${formatPhone(phone)}`,
@@ -1370,11 +1437,10 @@ export default function PhonePaymentModal({
       notes: customerNote,
       // R-COMMISSION-FIX-WRITE-AND-READ: full fallback chain (no silent zero).
       commissionRate: commRate,
+      // P0-C1b: portal + workflow identity persisted on the manual-line route.
+      ...(resolved?.portalId ? { portal: resolved.portalId } : {}),
+      ...(lineWorkflowIds.current[phone] ? { workflowId: lineWorkflowIds.current[phone] } : {}),
     };
-
-    // P0-C1: resolve THIS line's own carrier through the canonical resolver.
-    const resolved = resolvePaymentPortal(line.carrier, PORTALS, settings.carrierPortalUrls || {});
-    const url = resolved?.url || '';
     if (url) {
       const c = normCarrier.toLowerCase();
       const winName = (c.includes('att') || url.includes('qpay') || url.includes('myrtpay'))
@@ -1488,6 +1554,9 @@ export default function PhonePaymentModal({
       notes: customerNote,
       commissionRate: commRate,
       ...(resolvedPortal?.portalId ? { portal: resolvedPortal.portalId } : {}),
+      // P0-C1b: exact workflow identity for this line (if a portal was launched
+      // for it) → survives to SaleItem → sale completion closes it.
+      ...(lineWorkflowIds.current[norm] ? { workflowId: lineWorkflowIds.current[norm] } : {}),
     };
 
     const nextCart = [...cartRef.current, newItem];
@@ -1565,7 +1634,9 @@ export default function PhonePaymentModal({
         const c = (resolved?.carrier || lineCarrier).toLowerCase();
         const winName = (c.includes('att') || u.includes('qpay') || u.includes('myrtpay'))
           ? 'qpayWindow' : 'externalPortalWindow';
-        return openExternalIfOnline(u, winName, 'noopener,noreferrer');
+        // P0-C1b: structured open — distinguishes offline / popup-blocked /
+        // exception / success so a false workflow is never created.
+        return openExternalPortal(u, winName, 'noopener,noreferrer');
       },
       begin: (portalUrl) => {
         const now = Date.now();
@@ -1576,7 +1647,7 @@ export default function PhonePaymentModal({
         // R-INTELLIGENCE-WORKFLOW-RESUMPTION-V1: rich, FROZEN workflow context
         // (phone/carrier/amount/portal/customer) so the resume card shows the
         // exact attempt. NEVER auto-confirms — human click required.
-        beginExternalPhonePayment(
+        const wf = beginExternalPhonePayment(
           {
             phone: normPhone,
             carrier: resolved?.carrier || normalizeCarrier(lineCarrier),
@@ -1597,17 +1668,20 @@ export default function PhonePaymentModal({
             ],
           },
         );
+        // P0-C1b: remember this line's workflowId so its cart line carries it.
+        lineWorkflowIds.current[normPhone] = wf.id;
       },
       onError: (reason) => {
         if (reason === 'no_carrier') toast(t('phonePay.errPickCarrierLine'), 'error');
-        else if (reason === 'launch_failed') toast(
-          lang === 'es' ? 'No se pudo abrir el portal de pago.'
-            : lang === 'pt' ? 'Não foi possível abrir o portal de pagamento.'
-            : 'Could not open the payment portal.',
+        else if (reason === 'popup_blocked' || reason === 'open_exception') toast(
+          lang === 'es' ? 'No se pudo abrir el portal de pago. Revisa los permisos de ventanas emergentes e inténtalo de nuevo.'
+            : lang === 'pt' ? 'Não foi possível abrir o portal de pagamento. Verifique as permissões de pop-up e tente novamente.'
+            : 'Could not open the payment portal. Check popup permissions and try again.',
           'error',
         );
-        // no_portal_url: no configured URL for this carrier — stay silent
-        // (preserves prior no-op behavior; nothing was ever going to open).
+        // offline: OfflineGuardListener already shows the localized offline
+        // toast (guardOnline emitted the event). no_portal_url: no configured
+        // URL for this carrier — stay silent (nothing was going to open).
       },
     });
 

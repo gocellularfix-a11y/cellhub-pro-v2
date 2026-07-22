@@ -50,6 +50,8 @@ import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
 import { classifyCheckoutAck } from '@/services/lan/posCheckoutForwarding';
 import { addVerification } from '@/services/intelligence/paymentVerification/paymentVerificationService';
 import { trackWorkflowStart, clearWorkflowTrack } from '@/services/intelligence/continuity/continuityEngine';
+// P0-C1b: complete external-payment workflows when their sale is committed.
+import { completeWorkflow } from '@/services/intelligence/workflowContinuity/workflowContinuityStore';
 // R-GLOBAL-SCAN-ANYWHERE-V1: stock rule + default CartItem construction now
 // live in the shared resolver so the global AppShell scanner builds cart
 // lines EXACTLY like POS does. Custom-category taxMode overrides stay here.
@@ -73,6 +75,7 @@ export default function POSModule() {
     state: {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
+      resumePhonePaymentWorkflowId,
       pendingPosCustomer, storeCreditLedger, customerReturns,
     },
     setCart, setInventory, setCustomers, setSales,
@@ -194,6 +197,15 @@ export default function POSModule() {
       setShowPhonePayment(true);
     }
   }, [pendingPhonePaymentCustomerId]);
+
+  // ── P0-C1b: open PhonePaymentModal to RESUME an exact external-payment ──
+  // The Operator Bubble dispatches RESUME_PHONE_PAYMENT_ATTEMPT with the exact
+  // workflowId; the modal restores the frozen attempt by that id.
+  useEffect(() => {
+    if (resumePhonePaymentWorkflowId) {
+      setShowPhonePayment(true);
+    }
+  }, [resumePhonePaymentWorkflowId]);
 
   // ── Auto-assign customer when repair/SO is added to cart ──
   // RepairModule dispatches SET_PENDING_POS_CUSTOMER after consolidateCartForRepair.
@@ -427,6 +439,13 @@ export default function POSModule() {
       // R-INTELLIGENCE-CONTINUITY-V1: clear the interrupted phone_payment portal track.
       if (coreResult.sideEffects.clearWorkflowTrack) {
         try { clearWorkflowTrack(coreResult.sideEffects.clearWorkflowTrack); } catch { /* non-critical */ }
+      }
+      // P0-C1b: complete EXACTLY the external-payment workflows of the phone
+      // lines that were sold, so the resume/confirm bubble clears and an app
+      // restart never revives them. Idempotent: completeWorkflow no-ops on an
+      // already-completed/missing id. Only runs on a committed sale.
+      for (const wfId of coreResult.sideEffects.completeWorkflowIds) {
+        try { completeWorkflow(wfId); } catch { /* non-critical */ }
       }
       // R-INTELLIGENCE-PAYMENT-VERIFY-V1: schedule the carrier-portal confirm nudge.
       if (coreResult.sideEffects.phonePaymentVerify) {

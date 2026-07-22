@@ -111,37 +111,56 @@ describe('payment attempt idempotency key', () => {
 
 describe('runExternalPaymentLaunch — launch-first, no workflow on failure', () => {
   const resolved = { portalId: 'H2O', label: 'H2O', url: 'https://h2o.example', carrier: 'H2O' };
+  const okOpen = () => ({ ok: true as const, handle: null });
 
   it('opens the portal then begins exactly one workflow on success', () => {
     let began = 0; let openedUrl = '';
     const ok = runExternalPaymentLaunch({
-      resolved, open: (u) => { openedUrl = u; return true; }, begin: () => { began += 1; }, onError: () => {},
+      resolved, open: (u) => { openedUrl = u; return { ok: true, handle: null }; }, begin: () => { began += 1; }, onError: () => {},
     });
     expect(ok).toBe(true);
     expect(openedUrl).toBe('https://h2o.example');
     expect(began).toBe(1);
   });
 
-  it('does NOT begin a workflow when the launch fails (blocked popup)', () => {
+  it('does NOT begin a workflow when the popup is blocked', () => {
     let began = 0; let err = '';
     const ok = runExternalPaymentLaunch({
-      resolved, open: () => false, begin: () => { began += 1; }, onError: (r) => { err = r; },
+      resolved, open: () => ({ ok: false, reason: 'popup_blocked' }), begin: () => { began += 1; }, onError: (r) => { err = r; },
     });
     expect(ok).toBe(false);
     expect(began).toBe(0);
-    expect(err).toBe('launch_failed');
+    expect(err).toBe('popup_blocked');
+  });
+
+  it('does NOT begin a workflow when window.open throws (exception)', () => {
+    let began = 0; let err = '';
+    runExternalPaymentLaunch({
+      resolved, open: () => ({ ok: false, reason: 'open_exception' }), begin: () => { began += 1; }, onError: (r) => { err = r; },
+    });
+    expect(began).toBe(0);
+    expect(err).toBe('open_exception');
+  });
+
+  it('does NOT begin a workflow when offline', () => {
+    let began = 0; let err = '';
+    runExternalPaymentLaunch({
+      resolved, open: () => ({ ok: false, reason: 'offline' }), begin: () => { began += 1; }, onError: (r) => { err = r; },
+    });
+    expect(began).toBe(0);
+    expect(err).toBe('offline');
   });
 
   it('does NOT begin when there is no carrier or no url', () => {
     let began = 0;
-    runExternalPaymentLaunch({ resolved: null, open: () => true, begin: () => { began += 1; }, onError: () => {} });
-    runExternalPaymentLaunch({ resolved: { ...resolved, url: '' }, open: () => true, begin: () => { began += 1; }, onError: () => {} });
+    runExternalPaymentLaunch({ resolved: null, open: okOpen, begin: () => { began += 1; }, onError: () => {} });
+    runExternalPaymentLaunch({ resolved: { ...resolved, url: '' }, open: okOpen, begin: () => { began += 1; }, onError: () => {} });
     expect(began).toBe(0);
   });
 
   it('begin receives the exact launched url (frozen for resume)', () => {
     let seen = '';
-    runExternalPaymentLaunch({ resolved, open: () => true, begin: (u) => { seen = u; }, onError: () => {} });
+    runExternalPaymentLaunch({ resolved, open: okOpen, begin: (u) => { seen = u; }, onError: () => {} });
     expect(seen).toBe('https://h2o.example');
   });
 });

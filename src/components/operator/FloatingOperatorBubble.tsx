@@ -813,12 +813,11 @@ export default function FloatingOperatorBubble() {
     [pendingWorkflows],
   );
 
-  // P0-C1: Resume reopens the REAL Phone Services context in POS. The old
-  // target tab ('phone-payments') has no AppShell route — it rendered a blank
-  // screen. We now reuse the proven scanner-open path: navigate to POS and set
-  // the pending phone-payment customer, which auto-opens PhonePaymentModal
-  // pre-filled with that customer (POSModule effect). No new store action, no
-  // DOM hacks, no timers.
+  // P0-C1b: Resume reopens the EXACT attempt in POS. We pass only the
+  // workflowId (not a mutable copy of the data) via RESUME_PHONE_PAYMENT_ATTEMPT;
+  // PhonePaymentModal reads that frozen workflow by id and restores the exact
+  // phone/carrier/amount/portal. No dead 'phone-payments' tab, no DOM hacks,
+  // no timers. Acts strictly on the workflow the card is showing (by id).
   const handleResumeWorkflow = useCallback(() => {
     if (!pendingExternalPayment) return;
     resumeWorkflow(pendingExternalPayment.id);
@@ -826,8 +825,7 @@ export default function FloatingOperatorBubble() {
     resetReturnCooldown();
     setReturnDetected(false);
     dispatch({ type: 'SET_ACTIVE_TAB', payload: 'pos' });
-    const customerId = (pendingExternalPayment.metadata as { customerId?: string }).customerId;
-    if (customerId) dispatch({ type: 'SET_PENDING_PHONE_PAYMENT_CUSTOMER', payload: customerId });
+    dispatch({ type: 'RESUME_PHONE_PAYMENT_ATTEMPT', payload: pendingExternalPayment.id });
     setIsOverlayOpen(false);
   }, [pendingExternalPayment, dispatch]);
 

@@ -25,6 +25,8 @@ import { redeemLedgerEntry } from '@/services/storeCredit/ledger';
 import { finalizeExchangeReturn, type ExchangeFinalizationResult } from '@/services/returns/finalizeExchangeReturn';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
+// P0-C1b: which external-payment workflows the completed sale must close.
+import { collectPhonePaymentWorkflowIds } from './phonePaymentResume';
 
 export type FinalizeSaleRejectionReason =
   | 'tax_setup_required'
@@ -67,6 +69,10 @@ export interface FinalizeSaleSideEffects {
   phonePaymentVerify:
     | { saleId: string; customerName: string; carrier: string; amountCents: number; source: 'phone_payment' }
     | null;
+  /** P0-C1b: external-payment workflowIds to completeWorkflow() now that the
+   *  sale is committed — the exact set from SOLD phone_payment lines, deduped.
+   *  The caller (POSModule) performs the store writes; this stays pure. */
+  completeWorkflowIds: string[];
 }
 
 export interface FinalizeSaleCoreSuccess {
@@ -512,6 +518,14 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
     storeCreditLedger: updatedLedger,
     ledgerOps,
     exchange,
-    sideEffects: { operatorActivity, clearWorkflowTrack: 'phone_payment_portal', phonePaymentVerify },
+    sideEffects: {
+      operatorActivity,
+      clearWorkflowTrack: 'phone_payment_portal',
+      phonePaymentVerify,
+      // P0-C1b: complete exactly the workflows of the phone-payment lines that
+      // were actually sold in this sale (deduped). Empty when none carry a
+      // workflowId (e.g. single-line manual flow, or legacy sales).
+      completeWorkflowIds: collectPhonePaymentWorkflowIds(sale.items),
+    },
   };
 }

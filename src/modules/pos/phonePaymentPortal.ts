@@ -15,6 +15,8 @@
 import type { PaymentPortal } from '@/config/paymentPortals';
 import { getActivePortals } from '@/config/paymentPortals';
 import { normalizeCarrier } from '@/utils/normalize';
+import { guardOnline } from '@/hooks/useOnlineStatus';
+import { isElectron } from '@/utils/platform';
 
 /** Structured resolution — replaces the bare portal-id string. */
 export interface ResolvedPaymentPortal {
@@ -119,27 +121,60 @@ export function paymentAttemptKey(a: {
   return [a.customerId || 'walkin', normKey(a.phoneNumber), Math.round(a.amountCents || 0), a.portalId || 'none'].join('|');
 }
 
-export type LaunchFailureReason = 'no_carrier' | 'no_portal_url' | 'launch_failed';
+/** P0-C1b — structured outcome of requesting an external window open. */
+export type ExternalOpenResult =
+  | { ok: true; handle: Window | null }
+  | { ok: false; reason: 'offline' | 'missing_url' | 'popup_blocked' | 'open_exception' };
 
 /**
- * Launch-FIRST orchestration for one external-payment attempt (pure — DOM and
- * the workflow store are injected). A workflow is created ONLY after the portal
- * launch is successfully requested. `open` returns false when the popup was
- * blocked / unavailable → `begin` is never called (no orphan workflow). Order:
- *   validate carrier → require url → open portal → (only on success) begin.
- * Returns true when a workflow was begun.
+ * P0-C1b — open an external payment portal and REPORT what actually happened,
+ * so "failed launch = no workflow" can distinguish real failures from success:
+ *   - no url            → missing_url
+ *   - offline           → offline (guardOnline emits the offline toast event)
+ *   - window.open throws → open_exception
+ *   - window.open null  → popup_blocked  (BROWSER/PWA only)
+ *   - otherwise         → ok
+ * Electron caveat: window.open can return null on SUCCESS in Electron, so null
+ * is NOT treated as blocked there — never false-block the production desktop app.
+ */
+export function openExternalPortal(url: string, target?: string, features?: string): ExternalOpenResult {
+  if (!url) return { ok: false, reason: 'missing_url' };
+  if (!guardOnline()) return { ok: false, reason: 'offline' };
+  let handle: Window | null = null;
+  try {
+    handle = typeof window === 'undefined' ? null : window.open(url, target, features);
+  } catch {
+    return { ok: false, reason: 'open_exception' };
+  }
+  if (handle === null && !isElectron()) return { ok: false, reason: 'popup_blocked' };
+  return { ok: true, handle };
+}
+
+export type LaunchFailureReason =
+  | 'no_carrier' | 'no_portal_url' | 'offline' | 'popup_blocked' | 'open_exception';
+
+/**
+ * Launch-FIRST orchestration for one external-payment attempt (pure — the open
+ * function and the workflow store are injected). A workflow is created ONLY
+ * after the portal launch is CONFIRMED successful. Order:
+ *   validate carrier → require url → open portal → (only on ok) begin.
+ * Any non-ok open result (offline / popup blocked / exception) → `begin` is
+ * never called (no orphan/false workflow). Returns true when a workflow began.
  */
 export function runExternalPaymentLaunch(params: {
   resolved: ResolvedPaymentPortal | null;
-  open: (url: string) => boolean;
+  open: (url: string) => ExternalOpenResult;
   begin: (portalUrl: string) => void;
   onError: (reason: LaunchFailureReason) => void;
 }): boolean {
   const { resolved, open, begin, onError } = params;
   if (!resolved || !resolved.carrier) { onError('no_carrier'); return false; }
   if (!resolved.url) { onError('no_portal_url'); return false; }
-  const launched = open(resolved.url);
-  if (!launched) { onError('launch_failed'); return false; }
+  const res = open(resolved.url);
+  if (!res.ok) {
+    onError(res.reason === 'missing_url' ? 'no_portal_url' : res.reason);
+    return false;
+  }
   begin(resolved.url);
   return true;
 }
