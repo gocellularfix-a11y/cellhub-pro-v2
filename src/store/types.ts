@@ -941,6 +941,22 @@ export interface StoreCreditRedemption {
   employeeName: string;
 }
 
+// P0-SC-2: append-only reversal movement — restores a redemption's value to
+// its certificate when the redeeming sale goes through Void & Reverse.
+// The original redemption row is NEVER edited or deleted; the ledger shows
+// both movements. originalSaleId is the idempotency key (one reversal per
+// (certificate, sale)).
+export interface StoreCreditReversal {
+  id: string;
+  reversedAt: string;            // ISO
+  restoredAmount: number;        // cents restored to the certificate
+  originalSaleId: string;        // the voided sale whose redemption is reversed
+  originalInvoiceNumber?: string;
+  reversalReference?: string;    // void reason / reference for the audit trail
+  employeeId?: string;
+  employeeName: string;
+}
+
 export interface StoreCreditLedger {
   id: string;
   storeId?: string;
@@ -958,6 +974,8 @@ export interface StoreCreditLedger {
   sourceReturnId?: string;     // CustomerReturn.id link
   sourceReturnNumber?: string;
   redemptions: StoreCreditRedemption[];
+  // P0-SC-2: void-reversal movements (append-only; optional for legacy records).
+  reversals?: StoreCreditReversal[];
   voidedAt?: string;
   voidedByEmployeeId?: string;
   voidedByEmployeeName?: string;

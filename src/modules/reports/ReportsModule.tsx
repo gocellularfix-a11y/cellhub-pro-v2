@@ -46,6 +46,8 @@ import {
 import { normalizeLocalDayRange, isWithinLocalDayRange } from '@/utils/reportRange';
 import type { Sale, SaleItem, Repair, Unlock, SpecialOrder, Layaway, InventoryItem, CartItem, StoreCreditLedger } from '@/store/types';
 import { summarizeLedger, voidLedgerEntry } from '@/services/storeCredit/ledger';
+// P0-SC-2: certificate value restoration on Void & Reverse.
+import { reverseStoreCreditForSale } from '@/services/storeCredit/reverse';
 import { buildCancellationReceiptHtml } from './printCancellationReceipt';
 // CELLHUB-PRINT-REPORT-CONTRAST-REGRESSION: shared print-safe report CSS.
 import { REPORT_PRINT_CSS } from './reportPrintStyles';
@@ -188,7 +190,7 @@ function loadReturns(): NormalizedReturn[] {
 
 export default function ReportsModule() {
   const {
-    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses, storeCreditLedger, isAdminMode },
+    state: { sales, repairs, unlocks, specialOrders, layaways, inventory, customers, settings, globalSearchTerm, pendingReportDate, currentEmployee, customerReturns, vendorReturns, inventoryLosses, storeCreditLedger, isAdminMode, currentStoreId },
     dispatch,
     setStoreCreditLedger,
   } = useApp();
@@ -290,6 +292,26 @@ export default function ReportsModule() {
     setVoiding(true);
     try {
       const now = new Date().toISOString();
+      // ── P0-SC-2: compute the store-credit certificate restorations FIRST.
+      // The ledger (redemptions[].saleId) is the authoritative identity of what
+      // this sale really debited. ALL-OR-NOTHING: any failure (missing ledger
+      // identity, wrong-store cert, voided cert, corrupt totals) fails closed —
+      // the void is ABORTED with a manager-facing error and every existing
+      // financial state is preserved. Idempotent: an already-reversed sale
+      // restores nothing a second time.
+      const creditReversal = reverseStoreCreditForSale(sale, storeCreditLedger, {
+        employeeId: currentEmployee?.id,
+        employeeName: currentEmployee?.name || '—',
+        reversalReference: `void:${reason.trim()}`,
+        reversedAt: now,
+        currentStoreId,
+      });
+      if (!creditReversal.ok) {
+        console.warn('[void-sale] store-credit reversal failed closed:', creditReversal.failures);
+        toast(t('reports.voidStoreCreditBlocked'), 'error');
+        setVoiding(false);
+        return;
+      }
       // Build the voided sale record — full spread per persist contract.
       const voidedSale: Sale = {
         ...sale,
@@ -326,6 +348,18 @@ export default function ReportsModule() {
           persist.inventory(upd.id, upd.data as unknown as Record<string, unknown>);
         }
       }
+      // ── P0-SC-2: apply the certificate restorations (append-only reversal
+      // movements; original redemptions preserved). Persist rides the same
+      // canonical surface as every other ledger write; the LAN snapshot
+      // publisher propagates the updated balances to Secondaries.
+      if (creditReversal.changed) {
+        setStoreCreditLedger(creditReversal.ledger);
+        for (const op of creditReversal.ops) {
+          persist.storeCreditLedger(op.id, op.data);
+        }
+        const restoredCents = creditReversal.restored.reduce((s, r) => s + r.restoredCents, 0);
+        toast(t('reports.voidCreditRestored', formatCurrency(restoredCents)), 'success');
+      }
       toast(t('reports.voidedToast', sale.invoiceNumber), 'success');
       // Show the manual-refund warning as a follow-up toast so the
       // owner is reminded that no payment processor was contacted.
@@ -341,7 +375,8 @@ export default function ReportsModule() {
     } finally {
       setVoiding(false);
     }
-  }, [voiding, sales, inventory, currentEmployee, dispatch, isStockableForVoid, t, toast]);
+  }, [voiding, sales, inventory, currentEmployee, dispatch, isStockableForVoid, t, toast,
+      storeCreditLedger, setStoreCreditLedger, currentStoreId]);
 
   // R-REPORTS-EDIT-SALE-ITEM-V1: edit a single sale item's price + qty after
   // checkout. Owner-only via AdminPinGate. Mutates the sale's items array
