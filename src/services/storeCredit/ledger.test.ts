@@ -13,6 +13,8 @@ import {
   voidLedgerEntry,
   findCertificate,
   summarizeLedger,
+  redeemableEntries,
+  redemptionCap,
 } from './ledger';
 
 function issue(amountCents: number, over: Record<string, unknown> = {}): StoreCreditLedger {
@@ -114,6 +116,24 @@ describe('findCertificate + customer scope', () => {
     const b = issue(2000, { certificateNumber: 'SC-22222222-BBBB', customerId: 'cB' });
     expect(findCertificate([a, b], 'sc-11111111-aaaa')!.id).toBe(a.id);
     expect(findCertificate([a, b], 'SC-33333333-XXXX')).toBeNull();
+  });
+});
+
+describe('selector helpers (P0-SC-1.1 — consumed by ApplyStoreCreditModal)', () => {
+  it('redeemableEntries shows only active entries with balance; redemptionCap never exceeds remaining or cart', () => {
+    const active = redeemLedgerEntry(issue(23270), { amountCents: 6300, saleId: 's1', employeeName: 'E' }).ledger; // 16970 left
+    const depleted = redeemLedgerEntry(issue(1000, { certificateNumber: 'SC-D' }), { amountCents: 1000, saleId: 's2', employeeName: 'E' }).ledger;
+    const voided = voidLedgerEntry(issue(5000, { certificateNumber: 'SC-V' }), { employeeName: 'M' });
+
+    const visible = redeemableEntries([active, depleted, voided]);
+    expect(visible).toHaveLength(1);
+    expect(visible[0].remainingAmount).toBe(16970);
+
+    expect(redemptionCap(active, 6300)).toBe(6300);     // cart smaller than remaining
+    expect(redemptionCap(active, 99999)).toBe(16970);   // remaining caps the offer
+    expect(redemptionCap(active, 0)).toBe(0);
+    expect(redemptionCap(active, -50)).toBe(0);         // defensive: negative cart
+    expect(redeemableEntries(null)).toEqual([]);
   });
 });
 

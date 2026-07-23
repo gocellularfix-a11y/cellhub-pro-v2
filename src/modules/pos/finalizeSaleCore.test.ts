@@ -217,8 +217,10 @@ function creditLine(cents: number, over: Record<string, unknown> = {}): Sale['it
 describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', () => {
   it('OWNER SCENARIO: $232.70 cert, $63.00 redeemed → exactly one debit, $169.70 remaining; second sale → $119.70', () => {
     // Sale 1: $63 phone payment fully offset by $63 store credit.
+    // customerId matches the certificate owner (P0-SC-1.1 ownership rule).
     const s1 = sale({
       id: 'sale-63',
+      customerId: 'c1',
       items: [
         item({ id: 'pp', category: 'phone_payment', carrier: 'H2O', price: 6300 }),
         creditLine(6300),
@@ -238,7 +240,7 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
     expect(after1.status).toBe('active');
 
     // Sale 2 against the UPDATED ledger (next checkout reads the new balance).
-    const s2 = sale({ id: 'sale-50', items: [creditLine(5000, { id: 'sc-2' })], total: 0 });
+    const s2 = sale({ id: 'sale-50', customerId: 'c1', items: [creditLine(5000, { id: 'sc-2' })], total: 0 });
     const r2 = finalizeSaleCore(input({ sale: s2, storeCreditLedger: r1.storeCreditLedger }));
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
@@ -250,6 +252,7 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
   it('mixed tender: $100 sale = $63 store credit + $37 cash → ledger debit is EXACTLY $63', () => {
     const s = sale({
       id: 'sale-mixed',
+      customerId: 'c1',
       items: [item({ id: 'prod', price: 10000 }), creditLine(6300)],
       subtotal: 10000, subtotalAfterDiscount: 10000, total: 3700,
       paymentMethod: 'Cash',
@@ -264,14 +267,14 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
 
   it('is idempotent: re-processing a sale already debited on the cert is a no-op (retry / duplicate ACK)', () => {
     const first = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-63', items: [creditLine(6300)], total: 0 }),
+      sale: sale({ id: 'sale-63', customerId: 'c1', items: [creditLine(6300)], total: 0 }),
       storeCreditLedger: [ledgerEntry()],
     }));
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     // Same sale.id re-finalized against the updated ledger → no second debit.
     const again = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-63', items: [creditLine(6300)], total: 0 }),
+      sale: sale({ id: 'sale-63', customerId: 'c1', items: [creditLine(6300)], total: 0 }),
       storeCreditLedger: first.storeCreditLedger,
     }));
     expect(again.ok).toBe(true);
@@ -284,12 +287,12 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
 
   it('two DIFFERENT sales on the same cert → two legitimate debits', () => {
     const r1 = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-A', items: [creditLine(1000)], total: 0 }),
+      sale: sale({ id: 'sale-A', customerId: 'c1', items: [creditLine(1000)], total: 0 }),
       storeCreditLedger: [ledgerEntry()],
     }));
     if (!r1.ok) throw new Error('unexpected');
     const r2 = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-B', items: [creditLine(2000)], total: 0 }),
+      sale: sale({ id: 'sale-B', customerId: 'c1', items: [creditLine(2000)], total: 0 }),
       storeCreditLedger: r1.storeCreditLedger,
     }));
     expect(r2.ok).toBe(true);
@@ -301,7 +304,7 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
 
   it('rejects over-redemption BEFORE committing (no sale, no debit)', () => {
     const r = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-over', items: [creditLine(6300)], total: 0 }),
+      sale: sale({ id: 'sale-over', customerId: 'c1', items: [creditLine(6300)], total: 0 }),
       storeCreditLedger: [ledgerEntry({ redeemedAmount: 18270, remainingAmount: 5000 })],
     }));
     expect(r.ok).toBe(false);
@@ -312,13 +315,13 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
 
   it('rejects a voided certificate and a missing ledger entry', () => {
     const voided = finalizeSaleCore(input({
-      sale: sale({ id: 's', items: [creditLine(100)], total: 0 }),
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(100)], total: 0 }),
       storeCreditLedger: [ledgerEntry({ status: 'voided', remainingAmount: 0 })],
     }));
     expect(voided).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
 
     const missing = finalizeSaleCore(input({
-      sale: sale({ id: 's', items: [creditLine(100)], total: 0 }),
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(100)], total: 0 }),
       storeCreditLedger: [],   // cert does not exist on the authoritative machine
     }));
     expect(missing).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
@@ -343,7 +346,7 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
 
   it('aggregates multiple lines for the same cert into ONE redemption', () => {
     const r = finalizeSaleCore(input({
-      sale: sale({ id: 'sale-multi', items: [creditLine(1000, { id: 'a' }), creditLine(2000, { id: 'b' })], total: 0 }),
+      sale: sale({ id: 'sale-multi', customerId: 'c1', items: [creditLine(1000, { id: 'a' }), creditLine(2000, { id: 'b' })], total: 0 }),
       storeCreditLedger: [ledgerEntry()],
     }));
     expect(r.ok).toBe(true);
@@ -351,6 +354,184 @@ describe('finalizeSaleCore — certificate store-credit redemption (P0-SC-1)', (
     const after = r.storeCreditLedger.find((l) => l.id === 'ledger-1')!;
     expect(after.redemptions).toHaveLength(1);
     expect(after.redeemedAmount).toBe(3000);
+  });
+});
+
+describe('finalizeSaleCore — certificate ownership, store scope, line hygiene (P0-SC-1.1)', () => {
+  it("rejects customer A's owned certificate on customer B's sale (and on a walk-in sale)", () => {
+    const certOfA = ledgerEntry({ customerId: 'cA' });
+    const wrongCustomer = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'cB', items: [creditLine(1000)], total: 0 }),
+      storeCreditLedger: [certOfA],
+    }));
+    expect(wrongCustomer).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
+    if (!wrongCustomer.ok) expect(wrongCustomer.details).toMatchObject({ cause: 'wrong_customer' });
+
+    const walkIn = finalizeSaleCore(input({
+      sale: sale({ id: 's', items: [creditLine(1000)], total: 0 }), // no customerId
+      storeCreditLedger: [certOfA],
+    }));
+    expect(walkIn).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
+    // No debit happened on rejection.
+    expect(certOfA.redemptions).toHaveLength(0);
+    expect(certOfA.remainingAmount).toBe(23270);
+  });
+
+  it('an UNOWNED certificate (manual-entry recipient) stays a bearer instrument', () => {
+    const bearer = ledgerEntry({ customerId: undefined });
+    const r = finalizeSaleCore(input({
+      sale: sale({ id: 's', items: [creditLine(1000)], total: 0 }), // walk-in
+      storeCreditLedger: [bearer],
+    }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.storeCreditLedger[0].remainingAmount).toBe(22270);
+  });
+
+  it('store scope: canonical belongsToStore rule at the commit boundary', () => {
+    // Scoped view active + cert stamped for another store → reject.
+    const otherStore = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000)], total: 0 }),
+      storeCreditLedger: [ledgerEntry({ storeId: 'store-B' })],
+      currentStoreId: 'store-A',
+    }));
+    expect(otherStore).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
+    if (!otherStore.ok) expect(otherStore.details).toMatchObject({ cause: 'wrong_store' });
+
+    // Same store → ok.
+    const sameStore = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000)], total: 0 }),
+      storeCreditLedger: [ledgerEntry({ storeId: 'store-A' })],
+      currentStoreId: 'store-A',
+    }));
+    expect(sameStore.ok).toBe(true);
+
+    // Legacy unstamped cert is redeemable in any store (BUG-1 rule).
+    const legacy = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000)], total: 0 }),
+      storeCreditLedger: [ledgerEntry({ storeId: undefined })],
+      currentStoreId: 'store-A',
+    }));
+    expect(legacy.ok).toBe(true);
+
+    // Single-store mode (no currentStoreId) → no scoping.
+    const singleStore = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000)], total: 0 }),
+      storeCreditLedger: [ledgerEntry({ storeId: 'store-B' })],
+    }));
+    expect(singleStore.ok).toBe(true);
+  });
+
+  it('rejects a POSITIVE-priced or foreign-category line carrying a ledger id (bad_line)', () => {
+    const positive = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000, { price: 6300 })], total: 6300 }),
+      storeCreditLedger: [ledgerEntry()],
+    }));
+    expect(positive).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
+    if (!positive.ok) expect(positive.details).toMatchObject({ cause: 'bad_line' });
+
+    const foreignCategory = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(1000, { category: 'accessory' })], total: 0 }),
+      storeCreditLedger: [ledgerEntry()],
+    }));
+    expect(foreignCategory).toMatchObject({ ok: false, reason: 'store_credit_invalid' });
+  });
+
+  it('an explicit qty of 0 contributes NOTHING (qty ?? 1, not qty || 1)', () => {
+    const r = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [creditLine(6300, { qty: 0 })], total: 0 }),
+      storeCreditLedger: [ledgerEntry()],
+    }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.ledgerOps).toHaveLength(0);
+    expect(r.storeCreditLedger[0].remainingAmount).toBe(23270);
+  });
+
+  it('a rejected checkout leaves the input ledger completely untouched', () => {
+    const entry = ledgerEntry();
+    const rep = { id: 'r1', status: 'cancelled', balance: 1000 } as unknown as Repair;
+    const r = finalizeSaleCore(input({
+      sale: sale({ id: 's', customerId: 'c1', items: [item({ repairId: 'r1' }), creditLine(6300)], total: 0 }),
+      storeCreditLedger: [entry],
+      repairs: [rep],
+    }));
+    expect(r.ok).toBe(false);           // repair_cancelled pre-flight fires
+    expect(entry.redemptions).toHaveLength(0);
+    expect(entry.remainingAmount).toBe(23270);
+    expect(entry.redeemedAmount).toBe(0);
+  });
+});
+
+describe('finalizeSaleCore — legacy tender idempotency (P0-SC-1.1)', () => {
+  it('a fresh legacy debit stamps the redemption marker (saleId + amount)', () => {
+    const cust = { id: 'c1', name: 'Joe', storeCredit: 23270, loyaltyPoints: 0 } as unknown as Customer;
+    const r = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-63', paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      selectedCustomer: cust, customers: [cust],
+    }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.workingCustomer!.storeCredit).toBe(16970);
+    const marks = r.workingCustomer!.storeCreditRedemptions || [];
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toMatchObject({ saleId: 'sale-63', amountCents: 6300 });
+  });
+
+  it('re-processing the SAME legacy sale is a financial no-op (retry / duplicate committed)', () => {
+    const cust = { id: 'c1', name: 'Joe', storeCredit: 23270, loyaltyPoints: 0 } as unknown as Customer;
+    const first = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-63', paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      selectedCustomer: cust, customers: [cust],
+    }));
+    if (!first.ok) throw new Error('unexpected');
+    const debited = first.workingCustomer!;      // storeCredit 16970 + marker
+
+    const again = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-63', paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      selectedCustomer: debited, customers: [debited],
+    }));
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    // No second debit, no second marker, no customer churn from §3.
+    const c = again.customers.find((x) => x.id === 'c1')!;
+    expect(c.storeCredit).toBe(16970);
+    expect((c.storeCreditRedemptions || [])).toHaveLength(1);
+  });
+
+  it('a duplicate whose balance is now BELOW the total still passes (its debit already happened)', () => {
+    // After the original $63 debit the balance dropped to $10; a duplicate
+    // re-process of the same sale must not be rejected as insufficient.
+    const cust = {
+      id: 'c1', name: 'Joe', storeCredit: 1000, loyaltyPoints: 0,
+      storeCreditRedemptions: [{ saleId: 'sale-63', amountCents: 6300, redeemedAt: '2026-07-23T00:00:00.000Z' }],
+    } as unknown as Customer;
+    const r = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-63', paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      selectedCustomer: cust, customers: [cust],
+    }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.customers.find((x) => x.id === 'c1')!.storeCredit).toBe(1000); // untouched
+  });
+
+  it('two DIFFERENT legacy sales debit twice (legitimate)', () => {
+    const cust = { id: 'c1', name: 'Joe', storeCredit: 23270, loyaltyPoints: 0 } as unknown as Customer;
+    const r1 = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-A', paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      selectedCustomer: cust, customers: [cust],
+    }));
+    if (!r1.ok) throw new Error('unexpected');
+    const afterA = r1.workingCustomer!;
+    const r2 = finalizeSaleCore(input({
+      sale: sale({ id: 'sale-B', paymentMethod: 'Store Credit', total: 5000, customerId: 'c1' }),
+      selectedCustomer: afterA, customers: [afterA],
+    }));
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    const c = r2.customers.find((x) => x.id === 'c1')!;
+    expect(c.storeCredit).toBe(11970);
+    expect((c.storeCreditRedemptions || [])).toHaveLength(2);
   });
 });
 

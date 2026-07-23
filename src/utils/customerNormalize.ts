@@ -142,6 +142,20 @@ export function normalizeCustomer(raw: unknown): Customer {
           .filter((e) => e.recipient.length > 0)
       : undefined,
 
+    // P0-SC-1.1: preserve legacy-tender redemption markers (financial
+    // idempotency keys — dropping them would re-enable double debits after
+    // any SET_CUSTOMERS normalize pass).
+    storeCreditRedemptions: Array.isArray(c.storeCreditRedemptions)
+      ? (c.storeCreditRedemptions as unknown[])
+          .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+          .map((e) => ({
+            saleId: typeof e.saleId === 'string' ? e.saleId : '',
+            amountCents: typeof e.amountCents === 'number' ? e.amountCents : 0,
+            redeemedAt: typeof e.redeemedAt === 'string' ? e.redeemedAt : '',
+          }))
+          .filter((e) => e.saleId.length > 0)
+      : undefined,
+
     createdAt: (c.createdAt as Customer['createdAt']) || new Date().toISOString(),
     updatedAt: c.updatedAt as Customer['updatedAt'],
   };

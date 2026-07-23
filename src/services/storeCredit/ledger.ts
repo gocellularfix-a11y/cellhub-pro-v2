@@ -104,6 +104,24 @@ export function ledgerEntriesForCustomer(
   return ledger.filter((l) => l.customerId === customerId);
 }
 
+// ── Selector helpers (P0-SC-1.1) ──────────────────────────
+// Shared by ApplyStoreCreditModal so the "what can the cashier redeem right
+// now" rule is testable outside React (the modal renders these results).
+
+/** Entries currently redeemable: active with a positive remaining balance. */
+export function redeemableEntries(
+  ledger: StoreCreditLedger[] | null | undefined,
+): StoreCreditLedger[] {
+  if (!Array.isArray(ledger)) return [];
+  return ledger.filter((l) => l.status === 'active' && (l.remainingAmount || 0) > 0);
+}
+
+/** Max redeemable cents for an entry against a cart: min(remaining, cart), never negative. */
+export function redemptionCap(entry: StoreCreditLedger, maxCartCents: number): number {
+  const remaining = Math.max(0, entry.remainingAmount || 0);
+  return Math.max(0, Math.min(remaining, Math.max(0, maxCartCents || 0)));
+}
+
 // ── Redemption ────────────────────────────────────────────
 
 export interface RedeemLedgerInput {

@@ -555,6 +555,10 @@ export interface Customer {
   // TopUpModal renders the legacy notes-regex fallback for them.
   topUpHistory?: TopUpHistoryEntry[];
 
+  // P0-SC-1.1: legacy Store Credit tender redemption markers — financial
+  // idempotency (one debit per saleId) + audit trail for customer.storeCredit.
+  storeCreditRedemptions?: StoreCreditTenderRedemption[];
+
   createdAt: Timestamp | Date | string;
   updatedAt?: Timestamp | Date | string;
 }
@@ -574,6 +578,21 @@ export interface TopUpHistoryEntry {
   lastAmount: number;       // CENTS — amount of the most recent top-up to this recipient
   lastAt: string;           // ISO timestamp of the most recent top-up
   count: number;            // total number of top-ups sent to this recipient
+}
+
+// ── Store Credit legacy-tender redemption marker (P0-SC-1.1) ──────────
+
+/**
+ * One legacy "Store Credit" tender debit applied to customer.storeCredit by
+ * finalizeSaleCore §3. Lives on the Customer doc itself (same piggyback
+ * pattern as topUpHistory) so the write rides the existing persist.customer()
+ * call in handleCompleteSale. saleId is the idempotency key — §3 never debits
+ * twice for the same sale, even if a duplicate finalize reaches the core.
+ */
+export interface StoreCreditTenderRedemption {
+  saleId: string;
+  amountCents: number;   // cents actually debited from customer.storeCredit
+  redeemedAt: string;    // ISO
 }
 
 // ── Inventory ─────────────────────────────────────────────

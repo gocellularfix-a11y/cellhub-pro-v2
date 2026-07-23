@@ -148,7 +148,7 @@ describe('resolvePosCheckout — store-credit certificate redemption (P0-SC-1)',
 
   it('Primary debits the certificate against ITS authoritative ledger', () => {
     const r = resolvePosCheckout(
-      sale({ id: 'sale-63', items: [creditLine()], total: 0 }),
+      sale({ id: 'sale-63', customerId: 'c1', items: [creditLine()], total: 0 }),
       'op-1',
       state({ storeCreditLedger: [cert()] }),
     );
@@ -168,7 +168,7 @@ describe('resolvePosCheckout — store-credit certificate redemption (P0-SC-1)',
       redemptions: [{ id: 'rd1', redeemedAt: 'x', redeemedAmount: 6300, remainingAfter: 16970, saleId: 'sale-63', employeeName: 'E' }],
     });
     const r = resolvePosCheckout(
-      sale({ id: 'sale-63', items: [creditLine()], total: 0 }),
+      sale({ id: 'sale-63', customerId: 'c1', items: [creditLine()], total: 0 }),
       'op-B', // fresh operationId, same committed sale
       state({ sales: [committed], storeCreditLedger: [alreadyDebited] }),
     );
@@ -180,12 +180,28 @@ describe('resolvePosCheckout — store-credit certificate redemption (P0-SC-1)',
 
   it('stale Secondary mirror cannot over-redeem: Primary rejects against its own balance', () => {
     // The Secondary believed $232.70 was available; the Primary's cert only has $50 left.
+    const staleCert = cert({ redeemedAmount: 18270, remainingAmount: 5000 });
     const r = resolvePosCheckout(
-      sale({ id: 'sale-over', items: [creditLine()], total: 0 }),
+      sale({ id: 'sale-over', customerId: 'c1', items: [creditLine()], total: 0 }),
       'op-1',
-      state({ storeCreditLedger: [cert({ redeemedAmount: 18270, remainingAmount: 5000 })] }),
+      state({ storeCreditLedger: [staleCert] }),
     );
     expect(r).toMatchObject({ ok: false, error: 'store_credit_invalid' });
+    // Rejection applied NOTHING on the Primary.
+    expect(staleCert.remainingAmount).toBe(5000);
+    expect(staleCert.redemptions).toHaveLength(0);
+  });
+
+  it("rejects customer A's certificate forwarded on customer B's sale (P0-SC-1.1 ownership)", () => {
+    const certOfA = cert({ customerId: 'cA' });
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-x', customerId: 'cB', items: [creditLine()], total: 0 }),
+      'op-1',
+      state({ storeCreditLedger: [certOfA] }),
+    );
+    expect(r).toMatchObject({ ok: false, error: 'store_credit_invalid' });
+    expect((r as { result?: unknown }).result).toBeUndefined(); // caller persists nothing
+    expect(certOfA.remainingAmount).toBe(23270);                // untouched
   });
 
   it('Store Credit tender short on the PRIMARY balance rejects (no silent clamp)', () => {

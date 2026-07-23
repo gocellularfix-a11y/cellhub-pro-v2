@@ -22,6 +22,8 @@ import type {
 import { recordTopUpsToCustomer } from '@/utils/topUpHistory';
 import { addLayawayPayment } from '@/services/layaway/payments';
 import { redeemLedgerEntry } from '@/services/storeCredit/ledger';
+// P0-SC-1.1: canonical store-scope rule (match OR legacy no-storeId).
+import { belongsToStore } from '@/store/storeScope';
 import { finalizeExchangeReturn, type ExchangeFinalizationResult } from '@/services/returns/finalizeExchangeReturn';
 import { forwardTaxFromBase } from '@/utils/depositTax';
 import { isTaxableCheckoutBlocked } from './taxConfirmGuard';
@@ -60,6 +62,11 @@ export interface FinalizeSaleCoreInput {
   settings: StoreSettings;
   selectedCustomer: Customer | null;
   currentEmployee: Employee | null;
+  // P0-SC-1.1: active store scope of the machine that commits (POSModule /
+  // LAN Primary). Optional — ''/'default'/undefined = single-store mode
+  // (no scoping), matching isUnscopedView. Used ONLY by the store-credit
+  // pre-flight; no other section reads it.
+  currentStoreId?: string | null;
 }
 
 /** Side-effect INSTRUCTIONS (the caller performs the actual emission/service call). */
@@ -191,12 +198,25 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
   for (const it of sale.items) {
     const lid = (it as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId;
     if (!lid) continue;
+    // P0-SC-1.1: a debit-bearing line must be a canonical Apply-Store-Credit
+    // line — category 'exchange_credit' with a NEGATIVE price. A positive
+    // price carrying a ledger id would otherwise debit via Math.abs; a
+    // foreign category means the line was not built by the modal. Fail closed.
+    const linePrice = it.price || 0;
+    if (String(it.category || '') !== 'exchange_credit' || linePrice > 0) {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'bad_line', category: String(it.category || ''), priceCents: linePrice } };
+    }
     const cert = (it as unknown as { storeCreditCertNumber?: string }).storeCreditCertNumber || '';
-    const absCents = Math.abs((it.price || 0) * (it.qty || 1));
+    // qty ?? 1: only a MISSING qty defaults to 1 — an explicit qty of 0
+    // contributes nothing (it.qty || 1 would silently debit it as 1).
+    const absCents = Math.abs(linePrice * (it.qty ?? 1));
     if (absCents <= 0) continue;
     const prev = storeCreditDeltas.get(lid);
     storeCreditDeltas.set(lid, { cents: (prev?.cents || 0) + absCents, cert: cert || prev?.cert || '' });
   }
+  // Entries that must produce EXACTLY one debit in §4e this call (excludes
+  // certs already redeemed for this sale.id — idempotent duplicates).
+  const storeCreditPendingDebits: string[] = [];
   for (const [lid, { cents }] of storeCreditDeltas) {
     const entry = input.storeCreditLedger.find((l) => l.id === lid);
     if (entry && (entry.redemptions || []).some((r) => r.saleId === sale.id)) continue; // already debited by this sale
@@ -206,22 +226,45 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
     if (entry.status !== 'active') {
       return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'not_active', status: entry.status } };
     }
+    // P0-SC-1.1 (ownership): an OWNED certificate (customerId stamped at
+    // issuance) is only redeemable on a sale for that same customer. Unowned
+    // certificates (manual-entry recipient) remain bearer instruments.
+    if (entry.customerId && entry.customerId !== sale.customerId) {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'wrong_customer' } };
+    }
+    // P0-SC-1.1 (store scope): canonical policy — Store Credit is
+    // store-scoped via belongsToStore (persist auto-tags storeId on every
+    // ledger write; AppProvider already filters the ledger per store; legacy
+    // no-storeId entries are globally redeemable by the established BUG-1
+    // rule). Enforced here as commit-boundary belt-and-braces when a scoped
+    // multi-store view is active.
+    if (input.currentStoreId && input.currentStoreId !== 'default' && !belongsToStore(entry.storeId, input.currentStoreId)) {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'wrong_store', entryStoreId: entry.storeId } };
+    }
     const remaining = Math.max(0, entry.remainingAmount || 0);
     if (cents > remaining) {
       return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'over_redemption', requestedCents: cents, remainingCents: remaining } };
     }
+    storeCreditPendingDebits.push(lid);
   }
   // (b) Legacy Store Credit tender (customer.storeCredit): requires a resolved
   //     customer whose available balance covers the sale total — the existing
   //     UI contract (computePaidCents blocks short balances) enforced here
   //     against authoritative state, so a stale Secondary mirror or a missing
   //     customerId can never commit a credit-paid sale that debits nothing.
+  //     P0-SC-1.1: a sale already marked redeemed on the customer (duplicate
+  //     re-process) skips the check — its debit already happened, and the
+  //     balance is legitimately lower now.
   {
     const isStoreCreditTender = sale.paymentMethod === 'store_credit' || sale.paymentMethod === 'Store Credit';
     if (isStoreCreditTender && (sale.total || 0) > 0) {
-      const available = selectedCustomer ? (selectedCustomer.storeCredit || 0) : 0;
-      if (!selectedCustomer || available < sale.total) {
-        return { ok: false, reason: 'store_credit_insufficient', details: { availableCents: available, totalCents: sale.total || 0 } };
+      const alreadyDebited = !!selectedCustomer
+        && (selectedCustomer.storeCreditRedemptions || []).some((r) => r.saleId === sale.id);
+      if (!alreadyDebited) {
+        const available = selectedCustomer ? (selectedCustomer.storeCredit || 0) : 0;
+        if (!selectedCustomer || available < sale.total) {
+          return { ok: false, reason: 'store_credit_insufficient', details: { availableCents: available, totalCents: sale.total || 0 } };
+        }
       }
     }
   }
@@ -277,11 +320,24 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
   let customerChanged = false;
 
   // §3. Store credit deduction
+  // P0-SC-1.1: one legacy debit per (customer, sale.id). The redemption
+  // identity is recorded on the customer doc (storeCreditRedemptions — same
+  // piggyback pattern as topUpHistory, persisted by the existing
+  // persist.customer call) so a duplicate finalize of the SAME sale is a
+  // financial no-op even if every upstream dedup were bypassed.
   const isStoreCreditPayment = sale.paymentMethod === 'store_credit' || sale.paymentMethod === 'Store Credit';
   if (isStoreCreditPayment && selectedCustomer) {
-    const creditUsed = Math.min(selectedCustomer.storeCredit || 0, sale.total);
+    const alreadyDebited = (selectedCustomer.storeCreditRedemptions || []).some((r) => r.saleId === sale.id);
+    const creditUsed = alreadyDebited ? 0 : Math.min(selectedCustomer.storeCredit || 0, sale.total);
     if (creditUsed > 0) {
-      workingCustomer = { ...workingCustomer!, storeCredit: Math.max(0, (workingCustomer!.storeCredit || 0) - creditUsed) };
+      workingCustomer = {
+        ...workingCustomer!,
+        storeCredit: Math.max(0, (workingCustomer!.storeCredit || 0) - creditUsed),
+        storeCreditRedemptions: [
+          ...(workingCustomer!.storeCreditRedemptions || []),
+          { saleId: sale.id, amountCents: creditUsed, redeemedAt: new Date().toISOString() },
+        ],
+      };
       workingCustomers = workingCustomers.map((c) => (c.id === workingCustomer!.id ? workingCustomer! : c));
       customerChanged = true;
     }
@@ -499,20 +555,22 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
   }
 
   // ── §4e. Store-credit redemption ──
-  // P0-SC-1: the deltas were already aggregated + validated in the pre-flight
-  // above (entry exists, active, remaining covers the amount) — this section
-  // only applies them. One debit per (certificate, sale.id): an entry already
-  // holding a redemption for this sale.id is skipped (idempotent no-op for
-  // retries / duplicate ACKs / re-processing).
+  // P0-SC-1: deltas were aggregated + validated in the pre-flight — this
+  // section only applies them (one debit per (certificate, sale.id)).
+  // P0-SC-1.1: FAIL-CLOSED — any failure to build a required debit rejects
+  // the whole checkout (the caller applies nothing on ok:false, so no sale
+  // can commit "paid with credit" while the ledger debit is missing), and
+  // the section must produce EXACTLY one ledgerOp per pending debit.
   let updatedLedger = input.storeCreditLedger;
   const ledgerOps: PersistOp[] = [];
-  const ledgerDeltas = storeCreditDeltas;
-  if (ledgerDeltas.size > 0) {
+  if (storeCreditPendingDebits.length > 0) {
     const ledgerCopy = [...input.storeCreditLedger];
-    for (const [lid, { cents }] of ledgerDeltas) {
+    for (const lid of storeCreditPendingDebits) {
+      const cents = storeCreditDeltas.get(lid)!.cents;
       const idx = ledgerCopy.findIndex((l) => l.id === lid);
-      if (idx < 0) continue;
-      if ((ledgerCopy[idx].redemptions || []).some((r) => r.saleId === sale.id)) continue;
+      if (idx < 0) {
+        return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'apply_failed' } };
+      }
       try {
         const { ledger: nextLedger } = redeemLedgerEntry(ledgerCopy[idx], {
           amountCents: cents,
@@ -524,10 +582,16 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
         ledgerCopy[idx] = nextLedger;
         ledgerOps.push({ collection: 'storeCreditLedger', id: nextLedger.id, data: nextLedger as unknown as Record<string, unknown> });
       } catch (err) {
-        console.warn('[POS §4e] redeemLedgerEntry rejected:', err);
+        console.warn('[POS §4e] redeemLedgerEntry rejected — checkout fails closed:', err);
+        return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'apply_failed' } };
       }
     }
-    if (ledgerOps.length > 0) updatedLedger = ledgerCopy;
+    // Invariant: every pending debit produced exactly one op. Anything else
+    // is a financial inconsistency — never return ok:true over it.
+    if (ledgerOps.length !== storeCreditPendingDebits.length) {
+      return { ok: false, reason: 'store_credit_invalid', details: { cause: 'op_count_mismatch', expected: storeCreditPendingDebits.length, actual: ledgerOps.length } };
+    }
+    updatedLedger = ledgerCopy;
   }
 
   // ── §4f. Exchange/return finalization (uses threaded sales + inventory) ──

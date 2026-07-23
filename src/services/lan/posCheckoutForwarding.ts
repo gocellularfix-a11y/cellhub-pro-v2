@@ -39,6 +39,8 @@ export interface PrimaryCheckoutState {
   storeCreditLedger: StoreCreditLedger[];
   customerReturns: CustomerReturn[];
   settings: StoreSettings;
+  // P0-SC-1.1: the PRIMARY's active store scope (store-credit pre-flight).
+  currentStoreId?: string | null;
 }
 
 export type PosCheckoutResolution =
@@ -102,6 +104,8 @@ export function resolvePosCheckout(
     settings: state.settings,
     selectedCustomer,
     currentEmployee: null,
+    // P0-SC-1.1: the Primary's own store scope, never the Secondary's.
+    currentStoreId: state.currentStoreId,
   });
 
   if (!result.ok) return { ok: false, error: result.reason };

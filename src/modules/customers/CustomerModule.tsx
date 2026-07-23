@@ -361,8 +361,55 @@ export default function CustomerModule() {
         customerReturns: returns_, inventory, settings: settings || {},
       });
     };
-    return () => { delete w.__cellhubTraceCustomerEconomics; };
-  }, [canSeeFinancialsGlobal, customers, sales, repairs, unlocks, layaways, specialOrders, returns_, inventory, settings]);
+    // P0-SC-1.1 (audit BLOCKER 1): owner-triggered Store Credit forensic dump —
+    //   __cellhubAuditStoreCredit()            → everything credit-related
+    //   __cellhubAuditStoreCredit('<query>')   → filter by cert # / invoice /
+    //                                            sale id / customer id / name
+    // Read-only; never mutates. Answers, from LIVE persisted records: which
+    // route a redemption used (certificate line vs legacy tender), whether
+    // the persisted SaleItem carries storeCreditLedgerId, whether the ledger
+    // holds a redemption for that saleId, and the customer's legacy balance +
+    // idempotency markers.
+    w.__cellhubAuditStoreCredit = (query?: string) => {
+      const q = String(query || '').trim().toLowerCase();
+      const has = (v: unknown) => String(v || '').toLowerCase().includes(q);
+      const certRows = (storeCreditLedger || [])
+        .filter((l) => !q || has(l.certificateNumber) || has(l.customerId) || has(l.customerName) || has(l.id))
+        .map((l) => ({
+          ledgerId: l.id, certificateNumber: l.certificateNumber, storeId: l.storeId,
+          customerId: l.customerId, customerName: l.customerName, status: l.status,
+          issuedCents: l.issuedAmount, redeemedCents: l.redeemedAmount, remainingCents: l.remainingAmount,
+          redemptions: (l.redemptions || []).map((r) => ({ saleId: r.saleId, invoice: r.invoiceNumber, cents: r.redeemedAmount, remainingAfter: r.remainingAfter, at: r.redeemedAt })),
+        }));
+      const saleRows = sales
+        .filter((s) => s.paymentMethod === 'Store Credit' || s.paymentMethod === 'store_credit'
+          || (s.items || []).some((i) => (i as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId || i.category === 'exchange_credit'))
+        .filter((s) => !q || has(s.id) || has(s.invoiceNumber) || has(s.customerId) || has(s.customerName))
+        .map((s) => ({
+          saleId: s.id, invoice: s.invoiceNumber, createdAt: s.createdAt, status: s.status,
+          paymentMethod: s.paymentMethod, totalCents: s.total, customerId: s.customerId, customerName: s.customerName,
+          creditLines: (s.items || [])
+            .filter((i) => (i as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId || i.category === 'exchange_credit')
+            .map((i) => ({
+              name: i.name, priceCents: i.price, qty: i.qty,
+              storeCreditLedgerId: (i as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId || null,
+              storeCreditCertNumber: (i as unknown as { storeCreditCertNumber?: string }).storeCreditCertNumber || null,
+              ledgerHasRedemptionForThisSale: (storeCreditLedger || []).some((l) =>
+                l.id === (i as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId
+                && (l.redemptions || []).some((r) => r.saleId === s.id)),
+            })),
+        }));
+      const customerRows = customers
+        .filter((c) => (c.storeCredit || 0) > 0 || (c.storeCreditRedemptions || []).length > 0)
+        .filter((c) => !q || has(c.id) || has(c.name) || has(c.phone))
+        .map((c) => ({
+          customerId: c.id, name: c.name, legacyStoreCreditCents: c.storeCredit || 0,
+          tenderRedemptions: c.storeCreditRedemptions || [],
+        }));
+      return { certificates: certRows, creditSales: saleRows, customersWithCredit: customerRows };
+    };
+    return () => { delete w.__cellhubTraceCustomerEconomics; delete w.__cellhubAuditStoreCredit; };
+  }, [canSeeFinancialsGlobal, customers, sales, repairs, unlocks, layaways, specialOrders, returns_, inventory, settings, storeCreditLedger]);
 
   // ── CRUD ────────────────────────────────────────────────
   // LAN-PHASE-3B-CREATE-CUSTOMER-FORWARDING-V1: on a read-only Secondary, a NEW

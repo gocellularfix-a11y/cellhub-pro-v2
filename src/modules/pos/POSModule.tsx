@@ -77,7 +77,7 @@ export default function POSModule() {
       inventory, customers, sales, repairs, specialOrders, unlocks, layaways,
       settings, currentEmployee, cart, lang, inventorySearchTerm, pendingPhonePaymentCustomerId,
       resumePhonePaymentWorkflowId,
-      pendingPosCustomer, storeCreditLedger, customerReturns,
+      pendingPosCustomer, storeCreditLedger, customerReturns, currentStoreId,
     },
     setCart, setInventory, setCustomers, setSales,
     setRepairs, setSpecialOrders, setUnlocks, setLayaways, dispatch,
@@ -395,6 +395,8 @@ export default function POSModule() {
         settings,
         selectedCustomer,
         currentEmployee,
+        // P0-SC-1.1: store scope for the store-credit pre-flight.
+        currentStoreId,
       });
 
       if (!coreResult.ok) {
@@ -566,7 +568,7 @@ export default function POSModule() {
     [
       setSales, setInventory, setCustomers,
       selectedCustomer, setRepairs, setSpecialOrders, setUnlocks, setLayaways,
-      setCart, settings, toast, lang, setCustomerReturns, dispatch,
+      setCart, settings, toast, lang, setCustomerReturns, dispatch, currentStoreId,
     ],
   );
 

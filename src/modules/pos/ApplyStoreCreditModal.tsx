@@ -16,7 +16,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from '@/i18n';
 import { Modal } from '@/components/ui';
-import { findCertificate } from '@/services/storeCredit/ledger';
+import { findCertificate, redeemableEntries, redemptionCap } from '@/services/storeCredit/ledger';
 import type { StoreCreditLedger } from '@/store/types';
 
 interface ApplyStoreCreditModalProps {
@@ -58,8 +58,7 @@ export default function ApplyStoreCreditModal({
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q || matched) return [];
-    return ledger
-      .filter((l) => l.status === 'active' && (l.remainingAmount || 0) > 0)
+    return redeemableEntries(ledger)
       .filter((l) => {
         if ((l.certificateNumber || '').toLowerCase().includes(q)) return true;
         if ((l.customerName || '').toLowerCase().includes(q)) return true;
@@ -93,12 +92,11 @@ export default function ApplyStoreCreditModal({
       return;
     }
     setMatched(entry);
-    const cap = Math.max(0, Math.min(remaining, maxCartCents));
+    const cap = redemptionCap(entry, maxCartCents);
     setAmountInput((cap / 100).toFixed(2));
   };
 
-  const remaining = matched ? Math.max(0, matched.remainingAmount || 0) : 0;
-  const cap = Math.max(0, Math.min(remaining, maxCartCents));
+  const cap = matched ? redemptionCap(matched, maxCartCents) : 0;
   const enteredCents = Math.round((parseFloat(amountInput) || 0) * 100);
   const overCap = enteredCents > cap;
   const valid = matched && !overCap && enteredCents > 0;

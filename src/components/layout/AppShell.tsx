@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef } from 'react';
 import { setIntelligenceContext, clearEntityContext } from '@/services/intelligence/context/intelligenceContext';
 import Sidebar from './Sidebar';
 import SidebarList from './SidebarList';
@@ -32,6 +32,10 @@ import LanOperationDispatcher from '@/components/lan/LanOperationDispatcher';
 // LAN-HARDWARE-BRIDGE-FOUNDATION-V1: toast feedback for forwarded receipt prints.
 import LanPrintBridgeListener from '@/components/lan/LanPrintBridgeListener';
 import { CH_CUST_PREFIX } from '@/services/barcode/receiptPayload';
+// P0-SC-1.1: startup ledger reconciliation (missed store-credit debits).
+import { reconcileStoreCreditLedger } from '@/services/storeCredit/reconcile';
+import { isLanSecondaryReadOnly } from '@/hooks/useLanReadOnly';
+import { persist } from '@/services/persist';
 import AutoUpdateNotifier from '@/components/shared/AutoUpdateNotifier';
 import UpgradePrompt from '@/components/shared/UpgradePrompt';
 import { useLicense } from '@/contexts/LicenseContext';
@@ -115,13 +119,47 @@ function AdminLockScreen({ onUnlock, lang }: { onUnlock: () => void; lang: strin
 
 // ── Main Shell ────────────────────────────────────────────
 export default function AppShell() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, setStoreCreditLedger } = useApp();
   const { activeTab, isAdminMode, lang, settings, customers, cart, inventory, repairs, unlocks, layaways, specialOrders } = state;
   const { features } = useLicense();
   const { toast } = useToast();
   const { t } = useTranslation();
   // R-GLOBAL-CART-UNIFY-V1: unified cart write for the global scanner.
   const { commitCart } = useGlobalCart();
+
+  // ── P0-SC-1.1: store-credit ledger reconciliation (startup, once) ──
+  // Deterministic recovery for a committed sale whose certificate debit never
+  // persisted (crash / storage-quota between persist.sale and the ledger
+  // batchSave). Committed sales are the journal; redemptions[].saleId is the
+  // idempotency key, so re-runs are no-ops. Never runs on a read-only LAN
+  // Secondary (mirror data — it must never write). Waits until both
+  // collections have hydrated (non-empty); a store with no certs has nothing
+  // to reconcile. Logs ids + cents only — no PII.
+  const ledgerReconcileRan = useRef(false);
+  useEffect(() => {
+    if (ledgerReconcileRan.current) return;
+    if (isLanSecondaryReadOnly()) return;
+    const sales = state.sales;
+    const ledger = state.storeCreditLedger;
+    if (!sales?.length || !ledger?.length) return;
+    ledgerReconcileRan.current = true;
+    try {
+      const res = reconcileStoreCreditLedger(sales, ledger);
+      if (res.changed) {
+        setStoreCreditLedger(res.ledger);
+        for (const op of res.ops) persist.storeCreditLedger(op.id, op.data);
+        console.warn(
+          `[store-credit-reconcile] repaired ${res.repaired.length} missed debit(s):`,
+          res.repaired.map((r) => ({ saleId: r.saleId, ledgerId: r.ledgerId, cents: r.amountCents })),
+        );
+      }
+      if (res.conflicts.length > 0) {
+        console.warn('[store-credit-reconcile] unrecoverable conflicts (owner review):', res.conflicts);
+      }
+    } catch (err) {
+      console.warn('[store-credit-reconcile] failed:', err);
+    }
+  }, [state.sales, state.storeCreditLedger, setStoreCreditLedger]);
 
   // Trigger the admin pin modal — dispatches to App.tsx's AdminPinGate
   const requireAdmin = () => {

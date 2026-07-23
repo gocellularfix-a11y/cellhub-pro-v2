@@ -416,6 +416,8 @@ export default function LanOperationDispatcher() {
         storeCreditLedger: s.storeCreditLedger || [],
         customerReturns: s.customerReturns || [],
         settings: s.settings as unknown as StoreSettings,
+        // P0-SC-1.1: the Primary's active store scope (store-credit pre-flight).
+        currentStoreId: s.currentStoreId,
       });
       if (!resolution.ok) return { ok: false, error: resolution.error };
       if (resolution.duplicate) return { ok: true, saleId: resolution.saleId, duplicate: true };
