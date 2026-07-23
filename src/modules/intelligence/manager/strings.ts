@@ -16,6 +16,8 @@ type S = Record<ManagerLang, string>;
 
 export const MANAGER_STRINGS = {
   title: { en: 'Business Manager', es: 'Gerente del Negocio', pt: 'Gerente do Negócio' },
+  // R-ORBITAL-CORE-IDENTITY-V1: brand eyebrow for the Intelligence lockup.
+  brand: { en: 'CellHub Intelligence', es: 'Inteligencia de CellHub', pt: 'Inteligência CellHub' },
   readOnly: { en: 'Read-only', es: 'Solo lectura', pt: 'Somente leitura' },
   analyzedPeriod: { en: 'Analyzed period', es: 'Período analizado', pt: 'Período analisado' },
   generatedAt: { en: 'Generated', es: 'Generado', pt: 'Gerado' },

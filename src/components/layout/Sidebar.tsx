@@ -7,6 +7,8 @@ import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
 // R-OFFLINE-MODE-GUARD-V1: live online/offline status for the sidebar badge.
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence mark (no emoji).
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 // R-PRODUCTION-B6.1: injected by Vite `define` from package.json at build time.
 declare const __APP_VERSION__: string;
@@ -266,9 +268,15 @@ export default function Sidebar() {
                         boxShadow: isActive ? `0 0 14px ${palette.label}33` : 'none',
                       }}
                     >
-                      <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
-                        {tab.icon}
-                      </span>
+                      {/* R-ORBITAL-CORE-IDENTITY-V1: the intelligence tab renders
+                          the canonical Orbital Core mark instead of an emoji. */}
+                      {tab.id === 'intelligence'
+                        ? <OrbitalCoreMark variant="mark" size={22} decorative />
+                        : (
+                          <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
+                            {tab.icon}
+                          </span>
+                        )}
                       <span style={{
                         minWidth: 0,
                         maxWidth: '100%',
@@ -315,9 +323,9 @@ export default function Sidebar() {
                       gridColumn: gridTabs.length % 2 === 0 ? 'span 2' : 'auto',
                     }}
                   >
-                    <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
-                      🤖
-                    </span>
+                    {/* R-ORBITAL-CORE-IDENTITY-V1: same intelligence system,
+                        chat surface — Orbital Core mark, robot retired. */}
+                    <OrbitalCoreMark variant="mark" size={22} decorative />
                     <span style={{
                       minWidth: 0,
                       maxWidth: '100%',

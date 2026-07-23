@@ -31,6 +31,12 @@ import {
   type OperatorInsight,
   type OperatorInsightTone,
 } from '@/services/operator/operatorActivityHints';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical Orbital Core system — shared ring
+// geometry + state tones + reduced-motion-aware styles. The orb is the
+// LIVING variant of the same identity the sidebar/seals use.
+import OrbitalCoreMark, {
+  OrbitalRingBack, OrbitalRingFront, ensureOrbitalCoreStyles, ORBITAL_STATE_COLORS,
+} from '@/components/intelligence/OrbitalCoreMark';
 import { getContext, subscribe } from '@/services/intelligence/liveContext/liveContextStore';
 import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
 import { computeContextSuggestions, getMinimizedPreviewText, hasUrgentSuggestion } from '@/services/intelligence/liveContext/contextSuggestions';
@@ -151,9 +157,11 @@ function ensureKeyframes() {
   0%, 100% { filter: hue-rotate(0deg)  brightness(1);    }
   50%      { filter: hue-rotate(25deg) brightness(1.05); }
 }
+/* R-ORBITAL-CORE-IDENTITY-V1: bounded ping-pong (was a full 360° cycle =
+   rainbow). Iridescence stays inside the indigo-violet family. */
 @keyframes cellhubOperatorThinkHue {
-  from { filter: hue-rotate(0deg);   }
-  to   { filter: hue-rotate(360deg); }
+  0%, 100% { filter: hue-rotate(0deg);  }
+  50%      { filter: hue-rotate(35deg); }
 }
 @keyframes cellhubOperatorHintHue {
   0%, 100% { filter: hue-rotate(0deg);  }
@@ -178,6 +186,14 @@ function ensureKeyframes() {
    transform with the drag offset. */
 button[data-cellhub-operator-bubble="true"]:hover:not(:active) {
   transform: scale(1.06);
+}
+/* R-ORBITAL-CORE-IDENTITY-V1: reduced motion freezes every bubble
+   animation; state stays readable via color, badge and labels. */
+@media (prefers-reduced-motion: reduce) {
+  button[data-cellhub-operator-bubble="true"],
+  button[data-cellhub-operator-bubble="true"] * {
+    animation: none !important;
+  }
 }
 `;
   document.head.appendChild(style);
@@ -335,7 +351,7 @@ export default function FloatingOperatorBubble() {
   }, []);
 
   // ── Keyframes (one-time) ──────────────────────────────
-  useEffect(() => { ensureKeyframes(); }, []);
+  useEffect(() => { ensureKeyframes(); ensureOrbitalCoreStyles(); }, []);
 
   // ── Live context engine — init once on mount ───────────
   useEffect(() => { initLiveContextEngine(); }, []);
@@ -986,7 +1002,7 @@ export default function FloatingOperatorBubble() {
     visualMode === 'thinking' ? [
       { o: '0%',   c: '#80b0ff', a: 0.65 },
       { o: '30%',  c: '#c080ff', a: 0.75 },
-      { o: '60%',  c: '#ff90c0', a: 0.60 },
+      { o: '60%',  c: '#b090ff', a: 0.60 },
       { o: '85%',  c: '#80e0ff', a: 0.65 },
       { o: '100%', c: '#9080ff', a: 0.65 },
     ]
@@ -998,9 +1014,11 @@ export default function FloatingOperatorBubble() {
       { o: '100%', c: '#60e8b0', a: 0.70 },
     ]
     : [
+      // R-ORBITAL-CORE-IDENTITY-V1: pink stop retired — iridescence stays
+      // in the indigo-violet family per the Orbital Core color system.
       { o: '0%',   c: '#a0c8ff', a: 0.55 },
       { o: '25%',  c: '#d4a0ff', a: 0.65 },
-      { o: '50%',  c: '#ffb8d4', a: 0.50 },
+      { o: '50%',  c: '#c0b0ff', a: 0.50 },
       { o: '75%',  c: '#a0e8ff', a: 0.60 },
       { o: '100%', c: '#c0a8ff', a: 0.55 },
     ];
@@ -1047,7 +1065,9 @@ export default function FloatingOperatorBubble() {
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
         title={tooltip}
-        aria-label={tooltip}
+        // R-ORBITAL-CORE-IDENTITY-V1: dynamic accessible name — announces
+        // the attention count when data exists ("CellHub Intelligence — 2").
+        aria-label={attnPressure.count > 0 ? t('intel.bubbleAria', attnPressure.count) : tooltip}
         aria-expanded={isOverlayOpen}
         style={{
           position: 'fixed',
@@ -1109,6 +1129,7 @@ export default function FloatingOperatorBubble() {
             viewBox="0 0 110 110"
             xmlns="http://www.w3.org/2000/svg"
             style={{ display: 'block', overflow: 'visible' }}
+            className={isDragging ? undefined : 'ch-orbital-breath'}
           >
             <defs>
               <radialGradient id={`bubbleFill-${reactInstanceId}`} cx="50%" cy="35%" r="55%">
@@ -1132,6 +1153,10 @@ export default function FloatingOperatorBubble() {
               <circle cx="55" cy="55" r="51" fill="none" stroke="rgba(52,211,153,0.10)" strokeWidth="8" />
             )}
 
+            {/* R-ORBITAL-CORE-IDENTITY-V1 — orbital ring, BACK half (behind
+                the core). Shared geometry from the canonical component. */}
+            <OrbitalRingBack cx={55} cy={55} rx={61} ry={23} strokeWidth={3} stroke="rgba(165,180,252,0.35)" />
+
             {/* CAPA 1 — interior fill */}
             <circle cx="55" cy="55" r="45" fill={`url(#bubbleFill-${reactInstanceId})`} />
 
@@ -1149,6 +1174,25 @@ export default function FloatingOperatorBubble() {
               <ellipse cx="0" cy="0" rx="13" ry="8" fill="white" fillOpacity="0.50" />
               <ellipse cx="-3" cy="-3" rx="5"  ry="3" fill="white" fillOpacity="0.75" />
             </g>
+
+            {/* R-ORBITAL-CORE-IDENTITY-V1 — orbital ring FRONT half + state
+                satellite. Idle orbit ≈40s, processing ≈12s (visualMode
+                'thinking'). Satellite color follows the canonical state
+                tones; the badge/labels remain the primary signal. */}
+            <OrbitalRingFront
+              cx={55} cy={55} rx={61} ry={23} strokeWidth={3}
+              stroke="rgba(165,180,252,0.55)"
+              satellite={{
+                color: attnPressure.level === 'critical' ? ORBITAL_STATE_COLORS.critical
+                  : isUrgentContext ? ORBITAL_STATE_COLORS.important
+                  : visualMode === 'hint' ? ORBITAL_STATE_COLORS.watch
+                  : visualMode === 'thinking' ? ORBITAL_STATE_COLORS.processing
+                  : ORBITAL_STATE_COLORS.idle,
+                r: 4.5,
+                spinClass: isDragging ? undefined
+                  : (visualMode === 'thinking' ? 'ch-orbital-spin-processing' : 'ch-orbital-spin-idle'),
+              }}
+            />
           </svg>
         </span>
 
@@ -1321,7 +1365,7 @@ export default function FloatingOperatorBubble() {
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-              <span aria-hidden="true" style={{ fontSize: '1.05rem' }}>🧠</span>
+              <OrbitalCoreMark variant="seal" size={16} decorative />
               <span style={{ fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap' }}>
                 {t('operator.menu.title')}
               </span>
@@ -1922,7 +1966,7 @@ export default function FloatingOperatorBubble() {
               gap: '0.45rem',
             }}
           >
-            <span aria-hidden="true">🧠</span>
+            <OrbitalCoreMark variant="seal" size={15} decorative />
             {t('operator.menu.openIntel')}
           </button>
 

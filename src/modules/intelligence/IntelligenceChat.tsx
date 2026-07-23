@@ -1009,14 +1009,14 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     if (!item) return;
     const deal = (item.payload as { pendingDeal?: import('@/services/intelligence/deals/dealTypes').PendingDeal })?.pendingDeal;
     if (!deal) {
-      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      toast(t('chat.proposeDeal.invalidDeal'), 'error', { intelligence: true });
       setAutomationQueue((prev) => prev.map((i) => (i.id === id ? markAutomationFailed(i, 'missing_pending_deal') : i)));
       return;
     }
 
     const inv = inventory.find((i) => i.id === deal.inventoryId);
     if (!inv) {
-      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      toast(t('chat.proposeDeal.invalidDeal'), 'error', { intelligence: true });
       setAutomationQueue((prev) => prev.map((i) => (i.id === id ? markAutomationFailed(i, 'inventory_not_found') : i)));
       return;
     }
@@ -1025,13 +1025,13 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     // Services are unlimited; everything else needs qty > 0.
     const currentQty = (inv.qty ?? (inv as { quantity?: number }).quantity ?? 0);
     if (inv.category !== 'service' && currentQty <= 0) {
-      toast(t('chat.proposeDeal.outOfStock'), 'warning');
+      toast(t('chat.proposeDeal.outOfStock'), 'warning', { intelligence: true });
       return;
     }
 
     // Re-validate cost floor in case product cost was edited up since draft.
     if (deal.proposedPriceCents <= 0 || deal.proposedPriceCents < (inv.cost || 0)) {
-      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      toast(t('chat.proposeDeal.invalidDeal'), 'error', { intelligence: true });
       return;
     }
 
@@ -1046,7 +1046,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     let isSecondaryTerminal = false;
     try { isSecondaryTerminal = getConnection().role === 'secondary'; } catch { /* default primary */ }
     if (isSecondaryTerminal) {
-      toast(t('chat.proposeDeal.secondaryBlocked'), 'warning');
+      toast(t('chat.proposeDeal.secondaryBlocked'), 'warning', { intelligence: true });
       return;
     }
 
@@ -1056,7 +1056,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     const approvalReq = approvalRequestFromPendingDeal(deal, { currentEmployee });
     const approval = await dealApprovalGate.requestApproval(approvalReq);
     if (!approval.approved) {
-      toast(t('chat.proposeDeal.approvalDenied'), 'warning');
+      toast(t('chat.proposeDeal.approvalDenied'), 'warning', { intelligence: true });
       return; // denied/cancelled → no cart mutation, no navigation, no markExecuted
     }
 
@@ -1096,7 +1096,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       prev.map((i) => (i.id === id ? markAutomationExecuted(i, 'cart_added') : i)),
     );
 
-    toast(t('chat.proposeDeal.addedToCart'), 'success');
+    toast(t('chat.proposeDeal.addedToCart'), 'success', { intelligence: true });
   }
 
   // R-INTELLIGENCE-DEAL-OUTCOME-TRACKING-V1: owner records the real-world
@@ -1109,7 +1109,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
     if (!item) return;
     const deal = (item.payload as { pendingDeal?: import('@/services/intelligence/deals/dealTypes').PendingDeal })?.pendingDeal;
     if (!deal) {
-      toast(t('chat.proposeDeal.invalidDeal'), 'error');
+      toast(t('chat.proposeDeal.invalidDeal'), 'error', { intelligence: true });
       return;
     }
 
@@ -1134,7 +1134,7 @@ export default function IntelligenceChat({ engine, customers, lang, externalQuer
       prev.map((i) => (i.id === id ? markAutomationExecuted(i, `deal_${outcome}`) : i)),
     );
 
-    toast(t('chat.proposeDeal.outcomeSaved'), 'success');
+    toast(t('chat.proposeDeal.outcomeSaved'), 'success', { intelligence: true });
   }
 
   function handleCancelAutomation(id: string) {

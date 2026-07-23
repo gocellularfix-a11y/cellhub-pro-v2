@@ -6,6 +6,8 @@ import { useTheme, THEMES } from '@/theme';
 import { useTranslation } from '@/i18n';
 // R-OFFLINE-MODE-GUARD-V1: live online/offline status for the sidebar badge.
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence mark (no emoji).
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 // R-DASHBOARD-THEME-V1: list-style sidebar variant. Restored from the
 // backup/pre-sidebar-redesign branch as one of three user-selectable
@@ -133,7 +135,10 @@ export default function SidebarList() {
                 activeTab === tab.id ? 'active' : ''
               }`}
             >
-              <span className="text-xl">{tab.icon}</span>
+              {/* R-ORBITAL-CORE-IDENTITY-V1: canonical mark for intelligence. */}
+              {tab.id === 'intelligence'
+                ? <OrbitalCoreMark variant="mark" size={20} decorative />
+                : <span className="text-xl">{tab.icon}</span>}
               <span>{t('nav.' + tab.labelKey)}</span>
             </button>
           );
@@ -155,7 +160,8 @@ export default function SidebarList() {
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-input)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
-            <span style={{ fontSize: '1.1rem' }}>🤖</span>
+            {/* R-ORBITAL-CORE-IDENTITY-V1: robot retired — Orbital Core mark. */}
+            <OrbitalCoreMark variant="mark" size={18} decorative />
             <span>{t('sidebar.aiAssistant')}</span>
           </button>
         )}

@@ -7,6 +7,8 @@
 // ============================================================
 
 import type { BusinessMemoryInsight, MemoryCategory } from '@/services/intelligence/memory/businessMemory';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence seal.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 const CAT_ICON: Record<MemoryCategory, string> = {
   sales_rhythm:     '🕑',
@@ -44,7 +46,8 @@ export default function BusinessMemorySection({ insights, lang }: Props) {
         textTransform: 'uppercase',
         letterSpacing: '0.05em',
       }}>
-        🧠 {header}
+        <OrbitalCoreMark variant="seal" size={13} decorative />
+        {' '}{header}
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

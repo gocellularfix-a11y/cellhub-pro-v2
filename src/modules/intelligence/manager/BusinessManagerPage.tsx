@@ -37,6 +37,8 @@ import BusinessBriefSection from './BusinessBriefSection';
 // CELLHUB-INTELLIGENCE-I6-C2: additive proactive "Today's Intelligence"
 // section — coexists with the approved I4 sections below (nothing removed).
 import ProactiveInsightsSection from '../proactive/ProactiveInsightsSection';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence mark.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 import type { PresentedInsights } from '@/services/intelligence/presentation';
 
 export default function BusinessManagerPage() {
@@ -136,8 +138,17 @@ export default function BusinessManagerPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
+          {/* R-ORBITAL-CORE-IDENTITY-V1: CellHub Intelligence lockup — the
+              brand signs the surface, the module title describes it. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <OrbitalCoreMark variant="seal" size={14} decorative />
+            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {ms('brand', lang)}
+            </span>
+          </div>
           <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 10 }}>
-            💼 {ms('title', lang)}
+            <OrbitalCoreMark variant="mark" size={28} decorative />
+            {ms('title', lang)}
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: TONE_COLORS.neutral.fg, border: `1px solid ${TONE_COLORS.neutral.border}`, borderRadius: 999, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {ms('readOnly', lang)}
             </span>

@@ -1687,7 +1687,10 @@ export const translations: TranslationDictionary = {
   'zip': { en: 'ZIP', es: 'Código Postal', pt: 'CEP' },
   'zipLabel': { en: 'ZIP', es: 'Código Postal', pt: 'CEP' },
   'sidebar.searchPlaceholder': { en: 'Search everything...', es: 'Buscar todo...', pt: 'Buscar tudo...' },
-  'sidebar.aiAssistant': { en: 'AI Assistant', es: 'Asistente IA', pt: 'Assistente IA' },
+  // R-ORBITAL-CORE-IDENTITY-V1: "AI Assistant" retired. The chat panel is a
+  // functional surface of CellHub Intelligence (kept as a separate
+  // destination — it is a distinct workflow from the Intelligence tab).
+  'sidebar.aiAssistant': { en: 'Intelligence Chat', es: 'Chat de Inteligencia', pt: 'Chat de Inteligência' },
   'sidebar.allStores': { en: 'All Stores', es: 'Todas las tiendas', pt: 'Todas as lojas' },
   'sidebar.thisStore': { en: 'This Store', es: 'Esta tienda', pt: 'Esta loja' },
   'sidebar.adminMode': { en: 'Admin Mode — click to exit', es: 'Modo Admin — clic para salir', pt: 'Modo Admin — clique para sair' },
@@ -6413,6 +6416,9 @@ export const translations: TranslationDictionary = {
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
   'nav.help':            { en: 'Help',              es: 'Ayuda',                pt: 'Ajuda' },
   'nav.storeCredit':     { en: 'Store Credit',      es: 'Crédito Tienda',       pt: 'Crédito Loja' },
+  // R-ORBITAL-CORE-IDENTITY-V1: dynamic accessible name for the floating
+  // intelligence button when attention items exist.
+  'intel.bubbleAria': { en: (n: number) => `CellHub Intelligence — ${n} item${n === 1 ? '' : 's'} need attention`, es: (n: number) => `Inteligencia de CellHub — ${n} ${n === 1 ? 'elemento requiere' : 'elementos requieren'} atención`, pt: (n: number) => `Inteligência CellHub — ${n} ${n === 1 ? 'item requer' : 'itens requerem'} atenção` },
   'nav.colibri':         { en: 'Colibrí',           es: 'Colibrí',              pt: 'Colibri' },
 
   // ── P1-SC-CENTER — Store Credit Center ──
@@ -7085,7 +7091,7 @@ export const translations: TranslationDictionary = {
   'ai.qpSmsRepair':         { en: "Draft an SMS for a customer whose repair is ready",       es: "Redacta un SMS para avisar que la reparación está lista",  pt: "Redigir SMS para avisar que o reparo está pronto" },
   'ai.qpTopSellers':        { en: "What are my top selling items this month?",               es: "¿Cuáles son mis productos más vendidos este mes?",         pt: "Quais são meus produtos mais vendidos este mês?" },
   'ai.qpCbe':               { en: "Explain CBE fees for CA",                                 es: "Explícame los cobros CBE de California",                   pt: "Explique as taxas CBE da Califórnia" },
-  'ai.assistantTitle':      { en: 'AI Assistant',                                             es: 'Asistente AI',                                             pt: 'Assistente AI' },
+  'ai.assistantTitle':      { en: 'CellHub Intelligence',                                     es: 'Inteligencia de CellHub',                                  pt: 'Inteligência CellHub' },
   'ai.configuredReady':     { en: 'AI Assistant is configured and ready',                    es: 'Asistente AI configurado y listo',                          pt: 'Assistente AI configurado e pronto' },
   'ai.addKeyPrompt':        { en: 'Add an API key above to enable AI Assistant',             es: 'Agrega una API key arriba para habilitar el Asistente AI', pt: 'Adicione uma API key acima para habilitar o Assistente AI' },
 
@@ -8290,9 +8296,9 @@ export const translations: TranslationDictionary = {
   // R-INTELLIGENCE-LEARNING-LOOP-V1: deterministic recommendation buckets.
   'chat.actionLearning.empty':            { en: 'No actions executed yet — click a WhatsApp or follow-up button to start learning what works.', es: 'Aún no se han ejecutado acciones — haz clic en un botón de WhatsApp o seguimiento para empezar a aprender qué funciona.', pt: 'Nenhuma ação executada ainda — clique em um botão de WhatsApp ou acompanhamento para começar a aprender o que funciona.' },
   'chat.actionLearning.summary':          {
-    en: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Learning — ${total} action${total === 1 ? '' : 's'} executed.\n${conv} converted (${ratePct}% rate).\nRevenue attributed: ${rev}.`,
-    es: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizaje — ${total} acción${total === 1 ? '' : 'es'} ejecutada${total === 1 ? '' : 's'}.\n${conv} convirtieron (${ratePct}% tasa).\nIngresos atribuidos: ${rev}.`,
-    pt: (total: number, conv: number, ratePct: number, rev: string) => `🧠 Aprendizado — ${total} ação${total === 1 ? '' : 'ões'} executada${total === 1 ? '' : 's'}.\n${conv} converteram (${ratePct}% taxa).\nReceita atribuída: ${rev}.`,
+    en: (total: number, conv: number, ratePct: number, rev: string) => `Learning — ${total} action${total === 1 ? '' : 's'} executed.\n${conv} converted (${ratePct}% rate).\nRevenue attributed: ${rev}.`,
+    es: (total: number, conv: number, ratePct: number, rev: string) => `Aprendizaje — ${total} acción${total === 1 ? '' : 'es'} ejecutada${total === 1 ? '' : 's'}.\n${conv} convirtieron (${ratePct}% tasa).\nIngresos atribuidos: ${rev}.`,
+    pt: (total: number, conv: number, ratePct: number, rev: string) => `Aprendizado — ${total} ação${total === 1 ? '' : 'ões'} executada${total === 1 ? '' : 's'}.\n${conv} converteram (${ratePct}% taxa).\nReceita atribuída: ${rev}.`,
   },
   'chat.actionLearning.notEnoughData':    { en: 'Not enough action history yet. Execute at least 3 actions to start learning.',                       es: 'Aún no hay suficiente historial. Ejecuta al menos 3 acciones para empezar a aprender.',                  pt: 'Histórico de ações insuficiente. Execute pelo menos 3 ações para começar a aprender.' },
   'chat.actionLearning.needsMoreActions': { en: 'No conversions yet. Keep testing outreach and follow up with recent customers.',                      es: 'Aún sin conversiones. Sigue probando el contacto y haz seguimiento con clientes recientes.',             pt: 'Ainda sem conversões. Continue testando contato e faça acompanhamento com clientes recentes.' },

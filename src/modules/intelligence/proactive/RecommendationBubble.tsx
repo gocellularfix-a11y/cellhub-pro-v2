@@ -24,6 +24,8 @@ import type { PresenterLang } from '@/services/intelligence/presentation';
 import { usePresentedProactiveInsights } from './usePresentedProactiveInsights';
 import { PUI, toneColorsFor } from './proactiveStrings';
 import { bubbleCollapsedModel, bubbleTopGroups } from './proactiveViewModel';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence seal.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 const Z_INDEX = 850; // below the operator orb (880); different corner anyway.
 
@@ -71,7 +73,7 @@ export default function RecommendationBubble() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span aria-hidden="true">🧠</span>
+              <OrbitalCoreMark variant="seal" size={15} decorative />
               <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8' }}>{PUI.sectionTitle(lang)}</span>
             </div>
             <button type="button" onClick={() => setDismissed(true)} aria-label={PUI.dismiss(lang)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1 }}>✕</button>
@@ -121,7 +123,7 @@ export default function RecommendationBubble() {
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)', fontSize: '0.82rem', fontWeight: 600,
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: '1.05rem' }}>🧠</span>
+        <OrbitalCoreMark variant="seal" size={16} decorative />
         <span>{collapsed.label}</span>
         {collapsed.count > 0 && (
           <span style={{ background: tone.fg, color: '#0f172a', borderRadius: 999, minWidth: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800, padding: '0 5px' }}>

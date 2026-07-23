@@ -14,6 +14,8 @@ import { canViewOwnerFinancials } from '@/utils/financialPrivacy';
 import { isToday } from '@/utils/dates';
 import { loadLocal } from '@/services/storage';
 import { REPAIR_STATUS, normalizeRepairStatus, isDoneRepairStatus } from '@/utils/repairStatus';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence mark.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -1000,13 +1002,14 @@ export default function AIAssistantPanel() {
           gap: '0.75rem',
           flexShrink: 0,
         }}>
+          {/* R-ORBITAL-CORE-IDENTITY-V1: robot avatar retired — the panel is a
+              CellHub Intelligence surface and carries the canonical mark. */}
           <div style={{
             width: '36px', height: '36px', borderRadius: '50%',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.1rem', flexShrink: 0,
+            flexShrink: 0,
           }}>
-            🤖
+            <OrbitalCoreMark variant="mark" size={30} decorative />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
@@ -1099,7 +1102,9 @@ export default function AIAssistantPanel() {
               alignItems: 'center', justifyContent: 'center',
               textAlign: 'center', color: '#475569', padding: '1.5rem',
             }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.6 }}>🤖</div>
+              <div style={{ marginBottom: '0.75rem', opacity: 0.7 }}>
+                <OrbitalCoreMark variant="mark" size={44} decorative />
+              </div>
               <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b', marginBottom: '0.4rem' }}>
                 {t('ai.greeting')}
               </p>

@@ -154,7 +154,10 @@ export const NAV_TABS: NavTab[] = [
   { id: 'returns',       labelKey: 'returns',       icon: '↩️', allowedRoles: ['owner','manager','sales'] },
   { id: 'customers',     labelKey: 'customers',     icon: '👤', allowedRoles: ['owner','manager','sales','cashier'] },
   { id: 'appointments',  labelKey: 'appointments',  icon: '📅', allowedRoles: ['owner','manager','sales','technician'] },
-  { id: 'intelligence',  labelKey: 'intelligence',  icon: '🧠', adminOnly: true },
+  // R-ORBITAL-CORE-IDENTITY-V1: the sidebar renders the canonical Orbital
+  // Core mark for this tab; '◉' is only the text fallback for consumers
+  // that can just print a glyph. Brain emoji retired.
+  { id: 'intelligence',  labelKey: 'intelligence',  icon: '◉', adminOnly: true },
   // CELLHUB-INTELLIGENCE-I5: read-only visible Business Manager surface.
   { id: 'manager',       labelKey: 'businessManager', icon: '💼', adminOnly: true },
   // COMPANION: simplified companion (REST polling, no socket).
@@ -216,7 +219,7 @@ export const ASSIGNABLE_MODULES = [
   { id: 'returns',        label: 'Returns',          icon: '↩️' },
   { id: 'customers',      label: 'Customers',        icon: '👤' },
   { id: 'appointments',   label: 'Appointments',     icon: '📅' },
-  { id: 'intelligence',  label: 'Intelligence',    icon: '🧠' },
+  { id: 'intelligence',  label: 'Intelligence',    icon: '◉' },
   { id: 'companion',     label: 'Companion',        icon: '📲' },
   { id: 'purchaseOrders', label: 'Purchase Orders',  icon: '🛒' },
   { id: 'reports',        label: 'Reports',          icon: '📈' },

@@ -13,7 +13,9 @@
 // module does not duplicate that logic, does not touch localStorage,
 // and does not execute action payloads.
 
-import { useMemo, useState, useCallback, useRef, useEffect, useTransition } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useTransition, type ReactNode } from 'react';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence mark.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 // R-INTELLIGENCE-MANAGER-QUEUE-V1 + R-INTELLIGENCE-FEEDBACK-LOOP-V1
 import { getQueue, approveQueueItem, dismissQueueItem, resolveQueueItem, snoozeQueueItem } from '@/services/intelligence/managerQueue/actions';
 import { enrollIntelligenceRisksToManagerQueue } from '@/services/intelligence/managerQueue/riskEnrollment';
@@ -1248,13 +1250,13 @@ export default function IntelligenceModule() {
       cust.phone || (Array.isArray(cust.phones) ? cust.phones.find(Boolean) : '') || '',
     );
     if (phone.length < 10) {
-      toast(t('intelligence.console.recipientNoPhone'), 'error');
+      toast(t('intelligence.console.recipientNoPhone'), 'error', { intelligence: true });
       return;
     }
     const exists = panelCampaign?.candidates.some((c) => c.customerId === cust.id);
     if (exists) {
       setSelectedRecipientIds((prev) => new Set(prev).add(cust.id));
-      toast(t('intelligence.console.recipientAlreadyAdded'), 'info');
+      toast(t('intelligence.console.recipientAlreadyAdded'), 'info', { intelligence: true });
       return;
     }
     setPanelCampaign((prev) => prev ? {
@@ -1708,7 +1710,7 @@ export default function IntelligenceModule() {
       {businessMemory.insights.length > 0 && (
         businessMemoryCollapsed ? (
           <CollapsedSectionPill
-            icon="🧠"
+            icon={<OrbitalCoreMark variant="seal" size={14} decorative />}
             label={locale === 'es' ? 'Patrones de Negocio' : locale === 'pt' ? 'Padrões do Negócio' : 'Business Patterns'}
             count={businessMemory.insights.length}
             onExpand={() => setBusinessMemoryCollapsed(false)}
@@ -3103,7 +3105,9 @@ function OperatorTaskCard({
 function CollapsedSectionPill({
   icon, label, count, onExpand,
 }: {
-  icon: string;
+  // R-ORBITAL-CORE-IDENTITY-V1: widened from string so the intelligence
+  // pill can carry the canonical mark; emoji strings remain valid.
+  icon: ReactNode;
   label: string;
   count: number;
   onExpand: () => void;

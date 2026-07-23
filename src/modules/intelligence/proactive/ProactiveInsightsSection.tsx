@@ -18,6 +18,8 @@ import type { InsightCard, PresentedInsights, PresenterLang } from '@/services/i
 import { CARD, MUTED } from '../manager/surfaceStyles';
 import { PUI, toneColorsFor } from './proactiveStrings';
 import { shouldShowConfidence } from './proactiveViewModel';
+// R-ORBITAL-CORE-IDENTITY-V1: canonical CellHub Intelligence seal.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 function ExecutiveBlock({ presented }: { presented: PresentedInsights }) {
   return (
@@ -88,7 +90,8 @@ export default function ProactiveInsightsSection({ presented, lang }: { presente
   return (
     <div style={CARD}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span aria-hidden="true">🧠</span>
+        {/* R-ORBITAL-CORE-IDENTITY-V1: CellHub Intelligence seal (source stamp). */}
+        <OrbitalCoreMark variant="seal" size={15} decorative />
         <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#e2e8f0', fontWeight: 700 }}>{PUI.sectionTitle(lang)}</h3>
         <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#93c5fd', border: '1px solid #334155', borderRadius: 999, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {PUI.live(lang)}
