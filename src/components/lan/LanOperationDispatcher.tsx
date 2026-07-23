@@ -384,6 +384,14 @@ export default function LanOperationDispatcher() {
             unlocks: result.unlockOps.length > 0 ? result.unlocks : s.unlocks,
             specialOrders: result.specialOrderOps.length > 0 ? result.specialOrders : s.specialOrders,
             appointments: s.appointments,
+            // P0-SC-1: these two were previously omitted, so buildSnapshot
+            // defaulted them to [] and the post-checkout push WIPED the
+            // Secondary's storeCreditLedger/customerReturns mirror until the
+            // periodic publisher restored it. Passing the real arrays both
+            // fixes the wipe and propagates a just-debited certificate
+            // balance to the Secondary immediately.
+            storeCreditLedger: result.ledgerOps.length > 0 ? result.storeCreditLedger : s.storeCreditLedger,
+            customerReturns: ex && ex.returnsChanged ? ex.returns : s.customerReturns,
             settings: s.settings as unknown as Record<string, unknown>,
           },
           (settings?.storeName as string) || 'CellHub Primary',

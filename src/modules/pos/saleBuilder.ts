@@ -113,6 +113,13 @@ export function buildSale(input: BuildSaleInput): Sale {
       // P0-C1b: preserve external-payment workflow identity so sale completion
       // can complete exactly this line's workflow.
       workflowId: item.workflowId,
+      // P0-SC-1: preserve store-credit redemption identity. The Apply Store
+      // Credit modal stamps these on the negative cart line; finalizeSaleCore
+      // §4e debits the certificate ledger by reading them off the committed
+      // sale's items. Without this mapping the line reached the Sale with no
+      // ledger link and the certificate was never debited (double-spend bug).
+      storeCreditLedgerId: item.storeCreditLedgerId,
+      storeCreditCertNumber: item.storeCreditCertNumber,
       repairId: item.repairId,
       specialOrderId: item.specialOrderId,
       unlockId: item.unlockId,

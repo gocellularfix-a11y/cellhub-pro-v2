@@ -119,6 +119,8 @@ export function resolvePosCheckout(
 const DETERMINATE_NOT_COMMITTED = new Set<string>([
   // finalizeSaleCore pre-flight business rejections (no mutation applied)
   'tax_setup_required', 'repair_cancelled', 'repair_completed', 'layaway_cancelled', 'repair_overpayment',
+  // P0-SC-1: store-credit pre-flight rejections (validated BEFORE any mutation)
+  'store_credit_invalid', 'store_credit_insufficient',
   // never reached / never ran the finalize handler
   'bad_payload', 'bad_operation', 'not_paired', 'not_electron', 'not_primary', 'dispatch_unavailable',
 ]);

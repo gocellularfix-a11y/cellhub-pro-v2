@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Sale, InventoryItem, Customer, Repair, StoreSettings } from '@/store/types';
+import type { Sale, InventoryItem, Customer, Repair, StoreSettings, StoreCreditLedger } from '@/store/types';
 import { resolvePosCheckout, classifyCheckoutAck, type PrimaryCheckoutState } from './posCheckoutForwarding';
 
 function sale(over: Partial<Sale> = {}): Sale {
@@ -134,6 +134,71 @@ describe('resolvePosCheckout (R-LAN-POS-CHECKOUT-FORWARDING)', () => {
   });
 });
 
+describe('resolvePosCheckout — store-credit certificate redemption (P0-SC-1)', () => {
+  const cert = (over: Partial<StoreCreditLedger> = {}): StoreCreditLedger => ({
+    id: 'ledger-1', certificateNumber: 'SC-1', customerId: 'c1', customerName: 'Jorge O',
+    issuedAmount: 23270, redeemedAmount: 0, remainingAmount: 23270, status: 'active',
+    issuedAt: '2026-07-01T00:00:00.000Z', issuedByEmployeeName: 'Emp', redemptions: [],
+    ...over,
+  } as StoreCreditLedger);
+  const creditLine = () => item({
+    id: 'sc-line', category: 'exchange_credit', price: -6300, qty: 1,
+    storeCreditLedgerId: 'ledger-1', storeCreditCertNumber: 'SC-1',
+  });
+
+  it('Primary debits the certificate against ITS authoritative ledger', () => {
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-63', items: [creditLine()], total: 0 }),
+      'op-1',
+      state({ storeCreditLedger: [cert()] }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok || r.duplicate) return;
+    expect(r.result.ledgerOps).toHaveLength(1);
+    const after = r.result.storeCreditLedger.find((l) => l.id === 'ledger-1')!;
+    expect(after.remainingAmount).toBe(16970);            // $232.70 − $63.00
+    expect(after.redemptions[0].saleId).toBe('sale-63');
+  });
+
+  it('duplicate forward (same sale.id) never debits a second time', () => {
+    const committed = sale({ id: 'sale-63' });
+    (committed as unknown as Record<string, unknown>).lanOperationId = 'op-A';
+    const alreadyDebited = cert({
+      redeemedAmount: 6300, remainingAmount: 16970,
+      redemptions: [{ id: 'rd1', redeemedAt: 'x', redeemedAmount: 6300, remainingAfter: 16970, saleId: 'sale-63', employeeName: 'E' }],
+    });
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-63', items: [creditLine()], total: 0 }),
+      'op-B', // fresh operationId, same committed sale
+      state({ sales: [committed], storeCreditLedger: [alreadyDebited] }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.duplicate).toBe(true);                        // short-circuit, zero side effects
+    expect(alreadyDebited.remainingAmount).toBe(16970);    // untouched
+  });
+
+  it('stale Secondary mirror cannot over-redeem: Primary rejects against its own balance', () => {
+    // The Secondary believed $232.70 was available; the Primary's cert only has $50 left.
+    const r = resolvePosCheckout(
+      sale({ id: 'sale-over', items: [creditLine()], total: 0 }),
+      'op-1',
+      state({ storeCreditLedger: [cert({ redeemedAmount: 18270, remainingAmount: 5000 })] }),
+    );
+    expect(r).toMatchObject({ ok: false, error: 'store_credit_invalid' });
+  });
+
+  it('Store Credit tender short on the PRIMARY balance rejects (no silent clamp)', () => {
+    const primaryCust = { id: 'c1', name: 'Joe', storeCredit: 5000, loyaltyPoints: 0 } as unknown as Customer;
+    const r = resolvePosCheckout(
+      sale({ paymentMethod: 'Store Credit', total: 6300, customerId: 'c1' }),
+      'op-1',
+      state({ customers: [primaryCust] }),
+    );
+    expect(r).toMatchObject({ ok: false, error: 'store_credit_insufficient' });
+  });
+});
+
 describe('classifyCheckoutAck (R-LAN-POS-CHECKOUT-FORWARDING-FIX-2)', () => {
   it('ok ACK → committed', () => {
     expect(classifyCheckoutAck({ ok: true, saleId: 's1' })).toBe('committed');
@@ -144,6 +209,8 @@ describe('classifyCheckoutAck (R-LAN-POS-CHECKOUT-FORWARDING-FIX-2)', () => {
       'tax_setup_required', 'repair_cancelled', 'repair_completed', 'layaway_cancelled',
       'repair_overpayment', 'bad_payload', 'bad_operation', 'not_paired', 'not_electron',
       'not_primary', 'dispatch_unavailable',
+      // P0-SC-1: store-credit pre-flight rejections are determinate (no commit).
+      'store_credit_invalid', 'store_credit_insufficient',
     ]) {
       expect(classifyCheckoutAck({ ok: false, error: e })).toBe('rejected');
     }

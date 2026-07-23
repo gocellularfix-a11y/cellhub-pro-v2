@@ -422,6 +422,13 @@ export default function POSModule() {
           case 'repair_overpayment':
             toast(t('pos.repairOverpaymentBlocked'), 'error');
             return;
+          // P0-SC-1: store-credit integrity rejections — nothing was committed.
+          case 'store_credit_invalid':
+            toast(t('pos.storeCreditInvalid'), 'error');
+            return;
+          case 'store_credit_insufficient':
+            toast(t('pos.storeCreditInsufficient'), 'error');
+            return;
           default:
             return;
         }
@@ -683,6 +690,9 @@ export default function POSModule() {
           case 'repair_completed': toast(t('pos.repairAlreadyCompleted'), 'error'); break;
           case 'layaway_cancelled': toast(t('pos.layawayCancelledSale'), 'error'); break;
           case 'repair_overpayment': toast(t('pos.repairOverpaymentBlocked'), 'error'); break;
+          // P0-SC-1: Primary rejected the store-credit portion — determinate, no commit.
+          case 'store_credit_invalid': toast(t('pos.storeCreditInvalid'), 'error'); break;
+          case 'store_credit_insufficient': toast(t('pos.storeCreditInsufficient'), 'error'); break;
           default:
             toast(
               lang === 'es'

@@ -33,7 +33,10 @@ export type FinalizeSaleRejectionReason =
   | 'repair_cancelled'
   | 'repair_completed'
   | 'layaway_cancelled'
-  | 'repair_overpayment';
+  | 'repair_overpayment'
+  // P0-SC-1: store-credit integrity rejections (pre-flight — no mutation applied).
+  | 'store_credit_invalid'        // certificate line: missing / not active / over-redemption
+  | 'store_credit_insufficient';  // Store Credit tender: no customer or balance < total
 
 /** One persist instruction (matches the batchSave op shape used by POSModule). */
 export interface PersistOp {
@@ -171,6 +174,54 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
           `Diff: ${_paidCents - _expected} cents. Possible stale cart.`,
         );
         return { ok: false, reason: 'repair_overpayment', details: { repairId: _repairId, paidCents: _paidCents, balanceCents: _expected } };
+      }
+    }
+  }
+
+  // ── P0-SC-1 pre-flight: store-credit integrity at the commit boundary ──
+  // (a) Certificate redemptions (Apply Store Credit lines): every line carrying
+  //     storeCreditLedgerId must resolve to an ACTIVE ledger entry with enough
+  //     remaining balance — validated against the AUTHORITATIVE ledger passed
+  //     in (the Primary's own on a forwarded LAN checkout). An entry already
+  //     redeemed for THIS sale.id counts as satisfied (idempotent retry /
+  //     duplicate ACK → §4e no-ops). Any violation rejects the checkout BEFORE
+  //     any mutation: a sale must never commit "paid with credit" without a
+  //     matching, collectable ledger debit.
+  const storeCreditDeltas = new Map<string, { cents: number; cert: string }>();
+  for (const it of sale.items) {
+    const lid = (it as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId;
+    if (!lid) continue;
+    const cert = (it as unknown as { storeCreditCertNumber?: string }).storeCreditCertNumber || '';
+    const absCents = Math.abs((it.price || 0) * (it.qty || 1));
+    if (absCents <= 0) continue;
+    const prev = storeCreditDeltas.get(lid);
+    storeCreditDeltas.set(lid, { cents: (prev?.cents || 0) + absCents, cert: cert || prev?.cert || '' });
+  }
+  for (const [lid, { cents }] of storeCreditDeltas) {
+    const entry = input.storeCreditLedger.find((l) => l.id === lid);
+    if (entry && (entry.redemptions || []).some((r) => r.saleId === sale.id)) continue; // already debited by this sale
+    if (!entry) {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'not_found' } };
+    }
+    if (entry.status !== 'active') {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'not_active', status: entry.status } };
+    }
+    const remaining = Math.max(0, entry.remainingAmount || 0);
+    if (cents > remaining) {
+      return { ok: false, reason: 'store_credit_invalid', details: { ledgerId: lid, cause: 'over_redemption', requestedCents: cents, remainingCents: remaining } };
+    }
+  }
+  // (b) Legacy Store Credit tender (customer.storeCredit): requires a resolved
+  //     customer whose available balance covers the sale total — the existing
+  //     UI contract (computePaidCents blocks short balances) enforced here
+  //     against authoritative state, so a stale Secondary mirror or a missing
+  //     customerId can never commit a credit-paid sale that debits nothing.
+  {
+    const isStoreCreditTender = sale.paymentMethod === 'store_credit' || sale.paymentMethod === 'Store Credit';
+    if (isStoreCreditTender && (sale.total || 0) > 0) {
+      const available = selectedCustomer ? (selectedCustomer.storeCredit || 0) : 0;
+      if (!selectedCustomer || available < sale.total) {
+        return { ok: false, reason: 'store_credit_insufficient', details: { availableCents: available, totalCents: sale.total || 0 } };
       }
     }
   }
@@ -448,23 +499,20 @@ export function finalizeSaleCore(input: FinalizeSaleCoreInput): FinalizeSaleCore
   }
 
   // ── §4e. Store-credit redemption ──
+  // P0-SC-1: the deltas were already aggregated + validated in the pre-flight
+  // above (entry exists, active, remaining covers the amount) — this section
+  // only applies them. One debit per (certificate, sale.id): an entry already
+  // holding a redemption for this sale.id is skipped (idempotent no-op for
+  // retries / duplicate ACKs / re-processing).
   let updatedLedger = input.storeCreditLedger;
   const ledgerOps: PersistOp[] = [];
-  const ledgerDeltas = new Map<string, { cents: number; cert: string }>();
-  for (const item of sale.items) {
-    const lid = (item as unknown as { storeCreditLedgerId?: string }).storeCreditLedgerId;
-    if (!lid) continue;
-    const cert = (item as unknown as { storeCreditCertNumber?: string }).storeCreditCertNumber || '';
-    const absCents = Math.abs((item.price || 0) * (item.qty || 1));
-    if (absCents <= 0) continue;
-    const prev = ledgerDeltas.get(lid);
-    ledgerDeltas.set(lid, { cents: (prev?.cents || 0) + absCents, cert: cert || prev?.cert || '' });
-  }
+  const ledgerDeltas = storeCreditDeltas;
   if (ledgerDeltas.size > 0) {
     const ledgerCopy = [...input.storeCreditLedger];
     for (const [lid, { cents }] of ledgerDeltas) {
       const idx = ledgerCopy.findIndex((l) => l.id === lid);
       if (idx < 0) continue;
+      if ((ledgerCopy[idx].redemptions || []).some((r) => r.saleId === sale.id)) continue;
       try {
         const { ledger: nextLedger } = redeemLedgerEntry(ledgerCopy[idx], {
           amountCents: cents,
