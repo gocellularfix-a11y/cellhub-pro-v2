@@ -18,6 +18,9 @@ import { Modal } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import { formatCurrency } from '@/utils/currency';
 import { matchesSearch } from '@/utils/fuzzyMatch';
+// P0-RET-1: canonical, pure Find-Sale search engine (filter-first, no
+// empty-needle match-all, IMEI-aware, mode-isolated).
+import { searchReturnSales, type ReturnSearchMode } from './returnsSearch';
 import GlobalSearchBar from '@/components/shared/GlobalSearchBar';
 import { generateId } from '@/utils/dates';
 import { usePrint } from '@/hooks/usePrint';
@@ -180,48 +183,33 @@ export default function ReturnsModule() {
 
   // ── Search ────────────────────────────────────────────────
   const handleSearch = useCallback(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q && !dateFrom && !dateTo) {
+    // Empty-query + no-date guard stays as before (do not silently show recent
+    // sales for a blank Search — the cashier is prompted to enter a term).
+    if (!searchQuery.trim() && !dateFrom && !dateTo) {
       toast(t('returns.enterSearchTerm'), 'warning');
       return;
     }
 
-    let matches = (sales || []).filter((s) => s.status !== 'voided');
-
-    if (dateFrom) matches = matches.filter((s) => s.createdAt && new Date(s.createdAt as string) >= new Date(dateFrom));
-    if (dateTo)   matches = matches.filter((s) => s.createdAt && new Date(s.createdAt as string) <= new Date(dateTo + 'T23:59:59'));
-
-    if (q) {
-      matches = matches.filter((s) => {
-        if (searchType === 'invoice' || searchType === 'any') {
-          if ((s.invoiceNumber || '').toLowerCase().includes(q)) return true;
-          if ((s.invoiceNumber || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))) return true;
-        }
-        if (searchType === 'phone' || searchType === 'any') {
-          if ((s.customerPhone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))) return true;
-        }
-        if (searchType === 'name' || searchType === 'any') {
-          if ((s.customerName || '').toLowerCase().includes(q)) return true;
-        }
-        if (searchType === 'item' || searchType === 'any') {
-          if ((s.items || []).some((i) => (i.name || '').toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q))) return true;
-        }
-        return false;
-      });
-    }
-
-    matches = matches
-      .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
-      .slice(0, 30);
+    // P0-RET-1: one canonical, filter-first search. salesRef is the live
+    // snapshot (avoids a stale-closure miss on freshly synced sales).
+    const matches = searchReturnSales(salesRef.current || [], {
+      mode: (searchType as ReturnSearchMode),
+      query: searchQuery,
+      dateFrom,
+      dateTo,
+    });
 
     if (matches.length === 0) {
+      // A non-empty query with zero matches shows the no-match state and CLEARS
+      // any stale results — never falls back to recent sales.
+      setSearchResults([]);
       toast(t('returns.noSalesFound'), 'warning');
     } else if (matches.length === 1) {
       pickSale(matches[0]);
     } else {
       setSearchResults(matches);
     }
-  }, [searchQuery, searchType, dateFrom, dateTo, sales, t, toast]);
+  }, [searchQuery, searchType, dateFrom, dateTo, t, toast]);
 
   const pickSale = (sale: Sale) => {
     setFoundSale(sale);
@@ -283,8 +271,11 @@ export default function ReturnsModule() {
 
   const handleBarcodeKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      setSearchType('invoice');
-      setTimeout(handleSearch, 50);
+      // P0-RET-1: run the canonical search in the CURRENTLY selected mode.
+      // Previously this force-switched to 'invoice' (ignoring the chosen mode)
+      // and deferred via setTimeout (a stale-closure/timing hack). handleSearch
+      // is a useCallback over current state, so a direct call is correct.
+      handleSearch();
     }
   };
 
