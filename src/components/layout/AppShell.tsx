@@ -59,6 +59,8 @@ const AIAssistantPanel = lazy(() => import('@/modules/ai-assistant/AIAssistantPa
 const AppointmentsModule = lazy(() => import('@/modules/appointments/AppointmentsModule'));
 // R-HELP-MANUAL-V1: in-app Help / Manual module.
 const HelpModule = lazy(() => import('@/modules/help/HelpModule'));
+// P1-SC-CENTER: certificate manager + audit surface.
+const StoreCreditCenterModule = lazy(() => import('@/modules/store-credit/StoreCreditCenterModule'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 // CELLHUB-INTELLIGENCE-I5: read-only visible Business Manager surface.
 const BusinessManagerPage = lazy(() => import('@/modules/intelligence/manager/BusinessManagerPage'));
@@ -501,6 +503,7 @@ export default function AppShell() {
               ? <ReportsModule />
               : <UpgradePrompt feature="reports" requiredTier="basic" />))}
           {activeTab === 'tax'            && (isAdminMode ? <TaxReportsModule />       : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'storeCredit'    && (isAdminMode ? <StoreCreditCenterModule /> : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'employees'      && (isAdminMode ? <EmployeesModule />        : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'purchaseOrders' && (isAdminMode ? <PurchaseOrdersModule />   : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
 

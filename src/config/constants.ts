@@ -161,6 +161,9 @@ export const NAV_TABS: NavTab[] = [
   { id: 'companion',     labelKey: 'companion',     icon: '📲', adminOnly: true },
   { id: 'purchaseOrders', labelKey: 'purchaseOrders',  icon: '🛒', adminOnly: true },
   { id: 'reports',       labelKey: 'reports',        icon: '📈', adminOnly: true },
+  // P1-SC-CENTER: operational certificate manager (financial → admin-gated,
+  // same treatment as Reports).
+  { id: 'storeCredit',   labelKey: 'storeCredit',    icon: '🎫', adminOnly: true },
   { id: 'tax',           labelKey: 'caTaxReports',   icon: '🏛️', adminOnly: true },
   { id: 'settings',      labelKey: 'settings',       icon: '⚙️', adminOnly: true },
   // R-HELP-MANUAL-V1: in-app manual. Visible to every role (no adminOnly, no

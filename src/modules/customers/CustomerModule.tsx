@@ -40,6 +40,8 @@ import { evaluateCustomerDelete, type CustomerDeleteWarning } from '@/services/c
 import { openWhatsApp } from '@/services/whatsapp';
 import { setIntelligenceContext, clearEntityContext, setPendingIntelligenceAction, setPendingExplicitCustomer } from '@/services/intelligence/context/intelligenceContext';
 import { emitCustomerAmbient } from '@/services/intelligence/ambient/ambientAwarenessService';
+// P1-SC-CENTER: contextual hand-off into the Store Credit Center.
+import { setPendingCertificateFocus } from '@/services/storeCredit/centerFocus';
 
 export default function CustomerModule() {
   // Round 18: extract `state` at root and destructure separately so we can also
@@ -1624,6 +1626,8 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
   };
 }) {
   const { t } = useTranslation();
+  // P1-SC-CENTER: navigation dispatch for the certificate hand-off button.
+  const { dispatch: navDispatch } = useApp();
   // LAN-OPERATION-FORWARDING-CUSTOMER-NOTE-V1: quick note-add input state.
   const [noteDraft, setNoteDraft] = useState('');
   const submitNote = () => {
@@ -1870,7 +1874,23 @@ function CustomerHistoryModal({ customer, sales, repairs, layaways, unlocks, spe
                         {c.status}
                       </span>
                     </div>
-                    <span className="text-xs text-slate-500">{formatDate(c.issuedAt)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{formatDate(c.issuedAt)}</span>
+                      {/* P1-SC-CENTER: contextual hand-off — opens this
+                          certificate inside the Store Credit Center. No
+                          ledger logic here; just focus + navigate. */}
+                      <button
+                        className="text-xs text-sky-400 hover:text-sky-300"
+                        title={t('scc.openInCenter')}
+                        onClick={() => {
+                          setPendingCertificateFocus(c.id);
+                          onClose();
+                          navDispatch({ type: 'SET_ACTIVE_TAB', payload: 'storeCredit' });
+                        }}
+                      >
+                        ↗
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
                     <div>
