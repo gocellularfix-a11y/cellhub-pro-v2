@@ -45,6 +45,9 @@ try {
     // R-PRODUCTION-B3.2: open the local diagnostics logs folder (fixed path in
     // main; no renderer-supplied path, no shell/openPath surface exposed).
     openDiagnosticsLogsFolder: () => ipcRenderer.invoke('diagnostics:open-logs'),
+    // P1-COLIBRI-LAUNCHER: narrow validated launch of the independent Colibrí
+    // app (main re-validates: absolute existing .exe only; no args).
+    colibriLaunch: (target) => ipcRenderer.invoke('colibri:launch', target),
     // R-SECONDARY-FAILOVER-PERSIST: persist latest LAN mirror snapshot (Secondary).
     saveMirrorFailover: (snapshot) => ipcRenderer.invoke('mirror:save-failover', snapshot),
     // R-PROMOTE-TO-PRIMARY: read the persisted failover snapshot (manual promotion).

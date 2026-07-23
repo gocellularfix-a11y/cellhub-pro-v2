@@ -694,6 +694,28 @@ function registerIpcHandlers() {
     }
   });
 
+  // P1-COLIBRI-LAUNCHER: launch the INDEPENDENT Colibrí application. ONE
+  // narrow channel following the re-add-with-validation policy: main
+  // re-validates the target itself (absolute existing .exe) before
+  // shell.openPath — never trusts the renderer path blindly, never spawns
+  // with arguments, never blocks CellHub if Colibrí is missing. URLs do NOT
+  // use this channel (they go through the existing window.open → external
+  // browser hardening above).
+  ipcMain.handle('colibri:launch', async (_e, target) => {
+    try {
+      const p = String(target || '');
+      if (!path.isAbsolute(p) || !p.toLowerCase().endsWith('.exe')) {
+        return { ok: false, error: 'invalid_target' };
+      }
+      if (!fs.existsSync(p)) return { ok: false, error: 'not_found' };
+      const res = await shell.openPath(p);
+      if (res) return { ok: false, error: String(res) };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : 'launch failed' };
+    }
+  });
+
   // R-SECONDARY-FAILOVER-PERSIST: a LAN Secondary persists the latest Primary
   // snapshot to userData/mirror/primary-snapshot.json (atomic write). Write-only
   // — NO restore, NO promotion. Never throws; returns a controlled result.

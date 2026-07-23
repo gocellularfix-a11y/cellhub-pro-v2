@@ -164,6 +164,9 @@ export const NAV_TABS: NavTab[] = [
   // P1-SC-CENTER: operational certificate manager (financial → admin-gated,
   // same treatment as Reports).
   { id: 'storeCredit',   labelKey: 'storeCredit',    icon: '🎫', adminOnly: true },
+  // P1-COLIBRI-LAUNCHER: independent commercial-studio launcher. Paired with
+  // Store Credit so the sidebar grid stays balanced.
+  { id: 'colibri',       labelKey: 'colibri',        icon: '🐦', adminOnly: true },
   { id: 'tax',           labelKey: 'caTaxReports',   icon: '🏛️', adminOnly: true },
   { id: 'settings',      labelKey: 'settings',       icon: '⚙️', adminOnly: true },
   // R-HELP-MANUAL-V1: in-app manual. Visible to every role (no adminOnly, no

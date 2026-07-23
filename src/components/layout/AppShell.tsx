@@ -61,6 +61,8 @@ const AppointmentsModule = lazy(() => import('@/modules/appointments/Appointment
 const HelpModule = lazy(() => import('@/modules/help/HelpModule'));
 // P1-SC-CENTER: certificate manager + audit surface.
 const StoreCreditCenterModule = lazy(() => import('@/modules/store-credit/StoreCreditCenterModule'));
+// P1-COLIBRI-LAUNCHER: independent commercial-studio launcher page.
+const ColibriLauncherPage = lazy(() => import('@/modules/colibri/ColibriLauncherPage'));
 const IntelligenceModule = lazy(() => import('@/modules/intelligence/IntelligenceModule'));
 // CELLHUB-INTELLIGENCE-I5: read-only visible Business Manager surface.
 const BusinessManagerPage = lazy(() => import('@/modules/intelligence/manager/BusinessManagerPage'));
@@ -504,6 +506,7 @@ export default function AppShell() {
               : <UpgradePrompt feature="reports" requiredTier="basic" />))}
           {activeTab === 'tax'            && (isAdminMode ? <TaxReportsModule />       : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'storeCredit'    && (isAdminMode ? <StoreCreditCenterModule /> : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
+          {activeTab === 'colibri'        && (isAdminMode ? <ColibriLauncherPage />    : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'employees'      && (isAdminMode ? <EmployeesModule />        : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
           {activeTab === 'purchaseOrders' && (isAdminMode ? <PurchaseOrdersModule />   : <AdminLockScreen onUnlock={requireAdmin} lang={lang} />)}
 

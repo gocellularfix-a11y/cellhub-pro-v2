@@ -110,6 +110,8 @@ interface ElectronAPI {
   saveMirrorFailover: (snapshot: unknown) => Promise<{ ok: boolean; path?: string; reason?: string }>;
   // R-PROMOTE-TO-PRIMARY: read the persisted failover snapshot (manual promotion).
   readMirrorFailover: () => Promise<{ ok: boolean; envelope?: unknown; reason?: string }>;
+  // P1-COLIBRI-LAUNCHER: narrow validated launch of the independent Colibrí app.
+  colibriLaunch?: (target: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 // LOCAL-LAN-AUTO-DISCOVERY-V1 discovery wire types

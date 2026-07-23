@@ -6413,6 +6413,7 @@ export const translations: TranslationDictionary = {
   'nav.settings':        { en: 'Settings',          es: 'Configuración',        pt: 'Configurações' },
   'nav.help':            { en: 'Help',              es: 'Ayuda',                pt: 'Ajuda' },
   'nav.storeCredit':     { en: 'Store Credit',      es: 'Crédito Tienda',       pt: 'Crédito Loja' },
+  'nav.colibri':         { en: 'Colibrí',           es: 'Colibrí',              pt: 'Colibri' },
 
   // ── P1-SC-CENTER — Store Credit Center ──
   'scc.title': { en: 'Store Credit Center', es: 'Centro de Crédito de Tienda', pt: 'Central de Crédito da Loja' },
@@ -6494,6 +6495,38 @@ export const translations: TranslationDictionary = {
   'scc.print.reprintFooter': { en: 'Reprinted with current balance on', es: 'Reimpreso con saldo actual el', pt: 'Reimpresso com saldo atual em' },
   'scc.print.ledgerTitle': { en: 'Store Credit Ledger', es: 'Registro de Crédito de Tienda', pt: 'Registro de Crédito da Loja' },
   'scc.print.rows': { en: 'certificates', es: 'certificados', pt: 'certificados' },
+
+  // ── P1-COLIBRI-LAUNCHER ──
+  'colibri.title': { en: 'Colibrí', es: 'Colibrí', pt: 'Colibri' },
+  'colibri.subtitle': { en: 'Commercial Studio', es: 'Estudio Comercial', pt: 'Estúdio Comercial' },
+  'colibri.purpose': { en: 'Create professional commercial content using approved CellHub business context.', es: 'Crea contenido comercial profesional usando el contexto de negocio aprobado de CellHub.', pt: 'Crie conteúdo comercial profissional usando o contexto de negócios aprovado do CellHub.' },
+  'colibri.status.title': { en: 'Integration Status', es: 'Estado de Integración', pt: 'Status da Integração' },
+  'colibri.status.integration': { en: 'Integration', es: 'Integración', pt: 'Integração' },
+  'colibri.status.availability': { en: 'Application', es: 'Aplicación', pt: 'Aplicativo' },
+  'colibri.status.lastLaunch': { en: 'Last launch', es: 'Último inicio', pt: 'Último início' },
+  'colibri.status.enabled': { en: 'Enabled', es: 'Habilitada', pt: 'Habilitada' },
+  'colibri.status.disabled': { en: 'Disabled', es: 'Deshabilitada', pt: 'Desabilitada' },
+  'colibri.status.configured': { en: 'Configured', es: 'Configurada', pt: 'Configurado' },
+  'colibri.status.notConfigured': { en: 'Not Configured', es: 'No Configurada', pt: 'Não Configurado' },
+  'colibri.status.never': { en: 'Never', es: 'Nunca', pt: 'Nunca' },
+  'colibri.open': { en: 'Open Colibrí', es: 'Abrir Colibrí', pt: 'Abrir Colibri' },
+  'colibri.notConfiguredHint': { en: 'Set a launch target below (local application path or approved URL) to enable the launcher.', es: 'Configura abajo un destino de inicio (ruta local de la aplicación o URL aprobada) para habilitar el lanzador.', pt: 'Configure abaixo um destino de início (caminho local do aplicativo ou URL aprovada) para habilitar o iniciador.' },
+  'colibri.launchFailed': { en: 'Could not open Colibrí. Verify the configured target.', es: 'No se pudo abrir Colibrí. Verifica el destino configurado.', pt: 'Não foi possível abrir o Colibri. Verifique o destino configurado.' },
+  'colibri.launched': { en: 'Colibrí launch requested.', es: 'Inicio de Colibrí solicitado.', pt: 'Início do Colibri solicitado.' },
+  'colibri.pathNeedsDesktop': { en: 'Launching a local application requires the CellHub desktop app.', es: 'Iniciar una aplicación local requiere la app de escritorio de CellHub.', pt: 'Iniciar um aplicativo local requer o app de desktop do CellHub.' },
+  'colibri.comingSoon': { en: 'Coming Soon', es: 'Próximamente', pt: 'Em Breve' },
+  'colibri.notConnected': { en: 'Not Connected', es: 'No Conectado', pt: 'Não Conectado' },
+  'colibri.future.create': { en: 'Create Commercial', es: 'Crear Comercial', pt: 'Criar Comercial' },
+  'colibri.future.sendContext': { en: 'Send Product Context', es: 'Enviar Contexto de Productos', pt: 'Enviar Contexto de Produtos' },
+  'colibri.future.viewContent': { en: 'View Generated Content', es: 'Ver Contenido Generado', pt: 'Ver Conteúdo Gerado' },
+  'colibri.future.settings': { en: 'Connection Settings', es: 'Configuración de Conexión', pt: 'Configurações de Conexão' },
+  'colibri.config.title': { en: 'Launcher Configuration', es: 'Configuración del Lanzador', pt: 'Configuração do Iniciador' },
+  'colibri.config.target': { en: 'Launch target (local .exe path or https:// URL)', es: 'Destino de inicio (ruta .exe local o URL https://)', pt: 'Destino de início (caminho .exe local ou URL https://)' },
+  'colibri.config.enable': { en: 'Integration enabled', es: 'Integración habilitada', pt: 'Integração habilitada' },
+  'colibri.config.save': { en: 'Save configuration', es: 'Guardar configuración', pt: 'Salvar configuração' },
+  'colibri.config.saved': { en: 'Colibrí configuration saved.', es: 'Configuración de Colibrí guardada.', pt: 'Configuração do Colibri salva.' },
+  'colibri.config.invalidTarget': { en: 'Target must be an https:// URL or an absolute .exe path.', es: 'El destino debe ser una URL https:// o una ruta absoluta .exe.', pt: 'O destino deve ser uma URL https:// ou um caminho absoluto .exe.' },
+  'colibri.independentNote': { en: 'Colibrí runs as an independent application. CellHub only launches it — no data is shared automatically.', es: 'Colibrí corre como aplicación independiente. CellHub solo la inicia — no se comparte ningún dato automáticamente.', pt: 'O Colibri roda como aplicativo independente. O CellHub apenas o inicia — nenhum dado é compartilhado automaticamente.' },
 
 
   // R-HELP-MANUAL-V1 — in-app Help / Manual chrome (content lives in

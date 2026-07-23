@@ -28,6 +28,7 @@ const MODULE_PALETTE: Record<string, { bg: string; border: string; label: string
   reports:        { bg: 'linear-gradient(145deg, #301408, #1e0c04)', border: '#603010', label: '#fb923c' },
   // P1-SC-CENTER / P1-COLIBRI-LAUNCHER: balanced pair added together.
   storeCredit:    { bg: 'linear-gradient(145deg, #0a2a20, #051a12)', border: '#0f4a38', label: '#34d399' },
+  colibri:        { bg: 'linear-gradient(145deg, #2a1030, #180a1e)', border: '#4a1a58', label: '#e879f9' },
   purchaseOrders: { bg: 'linear-gradient(145deg, #0e2050, #081530)', border: '#1a3880', label: '#60a5fa' },
   companion:      { bg: 'linear-gradient(145deg, #082030, #04101c)', border: '#0a3050', label: '#38bdf8' },
   employees:      { bg: 'linear-gradient(145deg, #2a0a18, #180610)', border: '#501030', label: '#fb7185' },
